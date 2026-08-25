@@ -28,7 +28,8 @@ This library is pure Python, and it can give you a tree.
 ## Install
 
 ```console
-pip install demangle
+pip install demangle          # once released to PyPI
+pip install git+https://github.com/r0ny123/demangle    # until then
 ```
 
 Python 3.11 or newer. That is the whole dependency list.
@@ -222,5 +223,5 @@ codebase. Where it does, that is a bug.
 ## Licence
 
 MIT. The Rust demangler derives from Team bi0s' `rust_demangler` (MIT) and the MSVC
-demangler was originally written for [SMDA](https://github.com/danielplohmann/smda);
-see [NOTICE](NOTICE).
+demangler from [SMDA](https://github.com/danielplohmann/smda) (BSD 2-Clause); both are
+substantially modified, and both upstream licences are reproduced in [NOTICE](NOTICE).
