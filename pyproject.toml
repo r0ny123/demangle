@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools>=64.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
 
 [project]
 name = "demangle"
-version = "0.1.0"
 description = "Read mangled symbol names -- Itanium C++, MSVC and Rust -- in pure Python, with no dependencies."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "demangle contributors" }]
 keywords = [
     "demangle", "demangler", "mangling", "symbol", "itanium", "msvc", "rust",
@@ -17,7 +17,6 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -35,6 +34,10 @@ classifiers = [
 # No runtime dependencies, and this is a promise the test suite enforces
 # (tests/test_architecture.py::TestLayering::test_no_third_party_imports).
 dependencies = []
+
+# Read from `demangle.__version__`, so the number lives in exactly one place and
+# `import demangle; demangle.__version__` can never disagree with the metadata.
+dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/r0ny123/demangle"
@@ -60,11 +63,54 @@ dev = [
     "ty==0.0.69",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# -- build ---------------------------------------------------------------------
 
-[tool.setuptools.package-data]
-demangle = ["py.typed"]
+[tool.hatch.version]
+path = "src/demangle/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/demangle"]
+
+[tool.hatch.build.targets.sdist]
+# The corpora are the project's main correctness asset and the suite cannot run without
+# them, so an sdist ships everything needed to test the thing you just built. Packagers
+# build from an sdist and run the tests; one that ships a suite it cannot collect is
+# worse than one that ships none.
+include = [
+    "/src",
+    "/tests",
+    "/tools",
+    "/benchmarks",
+    "/docs",
+    "/README.md",
+    "/ARCHITECTURE.md",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/ROADMAP.md",
+    "/SECURITY.md",
+    "/LICENSE",
+    "/NOTICE",
+]
+
+# -- development environments --------------------------------------------------
+
+[tool.hatch.envs.default]
+features = ["dev"]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args}"
+cover = "pytest --cov=demangle --cov-report=term-missing {args}"
+lint = ["ruff check {args:.}", "ruff format --check {args:.}", "ty check {args:.}"]
+fmt = ["ruff check --fix {args:.}", "ruff format {args:.}"]
+bench = "python benchmarks/bench.py {args}"
+differential = "python tools/differential.py {args}"
+# Everything a pull request is expected to pass, in one command.
+check = ["lint", "test", "differential", "bench --check"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.11", "3.12", "3.13"]
+
+# -- tooling -------------------------------------------------------------------
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -85,7 +131,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
-"src/demangle/schemes/msvc/_parser.py" = ["ALL"]
 "src/demangle/schemes/rust/_v0.py" = ["ALL"]
 "src/demangle/schemes/rust/_legacy.py" = ["ALL"]
 "src/demangle/schemes/rust/_dispatch.py" = ["ALL"]

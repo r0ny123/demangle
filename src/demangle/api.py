@@ -152,9 +152,9 @@ def parse(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS)
     Raises the same errors as `demangle_strict`.
 
     Note:
-        The MSVC and Rust parsers do not yet emit structured trees; they return a single
-        `Raw` node holding the full spelling. Itanium returns a complete tree. See
-        ROADMAP.md.
+        Itanium and MSVC return full trees. The Rust parser does not yet -- it returns a
+        single `Raw` node holding the spelling -- so `walk()` and `find()` see nothing
+        below the root for a Rust symbol. See ROADMAP.md.
     """
     return _parse_handle(mangled, AST_BUILDER, language, get_style(style), limits)
 

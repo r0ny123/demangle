@@ -80,12 +80,21 @@ def benchmarks():
         for name in negatives:
             demangle.demangle(name)
 
+    parsed = []
+
     def structured():
+        # The successes are counted, and `main` asserts the count. Suppressing failures
+        # and timing whatever is left means a change that made `parse()` raise
+        # immediately would time at a fraction of the baseline and be reported as an
+        # enormous *improvement*.
+        count = 0
         for name in itanium:
             with contextlib.suppress(Exception):
                 demangle.parse(name)
+                count += 1
+        parsed.append(count)
 
-    return [
+    return parsed, [
         ("cold", cold, len(everything)),
         ("warm", warm, len(everything) * 10),
         ("negative", negative, len(negatives)),
@@ -95,7 +104,8 @@ def benchmarks():
 
 def run():
     results = {}
-    for name, function, count in benchmarks():
+    parsed, cases = benchmarks()
+    for name, function, count in cases:
         if not count:
             continue
         demangle.cache_clear()
@@ -106,6 +116,8 @@ def run():
             "per_second": round(count / elapsed),
             "microseconds_each": round(elapsed / count * 1e6, 3),
         }
+    if "structured" in results:
+        results["structured"]["parsed"] = parsed[-1] if parsed else 0
     return results
 
 
@@ -137,6 +149,12 @@ def main():
             print("\nno baseline recorded; run with --save first")
             return 0
         baseline = json.loads(BASELINE.read_text())
+        expected = baseline.get("structured", {}).get("parsed")
+        measured = results.get("structured", {}).get("parsed")
+        if expected is not None and measured != expected:
+            print(f"\nstructured benchmark parsed {measured} names, baseline parsed {expected}")
+            print("a timing that improved because the work stopped happening is not an improvement")
+            return 1
         regressions = []
         for name, data in results.items():
             if name not in baseline:

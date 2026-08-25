@@ -1,26 +1,27 @@
 {
   "cold": {
-    "names": 805,
-    "seconds": 0.012049,
-    "per_second": 66813,
-    "microseconds_each": 14.967
+    "names": 887,
+    "seconds": 0.01781,
+    "per_second": 49803,
+    "microseconds_each": 20.079
   },
   "warm": {
-    "names": 8050,
-    "seconds": 0.002981,
-    "per_second": 2700348,
-    "microseconds_each": 0.37
+    "names": 8870,
+    "seconds": 0.004692,
+    "per_second": 1890327,
+    "microseconds_each": 0.529
   },
   "negative": {
-    "names": 805,
-    "seconds": 0.001481,
-    "per_second": 543393,
-    "microseconds_each": 1.84
+    "names": 887,
+    "seconds": 0.002061,
+    "per_second": 430283,
+    "microseconds_each": 2.324
   },
   "structured": {
-    "names": 196,
-    "seconds": 0.014778,
-    "per_second": 13263,
-    "microseconds_each": 75.399
+    "names": 278,
+    "seconds": 0.019048,
+    "per_second": 14595,
+    "microseconds_each": 68.517,
+    "parsed": 278
   }
 }

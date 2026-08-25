@@ -17,15 +17,37 @@ from demangle.core.registry import available
 SOURCE = Path(demangle.__file__).parent
 
 
+def imports_of_at(path, root):
+    """`imports_of` against an arbitrary package root, for testing the rule itself."""
+    global SOURCE
+    original, SOURCE = SOURCE, root
+    try:
+        return imports_of(path)
+    finally:
+        SOURCE = original
+
+
 def imports_of(path):
-    """Every module named by an import in `path`, resolved to a dotted string."""
+    """Every module named by an import in `path`, resolved to a dotted string.
+
+    Relative imports are resolved against the file's own package, so
+    `from ..msvc import x` inside `schemes/rust/` comes back as
+    `demangle.schemes.msvc` and can be compared on path segments. Comparing the raw
+    `"..msvc"` on substrings let the most obvious cross-scheme import -- a top-level
+    one -- walk straight through the rule meant to forbid it.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    package = ["demangle", *path.relative_to(SOURCE).parts[:-1]]
     found = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            found.append("." * node.level + (node.module or ""))
+            if node.level:
+                base = package[: len(package) - node.level + 1]
+                found.append(".".join([*base, node.module] if node.module else base))
+            else:
+                found.append(node.module or "")
     return found
 
 
@@ -51,14 +73,46 @@ class TestLayering:
 
     def test_schemes_never_import_each_other(self):
         """A scheme must be replaceable without disturbing its neighbours."""
+        schemes = {"itanium", "msvc", "rust"}
         offenders = []
-        for scheme in ("itanium", "msvc", "rust"):
-            others = {"itanium", "msvc", "rust"} - {scheme}
+        for scheme in schemes:
             for path in python_files(f"schemes/{scheme}"):
                 for name in imports_of(path):
-                    for other in others:
-                        if f"schemes.{other}" in name or f".{other}." in name:
-                            offenders.append(f"{scheme}/{path.name} imports {name}")
+                    segments = name.split(".")
+                    if "schemes" not in segments:
+                        continue
+                    named = segments[segments.index("schemes") + 1 :]
+                    if named and named[0] in schemes - {scheme}:
+                        offenders.append(f"{scheme}/{path.name} imports {name}")
+        assert offenders == []
+
+    def test_the_cross_scheme_rule_would_actually_catch_a_violation(self):
+        """The rule above is only worth having if it fires. Prove it does."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            scheme = Path(directory) / "demangle" / "schemes" / "rust"
+            scheme.mkdir(parents=True)
+            offender = scheme / "leaky.py"
+            offender.write_text("from ..msvc import demangle_msvc_symbol\n")
+            resolved = imports_of_at(offender, Path(directory) / "demangle")
+        assert "demangle.schemes.msvc" in resolved
+
+    def test_no_scheme_reaches_for_the_shared_spelling_types(self):
+        """Types and names go through the builder, never around it.
+
+        A parser importing `Spelling` would be constructing output rather than reporting
+        a production, and `parse()` would silently lose that subtree. Importing
+        `core.ast` is fine and expected -- that is how a scheme declares node kinds of
+        its own -- so only `core.spelling` is forbidden here. This is the enforceable
+        half of the rule; ARCHITECTURE.md says what it does not cover.
+        """
+        offenders = [
+            f"{path.relative_to(SOURCE)} imports {name}"
+            for path in SOURCE.glob("schemes/**/*.py")
+            for name in imports_of(path)
+            if name.endswith("core.spelling")
+        ]
         assert offenders == []
 
     def test_no_third_party_imports(self):
