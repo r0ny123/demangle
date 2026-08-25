@@ -63,9 +63,15 @@ symbol nor the declaration.
 
 Every node supports `.walk()`, `.find(kind)`, `.children()` and `.spell()`.
 
-Itanium and MSVC return full trees. **Rust does not yet** — it returns a single `raw`
-node holding the spelling, so `walk()` and `find()` see nothing below the root for a
-Rust symbol. `demangle()` is unaffected. See [ROADMAP.md](ROADMAP.md).
+All three schemes return full trees. A Rust symbol comes back as a `symbol` holding a
+`path` of `name` components, with `impl`, `template`, `type` and `literal` nodes for what
+the path carries:
+
+```python
+>>> tree = demangle.parse("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
+>>> [node.text for node in tree.find("name")]
+['core', 'fmt', 'Formatter', 'pad']
+```
 
 ### Detection and batches
 

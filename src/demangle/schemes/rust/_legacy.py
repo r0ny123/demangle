@@ -15,7 +15,36 @@ class LegacyDemangler:
     _UNESCAPED = {"SP": "@", "BP": "*", "RF": "&", "LT": "<", "GT": ">", "LP": "(", "RP": ")", "C": ","}
 
     def demangle(self, inpstr: str) -> str:
+        """Demangle to text."""
+        return self._run(inpstr)
+
+    def structure(self, inpstr: str):
+        """Demangle to a tree, which renders to exactly what `demangle` returns.
+
+        The same pass builds both. `_run` records where each path component begins and
+        ends in the string it is assembling, and the tree is those spans with the text
+        between them kept as it stands -- so concatenating the tree reproduces the
+        string character for character rather than approximating it.
+        """
+        from . import nodes
+
+        text = self._run(inpstr)
+        parts = []
+        at = 0
+        for start, end in self.spans:
+            if start > at:
+                parts.append(text[at:start])
+            parts.append(nodes.RustName((text[start:end],)))
+            at = end
+        if at < len(text):
+            parts.append(text[at:])
+        path = nodes.Path(parts)
+        return nodes.Symbol((path,), hash=self.hash, suffix=self.suffix)
+
+    def _run(self, inpstr: str) -> str:
         self.elements = 0
+        self.spans = []
+        self.hash = None
 
         original_inpstr = inpstr
         disp = ""
@@ -59,7 +88,12 @@ class LegacyDemangler:
                 disp += "::"
 
             if is_hash:
+                # The component reads `h<16 hex digits>` once its length prefix has been
+                # consumed. What a caller wants is the value, not the marker.
+                self.hash = rest[1:]
                 break
+
+            component = len(disp)
 
             if rest.startswith("_$"):
                 rest = rest[1:]
@@ -125,6 +159,7 @@ class LegacyDemangler:
                 else:
                     break
             disp += rest
+            self.spans.append((component, len(disp)))
 
         self.suffix = inn[1:]
         if self.suffix and self.suffix.startswith(".") and self.is_symbol_like(self.suffix):

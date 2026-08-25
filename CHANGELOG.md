@@ -6,6 +6,27 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Rust `parse()` returns a tree.** A Rust symbol was a single `raw` node, so `walk()`
+  and `find()` saw nothing below the root. It now comes back as a `symbol` holding a
+  `path` of `name` components, with `impl`, `namespace`, `template`, `type` and
+  `literal` nodes for what a path carries. An impl names its self-type and its trait as
+  fields, a closure carries its disambiguator, and the legacy scheme's hash is kept
+  although it is still not spelled.
+
+  The v0 printer now emits into a *sink* rather than concatenating a string: `TextSink`
+  joins the fragments, `TreeSink` remembers where each production began and ended. There
+  is one traversal, so a tree renders to exactly what `demangle()` returns by
+  construction rather than by agreement. Verified over all 5,738 Rust names in the
+  corpora: text byte-identical to before the change, every tree spelling identical to
+  its text, and no name left as a bare leaf.
+
+### Changed
+
+- `demangle()` output is unchanged for every symbol. This was checked against a snapshot
+  taken before the work started, not asserted.
+
 ## [0.1.0] -- initial release
 
 First extraction of the demanglers developed inside

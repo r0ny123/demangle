@@ -99,6 +99,9 @@ class TestExamples:
         function = next(tree.find("function"))
         assert len(function.parameters) == 1
 
-    def test_rust_still_returns_a_leaf_as_the_readme_says(self, readme):
-        assert "Rust does not yet" in readme
-        assert demangle.parse("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E").kind == "raw"
+    def test_every_scheme_returns_a_tree_as_the_readme_says(self, readme):
+        assert "All three schemes return full trees" in readme
+        # Real names from the conformance corpora; an invented one is as likely to be
+        # malformed as to prove anything.
+        for name in ("_ZNSt6vectorIiSaIiEE9push_backERKi", "?f@@YAXH@Z", "_RNvCsdEttCVZFADF_8features10btree_work"):
+            assert len(list(demangle.parse(name).walk())) > 1, name

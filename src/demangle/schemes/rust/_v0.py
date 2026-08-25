@@ -1,7 +1,10 @@
+import contextlib
 import string
 import unicodedata
 from functools import lru_cache
 from typing import NoReturn, Optional
+
+from . import nodes
 
 
 class UnableTov0Demangle(Exception):
@@ -20,6 +23,19 @@ class V0Demangler:
         self.suffix = ""
 
     def demangle(self, inpstr: str) -> str:
+        """Demangle to text."""
+        return self._run(inpstr, TextSink()).text()
+
+    def structure(self, inpstr: str):
+        """Demangle to a tree, which renders to exactly what `demangle` returns.
+
+        The same printer over the same input; only the sink differs. There is no second
+        traversal that could disagree with the first.
+        """
+        sink = self._run(inpstr, TreeSink())
+        return nodes.Symbol(sink.parts(), suffix=self.suffix)
+
+    def _run(self, inpstr, sink):
         self.suffix = ""
         self.disp = ""
 
@@ -42,13 +58,13 @@ class V0Demangler:
             parser.skip_path()
 
         parser.next_val = 0
-        printer = Printer(parser, self.disp, 0)
-        printer.print_path(True)
+        Printer(parser, sink, 0).print_path(True)
 
         if "." in self.inpstr:
             self.suffix = self.inpstr[self.inpstr.index(".") : len(self.inpstr)]
+            sink.emit(self.suffix)
 
-        return printer.out + self.suffix
+        return sink
 
     def sanity_check(self, inpstr: str):
         if not inpstr or not inpstr[0].isupper():
@@ -624,14 +640,88 @@ class Parser:
             raise UnableTov0Demangle(self.inn)
 
 
+def _impl_fields(seen):
+    """`(self_type, trait)` from what an impl's parts printed, padded for a text sink."""
+    self_type = seen[0] if seen else None
+    trait = seen[1] if len(seen) > 1 else None
+    return self_type, trait
+
+
+def _generic_fields(collected):
+    """`(base, arguments)` from a generic application's parts."""
+    base = collected[0] if collected else None
+    return base, collected[1:]
+
+
+class TextSink:
+    """Collects the printer's fragments as text and nothing else.
+
+    A list joined once at the end rather than repeated `+=`: the printer emits a
+    fragment per grammar terminal, and a symbol from a release build can run to a few
+    thousand of them.
+    """
+
+    __slots__ = ("_parts",)
+
+    def __init__(self):
+        self._parts = []
+
+    def emit(self, text):
+        self._parts.append(text)
+
+    def open(self):
+        """Structure boundaries cost nothing here; only the fragments matter."""
+
+    def close(self, factory):
+        return None
+
+    def text(self):
+        return "".join(self._parts)
+
+
+class TreeSink:
+    """Collects the same fragments, remembering where each production began and ended.
+
+    The printer emits one linear stream either way. This sink records the boundaries as
+    it passes them, so the tree it hands back renders to exactly the stream `TextSink`
+    would have produced -- not because the two are kept in step, but because there is
+    only one stream and this is it with the brackets kept.
+    """
+
+    __slots__ = ("_stack",)
+
+    def __init__(self):
+        self._stack = [[]]
+
+    def emit(self, text):
+        self._stack[-1].append(text)
+
+    def open(self):
+        self._stack.append([])
+
+    def close(self, factory):
+        parts = self._stack.pop()
+        node = factory(parts)
+        self._stack[-1].append(node)
+        return node
+
+    def text(self):
+        from .nodes import render
+
+        return "".join(render(p) for p in self._stack[0])
+
+    def parts(self):
+        return tuple(self._stack[0])
+
+
 class Printer:
     # Must fire well below CPython's own recursion limit (default 1000), or a
     # self-referential backref chain raises RecursionError before this guard.
     RUST_MAX_RECURSION_COUNT = 256
 
-    def __init__(self, parser, out, bound, recursion=0):
+    def __init__(self, parser, sink, bound, recursion=0):
         self.parser = parser
-        self.out = out
+        self.sink = sink
         self.bound_lifetime_depth = bound
         self.recursion = recursion
 
@@ -648,11 +738,34 @@ class Printer:
         and read on as though the value they were about to use is well-formed, which is
         only sound if control never comes back.
         """
-        self.out += "?"
+        self.emit("?")
         raise UnableTov0Demangle("Error")
 
     def parser_mut(self):
         return self.parser
+
+    def emit(self, text):
+        self.sink.emit(text)
+
+    @contextlib.contextmanager
+    def node(self, factory):
+        """Bracket a production, so a tree sink learns where it began and ended.
+
+        Yields a list that holds the finished node once the block has exited, which is
+        how a caller needing the subtree -- an impl wanting its own trait, say -- gets
+        hold of it. Under `TextSink` that value is None and nobody reads it.
+
+        Closed in a `finally` only so the stack stays balanced for a caller that catches
+        `UnableTov0Demangle` and carries on with the same sink. Nothing in this package
+        does -- an abandoned name discards its sink -- but an unbalanced stack would be a
+        silent, later, much stranger failure than the one that caused it.
+        """
+        box = []
+        self.sink.open()
+        try:
+            yield box
+        finally:
+            box.append(self.sink.close(factory))
 
     def eat(self, b):
         par = self.parser_mut()
@@ -660,12 +773,12 @@ class Printer:
 
     def backref_printer(self):
         p = self.parser_mut()
-        return Printer(p.backref(), self.out, self.bound_lifetime_depth, self.recursion + 1)
+        return Printer(p.backref(), self.sink, self.bound_lifetime_depth, self.recursion + 1)
 
     def print_lifetime_from_index(self, lt):
-        self.out += "'"
+        self.emit("'")
         if lt == 0:
-            self.out += "_"
+            self.emit("_")
             return
         depth = self.bound_lifetime_depth - lt + 1
         if depth <= 0:
@@ -673,9 +786,9 @@ class Printer:
 
         if depth < 26:
             c = ord("a") + depth - 1
-            self.out += chr(c)
+            self.emit(chr(c))
         else:
-            self.out += f"_{depth}"
+            self.emit(f"_{depth}")
 
     def in_binder(self, val):
         def f1():
@@ -692,21 +805,21 @@ class Printer:
                 abi = None
 
             if is_unsafe:
-                self.out += "unsafe "
+                self.emit("unsafe ")
 
             if abi:
-                self.out += 'extern "'
-                self.out += "-".join(abi.split("_"))
-                self.out += '" '
+                self.emit('extern "')
+                self.emit("-".join(abi.split("_")))
+                self.emit('" ')
 
-            self.out += "fn("
+            self.emit("fn(")
             self.print_sep_list("print_type", ", ")
-            self.out += ")"
+            self.emit(")")
 
             if self.eat("u"):
                 pass
             else:
-                self.out += " -> "
+                self.emit(" -> ")
                 self.print_type()
 
             return ""
@@ -718,14 +831,14 @@ class Printer:
         bound_lifetimes = self.parser_mut().opt_integer_62("G")
 
         if bound_lifetimes > 0:
-            self.out += "for<"
+            self.emit("for<")
             for i in range(bound_lifetimes):
                 if i > 0:
-                    self.out += ", "
+                    self.emit(", ")
                 self.bound_lifetime_depth += 1
                 self.print_lifetime_from_index(1)
 
-            self.out += "> "
+            self.emit("> ")
 
         if val == 1:
             r = f1()
@@ -737,24 +850,36 @@ class Printer:
 
         return r
 
-    def print_sep_list(self, f, sep):
+    def print_sep_list(self, f, sep, collected=None):
         """Print elements until the closing `E`, returning how many there were.
 
         `f` is either the name of a method on this printer or any callable. Structural
         consts need the callable form: their elements are printed by `print_const` with
         an argument, and the count decides whether a one-element tuple gets its trailing
         comma.
+
+        `collected`, when given, gathers the subtree each element produced, so a generic
+        argument list can name its arguments as well as contain them. Elements that
+        produced nothing -- every one of them under `TextSink` -- are not collected.
         """
         element = f if callable(f) else getattr(self, f)
         i = 0
         while not self.eat("E"):
             if i > 0:
-                self.out += str(sep)
-            element()
+                self.emit(str(sep))
+            produced = element()
+            if collected is not None and produced is not None:
+                collected.append(produced)
             i += 1
         return i
 
     def print_path(self, in_value):
+        """Print a `<path>`, returning the subtree a tree sink built for it.
+
+        The return value is None under `TextSink` and nobody asks for it there. Where a
+        production needs a piece of itself back -- an impl wanting its own self-type and
+        trait -- it takes it from here rather than re-reading the input.
+        """
         self.check_recursion_limit()
         try:
             p = self.parser_mut()
@@ -763,152 +888,188 @@ class Printer:
                 p.disambiguator()
                 name = p.ident()
                 name.display()
-                self.out += name.disp
+                with self.node(nodes.RustName) as built:
+                    self.emit(name.disp)
+                return built[0]
 
-            elif tag == "N":
+            if tag == "N":
                 ns = p.namespace()
-                self.print_path(in_value)
-                dis = p.disambiguator()
-                name = p.ident()
-                if ns:
-                    self.out += "::{"
-                    if ns == "C":
-                        self.out += "closure"
-                    elif ns == "S":
-                        self.out += "shim"
-                    else:
-                        self.out += ns
-                    if name.ascii or name.punycode:
-                        self.out += ":"
+                with self.node(nodes.Path) as built:
+                    self.print_path(in_value)
+                    dis = p.disambiguator()
+                    name = p.ident()
+                    if ns:
+                        with self.node(lambda parts: nodes.Namespace(parts, ns, dis)):
+                            self.emit("::{")
+                            if ns == "C":
+                                self.emit("closure")
+                            elif ns == "S":
+                                self.emit("shim")
+                            else:
+                                self.emit(ns)
+                            if name.ascii or name.punycode:
+                                self.emit(":")
+                                name.display()
+                                with self.node(nodes.RustName):
+                                    self.emit(name.disp)
+                            self.emit("#")
+                            self.emit(str(dis))
+                            self.emit("}")
+                    elif name.ascii or name.punycode:
+                        self.emit("::")
                         name.display()
-                        self.out += name.disp
+                        with self.node(nodes.RustName):
+                            self.emit(name.disp)
+                return built[0]
 
-                    self.out += "#"
-                    self.out += str(dis)
-                    self.out += "}"
-                else:
-                    if name.ascii or name.punycode:
-                        self.out += "::"
-                        name.display()
-                        self.out += name.disp
-
-            elif tag == "M" or tag == "X" or tag == "Y":
+            if tag in ("M", "X", "Y"):
                 if tag != "Y":
                     p.disambiguator()
                     p.skip_path()
 
-                self.out += "<"
-                self.print_type()
+                # An inherent impl (`M`) names only the type; a trait impl (`X`, `Y`)
+                # names a trait as well. Both are kept as fields so a caller can ask what
+                # a method implements without matching on the rendered `" as "`.
+                seen = []
+                with self.node(lambda parts: nodes.Impl(parts, *_impl_fields(seen))) as built:
+                    self.emit("<")
+                    seen.append(self.print_type())
+                    if tag != "M":
+                        self.emit(" as ")
+                        seen.append(self.print_path(False))
+                    self.emit(">")
+                return built[0]
 
-                if tag != "M":
-                    self.out += " as "
-                    self.print_path(False)
+            if tag == "I":
+                collected = []
+                with self.node(lambda parts: nodes.Generics(parts, *_generic_fields(collected))) as built:
+                    collected.append(self.print_path(in_value))
+                    if in_value:
+                        self.emit("::")
+                    self.emit("<")
+                    self.print_sep_list("print_generic_arg", ", ", collected)
+                    self.emit(">")
+                return built[0]
 
-                self.out += ">"
+            if tag == "B":
+                return self.backref_printer().print_path(in_value)
 
-            elif tag == "I":
-                self.print_path(in_value)
-                if in_value:
-                    self.out += "::"
-
-                self.out += "<"
-                self.print_sep_list("print_generic_arg", ", ")
-                self.out += ">"
-
-            elif tag == "B":
-                prin = self.backref_printer()
-                prin.print_path(in_value)
-                self.out = prin.out
-
-            else:
-                self.invalid()
+            self.invalid()
         finally:
             self.recursion -= 1
 
     def print_generic_arg(self):
+        """Print one generic argument, returning the subtree built for it.
+
+        A const is bracketed here rather than inside `print_const`, which threads a
+        brace decision through every composite spelling and has no single place that
+        means "one whole value".
+        """
         if self.eat("L"):
             lt = self.parser_mut().integer_62()
-            self.print_lifetime_from_index(lt)
-        elif self.eat("K"):
+            with self.node(lambda parts: nodes.Value(parts, "lifetime")) as built:
+                self.print_lifetime_from_index(lt)
+            return built[0]
+        if self.eat("K"):
             # Generic argument position: an expression here is not already inside another
             # one, so a structural const has to brace itself to stay unambiguous.
-            self.print_const(False)
-        else:
-            self.print_type()
+            with self.node(lambda parts: nodes.Value(parts, "const")) as built:
+                self.print_const(False)
+            return built[0]
+        return self.print_type()
 
     def print_type(self):
+        """Print a `<type>`, returning the subtree a tree sink built for it.
+
+        Every shape is bracketed with the `form` that says which it is, so a caller can
+        ask whether an argument is a reference without parsing `&mut ` back out of the
+        spelling. A `<path>` type returns the path's own node rather than wrapping it:
+        the path is the type, and a wrapper carrying nothing would only be in the way.
+        """
         self.check_recursion_limit()
         try:
             p = self.parser_mut()
             tag = p.next_func()
             if basic_type(tag):
                 ty = basic_type(tag)
-                self.out += ty
-                return
+                with self.node(lambda parts: nodes.Type(parts, "basic")) as built:
+                    self.emit(ty)
+                return built[0]
 
             if tag == "R" or tag == "Q":
-                self.out += "&"
-                if self.eat("L"):
+                with self.node(lambda parts: nodes.Type(parts, "reference")) as built:
+                    self.emit("&")
+                    if self.eat("L"):
+                        lt = p.integer_62()
+                        if lt != 0:
+                            self.print_lifetime_from_index(lt)
+                            self.emit(" ")
+
+                    if tag != "R":
+                        self.emit("mut ")
+
+                    self.print_type()
+                return built[0]
+
+            if tag == "P" or tag == "O":
+                with self.node(lambda parts: nodes.Type(parts, "pointer")) as built:
+                    self.emit("*")
+                    if tag != "P":
+                        self.emit("mut ")
+                    else:
+                        self.emit("const ")
+                    self.print_type()
+                return built[0]
+
+            if tag == "A" or tag == "S":
+                form = "array" if tag == "A" else "slice"
+                with self.node(lambda parts: nodes.Type(parts, form)) as built:
+                    self.emit("[")
+                    self.print_type()
+
+                    if tag == "A":
+                        self.emit("; ")
+                        # `[T; N]` already reads as an expression context, so the length
+                        # never needs braces however structural it is.
+                        with self.node(lambda parts: nodes.Value(parts, "length")):
+                            self.print_const(True)
+                    self.emit("]")
+                return built[0]
+
+            if tag == "T":
+                with self.node(lambda parts: nodes.Type(parts, "tuple")) as built:
+                    self.emit("(")
+                    count = self.print_sep_list("print_type", ", ")
+                    if count == 1:
+                        self.emit(",")
+                    self.emit(")")
+                return built[0]
+
+            if tag == "F":
+                with self.node(lambda parts: nodes.Type(parts, "fn")) as built:
+                    self.in_binder(1)
+                return built[0]
+
+            if tag == "D":
+                with self.node(lambda parts: nodes.Type(parts, "dyn")) as built:
+                    self.emit("dyn ")
+                    self.in_binder(2)
+
+                    if not self.eat("L"):
+                        self.invalid()
+
                     lt = p.integer_62()
                     if lt != 0:
+                        self.emit(" + ")
                         self.print_lifetime_from_index(lt)
-                        self.out += " "
+                return built[0]
 
-                if tag != "R":
-                    self.out += "mut "
+            if tag == "B":
+                return self.backref_printer().print_type()
 
-                self.print_type()
-
-            elif tag == "P" or tag == "O":
-                self.out += "*"
-                if tag != "P":
-                    self.out += "mut "
-                else:
-                    self.out += "const "
-                self.print_type()
-
-            elif tag == "A" or tag == "S":
-                self.out += "["
-                self.print_type()
-
-                if tag == "A":
-                    self.out += "; "
-                    # `[T; N]` already reads as an expression context, so the length
-                    # never needs braces however structural it is.
-                    self.print_const(True)
-                self.out += "]"
-
-            elif tag == "T":
-                self.out += "("
-                count = self.print_sep_list("print_type", ", ")
-                if count == 1:
-                    self.out += ","
-                self.out += ")"
-
-            elif tag == "F":
-                self.in_binder(1)
-
-            elif tag == "D":
-                self.out += "dyn "
-                self.in_binder(2)
-
-                if not self.eat("L"):
-                    self.invalid()
-
-                lt = p.integer_62()
-                if lt != 0:
-                    self.out += " + "
-                    self.print_lifetime_from_index(lt)
-
-            elif tag == "B":
-                prin = self.backref_printer()
-                prin.print_type()
-                self.out = prin.out
-
-            else:
-                p = self.parser_mut()
-                p.next_val -= 1
-                self.print_path(False)
+            p = self.parser_mut()
+            p.next_val -= 1
+            return self.print_path(False)
         finally:
             self.recursion -= 1
 
@@ -918,12 +1079,11 @@ class Printer:
             if self.eat("B"):
                 prin = self.backref_printer()
                 result = prin.print_path_maybe_open_generics()
-                self.out = prin.out
                 return result
 
             elif self.eat("I"):
                 self.print_path(False)
-                self.out += "<"
+                self.emit("<")
                 self.print_sep_list("print_generic_arg", ", ")
                 return True
             else:
@@ -937,15 +1097,15 @@ class Printer:
 
         while self.eat("p"):
             if not open:
-                self.out += "<"
+                self.emit("<")
                 open = True
             else:
-                self.out += ", "
+                self.emit(", ")
 
             name = self.parser_mut().ident()
             name.display()
-            self.out += name.disp
-            self.out += " = "
+            self.emit(name.disp)
+            self.emit(" = ")
             # An existential projection binds an associated type, but a trait may also
             # have associated *consts*, and those are bound the same way with a `K` in
             # front: `dyn Trait<LEN = 1>`. rustc-demangle 0.1.28 `v0.rs::print_dyn_trait`.
@@ -955,7 +1115,7 @@ class Printer:
                 self.print_type()
 
         if open:
-            self.out += ">"
+            self.emit(">")
 
     def print_const(self, in_value):
         """Print one `<const>`.
@@ -990,7 +1150,6 @@ class Printer:
                 # `in_value` is passed through untouched.
                 printer = self.backref_printer()
                 printer.print_const(in_value)
-                self.out = printer.out
                 return
 
             opened_brace = False
@@ -1000,14 +1159,14 @@ class Printer:
                 if in_value:
                     return
                 opened_brace = True
-                self.out += "{"
+                self.emit("{")
 
             def nested():
                 self.print_const(True)
 
             ty_tag = parser.next_func()
             if ty_tag == "p":
-                self.out += "_"
+                self.emit("_")
             elif ty_tag in _CONST_UNSIGNED:
                 self.print_const_uint()
             elif ty_tag in _CONST_SIGNED:
@@ -1021,30 +1180,30 @@ class Printer:
                 # There is no Rust syntax for it, so the reference writes the deref of a
                 # string literal and braces the result.
                 open_brace_if_outside_expr()
-                self.out += "*"
+                self.emit("*")
                 self.print_const_str_literal()
             elif ty_tag in ("R", "Q"):
                 if ty_tag == "R" and self.eat("e"):
                     self.print_const_str_literal()
                 else:
                     open_brace_if_outside_expr()
-                    self.out += "&"
+                    self.emit("&")
                     if ty_tag != "R":
-                        self.out += "mut "
+                        self.emit("mut ")
                     nested()
             elif ty_tag == "A":
                 open_brace_if_outside_expr()
-                self.out += "["
+                self.emit("[")
                 self.print_sep_list(nested, ", ")
-                self.out += "]"
+                self.emit("]")
             elif ty_tag == "T":
                 open_brace_if_outside_expr()
-                self.out += "("
+                self.emit("(")
                 count = self.print_sep_list(nested, ", ")
                 if count == 1:
                     # `(x)` is parenthesised `x`, not a one-tuple; Rust needs `(x,)`.
-                    self.out += ","
-                self.out += ")"
+                    self.emit(",")
+                self.emit(")")
             elif ty_tag == "V":
                 open_brace_if_outside_expr()
                 # `in_value` is True for the path so an enum variant of a generic type
@@ -1055,7 +1214,7 @@ class Printer:
                 self.invalid()
 
             if opened_brace:
-                self.out += "}"
+                self.emit("}")
         finally:
             self.recursion -= 1
 
@@ -1065,13 +1224,13 @@ class Printer:
         if variant == "U":
             return
         if variant == "T":
-            self.out += "("
+            self.emit("(")
             self.print_sep_list(lambda: self.print_const(True), ", ")
-            self.out += ")"
+            self.emit(")")
         elif variant == "S":
-            self.out += " { "
+            self.emit(" { ")
             self.print_sep_list(self.print_const_field, ", ")
-            self.out += " }"
+            self.emit(" }")
         else:
             self.invalid()
 
@@ -1085,8 +1244,8 @@ class Printer:
         parser.disambiguator()
         name = parser.ident()
         name.display()
-        self.out += name.disp
-        self.out += ": "
+        self.emit(name.disp)
+        self.emit(": ")
         self.print_const(True)
 
     def print_const_str_literal(self):
@@ -1104,13 +1263,13 @@ class Printer:
         string containing an apostrophe is `"'"` -- matching rustc-demangle 0.1.28
         `v0.rs::print_quoted_escaped_chars`.
         """
-        self.out += quote
+        self.emit(quote)
         for character in characters:
             if (quote == "'" and character == '"') or (quote == '"' and character == "'"):
-                self.out += character
+                self.emit(character)
             else:
-                self.out += escape_debug(character)
-        self.out += quote
+                self.emit(escape_debug(character))
+        self.emit(quote)
 
     def print_const_uint(self):
         nibbles = self.parser_mut().hex_nibbles()
@@ -1119,22 +1278,22 @@ class Printer:
             # Wider than `u64`: the reference gives up on decimal rather than failing,
             # because a `u128` const is perfectly legal, and echoes the nibbles as
             # written -- padding included, since it no longer knows what was padding.
-            self.out += "0x"
-            self.out += nibbles
+            self.emit("0x")
+            self.emit(nibbles)
             return
-        self.out += str(value)
+        self.emit(str(value))
 
     def print_const_int(self):
         if self.eat("n"):
-            self.out += "-"
+            self.emit("-")
         self.print_const_uint()
 
     def print_const_bool(self):
         value = parse_hex_uint(self.parser_mut().hex_nibbles())
         if value == 0:
-            self.out += "false"
+            self.emit("false")
         elif value == 1:
-            self.out += "true"
+            self.emit("true")
         else:
             self.invalid()
 

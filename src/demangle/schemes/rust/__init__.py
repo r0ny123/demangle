@@ -10,11 +10,13 @@ See NOTICE.
 
 Structured output
 -----------------
-Like the MSVC parser, this one predates the builder protocol and returns a single `Raw`
-node from `parse()`. `demangle()` is fully supported. See ROADMAP.md.
+`parse()` returns a tree: a `symbol` holding a `path` of `name` components, with `impl`,
+`template`, `type` and `literal` nodes for what a path carries. See `nodes.py` for why
+the tree cannot spell a symbol differently from `demangle()`.
 """
 
-from ...core.errors import NotMangledError, ParseError
+from ...core.ast import Node
+from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
@@ -66,25 +68,59 @@ def _is_hex(text):
     return all(char in "0123456789abcdef" for char in text)
 
 
+#: What each builder class answered to `_wants_structure`, asked once per class rather
+#: than once per name: the answer is a property of the builder's type, and this question
+#: is on the path every symbol takes.
+_STRUCTURED = {}
+
+
+def _wants_structure(builder):
+    """Whether `builder` is collecting a tree rather than text.
+
+    The same test the MSVC scheme makes, and for the same reason: the protocol has no
+    flag for this and the two builders already answer by what they hand back. A builder
+    this module has never seen gets text unless its products are `Node`s, because text
+    is the answer every builder can use.
+    """
+    cls = type(builder)
+    answer = _STRUCTURED.get(cls)
+    if answer is None:
+        answer = _STRUCTURED[cls] = isinstance(builder.raw(""), Node)
+    return answer
+
+
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     """Parse a Rust mangled name into `builder`."""
     if not mangled:
         raise NotMangledError(mangled, "empty name")
+    if _wants_structure(builder):
+        tree = _guard(mangled, limits, _DEMANGLER.structure)
+        _check_length(mangled, tree.size, limits)
+        return tree
+    expanded = _guard(mangled, limits, _DEMANGLER.demangle)
+    _check_length(mangled, len(expanded), limits)
+    return builder.raw(expanded)
+
+
+def _guard(mangled, limits, demangle_with):
+    """Run one of the demanglers, translating its errors into this package's.
+
+    The two entry points fail in exactly the same ways -- they are the same parser --
+    so the translation lives here rather than twice.
+    """
     try:
-        expanded = _DEMANGLER.demangle(mangled)
+        return demangle_with(mangled)
     except TypeNotFoundError as exc:
         raise NotMangledError(mangled, "not a Rust mangled name") from exc
     except (UnableTov0Demangle, UnableToLegacyDemangle) as exc:
         raise ParseError(mangled, None, str(exc)) from exc
     except RecursionError as exc:
-        from ...core.errors import LimitExceeded
-
         raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from exc
-    if len(expanded) > limits.max_output:
-        from ...core.errors import LimitExceeded
 
+
+def _check_length(mangled, length, limits):
+    if length > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)
-    return builder.raw(expanded)
 
 
 PLUGIN = LanguagePlugin(
