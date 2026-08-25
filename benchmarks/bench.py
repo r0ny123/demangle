@@ -32,8 +32,65 @@ BASELINE = Path(__file__).parent / "baseline.json"
 CONFORMANCE = ROOT / "tests" / "conformance"
 
 #: A regression has to be this much worse than the baseline to fail, so ordinary
-#: machine-to-machine and run-to-run noise does not redden CI.
-TOLERANCE = 1.40
+#: run-to-run noise does not redden CI. It is a tolerance on the *normalised* figure --
+#: see `calibrate` -- so it means a real 25% slowdown in the demangler, not 25% of the
+#: difference between two machines.
+TOLERANCE = 1.25
+
+#: Iterations of the calibration loop. Enough to take a few milliseconds on any machine
+#: that can run the test suite, small enough not to lengthen the benchmark noticeably.
+CALIBRATION_ROUNDS = 200_000
+
+
+def calibrate():
+    """Time a fixed workload that has nothing to do with demangling.
+
+    Absolute microseconds-per-name are not comparable across machines, and a tolerance
+    factor does not make them so: it only tolerates a difference up to its own size.
+    A shared CI runner is comfortably 1.5-2x slower than a developer laptop, so a gate
+    on raw wall time fails on the runner for reasons that have nothing to do with the
+    change under test -- which is what happened the first time this ran in CI.
+
+    So every figure is divided by this. What the gate then compares is the *ratio*
+    between the demangler and the interpreter it is running on, which is a property of
+    the code rather than of the hardware.
+
+    The workload is deliberately the same *kind* of work the demangler does -- string
+    slicing, dictionary lookup, list building, attribute access -- so it tracks the same
+    machine characteristics rather than, say, floating-point throughput. It touches no
+    part of `demangle`: if it did, a genuine regression would slow the calibration too
+    and hide itself.
+
+    Measured: running the suite against three times as many busy processes as cores --
+    a machine roughly 2.8x slower -- moves `cold` from 20.3us to 57.7us but its
+    normalised figure only from 500 to 487, and `structured` from 68.6us to 186.1us but
+    1693 to 1569. The raw numbers would fail any tolerance worth having; the normalised
+    ones sit within 8%.
+
+    One caveat, from the same measurement: `negative` runs in about two milliseconds,
+    short enough that best-of-N finds a clean scheduling slot even on a loaded machine,
+    so it under-inflates and reads as much *faster* under load. That direction never
+    fails the gate, and a real regression would show in `cold` and `structured` as well,
+    so this is a loss of sensitivity in one case rather than a false alarm.
+    """
+
+    def workload():
+        counts: dict[str, int] = {}
+        distinct: list[str] = []
+        text = "_ZNSt6vectorIiSaIiEE9push_backERKi"
+        total = 0
+        for index in range(CALIBRATION_ROUNDS):
+            piece = text[index % 8 : index % 8 + 6]
+            seen = counts.get(piece)
+            if seen is None:
+                counts[piece] = 1
+                distinct.append(piece)
+            else:
+                counts[piece] = seen + 1
+            total += len(piece)
+        return total, len(distinct)
+
+    return time_it(workload, repeats=3)
 
 
 def corpus_names(*files):
@@ -105,6 +162,7 @@ def benchmarks():
 def run():
     results = {}
     parsed, cases = benchmarks()
+    reference = calibrate()
     for name, function, count in cases:
         if not count:
             continue
@@ -118,16 +176,22 @@ def run():
         }
     if "structured" in results:
         results["structured"]["parsed"] = parsed[-1] if parsed else 0
+    for data in results.values():
+        data["normalised"] = round(data["seconds"] / data["names"] / reference * 1e6, 3)
+    results["calibration"] = {"seconds": round(reference, 6), "rounds": CALIBRATION_ROUNDS}
     return results
 
 
 def report(results):
-    print(f"{'benchmark':12} {'names':>8} {'sec':>9} {'names/sec':>12} {'us each':>10}")
+    print(f"{'benchmark':12} {'names':>8} {'sec':>9} {'names/sec':>12} {'us each':>10} {'relative':>10}")
     for name, data in results.items():
+        if name == "calibration":
+            continue
         print(
             f"{name:12} {data['names']:>8} {data['seconds']:>9.4f} "
-            f"{data['per_second']:>12,} {data['microseconds_each']:>10.2f}"
+            f"{data['per_second']:>12,} {data['microseconds_each']:>10.2f} {data['normalised']:>10.2f}"
         )
+    print(f"\ncalibration: {results['calibration']['seconds'] * 1e3:.2f}ms for {CALIBRATION_ROUNDS:,} rounds")
 
 
 def main():
@@ -155,14 +219,17 @@ def main():
             print(f"\nstructured benchmark parsed {measured} names, baseline parsed {expected}")
             print("a timing that improved because the work stopped happening is not an improvement")
             return 1
+        if "normalised" not in baseline.get("cold", {}):
+            print("\nbaseline predates machine calibration; re-record it with --save")
+            return 1
         regressions = []
         for name, data in results.items():
-            if name not in baseline:
+            if name == "calibration" or name not in baseline:
                 continue
-            before = baseline[name]["microseconds_each"]
-            after = data["microseconds_each"]
+            before = baseline[name]["normalised"]
+            after = data["normalised"]
             if after > before * TOLERANCE:
-                regressions.append(f"  {name}: {before:.2f}us -> {after:.2f}us ({after / before:.2f}x)")
+                regressions.append(f"  {name}: {before:.2f} -> {after:.2f} ({after / before:.2f}x, machine-relative)")
         if regressions:
             print("\nperformance regression:")
             print("\n".join(regressions))

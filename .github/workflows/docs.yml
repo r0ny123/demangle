@@ -16,22 +16,29 @@ concurrency:
 
 jobs:
   build:
+    # GitHub Pages is not available on a private repository outside a paid plan, and
+    # `configure-pages` fails the job outright when it is not enabled rather than
+    # skipping. Gating on visibility means this publishes itself the moment the
+    # repository goes public and stays quiet until then. The build is not lost in the
+    # meantime: CI runs `mkdocs build --strict` on every push and pull request, so a
+    # broken cross-reference is still caught here -- only the deployment waits.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group docs
       - run: mkdocs build --strict
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site/
 
@@ -49,4 +56,4 @@ jobs:
       id-token: write
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

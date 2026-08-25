@@ -78,8 +78,13 @@ test = [
 format = [
     "ruff==0.16.4",
 ]
+# `test` is here because ty checks `tests/` too, and it cannot type-check a file whose
+# imports it cannot resolve. Leaving it out made `ty check .` pass locally -- where the
+# default environment happens to install everything -- and report ten unresolved-import
+# errors in CI, where the lint job installed only this group.
 lint = [
     { include-group = "format" },
+    { include-group = "test" },
     "ty==0.0.74",
 ]
 docs = [
@@ -89,7 +94,6 @@ docs = [
     "mkdocstrings-python>=1.10",
 ]
 dev = [
-    { include-group = "test" },
     { include-group = "lint" },
 ]
 

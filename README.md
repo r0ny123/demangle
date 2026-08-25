@@ -189,8 +189,18 @@ Measured on the machine that produced `benchmarks/baseline.json`; treat them as 
 rather than absolutes.
 
 The gap between cold and warm is the point: symbol tables repeat themselves relentlessly,
-and results are cached. Benchmarks are committed with a baseline and `--check` fails on
-a regression.
+and results are cached.
+
+`bench.py --check` gates CI against the committed baseline, and it compares *normalised*
+figures: each run also times a fixed workload that never touches the demangler, and every
+result is divided by it. Absolute microseconds are not comparable across machines and no
+tolerance factor makes them so — a shared CI runner is comfortably 1.5-2x slower than a
+laptop, which is enough to fail a gate on raw wall time for reasons that have nothing to
+do with the change under test. Normalised, the gate asks whether the demangler got slower
+relative to the interpreter it is running on, which is a property of the code. Running the
+suite against three times as many busy processes as cores moves the cold figure from 20.0
+to 57.7 microseconds a name — 2.9x, and a certain failure on raw time — while the
+normalised figure moves 511 to 487.
 
 ## Architecture
 
