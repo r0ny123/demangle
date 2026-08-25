@@ -22,6 +22,7 @@ toolchain's is not useful, and every one of them changes the answer.
 """
 
 from ._demangler import _VALUE_WITNESS_NAMES, STDLIB_NAME, demangle_symbol
+from ._old_demangler import demangle_old_symbol
 
 __all__ = ["print_root"]
 
@@ -109,6 +110,16 @@ def generic_parameter_name(depth, index):
     if depth:
         name.append(str(depth))
     return "".join(name)
+
+
+def _demangle_either(text):
+    """A specialisation's payload is itself a mangled name, and not always a current one:
+    a Swift 3 symbol's payload is Swift 3 too. The reference reaches both through one
+    entry point, so this tries each."""
+    found = demangle_symbol(text)
+    if found is None:
+        found = demangle_old_symbol(text)
+    return found
 
 
 def _quoted(text):
@@ -493,7 +504,7 @@ class Printer:
                 at += 1
                 # The payload is itself a mangled name; the reference demangles it and
                 # falls back to the raw text when it cannot.
-                self.write(print_root(demangle_symbol(text)) or text)
+                self.write(print_root(_demangle_either(text)) or text)
                 self.write("]")
             elif kind in (_PARAM_CONSTANT_PROP_INTEGER, _PARAM_CONSTANT_PROP_FLOAT):
                 self.write("[")
@@ -1305,7 +1316,7 @@ def _print_generic_specialization_param(self, node, depth, as_prefix_context):
 
 @_handler("FunctionSignatureSpecializationParamPayload")
 def _print_param_payload(self, node, depth, as_prefix_context):
-    self.write(print_root(demangle_symbol(node.text)) or node.text)
+    self.write(print_root(_demangle_either(node.text)) or node.text)
     return None
 
 

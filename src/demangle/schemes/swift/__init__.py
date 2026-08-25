@@ -11,13 +11,16 @@ Conformance is exact against `swift-demangle` from the 5.10.1 toolchain:
 
 * every `$s` symbol in the shipped Swift runtime and Foundation -- 48,368 of them --
   spelled identically, with nothing refused;
-* every current-mangling case in the compiler's own `test/Demangle/Inputs/manglings.txt`,
-  199 of them, which is a much harder set: SIL function types, function-signature
-  specialisations, key paths, autodiff thunks, macro expansions.
+* all 376 cases in the compiler's own `test/Demangle/Inputs/manglings.txt`, which is a
+  much harder set: SIL function types, function-signature specialisations, key paths,
+  autodiff thunks, macro expansions, and the Swift 3 mangling.
 
-The Swift 3 mangling (`_T` followed by anything but `0`) is a different grammar with its
-own demangler in the compiler, and is not read here: such a name is refused rather than
-guessed at. It still occurs in ObjC metadata in shipped binaries.
+The Swift 3 mangling -- `_T` followed by anything but `0` -- is a different grammar with
+its own demangler in the compiler, and `_old_demangler.py` is a port of that one. It
+still matters: the ObjC runtime holds a Swift class's name in that form, so it turns up
+in any Apple binary with interop in it. It builds the same tree, so the printer spells it
+with no idea which mangling it came from, and all 247 of the compiler's own Swift 3 test
+cases come out exactly.
 """
 
 from ...core.ast import Node
@@ -27,19 +30,19 @@ from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
 from ._demangler import MANGLING_PREFIXES, demangle_symbol
+from ._old_demangler import demangle_old_symbol
 from ._printer import print_root
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
 
 def detect(name):
-    """One of the prefixes this reads.
+    """One of the prefixes either mangling uses.
 
-    `MANGLING_PREFIXES` deliberately does not include a bare `_T`: that is the Swift 3
-    mangling, whose grammar is a different one, and claiming it here would turn a name
-    another scheme might read into a refusal.
+    `_T` covers Swift 3 as well as `_T0`; the two are different grammars and
+    `demangle_symbol` dispatches between them, but from the outside they are one scheme.
     """
-    return bool(name) and name.startswith(MANGLING_PREFIXES)
+    return bool(name) and (name.startswith(MANGLING_PREFIXES) or name.startswith(("_T", "__T")))
 
 
 def _wants_structure(builder):
@@ -94,4 +97,4 @@ PLUGIN = LanguagePlugin(
 
 register(PLUGIN)
 
-__all__ = ["PLUGIN", "demangle_symbol", "detect", "parse", "print_root"]
+__all__ = ["PLUGIN", "demangle_old_symbol", "demangle_symbol", "detect", "parse", "print_root"]

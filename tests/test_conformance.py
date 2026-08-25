@@ -52,8 +52,9 @@ NIM_TOTAL, NIM_EXACT = 2115, 2115
 #: Swift, against `swift-demangle` 5.10.1. The corpus is a stratified sample of the
 #: shipped runtime and Foundation -- up to four symbols per distinct set of
 #: demangling-tree node kinds -- plus every current-mangling case from the compiler's own
-#: test/Demangle/Inputs/manglings.txt that the reference itself can read.
-SWIFT_TOTAL, SWIFT_EXACT = 8291, 8291
+#: test/Demangle/Inputs/manglings.txt that the reference itself can read, in both the
+#: current mangling and Swift 3's.
+SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would

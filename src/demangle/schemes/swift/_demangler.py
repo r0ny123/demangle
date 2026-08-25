@@ -2665,7 +2665,16 @@ _OPERATORS = {
 
 
 def demangle_symbol(name):
-    """Read `name` into a `Global` node, or return `None` if it is not readable."""
+    """Read `name` into a `Global` node, or return `None` if it is not readable.
+
+    Swift 3's mangling is a different grammar with its own demangler in the compiler, and
+    it is dispatched to here on the same test the reference uses: `_Tt` -- or, more
+    exactly, `_T` not followed by `0`, since `_T0` is Swift 4.
+    """
+    if name.startswith("_T") and not name.startswith("_T0"):
+        from ._old_demangler import demangle_old_symbol
+
+        return demangle_old_symbol(name)
     return Demangler(name).demangle_symbol()
 
 

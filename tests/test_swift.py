@@ -1,8 +1,9 @@
 """Swift mangled names.
 
 Exact against `swift-demangle` from the 5.10.1 toolchain: every one of the 48,368 `$s`
-symbols in the shipped runtime and Foundation, and every current-mangling case in the
-compiler's own `test/Demangle/Inputs/manglings.txt`. Nothing refused, nothing mis-spelled.
+symbols in the shipped runtime and Foundation, and all 376 cases in the compiler's own
+`test/Demangle/Inputs/manglings.txt` -- both the current mangling and Swift 3's. Nothing
+refused, nothing mis-spelled.
 
 The corpus below is a stratified sample of that -- up to four symbols per distinct set of
 demangling-tree node kinds, so each construct that occurs is represented -- with the
@@ -50,6 +51,45 @@ class TestConformance:
         for mangled, expected in ROWS:
             with subtests.test(name=mangled):
                 assert spell(mangled) == expected
+
+
+class TestTheSwiftThreeMangling:
+    """`_T` followed by anything but `0`. A different grammar with its own demangler in
+    the compiler, and still what the ObjC runtime holds for a Swift class."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_TtC3foo3bar", "foo.bar"),
+            ("_TtGSaSi_", "[Swift.Int]"),
+            ("_TF3foog3barSi", "foo.bar.getter : Swift.Int"),
+            ("_TFC3foo3bar3basfT3zimCS_3zim_T_", "foo.bar.bas(zim: foo.zim) -> ()"),
+            ("_TFC3foo3barCfT_S0_", "foo.bar.__allocating_init() -> foo.bar"),
+            ("_TFC3foo3barD", "foo.bar.__deallocating_deinit"),
+            ("_TMPC3foo3bar", "generic type metadata pattern for foo.bar"),
+            ("_Tv3foo3barSi", "foo.bar : Swift.Int"),
+            ("_TF3foooi1pFTCS_3barVS_3bas_OS_3zim", "foo.+ infix(foo.bar, foo.bas) -> foo.zim"),
+        ],
+    )
+    def test_reading(self, mangled, expected):
+        assert spell(mangled) == expected
+
+    def test_a_specialisation_payload_is_a_swift_3_name_too(self):
+        """The payload of a function-signature specialisation is itself a mangled name.
+        Reading it with the current demangler leaves it as raw text, which is the one
+        thing that stopped this corpus coming out exactly."""
+        assert spell(
+            "_TTSf1cl35_TFF7specgen6callerFSiT_U_FTSiSi_T_Si___TF7specgen12take_closureFFTSiSi_T_T_"
+        ) == (
+            "function signature specialization <Arg[0] = [Closure Propagated : closure #1 "
+            "(Swift.Int, Swift.Int) -> () in specgen.caller(Swift.Int) -> (), Argument Types : "
+            "[Swift.Int]> of specgen.take_closure((Swift.Int, Swift.Int) -> ()) -> ()"
+        )
+
+    def test_an_accessor_wraps_its_variable_the_other_way_round(self):
+        """Swift 3 mangled the accessor outside and the variable inside; the current one
+        is the reverse, and the printer expects the current shape."""
+        assert spell("_TF3foos3barSi") == "foo.bar.setter : Swift.Int"
 
 
 class TestGrammarFacts:
@@ -140,27 +180,21 @@ REFUSALS = [
 class TestRefusesRatherThanGuesses:
     @pytest.mark.parametrize(
         "mangled",
-        [
-            "_TtC3foo3bar",  # Swift 3: a different grammar, deliberately not read
-            "_TF3foog3barSi",
-            "$s",  # a prefix and nothing else
-            "notaswiftsymbol",
-        ],
+        ["$s", "_T", "notaswiftsymbol"],
     )
     def test_it_refuses(self, mangled):
         assert demangle.demangle(mangled) == mangled
+
+    def test_detection_covers_both_manglings(self):
+        assert detect("_TtC3foo3bar")
+        assert detect("$s10Foundation6NSDataCfd")
+        assert not detect("_Z1fv")
 
     def test_it_refuses_exactly_what_the_reference_refuses(self, subtests):
         """The reference echoes back a name it cannot read; so does this."""
         for mangled in REFUSALS:
             with subtests.test(name=mangled):
                 assert demangle.demangle(mangled) == mangled
-
-    def test_detection_does_not_claim_the_swift_3_mangling(self):
-        """Claiming `_Tt` here would turn a name into a refusal rather than leaving it
-        for a scheme that might read it."""
-        assert not detect("_TtC3foo3bar")
-        assert detect("$s10Foundation6NSDataCfd")
 
 
 class TestTree:
