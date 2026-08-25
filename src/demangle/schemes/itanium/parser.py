@@ -161,8 +161,12 @@ class ItaniumParser:
     #     finally:
     #         self._depth = depth - 1
     #
-    # `finally` rather than a decrement after the body, so a name abandoned mid-parse
-    # still unwinds the counter -- the parser catches and retries in several places.
+    # The restore is absolute -- `self._depth = depth - 1`, not `self._depth -= 1` -- and
+    # that is the part worth stating. When the guard itself raises, the increment has
+    # already happened and no `finally` of its own undoes it, so a relative decrement
+    # left every enclosing frame unwinding from a value one too high. Nothing observes
+    # it today: a parser is built fresh per name and the one `except` in this file
+    # cannot see a `LimitExceeded`. It is still the wrong number to leave behind.
 
     # -- entry point -----------------------------------------------------------
 

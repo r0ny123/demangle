@@ -57,11 +57,13 @@ class Reader:
         Returning a string rather than raising is what lets a parser write
         `if reader.peek() == "N"` without first checking for the end of input.
 
-        A parser that has already had a character out of `peek` may consume it by
-        advancing `pos` itself rather than calling `take` -- the character is known to be
-        there, so the bounds test `take` would repeat has already happened. That is the
-        one place the rule against touching the cursor directly does not apply, and the
-        productions that do it say so.
+        A parser that has just had a *non-empty* character out of `peek`, with nothing
+        between the two, may consume it by advancing `pos` itself rather than calling
+        `take`: the bounds test `take` would repeat has already happened. Nothing weaker
+        licenses it. An intervening call may have moved the cursor, and an empty result
+        means there was no character to consume -- either way `pos += 1` would step past
+        the end, which is the one thing this class exists to prevent. The productions
+        that do it say so at the site.
         """
         index = self.pos + offset
         return self.text[index] if index < self.length else ""
