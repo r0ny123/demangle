@@ -286,3 +286,28 @@ _Znwm	operator new(unsigned long)
 _ZnwmPv	operator new(unsigned long, void*)
 _Z16takesNullptrTypeDn	takesNullptrType(decltype(nullptr))
 _Z19takesNullptrPointerPDn	takesNullptrPointer(decltype(nullptr)*)
+# Found by checking the whole shipped libstdc++ rather than this sample: the
+# `DF` productions (`_FloatNx` is terminated by its `x`, and `DF16b` alone is
+# `std::bfloat16_t`), the transaction-safe clone prefix, and GNU's space before a
+# template argument list whose name ends with `<`. llvm-cxxfilt 18 reads none of
+# the first two at all, so no llvm-generated corpus could have held them.
+_ZGTtNKSt11logic_error4whatEv@@GLIBCXX_3.4.22	transaction clone for std::logic_error::what() const@@GLIBCXX_3.4.22
+_ZGTtNSt11logic_errorC1EPKc@@GLIBCXX_3.4.22	transaction clone for std::logic_error::logic_error(char const*)@@GLIBCXX_3.4.22
+_ZSt10from_charsPKcS0_RDF128_St12chars_format@@GLIBCXX_3.4.31	std::from_chars(char const*, char const*, _Float128&, std::chars_format)@@GLIBCXX_3.4.31
+_ZSt8to_charsPcS_DF128_@@GLIBCXX_3.4.31	std::to_chars(char*, char*, _Float128)@@GLIBCXX_3.4.31
+_ZTIDF128_@@CXXABI_1.3.14	typeinfo for _Float128@@CXXABI_1.3.14
+_ZTIDF16_@@CXXABI_1.3.14	typeinfo for _Float16@@CXXABI_1.3.14
+_ZTIDF32_@@CXXABI_1.3.14	typeinfo for _Float32@@CXXABI_1.3.14
+_ZTIDF64_@@CXXABI_1.3.14	typeinfo for _Float64@@CXXABI_1.3.14
+_ZTIPDF128_@@CXXABI_1.3.14	typeinfo for _Float128*@@CXXABI_1.3.14
+_ZTIPDF32_@@CXXABI_1.3.14	typeinfo for _Float32*@@CXXABI_1.3.14
+_ZTIPDF64_@@CXXABI_1.3.14	typeinfo for _Float64*@@CXXABI_1.3.14
+_ZTIPKDF128_@@CXXABI_1.3.14	typeinfo for _Float128 const*@@CXXABI_1.3.14
+_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKa@@GLIBCXX_3.4	std::basic_ostream<char, std::char_traits<char> >& std::operator<< <std::char_traits<char> >(std::basic_ostream<char, std::char_traits<char> >&, signed char const*)@@GLIBCXX_3.4
+_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc@@GLIBCXX_3.4	std::basic_ostream<char, std::char_traits<char> >& std::operator<< <std::char_traits<char> >(std::basic_ostream<char, std::char_traits<char> >&, char const*)@@GLIBCXX_3.4
+_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKh@@GLIBCXX_3.4	std::basic_ostream<char, std::char_traits<char> >& std::operator<< <std::char_traits<char> >(std::basic_ostream<char, std::char_traits<char> >&, unsigned char const*)@@GLIBCXX_3.4
+_ZTIDF16b@@CXXABI_1.3.14	typeinfo for std::bfloat16_t@@CXXABI_1.3.14
+_ZTIDF32x@@CXXABI_1.3.14	typeinfo for _Float32x@@CXXABI_1.3.14
+_ZTIDF64x@@CXXABI_1.3.14	typeinfo for _Float64x@@CXXABI_1.3.14
+_ZTIDF128x@@CXXABI_1.3.14	typeinfo for _Float128x@@CXXABI_1.3.14
+_ZTIPDF16b@@CXXABI_1.3.14	typeinfo for std::bfloat16_t*@@CXXABI_1.3.14

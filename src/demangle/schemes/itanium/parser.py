@@ -1024,10 +1024,19 @@ class ItaniumParser:
             return builder.builtin(EXTENDED_BUILTIN_TYPES[pair])
 
         if pair == "DF":
-            # DF <number> _ : an extended floating-point type, _FloatN.
+            # Three productions share the `DF` prefix and are told apart by what
+            # terminates them: `DF <n> _` is `_FloatN`, `DF <n> x` is `_FloatNx` -- the
+            # `x` *is* the terminator, there is no `_` after it -- and `DF16b` alone is
+            # `std::bfloat16_t`. Reading `x` as an optional flag before a required `_`
+            # refused every `_FloatNx` in the shipped libstdc++.
             reader.pos += 2
             width = reader.digits()
-            reader.eat("x")
+            if reader.eat("b"):
+                if width != "16":
+                    raise ParseError(self._mangled, reader.pos, "bfloat is only 16 bits wide")
+                return builder.builtin("std::bfloat16_t")
+            if reader.eat("x"):
+                return builder.builtin(f"_Float{width}x")
             reader.expect("_")
             return builder.builtin(f"_Float{width}")
 

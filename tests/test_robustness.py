@@ -55,6 +55,13 @@ def answered(value):
 CORPUS = [name for name, _ in load_corpus("itanium-real-world.txt")][:400]
 CORPUS += [name for name, _ in load_corpus("msvc-llvm-corpus.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("rust-real-world.txt")][:200]
+# Every scheme, so a grammar added later is fuzzed as soon as it has a corpus. A
+# hostile binary is not obliged to hold only the schemes that existed first.
+CORPUS += [name for name, _ in load_corpus("swift-real-world.txt")][:200]
+CORPUS += [name for name, _ in load_corpus("d-real-world.txt")][:200]
+CORPUS += [name for name, _ in load_corpus("go-real-world.txt")][:200]
+CORPUS += [name for name, _ in load_corpus("nim-real-world.txt")][:200]
+CORPUS += [name for name, _ in load_corpus("pascal-real-world.txt")][:200]
 
 
 @st.composite
@@ -241,6 +248,11 @@ class TestResourceBounds:
             "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE6appendEPKc",
             "??$?0N@?$Foo@H@@QEAA@N@Z",
             "_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E",
+            "$s10Foundation10CocoaErrorV4CodeVSQAAMc",
+            "_TFC3foo3bar3basfT3zimCS_3zim_T_",
+            "_D5mypkg5mymod5Point4normMFZi",
+            "eqdestroy___systemZassertions_23",
+            "MYUNIT$_$TWIDGET_$__$$_AREA$$LONGINT",
         ):
             for cut in range(len(full)):
                 assert answered(full[:cut])

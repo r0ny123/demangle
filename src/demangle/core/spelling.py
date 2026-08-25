@@ -108,6 +108,11 @@ class SpellingBuilder(Builder):
         #: Write `Foo<Bar<int> >` rather than `Foo<Bar<int>>`. Required before C++11,
         #: when `>>` at the end of a template-id lexed as a right-shift operator. GNU
         #: c++filt still prints it; llvm-cxxfilt does not. Neither is wrong.
+        #:
+        #: The same flag also puts a space *before* the argument list when the name ends
+        #: with `<`, so that `operator<<` instantiated at `int` reads
+        #: `operator<< <int>` rather than `operator<<<int>`. Same reason -- three angle
+        #: brackets in a row -- and the same two references differ on it the same way.
         self.legacy_angle_spacing = legacy_angle_spacing
         #: Write a clone suffix as `[clone .cold]` rather than `(.cold)`. GNU c++filt
         #: does the former, llvm-cxxfilt the latter.
@@ -139,7 +144,9 @@ class SpellingBuilder(Builder):
         rendered = ", ".join(str(argument) for argument in arguments)
         if self.legacy_angle_spacing and rendered.endswith(">"):
             rendered += " "
-        return Spelling(f"{base.left}{base.right}<{rendered}>")
+        name = f"{base.left}{base.right}"
+        opening = " <" if self.legacy_angle_spacing and name.endswith("<") else "<"
+        return Spelling(f"{name}{opening}{rendered}>")
 
     def qualify(self, inner, qualifiers):
         if not qualifiers:
