@@ -18,7 +18,7 @@ from .conftest import load_corpus
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42 on the checked-in corpora.
 ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 280, 280
-ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 297, 295
+ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 300, 295
 MSVC_TOTAL, MSVC_EXACT = 609, 609
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 31, 31
@@ -87,6 +87,18 @@ GNU_DIVERGENCES = [
     # A generic lambda's `operator()`: llvm resolves the back-reference to the lambda's
     # declared parameter, GNU to the argument `operator()` was instantiated with.
     "_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_",
+    # An argument list whose last argument is an empty pack. GNU omits the space it
+    # otherwise puts between two closing angle brackets, and it is a bookkeeping slip
+    # rather than a rule: libiberty decides on `d_last_char`, a field it updates on
+    # every append and does *not* restore when it rewinds the buffer to drop the
+    # separator in front of an argument that printed nothing -- so the character it
+    # tests is that separator's space. The same output shows both spellings in one
+    # name: `f<A<B<C>>, JE>` comes out `void f<A<B<C> >>(A<B<C> >)`. We follow LLVM,
+    # which spaces neither. 5,633 of the 264,008 readable symbols in the shipped
+    # libLLVM, libclang-cpp and libstdc++ differ from GNU on this alone.
+    "_Z1fI1AI1BEJEEvT_",
+    "_Z1fI1AI1BI1CEEJEEvT_",
+    "_ZSt5asyncISt8functionIFvvEEJEESt6futureINSt15__invoke_resultINSt5decayIT_E4typeEJDpNS5_IT0_E4typeEEE4typeEESt6launchOS6_DpOS9_",
 ]
 
 

@@ -9,7 +9,7 @@ which survives splitting the spelling, because a parameter type can be a generic
 name holds a `$` and a `.`.
 """
 
-from ...core.ast import Node
+from ...core.ast import Node, rendered
 
 __all__ = ["Parameters", "PascalName", "Symbol", "Unit", "build"]
 
@@ -33,7 +33,7 @@ class _Pascal(Node):
     def spell(self, declarator="", style=None):
         # Accepted to match `Node.spell` and ignored: the declarator position is a C++
         # notion and Pascal has none.
-        return self.render()
+        return rendered(self.render)
 
     def build(self, builder):
         return builder.raw(self.render())

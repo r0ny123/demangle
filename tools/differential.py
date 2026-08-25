@@ -107,6 +107,12 @@ KNOWN_DIVERGENCES = {
     # other about substitution table contents, not about spelling.
     "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
     "_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_",
+    # An argument list whose last argument is an empty pack. GNU omits the space it
+    # otherwise puts between two closing angle brackets, from a bookkeeping slip rather
+    # than a rule -- the same output shows both spellings in one name. We follow LLVM.
+    "_Z1fI1AI1BEJEEvT_",
+    "_Z1fI1AI1BI1CEEJEEvT_",
+    "_ZSt5asyncISt8functionIFvvEEJEESt6futureINSt15__invoke_resultINSt5decayIT_E4typeEJDpNS5_IT0_E4typeEEE4typeEESt6launchOS6_DpOS9_",
 }
 
 

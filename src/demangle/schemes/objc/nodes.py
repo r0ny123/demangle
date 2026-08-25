@@ -10,7 +10,7 @@ gets wrong -- a category name can hold a bracket in no runtime, but a selector h
 colons and spaces, and a block's parent is a whole method with brackets of its own.
 """
 
-from ...core.ast import Node
+from ...core.ast import Node, rendered
 
 __all__ = ["Category", "ClassName", "Selector", "Symbol", "build"]
 
@@ -34,7 +34,7 @@ class _Objc(Node):
     def spell(self, declarator="", style=None):
         # Accepted to match `Node.spell` and ignored: the declarator position is a C++
         # notion and Objective-C has none.
-        return self.render()
+        return rendered(self.render)
 
     def build(self, builder):
         return builder.raw(self.render())

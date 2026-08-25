@@ -218,6 +218,31 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Two Itanium gaps, found by checking against the references over whole shipped
+  libraries rather than over the recorded sample.** The library now agrees with
+  `llvm-cxxfilt` on all 264,610 readable C++ symbols in libLLVM, libclang-cpp and
+  libstdc++, where it previously missed two.
+
+  `TC` -- the construction vtable, `TC <type> <offset> _ <base type>`, spelled
+  `construction vtable for <base>-in-<derived>` -- was simply not implemented, so every
+  one in the shipped libstdc++ and libclang-cpp was refused.
+
+  And a `Dp` expansion whose pattern ranges over an *empty* pack was printing one
+  argument where it should print none: `std::async` came out with a spurious
+  `std::decay<>::type...` in its return type. An expansion has one copy per member of
+  the pack it ranges over, so an empty pack means no copies -- and there is no other way
+  to tell, because the pattern spells perfectly well on its own and only the emptiness
+  of the pack says there are none of it.
+
+- **`parse(name).spell()` reported a stack overflow as `RecursionError`.** `max_depth`
+  bounds the parse; rendering the tree afterwards is a second walk with frames of its
+  own, so a tree well inside the limit could still be deeper than the interpreter's
+  stack. The documented contract is that these entry points raise `DemanglingError` and
+  nothing else, so it now comes back as `LimitExceeded`. `walk()` no longer recurses at
+  all, so `find()` works on a tree too deep to render. Found by an adversarial
+  differential over a million inputs; it was there before this release's performance
+  work and is not caused by it.
+
 - **A Rust symbol carrying a literal non-ASCII character is refused, as the reference
   refuses it.** Both manglings are checked for it, and the check was written as a
   per-character `ord(c) & 0x80` test -- which is not the rule. The reference reads the

@@ -19,7 +19,7 @@ ask any tree for its `name` or `template` nodes without knowing which language p
 it. `impl` and `namespace` are Rust's own: nothing in the C-family schemes means either.
 """
 
-from ...core.ast import Node
+from ...core.ast import Node, rendered
 
 __all__ = [
     "Generics",
@@ -67,7 +67,7 @@ class _Rust(Node):
         # `declarator` and `style` are accepted to match `Node.spell` and ignored. Rust
         # has no declarator position to place one in, and the output styles exist only
         # where llvm-cxxfilt and GNU c++filt disagree about C++.
-        return self.render()
+        return rendered(self.render)
 
     def build(self, builder):
         return builder.raw(self.render())

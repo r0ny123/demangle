@@ -5,10 +5,18 @@ change, so anyone can pick one up.
 
 Conformance gaps are **not** listed here any more, because there are none of ours left:
 every checked-in corpus is exact against its reference, and so are whole symbol tables
-from libLLVM, libclang-cpp, the Rust toolchain, libstdc++, the Swift runtime, libgphobos
-and the Free Pascal runtime — about 450,000 real symbols. The three GNU-style shortfalls
-are disagreements *between the two references* about substitution table contents, pinned
-by name in `tests/test_conformance.py`. The seven Nim shortfalls are that language's own
+from libLLVM, libclang-cpp, the Rust toolchain, libstdc++, the Swift runtime, libgphobos,
+the Free Pascal runtime, the shipped Objective-C runtime and every symbolic reference in
+the Swift metadata — well over half a million real symbols. The last two gaps of ours
+closed with this release, and both came from checking against the references over *whole
+libraries* rather than over the recorded sample: the `TC` construction vtable was not
+implemented at all, and a `Dp` expansion over an empty pack printed one argument where it
+should print none. The five GNU-style shortfalls
+are disagreements *between the two references*: two about substitution table contents and
+three about the space GNU omits between two closing angle brackets when the last template
+argument is an empty pack, which is a bookkeeping slip rather than a rule -- the same
+output shows both spellings in one name. All five are pinned by name in
+`tests/test_conformance.py`. The seven Nim shortfalls are that language's own
 mangling discarding an underscore, listed by name in
 `tests/conformance/nim-lossy.txt`.
 

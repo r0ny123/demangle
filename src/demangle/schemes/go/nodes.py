@@ -10,7 +10,7 @@ none of which can be answered by splitting the raw name on `.`, because a packag
 may contain a dot of its own (written `%2e`) and a receiver may contain one too.
 """
 
-from ...core.ast import Node
+from ...core.ast import Node, rendered
 
 __all__ = ["Generic", "GoName", "Package", "Receiver", "Symbol", "build", "render"]
 
@@ -38,7 +38,7 @@ class _Go(Node):
     def spell(self, declarator="", style=None):
         # Accepted to match `Node.spell` and ignored: Go has no declarator position, and
         # the output styles exist only where the two C++ references disagree.
-        return self.render()
+        return rendered(self.render)
 
     def build(self, builder):
         return builder.raw(self.render())

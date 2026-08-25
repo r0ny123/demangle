@@ -9,7 +9,7 @@ method, and what a template was instantiated with -- none of which survives spli
 spelling on `.`, because a template argument list contains dots of its own.
 """
 
-from ...core.ast import Node
+from ...core.ast import Node, rendered
 
 __all__ = ["DName", "Path", "Symbol", "build", "render"]
 
@@ -37,7 +37,7 @@ class _D(Node):
     def spell(self, declarator="", style=None):
         # Accepted to match `Node.spell` and ignored: D has no declarator position, and
         # the output styles exist only where the two C++ references disagree.
-        return self.render()
+        return rendered(self.render)
 
     def build(self, builder):
         return builder.raw(self.render())

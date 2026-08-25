@@ -84,6 +84,7 @@ class ItaniumParser:
         "_packs",
         "_parameter_counts",
         "_precedence",
+        "_saw_empty_pack",
         "_scope_has_pack",
         "builder",
         "limits",
@@ -145,6 +146,12 @@ class ItaniumParser:
         self._parameter_counts = {}
         # True while reading a requires-clause, where parameters are spelled by name.
         self._in_constraint = False
+        # Set when a <template-param> read since the flag was last cleared resolved to a
+        # pack with no members. A `Dp` pattern that mentions one expands to *nothing*,
+        # and there is no other way to tell: the pattern spells fine on its own -- as
+        # `std::decay<>::type` -- and only the emptiness of the pack it ranges over says
+        # there are no copies of it.
+        self._saw_empty_pack = False
 
     # -- recursion control -----------------------------------------------------
 
@@ -291,6 +298,26 @@ class ItaniumParser:
             marker = reader.take()
             label = "transaction clone for " if marker == "t" else "non-transaction clone for "
             return self.builder.special(label, self.encoding())
+
+        if code == "TC":
+            # <special-name> ::= TC <type> <offset number> _ <base type>
+            #
+            # A construction vtable: the one used while a base subobject is being built,
+            # so it names *two* types and both references spell it "<base>-in-<derived>".
+            # The offset is where the base sits in the derived object and neither
+            # reference prints it. Both types are ordinary <type> productions and enter
+            # the substitution table as such -- `_ZTCSt9strstream16_Si` uses `Si` for
+            # `std::istream` because `St` was recorded reading the first one.
+            reader.pos += 2
+            derived = self.type_()
+            reader.number()
+            reader.expect("_")
+            base = self.type_()
+            builder = self.builder
+            return builder.special(
+                "construction vtable for ",
+                builder.expression("construction-vtable", [base, "-in-", derived]),
+            )
 
         if code == "Tc":
             # Tc <call-offset> <call-offset> <base encoding>
@@ -870,6 +897,8 @@ class ItaniumParser:
             return self._symbolic_parameter(index)
         bound = self.targs.lookup(index)
         if bound is not None:
+            if id(bound) in self._pack_ids and not self.builder.spell(bound):
+                self._saw_empty_pack = True
             return bound
         # A return type is encoded before the arguments that bind its parameters, so a
         # name may legitimately reference one we do not know yet. The reference
@@ -1077,7 +1106,22 @@ class ItaniumParser:
 
         if pair == "Dp":
             reader.pos += 2
-            inner = self.type_()
+            outer_empty = self._saw_empty_pack
+            self._saw_empty_pack = False
+            try:
+                inner = self.type_()
+                over_empty = self._saw_empty_pack
+            finally:
+                self._saw_empty_pack = outer_empty
+            if over_empty:
+                # The pattern ranges over a pack with no members, so it expands to no
+                # types at all -- not to one type with an empty argument list. Both
+                # references drop the argument entirely; keeping it puts a spurious
+                # `std::decay<>::type...` in every `std::async` in libstdc++.
+                #
+                # It is still a <type> and still enters the substitution table: what is
+                # empty is what it expands to, not the production.
+                return self.subs.remember(builder.parameter_pack([]), "type")
             if id(inner) in self._pack_ids or self._scope_has_pack:
                 # The expansion is a <type> in its own right and is recorded as one,
                 # separately from the type it expands: `Dp R T1_` contributes both the
@@ -1433,7 +1477,10 @@ class ItaniumParser:
             # knows that -- it is what flattened them.
             return handle, not builder.spell(handle)
 
-        return self.type_(), False
+        argument = self.type_()
+        # An expansion over an empty pack spells nothing and occupies no argument slot,
+        # the same as an empty `J E` pack does.
+        return argument, id(argument) in self._pack_ids and not builder.spell(argument)
 
     # -- 5.1.6.1 literals ------------------------------------------------------
 
