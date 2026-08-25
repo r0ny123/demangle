@@ -1,0 +1,68 @@
+"""demangle -- read mangled symbol names, in pure Python.
+
+    >>> import demangle
+    >>> demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi")
+    'std::vector<int, std::allocator<int>>::push_back(int const&)'
+    >>> demangle.demangle("?f@@YAXH@Z")
+    'void __cdecl f(int)'
+    >>> demangle.detect("_RNvC6_123foo3bar")
+    'rust'
+
+No dependencies, no native code, no compiler required. Supports the Itanium C++ ABI
+(GCC and Clang), Microsoft's decorated names, and both Rust schemes.
+
+`demangle()` never raises: a name it cannot read comes back unchanged. Use
+`demangle_strict()` or `parse()` when you need to know the difference.
+"""
+
+from .api import (
+    cache_clear,
+    cache_stats,
+    demangle,
+    demangle_all,
+    demangle_strict,
+    detect,
+    languages,
+    parse,
+    styles,
+)
+from .core.ast import Node
+from .core.errors import (
+    DemanglingError,
+    LimitExceeded,
+    NotMangledError,
+    ParseError,
+    TruncatedError,
+)
+from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
+from .core.plugin import LanguagePlugin
+from .core.registry import register as register_language
+from .core.style import Style, register_style
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "DEFAULT_LIMITS",
+    "RELAXED_LIMITS",
+    "DemanglingError",
+    "LanguagePlugin",
+    "LimitExceeded",
+    "Limits",
+    "Node",
+    "NotMangledError",
+    "ParseError",
+    "Style",
+    "TruncatedError",
+    "__version__",
+    "cache_clear",
+    "cache_stats",
+    "demangle",
+    "demangle_all",
+    "demangle_strict",
+    "detect",
+    "languages",
+    "parse",
+    "register_language",
+    "register_style",
+    "styles",
+]

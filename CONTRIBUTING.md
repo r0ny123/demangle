@@ -1,0 +1,83 @@
+# Contributing
+
+The project is meant to be approachable one piece at a time. Adding a scheme, fixing a
+spelling, or contributing a corpus should not require understanding the whole codebase.
+
+## Getting set up
+
+```console
+git clone https://github.com/r0ny123/demangle
+cd demangle
+pip install -e ".[dev]"
+pytest
+```
+
+The reference demanglers are optional but useful. On Debian or Ubuntu:
+
+```console
+apt-get install llvm clang g++ binutils
+```
+
+## Reporting a conformance bug
+
+The most valuable report is small and complete:
+
+1. the mangled name,
+2. what the reference demangler prints (`llvm-cxxfilt`, `llvm-undname`, or
+   `rustc-demangle`),
+3. what this library prints.
+
+Add the pair to the matching file in `tests/conformance/` and bump the pinned count in
+`tests/test_conformance.py` in the same commit, so the expected number always matches
+what the suite actually achieves.
+
+## The rules that matter
+
+Most of the codebase is ordinary Python. Three rules are not negotiable, because the
+design rests on them and each is enforced by a test:
+
+1. **Parsers never build their own output.** Write against the `Builder` protocol
+   (`core/builder.py`). Building a string directly is locally convenient and breaks both
+   `parse()` and every future output format.
+2. **`core` never imports a scheme, and schemes never import each other.** A scheme has
+   to stay replaceable in isolation.
+3. **No third-party dependencies.** The dependency-free promise is the reason a lot of
+   people can use this at all.
+
+## Working on the Itanium parser
+
+Substitution numbering is where correctness lives. The rules are ABI section 5.1.10 and
+are implemented in `schemes/itanium/substitutions.py`, which rejects any attempt to
+record a production the specification does not call a candidate.
+
+The specification's prose is genuinely ambiguous in places. Do not guess — ask the
+reference implementation. `tools/probe_substitutions.py` appends `S_`, `S0_`, `S1_` to a
+name under construction, which makes the reference print its own substitution table
+back at you. Several decisions in the parser were settled that way, and each carries a
+comment naming the probe that settled it.
+
+## Adding a scheme
+
+See [docs/adding-a-scheme.md](docs/adding-a-scheme.md). In short: three functions and a
+`LanguagePlugin`, in a new directory under `src/demangle/schemes/`.
+
+## Before you open a pull request
+
+```console
+ruff check . && ruff format --check .
+pytest
+python benchmarks/bench.py --check
+python tools/differential.py
+```
+
+If a change moves a conformance number, say which way and why in the commit message.
+If it moves a benchmark, say that too.
+
+## Style
+
+- Comments explain *why*, especially where the code looks odd because a specification or
+  a reference implementation says so. Quote the section.
+- Names are spelled out. This is a codebase people read while holding an ABI document in
+  the other hand; `substitution_table` beats `st`.
+- New behaviour comes with a test. New *reference-derived* behaviour comes with a corpus
+  entry.

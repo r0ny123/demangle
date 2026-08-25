@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      # The conformance corpora carry their expected output, so these run everywhere --
+      # no compiler and no reference demangler required.
+      - run: pytest -q
+      - name: command line works
+        run: |
+          demangle _ZNSt6vectorIiSaIiEE9push_backERKi
+          demangle --list-languages
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: ty check .
+
+  differential:
+    name: differential against the reference demanglers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y llvm clang g++ binutils
+      - run: pip install -e ".[dev]"
+      # Replay the committed corpora, then rebuild them from freshly compiled sources
+      # and compare live -- which catches a reference upgrade changing its own output.
+      - run: python tools/differential.py
+      - run: python tools/generate_corpus.py --out /tmp/fresh
+      - run: python tools/differential.py --corpus /tmp/fresh/itanium-real-world.txt
+
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python benchmarks/bench.py --check

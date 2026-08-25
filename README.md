@@ -1,0 +1,173 @@
+# demangle
+
+Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, and **Rust** — in
+pure Python. No dependencies, no native code, no compiler required.
+
+```python
+>>> import demangle
+>>> demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi")
+'std::vector<int, std::allocator<int>>::push_back(int const&)'
+>>> demangle.demangle("?f@@YAXH@Z")
+'void __cdecl f(int)'
+>>> demangle.demangle("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
+'core::fmt::Formatter::pad'
+```
+
+## Why this exists
+
+Every existing option in Python binds to a native demangler: `cxxfilt` and `pycxxfilt`
+wrap LLVM or libstdc++, `undname` wraps Wine through CFFI. That means a C toolchain at
+install time, a platform-specific wheel, and — for MSVC names — nothing maintained at
+all. For a tool that has to run anywhere Python runs, that is a real constraint.
+
+It also means every one of them hands back a string. If you want the namespace, the
+template arguments, or the parameter types, you get to write a regular expression
+against C++ declaration syntax, which nests, and so cannot be parsed that way.
+
+This library does neither. It is pure Python, and it can give you a tree.
+
+## Install
+
+```console
+pip install demangle
+```
+
+Python 3.11 or newer. That is the whole dependency list.
+
+## Use
+
+### The string you probably want
+
+```python
+demangle.demangle(name)          # never raises; returns `name` unchanged if unreadable
+demangle.demangle_strict(name)   # raises DemanglingError instead
+```
+
+`demangle()` is built for the case where you are labelling every symbol in a binary and
+most of them are not mangled at all. A name it cannot read comes back exactly as it went
+in, because a wrong expansion is worse than a mangled one — it matches neither the
+symbol nor the declaration.
+
+### The structure, when you need it
+
+```python
+>>> tree = demangle.parse("_ZNK3Foo3barIiEEvPKc")
+>>> tree.spell()
+'void Foo::bar<int>(char const*) const'
+>>> [node.text for node in tree.find("name")]
+['Foo', 'bar']
+>>> function = next(tree.find("function"))
+>>> len(function.parameters)
+1
+```
+
+Every node supports `.walk()`, `.find(kind)`, `.children()` and `.spell()`.
+
+### Detection and batches
+
+```python
+>>> demangle.detect("?f@@YAXH@Z")
+'msvc'
+>>> list(demangle.demangle_all(symbol_table))     # generator, shares the cache
+```
+
+### Styles
+
+The two reference demanglers legitimately disagree on some spellings. Both are
+available, and neither is wrong:
+
+```python
+>>> demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi", style="llvm")   # default
+'std::vector<int, std::allocator<int>>::push_back(int const&)'
+>>> demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi", style="gnu")
+'std::vector<int, std::allocator<int> >::push_back(int const&)'
+```
+
+### Command line
+
+```console
+$ nm -a libfoo.so | demangle
+$ demangle _ZNSt6vectorIiSaIiEE9push_backERKi
+$ demangle --tree _Z1fPKc
+$ demangle --detect _RNvC6_123foo3bar
+```
+
+## Correctness
+
+Correctness is defined against the reference implementations and measured on symbols
+real compilers actually emit, not on hand-picked examples.
+
+| Scheme | Reference | Corpus | Exact |
+|---|---|---|---|
+| Itanium | `llvm-cxxfilt` 18.1.3 | 196 real-world symbols | **195 / 196** (99.5%) |
+| Itanium | GNU `c++filt` 2.42 | 196 real-world symbols | **193 / 196** (98.5%) |
+| MSVC | `llvm-undname` 18.1.3 | 609 (LLVM's own test corpus) | **607 / 609** (99.7%) |
+
+The Itanium corpus is compiled from real C++ by **both** `clang++` and `g++`, at four
+language standards (C++11 through C++20) and two optimisation levels, so it contains the
+things that only turn up in real output: ABI tags, lambda numbering, cloned and
+thunked functions, guard variables, internal-linkage names, and deep template nesting.
+
+Pass counts are pinned as exact numbers in the test suite. A change in either direction
+has to be a deliberate edit, so an improvement cannot quietly mask a regression.
+
+Regenerate the corpora with `tools/generate_corpus.py`; compare against a live reference
+with `tools/differential.py`.
+
+Known gaps are listed in [ROADMAP.md](ROADMAP.md).
+
+## Safety
+
+A mangled name is untrusted input in any tool that opens files it did not produce, so:
+
+- `demangle()` never raises, for any input, including binary junk.
+- Recursion depth, output size, substitution count and input length are all bounded,
+  and the bounds are configurable per call.
+- Results are deterministic.
+- The property-based suite runs the parsers against arbitrary text, mangling-alphabet
+  text, arbitrary bytes, every truncation of a known-good name, and inputs built to
+  blow up a naive parser.
+
+## Performance
+
+Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
+
+| Workload | Throughput |
+|---|---|
+| Cold — every name distinct | ~74,000 names/sec |
+| Warm — names repeat, as in a real symbol table | ~2,800,000 names/sec |
+| Non-mangled names rejected | ~764,000 names/sec |
+| Full AST construction | ~15,000 names/sec |
+
+The gap between cold and warm is the point: symbol tables repeat themselves relentlessly,
+and results are cached. Benchmarks are committed with a baseline and `--check` fails on
+a regression.
+
+## Architecture
+
+The short version: **parsers never build their own output**. Each one is written against
+a `Builder` protocol and reports the grammar productions it recognises; a fast text
+builder or a tree builder decides what those become. That is what lets one parser serve
+both `demangle()` and `parse()` with no second implementation to drift.
+
+Schemes are plugins. `core` never imports one, they never import each other, and a
+separate distribution can add Swift or D support through the `demangle.languages`
+entry-point group without patching this package. Both rules are enforced by tests.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture, and
+[docs/adding-a-scheme.md](docs/adding-a-scheme.md) to add a language.
+
+## Contributing
+
+New schemes, corpus contributions, and conformance bug reports are all welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md). A good bug report is a mangled name, what the
+reference demangler prints, and what this library prints.
+
+You should not need to understand the whole codebase to fix a spelling or add a
+language. That is a design goal, and if it is not true somewhere, that is a bug.
+
+## Licence
+
+MIT. The Rust demangler derives from Team bi0s' `rust_demangler` (MIT) and the MSVC
+demangler was originally written for [SMDA](https://github.com/danielplohmann/smda);
+see [NOTICE](NOTICE).

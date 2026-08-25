@@ -1,0 +1,26 @@
+{
+  "cold": {
+    "names": 805,
+    "seconds": 0.010916,
+    "per_second": 73747,
+    "microseconds_each": 13.56
+  },
+  "warm": {
+    "names": 8050,
+    "seconds": 0.002883,
+    "per_second": 2792697,
+    "microseconds_each": 0.358
+  },
+  "negative": {
+    "names": 805,
+    "seconds": 0.001054,
+    "per_second": 764007,
+    "microseconds_each": 1.309
+  },
+  "structured": {
+    "names": 196,
+    "seconds": 0.012785,
+    "per_second": 15331,
+    "microseconds_each": 65.229
+  }
+}
