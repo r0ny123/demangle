@@ -9,7 +9,7 @@ name can be `.` itself -- `dot___ops_17` is the operator `.`, whose demangling i
 `ops..`. The tree hands the two halves over already separated.
 """
 
-from ...core.ast import Node
+from ...core.ast import Node, rendered
 
 __all__ = ["NimName", "Path", "Symbol", "build"]
 
@@ -32,7 +32,7 @@ class _Nim(Node):
 
     def spell(self, declarator="", style=None):
         # Accepted to match `Node.spell` and ignored: Nim has no declarator position.
-        return self.render()
+        return rendered(self.render)
 
     def build(self, builder):
         return builder.raw(self.render())

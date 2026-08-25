@@ -311,3 +311,6 @@ _ZTIDF32x@@CXXABI_1.3.14	typeinfo for _Float32x@@CXXABI_1.3.14
 _ZTIDF64x@@CXXABI_1.3.14	typeinfo for _Float64x@@CXXABI_1.3.14
 _ZTIDF128x@@CXXABI_1.3.14	typeinfo for _Float128x@@CXXABI_1.3.14
 _ZTIPDF16b@@CXXABI_1.3.14	typeinfo for std::bfloat16_t*@@CXXABI_1.3.14
+_Z1fI1AI1BEJEEvT_	void f<A<B>>(A<B>)
+_Z1fI1AI1BI1CEEJEEvT_	void f<A<B<C> >>(A<B<C> >)
+_ZSt5asyncISt8functionIFvvEEJEESt6futureINSt15__invoke_resultINSt5decayIT_E4typeEJDpNS5_IT0_E4typeEEE4typeEESt6launchOS6_DpOS9_	std::future<std::__invoke_result<std::decay<std::function<void ()> >::type>::type> std::async<std::function<void ()>>(std::launch, std::function<void ()>&&)

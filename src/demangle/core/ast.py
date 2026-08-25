@@ -13,7 +13,10 @@ and a tree can never disagree with the fast path. It also means a new output for
 JSON, HTML, a token stream -- is a builder, not a second traversal to keep in sync.
 """
 
+import sys
+
 from .builder import Builder
+from .errors import LimitExceeded
 from .style import get_style
 
 __all__ = [
@@ -38,6 +41,25 @@ __all__ = [
     "Template",
     "VendorQualify",
 ]
+
+
+def rendered(produce):
+    """Run a rendering call, reporting a stack overflow as the bound it is.
+
+    `max_depth` bounds the *parse*. Rendering the tree afterwards is a second walk with
+    frames of its own -- `build` and every scheme's `render` are genuinely recursive over
+    the node shapes -- so a tree that was well inside the limit can still be deeper than
+    the interpreter's stack. That comes back as the bound it is rather than as
+    `RecursionError`, which this package's contract says cannot escape. `demangle()` on
+    the same name still answers, because it never builds the tree.
+
+    The mangled name is not available here: a node knows its own shape and not the bytes
+    it came from.
+    """
+    try:
+        return produce()
+    except RecursionError as error:
+        raise LimitExceeded("", "recursion depth", sys.getrecursionlimit()) from error
 
 
 class Node:
@@ -66,10 +88,20 @@ class Node:
         raise NotImplementedError
 
     def walk(self):
-        """Yield this node and every descendant, depth first."""
-        yield self
-        for child in self.children():
-            yield from child.walk()
+        """Yield this node and every descendant, depth first.
+
+        Iterative rather than recursive, and not for speed: a `yield from` per level
+        means one interpreter frame per level for the whole traversal, so a tree well
+        inside `max_depth` -- which bounds the *parse*, in frames of a different size --
+        could still exhaust the stack here. An explicit stack cannot.
+        """
+        stack = [self]
+        while stack:
+            node = stack.pop()
+            yield node
+            children = node.children()
+            if children:
+                stack.extend(reversed(children))
 
     def find(self, kind):
         """Yield every descendant of the given `kind`, including this node."""
@@ -84,7 +116,7 @@ class Node:
         gnu-parsed tree with LLVM's builder gives a mixture of the two.
         """
         builder = get_style(style).spelling_builder
-        return builder.spell(self.build(builder), declarator)
+        return rendered(lambda: builder.spell(self.build(builder), declarator))
 
     def __str__(self):
         return self.spell()

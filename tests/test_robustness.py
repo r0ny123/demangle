@@ -278,6 +278,35 @@ class TestResourceBounds:
         deep = "_Z1f" + "P" * 50 + "i"
         assert demangle.demangle(deep, limits=shallow) == deep
 
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_RINvC1c1f" + "R" * 247 + "lE",
+            "_RINvC1c1f" + "P" * 247 + "lE",
+            "_RINvC1c1f" + "S" * 247 + "lE",
+            "_Z1fIX" + "ng" * 249 + "Li1EEEv",
+        ],
+    )
+    def test_rendering_a_tree_too_deep_for_the_stack_reports_the_bound(self, mangled):
+        """`max_depth` bounds the parse; rendering the tree afterwards is a second walk.
+
+        Each of these parses -- it is inside the limit -- and then has more levels than
+        the interpreter's stack has frames for. That has to come back as this package's
+        own error: `demangle()` is documented never to raise and `parse()` to raise only
+        `DemanglingError`, and a `RecursionError` escaping either is neither.
+        """
+        tree = demangle.parse(mangled)
+        with pytest.raises(DemanglingError):
+            tree.spell()
+        # The text path never builds the tree, so it answers.
+        assert demangle.demangle(mangled) != mangled
+
+    def test_walking_a_deep_tree_does_not_need_the_stack(self):
+        """`walk` is iterative, so `find` works on a tree too deep to render."""
+        tree = demangle.parse("_RINvC1c1f" + "R" * 247 + "lE")
+        assert sum(1 for _ in tree.walk()) > 200
+        assert [node.text for node in tree.find("name")][:2] == ["c", "f"]
+
     def test_input_limit_is_enforced(self):
         demangle.cache_clear()
         with pytest.raises(demangle.LimitExceeded) as info:

@@ -14,7 +14,7 @@ means every node's text is exactly the run of characters it produced, and the tr
 spell the symbol differently from `demangle()`.
 """
 
-from ...core.ast import Node
+from ...core.ast import Node, rendered
 from ._printer import Printer, _Invalid
 
 __all__ = ["SwiftName", "build"]
@@ -81,7 +81,7 @@ class SwiftName(Node):
 
     def spell(self, declarator="", style=None):
         # Accepted to match `Node.spell` and ignored: Swift has no declarator position.
-        return self.render()
+        return rendered(self.render)
 
     def build(self, builder):
         return builder.raw(self.render())

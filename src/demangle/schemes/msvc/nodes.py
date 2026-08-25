@@ -30,7 +30,7 @@ text.
 
 import re
 
-from ...core.ast import Array, Name, Node, Raw
+from ...core.ast import Array, Name, Node, Raw, rendered
 
 __all__ = [
     "Array",
@@ -70,7 +70,7 @@ class _Spelled(Node):
         # `style` is accepted to match `Node.spell` and deliberately ignored: MSVC's
         # declarator spelling is its own and does not vary with the C++ output styles,
         # which exist only where llvm-cxxfilt and GNU c++filt disagree.
-        return render(self, declarator)
+        return rendered(lambda: render(self, declarator))
 
     def build(self, builder):
         return builder.raw(render(self))
