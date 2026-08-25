@@ -1,7 +1,8 @@
 # demangle
 
 Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Swift**,
-**Go** and **D** — in pure Python. No dependencies, no native code, no compiler required.
+**Go**, **D** and **Nim** — in pure Python. No dependencies, no native code, no compiler
+required.
 
 ```python
 >>> import demangle
@@ -15,6 +16,8 @@ Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, *
 'Foundation.Data.count.getter : Swift.Int'
 >>> demangle.demangle("example.com/m/v2%2e5.(*T).Method", language="go")
 'example.com/m/v2.5.(*T).Method'
+>>> demangle.demangle("eqdestroy___systemZassertions_23")
+'system/assertions.=destroy'
 ```
 
 ## Why this exists
@@ -125,8 +128,17 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **275 / 277** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8291 / 8291** |
+| Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
+
+¶ Nim has no reference demangler either, and its mangling is not injective: `mangle`
+drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
+carries correctness is the same round-trip property Go uses — re-mangling what we read
+must reproduce the bytes — plus agreement with the name the compiler recorded for a
+debugger. Seven names in the corpus cannot come back exactly, and all seven are that one
+documented loss; they are listed by name in `tests/conformance/nim-lossy.txt` rather than
+rounded off.
 
 ‡ Go has no reference demangler — `go tool nm` prints symbol names with their escapes
 intact and nothing in the toolchain decodes one. So the check is a property instead:
@@ -150,6 +162,7 @@ Run live against the reference, not replayed.
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6` | 5,913 | **100%** |
 | Swift runtime + Foundation | 48,368 | **100%** |
+| Nim standard library routine names ¶ | 5,946 | **99.87%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 

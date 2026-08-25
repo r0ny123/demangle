@@ -1,0 +1,12 @@
+# Names Nim's own mangling does not preserve. `mangle` drops an underscore that
+# precedes a digit, because it reserves `_<digit>` for its own disambiguation, so
+# `len0_16` and `len016` are written the same way and nothing can tell them apart.
+# Recorded here as the mangled name, what the compiler said it was, and what this
+# reads -- so that the shortfall stays visible and counted rather than rounded off.
+len016__pureZhashes_u378	len0_16	len016
+len1732__pureZhashes_u430	len17_32	len1732
+len3364__pureZhashes_u444	len33_64	len3364
+mixed_Case2__idents_13	mixed_Case_2	mixed_Case2
+mixed_Case2__idents_u13	mixed_Case_2	mixed_Case2
+name_with1_digit__idents_4	name_with_1_digit	name_with1_digit
+name_with1_digit__idents_u4	name_with_1_digit	name_with1_digit
