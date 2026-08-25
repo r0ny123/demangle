@@ -56,10 +56,11 @@ dev = [
     "pytest>=8",
     "pytest-cov",
     "hypothesis>=6",
-    "ruff",
-    # pinned: ty is pre-1.0 and adds lint rules in patch releases, so an unpinned
-    # version reddens unrelated changes on someone else's release schedule. Bump
-    # deliberately, with the new rules addressed in the same commit.
+    # Both linters are pinned, for the same reason: they add rules in patch releases,
+    # so an unpinned version reddens unrelated changes on someone else's release
+    # schedule. Dependabot proposes the bumps; each is taken deliberately, with the new
+    # rules addressed in the same commit.
+    "ruff==0.16.4",
     "ty==0.0.69",
 ]
 docs = [

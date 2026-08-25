@@ -141,9 +141,6 @@ _OPERATORS = {
     "Y": "operator+=",
     "Z": "operator-=",
 }
-# the special names spelled with the "6" storage form. The vcall, typeof and local static
-# guard codes are data too, but take a storage class this parser does not model, so they
-# decline instead of being read as one of these
 # what runs around a namespace-scope object with a non-trivial lifetime
 _DYNAMIC_INITIALISERS = {"E": "dynamic initializer for", "F": "dynamic atexit destructor for"}
 # what guards a function-local static, and the storage class both forms are written with
@@ -167,6 +164,9 @@ _RTTI_NAMES = {
     "3": "`RTTI Class Hierarchy Descriptor'",
     "4": "`RTTI Complete Object Locator'",
 }
+# The special names spelled with the "6" storage form. The vcall, typeof and local static
+# guard codes are data too, but take a storage class this parser does not model, so they
+# decline rather than being read as one of these.
 _DATA_SPECIAL_OPERATORS = frozenset("78S")
 _UNMODELLED_DATA_SPECIAL_OPERATORS = frozenset("A")
 _EXTENDED_OPERATORS = {
