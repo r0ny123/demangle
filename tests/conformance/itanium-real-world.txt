@@ -51,6 +51,33 @@ _ZN5outer5inner7DerivedD2Ev	outer::inner::Derived::~Derived()
 _ZN5outer5inner7deducedIiEEDTplfp_fp_ET_	decltype(fp + fp) outer::inner::deduced<int>(int)
 _ZN5outer5inner7refqualEONSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEPVKi	outer::inner::refqual(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&&, int const volatile*)
 _ZN5outer5inner8variadicIJicdEEEiDpT_	int outer::inner::variadic<int, char, double>(int, char, double)
+_ZN6modern10structuredEv	modern::structured()
+_ZN6modern11constrainedITkNS_8IntegralEiEET_S1_	int modern::constrained<int>(int)
+_ZN6modern11constrainedITkNS_8IntegralElEET_S1_	long modern::constrained<long>(long)
+_ZN6modern11constrainedIiEET_S1_	int modern::constrained<int>(int)
+_ZN6modern11constrainedIlEET_S1_	long modern::constrained<long>(long)
+_ZN6modern13genericLambdaEv	modern::genericLambda()
+_ZN6modern13nestedLambdasEv	modern::nestedLambdas()
+_ZN6modern20takesNoexceptPointerEPDoFvvE	modern::takesNoexceptPointer(void (*)() noexcept)
+_ZN6modern4Task12promise_type11return_voidEv	modern::Task::promise_type::return_void()
+_ZN6modern4Task12promise_type13final_suspendEv	modern::Task::promise_type::final_suspend()
+_ZN6modern4Task12promise_type15initial_suspendEv	modern::Task::promise_type::initial_suspend()
+_ZN6modern4Task12promise_type17get_return_objectEv	modern::Task::promise_type::get_return_object()
+_ZN6modern5FixedILb1EE5valueE	modern::Fixed<true>::value
+_ZN6modern5FixedILc120EE5valueE	modern::Fixed<(char)120>::value
+_ZN6modern5FixedILi42EE5valueE	modern::Fixed<42>::value
+_ZN6modern6BundleIJicdEE5countE	modern::Bundle<int, char, double>::count
+_ZN6modern7compareERKNS_7OrderedES2_	modern::compare(modern::Ordered const&, modern::Ordered const&)
+_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEEEmRKT_	unsigned long modern::measured<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const&)
+_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_	unsigned long modern::measured<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>(T const&)
+_ZN6modern9Qualified5plainEv	modern::Qualified::plain()
+_ZN6modern9coroutineEPZNS_9coroutineEiE28_ZN6modern9coroutineEi.Frame.actor	modern::coroutine(modern::coroutine(int)::_ZN6modern9coroutineEi.Frame*) (.actor)
+_ZN6modern9coroutineEPZNS_9coroutineEiE28_ZN6modern9coroutineEi.Frame.actor.cold	modern::coroutine(modern::coroutine(int)::_ZN6modern9coroutineEi.Frame*) (.actor.cold)
+_ZN6modern9coroutineEPZNS_9coroutineEiE28_ZN6modern9coroutineEi.Frame.destroy	modern::coroutine(modern::coroutine(int)::_ZN6modern9coroutineEi.Frame*) (.destroy)
+_ZN6modern9coroutineEi	modern::coroutine(int)
+_ZN6modern9coroutineEi.cleanup	modern::coroutine(int) (.cleanup)
+_ZN6modern9coroutineEi.destroy	modern::coroutine(int) (.destroy)
+_ZN6modern9coroutineEi.resume	modern::coroutine(int) (.resume)
 _ZN9__gnu_cxx11char_traitsIcE2eqERKcS3_	__gnu_cxx::char_traits<char>::eq(char const&, char const&)
 _ZN9__gnu_cxx11char_traitsIcE4copyEPcPKcm	__gnu_cxx::char_traits<char>::copy(char*, char const*, unsigned long)
 _ZN9__gnu_cxx11char_traitsIcE6lengthEPKc	__gnu_cxx::char_traits<char>::length(char const*)
@@ -66,6 +93,10 @@ _ZNK5outer5inner6HolderIiLi3EE3getEv	outer::inner::Holder<int, 3>::get() const
 _ZNK5outer5inner6HolderIiLi3EEcviEv	outer::inner::Holder<int, 3>::operator int() const
 _ZNK5outer5inner6HolderIiLi3EEeqERKS2_	outer::inner::Holder<int, 3>::operator==(outer::inner::Holder<int, 3> const&) const
 _ZNK5outer5inner7Derived6methodEi	outer::inner::Derived::method(int) const
+_ZNK6modern2v24deep6deeper6Nested6methodEv	modern::v2::deep::deeper::Nested::method() const
+_ZNK6modern6BundleIJicdEE5firstEv	modern::Bundle<int, char, double>::first() const
+_ZNK6modern7OrderedssERKS0_	modern::Ordered::operator<=>(modern::Ordered const&) const
+_ZNK6modern9Qualified8trailingEv	modern::Qualified::trailing() const
 _ZNKR5outer5inner17WithRefQualifiers11constLvalueEv	outer::inner::WithRefQualifiers::constLvalue() const &
 _ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE11_M_is_localEv	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_is_local() const
 _ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE13_M_local_dataEv	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_local_data() const
@@ -77,8 +108,19 @@ _ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE6lengthEv	std::__cxx11::ba
 _ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE7_M_dataEv	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_data() const
 _ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE8capacityEv	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::capacity() const
 _ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE8max_sizeEv	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::max_size() const
+_ZNKSt7__n486113suspend_never11await_readyEv	std::__n4861::suspend_never::await_ready() const
+_ZNKSt7__n486113suspend_never12await_resumeEv	std::__n4861::suspend_never::await_resume() const
+_ZNKSt7__n486113suspend_never13await_suspendENS_16coroutine_handleIvEE	std::__n4861::suspend_never::await_suspend(std::__n4861::coroutine_handle<void>) const
+_ZNKSt7__n486116coroutine_handleIN6modern4Task12promise_typeEE7addressEv	std::__n4861::coroutine_handle<modern::Task::promise_type>::address() const
+_ZNKSt7__n486116coroutine_handleIN6modern4Task12promise_typeEEcvNS0_IvEEEv	std::__n4861::coroutine_handle<modern::Task::promise_type>::operator std::__n4861::coroutine_handle<void>() const
 _ZNO5outer5inner17WithRefQualifiers6rvalueEv	outer::inner::WithRefQualifiers::rvalue() &&
+_ZNO6modern9Qualified4rrefEv	modern::Qualified::rref() &&
 _ZNR5outer5inner17WithRefQualifiers6lvalueEv	outer::inner::WithRefQualifiers::lvalue() &
+_ZNR6modern9Qualified4lrefEv	modern::Qualified::lref() &
+_ZNSt10_Head_baseILm0EiLb0EE7_M_headERKS0_	std::_Head_base<0ul, int, false>::_M_head(std::_Head_base<0ul, int, false> const&)
+_ZNSt10__pair_getILm0EE10__move_getIidEEOT_OSt4pairIS2_T0_E	int&& std::__pair_get<0ul>::__move_get<int, double>(std::pair<int, double>&&)
+_ZNSt10__pair_getILm1EE10__move_getIidEEOT0_OSt4pairIT_S2_E	double&& std::__pair_get<1ul>::__move_get<int, double>(std::pair<int, double>&&)
+_ZNSt11_Tuple_implILm0EJicdEE7_M_headERKS0_	std::_Tuple_impl<0ul, int, char, double>::_M_head(std::_Tuple_impl<0ul, int, char, double> const&)
 _ZNSt11char_traitsIcE2ltERKcS2_	std::char_traits<char>::lt(char const&, char const&)
 _ZNSt11char_traitsIcE4copyEPcPKcm	std::char_traits<char>::copy(char*, char const*, unsigned long)
 _ZNSt11char_traitsIcE6assignERcRKc	std::char_traits<char>::assign(char&, char const&)
@@ -86,6 +128,9 @@ _ZNSt11char_traitsIcE6lengthEPKc	std::char_traits<char>::length(char const*)
 _ZNSt11char_traitsIcE7compareEPKcS2_m	std::char_traits<char>::compare(char const*, char const*, unsigned long)
 _ZNSt13runtime_errorC1EPKc	std::runtime_error::runtime_error(char const*)
 _ZNSt13runtime_errorD1Ev	std::runtime_error::~runtime_error()
+_ZNSt14_Optional_baseISt6vectorIiSaIiEELb0ELb0EEC1Ev	std::_Optional_base<std::vector<int, std::allocator<int>>, false, false>::_Optional_base()
+_ZNSt14_Optional_baseISt6vectorIiSaIiEELb0ELb0EEC2Ev	std::_Optional_base<std::vector<int, std::allocator<int>>, false, false>::_Optional_base()
+_ZNSt14_Optional_baseISt6vectorIiSaIiEELb0ELb0EEC5Ev	std::_Optional_base<std::vector<int, std::allocator<int>>, false, false>::_Optional_base()
 _ZNSt15_Rb_tree_header8_M_resetEv	std::_Rb_tree_header::_M_reset()
 _ZNSt15_Rb_tree_headerC1Ev	std::_Rb_tree_header::_Rb_tree_header()
 _ZNSt15_Rb_tree_headerC2Ev	std::_Rb_tree_header::_Rb_tree_header()
@@ -95,14 +140,29 @@ _ZNSt15__new_allocatorIcE8allocateEmPKv	std::__new_allocator<char>::allocate(uns
 _ZNSt15__new_allocatorIcED1Ev	std::__new_allocator<char>::~__new_allocator()
 _ZNSt15__new_allocatorIcED2Ev	std::__new_allocator<char>::~__new_allocator()
 _ZNSt15__new_allocatorIcED5Ev	std::__new_allocator<char>::~__new_allocator()
+_ZNSt15strong_ordering5equalE	std::strong_ordering::equal
+_ZNSt17_Optional_payloadISt6vectorIiSaIiEELb0ELb0ELb0EEC1Ev	std::_Optional_payload<std::vector<int, std::allocator<int>>, false, false, false>::_Optional_payload()
+_ZNSt17_Optional_payloadISt6vectorIiSaIiEELb0ELb0ELb0EEC2Ev	std::_Optional_payload<std::vector<int, std::allocator<int>>, false, false, false>::_Optional_payload()
+_ZNSt17_Optional_payloadISt6vectorIiSaIiEELb0ELb0ELb0EEC5Ev	std::_Optional_payload<std::vector<int, std::allocator<int>>, false, false, false>::_Optional_payload()
+_ZNSt17_Optional_payloadISt6vectorIiSaIiEELb1ELb0ELb0EEC1Ev	std::_Optional_payload<std::vector<int, std::allocator<int>>, true, false, false>::_Optional_payload()
+_ZNSt17_Optional_payloadISt6vectorIiSaIiEELb1ELb0ELb0EEC2Ev	std::_Optional_payload<std::vector<int, std::allocator<int>>, true, false, false>::_Optional_payload()
+_ZNSt17_Optional_payloadISt6vectorIiSaIiEELb1ELb0ELb0EEC5Ev	std::_Optional_payload<std::vector<int, std::allocator<int>>, true, false, false>::_Optional_payload()
 _ZNSt19__ptr_traits_ptr_toIPKcS0_Lb0EE10pointer_toERS0_	std::__ptr_traits_ptr_to<char const*, char const, false>::pointer_to(char const&)
 _ZNSt19__ptr_traits_ptr_toIPccLb0EE10pointer_toERc	std::__ptr_traits_ptr_to<char*, char, false>::pointer_to(char&)
 _ZNSt20_Rb_tree_key_compareISt4lessINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEEEC1Ev	std::_Rb_tree_key_compare<std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>>::_Rb_tree_key_compare()
 _ZNSt20_Rb_tree_key_compareISt4lessINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEEEC2Ev	std::_Rb_tree_key_compare<std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>>::_Rb_tree_key_compare()
 _ZNSt20_Rb_tree_key_compareISt4lessINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEEEC5Ev	std::_Rb_tree_key_compare<std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>>::_Rb_tree_key_compare()
+_ZNSt22_Optional_payload_baseISt6vectorIiSaIiEEE8_StorageIS2_Lb0EEC1Ev	std::_Optional_payload_base<std::vector<int, std::allocator<int>>>::_Storage<std::vector<int, std::allocator<int>>, false>::_Storage()
+_ZNSt22_Optional_payload_baseISt6vectorIiSaIiEEE8_StorageIS2_Lb0EEC2Ev	std::_Optional_payload_base<std::vector<int, std::allocator<int>>>::_Storage<std::vector<int, std::allocator<int>>, false>::_Storage()
+_ZNSt22_Optional_payload_baseISt6vectorIiSaIiEEE8_StorageIS2_Lb0EEC5Ev	std::_Optional_payload_base<std::vector<int, std::allocator<int>>>::_Storage<std::vector<int, std::allocator<int>>, false>::_Storage()
+_ZNSt22_Optional_payload_baseISt6vectorIiSaIiEEEC1Ev	std::_Optional_payload_base<std::vector<int, std::allocator<int>>>::_Optional_payload_base()
+_ZNSt22_Optional_payload_baseISt6vectorIiSaIiEEEC2Ev	std::_Optional_payload_base<std::vector<int, std::allocator<int>>>::_Optional_payload_base()
+_ZNSt22_Optional_payload_baseISt6vectorIiSaIiEEEC5Ev	std::_Optional_payload_base<std::vector<int, std::allocator<int>>>::_Optional_payload_base()
 _ZNSt3mapINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt6vectorISt10unique_ptrIN5outer5inner4BaseESt14default_deleteISA_EESaISD_EESt4lessIS5_ESaISt4pairIKS5_SF_EEEC1Ev	std::map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>>::map()
 _ZNSt3mapINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt6vectorISt10unique_ptrIN5outer5inner4BaseESt14default_deleteISA_EESaISD_EESt4lessIS5_ESaISt4pairIKS5_SF_EEEC2Ev	std::map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>>::map()
 _ZNSt3mapINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt6vectorISt10unique_ptrIN5outer5inner4BaseESt14default_deleteISA_EESaISD_EESt4lessIS5_ESaISt4pairIKS5_SF_EEEC5Ev	std::map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>>::map()
+_ZNSt4pairIidEC2IidQaacl16_S_constructibleITL0__TL0_0_EEntcl10_S_danglesIS2_S3_EEEEOT_OT0_	std::pair<int, double>::pair<int, double>(int&&, double&&)
+_ZNSt4pairIidEC2IidTnNSt9enable_ifIXaaclsr5_PCCPE22_MoveConstructiblePairIT_T0_EEclsr5_PCCPE30_ImplicitlyMoveConvertiblePairIS3_S4_EEEbE4typeELb1EEEOS3_OS4_	std::pair<int, double>::pair<int, double, true>(int&&, double&&)
 _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE10_M_destroyEm	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_destroy(unsigned long)
 _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE10_M_disposeEv	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_dispose()
 _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE11_M_capacityEm	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_capacity(unsigned long)
@@ -144,6 +204,10 @@ _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEED1Ev	std::__cxx11::basic_st
 _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEED2Ev	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::~basic_string()
 _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEED5Ev	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::~basic_string()
 _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEpLERKS4_	std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::operator+=(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const&)
+_ZNSt7__n486116coroutine_handleIN6modern4Task12promise_typeEE12from_addressEPv	std::__n4861::coroutine_handle<modern::Task::promise_type>::from_address(void*)
+_ZNSt7__n486116coroutine_handleIN6modern4Task12promise_typeEEC2Ev	std::__n4861::coroutine_handle<modern::Task::promise_type>::coroutine_handle()
+_ZNSt7__n486116coroutine_handleIvE12from_addressEPv	std::__n4861::coroutine_handle<void>::from_address(void*)
+_ZNSt7__n486116coroutine_handleIvEC2Ev	std::__n4861::coroutine_handle<void>::coroutine_handle()
 _ZNSt8_Rb_treeINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt4pairIKS5_St6vectorISt10unique_ptrIN5outer5inner4BaseESt14default_deleteISC_EESaISF_EEESt10_Select1stISI_ESt4lessIS5_ESaISI_EE13_Rb_tree_implISM_Lb1EEC1Ev	std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>, std::_Select1st<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>>::_Rb_tree_impl<std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, true>::_Rb_tree_impl()
 _ZNSt8_Rb_treeINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt4pairIKS5_St6vectorISt10unique_ptrIN5outer5inner4BaseESt14default_deleteISC_EESaISF_EEESt10_Select1stISI_ESt4lessIS5_ESaISI_EE13_Rb_tree_implISM_Lb1EEC2Ev	std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>, std::_Select1st<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>>::_Rb_tree_impl<std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, true>::_Rb_tree_impl()
 _ZNSt8_Rb_treeINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt4pairIKS5_St6vectorISt10unique_ptrIN5outer5inner4BaseESt14default_deleteISC_EESaISF_EEESt10_Select1stISI_ESt4lessIS5_ESaISI_EE13_Rb_tree_implISM_Lb1EEC5Ev	std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>, std::_Select1st<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const, std::vector<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>, std::allocator<std::unique_ptr<outer::inner::Base, std::default_delete<outer::inner::Base>>>>>>>::_Rb_tree_impl<std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>, true>::_Rb_tree_impl()
@@ -157,8 +221,12 @@ _ZNSt8__detail19__destructible_implISt19_Bit_const_iteratorEE	std::__detail::__d
 _ZNSt8__detail30__integer_to_chars_is_unsignedIjEE	std::__detail::__integer_to_chars_is_unsigned<unsigned int>
 _ZNSt8__detail30__integer_to_chars_is_unsignedImEE	std::__detail::__integer_to_chars_is_unsigned<unsigned long>
 _ZNSt8__detail30__integer_to_chars_is_unsignedIyEE	std::__detail::__integer_to_chars_is_unsigned<unsigned long long>
+_ZNSt8optionalISt6vectorIiSaIiEEEC1Ev	std::optional<std::vector<int, std::allocator<int>>>::optional()
+_ZNSt8optionalISt6vectorIiSaIiEEEC2Ev	std::optional<std::vector<int, std::allocator<int>>>::optional()
+_ZNSt8optionalISt6vectorIiSaIiEEEC5Ev	std::optional<std::vector<int, std::allocator<int>>>::optional()
 _ZSt11__addressofIKcEPT_RS1_	char const* std::__addressof<char const>(char const&)
 _ZSt11__addressofIcEPT_RS0_	char* std::__addressof<char>(char&)
+_ZSt12__get_helperILm0EiJcdEERKT0_RKSt11_Tuple_implIXT_EJS0_DpT1_EE	int const& std::__get_helper<0ul, int, char, double>(std::_Tuple_impl<0ul, int, char, double> const&)
 _ZSt12construct_atIcJRKcEEDTgsnwcvPvLi0E_T_pispcl7declvalIT0_EEEEPS3_DpOS4_	decltype(::new((void*)(0)) char(declval<char const&>())) std::construct_at<char, char const&>(char*, char const&)
 _ZSt17__throw_bad_allocv	std::__throw_bad_alloc()
 _ZSt19__throw_logic_errorPKc	std::__throw_logic_error(char const*)
@@ -166,8 +234,14 @@ _ZSt20__throw_length_errorPKc	std::__throw_length_error(char const*)
 _ZSt21is_constant_evaluatedv	std::is_constant_evaluated()
 _ZSt23__is_constant_evaluatedv	std::__is_constant_evaluated()
 _ZSt28__throw_bad_array_new_lengthv	std::__throw_bad_array_new_length()
+_ZSt3getILm0EJicdEERKNSt13tuple_elementIXT_ESt5tupleIJDpT0_EEE4typeERKS4_	std::tuple_element<0ul, std::tuple<int, char, double>>::type const& std::get<0ul, int, char, double>(std::tuple<int, char, double> const&)
+_ZSt3getILm0EidEONSt13tuple_elementIXT_ESt4pairIT0_T1_EE4typeEOS4_	std::tuple_element<0ul, std::pair<int, double>>::type&& std::get<0ul, int, double>(std::pair<int, double>&&)
+_ZSt3getILm1EidEONSt13tuple_elementIXT_ESt4pairIT0_T1_EE4typeEOS4_	std::tuple_element<1ul, std::pair<int, double>>::type&& std::get<1ul, int, double>(std::pair<int, double>&&)
 _ZSt4moveIRSaIcEEONSt16remove_referenceIT_E4typeEOS3_	std::remove_reference<std::allocator<char>&>::type&& std::move<std::allocator<char>&>(std::allocator<char>&)
+_ZSt4moveIRSt4pairIidEEONSt16remove_referenceIT_E4typeEOS4_	std::remove_reference<std::pair<int, double>&>::type&& std::move<std::pair<int, double>&>(std::pair<int, double>&)
 _ZSt7forwardIRKcEOT_RNSt16remove_referenceIS2_E4typeE	char const& std::forward<char const&>(std::remove_reference<char const&>::type&)
+_ZSt7forwardIdEOT_RNSt16remove_referenceIS0_E4typeE	double&& std::forward<double>(std::remove_reference<double>::type&)
+_ZSt7forwardIiEOT_RNSt16remove_referenceIS0_E4typeE	int&& std::forward<int>(std::remove_reference<int>::type&)
 _ZSt9addressofIKcEPT_RS1_	char const* std::addressof<char const>(char const&)
 _ZSt9addressofIcEPT_RS0_	char* std::addressof<char>(char&)
 _ZSt9terminatev	std::terminate()
@@ -175,6 +249,7 @@ _ZStL13allocator_arg	std::allocator_arg
 _ZStL19piecewise_construct	std::piecewise_construct
 _ZStL6ignore	std::ignore
 _ZSteqIcSt11char_traitsIcESaIcEEbRKNSt7__cxx1112basic_stringIT_T0_T1_EESA_	bool std::operator==<char, std::char_traits<char>, std::allocator<char>>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const&)
+_ZSteqSt15strong_orderingNSt9__cmp_cat8__unspecE	std::operator==(std::strong_ordering, std::__cmp_cat::__unspec)
 _ZTIN5outer5inner4BaseE	typeinfo for outer::inner::Base
 _ZTIN5outer5inner7DerivedE	typeinfo for outer::inner::Derived
 _ZTISt13runtime_error	typeinfo for std::runtime_error
@@ -189,6 +264,9 @@ _ZZN5outer5inner10makeLambdaEvENKUliE_clEi	outer::inner::makeLambda()::'lambda'(
 _ZZN5outer5inner11withStaticsEvE5local	outer::inner::withStatics()::local
 _ZZN5outer5inner11withStaticsEvE5localB5cxx11	outer::inner::withStatics()::local[abi:cxx11]
 _ZZN5outer5inner11withStaticsEvE7counter	outer::inner::withStatics()::counter
+_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_	auto modern::genericLambda()::'lambda'<typename $T>($T)::operator()<int>($T) const
+_ZZN6modern13nestedLambdasEvENK3$_0clEi	modern::nestedLambdas()::$_0::operator()(int) const
+_ZZN6modern13nestedLambdasEvENKUliE_clEi	modern::nestedLambdas()::'lambda'(int)::operator()(int) const
 _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPKcEEvT_S8_St20forward_iterator_tagEN6_GuardC1EPS4_	void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_construct<char const*>(char const*, char const*, std::forward_iterator_tag)::_Guard::_Guard(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*)
 _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPKcEEvT_S8_St20forward_iterator_tagEN6_GuardC2EPS4_	void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_construct<char const*>(char const*, char const*, std::forward_iterator_tag)::_Guard::_Guard(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*)
 _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPKcEEvT_S8_St20forward_iterator_tagEN6_GuardC5EPS4_	void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_construct<char const*>(char const*, char const*, std::forward_iterator_tag)::_Guard::_Guard(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*)
@@ -201,6 +279,10 @@ _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_S
 _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tagEN6_GuardD1Ev	void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_construct<char*>(char*, char*, std::forward_iterator_tag)::_Guard::~_Guard()
 _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tagEN6_GuardD2Ev	void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_construct<char*>(char*, char*, std::forward_iterator_tag)::_Guard::~_Guard()
 _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tagEN6_GuardD5Ev	void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_construct<char*>(char*, char*, std::forward_iterator_tag)::_Guard::~_Guard()
+_ZZZN6modern13nestedLambdasEvENK3$_0clEiENKUliE_clEi	modern::nestedLambdas()::$_0::operator()(int) const::'lambda'(int)::operator()(int) const
+_ZZZN6modern13nestedLambdasEvENKUliE_clEiENKUliE_clEi	modern::nestedLambdas()::'lambda'(int)::operator()(int) const::'lambda'(int)::operator()(int) const
+_ZZZZN6modern13nestedLambdasEvENK3$_0clEiENKUliE_clEiENKUliE_clEi	modern::nestedLambdas()::$_0::operator()(int) const::'lambda'(int)::operator()(int) const::'lambda'(int)::operator()(int) const
+_ZZZZN6modern13nestedLambdasEvENKUliE_clEiENKUliE_clEiENKUliE_clEi	modern::nestedLambdas()::'lambda'(int)::operator()(int) const::'lambda'(int)::operator()(int) const::'lambda'(int)::operator()(int) const
 _ZdlPv	operator delete(void*)
 _ZdlPvm	operator delete(void*, unsigned long)
 _Znwm	operator new(unsigned long)

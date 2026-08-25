@@ -8,20 +8,23 @@ is recorded next to every name in tests/conformance.
 Structured output
 -----------------
 This parser predates the builder protocol -- it was proven in production before this
-package existed -- and still assembles text directly. It is exposed here behind the
-same plugin interface as everything else, so `demangle()` is fully supported, but
-`parse()` currently yields a single `Raw` node rather than a tree.
+package existed -- and does not write to a builder. It cannot: MSVC spells a declaration
+differently enough that the shared spelling builder has nowhere to put a calling
+convention, and the alternative to a scheme-specific renderer would be a scheme-specific
+branch in `core`.
 
-Converting it to the builder protocol is the highest-priority item in ROADMAP.md. The
-public API does not change when that lands; only the shape of what `parse()` returns
-becomes richer.
+What it does instead is build its own tree, of nodes that are `core.ast.Node`s, and
+spell that (see `nodes.py`). So `parse()` hands back a real tree to walk and `demangle()`
+hands back text, exactly as they do for the other schemes -- the seam is which of the two
+this module produces, rather than which builder the parser wrote to.
 """
 
+from ...core.ast import Node
 from ...core.errors import NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
-from ._parser import demangle_msvc_symbol
+from ._parser import demangle_msvc_symbol, parse_msvc_symbol
 
 #: MSVC replaces a decorated name too long for the linker with an MD5 hash of it,
 #: written `??@<hash>@`. Nothing can be recovered -- the original spelling is simply not
@@ -58,6 +61,31 @@ def detect(name):
     return bool(name) and name[0] == "?"
 
 
+#: What each builder class answered to `_wants_structure`. Asked once per class rather
+#: than once per name: the answer is a property of the builder's type, and this question
+#: is on the path every symbol takes.
+_STRUCTURED = {}
+
+
+def _wants_structure(builder):
+    """Whether `builder` is collecting a tree rather than text.
+
+    The protocol has no flag for this, and adding one would mean changing `core` for the
+    sake of one scheme. It does not need one: the two builders already answer the question
+    by what they hand back. `AstBuilder` returns `Node`s and `SpellingBuilder` returns
+    `Spelling`s, so asking either for the cheapest thing it makes says which it is.
+
+    A builder this module has never seen -- a third-party one emitting JSON, say -- gets
+    text unless its products are `Node`s, because text is the answer every builder can
+    use and a tree of this scheme's nodes is not.
+    """
+    cls = type(builder)
+    answer = _STRUCTURED.get(cls)
+    if answer is None:
+        answer = _STRUCTURED[cls] = isinstance(builder.raw(""), Node)
+    return answer
+
+
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     """Parse an MSVC decorated name into `builder`."""
     if not detect(mangled):
@@ -75,14 +103,24 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         if hashed is None:
             raise ParseError(mangled, None, "unterminated MD5-hashed name")
         return builder.raw(hashed)
+    if _wants_structure(builder):
+        tree = parse_msvc_symbol(mangled)
+        if tree is None:
+            raise ParseError(mangled, None, "not a decorated name this demangler can read")
+        _check_length(mangled, tree.spell(), limits)
+        return tree
     expanded = demangle_msvc_symbol(mangled)
     if expanded == mangled:
         raise ParseError(mangled, None, "not a decorated name this demangler can read")
-    if len(expanded) > limits.max_output:
+    _check_length(mangled, expanded, limits)
+    return builder.raw(expanded)
+
+
+def _check_length(mangled, spelled, limits):
+    if len(spelled) > limits.max_output:
         from ...core.errors import LimitExceeded
 
         raise LimitExceeded(mangled, "output length", limits.max_output)
-    return builder.raw(expanded)
 
 
 PLUGIN = LanguagePlugin(

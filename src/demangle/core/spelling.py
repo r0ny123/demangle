@@ -102,13 +102,16 @@ class SpellingBuilder(Builder):
     Stateless, so one instance is shared by every parse rather than allocated per name.
     """
 
-    __slots__ = ("legacy_angle_spacing",)
+    __slots__ = ("gnu_clone_suffix", "legacy_angle_spacing")
 
-    def __init__(self, legacy_angle_spacing=False):
+    def __init__(self, legacy_angle_spacing=False, gnu_clone_suffix=False):
         #: Write `Foo<Bar<int> >` rather than `Foo<Bar<int>>`. Required before C++11,
         #: when `>>` at the end of a template-id lexed as a right-shift operator. GNU
         #: c++filt still prints it; llvm-cxxfilt does not. Neither is wrong.
         self.legacy_angle_spacing = legacy_angle_spacing
+        #: Write a clone suffix as `[clone .cold]` rather than `(.cold)`. GNU c++filt
+        #: does the former, llvm-cxxfilt the latter.
+        self.gnu_clone_suffix = gnu_clone_suffix
 
     # -- leaves ----------------------------------------------------------------
 
@@ -227,7 +230,7 @@ class SpellingBuilder(Builder):
     def decorated(self, inner, decoration):
         from .decorations import describe
 
-        return Spelling(inner.spell() + describe(decoration))
+        return Spelling(inner.spell() + describe(decoration, self.gnu_clone_suffix))
 
     # -- inspection ------------------------------------------------------------
 
@@ -239,4 +242,4 @@ class SpellingBuilder(Builder):
 #: call rather than being allocated per name. Parsers take a builder argument rather
 #: than reaching for these; the API layer selects one per requested style.
 SPELLING_BUILDER = SpellingBuilder()
-LEGACY_SPELLING_BUILDER = SpellingBuilder(legacy_angle_spacing=True)
+LEGACY_SPELLING_BUILDER = SpellingBuilder(legacy_angle_spacing=True, gnu_clone_suffix=True)

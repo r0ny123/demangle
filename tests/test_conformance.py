@@ -17,20 +17,28 @@ from demangle.core.errors import DemanglingError
 from .conftest import load_corpus
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42 on the checked-in corpora.
-ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 196, 196
-ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 196, 195
+ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 278, 278
+ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 275, 272
 MSVC_TOTAL, MSVC_EXACT = 609, 609
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 RUST_TOTAL, RUST_EXACT = 5316, 5316
 
-# The one GNU shortfall is not ours to fix. For
-# `_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_` the two references
-# disagree about the substitution table itself, not about spelling: llvm-cxxfilt
-# resolves `S4_` to `outer::inner::Holder<int, 3>` and GNU c++filt to `int`, meaning
-# GNU numbers one fewer entry for a template-template-parameter application. Matching
-# both would require two incompatible parses of the same bytes, so we follow LLVM.
-GNU_SUBSTITUTION_DIVERGENCE = "_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_"
+# The GNU shortfalls are not ours to fix: in each, the two references disagree about
+# what goes in the substitution table, not about how to spell it. Matching both would
+# mean two incompatible parses of the same bytes, so we follow LLVM and pin the
+# disagreements by name -- a count alone would let one be traded for a new defect.
+GNU_DIVERGENCES = [
+    # llvm-cxxfilt resolves `S4_` to `outer::inner::Holder<int, 3>` and c++filt to
+    # `int`: GNU records one fewer entry for a template-template-parameter application.
+    "_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_",
+    # Inside a requires-clause, llvm records the template parameter symbolically (`T`)
+    # and GNU records the argument bound to it.
+    "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
+    # A generic lambda's `operator()`: llvm resolves the back-reference to the lambda's
+    # declared parameter, GNU to the argument `operator()` was instantiated with.
+    "_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_",
+]
 
 
 def _score(corpus, style, language=None):
@@ -81,11 +89,8 @@ def test_rust_matches_rustc_demangle():
     assert (total, exact) == (RUST_TOTAL, RUST_EXACT)
 
 
-def test_gnu_shortfall_is_only_the_known_reference_divergence():
-    """Pin *which* name fails under GNU, not merely how many.
-
-    A count alone would let this failure be traded for a different one silently.
-    """
+def test_gnu_shortfalls_are_only_the_known_reference_divergences():
+    """Pin *which* names fail under GNU, not merely how many."""
     failing = []
     for mangled, expected in load_corpus("itanium-real-world-gnu.txt"):
         try:
@@ -95,7 +100,7 @@ def test_gnu_shortfall_is_only_the_known_reference_divergence():
             continue
         if got != expected:
             failing.append(mangled)
-    assert failing == [GNU_SUBSTITUTION_DIVERGENCE]
+    assert failing == GNU_DIVERGENCES
 
 
 @pytest.mark.parametrize(
