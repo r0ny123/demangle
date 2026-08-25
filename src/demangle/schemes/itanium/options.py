@@ -40,6 +40,14 @@ class ItaniumOptions:
     parenthesised.
     """
 
+    symbolic_constraint_parameters: bool = True
+    """Spell a template parameter inside a requires-clause by name rather than by value.
+
+    llvm-cxxfilt prints `T` where GNU c++filt substitutes the bound argument. The clause
+    itself is never printed, but it contributes entries to the substitution table that
+    the signature refers back to, so the choice is visible in the output.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -54,4 +62,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_closure_spelling=True,
     local_name_return_type=False,
     gnu_expression_spelling=True,
+    symbolic_constraint_parameters=False,
 )

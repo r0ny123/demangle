@@ -1,8 +1,22 @@
 """Demangling for MSVC decorated symbol names."""
 
-import re
 import string
 from functools import lru_cache
+
+from .nodes import (
+    Array,
+    Declaration,
+    FunctionType,
+    Indirection,
+    Name,
+    Raw,
+    apply_qualifiers,
+    is_member_function_pointer,
+    merge_qualifiers,
+    prefixed,
+    qualify_declared,
+    render,
+)
 
 _BASIC_TYPES = {
     "X": "void",
@@ -199,130 +213,6 @@ _POINTER_KINDS = {"P": (), "Q": ("const",), "R": ("volatile",), "S": ("const", "
 _MEMBER_DATA_QUALS = {"Q": (), "R": ("const",), "S": ("volatile",), "T": ("const", "volatile")}
 _CV_QUALS = {"A": (), "B": ("const",), "C": ("volatile",), "D": ("const", "volatile")}
 _CV = {"A": "", "B": " const", "C": " volatile", "D": " const volatile"}
-_MEMBER_POINTER_RE = re.compile(r"^[^()]*::\*")
-
-
-def _base(text):
-    return ("base", text)
-
-
-def _indirection(symbol, quals, inner):
-    return ("ind", symbol, quals, inner)
-
-
-def _array(dims, inner):
-    return ("array", dims, inner)
-
-
-def _function(convention, params, returns, member_cv=""):
-    return ("func", convention, params, returns, member_cv)
-
-
-def _render(node, declarator="", declarator_is_function=False):
-    """Spell a type around a declarator, the way C nests one inside the other.
-
-    A pointer or array binds to the declarator built so far, and a name therefore ends up
-    *inside* its type: `int (*j)[2]`, not `int (*)[2] j`.
-    """
-    kind = node[0]
-    if kind == "base":
-        if not declarator:
-            return node[1]
-        if declarator.startswith("["):
-            return node[1] + declarator
-        # the reference spaces a declarator off a type ending in an alphanumeric character
-        # or a template's ">", and abuts it to anything else: "struct S *" but "struct S_*"
-        # and "enum <unnamed-type-*"
-        tail = node[1][-1:]
-        sigil = declarator.startswith(("*", "&"))
-        abuts = sigil and not (tail == ">" or (tail.isascii() and tail.isalnum()))
-        return node[1] + ("" if abuts else " ") + declarator
-    if kind == "ind":
-        token = node[1] + " ".join(node[2])
-        # a nested *function* declarator is separated from the sigil - "int * (__cdecl *)()"
-        # - while a parenthesised pointer declarator abuts it: "int (*(*a)[20])()"
-        nested_function = declarator_is_function and not declarator.startswith(("*", "&", "(*", "(&"))
-        separator = " " if declarator and not declarator.startswith("[") and (node[2] or nested_function) else ""
-        return _render(node[3], token + separator + declarator)
-    if kind == "array":
-        if declarator.startswith(("*", "&")):
-            declarator = f"({declarator})"
-        return _render(node[2], declarator + node[1])
-    convention, params, returns, member_cv = node[1], node[2], node[3], node[4]
-    if not convention and not declarator.startswith(("*", "&")) and not _MEMBER_POINTER_RE.match(declarator):
-        # a convention spelled with nothing leaves a named declarator alone, while a pointer
-        # keeps its parentheses and the space the convention would have filled: "int ( *)()"
-        return _render(returns, f"{declarator}({params}){member_cv}", True)
-    # a member-pointer declarator is "Owner::*", possibly qualified; the test is anchored so
-    # that a nested type's own "::*" - which a rendered parameter may hold - does not count
-    if declarator.startswith(("*", "&")) or _MEMBER_POINTER_RE.match(declarator):
-        # an attribute-spelled convention carries a space of its own here, so a pointer to a
-        # __swiftcall function reads "int (__attribute__((__swiftcall__))  *j)(int)"
-        gap = "  " if convention.startswith("__attribute__") else " "
-        declarator = f"({convention}{gap}{declarator})"
-    else:
-        declarator = f"{convention} {declarator}" if declarator else convention
-    return _render(returns, f"{declarator}({params}){member_cv}", True)
-
-
-def _spelled_after(convention, text):
-    """Join a calling convention to what follows it, skipping the ones spelled with nothing."""
-    return f"{convention} {text}" if convention else text
-
-
-def _merge(left, right):
-    # "__unaligned" travels with const and volatile: a pointer that points at an unaligned
-    # pointer keeps it - "int __unaligned *__unaligned *"
-    merged = [qual for qual in ("const", "volatile", "__unaligned") if qual in left or qual in right]
-    return tuple(merged)
-
-
-def _apply_quals(node, quals):
-    """Qualify a named type, as a pointee qualifier or a $$C wrapper does.
-
-    Only ever reached with a base node: an indirection merges its qualifiers as it is built,
-    and a back-reference declines rather than accept one.
-    """
-    return _base(f"{node[1]} {' '.join(quals)}") if quals else node
-
-
-def _isMemberFunctionPointer(node):
-    return node[0] == "ind" and node[1].endswith("::*") and node[3][0] == "func"
-
-
-def _qualifyDeclared(node, quals):
-    """Place a data symbol's trailing qualifier on what the symbol declares.
-
-    It belongs one level inside an outermost pointer rather than on the pointer -
-    "?s@@3PADB" is "char const *s" and "?s@@3PAPADB" is "char *const *s" - and an array
-    passes it on to its element, the way C spells one: "?arr@@3QAY01HB" is
-    "int const (*const arr)[2]".
-    """
-    if not quals:
-        return node
-    if node[0] == "ind":
-        return _indirection(node[1], node[2], _qualifyElement(node[3], quals))
-    return _qualifyElement(node, quals)
-
-
-def _qualifyElement(node, quals):
-    if node[0] == "array":
-        return _array(node[1], _qualifyElement(node[2], quals))
-    return _qualify(node, quals)
-
-
-def _qualify(node, quals):
-    """Add qualifiers to a parsed type, wherever that type keeps them.
-
-    A named type spells them in its text; a pointer or reference carries its own, so they
-    join those instead of being appended to a rendering that already placed the sigil.
-    """
-    if node[0] == "ind":
-        return _indirection(node[1], _merge(node[2], quals), node[3])
-    # a named type spells its qualifiers in its own text, so one it already carries must not
-    # be spelled twice: "?s@@3QBDD" is "char const volatile *const", not "char const const .."
-    spelled = node[1].split()
-    return _apply_quals(node, tuple(qual for qual in quals if qual not in spelled))
 
 
 class _Conversion:
@@ -580,7 +470,7 @@ class _Demangler:
         inner.arg_backrefs = self.arg_backrefs
         inner.at_symbol_name = True
         inner.depth = self.depth
-        rendered = inner.parse()
+        rendered = render(inner.parse())
         self.pos = inner.pos if leading_question else self.pos + inner.pos - 1
         return rendered
 
@@ -767,13 +657,13 @@ class _Demangler:
         """
         char = self.take()
         if char in _BASIC_TYPES:
-            return _apply_quals(_base(_BASIC_TYPES[char]), quals)
+            return apply_qualifiers(Raw(_BASIC_TYPES[char]), quals)
         if char == "_":
             name = _EXTENDED_TYPES.get(self.take())
             if name is None:
                 raise _Bail
             self.simple = False
-            return _apply_quals(_base(name), quals)
+            return apply_qualifiers(Raw(name), quals)
         if char in _TAGGED_TYPES:
             kind = _TAGGED_TYPES[char]
             if kind == "enum":
@@ -782,11 +672,11 @@ class _Demangler:
             if special_form is not None:
                 raise _Bail
             self.simple = False
-            return _apply_quals(_base(f"{kind} {name}"), quals)
+            return apply_qualifiers(Raw(f"{kind} {name}"), quals)
         if char == "Y":
             return self.arrayType(quals)
         if char in _POINTER_KINDS:
-            return self.indirection(_merge(_POINTER_KINDS[char], quals), "*")
+            return self.indirection(merge_qualifiers(_POINTER_KINDS[char], quals), "*")
         if char == "A":
             if quals:
                 raise _Bail
@@ -807,11 +697,11 @@ class _Demangler:
             # "?A?<decltype-auto>@@" is the deduced return of a function declared with it
             placeholder = self.identifier()
             self.expect("@")
-            return _apply_quals(_base(placeholder), quals)
+            return apply_qualifiers(Raw(placeholder), quals)
         raise _Bail
 
     def rendered(self, node, declarator=""):
-        text = _render(node, declarator)
+        text = render(node, declarator)
         if len(text) > self.max_render:
             raise _Bail
         return text
@@ -828,14 +718,19 @@ class _Demangler:
         if count == 0:
             raise _Bail
         # an extent of nothing is spelled with nothing: "$$BY0A@H" is "int[]"
-        dims = "".join(f"[{extent or ''}]" for extent in (self.dimension() for _ in range(count)))
+        extents = [self.dimension() for _ in range(count)]
         self.array_element_depth += 1
         try:
             element = self.type(quals)
         finally:
             self.array_element_depth -= 1
         self.simple = False
-        return _array(dims, element)
+        # the extents are written as one run and spelled as one run, but each is a dimension
+        # in its own right - "int[2][3]" is two arrays of three - so they nest rather than
+        # sitting in a single node as text
+        for extent in reversed(extents):
+            element = Array(element, str(extent) if extent else "")
+        return element
 
     def templateInteger(self):
         """The integer a "$0" template argument carries.
@@ -870,7 +765,7 @@ class _Demangler:
             # "??$f@VBar@@$1?x@0@3HA@@YAXXZ" resolves its 0 to f rather than to Bar
             prefix = "&" if self.take() == "1" else ""
             self.simple = False
-            return _base(prefix + self.nestedSymbol())
+            return Raw(prefix + self.nestedSymbol())
         if self.peek() == "0":
             if not at_argument:
                 # an integer is an argument, not a type: it stands where an argument stands
@@ -878,7 +773,7 @@ class _Demangler:
                 raise _Bail
             self.take()
             self.simple = False
-            return _base(self.templateInteger())
+            return Raw(self.templateInteger())
         if not self.eat("$"):
             raise _Bail
         if self.eat("B"):
@@ -892,7 +787,7 @@ class _Demangler:
         if self.eat("Y"):
             # an alias template is named rather than described
             self.simple = False
-            return _base(self.qualifiedName()[0])
+            return Raw(self.qualifiedName()[0])
         kind = self.take()
         if kind == "Q":
             return self.indirection(quals, "&&")
@@ -905,10 +800,10 @@ class _Demangler:
             extra = _CV_QUALS.get(self.take())
             if extra is None:
                 raise _Bail
-            return self.type(_merge(extra, quals))
+            return self.type(merge_qualifiers(extra, quals))
         if kind == "T":
             self.simple = False
-            return _apply_quals(_base("std::nullptr_t"), quals)
+            return apply_qualifiers(Raw("std::nullptr_t"), quals)
         if kind == "A":
             return self.functionTypeArgument()
         raise _Bail
@@ -962,7 +857,7 @@ class _Demangler:
                 self.pointee_depth = saved_pointee_depth
             self.expect("Z")
             self.simple = False
-            return _indirection(token, own_quals, _function(convention, params, returns))
+            return Indirection(token, own_quals, FunctionType(convention, params, returns))
         pointee_quals = _CV_QUALS.get(self.take())
         if pointee_quals is None:
             raise _Bail
@@ -973,7 +868,7 @@ class _Demangler:
         finally:
             self.pointee_depth -= 1
         self.simple = False
-        return _indirection(token, own_quals, pointee)
+        return Indirection(token, own_quals, pointee)
 
     def memberDataPointer(self, own_quals, token, unaligned=()):
         """A pointer to data member: the class qualifies the declarator, as it does a method.
@@ -992,7 +887,7 @@ class _Demangler:
             raise _Bail
         member = self.type(member_quals)
         self.simple = False
-        return _indirection(f"{owner}::{token}", own_quals, member)
+        return Indirection(f"{owner}::{token}", own_quals, member)
 
     def memberFunctionPointer(self, own_quals, token):
         """A pointer to member function: "P8" and the class it points into.
@@ -1015,7 +910,7 @@ class _Demangler:
             self.pointee_depth = saved_pointee_depth
         self.expect("Z")
         self.simple = False
-        return _indirection(f"{owner}::{token}", own_quals, _function(convention, params, returns, member_cv))
+        return Indirection(f"{owner}::{token}", own_quals, FunctionType(convention, params, returns, member_cv))
 
     def functionTypeArgument(self):
         """A function type written as a template argument: "$$A6", or "$$A8" with a qualifier.
@@ -1038,7 +933,7 @@ class _Demangler:
         returns = self.returnType()
         params = self.parameters()
         self.expect("Z")
-        return _function(convention, params, returns, member_cv)
+        return FunctionType(convention, params, returns, member_cv)
 
     def memberQualifiers(self):
         """What a member function may carry after its parameters: cv, __restrict, a ref.
@@ -1072,10 +967,14 @@ class _Demangler:
     def parameters(self):
         """A parameter list, recording each composite parameter for later back-references.
 
-        A trailing Z before the terminator marks a variadic list.
+        A trailing Z before the terminator marks a variadic list. Each parameter is kept as
+        the type it is rather than as its spelling, so a caller can ask what a function
+        takes; the spelling is still produced here, because rendering is what refuses a
+        name whose parameters expand past the output bound, and a back-reference repeated
+        across a parameter list expands multiplicatively.
         """
         if self.eat("X"):
-            return "void"
+            return (Raw("void"),)
         params = []
         while True:
             if self.eof():
@@ -1086,20 +985,23 @@ class _Demangler:
                 if not params:
                     raise _Bail
                 self.take()
-                params.append("...")
+                params.append(Raw("..."))
                 break
             if self.peek() in string.digits:
                 index = int(self.take())
                 if index >= len(self.arg_backrefs):
                     raise _Bail
-                params.append(self.rendered(self.arg_backrefs[index]))
+                node = self.arg_backrefs[index]
+                self.rendered(node)
+                params.append(node)
                 continue
             self.simple = True
             node = self.type()
             if not self.simple and len(self.arg_backrefs) < 10:
                 self.arg_backrefs.append(node)
-            params.append(self.rendered(node))
-        return ", ".join(params)
+            self.rendered(node)
+            params.append(node)
+        return tuple(params)
 
     def parse(self):
         self.expect("?")
@@ -1109,13 +1011,13 @@ class _Demangler:
         name, has_no_return_type, special_form = self.qualifiedName()
         if special_form == "descriptor":
             # it is the whole name: what it describes has already been read
-            return name
+            return Raw(name)
         if special_form == "rtti":
             # these three are written with one storage class and nothing else
             self.expect("8")
             if not self.nested and not self.eof():
                 raise _Bail
-            return name
+            return Raw(name)
         if special_form == "guard":
             # a guard is written with one storage class and a number, which counts the
             # static it guards within its function and is left out when it is the first
@@ -1123,7 +1025,7 @@ class _Demangler:
             counted = self.templateInteger()
             if not self.nested and not self.eof():
                 raise _Bail
-            return name if counted == "0" else f"{name}{{{counted}}}"
+            return Raw(name if counted == "0" else f"{name}{{{counted}}}")
         if self.eof():
             raise _Bail
         char = self.peek()
@@ -1139,7 +1041,7 @@ class _Demangler:
             self.take()
             if not self.nested and not self.eof():
                 raise _Bail
-            return f'extern "C" {name}'
+            return Raw(f'extern "C" {name}')
         if (special_form == "data") != (char in "67"):
             raise _Bail
         if self.requires_signature and char not in "Y$" and char not in _FUNCTION_ACCESS:
@@ -1159,21 +1061,21 @@ class _Demangler:
             if not self.nested and not self.eof():
                 raise _Bail
             spelled = f"{qualifier.strip()} {name}".strip()
-            return f"{spelled}{{for `{base}'}}" if base else spelled
+            return Raw(f"{spelled}{{for `{base}'}}" if base else spelled)
         if char in _DATA_ACCESS:
             self.take()
             self.simple = True
             declared = self.type()
             # a pointer into a class spells its own storage the long way, below; the short
             # forms are for everything else
-            points_into_class = declared[0] == "ind" and declared[1].endswith("::*")
+            points_into_class = declared.kind == "indirection" and declared.points_into_class
             # __ptr64 and __restrict stand in front of the qualifier, and only where
             # something is pointed at: "?s@@3PEAHEA" is a name and "?s@@3HEA" is not
             trailing = self.take()
             restrict = ()
             seen = set()
             while trailing in ("E", "I"):
-                if declared[0] != "ind" or trailing in seen:
+                if declared.kind != "indirection" or trailing in seen:
                     raise _Bail
                 seen.add(trailing)
                 if trailing == "I":
@@ -1191,24 +1093,32 @@ class _Demangler:
                 raise _Bail
             if not self.nested and not self.eof():
                 raise _Bail
-            if restrict and "__restrict" not in declared[2]:
+            if restrict and "__restrict" not in declared.qualifiers:
                 # it qualifies the pointer, not what is pointed at, and is written once
                 # however many times it is spelled: "?h3@@3QIAHIA" is "int *const __restrict"
-                declared = _indirection(declared[1], declared[2] + restrict, declared[3])
-            if member_quals and _isMemberFunctionPointer(declared):
+                declared = Indirection(declared.sigil, declared.qualifiers + restrict, declared.inner)
+            if member_quals and is_member_function_pointer(declared):
                 # a member function keeps its qualifier after the parameters, not on what
                 # the pointer points at, so this one joins the function rather than the type
-                function = declared[3]
+                function = declared.inner
                 trailing_cv = "".join(f" {qual}" for qual in member_quals)
-                declared = _indirection(
-                    declared[1],
-                    declared[2],
-                    _function(function[1], function[2], function[3], function[4] + trailing_cv),
+                declared = Indirection(
+                    declared.sigil,
+                    declared.qualifiers,
+                    FunctionType(
+                        function.convention,
+                        function.parameters,
+                        function.returns,
+                        function.member_cv + trailing_cv,
+                    ),
                 )
             else:
-                declared = _qualifyDeclared(declared, member_quals)
-            return f"{_DATA_ACCESS[char]}{self.rendered(declared, name)}"
-        return extern_c + self.function(name, has_no_return_type, special_form == "vcall")
+                declared = qualify_declared(declared, member_quals)
+            # rendering the declaration here is what refuses one grown past the output
+            # bound; the tree it is built from is what the caller is handed
+            self.rendered(declared, name)
+            return Declaration(_DATA_ACCESS[char], Name(name), declared)
+        return prefixed(extern_c, self.function(name, has_no_return_type, special_form == "vcall"))
 
     def stringLiteral(self):
         """The literal a "??_C" name stands for, spelled the way the reference spells it.
@@ -1273,7 +1183,7 @@ class _Demangler:
             self.expect("A")
             if not self.nested and not self.eof():
                 raise _Bail
-            return f"[thunk]: __cdecl {name}{{{slot}, {{flat}}}}"
+            return Raw(f"[thunk]: __cdecl {name}{{{slot}, {{flat}}}}")
         if code == "R":
             access = _VTORDISP_ACCESS.get(self.take())
             if access is None:
@@ -1300,12 +1210,12 @@ class _Demangler:
             raise _Bail
         written = ", ".join(str(value) for value in displacements)
         spelled = f"{name}`{kind}{{{written}}}'"
-        body = (
-            _spelled_after(convention, f"{spelled}({params})")
-            if returns is None
-            else self.rendered(_function(convention, params, returns), spelled)
-        )
-        return f"[thunk]: {access}: virtual {body}{self.member_cv}"
+        signature = FunctionType(convention, params, returns)
+        if returns is not None:
+            # the bound is enforced where a spelling is completed; the form that writes no
+            # return type has nothing wrapped around its parameters to grow one
+            self.rendered(signature, spelled)
+        return Declaration(f"[thunk]: {access}: virtual ", Name(spelled), signature, self.member_cv)
 
     def function(self, name, has_no_return_type, is_vcall=False):
         access_char = self.take()
@@ -1358,18 +1268,20 @@ class _Demangler:
             if returns is None:
                 raise _Bail
             name = name.replace("\0conversion\0", f"operator {self.rendered(returns)}")
-        if returns is None:
-            pieces.append(_spelled_after(convention, f"{name}({params})"))
-        else:
-            pieces.append(self.rendered(_function(convention, params, returns), name))
-        if access and not is_static:
-            pieces.append(self.member_cv)
-        return "".join(pieces)
+        signature = FunctionType(convention, params, returns)
+        if returns is not None:
+            # as in thunkBody: completing the spelling is what refuses one past the bound
+            self.rendered(signature, name)
+        trailing = self.member_cv if access and not is_static else ""
+        return Declaration("".join(pieces), Name(name), signature, trailing)
 
 
-@lru_cache(maxsize=4096)
-def demangle_msvc_symbol(name):
-    """Return a readable C++ name, or the original when it is not fully understood.
+def parse_msvc_symbol(name):
+    """Return the tree behind a decorated name, or None when it is not fully understood.
+
+    None rather than an exception: which names this demangler declines is a property of
+    the grammar it covers, not an error condition, and every caller here has to answer
+    for a name it cannot read anyway.
 
     A name carrying a control character is refused outright: a decorated name is read from a
     NUL-terminated string of source-legal characters and cannot hold one, and an expansion
@@ -1377,10 +1289,23 @@ def demangle_msvc_symbol(name):
     the answer verbatim, so testing the input is what keeps the answer clean.
     """
     if not name or not name.startswith("?"):
-        return name
+        return None
     if any(char < " " or char == "\x7f" for char in name):
-        return name
+        return None
     try:
         return _Demangler(name).parse()
     except (_Bail, RecursionError):
-        return name
+        return None
+
+
+@lru_cache(maxsize=4096)
+def demangle_msvc_symbol(name):
+    """Return a readable C++ name, or the original when it is not fully understood.
+
+    Cached, because this is the call a symbol table makes hundreds of thousands of times
+    and one binary names the same type over and over. The tree is not cached with it: a
+    caller that wants structure asks for it directly and is not repeating itself the way
+    a caller labelling symbols is.
+    """
+    tree = parse_msvc_symbol(name)
+    return name if tree is None else render(tree)

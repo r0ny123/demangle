@@ -74,9 +74,11 @@ class ItaniumParser:
         "_ctor_dtor",
         "_depth",
         "_drop_return",
+        "_in_constraint",
         "_mangled",
         "_naming",
         "_packs",
+        "_parameter_counts",
         "_precedence",
         "_scope_has_pack",
         "builder",
@@ -133,6 +135,11 @@ class ItaniumParser:
         # printing one would double it. With no pack in scope the expansion is
         # unexpanded and the ellipsis is the whole point.
         self._scope_has_pack = False
+        # Per-kind counters for the synthetic `$T` / `$N` / `$TT` names a generic
+        # lambda's declared template parameters are spelled with.
+        self._parameter_counts = {}
+        # True while reading a requires-clause, where parameters are spelled by name.
+        self._in_constraint = False
 
     # -- recursion control -----------------------------------------------------
 
@@ -160,9 +167,15 @@ class ItaniumParser:
         result = self.encoding()
 
         if not reader.eof:
-            # Clone and version suffixes are stripped by the API before a parser sees
-            # the name (see core/decorations.py), so anything left here really is junk.
-            raise ParseError(self._mangled, reader.pos, f"unconsumed input {reader.remaining!r}")
+            suffix = reader.remaining
+            # A clone suffix -- `.cold`, `.part.0`, `.llvm.<hash>`, a coroutine's
+            # `.actor` -- can only be identified here, as what the grammar could not
+            # consume. It cannot be split off in advance: a `.` also occurs *inside*
+            # identifiers, notably in the frame types Clang synthesises for coroutines.
+            if suffix.startswith("."):
+                result = self.builder.decorated(result, suffix)
+            else:
+                raise ParseError(self._mangled, reader.pos, f"unconsumed input {suffix!r}")
 
         rendered_length = len(self.builder.spell(result))
         if rendered_length > self.limits.max_output:
@@ -422,6 +435,20 @@ class ItaniumParser:
             reader.take()
             return False
 
+        if char == "Q":
+            # A C++20 requires-clause, `Q <constraint-expression>`. It constrains the
+            # template but is not part of its name, and neither reference demangler
+            # prints it -- so it is parsed for its side effects on the substitution
+            # table and otherwise discarded. Newer than the grammar snapshot in
+            # docs/specs/.
+            reader.take()
+            self._in_constraint = True
+            try:
+                self.expression()
+            finally:
+                self._in_constraint = False
+            return False
+
         component = self.unqualified_name(scope=parts)
         parts.append(component)
         if reader.peek() != "E":
@@ -458,12 +485,13 @@ class ItaniumParser:
             try:
                 entity_is_type = as_type or reader.peek() == "U"
                 inner, quals, ref_qualifier, is_template = self.name()
+                combined = builder.qualified([outer, inner])
                 if not entity_is_type and not reader.eof and reader.peek() not in "E_":
-                    inner = self.bare_function_type(inner, quals, ref_qualifier, is_template)
+                    combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             finally:
                 self._naming = outer_naming
                 self.targs.restore(outer_scope)
-            return builder.qualified([outer, inner])
+            return combined
 
         reader.expect("E")
 
@@ -480,13 +508,18 @@ class ItaniumParser:
             # signature and the substitution table is a parameter short from then on.
             entity_is_type = as_type or reader.peek() == "U"
             inner, quals, ref_qualifier, is_template = self.name()
+            # The signature is applied to the *combined* name, not to the entity alone:
+            # a return type belongs at the front of the whole declaration, so a generic
+            # lambda's `operator()` reads `auto f()::'lambda'<...>::operator()(...)` and
+            # not `f()::auto 'lambda'...`.
+            combined = builder.qualified([outer, inner])
             if not entity_is_type and not reader.eof and reader.peek() not in "E_":
-                inner = self.bare_function_type(inner, quals, ref_qualifier, is_template)
+                combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             self.discriminator()
         finally:
             self._naming = outer_naming
             self.targs.restore(outer_scope)
-        return builder.qualified([outer, inner])
+        return combined
 
     def discriminator(self):
         """<discriminator> ::= _ <non-negative number> | __ <number> _
@@ -629,19 +662,34 @@ class ItaniumParser:
             return self.builder.raw(f"'unnamed{index}'")
 
         if reader.eat("l"):
-            parameters = []
-            while not reader.eat("E"):
-                if reader.eof:
-                    raise ParseError(self._mangled, reader.pos, "unterminated lambda signature")
-                parameters.append(self.builder.spell(self.type_()))
+            # A generic lambda declares its template parameters first, and they become
+            # the `T_` scope its own signature is written against.
+            declarations = []
+            saved_counts = self._parameter_counts
+            saved_scope = self.targs.snapshot()
+            self._parameter_counts = {}
+            try:
+                while reader.peek2() in _PARAMETER_DECLARATIONS:
+                    binding, declaration = self.template_param_decl()
+                    declarations.append(declaration)
+                    self.targs.add(self.builder.raw(binding))
+                parameters = []
+                while not reader.eat("E"):
+                    if reader.eof:
+                        raise ParseError(self._mangled, reader.pos, "unterminated lambda signature")
+                    parameters.append(self.builder.spell(self.type_()))
+            finally:
+                self._parameter_counts = saved_counts
+                self.targs.restore(saved_scope)
+            template_header = f"<{', '.join(declarations)}>" if declarations else ""
             if parameters == ["void"]:
                 parameters = []
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.expect("_")
             if self.options.gnu_closure_spelling:
                 number = int(index) + 2 if index else 1
-                return self.builder.raw(f"{{lambda({', '.join(parameters)})#{number}}}")
-            return self.builder.raw(f"'lambda{index}'({', '.join(parameters)})")
+                return self.builder.raw(f"{{lambda{template_header}({', '.join(parameters)})#{number}}}")
+            return self.builder.raw(f"'lambda{index}'{template_header}({', '.join(parameters)})")
 
         raise ParseError(self._mangled, reader.pos, "unknown unnamed-type-name")
 
@@ -713,14 +761,35 @@ class ItaniumParser:
         return self.subs.lookup(reader.seq_id())
 
     def template_param(self):
-        """<template-param> ::= T_ | T <parameter-2 non-negative number> _"""
+        """<template-param> ::= T_ | T <parameter-2 non-negative number> _
+                              | TL <level> _ [<parameter-2 non-negative number>] _
+
+        The `TL` form names a parameter of an enclosing template by level as well as by
+        index, which Clang emits inside the constraints of a nested template. It is
+        newer than the grammar snapshot in docs/specs/.
+        """
         reader = self.reader
         reader.expect("T")
+
+        if reader.eat("L"):
+            reader.digits()
+            reader.expect("_")
+            level_index = reader.integer(allow_negative=False) + 1 if reader.peek() != "_" else 0
+            reader.expect("_")
+            return self._symbolic_parameter(level_index)
+
         # Tp/Ts mark a pack expansion of the parameter; the pack was recorded as one
         # argument, so the marker only needs consuming.
         reader.eat("p") or reader.eat("s")
         index = 0 if reader.peek() == "_" else reader.integer(allow_negative=False) + 1
         reader.expect("_")
+
+        if self._in_constraint and self.options.symbolic_constraint_parameters:
+            # Inside a requires-clause the references spell a parameter symbolically --
+            # `T`, `T0` -- rather than substituting the argument bound to it. The clause
+            # itself is not printed, but the entry it adds to the substitution table is
+            # referred to from the signature, so the spelling matters.
+            return self._symbolic_parameter(index)
         bound = self.targs.lookup(index)
         if bound is not None:
             return bound
@@ -728,6 +797,10 @@ class ItaniumParser:
         # name may legitimately reference one we do not know yet. The reference
         # demanglers spell that `auto`.
         return self.builder.raw("auto")
+
+    def _symbolic_parameter(self, index):
+        """A template parameter spelled by name rather than by the argument bound to it."""
+        return self.builder.raw("T" + ("" if index == 0 else str(index - 1)))
 
     def decltype_(self):
         """<decltype> ::= Dt <expression> E | DT <expression> E"""
@@ -902,31 +975,36 @@ class ItaniumParser:
         if pair == "Dv":
             return self.subs.remember(self.vector_type(), "type")
 
+        # <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx] F ... E, so an
+        # exception specification introduces a function type rather than wrapping one.
+        # Spelling it around the result instead loses the declarator: a pointer to a
+        # `void () noexcept` would come out `void () noexcept*` rather than
+        # `void (*)() noexcept`.
         if pair == "Do":
-            # A noexcept function type.
             reader.pos += 2
-            inner = self.type_()
-            return self.subs.remember(builder.raw(builder.spell(inner) + " noexcept"), "type")
+            return self.subs.remember(self.function_type(" noexcept"), "type")
 
         if pair == "DO":
-            # An explicit dynamic exception specification.
+            # throw(<expression>)
             reader.pos += 2
-            self.expression()
+            condition = self.expression()
             reader.expect("E")
-            return self.type_()
+            return self.subs.remember(self.function_type(f" throw({condition})"), "type")
 
         if pair == "Dw":
-            # A dynamic exception specification listing types.
+            # throw(<type>...)
             reader.pos += 2
+            thrown = []
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated throw specification")
-                self.type_()
-            return self.type_()
+                thrown.append(builder.spell(self.type_()))
+            return self.subs.remember(self.function_type(f" throw({', '.join(thrown)})"), "type")
 
         if pair == "Dx":
+            # A transaction-safe function type.
             reader.pos += 2
-            return self.type_()
+            return self.subs.remember(self.function_type(" transaction_safe"), "type")
 
         return None
 
@@ -951,10 +1029,16 @@ class ItaniumParser:
         name, _, _, _ = self.name(as_type=True)
         return name
 
-    def function_type(self):
-        """<function-type> ::= [<CV-qualifiers>] F [Y] <bare-function-type> [<ref-qualifier>] E"""
+    def function_type(self, exception_spec=""):
+        """<function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx] F [Y]
+                               <bare-function-type> [<ref-qualifier>] E
+
+        `exception_spec` is already-spelled text from the caller, which read it before
+        the `F` because that is where the grammar puts it.
+        """
         reader = self.reader
         builder = self.builder
+        reader.eat("Dx")  # a transaction-safe function
         reader.expect("F")
         reader.eat("Y")  # extern "C"
 
@@ -978,7 +1062,7 @@ class ItaniumParser:
 
         if len(parameters) == 1 and builder.spell(parameters[0]) == "void":
             parameters = []
-        return builder.function(returns, parameters, suffix)
+        return builder.function(returns, parameters, suffix + exception_spec)
 
     def array_type(self):
         """<array-type> ::= A [<number>] _ <type> | A <expression> _ <type>"""
@@ -1004,36 +1088,59 @@ class ItaniumParser:
     # -- 5.1.5.10 template arguments -------------------------------------------
 
     def template_param_decl(self):
-        """<template-param-decl> ::= Ty | Tk <concept> | Tn <type>
+        """<template-param-decl> ::= Ty | Tk <concept-name> | Tn <type>
                                    | Tt <template-param-decl>* E | Tp <template-param-decl>
 
-        A constrained or explicitly-declared template parameter. This production is
-        newer than the published grammar snapshot in docs/specs/ and is emitted by Clang
-        for constrained templates; both reference demanglers print nothing for it, since
-        it declares a parameter rather than supplying an argument. It still has to be
-        consumed, or everything after it is misread.
+        Declares a template parameter rather than supplying an argument. Newer than the
+        grammar snapshot in docs/specs/, and emitted by Clang for constrained templates
+        and for generic lambdas.
+
+        Returns `(binding, declaration)`. In an ordinary argument list both are
+        discarded -- the references print nothing there. In a generic lambda's signature
+        both are used: the lambda is spelled `'lambda'<typename $T>($T)`, so the
+        declaration is printed and `$T` is what `T_` resolves to inside it. The names
+        are numbered per kind, first unsuffixed: `$T`, `$T0`, `$T1`.
         """
         reader = self.reader
         pair = reader.peek2()
         reader.pos += 2
+
         if pair == "Ty":
-            return
+            binding = self._parameter_name("T")
+            return binding, f"typename {binding}"
         if pair == "Tk":
-            self.simple_id()
-            return
+            # A constrained parameter: the concept it must satisfy, then the parameter.
+            concept = self.builder.spell(self.name()[0])
+            binding = self._parameter_name("T")
+            return binding, f"{concept} {binding}"
         if pair == "Tn":
-            self.type_()
-            return
+            kind = self.builder.spell(self.type_())
+            binding = self._parameter_name("N")
+            return binding, f"{kind} {binding}"
         if pair == "Tp":
-            self.template_param_decl()
-            return
+            binding, declaration = self.template_param_decl()
+            return binding, f"{declaration}..."
         if pair == "Tt":
+            inner = []
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated template parameter list")
-                self.template_param_decl()
-            return
+                inner.append(self.template_param_decl()[1])
+            binding = self._parameter_name("TT")
+            return binding, f"template<{', '.join(inner)}> typename {binding}"
         raise ParseError(self._mangled, reader.pos, f"unknown template parameter declaration {pair!r}")
+
+    def _parameter_name(self, kind):
+        """The synthetic name for a declared parameter.
+
+        llvm-cxxfilt leaves the first unsuffixed -- `$T`, `$T0`, `$T1` -- while GNU
+        c++filt numbers from zero throughout: `$T0`, `$T1`.
+        """
+        index = self._parameter_counts.get(kind, 0)
+        self._parameter_counts[kind] = index + 1
+        if self.options.gnu_closure_spelling:
+            return f"${kind}{index}"
+        return f"${kind}" + ("" if index == 0 else str(index - 1))
 
     def template_arguments(self, install_scope=False):
         """<template-args> ::= I <template-arg>+ E
@@ -1104,6 +1211,17 @@ class ItaniumParser:
 
         if reader.peek2() in _PARAMETER_DECLARATIONS:
             self.template_param_decl()
+            return None, False
+
+        if reader.peek() == "Q":
+            # A requires-clause closing out an argument list. Parsed for its effect on
+            # the substitution table; neither reference prints it.
+            reader.take()
+            self._in_constraint = True
+            try:
+                self.expression()
+            finally:
+                self._in_constraint = False
             return None, False
 
         if reader.eat("X"):
@@ -1428,7 +1546,7 @@ class ItaniumParser:
 
         if pair == "cl":
             reader.pos += 2
-            target = self.expression_name() if reader.peek() in DIGITS else self.expression()
+            target = self.expression()
             if self.options.gnu_expression_spelling:
                 target = f"({target})"
             arguments = []
@@ -1551,6 +1669,13 @@ class ItaniumParser:
             self._precedence = binding
             gap = "" if self.options.gnu_expression_spelling else " "
             return f"{left}{gap}{INFIX_OPERATORS[pair]}{gap}{right}"
+
+        # A bare name here is an <unresolved-name>: the grammar says so, and it matters
+        # because a name in an expression creates no substitution entry while a <type>
+        # does. A constraint like `Q 5Sized I T_ E` must contribute the `T` its argument
+        # list mentions and nothing for `Sized` itself.
+        if reader.peek() in DIGITS:
+            return self.unresolved_name()
 
         # What remains that could open a type, is one: array bounds and non-type
         # template arguments both arrive here.
