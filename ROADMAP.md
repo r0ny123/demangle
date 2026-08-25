@@ -24,9 +24,3 @@ touching `core` at all.
 - Interning repeated components within one binary's symbol table.
 - A batch detection pass over a whole table, rather than name by name.
 - A benchmark corpus large enough not to sit entirely in cache.
-
-## 3. Documentation
-
-- The API reference is published from docstrings at
-  <https://r0ny123.github.io/demangle/>. What it still lacks is a worked example of
-  using `parse()` for a real analysis task — the feature most likely to be overlooked.

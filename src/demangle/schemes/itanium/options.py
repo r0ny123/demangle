@@ -48,6 +48,18 @@ class ItaniumOptions:
     the signature refers back to, so the choice is visible in the output.
     """
 
+    gnu_nullptr_spelling: bool = False
+    """Spell `Dn` as `decltype(nullptr)` rather than `std::nullptr_t`.
+
+    False gives llvm-cxxfilt's spelling. True gives GNU c++filt's, which writes the
+    expression the type is defined as rather than the library typedef for it. Both name
+    the same type.
+
+    Found by `tools/differential.py --cross`, comparing GNU against several LLVM builds:
+    no name in the gnu-style corpus carried a `Dn` at all, so nothing here had ever been
+    asked the question.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -59,6 +71,7 @@ class ItaniumOptions:
 DEFAULT_OPTIONS = ItaniumOptions()
 GNU_OPTIONS = ItaniumOptions(
     expand_std_abbreviations=True,
+    gnu_nullptr_spelling=True,
     gnu_closure_spelling=True,
     local_name_return_type=False,
     gnu_expression_spelling=True,

@@ -77,6 +77,13 @@ REFERENCE_LOSES_INFORMATION = {
 }
 
 KNOWN_DIVERGENCES = {
+    # llvm-cxxfilt 18 and earlier do not record a template template parameter as a
+    # substitution candidate in its own right, so they read this name one entry short.
+    # LLVM corrected it between 18 and 20, GNU c++filt has always had it right, and both
+    # g++ 13.3 and clang++ 18.1.3 emit `S5_` for the same declaration -- which is only
+    # reachable if the parameter took an index. We follow the manglers. Listed here so a
+    # comparison against an older llvm-cxxfilt reports a known divergence rather than a
+    # failure; when the oldest reference in CI is 20 or newer this can go.
     "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
     "_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_",
 }
@@ -185,37 +192,68 @@ def cross(names, tools, style, language, show):
     it says the question is open, and that whichever side we are on proves nothing. A
     name where every reference agrees and we do not is our defect, and is reported
     separately.
+
+    A tool may be written `tool:style` -- `c++filt:gnu` -- and is then compared against
+    our output in that style, and only against other tools sharing it. Without that, GNU
+    in the set produces thousands of "disagreements" that are only the `> >` spacing GNU
+    and LLVM legitimately differ on, which buries every real finding. Comparing across
+    styles measures the style.
+
+    Having a second *implementation* in the set, rather than several builds of one, is
+    the point: two versions of one demangler share its bugs, and a cross-check over only
+    those reports us as the outlier when they are both wrong together.
     """
-    missing = [tool for tool in tools if not shutil.which(tool)]
+    parsed = []
+    for entry in tools:
+        tool, _, tool_style = entry.partition(":")
+        parsed.append((tool, tool_style or style))
+    missing = [tool for tool, _ in parsed if not shutil.which(tool)]
     if missing:
         sys.exit(f"reference tool(s) not installed: {', '.join(missing)}")
 
-    outputs = {}
-    for tool in tools:
+    outputs, styles = {}, {}
+    for tool, tool_style in parsed:
         result = subprocess.run([tool], input="\n".join(names) + "\n", capture_output=True, text=True)
-        lines = _one_line_per_name(tool, result.stdout.splitlines(), len(names))
-        outputs[tool] = lines
+        outputs[tool] = _one_line_per_name(tool, result.stdout.splitlines(), len(names))
+        styles[tool] = tool_style
+    order = [tool for tool, _ in parsed]
 
-    ours = [our_output(name, style, language) for name in names]
+    #: Our answer in each style a tool uses, so every comparison is like for like.
+    ours = {tool: [our_output(name, styles[tool], language) for name in names] for tool in order}
+
     split, alone, documented = [], [], 0
     for index, name in enumerate(names):
-        answers = {outputs[tool][index] for tool in tools}
-        if len(answers) > 1:
+        groups = {}
+        for tool in order:
+            groups.setdefault(styles[tool], set()).add(outputs[tool][index])
+        if any(len(answers) > 1 for answers in groups.values()):
             split.append(index)
-        elif ours[index] != outputs[tools[0]][index] != name:
+            continue
+        differs = [tool for tool in order if outputs[tool][index] not in (ours[tool][index], name)]
+        if not differs:
+            continue
+        if len(differs) == len(order):
             if name in REFERENCE_LOSES_INFORMATION or name in KNOWN_DIVERGENCES:
                 documented += 1
             else:
                 alone.append(index)
+        else:
+            # Some references agree with us and some do not, which is itself a
+            # disagreement between them.
+            split.append(index)
 
     if split:
         print(f"references disagree with each other on {len(split)} name(s):")
         for index in split[:show]:
             print(f"\n  name {names[index]}")
-            for tool in tools:
-                mark = "*" if outputs[tool][index] == ours[index] else " "
-                print(f"  {mark} {tool:22} {outputs[tool][index]}")
-            print(f"    {'ours':22} {ours[index]}")
+            for tool in order:
+                mark = "*" if outputs[tool][index] == ours[tool][index] else " "
+                print(f"  {mark} {f'{tool} ({styles[tool]})':28} {outputs[tool][index]}")
+            # Our answer once per style in play, because comparing a gnu-style reference
+            # against an llvm-style spelling of ours would only be reporting the style.
+            for tool_style in dict.fromkeys(styles[tool] for tool in order):
+                first = next(tool for tool in order if styles[tool] == tool_style)
+                print(f"    {f'ours ({tool_style})':28} {ours[first][index]}")
         if len(split) > show:
             print(f"\n  ... and {len(split) - show} more")
         print("\n  (* marks the versions we match. Being on a side is not evidence;")
@@ -225,8 +263,9 @@ def cross(names, tools, style, language, show):
         print(f"\nevery reference agrees and we do not, on {len(alone)} name(s):")
         for index in alone[:show]:
             print(f"\n  name {names[index]}")
-            print(f"  all  {outputs[tools[0]][index]}")
-            print(f"  ours {ours[index]}")
+            for tool in order:
+                print(f"  {f'{tool} ({styles[tool]})':28} {outputs[tool][index]}")
+            print(f"  {'ours':28} {ours[order[0]][index]}")
 
     note = f" | {documented} documented" if documented else ""
     print(f"\n{len(names)} names | {len(split)} reference splits | {len(alone)} of ours{note}")
@@ -241,7 +280,7 @@ def main():
         "--cross",
         nargs="+",
         metavar="TOOL",
-        help="compare these reference versions against each other over the corpus names",
+        help="reference versions to compare, each optionally `tool:style` (e.g. c++filt:gnu)",
     )
     parser.add_argument("--tool", default="llvm-cxxfilt")
     parser.add_argument("--style", default="llvm", help="default style; per-corpus settings win")

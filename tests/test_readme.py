@@ -5,6 +5,7 @@ is what happens to any figure a human has to remember to update. These tests mak
 drift a test failure instead.
 """
 
+import pathlib
 import re
 from pathlib import Path
 
@@ -106,3 +107,61 @@ class TestExamples:
         # malformed as to prove anything.
         for name in ("_ZNSt6vectorIiSaIiEE9push_backERKi", "?f@@YAXH@Z", "_RNvCsdEttCVZFADF_8features10btree_work"):
             assert len(list(demangle.parse(name).walk())) > 1, name
+
+
+class TestWorkedExample:
+    """The predicate `docs/analysing-a-binary.md` teaches, run against a real library.
+
+    Documentation that is not executed is documentation that drifts. This runs the
+    example's own code and checks the numbers the page states, so a change to the node
+    shapes breaks the page rather than quietly making it wrong.
+    """
+
+    LIBRARY = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
+
+    @staticmethod
+    def template_taken_by_const_reference(parameter):
+        """Copied from the page. If this needs changing, the page needs changing."""
+        if parameter.kind != "reference":
+            return None
+        inner = parameter.children()[0]
+        if inner.kind != "qualify" or "const" not in inner.qualifiers:
+            return None
+        referent = inner.children()[0]
+        if referent.kind == "qualified":
+            referent = referent.children()[-1]
+        return referent if referent.kind == "template" else None
+
+    def _symbols(self):
+        import subprocess
+
+        output = subprocess.run(["nm", "-D", "--defined-only", self.LIBRARY], capture_output=True, text=True).stdout
+        return [line.split()[-1] for line in output.splitlines() if line.strip()]
+
+    def test_the_example_finds_what_the_page_says_it_finds(self):
+        library = pathlib.Path(self.LIBRARY)
+        if not library.exists():
+            pytest.skip("no system libstdc++ to read")
+
+        strings = 0
+        for name in self._symbols():
+            try:
+                tree = demangle.parse(name)
+            except demangle.DemanglingError:
+                continue
+            for function in tree.find("function"):
+                for parameter in function.parameters:
+                    template = self.template_taken_by_const_reference(parameter)
+                    if template is not None and "basic_string" in template.base.spell():
+                        strings += 1
+                        break
+
+        page = (pathlib.Path(__file__).parent.parent / "docs" / "analysing-a-binary.md").read_text()
+        assert str(strings) in page, f"the page states a count this library no longer finds ({strings})"
+
+    def test_every_snippet_on_the_page_is_valid_python(self):
+        page = (pathlib.Path(__file__).parent.parent / "docs" / "analysing-a-binary.md").read_text()
+        blocks = re.findall(r"```python\n(.*?)```", page, re.DOTALL)
+        assert blocks, "no python blocks found; has the page been renamed?"
+        for block in blocks:
+            compile(block, "<page>", "exec")
