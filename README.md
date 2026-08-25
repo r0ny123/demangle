@@ -1,8 +1,8 @@
 # demangle
 
 Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Swift**,
-**Go**, **D** and **Nim** — in pure Python. No dependencies, no native code, no compiler
-required.
+**Go**, **D**, **Nim** and **Free Pascal** — in pure Python. No dependencies, no native
+code, no compiler required.
 
 ```python
 >>> import demangle
@@ -18,6 +18,8 @@ required.
 'example.com/m/v2.5.(*T).Method'
 >>> demangle.demangle("eqdestroy___systemZassertions_23")
 'system/assertions.=destroy'
+>>> demangle.demangle("MYUNIT$_$TWIDGET_$__$$_AREA$$LONGINT")
+'MYUNIT.TWIDGET.AREA: LONGINT'
 ```
 
 ## Why this exists
@@ -129,8 +131,16 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8291 / 8291** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
+| Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
+
+§ Free Pascal ships no demangler either. The property is re-assembly — the parts this
+splits out, rejoined with the compiler's own separators, must reproduce the symbol — and
+it holds for all 236,570 readable symbols in the shipped runtime, not only the sample
+above. Independently, `ppudump` prints both a unit's mangled names and the names it
+declares, and every name read is one the unit declares. Case is not recoverable: Pascal
+is case-insensitive and the compiler upper-cases before mangling.
 
 ¶ Nim has no reference demangler either, and its mangling is not injective: `mangle`
 drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
@@ -163,10 +173,11 @@ Run live against the reference, not replayed.
 | `libstdc++.so.6` | 5,913 | **100%** |
 | Swift runtime + Foundation | 48,368 | **100%** |
 | Nim standard library routine names ¶ | 5,946 | **99.87%** |
+| Free Pascal runtime and packages § | 236,570 | **100%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 
-About 210,000 real symbols, all exact.
+About 450,000 real symbols, all exact.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks

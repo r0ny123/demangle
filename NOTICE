@@ -123,3 +123,23 @@ Nim conformance corpus -- tests/conformance/nim-real-world.txt
 Produced by compiling purpose-built Nim programs with the shipped Nim 1.6.14 and
 Nim 2.2.0 compilers and reading the .ndi debug-mapping files they write. The
 mangled names and the source names are the compilers' own output.
+
+================================================================================
+Free Pascal demangling -- src/demangle/schemes/pascal/
+--------------------------------------------------------------------------------
+The mangling rules are transcribed from the Free Pascal compiler's own
+compiler/symdef.pas (make_mangledname, mangledprocparanames, rtti_mangledname),
+compiler/symsym.pas (variable and typed-constant prefixes), compiler/ncgvmt.pas
+(interface tables and wrappers) and compiler/symtable.pas (operator names), which
+are the only description of them that exists -- Free Pascal ships no demangler.
+The compiler is licensed under the GNU General Public License version 2 or later;
+its runtime library is under the LGPL with a static-linking exception. No Free
+Pascal code is included here: the Python is an independent implementation of the
+rules those files describe.
+
+================================================================================
+Free Pascal conformance corpus -- tests/conformance/pascal-real-world.txt
+--------------------------------------------------------------------------------
+The mangled names are symbols from the object files of the Free Pascal 3.2.2
+runtime and packages as shipped by Debian/Ubuntu. The expected column is this
+library's own reading; see tests/test_pascal.py for what establishes it.
