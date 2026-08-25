@@ -67,11 +67,24 @@ def calibrate():
     1693 to 1569. The raw numbers would fail any tolerance worth having; the normalised
     ones sit within 8%.
 
-    One caveat, from the same measurement: `negative` runs in about two milliseconds,
-    short enough that best-of-N finds a clean scheduling slot even on a loaded machine,
-    so it under-inflates and reads as much *faster* under load. That direction never
-    fails the gate, and a real regression would show in `cold` and `structured` as well,
-    so this is a loss of sensitivity in one case rather than a false alarm.
+    What it does *not* do is track mild variation in machine state. Measured again on a
+    quiet machine: the calibration moved 39ms to 33ms across a few days while
+    `structured` stayed at 66-67us, which shows up as a 20% "regression" in a figure that
+    is a ratio. The two workloads track each other under load, when contention dominates
+    both; they do not track each other when the difference is CPU boost state, because a
+    tight dictionary loop benefits from it more than an allocating parser does. Run to
+    run on this hardware the normalised figures carry about 14% spread, which is over half
+    the tolerance.
+
+    That is why `--check` confirms a regression before reporting one, and why the
+    tolerance is not tightened further. A real regression reproduces; noise mostly does
+    not.
+
+    One further caveat: `negative` runs in about two milliseconds, short enough that
+    best-of-N finds a clean scheduling slot even on a loaded machine, so it
+    under-inflates and reads as much *faster* under load. That direction never fails the
+    gate, and a real regression would show in `cold` and `structured` as well, so it is a
+    loss of sensitivity rather than a false alarm.
     """
 
     def workload():
@@ -90,7 +103,7 @@ def calibrate():
             total += len(piece)
         return total, len(distinct)
 
-    return time_it(workload, repeats=3)
+    return time_it(workload, repeats=9)
 
 
 def corpus_names(*files):
@@ -139,23 +152,31 @@ def benchmarks():
 
     parsed = []
 
+    #: How many times `structured` walks its corpus. One pass is about twenty
+    #: milliseconds, short enough that the ratio of two best-of-N measurements carried
+    #: 16% run-to-run spread -- more than half the regression tolerance, which would make
+    #: the gate flake rather than gate. Several passes make the measurement long enough
+    #: to be stable without making the suite slow.
+    structured_passes = 5
+
     def structured():
         # The successes are counted, and `main` asserts the count. Suppressing failures
         # and timing whatever is left means a change that made `parse()` raise
         # immediately would time at a fraction of the baseline and be reported as an
         # enormous *improvement*.
         count = 0
-        for name in itanium:
-            with contextlib.suppress(Exception):
-                demangle.parse(name)
-                count += 1
+        for _ in range(structured_passes):
+            for name in itanium:
+                with contextlib.suppress(Exception):
+                    demangle.parse(name)
+                    count += 1
         parsed.append(count)
 
     return parsed, [
         ("cold", cold, len(everything)),
         ("warm", warm, len(everything) * 10),
         ("negative", negative, len(negatives)),
-        ("structured", structured, len(itanium)),
+        ("structured", structured, len(itanium) * structured_passes),
     ]
 
 
@@ -222,18 +243,33 @@ def main():
         if "normalised" not in baseline.get("cold", {}):
             print("\nbaseline predates machine calibration; re-record it with --save")
             return 1
-        regressions = []
-        for name, data in results.items():
-            if name == "calibration" or name not in baseline:
-                continue
-            before = baseline[name]["normalised"]
-            after = data["normalised"]
-            if after > before * TOLERANCE:
-                regressions.append(f"  {name}: {before:.2f} -> {after:.2f} ({after / before:.2f}x, machine-relative)")
-        if regressions:
-            print("\nperformance regression:")
-            print("\n".join(regressions))
-            return 1
+
+        def over_tolerance(measured, name):
+            return name in baseline and measured[name]["normalised"] > baseline[name]["normalised"] * TOLERANCE
+
+        suspects = [name for name in results if name != "calibration" and over_tolerance(results, name)]
+        if suspects:
+            # Measure again before reporting. The normalised figures carry more spread on
+            # a shared machine than the tolerance leaves room for, so one reading over the
+            # line is not evidence. A real regression is there on the second reading too;
+            # noise usually is not. Same discipline as re-running a CI job once to
+            # confirm a failure rather than to wish it away -- once, and a second failure
+            # is real.
+            print(f"\nover tolerance on {', '.join(suspects)}; measuring again to confirm")
+            second = run()
+            regressions = []
+            for name in suspects:
+                before = baseline[name]["normalised"]
+                after = second[name]["normalised"]
+                if after > before * TOLERANCE:
+                    ratio = after / before
+                    regressions.append(f"  {name}: {before:.2f} -> {after:.2f} ({ratio:.2f}x, machine-relative)")
+                else:
+                    print(f"  {name}: {second[name]['normalised']:.2f} on re-measure, within tolerance")
+            if regressions:
+                print("\nperformance regression, confirmed on a second measurement:")
+                print("\n".join(regressions))
+                return 1
         print("\nno regression against baseline")
     return 0
 

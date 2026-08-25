@@ -19,6 +19,7 @@ _BUILTIN_MODULES = (
     ("rust", "demangle.schemes.rust"),
     ("itanium", "demangle.schemes.itanium"),
     ("msvc", "demangle.schemes.msvc"),
+    ("go", "demangle.schemes.go"),
 )
 
 #: The entry-point group third-party packages advertise plugins under.
