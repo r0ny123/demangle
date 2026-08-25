@@ -62,6 +62,11 @@ dev = [
     # deliberately, with the new rules addressed in the same commit.
     "ty==0.0.69",
 ]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings-python>=1.10",
+]
 
 # -- build ---------------------------------------------------------------------
 
@@ -109,6 +114,15 @@ check = ["lint", "test", "differential", "bench --check"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
+
+[tool.hatch.envs.docs]
+features = ["docs"]
+
+[tool.hatch.envs.docs.scripts]
+# `--strict` on purpose: a warning here means a broken cross-reference, an undocumented
+# parameter, or a docstring the API reference could not resolve. All are defects.
+build = "mkdocs build --strict {args}"
+serve = "mkdocs serve {args}"
 
 # -- tooling -------------------------------------------------------------------
 

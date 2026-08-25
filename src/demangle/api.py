@@ -17,13 +17,16 @@ Serving both from one function -- with a sentinel, or a flag -- makes the common
 carry the uncommon one's error handling, so they are two functions.
 """
 
-from .core.ast import AST_BUILDER
+from collections.abc import Iterable, Iterator
+from typing import Any
+
+from .core.ast import AST_BUILDER, Node
 from .core.cache import MISSING, BoundedCache
 from .core.decorations import split_decorations
 from .core.errors import DemanglingError, NotMangledError, ParseError, reraise_if_operational
-from .core.limits import DEFAULT_LIMITS
+from .core.limits import DEFAULT_LIMITS, Limits
 from .core.registry import available, get, names
-from .core.style import DEFAULT_STYLE, available_styles, get_style
+from .core.style import DEFAULT_STYLE, Style, available_styles, get_style
 
 __all__ = [
     "cache_clear",
@@ -78,7 +81,13 @@ def _parse_with(plugin, mangled, builder, limits, style):
     return builder.decorated(handle, decoration) if decoration else handle
 
 
-def demangle(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS):
+def demangle(
+    mangled: str,
+    *,
+    language: str | None = None,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> str:
     """Return the readable spelling of `mangled`, or `mangled` unchanged.
 
     Never raises for any input. A name this library cannot read comes back exactly as it
@@ -129,7 +138,13 @@ def demangle(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMI
     return _CACHE.put(key, mangled)
 
 
-def demangle_strict(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS):
+def demangle_strict(
+    mangled: str,
+    *,
+    language: str | None = None,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> str:
     """Return the readable spelling of `mangled`, raising when it cannot be read.
 
     Raises:
@@ -142,7 +157,13 @@ def demangle_strict(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAU
     return builder.spell(_parse_handle(mangled, builder, language, resolved_style, limits))
 
 
-def parse(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS):
+def parse(
+    mangled: str,
+    *,
+    language: str | None = None,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> Node:
     """Parse `mangled` into a tree.
 
     Use this when the *parts* matter -- the namespace, the template arguments, the
@@ -217,7 +238,7 @@ def _claims(plugin, mangled):
         return False
 
 
-def detect(mangled):
+def detect(mangled: str) -> str | None:
     """Name the scheme `mangled` appears to use, or None.
 
     A prefix test only -- it reports what the name looks like, not that it will parse.
@@ -231,7 +252,13 @@ def detect(mangled):
     return None
 
 
-def demangle_all(names_, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS):
+def demangle_all(
+    names_: Iterable[str],
+    *,
+    language: str | None = None,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> Iterator[str]:
     """Demangle an iterable of names, yielding results in order.
 
     Returns a generator, so a caller streaming a large symbol table never holds more
@@ -251,21 +278,21 @@ def demangle_all(names_, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_L
     return _stream()
 
 
-def languages():
+def languages() -> list[str]:
     """Registered language names, including any third-party plugins."""
     return names()
 
 
-def styles():
+def styles() -> list[str]:
     """Registered output style names."""
     return available_styles()
 
 
-def cache_clear():
+def cache_clear() -> None:
     """Empty the module-level result cache."""
     _CACHE.clear()
 
 
-def cache_stats():
+def cache_stats() -> dict[str, Any]:
     """Hit rate and occupancy of the result cache."""
     return _CACHE.stats

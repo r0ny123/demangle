@@ -1,0 +1,78 @@
+site_name: demangle
+site_description: Read mangled symbol names -- Itanium C++, MSVC and Rust -- in pure Python.
+site_url: https://r0ny123.github.io/demangle/
+repo_url: https://github.com/r0ny123/demangle
+repo_name: r0ny123/demangle
+edit_uri: edit/main/
+
+# The prose lives at the repository root, where GitHub renders it and where a reader who
+# never visits this site still finds it. The pages here pull those files in with the
+# snippets extension rather than copying them, so there is one copy of every sentence.
+docs_dir: docs
+
+# Page names match the repository-root filenames the README links to, so one link text
+# works both on GitHub and here.
+nav:
+  - Home: index.md
+  - Architecture: ARCHITECTURE.md
+  - API reference:
+      - Public API: reference/api.md
+      - Core: reference/core.md
+      - Schemes: reference/schemes.md
+  - Adding a scheme: adding-a-scheme.md
+  - Contributing: CONTRIBUTING.md
+  - Security: SECURITY.md
+  - Roadmap: ROADMAP.md
+  - Changelog: CHANGELOG.md
+
+not_in_nav: |
+  docs/adding-a-scheme.md
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Switch to light mode }
+
+markdown_extensions:
+  - admonition
+  - toc: { permalink: true }
+  - pymdownx.highlight: { anchor_linenums: true }
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            members_order: source
+            filters: ["!^_"]
+
+watch:
+  - src
+  - README.md
+  - ARCHITECTURE.md
