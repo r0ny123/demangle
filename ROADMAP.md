@@ -71,6 +71,23 @@ survives.
   took 80us a name to 54us without touching the grammar. Verified byte-identical over
   60,000 mutated names.
 
-What is left:
+- **A profile-guided pass over the Itanium parser** — *done*, and the profile said what
+  the Rust one had: a name costs 400 interpreter frames and about half the time is the
+  frames rather than the work inside them. Writing out the recursion guard, asking one
+  lookahead instead of five in `template_arg`, and ending the `E`-terminated loops on a
+  single `peek` took 18.5% off. Two findings were outside the parser: `decorated` and
+  `Node.spell` each ran an `import` statement per call, and detection was 18.5% of an
+  Itanium name rather than the 1.45% recorded above — that figure was measured over a
+  corpus dominated by cheap MSVC names, and before three more schemes were registered.
+- **Interning builtin spellings** — *rejected*. `builtin` is called 14,765 times over the
+  Itanium corpus and holds about thirty distinct texts, so a cache would remove almost
+  every allocation. It measured under 1%, and it would make `SpellingBuilder` — shared by
+  every parse and documented as stateless — carry state, with a bound needed against
+  `_Float<n>`, whose spelling the input chooses.
+- **Inlining the detection call into `demangle`** — *rejected*. Detection is now 10.4% of
+  an Itanium name; roughly 1.5% of that is the `_claims` frame itself. Recovering it
+  means duplicating the symbol-table-decoration fallback at the call site, and that rule
+  is one that has to stay in one place.
 
-- A profile-guided pass over the Itanium parser, which has had none.
+Nothing is left under this heading. The next thing worth measuring is `parse()`, which
+has had the same attention only once.

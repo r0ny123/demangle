@@ -129,18 +129,38 @@ def candidates(mangled):
 
     The order is `available()`'s, filtered; a scheme that declares no first characters
     is always offered, so adding one changes nothing for a scheme that does not opt in.
+
+    The cache is read without taking the lock, because this runs once for every symbol a
+    caller offers the library and the locked path was most of what detection cost: two
+    acquisitions -- one here and one inside `available` -- and two more interpreter
+    frames, to reach a single dictionary lookup. It is safe to read unlocked because the
+    values are finished tuples that are never edited afterwards, keys are only ever
+    added, and `register` discards the whole dictionary rather than changing it. A
+    reader therefore sees a complete answer or none at all, and none at all falls
+    through to the locked path.
     """
     if not mangled:
         return available()
+    cached = _by_first
+    if cached is not None:
+        found = cached.get(mangled[0])
+        if found is not None:
+            return found
+    return _screen(mangled[0])
+
+
+def _screen(first):
+    """Build and record the candidate list for names starting with `first`."""
     global _by_first
     ordered = available()
     with _lock:
-        if _by_first is None:
-            _by_first = {}
-        found = _by_first.get(mangled[0])
+        cache = _by_first
+        if cache is None:
+            cache = _by_first = {}
+        found = cache.get(first)
         if found is None:
-            found = _by_first[mangled[0]] = tuple(
-                plugin for plugin in ordered if not plugin.first_characters or mangled[0] in plugin.first_characters
+            found = cache[first] = tuple(
+                plugin for plugin in ordered if not plugin.first_characters or first in plugin.first_characters
             )
         return found
 

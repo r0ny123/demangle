@@ -56,6 +56,12 @@ class Reader:
 
         Returning a string rather than raising is what lets a parser write
         `if reader.peek() == "N"` without first checking for the end of input.
+
+        A parser that has already had a character out of `peek` may consume it by
+        advancing `pos` itself rather than calling `take` -- the character is known to be
+        there, so the bounds test `take` would repeat has already happened. That is the
+        one place the rule against touching the cursor directly does not apply, and the
+        productions that do it say so.
         """
         index = self.pos + offset
         return self.text[index] if index < self.length else ""
@@ -95,8 +101,14 @@ class Reader:
 
     def expect(self, literal):
         """Consume `literal`, or raise."""
-        if not self.eat(literal):
-            raise ParseError(self.text, self.pos, f"expected {literal!r}")
+        # The test is written out rather than delegated to `eat`: this is on the path of
+        # every production that has a fixed opening character, and reaching a three-line
+        # method through another one costs a whole interpreter frame to save three lines.
+        pos = self.pos
+        if self.text.startswith(literal, pos):
+            self.pos = pos + len(literal)
+            return
+        raise ParseError(self.text, pos, f"expected {literal!r}")
 
     # -- numbers ---------------------------------------------------------------
 

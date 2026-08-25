@@ -148,13 +148,21 @@ class ItaniumParser:
 
     # -- recursion control -----------------------------------------------------
 
-    def _enter(self):
-        self._depth += 1
-        if self._depth > self.limits.max_depth:
-            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
-
-    def _leave(self):
-        self._depth -= 1
+    # The depth guard is written out at each of its seven sites rather than called.
+    # A production enters and leaves 76,662 times over the Itanium corpus, and the pair
+    # is two whole interpreter frames to add one to an integer and take it away again.
+    # The shape at every site is the same:
+    #
+    #     depth = self._depth = self._depth + 1
+    #     if depth > self.limits.max_depth:
+    #         raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+    #     try:
+    #         ...
+    #     finally:
+    #         self._depth = depth - 1
+    #
+    # `finally` rather than a decrement after the body, so a name abandoned mid-parse
+    # still unwinds the counter -- the parser catches and retries in several places.
 
     # -- entry point -----------------------------------------------------------
 
@@ -247,11 +255,13 @@ class ItaniumParser:
         Guarded: several of these productions contain an `<encoding>`, which can be
         another special name, so `_Z` followed by `GV` repeated is unbounded recursion.
         """
-        self._enter()
+        depth = self._depth = self._depth + 1
+        if depth > self.limits.max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
         try:
             return self._special_name()
         finally:
-            self._leave()
+            self._depth = depth - 1
 
     def _special_name(self):
         reader = self.reader
@@ -383,14 +393,20 @@ class ItaniumParser:
         outer_ctor_dtor = self._ctor_dtor
         self._ctor_dtor = False
         try:
-            while not reader.eat("E"):
-                if reader.eof:
+            while True:
+                char = reader.peek()
+                if char == "E":
+                    reader.take()
+                    break
+                if not char:
                     raise ParseError(self._mangled, reader.pos, "unterminated nested name")
-                self._enter()
+                depth = self._depth = self._depth + 1
+                if depth > self.limits.max_depth:
+                    raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
                 try:
                     is_template = self.prefix_component(parts, as_type)
                 finally:
-                    self._leave()
+                    self._depth = depth - 1
 
             if not parts:
                 raise ParseError(self._mangled, reader.pos, "empty nested name")
@@ -586,11 +602,13 @@ class ItaniumParser:
             # An internal-linkage name. The marker carries no spelling, but it recurses,
             # so a run of them has to be bounded like any other recursive production.
             reader.take()
-            self._enter()
+            depth = self._depth = self._depth + 1
+            if depth > self.limits.max_depth:
+                raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
             try:
                 return self.unqualified_name(scope)
             finally:
-                self._leave()
+                self._depth = depth - 1
 
         if char == "C":
             return self.constructor_name(scope)
@@ -680,9 +698,14 @@ class ItaniumParser:
         <abi-tags> ::= <abi-tag>*     <abi-tag> ::= B <source-name>
         ```
         """
+        reader = self.reader
+        if reader.peek() != "B":
+            # The overwhelmingly common answer, reached once per <source-name>: no list
+            # and no join for a name that carries no tags.
+            return ""
         tags = []
-        while self.reader.peek() == "B":
-            self.reader.take()
+        while reader.peek() == "B":
+            reader.pos += 1
             tags.append(f"[abi:{self.source_name()}]")
         return "".join(tags)
 
@@ -889,7 +912,9 @@ class ItaniumParser:
         return tuple(qualifier for qualifier in QUALIFIER_ORDER if qualifier in found)
 
     def type_(self):
-        self._enter()
+        depth = self._depth = self._depth + 1
+        if depth > self.limits.max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
         try:
             result = self._type()
             # Checked here, on every type, rather than once on the finished name. The
@@ -901,7 +926,7 @@ class ItaniumParser:
                 raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
             return result
         finally:
-            self._leave()
+            self._depth = depth - 1
 
     def _type(self):
         reader = self.reader
@@ -909,10 +934,13 @@ class ItaniumParser:
         subs = self.subs
         char = reader.peek()
 
-        # <builtin-type>: never a substitution candidate (5.1.10).
-        if char in BUILTIN_TYPES:
-            reader.take()
-            return builder.builtin(BUILTIN_TYPES[char])
+        # <builtin-type>: never a substitution candidate (5.1.10). One lookup, and the
+        # cursor is stepped rather than asked to re-check a character `peek` just
+        # returned -- this production reads every type in every name.
+        builtin = BUILTIN_TYPES.get(char)
+        if builtin is not None:
+            reader.pos += 1
+            return builder.builtin(builtin)
 
         if char in QUALIFIER_LETTERS:
             qualifiers = self.cv_qualifiers()
@@ -928,26 +956,26 @@ class ItaniumParser:
             return subs.remember(builder.qualify(inner, qualifiers), "type")
 
         if char == "P":
-            reader.take()
+            reader.pos += 1
             return subs.remember(builder.pointer(self.type_()), "type")
         if char == "R":
-            reader.take()
+            reader.pos += 1
             return subs.remember(builder.reference(self.type_()), "type")
         if char == "O":
-            reader.take()
+            reader.pos += 1
             return subs.remember(builder.rvalue_reference(self.type_()), "type")
         if char == "C":
-            reader.take()
+            reader.pos += 1
             inner = self.type_()
             return subs.remember(builder.raw(f"std::complex<{builder.spell(inner)}>"), "type")
         if char == "G":
-            reader.take()
+            reader.pos += 1
             inner = self.type_()
             return subs.remember(builder.raw(f"_Imaginary {builder.spell(inner)}"), "type")
 
         if char == "U":
             # <type> ::= U <source-name> [<template-args>] <type>  -- vendor qualifier
-            reader.take()
+            reader.pos += 1
             qualifier = self.source_name()
             if reader.peek() == "I":
                 arguments = self.template_arguments()
@@ -1189,11 +1217,13 @@ class ItaniumParser:
 
     def template_param_decl(self):
         """Guarded wrapper: `Tp` and `Tt` both recurse into this production."""
-        self._enter()
+        depth = self._depth = self._depth + 1
+        if depth > self.limits.max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
         try:
             return self._template_param_decl()
         finally:
-            self._leave()
+            self._depth = depth - 1
 
     def _template_param_decl(self):
         """A declared template parameter.
@@ -1295,14 +1325,20 @@ class ItaniumParser:
         self._naming = False
         arguments = []
         try:
-            while not reader.eat("E"):
-                if reader.eof:
+            while True:
+                char = reader.peek()
+                if char == "E":
+                    reader.take()
+                    break
+                if not char:
                     raise ParseError(self._mangled, reader.pos, "unterminated template argument list")
-                self._enter()
+                depth = self._depth = self._depth + 1
+                if depth > self.limits.max_depth:
+                    raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
                 try:
                     argument, is_empty_pack = self.template_arg()
                 finally:
-                    self._leave()
+                    self._depth = depth - 1
                 if argument is None:
                     # A <template-param-decl>: it declares a parameter rather than
                     # supplying an argument, and neither prints nor occupies a slot.
@@ -1335,11 +1371,17 @@ class ItaniumParser:
         reader = self.reader
         builder = self.builder
 
-        if reader.peek2() in _PARAMETER_DECLARATIONS:
+        # One lookahead for all five alternatives. Asking `peek2`, then `peek`, then
+        # `eat`, then `peek`, then `eat` is five interpreter frames to reach the common
+        # case -- a `<type>` -- and this runs once per template argument in the library.
+        ahead = reader.peek2()
+        char = ahead[:1]
+
+        if ahead in _PARAMETER_DECLARATIONS:
             self.template_param_decl()
             return None, False
 
-        if reader.peek() == "Q":
+        if char == "Q":
             # A requires-clause closing out an argument list. Parsed for its effect on
             # the substitution table; neither reference prints it.
             reader.take()
@@ -1351,18 +1393,26 @@ class ItaniumParser:
                 self._in_constraint = outer_constraint
             return None, False
 
-        if reader.eat("X"):
+        if char == "X":
+            reader.take()
             expression = self.expression()
             reader.expect("E")
             return expression, False
 
-        if reader.peek() == "L":
+        if char == "L":
             return builder.raw(self.expr_primary()), False
 
-        if reader.eat("J"):
+        if char == "J":
+            reader.take()
             members = []
-            while not reader.eat("E"):
-                if reader.eof:
+            while True:
+                # `peek` answers `""` past the end, so one call decides between the
+                # closing `E`, another member, and a truncated name.
+                next_char = reader.peek()
+                if next_char == "E":
+                    reader.take()
+                    break
+                if not next_char:
                     raise ParseError(self._mangled, reader.pos, "unterminated argument pack")
                 member, _ = self.template_arg()
                 if member is not None:
@@ -1616,12 +1666,14 @@ class ItaniumParser:
         Sets `_precedence`, which a containing operator reads immediately afterwards to
         decide whether this operand needs brackets.
         """
-        self._enter()
+        depth = self._depth = self._depth + 1
+        if depth > self.limits.max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
         try:
             self._precedence = PRIMARY_PRECEDENCE
             return self._expression()
         finally:
-            self._leave()
+            self._depth = depth - 1
 
     def expression_text(self):
         """An expression where the grammar around it needs characters, not a shape.
