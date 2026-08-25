@@ -18,10 +18,10 @@ from .conftest import load_corpus
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42 on the checked-in corpora.
 ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 278, 278
-ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 275, 272
+ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 275, 273
 MSVC_TOTAL, MSVC_EXACT = 609, 609
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
-REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
+REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 31, 31
 RUST_TOTAL, RUST_EXACT = 5316, 5316
 RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 
@@ -29,10 +29,20 @@ RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the
 # disagreements by name -- a count alone would let one be traded for a new defect.
+#: Names where `llvm-undname` discards part of the symbol, so following it would mean
+#: spelling distinct symbols identically. It reads the first element of a vftable's base
+#: path and drops the rest, mapping `??_7A@B@@6BC@D@@@`, `??_7A@B@@6BC@D@@E@F@@@` and
+#: `??_7A@B@@6BC@D@@E@F@@G@H@@@` -- three different vtables -- onto one spelling. Checked
+#: against llvm-undname 16, 18 and 20; all three lose it identically. We keep the whole
+#: path, joined the way Microsoft spells one.
+UNDNAME_DIVERGENCES = [
+    "??_7A@B@@6BC@D@@E@F@@@",
+    "??_7A@B@@6BC@D@@E@F@@G@H@@@",
+    "??_7A@@6BB@@C@@@",
+    "??_7A@@6BB@@C@@D@@@",
+]
+
 GNU_DIVERGENCES = [
-    # llvm-cxxfilt resolves `S4_` to `outer::inner::Holder<int, 3>` and c++filt to
-    # `int`: GNU records one fewer entry for a template-template-parameter application.
-    "_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_",
     # Inside a requires-clause, llvm records the template parameter symbolically (`T`)
     # and GNU records the argument bound to it.
     "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
@@ -131,3 +141,17 @@ def test_best_effort_never_raises_on_any_corpus_name(corpus):
     """Whatever the corpus holds, `demangle()` answers rather than raising."""
     for mangled, _ in load_corpus(corpus):
         assert isinstance(demangle.demangle(mangled), str)
+
+
+def test_llvm_undname_loses_a_vftable_base_path_and_we_do_not():
+    """The divergence is information loss on their side, not a spelling preference.
+
+    Pinned as a behaviour rather than a note: if this library ever starts agreeing with
+    `llvm-undname` here, it has started throwing the same information away.
+    """
+    assert demangle.demangle("??_7A@B@@6BC@D@@E@F@@@") == "const B::A::`vftable'{for `D::C's `F::E'}"
+    assert demangle.demangle("??_7A@B@@6BC@D@@E@F@@G@H@@@") == "const B::A::`vftable'{for `D::C's `F::E's `H::G'}"
+    # The property that matters, independent of spelling: one symbol, one meaning. Adding
+    # a base path element must change the answer, or the demangler is losing the element.
+    family = ["??_7A@B@@6BC@D@@@", "??_7A@B@@6BC@D@@E@F@@@", "??_7A@B@@6BC@D@@E@F@@G@H@@@"]
+    assert len({demangle.demangle(name) for name in family}) == len(family)

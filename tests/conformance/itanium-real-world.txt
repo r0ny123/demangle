@@ -9,7 +9,7 @@
 # standards: c++11, c++14, c++17, c++20
 # optimisation: -O0, -O2
 #
-_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(outer::inner::Holder<int, 3>)
+_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(int)
 _ZGVZN5outer5inner11withStaticsEvE5local	guard variable for outer::inner::withStatics()::local
 _ZGVZN5outer5inner11withStaticsEvE5localB5cxx11	guard variable for outer::inner::withStatics()::local[abi:cxx11]
 _ZN5outer5inner10makeLambdaEv	outer::inner::makeLambda()
