@@ -127,7 +127,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
-| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **275 / 277** † |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **295 / 297** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
@@ -170,7 +170,7 @@ Run live against the reference, not replayed.
 | `libLLVM.so.18.1` | 44,186 | **100%** |
 | `libclang-cpp.so` + Polly + LTO | 41,140 | **100%** |
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
-| `libstdc++.so.6` | 5,913 | **100%** |
+| `libstdc++.so.6`, gnu style | 5,990 | **100%** |
 | Swift runtime + Foundation | 48,368 | **100%** |
 | Nim standard library routine names ¶ | 5,946 | **99.87%** |
 | Free Pascal runtime and packages § | 236,570 | **100%** |
@@ -182,6 +182,14 @@ About 450,000 real symbols, all exact.
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
 to include. Nearly every defect fixed here came from reading real shipped binaries.
+
+The libstdc++ row is against GNU rather than LLVM because llvm-cxxfilt 18 reads 78 of
+those 5,990 names as unreadable and echoes them back: the transaction-safe clone prefix
+`_ZGTt`, and the `DF` floating-point productions. Checking against GNU over the whole
+library rather than over the recorded sample is what found two real gaps here — `DF16b`
+is `std::bfloat16_t` and `DF<n>x` is `_FloatNx` terminated by its own `x`, and GNU puts a
+space before a template argument list whose name ends with `<`, so `operator<< <int>`.
+No name in either checked-in corpus carried any of them.
 
 The purpose-built corpus still earns its place: compiled by **both** `clang++` and `g++`
 across C++11 through C++20 at two optimisation levels, it reaches constructs a released

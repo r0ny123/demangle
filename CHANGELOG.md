@@ -50,6 +50,20 @@ All notable changes to this project are recorded here. The format follows
   version of the same question gets wrong. Its code and its numbers are executed by the
   test suite, so the page cannot drift from the library.
 
+- **Three `DF` productions that were read as one.** `DF <n> _` is `_FloatN`, but
+  `DF <n> x` is `_FloatNx` -- the `x` *is* the terminator, and there is no `_` after it --
+  and `DF16b` alone is `std::bfloat16_t`. Reading `x` as an optional flag before a
+  required `_` refused every `_Float32x`, `_Float64x` and `bfloat16_t` in the shipped
+  libstdc++.
+
+- **GNU's space before a template argument list whose name ends with `<`.** `operator<<`
+  instantiated at `int` reads `operator<< <int>` in gnu style, for the same reason
+  `Foo<Bar<int> >` does: three angle brackets in a row. 32 names in libstdc++.
+
+  Both were found by checking against the reference over the *whole* library rather than
+  over the recorded sample, and neither could have been found against llvm-cxxfilt 18,
+  which reads none of the `DF` forms at all.
+
 - `demangle.parse(..., style="gnu")` now spells `Dn` as `decltype(nullptr)`, which is
   what GNU c++filt writes; LLVM's `std::nullptr_t` remains the default. Found by
   `tools/differential.py --cross`: no name in the gnu corpus carried a `Dn`, so nothing
