@@ -85,3 +85,25 @@ Specifications
 docs/specs/itanium-grammar.txt is a transcription of the grammar productions from
 the Itanium C++ ABI (https://itanium-cxx-abi.github.io/cxx-abi/abi.html), included
 for reference while reading the parser.
+
+================================================================================
+Swift demangling -- src/demangle/schemes/swift/
+--------------------------------------------------------------------------------
+The grammar, the demangling-tree node kinds, and the spelling rules are those of
+the Swift compiler's own demangler (lib/Demangling/Demangler.cpp,
+lib/Demangling/NodePrinter.cpp, lib/Demangling/Punycode.cpp and the
+include/swift/Demangling/*.def tables), which is the only complete description of
+the mangling that exists. The Python here is an independent implementation of that
+algorithm, but it follows its structure closely enough to be worth crediting.
+
+The Swift project is licensed under the Apache License 2.0 with the Runtime
+Library Exception; see https://swift.org/LICENSE.txt.
+
+================================================================================
+Swift conformance corpus -- tests/conformance/swift-real-world.txt
+--------------------------------------------------------------------------------
+Part of this file is the mangled names from the Swift compiler's own demangler
+test corpus (test/Demangle/Inputs/manglings.txt), used under the Apache License
+2.0 with the Runtime Library Exception. The expected column was produced by
+running swift-demangle 5.10.1 over them. The rest is a stratified sample of the
+symbols in the shipped Swift runtime and Foundation.
