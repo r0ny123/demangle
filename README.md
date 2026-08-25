@@ -232,13 +232,18 @@ Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
 
 | Workload | Throughput |
 |---|---|
-| Cold — every name distinct | ~48,000 names/sec |
-| Warm — names repeat, as in a real symbol table | ~1,900,000 names/sec |
-| Non-mangled names rejected | ~430,000 names/sec |
-| Full AST construction | ~15,000 names/sec |
+| Cold — every name distinct | ~24,000 names/sec |
+| Warm — names repeat, as in a real symbol table | ~2,200,000 names/sec |
+| Non-mangled names rejected | ~510,000 names/sec |
+| Full AST construction | ~16,500 names/sec |
 
 Treat these as ratios rather than absolutes. The gap between cold and warm is the point:
 symbol tables repeat themselves relentlessly, and results are cached.
+
+The cold figure is lower than earlier releases reported and the demangler is faster than
+it was. The benchmark corpus used to be 887 names, most of them cheap MSVC ones; it is
+now all 14,041 names in every conformance corpus, across every scheme. What changed is
+what is being measured.
 
 `bench.py --check` gates CI against the committed baseline. It compares figures normalised
 against a calibration workload measured in the same run, so the gate reports a slower

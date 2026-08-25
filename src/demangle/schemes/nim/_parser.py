@@ -378,14 +378,38 @@ def parse_nim_symbol(name):
     raise DemangleFailure("not a Nim symbol")
 
 
+#: What a name must begin with to be one of the compiler-generated forms. Everything
+#: else this reads is a `<name>__<module>_[u]<id>`.
+_COMPILER_PREFIXES = ("NTI", "Marker_", "TM_", "ty")
+
+#: How every `<name>__<module>_[u]<id>` ends. A *necessary* condition of `_SYMBOL` -- the
+#: same `_ (u?) ([0-9]+) $` that pattern requires -- so screening on it turns away only
+#: names `_routine` would have refused anyway. It is worth testing separately because
+#: `_SYMBOL` opens with a greedy `(.+)__`, which walks back through every `__` in the
+#: name before it can fail; `std::__cxx11` puts one in a large share of a C++ binary.
+_ROUTINE_TAIL = re.compile(r"_u?[0-9]+$")
+
+
 def detect(name):
     """Whether `name` is one this reads.
 
     Deliberately the whole parse rather than a shape test. A Nim symbol is an ordinary C
     identifier -- there is no prefix to key on -- so the only honest test is whether a
     reading exists that re-mangles to it, and that is what `parse_nim_symbol` establishes.
+
+    What comes before that parse is a *necessary* condition rather than a guess, which is
+    what makes it safe to screen on: a name that is not one of the compiler's own forms
+    can only be `<name>__<module>_[u]<id>`, and `<id>` is a run of decimal digits at the
+    very end. This plugin declares no first character -- a Nim symbol is an ordinary C
+    identifier -- so it is offered every symbol in a binary, and running five anchored
+    regular expressions over each of them made it four times the cost of any other
+    scheme's detection. `__` alone does not screen -- `std::__cxx11` has one, and so does
+    a fifth of the shipped libstdc++ -- and neither does a trailing digit, which 95% of
+    those symbols also have. The tail does: none of them survives it.
     """
-    if not name or ("__" not in name and not name.startswith(("NTI", "Marker_", "TM_", "ty"))):
+    if not name:
+        return False
+    if not name.startswith(_COMPILER_PREFIXES) and not (_ROUTINE_TAIL.search(name) and "__" in name):
         return False
     try:
         parse_nim_symbol(name)

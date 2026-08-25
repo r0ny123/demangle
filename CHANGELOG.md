@@ -79,6 +79,33 @@ All notable changes to this project are recorded here. The format follows
   this changes nothing for one that does not opt in, and `tests/test_core.py` checks each
   declaration against every corpus rather than trusting it.
 
+- **Itanium demangling is 18.5% faster**, and MSVC 9.4% and Rust 4.4% with it, from a
+  profile-guided pass the parser had never had. Nothing in it changes a grammar; the
+  spelling of all 290,489 symbols in the shipped libstdc++, libLLVM and libclang-cpp is
+  byte-identical before and after, in both styles.
+
+  The parser's own share was interpreter frames around a few bytecodes: the recursion
+  guard, entered and left 76,662 times over the corpus to add one to an integer and take
+  it away again, is written out at its seven sites; `template_arg` asks one lookahead
+  where it asked five to reach the common case; the loops that end at `E` ask `peek`
+  once rather than `eat` and then `eof`; `Reader.expect` no longer reaches its test
+  through `eat`. In `core.spelling` the joins take list comprehensions rather than
+  generator expressions -- a generator is a frame resumed once per element, 79,000
+  resumes for 23,000 `qualified` calls.
+
+  Two of the larger wins were not in the parser at all. `SpellingBuilder.decorated` and
+  `ast.Node.spell` each carried an `import` *inside* the function, executed per call.
+  And detection turned out to be 18.5% of what an Itanium name cost -- not the 1.45%
+  recorded when the measurement was made over a corpus dominated by cheap MSVC names and
+  before three more schemes landed. Half of that was `registry.candidates` taking a lock
+  twice, through two more frames, to reach one dictionary lookup; it reads its cache
+  directly now, which is sound because the values are finished tuples and `register`
+  discards the whole dictionary rather than editing it. Most of the rest was Nim's
+  `detect`, which -- having no prefix to key on, so being offered every symbol in a
+  binary -- ran five anchored regular expressions over each. It now screens on a
+  *necessary* condition of the first of them, verified to change no answer over 280,935
+  corpus and generated names.
+
 - **Rust demangling is a further 33% faster** (80us to 54us a name over the 5,710-name
   real-world corpus, on top of the 23% below). Nothing clever, and nothing structural:
   the scheme is a port and it kept the reference's shape, where a helper costs nothing.

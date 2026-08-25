@@ -14,6 +14,7 @@ JSON, HTML, a token stream -- is a builder, not a second traversal to keep in sy
 """
 
 from .builder import Builder
+from .style import get_style
 
 __all__ = [
     "AST_BUILDER",
@@ -82,8 +83,6 @@ class Node:
         are made during parsing and are already baked into the tree, so spelling a
         gnu-parsed tree with LLVM's builder gives a mixture of the two.
         """
-        from .style import get_style
-
         builder = get_style(style).spelling_builder
         return builder.spell(self.build(builder), declarator)
 
