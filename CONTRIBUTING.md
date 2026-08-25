@@ -73,6 +73,20 @@ python tools/differential.py
 If a change moves a conformance number, say which way and why in the commit message.
 If it moves a benchmark, say that too.
 
+## CI and workflows
+
+Workflows run with `permissions: contents: read` and grant more only where a job needs
+it. Checkout uses `persist-credentials: false`, because nothing in CI pushes and a token
+left in `.git/config` is readable by every later step. Releases publish through PyPI
+Trusted Publishing, so there is no long-lived API token in repository secrets.
+
+Two rules for anyone editing `.github/`:
+
+- Never use `pull_request_target`. It runs with a writable token against the fork's
+  code, which makes any pull request arbitrary code execution with our secrets.
+- Never interpolate untrusted values -- issue titles, branch names, PR bodies -- into a
+  `run:` block. Pass them through `env:` and reference the variable.
+
 ## Style
 
 - Comments explain *why*, especially where the code looks odd because a specification or

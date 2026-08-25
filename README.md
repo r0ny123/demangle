@@ -157,6 +157,12 @@ entry-point group without patching this package. Both rules are enforced by test
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture, and
 [docs/adding-a-scheme.md](docs/adding-a-scheme.md) to add a language.
 
+## Security
+
+The library parses untrusted input by design, so that is treated as a threat model
+rather than an edge case. See [SECURITY.md](SECURITY.md) for what is in scope and how to
+report privately.
+
 ## Contributing
 
 New schemes, corpus contributions, and conformance bug reports are all welcome — see

@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  # Keeps workflow actions current. Dependabot also understands SHA-pinned `uses:`
+  # references and rewrites both the SHA and its trailing version comment, which is what
+  # makes full SHA pinning maintainable rather than a thing that rots.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The library itself has no runtime dependencies; this covers the development and
+  # test toolchain only.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
