@@ -371,12 +371,6 @@ class Parser:
         # across two thousand real symbols.
         self.end = len(inn)
 
-    def peek(self) -> str:
-        at = self.next_val
-        if at >= self.end:
-            raise UnableTov0Demangle(self.inn)
-        return self.inn[at]
-
     def eat(self, b: str) -> bool:
         at = self.next_val
         if at < self.end and self.inn[at] == b:
@@ -403,31 +397,11 @@ class Parser:
                 raise UnableTov0Demangle(self.inn)
         return self.inn[start : self.next_val - 1]
 
-    # `peek`, `eat` and the digit readers are each one interpreter frame around three
-    # bytecodes, and between them they run some 1.5 million times over the Rust corpus.
-    # The bounds test and the table lookup are written out here rather than delegated,
-    # which removes the frame without changing what is accepted: `peek` raises at the end
-    # of input, so a digit reader reached there still raises.
-
-    def digit_10(self) -> Optional[int]:
-        at = self.next_val
-        if at >= self.end:
-            raise UnableTov0Demangle(self.inn)
-        d = _BASE_10.get(self.inn[at])
-        if d is None:
-            return None
-        self.next_val = at + 1
-        return d
-
-    def digit_62(self) -> int:
-        at = self.next_val
-        if at >= self.end:
-            raise UnableTov0Demangle(self.inn)
-        d = _BASE_62.get(self.inn[at])
-        if d is None:
-            raise UnableTov0Demangle(self.inn)
-        self.next_val = at + 1
-        return d
+    # There were a `peek` and a digit reader for each base here, each one interpreter
+    # frame around three bytecodes, and between them they ran some 1.5 million times over
+    # the Rust corpus. Every caller now does the bounds test and the table lookup itself,
+    # which is why they are gone rather than merely unused: what they accepted is written
+    # out at each site, and `peek` raising at the end of input is preserved there.
 
     def integer_62(self) -> int:
         inn, end = self.inn, self.end

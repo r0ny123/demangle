@@ -8,6 +8,46 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Swift symbolic references**, and an API that takes the binary too. A mangled name in
+  Swift *metadata* is not always self-contained: where it would have to spell a type the
+  image already describes, the compiler writes a one-byte marker and a four-byte signed
+  offset relative to itself. The bytes are transcribed from
+  `Demangler.cpp::demangleSymbolicReference` -- `01` and `02` for a context descriptor
+  direct and indirect, `09` for an accessor function, `0A` and `0B` for the two extended
+  existential shapes, `03`-`08` and `0C` reserved and refused, `FF` alignment padding and
+  skipped.
+
+  Two consequences fall out of that encoding, and both are handled here. A metadata blob
+  **cannot be split on NUL**, because the four offset bytes are arbitrary and very often
+  hold a zero -- `symbolic.end_of_name` walks a name instead, which is what Swift's own
+  reflection reader does. And a name holding one **is not text**, so
+  `swift.demangle_symbolic` takes `bytes` where the rest of the package takes `str`.
+
+  Resolving one needs the image, so `resolve.ContextResolver` reads the descriptor the
+  offset reaches, walks its `Parent` chain to the module, and hands back a *mangled
+  fragment* -- `4demo5PointV` -- which the demangler then reads in place. A fragment
+  rather than a finished spelling is what keeps the rest of the mangling working: a
+  reference may be the base of a bound generic, and "types register as substitutions even
+  when symbolically referenced", so a later `AA` refers back to it. `Image`, `elf_image`
+  and `macho_image` map a file into addresses; a caller with a debugger or a memory dump
+  supplies its own `read`.
+
+  Verified twice over, and neither check is this library's own opinion. **Resolution**:
+  every symbolic reference in the Swift 5.10.1 runtime that lands on a descriptor the
+  linker named -- 4,528 of them -- resolves to the name that symbol demangles to, with
+  `swift-demangle` reading both sides. **Spelling**: each reference replaced by the
+  fragment it resolved to gives a self-contained name, and `swift-demangle` agrees with
+  what we spelled on 4,799 of 4,799. A further 856 are set aside because splicing itself
+  changes their meaning: a symbolic reference contributes one substitution and its
+  spelled-out equivalent contributes one per nominal component, which shifts every later
+  back-reference.
+
+  Getting the last 35 right meant reading a descriptor's **import info**, the components
+  after the name that a Clang-imported type carries: `N` gives the ABI name and `S` the
+  symbol namespace, whose value `t` means the descriptor came from a C `typedef` and is
+  written as a type alias. Without it `__C.CFArrayRef` reads as `__C.CFArray`, which is
+  the user-facing name and not the one the compiler mangles.
+
 - **Objective-C symbol names**, across all three runtimes. Objective-C is barely
   mangled, and what mangling there is belongs to the compiler rather than the language,
   so the rules are transcribed from clang's `lib/AST/Mangle.cpp`,

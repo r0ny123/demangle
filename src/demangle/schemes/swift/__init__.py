@@ -29,9 +29,11 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._demangler import MANGLING_PREFIXES, demangle_symbol
+from ._demangler import MANGLING_PREFIXES, demangle_symbol, demangle_type
 from ._old_demangler import demangle_old_symbol
 from ._printer import print_root
+from .resolve import ContextResolver, Image, elf_image, macho_image
+from .symbolic import SymbolicReference, end_of_name, scan
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -100,4 +102,74 @@ PLUGIN = LanguagePlugin(
 
 register(PLUGIN)
 
-__all__ = ["PLUGIN", "demangle_old_symbol", "demangle_symbol", "detect", "parse", "print_root"]
+
+def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
+    """Read a mangled name that may hold symbolic references, and spell it.
+
+    `name` is `bytes`, not `str`, because a name holding a symbolic reference is not
+    text: the reference's four-byte offset is arbitrary bytes. This is the entry a
+    metadata typeref takes, and the only one that can take it.
+
+    `resolver` is called with `(reference, offset-of-its-offset-field-within-name)` and
+    returns a *mangled fragment* naming what the reference points at, or None to decline.
+    `resolve.ContextResolver` is one, over an `Image`; a caller with a debugger or a
+    memory dump writes its own. With no resolver at all, a name holding a reference is
+    refused -- which is what the reference demangler does, and better than inventing a
+    name for something the bytes do not carry.
+
+    `whole_symbol` says whether to read the name as a whole symbol or as a type. Left
+    None it is decided by the mangling prefix, which is what tells the two apart: a
+    symbol carries `$s` or `_T`, a typeref carries nothing.
+
+    Returns the spelling, or None if the name could not be read.
+    """
+    if isinstance(name, str):
+        raise TypeError("demangle_symbolic reads bytes; a name holding a reference is not text")
+    # latin-1 maps every byte to the code point of the same value and back again, so the
+    # grammar can be read a character at a time without the bytes ever being interpreted
+    # as text. Swift spells a non-ASCII identifier in punycode, so nothing here is lost.
+    text = name.decode("latin-1")
+    if whole_symbol is None:
+        whole_symbol = detect(text)
+    root = demangle_symbol(text, resolver) if whole_symbol else demangle_type(text, resolver)
+    if root is None:
+        return None
+    if root.kind == "Suffix":
+        # `demangleType` hands back the whole input as a `Suffix` node when nothing at
+        # all parsed. That is the reference saying it could not read the name, and it
+        # comes back as None here rather than as the words `with unmangled suffix`
+        # wrapped around the bytes -- which is not a demangling of anything.
+        return None
+    spelled = print_root(root)
+    return spelled or None
+
+
+def typerefs(blob):
+    """Split a metadata blob of NUL-terminated mangled names into those names.
+
+    Not `blob.split(b"\0")`: a symbolic reference's offset is arbitrary bytes and very
+    often holds a zero, so splitting cuts names in half. See `symbolic.end_of_name`.
+    """
+    from .symbolic import names
+
+    return names(blob)
+
+
+__all__ = [
+    "PLUGIN",
+    "ContextResolver",
+    "Image",
+    "SymbolicReference",
+    "demangle_old_symbol",
+    "demangle_symbol",
+    "demangle_symbolic",
+    "demangle_type",
+    "detect",
+    "elf_image",
+    "end_of_name",
+    "macho_image",
+    "parse",
+    "print_root",
+    "scan",
+    "typerefs",
+]

@@ -220,8 +220,13 @@ class Demangler:
     would have to be caught at each of them.
     """
 
-    def __init__(self, text):
+    def __init__(self, text, resolver=None):
         self.text = text
+        #: Called with `(SymbolicReference, offset-of-its-offset-field)` and expected to
+        #: return a mangled fragment naming what the reference points at, or None. With
+        #: no resolver a symbolic reference refuses the name, which is what the reference
+        #: demangler does too.
+        self.resolver = resolver
         self.pos = 0
         self.end = len(text)
         self.stack = []
@@ -389,13 +394,63 @@ class Demangler:
             handler = _OPERATORS.get(char)
             if handler is not None:
                 return handler(self)
-            if char == "" or char in _SYMBOLIC_REFERENCE_BYTES:
-                # A symbolic reference points into the binary's own metadata, which a
-                # name on its own does not carry. The reference refuses it too when it
-                # has no resolver, and so does this.
+            if char == "":
                 return None
+            if char in _SYMBOLIC_REFERENCE_BYTES:
+                # A symbolic reference points into the binary's own metadata, which a
+                # name on its own does not carry. Without a resolver the reference
+                # refuses it, and so does this.
+                return self.demangle_symbolic_reference(ord(char))
             self.push_back()
             return self.demangle_identifier()
+
+    def demangle_symbolic_reference(self, raw_kind):
+        """`demangleSymbolicReference`: one introducer byte and a four-byte offset.
+
+        The offset is signed, little-endian, and relative to its own first byte. What the
+        resolver hands back is a *mangled fragment* rather than a spelling, which is what
+        lets the rest of the name use it: the reference may be the base of a bound
+        generic, or a member the next operator qualifies, and only a real node can be
+        either. A resolver that declines refuses the whole name, exactly as a null from
+        the reference's own resolver does.
+        """
+        from .symbolic import CONTEXT, KINDS, OFFSET_WIDTH, SymbolicReference
+
+        at = self.pos
+        if at + OFFSET_WIDTH > self.end:
+            return None
+        raw = self.text[at : at + OFFSET_WIDTH].encode("latin-1")
+        offset = int.from_bytes(raw, "little", signed=True)
+        self.pos = at + OFFSET_WIDTH
+
+        if self.resolver is None:
+            return None
+        kind, directness = KINDS.get(raw_kind, (None, None))
+        if kind is None:
+            # 3 through 8 and 0x0C reach the reference's switch only to fall through it.
+            return None
+
+        fragment = self.resolver(SymbolicReference(raw_kind, kind, directness, offset, at), at)
+        if not fragment:
+            return None
+        resolved = Demangler(fragment, self.resolver).demangle_fragment()
+        if resolved is None:
+            return None
+        # "Types register as substitutions even when symbolically referenced" -- except
+        # for the two opaque-type kinds, which name a position rather than a type.
+        if kind == CONTEXT and resolved.kind not in (
+            "OpaqueTypeDescriptorSymbolicReference",
+            "OpaqueReturnTypeOf",
+        ):
+            self.add_substitution(resolved)
+        return resolved
+
+    def demangle_fragment(self):
+        """Read the whole text as one node, for a resolver's answer."""
+        if not self.parse_and_push():
+            return None
+        found = self.pop()
+        return found if found is not None and not self.stack else None
 
     # -- substitutions ---------------------------------------------------------
 
@@ -2729,7 +2784,7 @@ _OPERATORS = {
 }
 
 
-def demangle_symbol(name):
+def demangle_symbol(name, resolver=None):
     """Read `name` into a `Global` node, or return `None` if it is not readable.
 
     Swift 3's mangling is a different grammar with its own demangler in the compiler, and
@@ -2740,12 +2795,16 @@ def demangle_symbol(name):
         from ._old_demangler import demangle_old_symbol
 
         return demangle_old_symbol(name)
-    return Demangler(name).demangle_symbol()
+    return Demangler(name, resolver).demangle_symbol()
 
 
-def demangle_type(name):
-    """Read `name` as a type rather than a whole symbol, for `_TtGSa...`-style names."""
-    demangler = Demangler(name)
+def demangle_type(name, resolver=None):
+    """Read `name` as a type rather than a whole symbol, for `_TtGSa...`-style names.
+
+    This is also the entry a metadata typeref takes: those are types, and they carry no
+    `$s` prefix for `demangle_symbol` to find.
+    """
+    demangler = Demangler(name, resolver)
     demangler.parse_and_push()
     found = demangler.pop()
     return found if found is not None else Node("Suffix", text=name)
