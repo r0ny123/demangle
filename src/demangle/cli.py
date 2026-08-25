@@ -88,10 +88,10 @@ def main(argv=None):
     try:
         status = _run(names, arguments)
     except BrokenPipeError:
-        # `demangle | head` closes the pipe on us. Catching this per name -- which the
-        # loop's own `except Exception` used to do -- printed one error per remaining
-        # symbol, thousands of them. Redirect stdout to devnull so the interpreter's
-        # shutdown flush does not raise it again, and exit cleanly.
+        # `demangle | head` closes the pipe on us. This has to be caught outside the
+        # loop: caught per name it prints one error for every remaining symbol, thousands
+        # of them. Redirect stdout to devnull so the interpreter's shutdown flush does not
+        # raise it again, and exit cleanly.
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return 0
     return status

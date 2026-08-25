@@ -1258,8 +1258,8 @@ class ItaniumParser:
         reader.expect("I")
         install_scope = install_scope and self._naming
         # `_scope_has_pack` describes *this* argument list, so it is saved and restored
-        # like `_naming`. Letting it leak outward meant a pack nested inside an argument
-        # -- `f<std::tuple<int>>` -- suppressed the ellipsis on the enclosing `Dp`.
+        # like `_naming`. Left to leak outward, a pack nested inside an argument --
+        # `f<std::tuple<int>>` -- suppresses the ellipsis on the enclosing `Dp`.
         outer_has_pack = self._scope_has_pack
         self._scope_has_pack = False
         if install_scope:
