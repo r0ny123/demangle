@@ -19,6 +19,7 @@ _BUILTIN_MODULES = (
     ("rust", "demangle.schemes.rust"),
     ("itanium", "demangle.schemes.itanium"),
     ("msvc", "demangle.schemes.msvc"),
+    ("swift", "demangle.schemes.swift"),
     ("d", "demangle.schemes.d"),
     ("go", "demangle.schemes.go"),
 )

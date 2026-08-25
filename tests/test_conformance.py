@@ -36,6 +36,12 @@ GO_TOTAL, GO_EXACT = 1498, 1498
 #: D, against GNU binutils' D demangler over the shipped libgphobos and libgdruntime.
 D_TOTAL, D_EXACT = 1257, 1257
 
+#: Swift, against `swift-demangle` 5.10.1. The corpus is a stratified sample of the
+#: shipped runtime and Foundation -- up to four symbols per distinct set of
+#: demangling-tree node kinds -- plus every current-mangling case from the compiler's own
+#: test/Demangle/Inputs/manglings.txt that the reference itself can read.
+SWIFT_TOTAL, SWIFT_EXACT = 8291, 8291
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the
@@ -94,6 +100,11 @@ def test_go_corpus():
 def test_d_matches_gnu_dlang_demangler():
     total, exact = _score("d-real-world.txt", "llvm", language="d")
     assert (total, exact) == (D_TOTAL, D_EXACT)
+
+
+def test_swift_matches_swift_demangle():
+    total, exact = _score("swift-real-world.txt", "llvm", language="swift")
+    assert (total, exact) == (SWIFT_TOTAL, SWIFT_EXACT)
 
 
 def test_msvc_matches_llvm_undname():

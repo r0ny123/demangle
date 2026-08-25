@@ -1,0 +1,32 @@
+# Names from the compiler's own test corpus that `swift-demangle` itself refuses:
+# it echoes them back unchanged. Truncations, bad indices, and names that parse
+# but leave the stack in a shape the printer has no spelling for. This scheme
+# must refuse each one rather than invent a reading.
+$SSD1BySSSBsg_G
+$Sxxx_x_xxIxzCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC$x
+$SyyySGSS_IIxxxxx____xsIyFSySIxx_@xIxx____xxI
+$s0059xxxxxxxxxxxxxxx_ttttttttBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBee
+$sSD5IndexVy__GD
+$s__TJO
+$sxxxIxzCXxxxesy
+$syQo
+_$S3BBBBf0602365061_
+_$S3BBBBi0602365061_
+_$S3BBBBv0602365061_
+_S$iW
+_S$s18ReversedCollectionVyxGs04LazyB8ProtocolfC
+_S$s3SetVyxGs10CollectiotySivm
+_S$s5print_9separator10terminatoryypfC
+_SocketJoinOrLeaveMulticast
+_T0A8
+_T0D
+_T0LiteralAByxGxd_tcfC
+_T0Rml
+_T0Tk
+_T0XZ
+_T0iW
+_T0lxxxmmmTk
+_T0s18ReversedCollectionVyxGs04LazyB8ProtocolfC
+_T0s30ReversedRandomAccessCollectionVyxGTfq3nnpf_nTfq1cn_nTfq4x_n
+_T0s3SetVyxGs10CollectiotySivm
+_T0s5print_9separator10terminatoryypfC

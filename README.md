@@ -1,7 +1,7 @@
 # demangle
 
-Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Go** and
-**D** — in pure Python. No dependencies, no native code, no compiler required.
+Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Swift**,
+**Go** and **D** — in pure Python. No dependencies, no native code, no compiler required.
 
 ```python
 >>> import demangle
@@ -11,6 +11,8 @@ Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, *
 'void __cdecl f(int)'
 >>> demangle.demangle("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
 'core::fmt::Formatter::pad'
+>>> demangle.demangle("$s10Foundation4DataV5countSivg")
+'Foundation.Data.count.getter : Swift.Int'
 >>> demangle.demangle("example.com/m/v2%2e5.(*T).Method", language="go")
 'example.com/m/v2.5.(*T).Method'
 ```
@@ -122,6 +124,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **275 / 277** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
+| Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8291 / 8291** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 
@@ -146,10 +149,11 @@ Run live against the reference, not replayed.
 | `libclang-cpp.so` + Polly + LTO | 41,140 | **100%** |
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6` | 5,913 | **100%** |
+| Swift runtime + Foundation | 48,368 | **100%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 
-About 160,000 real symbols, all exact.
+About 210,000 real symbols, all exact.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
@@ -216,7 +220,7 @@ builder or a tree builder decides what those become. That is what lets one parse
 both `demangle()` and `parse()` with no second implementation to drift.
 
 Schemes are plugins. `core` never imports one, they never import each other, and a
-separate distribution can add Swift or D support through the `demangle.languages`
+separate distribution can add a language through the `demangle.languages`
 entry-point group without patching this package. Both rules are enforced by tests.
 
 [docs/analysing-a-binary.md](docs/analysing-a-binary.md) works one real task through
