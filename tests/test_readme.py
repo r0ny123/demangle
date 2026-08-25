@@ -50,6 +50,7 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.ITANIUM_LLVM_EXACT, pins.ITANIUM_LLVM_TOTAL),
         (pins.ITANIUM_GNU_EXACT, pins.ITANIUM_GNU_TOTAL),
         (pins.REGRESSIONS_EXACT, pins.REGRESSIONS_TOTAL),
+        (pins.GO_EXACT, pins.GO_TOTAL),
     }
     stated = {(int(a), int(b)) for a, b in re.findall(r"\*\*(\d+) / (\d+)\*\*", readme)}
     assert stated <= pinned, f"README states counts that are not pinned anywhere: {sorted(stated - pinned)}"

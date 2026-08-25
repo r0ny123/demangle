@@ -25,6 +25,14 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 31, 31
 RUST_TOTAL, RUST_EXACT = 5316, 5316
 RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 
+#: Go is pinned like the rest, but what it is pinned *against* is different: there is no
+#: reference demangler for Go, so the expected column is this library's own decoding and
+#: the count alone would be a record of agreeing with itself. What makes it mean
+#: something is the round-trip property in tests/test_go.py -- re-escaping a decoded path
+#: must reproduce the bytes Go's own PathToPrefix wrote. The count pins the corpus; the
+#: property is the correctness argument.
+GO_TOTAL, GO_EXACT = 1498, 1498
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the
@@ -72,6 +80,12 @@ def test_itanium_matches_llvm_cxxfilt():
 def test_itanium_matches_gnu_cxxfilt():
     total, exact = _score("itanium-real-world-gnu.txt", "gnu")
     assert (total, exact) == (ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT)
+
+
+def test_go_corpus():
+    """See `GO_TOTAL` for what this does and does not establish."""
+    total, exact = _score("go-real-world.txt", "llvm", language="go")
+    assert (total, exact) == (GO_TOTAL, GO_EXACT)
 
 
 def test_msvc_matches_llvm_undname():
