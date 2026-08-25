@@ -129,7 +129,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **275 / 277** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
-| Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8291 / 8291** |
+| Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
 | Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
