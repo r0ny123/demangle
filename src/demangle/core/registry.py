@@ -139,6 +139,11 @@ def candidates(mangled):
     added, and `register` discards the whole dictionary rather than changing it. A
     reader therefore sees a complete answer or none at all, and none at all falls
     through to the locked path.
+
+    A reader can still return a tuple built before a concurrent `register` -- it read the
+    dictionary before that call replaced it -- which is a valid answer for a call that
+    began first. Every call starting after `register` returns finds `_by_first` empty and
+    rebuilds.
     """
     if not mangled:
         return available()
@@ -151,10 +156,17 @@ def candidates(mangled):
 
 
 def _screen(first):
-    """Build and record the candidate list for names starting with `first`."""
+    """Build and record the candidate list for names starting with `first`.
+
+    `available()` is called inside the lock, not before it. Read outside, a `register`
+    landing in the window between the two would be invisible: the screen would be built
+    from the older order and then cached, and the `register` that should have thrown the
+    cache away has already run. The entry would never be invalidated again.
+    """
     global _by_first
-    ordered = available()
+    _load()
     with _lock:
+        ordered = available()
         cache = _by_first
         if cache is None:
             cache = _by_first = {}
