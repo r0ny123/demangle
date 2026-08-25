@@ -430,9 +430,10 @@ class _Demangler:
     def localScope(self):
         """A scope inside a function: the function's own name, and which scope of it.
 
-        "?1??f@@YAXXZ@" is the second scope of "void __cdecl f(void)". The enclosing name is a complete decorated name in its
-        own right and is read as one, in its own back-reference scopes - which is why it is
-        parsed by a separate cursor over the same text rather than inline.
+        "?1??f@@YAXXZ@" is the second scope of "void __cdecl f(void)". The enclosing name
+        is a complete decorated name in its own right and is read as one, in its own
+        back-reference scopes - which is why it is parsed by a separate cursor over the
+        same text rather than inline.
         """
         # the scope carries the number a template argument does - a digit standing for itself
         # plus one, nibbles ended by "@" standing for themselves - except that a bare "@" is
@@ -634,15 +635,15 @@ class _Demangler:
             scopes.append(self.nameFragment(False)[0])
         scopes.reverse()
         if isinstance(first, _Conversion):
-            return "::".join(scopes + ["\0conversion\0"]), False, special_form
+            return "::".join([*scopes, "\0conversion\0"]), False, special_form
         if isinstance(first, _Structor):
             if not scopes:
                 raise _Bail
             klass = scopes[-1]
             spelled = klass + first.arguments
             first = "~" + spelled if first.is_destructor else spelled
-            return "::".join(scopes + [first]), True, special_form
-        return "::".join(scopes + [first]), False, special_form
+            return "::".join([*scopes, first]), True, special_form
+        return "::".join([*scopes, first]), False, special_form
 
     def type(self, quals=()):
         self.depth += 1
@@ -832,7 +833,7 @@ class _Demangler:
         """A pointer or reference: `token` plus its own quals, over a qualified pointee."""
         has_ptr64 = self.eat("E")
         if self.eat("I"):
-            own_quals = own_quals + ("__restrict",)
+            own_quals = (*own_quals, "__restrict")
         # "__unaligned" qualifies what the pointer points at, and is spelled after the
         # pointee's own const and volatile: "int const __unaligned *"
         unaligned = ("__unaligned",) if self.eat("F") else ()

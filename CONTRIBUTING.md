@@ -5,12 +5,23 @@ spelling, or contributing a corpus should not require understanding the whole co
 
 ## Getting set up
 
+The project builds with [Hatch](https://hatch.pypa.io/). You do not need it -- a plain
+editable install works -- but it wraps every check in one command.
+
 ```console
 git clone https://github.com/r0ny123/demangle
 cd demangle
+
+# With Hatch: creates the environment and runs everything a pull request must pass.
+hatch run check
+
+# Or without it.
 pip install -e ".[dev]"
 pytest
 ```
+
+`hatch run` also has the pieces on their own: `test`, `cover`, `lint`, `fmt`, `bench`,
+`differential`. `hatch run test:test` runs the suite across Python 3.11 through 3.13.
 
 The reference demanglers are optional but useful. On Debian or Ubuntu:
 
@@ -42,7 +53,8 @@ design rests on them and each is enforced by a test:
 2. **`core` never imports a scheme, and schemes never import each other.** A scheme has
    to stay replaceable in isolation.
 3. **No third-party dependencies.** The dependency-free promise is the reason a lot of
-   people can use this at all.
+   people can use this at all. CI asserts it against a clean install of the built wheel,
+   not just against the source tree.
 
 ## Working on the Itanium parser
 
@@ -64,11 +76,20 @@ See [docs/adding-a-scheme.md](docs/adding-a-scheme.md). In short: three function
 ## Before you open a pull request
 
 ```console
-ruff check . && ruff format --check .
-pytest
-python benchmarks/bench.py --check
-python tools/differential.py
+hatch run check
 ```
+
+or, without Hatch:
+
+```console
+ruff check . && ruff format --check . && ty check .
+pytest
+python tools/differential.py
+python benchmarks/bench.py --check
+```
+
+`tools/differential.py` with no arguments replays every checked-in corpus under the
+style and language it was recorded with, and exits non-zero if anything disagrees.
 
 If a change moves a conformance number, say which way and why in the commit message.
 If it moves a benchmark, say that too.

@@ -147,14 +147,27 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           python -m pip install build twine
+      # `build` is the standard frontend and backend-agnostic; hatchling does the work.
       - run: python -m build
       - run: python -m twine check --strict dist/*
       - name: Install the built wheel in a clean environment
         run: |
           python -m venv /tmp/clean
           /tmp/clean/bin/pip install dist/*.whl
-          # Proves the dependency-free claim: nothing but the wheel is installed.
           /tmp/clean/bin/demangle _ZNSt6vectorIiSaIiEE9push_backERKi
+      - name: The wheel really has no dependencies
+        run: |
+          /tmp/clean/bin/python - <<'PY'
+          from importlib.metadata import distributions
+          installed = {d.metadata["Name"] for d in distributions()} - {"pip", "setuptools", "wheel"}
+          assert installed == {"demangle"}, f"unexpected dependencies: {sorted(installed)}"
+          PY
+      - name: An sdist ships a suite that can actually be collected
+        run: |
+          python -m venv /tmp/sdist
+          /tmp/sdist/bin/pip install "$(ls dist/*.tar.gz)[dev]"
+          mkdir -p /tmp/unpacked && tar xzf dist/*.tar.gz -C /tmp/unpacked --strip-components=1
+          cd /tmp/unpacked && /tmp/sdist/bin/python -m pytest -q
       - uses: actions/upload-artifact@v4
         with:
           name: distributions

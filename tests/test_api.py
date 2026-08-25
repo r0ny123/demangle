@@ -145,6 +145,132 @@ class TestBatch:
         assert demangle.cache_stats()["hits"] >= 1
 
 
+class TestDecorations:
+    """Symbol-table decorations: what the linker and compiler append to a name.
+
+    Only covered incidentally through the libstdc++ corpus before, which meant the
+    splitting rules -- the part that has broken twice -- had no direct test.
+    """
+
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            (
+                "_ZGVNSt10moneypunctIcLb0EE2idE@@GLIBCXX_3.4",
+                "guard variable for std::moneypunct<char, false>::id@@GLIBCXX_3.4",
+            ),
+            ("_ZN3Foo3barEv@GLIBCXX_3.4", "Foo::bar()@GLIBCXX_3.4"),
+            ("_ZN3Foo3barEv.cold", "Foo::bar() (.cold)"),
+            ("_ZN3Foo3barEv.part.0", "Foo::bar() (.part.0)"),
+            ("_ZN3Foo3barEv.llvm.12345", "Foo::bar() (.llvm.12345)"),
+        ],
+    )
+    def test_decorations_are_carried_through(self, name, expected):
+        assert demangle.demangle(name) == expected
+
+    def test_gnu_spells_each_clone_separately(self):
+        assert demangle.demangle("_ZN3Foo3barEv.actor.cold", style="gnu") == ("Foo::bar() [clone .actor] [clone .cold]")
+
+    def test_detection_sees_through_a_decoration(self):
+        assert demangle.detect("_ZN3Foo3barEv@@GLIBCXX_3.4") == "itanium"
+
+    def test_msvc_names_are_never_split_on_at(self):
+        """`@` is MSVC's own scope separator, so it must not be treated as a version."""
+        assert demangle.demangle("?f@@YAXH@Z") == "void __cdecl f(int)"
+
+    def test_rust_names_are_never_split_on_dot(self):
+        """`.` is Rust grammar: `..` is `::` and shims are spelled `{{vtable.shim}}`."""
+        name = "_ZN100_$LT$core..iter..adapters..skip..Skip$LT$I$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$4next17h69f836d14d783a6fE"
+        assert demangle.demangle(name).startswith("<core::iter::adapters::skip::Skip<I>")
+
+    def test_a_rust_symbol_with_a_trailing_suffix_is_still_rust(self):
+        """Anchoring the hash to the end lost every one of these to the C++ parser."""
+        name = "_ZN3std2io5stdio19OUTPUT_CAPTURE_USED17hb12710559afcc79aE.0"
+        assert demangle.detect(name) == "rust"
+        assert demangle.demangle(name) == "std::io::stdio::OUTPUT_CAPTURE_USED.0"
+
+    def test_the_ast_keeps_the_decoration_as_structure(self):
+        tree = demangle.parse("_ZN3Foo3barEv.cold")
+        assert tree.kind == "decorated"
+        assert tree.decoration == ".cold"
+
+
+class TestStyleRegistration:
+    """`Style` and `register_style` are public and were entirely untested."""
+
+    def test_a_custom_style_can_be_registered_and_used(self):
+        from demangle.core.spelling import SpellingBuilder
+        from demangle.core.style import _STYLES, get_style
+        from demangle.schemes.itanium.options import ItaniumOptions
+
+        house = demangle.Style(
+            name="house",
+            spelling_builder=SpellingBuilder(legacy_angle_spacing=True),
+            language_options={"itanium": ItaniumOptions(expand_std_abbreviations=False)},
+        )
+        demangle.register_style(house)
+        try:
+            assert "house" in demangle.styles()
+            assert get_style("house") is house
+            assert demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi", style="house").count("> >") == 1
+        finally:
+            if _STYLES is not None:
+                _STYLES.pop("house", None)
+            demangle.cache_clear()
+
+    def test_a_style_object_may_be_passed_directly(self):
+        from demangle.core.style import get_style
+
+        assert get_style(get_style("gnu")) is get_style("gnu")
+
+
+class TestBatchOptions:
+    def test_demangle_all_honours_language_and_style(self):
+        names = ["_ZNSt6vectorIiSaIiEE9push_backERKi"]
+        assert next(iter(demangle.demangle_all(names, style="gnu"))).count("> >") == 1
+        assert next(iter(demangle.demangle_all(names, language="itanium"))).startswith("std::vector")
+
+    def test_bad_arguments_are_reported_at_the_call(self):
+        """Not at the first `next()`, which is a surprise at a distance."""
+        with pytest.raises(ValueError, match="unknown language"):
+            demangle.demangle_all(["_Z1fv"], language="cobol")
+        with pytest.raises(ValueError, match="unknown style"):
+            demangle.demangle_all(["_Z1fv"], style="bogus")
+
+
+class TestParseOptions:
+    def test_parse_accepts_a_language(self):
+        tree = demangle.parse("?f@@YAXH@Z", language="msvc")
+        assert tree.spell() == "void __cdecl f(int)"
+
+    def test_parse_accepts_a_style_and_the_tree_agrees_with_the_text(self):
+        name = "_Z1fI1AIiEEvT_"
+        for style in ("llvm", "gnu"):
+            assert demangle.parse(name, style=style).spell(style=style) == demangle.demangle(name, style=style)
+
+    def test_msvc_returns_a_tree(self):
+        tree = demangle.parse("?f@@YAXH@Z")
+        assert len(list(tree.walk())) > 1
+
+    def test_rust_returns_a_leaf_for_now(self):
+        """Documented in ROADMAP.md; pinned so the day it changes is a deliberate edit."""
+        tree = demangle.parse("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
+        assert tree.kind == "raw"
+
+
+class TestCacheStatistics:
+    def test_every_documented_key_is_present(self):
+        demangle.cache_clear()
+        demangle.demangle("_Z1fv")
+        demangle.demangle("_Z1fv")
+        stats = demangle.cache_stats()
+        assert set(stats) == {"size", "max_size", "hits", "misses", "hit_rate"}
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1
+        assert stats["hit_rate"] == 0.5
+        assert stats["size"] >= 1
+
+
 class TestIntrospection:
     def test_languages_lists_the_built_ins(self):
         assert set(demangle.languages()) >= {"itanium", "msvc", "rust"}
