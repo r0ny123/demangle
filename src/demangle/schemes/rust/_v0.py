@@ -528,10 +528,14 @@ class Parser:
         if basic_type(tag):
             pass
         elif n == "R" or n == "Q":
+            # The lifetime is optional; the referent is not. Skipping the lifetime and
+            # stopping left the referent to be read as whatever came next, which
+            # desynchronised every later offset -- `<&'_ u8 as Trait>::method` was
+            # rejected outright because the impl path is reached through this skipper.
+            # `print_type` has always had the shape right; this now matches it.
             if self.eat("L"):
                 self.integer_62()
-            else:
-                self.skip_type()
+            self.skip_type()
         elif n == "P" or n == "O" or n == "S":
             self.skip_type()
         elif n == "A":
@@ -558,7 +562,10 @@ class Parser:
                 self.skip_path()
                 while self.eat("p"):
                     self.ident()
-                    self.skip_type()
+                    if self.eat("K"):
+                        self.skip_const()
+                    else:
+                        self.skip_type()
             if not self.eat("L"):
                 raise UnableTov0Demangle(self.inn)
             self.integer_62()
@@ -946,7 +953,13 @@ class Printer:
             name.display()
             self.out += name.disp
             self.out += " = "
-            self.print_type()
+            # An existential projection binds an associated type, but a trait may also
+            # have associated *consts*, and those are bound the same way with a `K` in
+            # front: `dyn Trait<LEN = 1>`. rustc-demangle 0.1.28 `v0.rs::print_dyn_trait`.
+            if self.eat("K"):
+                self.print_const(False)
+            else:
+                self.print_type()
 
         if open:
             self.out += ">"

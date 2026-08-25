@@ -27,14 +27,18 @@ from .tables import (
     EXTENDED_BUILTIN_TYPES,
     INFIX_OPERATORS,
     OPERATORS,
+    PRECEDENCE,
     PREFIX_OPERATORS,
+    PRIMARY_PRECEDENCE,
     QUALIFIER_LETTERS,
     QUALIFIER_ORDER,
+    RIGHT_ASSOCIATIVE,
     SPECIAL_ENCODING_NAMES,
     SPECIAL_TYPE_NAMES,
     STD_ABBREVIATIONS,
     STD_ABBREVIATIONS_EXPANDED,
     STD_ABBREVIATIONS_EXPANDED_GNU,
+    UNARY_PRECEDENCE,
 )
 
 __all__ = ["ItaniumParser", "detect", "parse"]
@@ -67,13 +71,13 @@ class ItaniumParser:
     __slots__ = (
         "_abbrev",
         "_abbrev_expanded",
-        "_compound",
         "_ctor_dtor",
         "_depth",
         "_drop_return",
         "_mangled",
         "_naming",
         "_packs",
+        "_precedence",
         "_scope_has_pack",
         "builder",
         "limits",
@@ -97,10 +101,10 @@ class ItaniumParser:
         self.subs = SubstitutionTable(mangled, limits.max_substitutions)
         self.targs = TemplateArgumentTable()
         self._depth = 0
-        # Whether the expression just parsed was compound, so a containing operator
-        # knows to parenthesise it. `fp + fp` reads better than `(fp) + (fp)`, and the
-        # reference demanglers only bracket what needs bracketing.
-        self._compound = False
+        # Precedence of the expression just parsed, read by a containing operator to
+        # decide whether it needs brackets. Primary by default: most expressions are
+        # names or literals and never need any.
+        self._precedence = PRIMARY_PRECEDENCE
         # Identities of template arguments that were argument packs. A pack is already
         # spelled as its comma-separated members, so expanding it must not also append
         # an ellipsis.
@@ -1140,12 +1144,25 @@ class ItaniumParser:
         reader.expect("L")
 
         if reader.startswith("_Z"):
-            # A reference to a declared entity rather than a value (5.1.6.2). It is a
-            # complete mangled name, parsed by a nested parser that shares nothing:
-            # its substitution numbering is its own.
-            nested = ItaniumParser(reader.remaining, self.builder, self.limits, self.options)
-            handle = nested.encoding_from_prefix()
-            reader.pos += nested.reader.pos
+            # A reference to a declared entity rather than a value (5.1.6.2): a complete
+            # mangled name embedded in this one. It is parsed with *this* parser's state
+            # rather than a fresh one, because the compiler writes substitutions inside
+            # it that index the enclosing name's table -- Clang emits exactly that for
+            # the address of a function template passed as a non-type argument, and a
+            # fresh table makes every one of those unresolvable.
+            reader.expect("_Z")
+            was_naming = self._naming
+            outer_scope = self.targs.snapshot()
+            self._naming = True
+            try:
+                handle = self.encoding()
+            finally:
+                # The substitution table is shared deliberately, but the `T_` scope is
+                # not: the embedded entity has template parameters of its own, and
+                # letting them stand would leave every later `T_` in the enclosing name
+                # resolving against the wrong argument list.
+                self._naming = was_naming
+                self.targs.restore(outer_scope)
             reader.expect("E")
             return builder.spell(handle)
 
@@ -1163,11 +1180,6 @@ class ItaniumParser:
             reader.take()
         value = reader.text[start : reader.pos - 1]
         return self.spell_literal(spelling, value)
-
-    def encoding_from_prefix(self):
-        """Parse `_Z <encoding>` from the current position, for a nested expr-primary."""
-        self.reader.expect("_Z")
-        return self.encoding()
 
     @staticmethod
     def spell_literal(kind, value):
@@ -1332,12 +1344,12 @@ class ItaniumParser:
         expression grammar is enormous, and most of it cannot reach a mangled name
         because it is not part of any signature.
 
-        Sets `_compound`, which a containing operator reads immediately afterwards to
-        decide whether this operand needs parentheses.
+        Sets `_precedence`, which a containing operator reads immediately afterwards to
+        decide whether this operand needs brackets.
         """
         self._enter()
         try:
-            self._compound = False
+            self._precedence = PRIMARY_PRECEDENCE
             return self._expression()
         finally:
             self._leave()
@@ -1348,10 +1360,10 @@ class ItaniumParser:
             return f"{{parm#{int(index) + 2 if index else 1}}}"
         return f"fp{index}"
 
-    def _operand(self):
-        """One operand of an operator, parenthesised only if it is itself compound."""
+    def _operand(self, binding):
+        """One operand, bracketed only when it binds more loosely than its operator."""
         text = self.expression()
-        return f"({text})" if self._compound else text
+        return f"({text})" if self._precedence < binding else text
 
     def _expression(self):
         reader = self.reader
@@ -1462,6 +1474,7 @@ class ItaniumParser:
             condition = self.expression()
             when_true = self.expression()
             when_false = self.expression()
+            self._precedence = PRECEDENCE["qu"]
             return f"({condition}) ? ({when_true}) : ({when_false})"
 
         if pair in ("dt", "pt"):
@@ -1469,7 +1482,6 @@ class ItaniumParser:
             reader.pos += 2
             owner = self.expression()
             joiner = "." if pair == "dt" else "->"
-            self._compound = True
             return owner + joiner + self.unresolved_name()
 
         if pair == "ix":
@@ -1483,7 +1495,7 @@ class ItaniumParser:
             # next production says which.
             if reader.text[reader.pos + 2 : reader.pos + 4] in ("nw", "na", "dl", "da"):
                 reader.pos += 2
-                self._compound = True
+                self._precedence = UNARY_PRECEDENCE
                 return "::" + self.expression()
             return self.unresolved_name()
 
@@ -1504,7 +1516,7 @@ class ItaniumParser:
             keyword = "new" if pair == "nw" else "new[]"
             gap = " " if self.options.gnu_expression_spelling else ""
             placement = f"{gap}({', '.join(arguments)})" if arguments else ""
-            self._compound = True
+            self._precedence = UNARY_PRECEDENCE
             if reader.eat("E"):
                 return f"{keyword}{placement} {kind}"
             return f"{keyword}{placement} {kind}{self.initialiser()}"
@@ -1522,15 +1534,21 @@ class ItaniumParser:
 
         if pair in PREFIX_OPERATORS:
             reader.pos += 2
-            operand = self._operand()
-            self._compound = True
+            # A prefix operator brackets anything that is not already primary, including
+            # another prefix operator: the references print `!(!true)`, not `!!true`.
+            operand = self._operand(PRIMARY_PRECEDENCE)
+            self._precedence = UNARY_PRECEDENCE
             return f"{PREFIX_OPERATORS[pair]}{operand}"
 
         if pair in INFIX_OPERATORS:
             reader.pos += 2
-            left = self._operand()
-            right = self._operand()
-            self._compound = True
+            binding = PRECEDENCE.get(pair, 1)
+            # The side that does *not* absorb an equal-precedence neighbour needs the
+            # brackets: for a left-grouping operator that is the right operand.
+            right_associative = pair in RIGHT_ASSOCIATIVE
+            left = self._operand(binding + 1 if right_associative else binding)
+            right = self._operand(binding if right_associative else binding + 1)
+            self._precedence = binding
             gap = "" if self.options.gnu_expression_spelling else " "
             return f"{left}{gap}{INFIX_OPERATORS[pair]}{gap}{right}"
 

@@ -1,13 +1,22 @@
 # Conformance corpus: names that each exposed a distinct defect.
 #
-# Curated from libLLVM's 44k-symbol table, which is too large to check in. Every entry
-# here failed at some point during development and now pins the fix: substitution
-# numbering for pack expansions and cv-qualified function types, <unresolved-name>,
-# <template-param-decl>, empty and multi-member packs, local names used as types,
-# multi-dimensional arrays, and the thread-local special names.
+# Curated from the symbol tables of libLLVM, libclang-cpp and the system libstdc++,
+# which together are far too large to check in. Every entry here failed at some point
+# during development and now pins the fix: substitution numbering for pack expansions,
+# cv-qualified function types and embedded mangled names; <unresolved-name>;
+# <template-param-decl>; empty and multi-member packs; local names used as types;
+# multi-dimensional arrays; operator precedence in expressions; abbreviations scoping a
+# constructor; and the thread-local special names.
 #
 # reference: llvm-cxxfilt Ubuntu LLVM version 18.1.3   Optimized build.
-# pairs: 18
+# pairs: 30
+_Z1fIXaantLb1ELb0EEEvv	void f<!true && false>()
+_Z1fIXmlplLi1ELi2ELi3EEEvv	void f<(1 + 2) * 3>()
+_Z1fIXntntLb1EEEvv	void f<!(!true)>()
+_Z1fIXooaaLb1ELb0ELb1EEEvv	void f<true && false || true>()
+_Z1fIXplLi1EmiLi2ELi3EEEvv	void f<1 + (2 - 3)>()
+_Z1fIXplLi1EmlLi2ELi3EEEvv	void f<1 + 2 * 3>()
+_Z1fIXplmiLi1ELi2ELi3EEEvv	void f<1 - 2 + 3>()
 _Z1fM1AKFbvE	f(bool (A::*)() const)
 _Z1fZ1gvEUlvE_S_	f(g()::'lambda'(), g()::'lambda'())
 _ZN17NewPMDebugifyPass3runERN4llvm6ModuleERNS0_15AnalysisManagerIS1_JEEE	NewPMDebugifyPass::run(llvm::Module&, llvm::AnalysisManager<llvm::Module>&)
@@ -20,6 +29,11 @@ _ZN4llvm20getBestSimplifyQueryINS_8FunctionEJEEEKNS_13SimplifyQueryERNS_15Analys
 _ZN4llvm21find_singleton_nestedINS_10BasicBlockENS_14iterator_rangeINS_12SuccIteratorINS_11InstructionES1_EEEEZNS_18getExitBlockHelperIS1_NS_4LoopEEESt4pairIPT_bEPKNS_8LoopBaseISA_T0_EEbEUlPS1_bE_EESC_OSE_T1_b	std::pair<llvm::BasicBlock*, bool> llvm::find_singleton_nested<llvm::BasicBlock, llvm::iterator_range<llvm::SuccIterator<llvm::Instruction, llvm::BasicBlock>>, std::pair<llvm::BasicBlock*, bool> llvm::getExitBlockHelper<llvm::BasicBlock, llvm::Loop>(llvm::LoopBase<llvm::BasicBlock, llvm::Loop> const*, bool)::'lambda'(llvm::BasicBlock*, bool)>(llvm::Loop&&, std::pair<llvm::BasicBlock*, bool> llvm::getExitBlockHelper<llvm::BasicBlock, llvm::Loop>(llvm::LoopBase<llvm::BasicBlock, llvm::Loop> const*, bool)::'lambda'(llvm::BasicBlock*, bool), bool)
 _ZN4llvm5RTLIB22getOutlineAtomicHelperERA5_A4_KNS0_7LibcallENS_14AtomicOrderingEm	llvm::RTLIB::getOutlineAtomicHelper(llvm::RTLIB::Libcall const (&) [5][4], llvm::AtomicOrdering, unsigned long)
 _ZN4llvm6detail18UniqueFunctionBaseIvJNS_9StringRefENS_3AnyEEE15CallbacksHolderIZNS_14ChangeReporterINS_7IRDataTINS_6DCDataEEEE25registerRequiredCallbacksERNS_28PassInstrumentationCallbacksEEUlS2_S3_E_SD_vE9CallbacksE	llvm::detail::UniqueFunctionBase<void, llvm::StringRef, llvm::Any>::CallbacksHolder<llvm::ChangeReporter<llvm::IRDataT<llvm::DCData>>::registerRequiredCallbacks(llvm::PassInstrumentationCallbacks&)::'lambda'(llvm::StringRef, llvm::Any), llvm::ChangeReporter<llvm::IRDataT<llvm::DCData>>::registerRequiredCallbacks(llvm::PassInstrumentationCallbacks&)::'lambda'(llvm::StringRef, llvm::Any), void>::Callbacks
+_ZN4llvmlsINS_18raw_string_ostreamEA2_cEENSt9enable_ifIXaantsr3stdE14is_reference_vIT_Esr3stdE12is_base_of_vINS_11raw_ostreamES4_EEOS4_E4typeES6_RKT0_	std::enable_if<!std::is_reference_v<llvm::raw_string_ostream> && std::is_base_of_v<llvm::raw_ostream, llvm::raw_string_ostream>, llvm::raw_string_ostream&&>::type llvm::operator<<<llvm::raw_string_ostream, char [2]>(llvm::raw_string_ostream&&, char const (&) [2])
+_ZN5clang12ast_matchers7dynamic8internal23makeMatcherAutoMarshallINS0_8internal15BindableMatcherINS_12TemplateNameEEENS4_7MatcherIS6_EETnPFT_N4llvm8ArrayRefIPKT0_EEEXadL_ZNS4_18makeAllOfCompositeIS6_EENS5_ISA_EENSC_IPKNS8_ISA_EEEEEEEESt10unique_ptrINS2_17MatcherDescriptorESt14default_deleteISQ_EENS4_16VariadicFunctionISA_SD_XT1_EEENSB_9StringRefE	std::unique_ptr<clang::ast_matchers::dynamic::internal::MatcherDescriptor, std::default_delete<clang::ast_matchers::dynamic::internal::MatcherDescriptor>> clang::ast_matchers::dynamic::internal::makeMatcherAutoMarshall<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>, clang::ast_matchers::internal::Matcher<clang::TemplateName>, &clang::ast_matchers::internal::BindableMatcher<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>> clang::ast_matchers::internal::makeAllOfComposite<clang::TemplateName>(llvm::ArrayRef<clang::ast_matchers::internal::Matcher<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>> const*>)>(clang::ast_matchers::internal::VariadicFunction<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>, clang::ast_matchers::internal::Matcher<clang::TemplateName>, &clang::ast_matchers::internal::BindableMatcher<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>> clang::ast_matchers::internal::makeAllOfComposite<clang::TemplateName>(llvm::ArrayRef<clang::ast_matchers::internal::Matcher<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>> const*>)>, llvm::StringRef)
+_ZNSdC1EOSd	std::basic_iostream<char, std::char_traits<char>>::basic_iostream(std::iostream&&)
+_ZNSs5c_strEv	std::string::c_str()
+_ZNSsC1Ev	std::basic_string<char, std::char_traits<char>, std::allocator<char>>::basic_string()
 _ZNSt6vectorIN4llvm15BitstreamWriter9BlockInfoESaIS2_EE17_M_realloc_insertIJEEEvN9__gnu_cxx17__normal_iteratorIPS2_S4_EEDpOT_	void std::vector<llvm::BitstreamWriter::BlockInfo, std::allocator<llvm::BitstreamWriter::BlockInfo>>::_M_realloc_insert<>(__gnu_cxx::__normal_iterator<llvm::BitstreamWriter::BlockInfo*, std::vector<llvm::BitstreamWriter::BlockInfo, std::allocator<llvm::BitstreamWriter::BlockInfo>>>)
 _ZNSt8_Rb_treeIN4llvm11logicalview10LVLineKindESt4pairIKS2_MNS1_6LVLineEKFbvEESt10_Select1stIS8_ESt4lessIS2_ESaIS8_EE8_M_eraseEPSt13_Rb_tree_nodeIS8_E	std::_Rb_tree<llvm::logicalview::LVLineKind, std::pair<llvm::logicalview::LVLineKind const, bool (llvm::logicalview::LVLine::*)() const>, std::_Select1st<std::pair<llvm::logicalview::LVLineKind const, bool (llvm::logicalview::LVLine::*)() const>>, std::less<llvm::logicalview::LVLineKind>, std::allocator<std::pair<llvm::logicalview::LVLineKind const, bool (llvm::logicalview::LVLine::*)() const>>>::_M_erase(std::_Rb_tree_node<std::pair<llvm::logicalview::LVLineKind const, bool (llvm::logicalview::LVLine::*)() const>>*)
 _ZNSt8_Rb_treeIPKN4llvm10sampleprof21ProfiledCallGraphEdgeES4_St9_IdentityIS4_EZNS0_19scc_member_iteratorIPNS1_17ProfiledCallGraphENS0_11GraphTraitsIS9_EEEC1ERKSt6vectorIPNS1_21ProfiledCallGraphNodeESaISF_EEE12EdgeComparerSaIS4_EE8_M_eraseEPSt13_Rb_tree_nodeIS4_E	std::_Rb_tree<llvm::sampleprof::ProfiledCallGraphEdge const*, llvm::sampleprof::ProfiledCallGraphEdge const*, std::_Identity<llvm::sampleprof::ProfiledCallGraphEdge const*>, llvm::scc_member_iterator<llvm::sampleprof::ProfiledCallGraph*, llvm::GraphTraits<llvm::sampleprof::ProfiledCallGraph*>>::scc_member_iterator(std::vector<llvm::sampleprof::ProfiledCallGraphNode*, std::allocator<llvm::sampleprof::ProfiledCallGraphNode*>> const&)::EdgeComparer, std::allocator<llvm::sampleprof::ProfiledCallGraphEdge const*>>::_M_erase(std::_Rb_tree_node<llvm::sampleprof::ProfiledCallGraphEdge const*>*)

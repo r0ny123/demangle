@@ -169,6 +169,58 @@ PREFIX_OPERATORS = {
 
 POSTFIX_OPERATORS = {"pp": "++", "mm": "--"}
 
+#: C++ operator precedence, higher binding tighter ([expr.compound]). Used to decide
+#: which sub-expressions need parentheses: an operand is bracketed only when it binds
+#: more loosely than the operator applying to it, so `!a && b` and `1 + 2 * 3` are
+#: written as they would be in source, and only `(1 + 2) * 3` gets brackets.
+#: Both reference demanglers do this; printing every operand bracketed is unambiguous
+#: but does not match, and is much harder to read.
+PRECEDENCE = {
+    "cm": 1,
+    "aS": 2,
+    "pL": 2,
+    "mI": 2,
+    "mL": 2,
+    "dV": 2,
+    "rM": 2,
+    "aN": 2,
+    "oR": 2,
+    "eO": 2,
+    "lS": 2,
+    "rS": 2,
+    "qu": 3,
+    "oo": 4,
+    "aa": 5,
+    "or": 6,
+    "eo": 7,
+    "an": 8,
+    "eq": 9,
+    "ne": 9,
+    "lt": 10,
+    "gt": 10,
+    "le": 10,
+    "ge": 10,
+    "ss": 10,
+    "ls": 11,
+    "rs": 11,
+    "pl": 12,
+    "mi": 12,
+    "ml": 13,
+    "dv": 13,
+    "rm": 13,
+    "pm": 14,
+    "pt": 14,
+}
+
+#: Right-associative operators. Associativity decides which side needs brackets at
+#: *equal* precedence: `1 + (2 - 3)` keeps them because `+` groups left, so an unbracketed
+#: `1 + 2 - 3` would mean `(1 + 2) - 3`.
+RIGHT_ASSOCIATIVE = frozenset({"aS", "pL", "mI", "mL", "dV", "rM", "aN", "oR", "eO", "lS", "rS", "qu"})
+
+#: Precedence of a unary prefix operator, and of anything that needs no brackets at all.
+UNARY_PRECEDENCE = 15
+PRIMARY_PRECEDENCE = 17
+
 # -- 5.1.10 Abbreviations -----------------------------------------------------
 
 #: The `Sx` catalogue. These are pre-defined substitutions: referring to one does *not*
