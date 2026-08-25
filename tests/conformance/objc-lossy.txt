@@ -1,0 +1,34 @@
+# Names the GNU-family method mangling cannot tell apart.
+#
+# clang writes `_` for both a field separator and a `:`, and says so where it does:
+# "This is the mangling we've always used on the GNU runtimes, but it has obvious
+# collisions in the face of underscores within class names, category names, and
+# selectors." Each row is the symbol, the declaration it was emitted for, and the
+# reading this library prefers. Both re-mangle to the symbol, and nothing in the
+# name says which was meant; `Symbol.ambiguous` is set for every one of them.
+_c_A_B209_Store247_andThen_do_	+[A_B209(Store247) andThen:do:]	+[A(B209) Store247:andThen:do:]
+_c_A_B662_Store244_copy_it_longer_name_here_	+[A_B662(Store244) copy_it:longer_name_here:]	+[A(B662) Store244:copy:it:longer:name:here:]
+_c_A_B662_Store244_z_	+[A_B662(Store244) z:]	+[A(B662) Store244:z:]
+_c_Alpha319__copy_it_	+[Alpha319 copy_it:]	+[Alpha319 copy:it:]
+_c_Bar536__set_x_	+[Bar536 set_x:]	+[Bar536 set:x:]
+_c_Deep_Nested_Name975__longer_name_here_y2_	+[Deep_Nested_Name975 longer_name_here:y2:]	+[Deep_Nested_Name975 longer:name:here:y2:]
+_c_Deep_Nested_Name975__z_set_x_	+[Deep_Nested_Name975 z:set_x:]	+[Deep_Nested_Name975 z:set:x:]
+_c_Quux256__b_set_x_	+[Quux256 b:set_x:]	+[Quux256 b:set:x:]
+_c_Store2461__set_x_do_	+[Store2461 set_x:do:]	+[Store2461 set:x:do:]
+_c_Store2584__set_x_andThen_	+[Store2584 set_x:andThen:]	+[Store2584 set:x:andThen:]
+_c_Zed995__set_x_z_	+[Zed995 set_x:z:]	+[Zed995 set:x:z:]
+_i_A_B209_Store247_init_	-[A_B209(Store247) init:]	-[A(B209) Store247:init:]
+_i_A_B209__with_set_x_	-[A_B209 with:set_x:]	-[A_B209 with:set:x:]
+_i_Alpha504_A_B36_setValue	-[Alpha504(A_B36) setValue]	-[Alpha504(A) B36_setValue]
+_i_Baz317_Store24_set_x_z_	-[Baz317(Store24) set_x:z:]	-[Baz317(Store24) set:x:z:]
+_i_Cache7_UI63_copy_it_z_	-[Cache7(UI63) copy_it:z:]	-[Cache7(UI63) copy:it:z:]
+_i_Cache866__x_set_x_	-[Cache866 x:set_x:]	-[Cache866 x:set:x:]
+_i_Deep_Nested_Name975_Store254_with_	-[Deep_Nested_Name975(Store254) with:]	-[Deep(Nested) Name975:Store254:with:]
+_i_Foo480__longer_name_here_	-[Foo480 longer_name_here:]	-[Foo480 longer:name:here:]
+_i_NS563_A_B8_copy_it_	-[NS563(A_B8) copy_it:]	-[NS563(A) B8:copy:it:]
+_i_NS563__longer_name_here_	-[NS563 longer_name_here:]	-[NS563 longer:name:here:]
+_i_Quux923_Deep_Nested_Name63_setValue_	-[Quux923(Deep_Nested_Name63) setValue:]	-[Quux923(Deep) Nested:Name63:setValue:]
+_i_Store2423__init_copy_it_	-[Store2423 init:copy_it:]	-[Store2423 init:copy:it:]
+_i_Store2861__x_longer_name_here_	-[Store2861 x:longer_name_here:]	-[Store2861 x:longer:name:here:]
+_i_Thing582_A_B26_do_	-[Thing582(A_B26) do:]	-[Thing582(A) B26:do:]
+_i_UI117__copy_it_	-[UI117 copy_it:]	-[UI117 copy:it:]

@@ -103,6 +103,7 @@ demangle/
     d/                D, as GNU binutils reverses it
     go/               Go package paths and receivers
     nim/              Nim, whose symbols are ordinary C identifiers
+    objc/             Objective-C
     pascal/           Free Pascal
 ```
 
