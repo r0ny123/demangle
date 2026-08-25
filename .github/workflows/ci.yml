@@ -138,7 +138,10 @@ jobs:
       - name: Install several reference versions
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y llvm-16 llvm-18 binutils
+          # `llvm` as well as the versioned packages: the last step in this job
+          # regenerates the corpus, and tools/generate_corpus.py calls the unversioned
+          # `llvm-cxxfilt`, which the versioned packages do not provide.
+          sudo apt-get install --no-install-recommends -y llvm llvm-16 llvm-18 binutils
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group test
       # Exit status is non-zero only when every reference agrees and we do not. A split

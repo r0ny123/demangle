@@ -334,15 +334,30 @@ def basic_type(tag: str) -> Optional[str]:
         return
 
 
+#: Base-10 and base-62 digit values. A dict lookup replaces a chain of `in`, `islower`
+#: and two `ord` calls per character; `digit_62` alone runs 184,000 times over 2,000 real
+#: symbols, so the difference is measurable rather than theoretical.
+_BASE_10 = {char: index for index, char in enumerate(string.digits)}
+_BASE_62 = dict(_BASE_10)
+_BASE_62.update({char: 10 + index for index, char in enumerate(string.ascii_lowercase)})
+_BASE_62.update({char: 36 + index for index, char in enumerate(string.ascii_uppercase)})
+
+
 class Parser:
     # Bound the mutually recursive skip_* validation pass; must fire well below
     # CPython's own recursion limit (each level consumes several interpreter frames).
     MAX_RECURSION_COUNT = 256
 
+    __slots__ = ("depth", "end", "inn", "next_val")
+
     def __init__(self, inn: str, next_val: int) -> None:
         self.inn = inn
         self.next_val = next_val
         self.depth = 0
+        # `inn` is never reassigned, so its length is a constant for this parser. It was
+        # being recomputed in `peek`, `eat` and `next_func` -- over a million `len` calls
+        # across two thousand real symbols.
+        self.end = len(inn)
 
     def check_recursion_limit(self):
         if self.depth >= self.MAX_RECURSION_COUNT:
@@ -350,24 +365,24 @@ class Parser:
         self.depth += 1
 
     def peek(self) -> str:
-        if self.next_val >= len(self.inn):
+        at = self.next_val
+        if at >= self.end:
             raise UnableTov0Demangle(self.inn)
-        return self.inn[self.next_val]
+        return self.inn[at]
 
     def eat(self, b: str) -> bool:
-        if self.next_val >= len(self.inn):
-            return False
-        if self.inn[self.next_val] == b:
-            self.next_val += 1
+        at = self.next_val
+        if at < self.end and self.inn[at] == b:
+            self.next_val = at + 1
             return True
         return False
 
     def next_func(self) -> str:
-        if self.next_val >= len(self.inn):
+        at = self.next_val
+        if at >= self.end:
             raise UnableTov0Demangle(self.inn)
-        b = self.inn[self.next_val]
-        self.next_val += 1
-        return b
+        self.next_val = at + 1
+        return self.inn[at]
 
     def hex_nibbles(self) -> str:
         start = self.next_val
@@ -382,23 +397,15 @@ class Parser:
         return self.inn[start : self.next_val - 1]
 
     def digit_10(self) -> Optional[int]:
-        d = self.peek()
-        if d in string.digits:
-            d = int(d)
-        else:
+        d = _BASE_10.get(self.peek())
+        if d is None:
             return None
         self.next_val += 1
         return d
 
     def digit_62(self) -> int:
-        d = self.peek()
-        if d in string.digits:
-            d = int(d)
-        elif d.islower():
-            d = 10 + (ord(d) - ord("a"))
-        elif d.isupper():
-            d = 10 + 26 + (ord(d) - ord("A"))
-        else:
+        d = _BASE_62.get(self.peek())
+        if d is None:
             raise UnableTov0Demangle(self.inn)
         self.next_val += 1
         return d
@@ -653,6 +660,25 @@ def _generic_fields(collected):
     return base, collected[1:]
 
 
+#: What `Printer.node` returns when the sink keeps no structure. `contextlib` builds a
+#: generator and a wrapper object per use, which is real work to reach two no-ops -- and
+#: `node` is entered once per grammar production, so it showed up as 8% of the text path.
+class _NoScope:
+    __slots__ = ()
+
+    def __enter__(self):
+        return _NO_NODE
+
+    def __exit__(self, *exception):
+        return False
+
+
+_NO_SCOPE = _NoScope()
+
+#: Stands in for the list `node` yields, so `built[0]` reads as None on the text path.
+_NO_NODE = (None,)
+
+
 class TextSink:
     """Collects the printer's fragments as text and nothing else.
 
@@ -722,6 +748,8 @@ class Printer:
     def __init__(self, parser, sink, bound, recursion=0):
         self.parser = parser
         self.sink = sink
+        # Asked once per printer rather than once per production.
+        self._plain = not isinstance(sink, TreeSink)
         self.bound_lifetime_depth = bound
         self.recursion = recursion
 
@@ -747,8 +775,14 @@ class Printer:
     def emit(self, text):
         self.sink.emit(text)
 
-    @contextlib.contextmanager
     def node(self, factory):
+        """Bracket a production; see `_node` for what it does when structure is wanted."""
+        if self._plain:
+            return _NO_SCOPE
+        return self._node(factory)
+
+    @contextlib.contextmanager
+    def _node(self, factory):
         """Bracket a production, so a tree sink learns where it began and ended.
 
         Yields a list that holds the finished node once the block has exited, which is
