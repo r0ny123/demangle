@@ -99,6 +99,11 @@ demangle/
     itanium/          the Itanium C++ ABI (GCC, Clang, and everything that follows them)
     msvc/             Microsoft's scheme, as UnDecorateSymbolName reverses it
     rust/             Rust legacy (_ZN) and v0 (_R)
+    swift/            Swift, both the current mangling and Swift 3's
+    d/                D, as GNU binutils reverses it
+    go/               Go package paths and receivers
+    nim/              Nim, whose symbols are ordinary C identifiers
+    pascal/           Free Pascal
 ```
 
 `core` never imports from `schemes`; `schemes/*` never import from each other. Both are
@@ -118,7 +123,8 @@ So a type under construction is not a string but a pair of strings, `left` and `
 and rendering is `left + declarator + right`. Every constructor in `core/spelling.py`
 exists to keep that hole in the correct place through pointers, arrays, references and
 nested function types. It is the part of a demangler that is most often subtly wrong,
-so it is isolated, independently testable, and shared by all three languages.
+so it is isolated, independently testable, and shared by every scheme whose output looks
+like a C declaration.
 
 ## Substitutions are load-bearing, not an optimisation
 
@@ -138,7 +144,7 @@ different rules, kept in its own module for the same reason.
 A language is a module under `schemes/` exposing a `LanguagePlugin`. Nothing in `core`
 knows the list of schemes at import time; `core/registry.py` finds built-ins lazily and third-party
 plugins through the `demangle.languages` entry-point group, so a separate distribution
-can add Swift or D support without a patch to this one.
+can add a language without a patch to this one.
 
 A plugin declares:
 

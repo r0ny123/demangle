@@ -129,6 +129,8 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Microsoft Visual C++ decorated names (MSVC, clang-cl)",
     aliases=("microsoft", "ms", "vc"),
+    # Every decorated name opens with `?`.
+    first_characters="?",
     priority=100,
 )
 

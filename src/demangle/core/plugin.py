@@ -54,6 +54,18 @@ class LanguagePlugin:
     truncated at the first one.
     """
 
+    first_characters: str = ""
+    """The characters a name of this scheme may begin with, if the set is small.
+
+    An optimisation, and one the registry checks rather than trusts: a name whose first
+    character is not in here is never offered to `detect`. Leave it empty -- the default
+    -- for a scheme whose names have no fixed start, which costs nothing but a call.
+
+    Getting it wrong loses symbols silently, so the rule is narrow: put a character here
+    only if `detect` returns False for *every* name that does not begin with one of
+    them. `tests/test_core.py` checks the built-in schemes against their own corpora.
+    """
+
     priority: int = 100
     """Detection order, lower first.
 

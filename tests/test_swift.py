@@ -78,9 +78,7 @@ class TestTheSwiftThreeMangling:
         """The payload of a function-signature specialisation is itself a mangled name.
         Reading it with the current demangler leaves it as raw text, which is the one
         thing that stopped this corpus coming out exactly."""
-        assert spell(
-            "_TTSf1cl35_TFF7specgen6callerFSiT_U_FTSiSi_T_Si___TF7specgen12take_closureFFTSiSi_T_T_"
-        ) == (
+        assert spell("_TTSf1cl35_TFF7specgen6callerFSiT_U_FTSiSi_T_Si___TF7specgen12take_closureFFTSiSi_T_T_") == (
             "function signature specialization <Arg[0] = [Closure Propagated : closure #1 "
             "(Swift.Int, Swift.Int) -> () in specgen.caller(Swift.Int) -> (), Argument Types : "
             "[Swift.Int]> of specgen.take_closure((Swift.Int, Swift.Int) -> ()) -> ()"
@@ -131,8 +129,7 @@ class TestGrammarFacts:
         in front of it, and none of those words appears in the symbol at that point.
         """
         assert spell("$s013CompilerSwiftA21PluginMessageHandling0c6ToHostD0OMn") == (
-            "nominal type descriptor for "
-            "CompilerSwiftCompilerPluginMessageHandling.PluginToHostMessage"
+            "nominal type descriptor for CompilerSwiftCompilerPluginMessageHandling.PluginToHostMessage"
         )
 
     def test_the_standard_type_table_is_the_compilers(self):
@@ -155,8 +152,7 @@ class TestGrammarFacts:
     def test_a_symbol_may_name_several_things(self):
         text = spell("$s10Foundation10CocoaErrorV4CodeVSQAAMc")
         assert text == (
-            "protocol conformance descriptor for Foundation.CocoaError.Code : "
-            "Swift.Equatable in Foundation"
+            "protocol conformance descriptor for Foundation.CocoaError.Code : Swift.Equatable in Foundation"
         )
 
     def test_outlined_copy_may_carry_a_generic_signature(self):
@@ -230,12 +226,8 @@ class TestRegisteredAsALanguage:
         assert demangle.demangle("$s10Foundation6NSDataCfd") == "Foundation.NSData.deinit"
 
     def test_naming_the_language_works(self):
-        assert demangle.demangle("$s10Foundation6NSDataCfd", language="swift") == (
-            "Foundation.NSData.deinit"
-        )
+        assert demangle.demangle("$s10Foundation6NSDataCfd", language="swift") == ("Foundation.NSData.deinit")
 
     def test_it_does_not_claim_another_scheme_s_names(self):
         assert demangle.demangle("_Z1fv") == "f()"
-        assert demangle.demangle("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E") == (
-            "core::fmt::Formatter::pad"
-        )
+        assert demangle.demangle("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E") == ("core::fmt::Formatter::pad")

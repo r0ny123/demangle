@@ -68,13 +68,38 @@ _ELIDED_PARAMETERS = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}$")
 #: so that it stays distinct when the mangled name is lower-cased for a section name --
 #: which is also what makes it recognisable here.
 OPERATORS = {
-    "plus": "+", "minus": "-", "star": "*", "slash": "/", "equal": "=",
-    "greater": ">", "lower": "<", "greater_or_equal": ">=", "lower_or_equal": "<=",
-    "not_equal": "<>", "sym_diff": "><", "starstar": "**", "as": "as", "in": "in",
-    "is": "is", "or": "or", "and": "and", "div": "div", "mod": "mod", "not": "not",
-    "shl": "shl", "shr": "shr", "xor": "xor", "assign": ":=", "explicit": "explicit",
-    "enumerator": "enumerator", "initialize": "initialize", "finalize": "finalize",
-    "addref": "addref", "copy": "copy", "inc": "inc", "dec": "dec",
+    "plus": "+",
+    "minus": "-",
+    "star": "*",
+    "slash": "/",
+    "equal": "=",
+    "greater": ">",
+    "lower": "<",
+    "greater_or_equal": ">=",
+    "lower_or_equal": "<=",
+    "not_equal": "<>",
+    "sym_diff": "><",
+    "starstar": "**",
+    "as": "as",
+    "in": "in",
+    "is": "is",
+    "or": "or",
+    "and": "and",
+    "div": "div",
+    "mod": "mod",
+    "not": "not",
+    "shl": "shl",
+    "shr": "shr",
+    "xor": "xor",
+    "assign": ":=",
+    "explicit": "explicit",
+    "enumerator": "enumerator",
+    "initialize": "initialize",
+    "finalize": "finalize",
+    "addref": "addref",
+    "copy": "copy",
+    "inc": "inc",
+    "dec": "dec",
 }
 
 #: The other two names the compiler writes with a leading `$`.
@@ -93,11 +118,38 @@ class DemangleFailure(Exception):
 class PascalSymbol:
     """One parsed Free Pascal symbol."""
 
-    __slots__ = ("elided", "indirect", "kind", "name", "parameters", "raw", "raw_scope",
-                 "raw_signature", "result", "scope", "text", "unit", "wrapped")
+    __slots__ = (
+        "elided",
+        "indirect",
+        "kind",
+        "name",
+        "parameters",
+        "raw",
+        "raw_scope",
+        "raw_signature",
+        "result",
+        "scope",
+        "text",
+        "unit",
+        "wrapped",
+    )
 
-    def __init__(self, raw, text, kind, unit="", scope=(), name="", parameters=(), result=None,
-                 indirect=False, raw_scope="", raw_signature="", elided=False, wrapped=None):
+    def __init__(
+        self,
+        raw,
+        text,
+        kind,
+        unit="",
+        scope=(),
+        name="",
+        parameters=(),
+        result=None,
+        indirect=False,
+        raw_scope="",
+        raw_signature="",
+        elided=False,
+        wrapped=None,
+    ):
         self.raw = raw
         self.text = text
         #: One of `KINDS`, or `routine`, `section`, `label`.
@@ -225,9 +277,17 @@ def _parse_wrapper(raw, unit, suffix, indirect):
     text = f"interface wrapper for {unit}.{owner}.{interface} #{index}: {implementation}{tail}"
     if indirect:
         text += " (indirect reference)"
-    return PascalSymbol(raw, text, "WRPR", unit=unit, scope=(owner, interface), name=suffix,
-                        indirect=indirect, raw_signature=suffix,
-                        wrapped=(index, implementation, tail))
+    return PascalSymbol(
+        raw,
+        text,
+        "WRPR",
+        unit=unit,
+        scope=(owner, interface),
+        name=suffix,
+        indirect=indirect,
+        raw_signature=suffix,
+        wrapped=(index, implementation, tail),
+    )
 
 
 def parse_pascal_symbol(name):
@@ -297,14 +357,32 @@ def parse_pascal_symbol(name):
         if _rejoin(name_part, parameters, result, elided) != suffix:
             raise DemangleFailure("the signature does not read back")
         text = _spell_signature(f"{qualified}.{spell_routine_name(name_part)}", parameters, result)
-        symbol = PascalSymbol(name, text, "routine", unit=unit, scope=scope, name=name_part,
-                              parameters=parameters if parameters is not None else (),
-                              result=result, indirect=indirect, raw_scope=raw_scope,
-                              raw_signature=suffix, elided=parameters is None)
+        symbol = PascalSymbol(
+            name,
+            text,
+            "routine",
+            unit=unit,
+            scope=scope,
+            name=name_part,
+            parameters=parameters if parameters is not None else (),
+            result=result,
+            indirect=indirect,
+            raw_scope=raw_scope,
+            raw_signature=suffix,
+            elided=parameters is None,
+        )
     else:
-        symbol = PascalSymbol(name, f"{KINDS[kind]} {qualified}.{suffix}", kind,
-                              unit=unit, scope=scope, name=suffix, indirect=indirect,
-                              raw_scope=raw_scope, raw_signature=suffix)
+        symbol = PascalSymbol(
+            name,
+            f"{KINDS[kind]} {qualified}.{suffix}",
+            kind,
+            unit=unit,
+            scope=scope,
+            name=suffix,
+            indirect=indirect,
+            raw_scope=raw_scope,
+            raw_signature=suffix,
+        )
 
     if table is not None:
         symbol.text = f"{table} for {symbol.text}"

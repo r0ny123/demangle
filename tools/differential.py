@@ -58,8 +58,17 @@ CORPUS_SETTINGS = {
     "go-real-world.txt": {"language": "go"},
 }
 
-#: Corpora this tool does not replay. Empty: every scheme with a corpus is registered.
-NOT_REPLAYED = frozenset()
+#: Files in `tests/conformance/` that are not mangled-name corpora at all. The refusal
+#: lists have one column, and `nim-lossy.txt` has three -- it records the names Nim's own
+#: mangling does not preserve, which is a thing to keep visible rather than a thing to
+#: replay. Their own test modules read them.
+NOT_REPLAYED = frozenset(
+    {
+        "nim-lossy.txt",
+        "pascal-refusals.txt",
+        "swift-refusals.txt",
+    }
+)
 
 #: Names in these corpora that the reference and this library legitimately disagree on,
 #: because the two reference implementations disagree with *each other* about what goes

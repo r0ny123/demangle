@@ -138,6 +138,8 @@ PLUGIN = LanguagePlugin(
     # drop a `.llvm.<hash>`, append anything else verbatim). This scheme implements that
     # itself.
     symbol_table_decorations=True,
+    # `_R`, `__R`, `_ZN` and `__ZN` are the only starts `detect` accepts.
+    first_characters="_",
     priority=50,
 )
 

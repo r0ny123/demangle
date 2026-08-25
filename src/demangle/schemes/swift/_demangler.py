@@ -138,10 +138,14 @@ _BUILTIN_SIMPLE = {
     "P": "Builtin.PackIndex",
 }
 
-_ANY_PROTOCOL_CONFORMANCE_KINDS = frozenset([
-    "ConcreteProtocolConformance", "DependentProtocolConformanceRoot",
-    "DependentProtocolConformanceInherited", "DependentProtocolConformanceAssociated",
-])
+_ANY_PROTOCOL_CONFORMANCE_KINDS = frozenset(
+    [
+        "ConcreteProtocolConformance",
+        "DependentProtocolConformanceRoot",
+        "DependentProtocolConformanceInherited",
+        "DependentProtocolConformanceAssociated",
+    ]
+)
 
 
 def _is_digit(char):
@@ -307,9 +311,7 @@ class Demangler:
         return Node(kind, text=node.text, index=node.index, children=list(node.children))
 
     def swift_type(self, kind, name):
-        return self.make_type(
-            self.with_children(kind, Node("Module", text=STDLIB_NAME), Node("Identifier", text=name))
-        )
+        return self.make_type(self.with_children(kind, Node("Module", text=STDLIB_NAME), Node("Identifier", text=name)))
 
     # -- numbers ---------------------------------------------------------------
 
@@ -1277,9 +1279,7 @@ class Demangler:
             ordinal = self.index()
             if ordinal is None:
                 return None
-            return self.make_type(
-                self.with_child("OpaqueReturnType", Node("OpaqueReturnTypeIndex", index=ordinal))
-            )
+            return self.make_type(self.with_child("OpaqueReturnType", Node("OpaqueReturnTypeIndex", index=ordinal)))
         if char in ("x", "X", "y", "Y", "z", "Z"):
             base = None
             if char in ("y", "Y"):
@@ -1425,11 +1425,7 @@ class Demangler:
             signature = self.pop("DependentGenericSignature")
             result = self.pop("Type")
             implementation = self.pop("Type")
-            kind = (
-                "ObjCAsyncCompletionHandlerImpl"
-                if char == "z"
-                else "PredefinedObjCAsyncCompletionHandlerImpl"
-            )
+            kind = "ObjCAsyncCompletionHandlerImpl" if char == "z" else "PredefinedObjCAsyncCompletionHandlerImpl"
             node = self.with_children(kind, implementation, result, flags)
             if signature is not None:
                 self.add_child(node, signature)
@@ -1456,11 +1452,7 @@ class Demangler:
             self.add_child(thunk, self.pop("Type"))
             return thunk
         if char in ("p", "P"):
-            kind = (
-                "GenericPartialSpecialization"
-                if char == "p"
-                else "GenericPartialSpecializationNotReAbstracted"
-            )
+            kind = "GenericPartialSpecialization" if char == "p" else "GenericPartialSpecializationNotReAbstracted"
             specialized = self.demangle_spec_attributes(kind)
             parameter = self.with_child("GenericSpecializationParam", self.pop("Type"))
             return self.add_child(specialized, parameter)
@@ -1757,9 +1749,7 @@ class Demangler:
                 if encoding is None:
                     return None
                 self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_STRING))
-                return self.add_child(
-                    parameter, Node("FunctionSignatureSpecializationParamPayload", text=encoding)
-                )
+                return self.add_child(parameter, Node("FunctionSignatureSpecializationParamPayload", text=encoding))
             if inner == "k":
                 return self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_KEY_PATH))
             return None
@@ -1814,17 +1804,11 @@ class Demangler:
             directness = {"d": 0, "i": 1}.get(self.next_char())
             if directness is None:
                 return None
-            return self.with_children(
-                "FieldOffset", Node("Directness", index=directness), self.pop(is_entity)
-            )
+            return self.with_children("FieldOffset", Node("Directness", index=directness), self.pop(is_entity))
         if char == "S":
             return self.with_child("ProtocolSelfConformanceWitnessTable", self.pop_protocol())
         if char in ("l", "L"):
-            kind = (
-                "LazyProtocolWitnessTableAccessor"
-                if char == "l"
-                else "LazyProtocolWitnessTableCacheVariable"
-            )
+            kind = "LazyProtocolWitnessTableAccessor" if char == "l" else "LazyProtocolWitnessTableCacheVariable"
             conformance = self.pop_protocol_conformance()
             found = self.pop("Type")
             return self.with_children(kind, found, conformance)
@@ -1836,9 +1820,7 @@ class Demangler:
             protocol = self.pop("Type")
             conforming = self.pop_assoc_type_path()
             conformance = self.pop_protocol_conformance()
-            return self.with_children(
-                "AssociatedTypeWitnessTableAccessor", conformance, conforming, protocol
-            )
+            return self.with_children("AssociatedTypeWitnessTableAccessor", conformance, conforming, protocol)
         if char == "b":
             protocol = self.pop("Type")
             conformance = self.pop_protocol_conformance()
@@ -1900,19 +1882,13 @@ class Demangler:
         if char == "P":
             requirements = self.demangle_constrained_existential_requirement_list()
             base = self.pop("Type")
-            return self.make_type_or_none(
-                self.with_children("ConstrainedExistential", base, requirements)
-            )
+            return self.make_type_or_none(self.with_children("ConstrainedExistential", base, requirements))
         if char == "c":
             superclass = self.pop("Type")
             protocols = self.demangle_protocol_list()
-            return self.make_type_or_none(
-                self.with_children("ProtocolListWithClass", protocols, superclass)
-            )
+            return self.make_type_or_none(self.with_children("ProtocolListWithClass", protocols, superclass))
         if char == "l":
-            return self.make_type_or_none(
-                self.with_child("ProtocolListWithAnyObject", self.demangle_protocol_list())
-            )
+            return self.make_type_or_none(self.with_child("ProtocolListWithAnyObject", self.demangle_protocol_list()))
         if char in ("X", "x"):
             return self._sil_box_type(char)
         if char == "Y":
@@ -1987,9 +1963,7 @@ class Demangler:
         if conformances is None:
             existential = self.with_children("SymbolicExtendedExistentialType", shape, arguments)
         else:
-            existential = self.with_children(
-                "SymbolicExtendedExistentialType", shape, arguments, conformances
-            )
+            existential = self.with_children("SymbolicExtendedExistentialType", shape, arguments, conformances)
         return self.make_type_or_none(existential)
 
     def demangle_extended_existential_shape(self, char):
@@ -2177,21 +2151,13 @@ class Demangler:
         if constraint == "pack-marker":
             return self.with_child("DependentGenericParamPackMarker", constrained)
         if constraint == "protocol":
-            return self.with_children(
-                "DependentGenericConformanceRequirement", constrained, self.pop_protocol()
-            )
+            return self.with_children("DependentGenericConformanceRequirement", constrained, self.pop_protocol())
         if constraint == "base-class":
-            return self.with_children(
-                "DependentGenericConformanceRequirement", constrained, self.pop("Type")
-            )
+            return self.with_children("DependentGenericConformanceRequirement", constrained, self.pop("Type"))
         if constraint == "same-type":
-            return self.with_children(
-                "DependentGenericSameTypeRequirement", constrained, self.pop("Type")
-            )
+            return self.with_children("DependentGenericSameTypeRequirement", constrained, self.pop("Type"))
         if constraint == "same-shape":
-            return self.with_children(
-                "DependentGenericSameShapeRequirement", constrained, self.pop("Type")
-            )
+            return self.with_children("DependentGenericSameShapeRequirement", constrained, self.pop("Type"))
         return self._layout_requirement(constrained)
 
     def _layout_requirement(self, constrained):
@@ -2270,13 +2236,9 @@ class Demangler:
         if char == "j":
             return self.demangle_differentiable_function_type()
         if char == "k":
-            return self.make_type_or_none(
-                self.with_child("NoDerivative", self.pop_type_and_get_child())
-            )
+            return self.make_type_or_none(self.with_child("NoDerivative", self.pop_type_and_get_child()))
         if char == "t":
-            return self.make_type_or_none(
-                self.with_child("CompileTimeConst", self.pop_type_and_get_child())
-            )
+            return self.make_type_or_none(self.with_child("CompileTimeConst", self.pop_type_and_get_child()))
         return None
 
 
@@ -2296,11 +2258,19 @@ _FUNCTION_ANNOTATIONS = (
 
 #: Contexts that declare no generic parameters of their own, so a nested generic type's
 #: argument list belongs to something further out.
-_DOES_NOT_CONSUME_GENERIC_ARGS = frozenset([
-    "Variable", "Subscript", "ImplicitClosure", "ExplicitClosure",
-    "DefaultArgumentInitializer", "Initializer", "PropertyWrapperBackingInitializer",
-    "PropertyWrapperInitFromProjectedValue", "Static",
-])
+_DOES_NOT_CONSUME_GENERIC_ARGS = frozenset(
+    [
+        "Variable",
+        "Subscript",
+        "ImplicitClosure",
+        "ExplicitClosure",
+        "DefaultArgumentInitializer",
+        "Initializer",
+        "PropertyWrapperBackingInitializer",
+        "PropertyWrapperInitFromProjectedValue",
+        "Static",
+    ]
+)
 
 _BOUND_GENERIC_KINDS = {
     "Class": "BoundGenericClass",
@@ -2312,23 +2282,42 @@ _BOUND_GENERIC_KINDS = {
 }
 
 _IMPL_PARAM_CONVENTIONS = {
-    "i": "@in", "c": "@in_constant", "l": "@inout", "b": "@inout_aliasable",
-    "n": "@in_guaranteed", "x": "@owned", "g": "@guaranteed", "e": "@deallocating",
-    "y": "@unowned", "v": "@pack_owned", "p": "@pack_guaranteed", "m": "@pack_inout",
+    "i": "@in",
+    "c": "@in_constant",
+    "l": "@inout",
+    "b": "@inout_aliasable",
+    "n": "@in_guaranteed",
+    "x": "@owned",
+    "g": "@guaranteed",
+    "e": "@deallocating",
+    "y": "@unowned",
+    "v": "@pack_owned",
+    "p": "@pack_guaranteed",
+    "m": "@pack_inout",
 }
 
 _IMPL_RESULT_CONVENTIONS = {
-    "r": "@out", "o": "@owned", "d": "@unowned", "u": "@unowned_inner_pointer",
-    "a": "@autoreleased", "k": "@pack_out",
+    "r": "@out",
+    "o": "@owned",
+    "d": "@unowned",
+    "u": "@unowned_inner_pointer",
+    "a": "@autoreleased",
+    "k": "@pack_out",
 }
 
 _IMPL_CALLEE_CONVENTIONS = {
-    "y": "@callee_unowned", "g": "@callee_guaranteed", "x": "@callee_owned",
+    "y": "@callee_unowned",
+    "g": "@callee_guaranteed",
+    "x": "@callee_owned",
     "t": "@convention(thin)",
 }
 
 _IMPL_FUNCTION_CONVENTIONS = {
-    "B": "block", "C": "c", "M": "method", "O": "objc_method", "K": "closure",
+    "B": "block",
+    "C": "c",
+    "M": "method",
+    "O": "objc_method",
+    "K": "closure",
     "W": "witness_method",
 }
 
@@ -2367,16 +2356,25 @@ _METATYPE_POPPED_NODE = {
 }
 
 _THUNK_PLAIN = {
-    "o": "ObjCAttribute", "O": "NonObjCAttribute", "D": "DynamicAttribute",
-    "d": "DirectMethodReferenceAttribute", "E": "DistributedThunk",
-    "F": "DistributedAccessor", "a": "PartialApplyObjCForwarder",
-    "A": "PartialApplyForwarder", "m": "MergedFunction",
-    "X": "DynamicallyReplaceableFunctionVar", "x": "DynamicallyReplaceableFunctionKey",
-    "I": "DynamicallyReplaceableFunctionImpl", "u": "AsyncFunctionPointer",
+    "o": "ObjCAttribute",
+    "O": "NonObjCAttribute",
+    "D": "DynamicAttribute",
+    "d": "DirectMethodReferenceAttribute",
+    "E": "DistributedThunk",
+    "F": "DistributedAccessor",
+    "a": "PartialApplyObjCForwarder",
+    "A": "PartialApplyForwarder",
+    "m": "MergedFunction",
+    "X": "DynamicallyReplaceableFunctionVar",
+    "x": "DynamicallyReplaceableFunctionKey",
+    "I": "DynamicallyReplaceableFunctionImpl",
+    "u": "AsyncFunctionPointer",
 }
 
 _THUNK_OF_ENTITY = {
-    "c": "CurryThunk", "j": "DispatchThunk", "q": "MethodDescriptor",
+    "c": "CurryThunk",
+    "j": "DispatchThunk",
+    "q": "MethodDescriptor",
     "S": "ProtocolSelfConformanceWitness",
 }
 
@@ -2389,28 +2387,44 @@ _GENERIC_SPECIALIZATIONS = {
 }
 
 _WITNESS_OF_CONFORMANCE = {
-    "P": "ProtocolWitnessTable", "p": "ProtocolWitnessTablePattern",
+    "P": "ProtocolWitnessTable",
+    "p": "ProtocolWitnessTablePattern",
     "G": "GenericProtocolWitnessTable",
     "I": "GenericProtocolWitnessTableInstantiationFunction",
-    "r": "ResilientProtocolWitnessTable", "a": "ProtocolWitnessTableAccessor",
+    "r": "ResilientProtocolWitnessTable",
+    "a": "ProtocolWitnessTableAccessor",
 }
 
 _OUTLINED_VALUE_WITNESSES = {
-    "y": "OutlinedCopy", "e": "OutlinedConsume", "r": "OutlinedRetain",
-    "s": "OutlinedRelease", "b": "OutlinedInitializeWithTake",
-    "c": "OutlinedInitializeWithCopy", "d": "OutlinedAssignWithTake",
-    "f": "OutlinedAssignWithCopy", "h": "OutlinedDestroy",
+    "y": "OutlinedCopy",
+    "e": "OutlinedConsume",
+    "r": "OutlinedRetain",
+    "s": "OutlinedRelease",
+    "b": "OutlinedInitializeWithTake",
+    "c": "OutlinedInitializeWithCopy",
+    "d": "OutlinedAssignWithTake",
+    "f": "OutlinedAssignWithCopy",
+    "h": "OutlinedDestroy",
 }
 
 _SPECIAL_FUNCTION_TYPES = {
-    "E": "NoEscapeFunctionType", "A": "EscapingAutoClosureType",
-    "f": "ThinFunctionType", "K": "AutoClosureType", "U": "UncurriedFunctionType",
-    "L": "EscapingObjCBlock", "B": "ObjCBlock", "C": "CFunctionPointer",
+    "E": "NoEscapeFunctionType",
+    "A": "EscapingAutoClosureType",
+    "f": "ThinFunctionType",
+    "K": "AutoClosureType",
+    "U": "UncurriedFunctionType",
+    "L": "EscapingObjCBlock",
+    "B": "ObjCBlock",
+    "C": "CFunctionPointer",
 }
 
 _SPECIAL_TYPE_WRAPPERS = {
-    "o": "Unowned", "u": "Unmanaged", "w": "Weak", "b": "SILBoxType",
-    "D": "DynamicSelf", "p": "ExistentialMetatype",
+    "o": "Unowned",
+    "u": "Unmanaged",
+    "w": "Weak",
+    "b": "SILBoxType",
+    "D": "DynamicSelf",
+    "p": "ExistentialMetatype",
 }
 
 _FUNCTION_ENTITIES = {
@@ -2429,19 +2443,29 @@ _FUNCTION_ENTITIES = {
 }
 
 _ACCESSORS = {
-    "m": "MaterializeForSet", "s": "Setter", "g": "Getter", "G": "GlobalGetter",
-    "w": "WillSet", "W": "DidSet", "r": "ReadAccessor", "M": "ModifyAccessor",
+    "m": "MaterializeForSet",
+    "s": "Setter",
+    "g": "Getter",
+    "G": "GlobalGetter",
+    "w": "WillSet",
+    "W": "DidSet",
+    "r": "ReadAccessor",
+    "M": "ModifyAccessor",
     "i": "InitAccessor",
 }
 
 _MUTABLE_ADDRESSORS = {
-    "O": "OwningMutableAddressor", "o": "NativeOwningMutableAddressor",
-    "P": "NativePinningMutableAddressor", "u": "UnsafeMutableAddressor",
+    "O": "OwningMutableAddressor",
+    "o": "NativeOwningMutableAddressor",
+    "P": "NativePinningMutableAddressor",
+    "u": "UnsafeMutableAddressor",
 }
 
 _ADDRESSORS = {
-    "O": "OwningAddressor", "o": "NativeOwningAddressor",
-    "p": "NativePinningAddressor", "u": "UnsafeAddressor",
+    "O": "OwningAddressor",
+    "o": "NativeOwningAddressor",
+    "p": "NativePinningAddressor",
+    "u": "UnsafeAddressor",
 }
 
 #: Constraint kind and how the constrained type is written, for each `R` operator.
@@ -2468,22 +2492,62 @@ _GENERIC_REQUIREMENTS = {
 #: `ValueWitnessMangling.def`, in file order -- the index is the enumerator's value, and
 #: the printer looks the spelling back up by it.
 _VALUE_WITNESS_NAMES = [
-    "AllocateBuffer", "AssignWithCopy", "AssignWithTake", "DeallocateBuffer", "Destroy",
-    "DestroyBuffer", "DestroyArray", "InitializeBufferWithCopyOfBuffer",
-    "InitializeBufferWithCopy", "InitializeWithCopy", "InitializeBufferWithTake",
-    "InitializeWithTake", "ProjectBuffer", "InitializeBufferWithTakeOfBuffer",
-    "InitializeArrayWithCopy", "InitializeArrayWithTakeFrontToBack",
-    "InitializeArrayWithTakeBackToFront", "StoreExtraInhabitant",
-    "GetExtraInhabitantIndex", "GetEnumTag", "DestructiveProjectEnumData",
-    "DestructiveInjectEnumTag", "GetEnumTagSinglePayload", "StoreEnumTagSinglePayload",
+    "AllocateBuffer",
+    "AssignWithCopy",
+    "AssignWithTake",
+    "DeallocateBuffer",
+    "Destroy",
+    "DestroyBuffer",
+    "DestroyArray",
+    "InitializeBufferWithCopyOfBuffer",
+    "InitializeBufferWithCopy",
+    "InitializeWithCopy",
+    "InitializeBufferWithTake",
+    "InitializeWithTake",
+    "ProjectBuffer",
+    "InitializeBufferWithTakeOfBuffer",
+    "InitializeArrayWithCopy",
+    "InitializeArrayWithTakeFrontToBack",
+    "InitializeArrayWithTakeBackToFront",
+    "StoreExtraInhabitant",
+    "GetExtraInhabitantIndex",
+    "GetEnumTag",
+    "DestructiveProjectEnumData",
+    "DestructiveInjectEnumTag",
+    "GetEnumTagSinglePayload",
+    "StoreEnumTagSinglePayload",
 ]
 
 _VALUE_WITNESSES = {
     code: at
-    for at, code in enumerate([
-        "al", "ca", "ta", "de", "xx", "XX", "Xx", "CP", "Cp", "cp", "Tk", "tk", "pr",
-        "TK", "Cc", "Tt", "tT", "xs", "xg", "ug", "up", "ui", "et", "st",
-    ])
+    for at, code in enumerate(
+        [
+            "al",
+            "ca",
+            "ta",
+            "de",
+            "xx",
+            "XX",
+            "Xx",
+            "CP",
+            "Cp",
+            "cp",
+            "Tk",
+            "tk",
+            "pr",
+            "TK",
+            "Cc",
+            "Tt",
+            "tT",
+            "xs",
+            "xg",
+            "ug",
+            "up",
+            "ui",
+            "et",
+            "st",
+        ]
+    )
 }
 
 _MACRO_EXPANSIONS = {
@@ -2517,23 +2581,26 @@ _PARAM_SROA = 1 << 8
 _PARAM_GUARANTEED_TO_OWNED = 1 << 9
 _PARAM_EXISTENTIAL_TO_GENERIC = 1 << 10
 
-_PARAM_KINDS_WITH_PAYLOAD = frozenset([
-    _PARAM_CONSTANT_PROP_FUNCTION, _PARAM_CONSTANT_PROP_GLOBAL,
-    _PARAM_CONSTANT_PROP_STRING, _PARAM_CONSTANT_PROP_KEY_PATH, _PARAM_CLOSURE_PROP,
-])
+_PARAM_KINDS_WITH_PAYLOAD = frozenset(
+    [
+        _PARAM_CONSTANT_PROP_FUNCTION,
+        _PARAM_CONSTANT_PROP_GLOBAL,
+        _PARAM_CONSTANT_PROP_STRING,
+        _PARAM_CONSTANT_PROP_KEY_PATH,
+        _PARAM_CLOSURE_PROP,
+    ]
+)
 
 #: The letter that starts a flag-set parameter, its base value, and the flags that may
 #: follow it. The order the flags are tried in is the order they are mangled in.
 _PARAM_FLAG_SETS = {
     "e": (
         _PARAM_EXISTENTIAL_TO_GENERIC,
-        (("D", _PARAM_DEAD), ("G", _PARAM_OWNED_TO_GUARANTEED),
-         ("O", _PARAM_GUARANTEED_TO_OWNED), ("X", _PARAM_SROA)),
+        (("D", _PARAM_DEAD), ("G", _PARAM_OWNED_TO_GUARANTEED), ("O", _PARAM_GUARANTEED_TO_OWNED), ("X", _PARAM_SROA)),
     ),
     "d": (
         _PARAM_DEAD,
-        (("G", _PARAM_OWNED_TO_GUARANTEED), ("O", _PARAM_GUARANTEED_TO_OWNED),
-         ("X", _PARAM_SROA)),
+        (("G", _PARAM_OWNED_TO_GUARANTEED), ("O", _PARAM_GUARANTEED_TO_OWNED), ("X", _PARAM_SROA)),
     ),
     "g": (_PARAM_OWNED_TO_GUARANTEED, (("X", _PARAM_SROA),)),
     "o": (_PARAM_GUARANTEED_TO_OWNED, (("X", _PARAM_SROA),)),
@@ -2590,9 +2657,7 @@ def _demangle_h(demangler):
     if char == "p":
         return demangler.with_child("ProtocolConformanceRefInProtocolModule", demangler.pop_protocol())
     if char == "c":
-        return demangler.with_child(
-            "ProtocolConformanceDescriptorRecord", demangler.pop_protocol_conformance()
-        )
+        return demangler.with_child("ProtocolConformanceDescriptorRecord", demangler.pop_protocol_conformance())
     if char == "n":
         return demangler.with_popped_type("NominalTypeDescriptorRecord")
     if char == "o":

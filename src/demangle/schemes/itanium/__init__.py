@@ -21,6 +21,8 @@ PLUGIN = LanguagePlugin(
     # After Rust: a legacy Rust symbol is a valid Itanium symbol, so Rust must be
     # offered a name before this plugin claims it.
     symbol_table_decorations=True,
+    # `_Z`, `__Z` and `_GLOBAL__` are the only starts `detect` accepts.
+    first_characters="_",
     priority=200,
 )
 
