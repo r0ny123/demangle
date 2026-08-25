@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=64.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "demangle"
+version = "0.1.0"
+description = "Read mangled symbol names -- Itanium C++, MSVC and Rust -- in pure Python, with no dependencies."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "demangle contributors" }]
+keywords = [
+    "demangle", "demangler", "mangling", "symbol", "itanium", "msvc", "rust",
+    "c++", "abi", "reverse-engineering", "binary-analysis", "disassembler",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+    "Topic :: Software Development :: Debuggers",
+    "Typing :: Typed",
+]
+
+# No runtime dependencies, and this is a promise the test suite enforces
+# (tests/test_architecture.py::TestLayering::test_no_third_party_imports).
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/r0ny123/demangle"
+Issues = "https://github.com/r0ny123/demangle/issues"
+Changelog = "https://github.com/r0ny123/demangle/blob/main/CHANGELOG.md"
+
+[project.scripts]
+demangle = "demangle.cli:main"
+
+[project.entry-points."demangle.languages"]
+# Built-ins are registered directly rather than through entry points; this group is
+# where third-party distributions advertise additional schemes.
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "hypothesis>=6",
+    "ruff",
+    # pinned: ty is pre-1.0 and adds lint rules in patch releases, so an unpinned
+    # version reddens unrelated changes on someone else's release schedule. Bump
+    # deliberately, with the new rules addressed in the same commit.
+    "ty==0.0.69",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+demangle = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    # The parsers mirror grammar productions; splitting them to satisfy a complexity
+    # metric would make them harder to check against the specification, not easier.
+    "C901",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+"src/demangle/schemes/msvc/_parser.py" = ["ALL"]
+"src/demangle/schemes/rust/_v0.py" = ["ALL"]
+"src/demangle/schemes/rust/_legacy.py" = ["ALL"]
+"src/demangle/schemes/rust/_dispatch.py" = ["ALL"]
+
+[tool.ty.environment]
+python-version = "3.11"
