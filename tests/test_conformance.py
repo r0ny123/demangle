@@ -36,6 +36,12 @@ GO_TOTAL, GO_EXACT = 1498, 1498
 #: D, against GNU binutils' D demangler over the shipped libgphobos and libgdruntime.
 D_TOTAL, D_EXACT = 1257, 1257
 
+#: Nim, against the name the compiler itself recorded in its `.ndi` debug-mapping files.
+#: Unlike the others this is not a reference demangler -- Nim has none -- so the count is
+#: agreement with the compiler's own record, and the correctness *property* lives in
+#: tests/test_nim.py: what this reads must re-mangle to the symbol.
+NIM_TOTAL, NIM_EXACT = 2115, 2115
+
 #: Swift, against `swift-demangle` 5.10.1. The corpus is a stratified sample of the
 #: shipped runtime and Foundation -- up to four symbols per distinct set of
 #: demangling-tree node kinds -- plus every current-mangling case from the compiler's own
@@ -105,6 +111,12 @@ def test_d_matches_gnu_dlang_demangler():
 def test_swift_matches_swift_demangle():
     total, exact = _score("swift-real-world.txt", "llvm", language="swift")
     assert (total, exact) == (SWIFT_TOTAL, SWIFT_EXACT)
+
+
+def test_nim_matches_the_compilers_own_record():
+    """See `NIM_TOTAL` for what this does and does not establish."""
+    total, exact = _score("nim-real-world.txt", "llvm", language="nim")
+    assert (total, exact) == (NIM_TOTAL, NIM_EXACT)
 
 
 def test_msvc_matches_llvm_undname():
