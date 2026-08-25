@@ -58,6 +58,12 @@ CORPUS_SETTINGS = {
     "go-real-world.txt": {"language": "go"},
 }
 
+#: Corpora this tool does not replay. `d-real-world.txt` records what the D scheme reads
+#: exactly, but D is not a registered language yet -- it is at 88.4% of what the reference
+#: reads -- so `demangle()` cannot be asked for it and replaying it here would measure the
+#: registry rather than the scheme. `tests/test_d.py` checks it directly instead.
+NOT_REPLAYED = {"d-real-world.txt"}
+
 #: Names in these corpora that the reference and this library legitimately disagree on,
 #: because the two reference implementations disagree with *each other* about what goes
 #: in the substitution table. Recorded here so the tool reports a clean run rather than a
@@ -310,7 +316,8 @@ def main():
 
     paths = arguments.corpus
     if not paths:
-        paths = sorted((Path(__file__).resolve().parent.parent / "tests" / "conformance").glob("*.txt"))
+        directory = Path(__file__).resolve().parent.parent / "tests" / "conformance"
+        paths = [path for path in sorted(directory.glob("*.txt")) if path.name not in NOT_REPLAYED]
     if not paths:
         sys.exit("no corpus files found")
     return replay(
