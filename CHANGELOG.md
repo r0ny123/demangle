@@ -6,6 +6,22 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Substitution numbering for a template template parameter application.** A
+  `<template-param>` used as the base of a template application was not recorded as a
+  substitution candidate in its own right, so every later back-reference in such a name
+  was one short. `templateTemplate<outer::inner::Holder, int>(int)` came out as
+  `(outer::inner::Holder<int, 3>)`, and the name g++ and clang++ actually emit for the
+  same declaration was refused outright.
+
+  The behaviour had been settled by probing `llvm-cxxfilt` 18, which is wrong here --
+  LLVM changed its own answer between 18 and 20. It is settled now against the manglers:
+  g++ 13.3 and clang++ 18.1.3 both emit `S5_` for the parameter, which is only reachable
+  if the parameter took an index of its own. One of the three pinned GNU divergences is
+  resolved by the fix, and the corpus expectation that had recorded LLVM 18's answer is
+  corrected.
+
 ### Added
 
 - **Expressions are structure, not text.** `decltype(a + b)` reached the tree as one
