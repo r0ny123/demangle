@@ -24,28 +24,42 @@ from ._v0 import UnableTov0Demangle
 
 _DEMANGLER = RustDemangler()
 
-#: A legacy Rust symbol ends with the 17-character hash `17h<16 hex digits>E`. Checking
-#: for it is what stops this plugin claiming every C++ symbol in a binary, since the
-#: `_ZN` prefix alone does not distinguish them.
-_LEGACY_HASH_LENGTH = 19
+#: Legacy Rust appends a hash component, `17h<16 hex digits>`, as the last element of the
+#: path. Looking for it is what stops this plugin claiming every C++ symbol in a binary,
+#: since the `_ZN` prefix alone does not distinguish the two.
+_LEGACY_HASH_MARKER = "17h"
+_LEGACY_HASH_DIGITS = 16
 
 
 def detect(name):
     """Cheap test for a Rust mangled name.
 
     v0 is unambiguous: nothing else uses `_R`. Legacy shares Itanium's `_ZN` prefix, so
-    it additionally requires the trailing hash component Rust always emits -- without
-    that check this plugin would claim every C++ symbol it was offered.
+    it additionally requires the hash component Rust always emits -- without that check
+    this plugin would claim every C++ symbol it was offered.
+
+    The hash is looked for by its marker rather than at a fixed offset from the end,
+    because real symbols carry things after it: a `.0` for a promoted constant, a
+    `.llvm.<hash>` from LLVM's internaliser. Anchoring to the end missed every one of
+    those, and the C++ demangler then claimed them and produced a plausible-looking but
+    quite wrong spelling.
     """
     if not name:
         return False
     if name.startswith(("_R", "__R")):
         return True
-    if name.startswith(("_ZN", "__ZN")):
-        body = name[:-1] if name.endswith("E") else name
-        tail = body[-_LEGACY_HASH_LENGTH:]
-        return len(tail) == _LEGACY_HASH_LENGTH and tail.startswith("17h") and _is_hex(tail[3:])
-    return False
+    if not name.startswith(("_ZN", "__ZN")):
+        return False
+    marker = name.rfind(_LEGACY_HASH_MARKER)
+    if marker < 0:
+        return False
+    start = marker + len(_LEGACY_HASH_MARKER)
+    digits = name[start : start + _LEGACY_HASH_DIGITS]
+    return (
+        len(digits) == _LEGACY_HASH_DIGITS
+        and _is_hex(digits)
+        and name[start + _LEGACY_HASH_DIGITS : start + _LEGACY_HASH_DIGITS + 1] == "E"
+    )
 
 
 def _is_hex(text):

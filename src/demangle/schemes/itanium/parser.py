@@ -27,6 +27,8 @@ from .tables import (
     EXTENDED_BUILTIN_TYPES,
     INFIX_OPERATORS,
     OPERATORS,
+    POSTFIX_OPERATORS,
+    POSTFIX_PRECEDENCE,
     PRECEDENCE,
     PREFIX_OPERATORS,
     PRIMARY_PRECEDENCE,
@@ -38,6 +40,7 @@ from .tables import (
     STD_ABBREVIATIONS,
     STD_ABBREVIATIONS_EXPANDED,
     STD_ABBREVIATIONS_EXPANDED_GNU,
+    TIGHT_INFIX,
     UNARY_PRECEDENCE,
 )
 
@@ -77,6 +80,7 @@ class ItaniumParser:
         "_in_constraint",
         "_mangled",
         "_naming",
+        "_pack_ids",
         "_packs",
         "_parameter_counts",
         "_precedence",
@@ -110,12 +114,13 @@ class ItaniumParser:
         # Identities of template arguments that were argument packs. A pack is already
         # spelled as its comma-separated members, so expanding it must not also append
         # an ellipsis.
-        # Pack handles seen in this name, held by strong reference. Identity is the
-        # right test -- a pack is the object the parser just built -- but `id()` is not:
-        # CPython reuses an address once an object is collected, so an id-keyed set can
-        # report a brand new handle as a pack it has never seen. That failure is silent
-        # and data-dependent, which is the worst kind.
+        # Pack handles seen in this name. The list holds strong references so no address
+        # can be reused, and the set of ids makes membership O(1) -- an `id()`-keyed set
+        # *alone* is the trap: CPython reuses an address once an object is collected, so
+        # it can report a brand new handle as a pack it has never seen. Silent and
+        # data-dependent, which is the worst kind. Keeping both is what makes it safe.
         self._packs = []
+        self._pack_ids = set()
 
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
@@ -177,8 +182,7 @@ class ItaniumParser:
             else:
                 raise ParseError(self._mangled, reader.pos, f"unconsumed input {suffix!r}")
 
-        rendered_length = len(self.builder.spell(result))
-        if rendered_length > self.limits.max_output:
+        if self.builder.size(result) > self.limits.max_output:
             raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
         return result
 
@@ -223,8 +227,9 @@ class ItaniumParser:
         finally:
             self._naming = was_naming
 
-        # `f(void)` is how the scheme spells "no parameters"; C++ writes `f()`.
-        if len(parameters) == 1 and builder.spell(parameters[0]) == "void":
+        # `f(void)` is how the scheme spells "no parameters"; C++ writes `f()`. A list
+        # that is nothing but `void` means the same, however many there are.
+        if parameters and all(builder.spell(parameter) == "void" for parameter in parameters):
             parameters = []
 
         suffix = ""
@@ -237,7 +242,18 @@ class ItaniumParser:
     # -- 5.1.4 special names ---------------------------------------------------
 
     def special_name(self):
-        """Vtables, typeinfo, thunks, guard variables. None if this is not one."""
+        """Vtables, typeinfo, thunks, guard variables. None if this is not one.
+
+        Guarded: several of these productions contain an `<encoding>`, which can be
+        another special name, so `_Z` followed by `GV` repeated is unbounded recursion.
+        """
+        self._enter()
+        try:
+            return self._special_name()
+        finally:
+            self._leave()
+
+    def _special_name(self):
         reader = self.reader
         code = reader.peek2()
 
@@ -442,11 +458,12 @@ class ItaniumParser:
             # table and otherwise discarded. Newer than the grammar snapshot in
             # docs/specs/.
             reader.take()
+            outer_constraint = self._in_constraint
             self._in_constraint = True
             try:
                 self.expression()
             finally:
-                self._in_constraint = False
+                self._in_constraint = outer_constraint
             return False
 
         component = self.unqualified_name(scope=parts)
@@ -472,11 +489,12 @@ class ItaniumParser:
         outer_naming = self._naming
         outer_scope = self.targs.snapshot()
         self._naming = True
+        outer_drop_return = self._drop_return
         self._drop_return = not self.options.local_name_return_type
         try:
             outer = self.encoding()
         finally:
-            self._drop_return = False
+            self._drop_return = outer_drop_return
 
         if reader.eat("Ed"):
             if reader.peek() != "_":
@@ -558,9 +576,14 @@ class ItaniumParser:
             return builder.name(self.source_name())
 
         if char == "L":
-            # An internal-linkage name. The marker carries no spelling.
+            # An internal-linkage name. The marker carries no spelling, but it recurses,
+            # so a run of them has to be bounded like any other recursive production.
             reader.take()
-            return self.unqualified_name(scope)
+            self._enter()
+            try:
+                return self.unqualified_name(scope)
+            finally:
+                self._leave()
 
         if char == "C":
             return self.constructor_name(scope)
@@ -708,7 +731,7 @@ class ItaniumParser:
             reader.pos += 2
             return 'operator"" ' + self.source_name()
 
-        if code and code[0] == "v" and code[1] in DIGITS:
+        if len(code) == 2 and code[0] == "v" and code[1] in DIGITS:
             # A vendor extended operator: v <digit> <source-name>
             reader.pos += 2
             return "operator " + self.source_name()
@@ -817,11 +840,18 @@ class ItaniumParser:
     # -- 5.1.5 types -----------------------------------------------------------
 
     def cv_qualifiers(self):
-        """<CV-qualifiers> ::= [r] [V] [K], returned in C++'s canonical order."""
+        """<CV-qualifiers> ::= [r] [V] [K], returned in C++'s canonical order.
+
+        At most one of each, in the order the grammar gives. Consuming a whole run
+        instead would fold `KK` into a single qualified type where the ABI has two
+        nested ones -- one substitution entry rather than two, shifting every later
+        back-reference in the name.
+        """
         reader = self.reader
-        found = set()
-        while reader.peek() in QUALIFIER_LETTERS:
-            found.add(QUALIFIER_LETTERS[reader.take()])
+        found = []
+        for letter in ("r", "V", "K"):
+            if reader.eat(letter):
+                found.append(QUALIFIER_LETTERS[letter])
         if not found:
             return ()
         return tuple(qualifier for qualifier in QUALIFIER_ORDER if qualifier in found)
@@ -829,7 +859,15 @@ class ItaniumParser:
     def type_(self):
         self._enter()
         try:
-            return self._type()
+            result = self._type()
+            # Checked here, on every type, rather than once on the finished name. The
+            # substitution scheme lets each component be built from two copies of an
+            # earlier one -- `M S_ S_` doubles -- so a few hundred bytes of input can
+            # describe gigabytes of output. Measuring the finished string would mean
+            # building the very thing the bound exists to prevent; `size()` is O(1).
+            if self.builder.size(result) > self.limits.max_output:
+                raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
+            return result
         finally:
             self._leave()
 
@@ -957,7 +995,7 @@ class ItaniumParser:
         if pair == "Dp":
             reader.pos += 2
             inner = self.type_()
-            if any(inner is pack for pack in self._packs) or self._scope_has_pack:
+            if id(inner) in self._pack_ids or self._scope_has_pack:
                 # The expansion is a <type> in its own right and is recorded as one,
                 # separately from the type it expands: `Dp R T1_` contributes both the
                 # `R T1_` entry and the expansion's. Both reference demanglers do this,
@@ -1060,7 +1098,7 @@ class ItaniumParser:
             if builder.spell(parameter):
                 parameters.append(parameter)
 
-        if len(parameters) == 1 and builder.spell(parameters[0]) == "void":
+        if parameters and all(builder.spell(parameter) == "void" for parameter in parameters):
             parameters = []
         return builder.function(returns, parameters, suffix + exception_spec)
 
@@ -1088,6 +1126,14 @@ class ItaniumParser:
     # -- 5.1.5.10 template arguments -------------------------------------------
 
     def template_param_decl(self):
+        """Guarded wrapper: `Tp` and `Tt` both recurse into this production."""
+        self._enter()
+        try:
+            return self._template_param_decl()
+        finally:
+            self._leave()
+
+    def _template_param_decl(self):
         """<template-param-decl> ::= Ty | Tk <concept-name> | Tn <type>
                                    | Tt <template-param-decl>* E | Tp <template-param-decl>
 
@@ -1162,9 +1208,13 @@ class ItaniumParser:
         reader = self.reader
         reader.expect("I")
         install_scope = install_scope and self._naming
+        # `_scope_has_pack` describes *this* argument list, so it is saved and restored
+        # like `_naming`. Letting it leak outward meant a pack nested inside an argument
+        # -- `f<std::tuple<int>>` -- suppressed the ellipsis on the enclosing `Dp`.
+        outer_has_pack = self._scope_has_pack
+        self._scope_has_pack = False
         if install_scope:
             self.targs.restore(())
-            self._scope_has_pack = False
         # Whatever these arguments contain, it is a type mentioned in passing, not the
         # entity being declared -- so a nested argument list inside one of them must not
         # install a scope of its own. Without this, the arguments of the
@@ -1193,6 +1243,8 @@ class ItaniumParser:
                     self.targs.add(argument)
         finally:
             self._naming = was_naming
+            if not install_scope:
+                self._scope_has_pack = outer_has_pack
         return arguments
 
     def template_arg(self):
@@ -1217,11 +1269,12 @@ class ItaniumParser:
             # A requires-clause closing out an argument list. Parsed for its effect on
             # the substitution table; neither reference prints it.
             reader.take()
+            outer_constraint = self._in_constraint
             self._in_constraint = True
             try:
                 self.expression()
             finally:
-                self._in_constraint = False
+                self._in_constraint = outer_constraint
             return None, False
 
         if reader.eat("X"):
@@ -1243,6 +1296,7 @@ class ItaniumParser:
             self._scope_has_pack = True
             handle = builder.parameter_pack(members)
             self._packs.append(handle)
+            self._pack_ids.add(id(handle))
             # An empty pack still occupies an argument position for `T_` numbering, but
             # contributes nothing to spell: `AnalysisManager<Module, JE>` is
             # `AnalysisManager<llvm::Module>`, not `AnalysisManager<llvm::Module, >`.
@@ -1520,29 +1574,31 @@ class ItaniumParser:
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated sizeof... pack")
-                members.append(builder.spell(self.template_arg()))
+                argument, _ = self.template_arg()
+                if argument is not None:
+                    members.append(builder.spell(argument))
             return f"sizeof...({', '.join(members)})"
         if pair == "st":
             reader.pos += 2
-            return f"sizeof({builder.spell(self.type_())})"
+            return f"sizeof ({builder.spell(self.type_())})"
         if pair == "sz":
             reader.pos += 2
-            return f"sizeof({self.expression()})"
+            return f"sizeof ({self.expression()})"
         if pair == "at":
             reader.pos += 2
-            return f"alignof({builder.spell(self.type_())})"
+            return f"alignof ({builder.spell(self.type_())})"
         if pair == "az":
             reader.pos += 2
-            return f"alignof({self.expression()})"
+            return f"alignof ({self.expression()})"
         if pair == "ti":
             reader.pos += 2
-            return f"typeid({builder.spell(self.type_())})"
+            return f"typeid ({builder.spell(self.type_())})"
         if pair == "te":
             reader.pos += 2
-            return f"typeid({self.expression()})"
+            return f"typeid ({self.expression()})"
         if pair == "nx":
             reader.pos += 2
-            return f"noexcept({self.expression()})"
+            return f"noexcept ({self.expression()})"
 
         if pair == "cl":
             reader.pos += 2
@@ -1589,23 +1645,30 @@ class ItaniumParser:
 
         if pair == "qu":
             reader.pos += 2
-            condition = self.expression()
-            when_true = self.expression()
-            when_false = self.expression()
-            self._precedence = PRECEDENCE["qu"]
-            return f"({condition}) ? ({when_true}) : ({when_false})"
+            binding = PRECEDENCE["qu"]
+            condition = self._operand(binding + 1)
+            when_true = self._operand(binding)
+            when_false = self._operand(binding)
+            self._precedence = binding
+            return f"{condition} ? {when_true} : {when_false}"
 
         if pair in ("dt", "pt"):
             # <expression> ::= dt <expression> <unresolved-name>  (and `pt` for `->`)
             reader.pos += 2
-            owner = self.expression()
+            owner = self._operand(POSTFIX_PRECEDENCE)
             joiner = "." if pair == "dt" else "->"
-            return owner + joiner + self.unresolved_name()
+            name = self.unresolved_name()
+            self._precedence = POSTFIX_PRECEDENCE
+            return owner + joiner + name
 
         if pair == "ix":
             reader.pos += 2
-            owner = self.expression()
-            return f"{owner}[{self.expression()}]"
+            # Subscript is the one postfix form the reference brackets against another
+            # postfix -- `(fp[fp])[fp]`, but `fp.a.b` and `fp++++` unbracketed.
+            owner = self._operand(PRIMARY_PRECEDENCE)
+            index = self.expression()
+            self._precedence = POSTFIX_PRECEDENCE
+            return f"{owner}[{index}]"
 
         if pair == "gs":
             # A leading `::` forcing global scope. It introduces either a global-scope
@@ -1650,6 +1713,17 @@ class ItaniumParser:
             kind = builder.spell(self.type_())
             return f"{casts[pair]}<{kind}>({self.expression()})"
 
+        if pair in POSTFIX_OPERATORS:
+            # 5.1.6: `pp`/`mm` are postfix; `pp_`/`mm_` are the prefix forms.
+            reader.pos += 2
+            if reader.eat("_"):
+                operand = self._operand(PRIMARY_PRECEDENCE)
+                self._precedence = UNARY_PRECEDENCE
+                return f"{POSTFIX_OPERATORS[pair]}{operand}"
+            operand = self._operand(POSTFIX_PRECEDENCE)
+            self._precedence = POSTFIX_PRECEDENCE
+            return f"{operand}{POSTFIX_OPERATORS[pair]}"
+
         if pair in PREFIX_OPERATORS:
             reader.pos += 2
             # A prefix operator brackets anything that is not already primary, including
@@ -1666,9 +1740,15 @@ class ItaniumParser:
             right_associative = pair in RIGHT_ASSOCIATIVE
             left = self._operand(binding + 1 if right_associative else binding)
             right = self._operand(binding if right_associative else binding + 1)
+            spelling = INFIX_OPERATORS[pair]
+            if pair == "cm":
+                # A comma expression is always bracketed, or it cannot be told from the
+                # argument separator it is sitting next to.
+                self._precedence = PRIMARY_PRECEDENCE
+                return f"({left}, {right})"
             self._precedence = binding
-            gap = "" if self.options.gnu_expression_spelling else " "
-            return f"{left}{gap}{INFIX_OPERATORS[pair]}{gap}{right}"
+            gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
+            return f"{left}{gap}{spelling}{gap}{right}"
 
         # A bare name here is an <unresolved-name>: the grammar says so, and it matters
         # because a name in an expression creates no substitution entry while a <type>

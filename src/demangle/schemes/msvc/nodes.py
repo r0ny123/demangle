@@ -12,19 +12,25 @@ placement rules live here, next to the nodes they walk.
 The nodes are otherwise ordinary `core.ast.Node`s, so `.walk()`, `.find(kind)` and
 `.spell()` work as they do for any other scheme. Where a core node already means exactly
 what this scheme means -- a fixed piece of text, an array, an identifier -- it is used
-rather than copied.
+rather than copied. `render` below spells those the MSVC way as part of a declaration;
+asking one of them for its *own* spelling in isolation goes through the shared builder,
+which writes `int [2]` where this scheme writes `int[2]`. Nothing that is spelled as a
+whole symbol takes that path.
 
-What the tree does *not* hold is a name. Namespaces, template arguments and parameter
-types reach this module already spelled, because the name grammar above resolves
-back-references against rendered text and cannot defer it. The structure recovered is
-therefore the declaration's shape -- what it declares, its indirections, its parameter
-list, its return type -- and the leaves of that shape are text.
+Array extents nest outermost first, so `int[2][3]` is an array of two arrays of three
+and each node's `dimension` means what it says on its own.
+
+What the tree does *not* take apart is a name. Namespaces, template arguments and the
+class a member belongs to arrive here already spelled, because the mangling resolves its
+back-references against text and the parser has to render each one as it goes to number
+the next correctly. So the structure recovered is the declaration's shape -- what it
+declares, its indirections, its parameter list, its return type -- over leaves that are
+text.
 """
 
 import re
 
-from ...core.ast import Array as _CoreArray
-from ...core.ast import Name, Node, Raw
+from ...core.ast import Array, Name, Node, Raw
 
 __all__ = [
     "Array",
@@ -60,7 +66,10 @@ class _Spelled(Node):
 
     __slots__ = ()
 
-    def spell(self, declarator=""):
+    def spell(self, declarator="", style=None):
+        # `style` is accepted to match `Node.spell` and deliberately ignored: MSVC's
+        # declarator spelling is its own and does not vary with the C++ output styles,
+        # which exist only where llvm-cxxfilt and GNU c++filt disagree.
         return render(self, declarator)
 
     def build(self, builder):
@@ -91,16 +100,6 @@ class Indirection(_Spelled):
     def points_into_class(self):
         """Whether this is a pointer to member rather than an ordinary pointer."""
         return self.sigil.endswith("::*")
-
-
-class Array(_Spelled, _CoreArray):
-    """An array, spelled MSVC's way.
-
-    Extents nest outermost first, so `int[2][3]` is an array of two arrays of three and
-    each node's `dimension` means what it says on its own. An empty one is unbounded.
-    """
-
-    __slots__ = ()
 
 
 class FunctionType(_Spelled):

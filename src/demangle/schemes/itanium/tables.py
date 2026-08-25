@@ -153,6 +153,7 @@ INFIX_OPERATORS = {
     "aa": "&&",
     "oo": "||",
     "cm": ",",
+    "ds": ".*",
     "pm": "->*",
 }
 
@@ -167,7 +168,13 @@ PREFIX_OPERATORS = {
     "mm": "--",
 }
 
+#: 5.1.6 spells `++` and `--` as *postfix* by default; the prefix forms are `pp_` and
+#: `mm_`. Getting this backwards mis-spells one and leaves the other unparseable.
 POSTFIX_OPERATORS = {"pp": "++", "mm": "--"}
+
+#: Infix operators the references print without surrounding spaces.
+TIGHT_INFIX = frozenset({"pm", "ds"})
+
 
 #: C++ operator precedence, higher binding tighter ([expr.compound]). Used to decide
 #: which sub-expressions need parentheses: an operand is bracketed only when it binds
@@ -210,7 +217,11 @@ PRECEDENCE = {
     "rm": 13,
     "pm": 14,
     "pt": 14,
+    "ds": 14,
 }
+
+#: Postfix and subscript expressions bind tighter than any prefix operator.
+POSTFIX_PRECEDENCE = 16
 
 #: Right-associative operators. Associativity decides which side needs brackets at
 #: *equal* precedence: `1 + (2 - 3)` keeps them because `+` groups left, so an unbracketed
