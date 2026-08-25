@@ -57,6 +57,11 @@ def reference_output(tool, names):
 
     One process for the whole corpus rather than one per name: with tens of thousands
     of symbols the process spawn dominates everything else.
+
+    The two references do not agree on output format. `llvm-cxxfilt` and `c++filt`
+    write one line per name. `llvm-undname` writes three -- it echoes the input, then
+    the result, then a blank line -- so reading its output as one-line-per-name silently
+    pairs every name with the wrong answer.
     """
     if not shutil.which(tool):
         return {}
@@ -64,9 +69,11 @@ def reference_output(tool, names):
     if result.returncode != 0:
         return {}
     lines = result.stdout.splitlines()
-    if len(lines) != len(names):
-        return {}
-    return dict(zip(names, lines, strict=True))
+    if len(lines) == len(names):
+        return dict(zip(names, lines, strict=True))
+    if len(lines) == len(names) * 3:
+        return {name: lines[index * 3 + 1] for index, name in enumerate(names)}
+    return {}
 
 
 def main():

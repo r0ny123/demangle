@@ -30,6 +30,16 @@ class ItaniumOptions:
     suffixing the raw index.
     """
 
+    gnu_expression_spelling: bool = False
+    """Spell expressions inside types the way GNU c++filt does.
+
+    The two references diverge throughout expression syntax, and neither is more correct
+    -- they are printing the same expression. GNU writes `decltype ({parm#1}+{parm#1})`
+    where LLVM writes `decltype(fp + fp)`: a space after the keyword, no spaces around
+    binary operators, function parameters numbered from one, and a call's callee
+    parenthesised.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -43,4 +53,5 @@ GNU_OPTIONS = ItaniumOptions(
     expand_std_abbreviations=True,
     gnu_closure_spelling=True,
     local_name_return_type=False,
+    gnu_expression_spelling=True,
 )

@@ -23,6 +23,35 @@ from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from ._parser import demangle_msvc_symbol
 
+#: MSVC replaces a decorated name too long for the linker with an MD5 hash of it,
+#: written `??@<hash>@`. Nothing can be recovered -- the original spelling is simply not
+#: in the symbol -- so the demangled form of such a name is the name itself, which is
+#: what `llvm-undname` prints for it.
+_MD5_PREFIX = "??@"
+
+#: The one thing that may follow an MD5 name and still belong to it: the RTTI complete
+#: object locator tag. Probing `llvm-undname` shows every other trailing sequence --
+#: `??_R0@` through `??_R5@`, `??_C@`, `??_7@`, arbitrary text -- being dropped, and only
+#: `??_R4@` kept.
+_MD5_RTTI_SUFFIX = "??_R4@"
+
+
+def _md5_name(mangled):
+    """Expand `??@<hash>@`, or None when it is not one.
+
+    MSVC replaces a decorated name too long for the linker with an MD5 hash of it. The
+    original spelling is not in the symbol at all, so the expansion is the name itself --
+    truncated at the closing `@`, because anything after it is not part of the hashed
+    name.
+    """
+    end = mangled.find("@", len(_MD5_PREFIX))
+    if end < 0:
+        return None
+    base = mangled[: end + 1]
+    if mangled.startswith(_MD5_RTTI_SUFFIX, end + 1):
+        return base + _MD5_RTTI_SUFFIX
+    return base
+
 
 def detect(name):
     """Every decorated name the scheme produces opens with `?`."""
@@ -38,6 +67,14 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     # copied into the output, where it would travel on into a caller's report.
     if any(char < " " or char == "\x7f" for char in mangled):
         raise ParseError(mangled, None, "decorated name contains a control character")
+    if mangled.startswith(_MD5_PREFIX):
+        # A hashed name carries no recoverable spelling, so it is its own expansion.
+        # This is a successful parse, not a failure: there is nothing more to say about
+        # the symbol, and the reference demangler agrees.
+        hashed = _md5_name(mangled)
+        if hashed is None:
+            raise ParseError(mangled, None, "unterminated MD5-hashed name")
+        return builder.raw(hashed)
     expanded = demangle_msvc_symbol(mangled)
     if expanded == mangled:
         raise ParseError(mangled, None, "not a decorated name this demangler can read")

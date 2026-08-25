@@ -68,6 +68,7 @@ class ItaniumParser:
         "_mangled",
         "_naming",
         "_packs",
+        "_scope_has_pack",
         "builder",
         "limits",
         "options",
@@ -108,6 +109,12 @@ class ItaniumParser:
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
         self._drop_return = False
+        # Whether the template arguments currently in scope include a parameter pack.
+        # An expansion is written `Dp <type>`, and what it expands to is the pack's
+        # members -- so when a pack is in scope the ellipsis has already been spent and
+        # printing one would double it. With no pack in scope the expansion is
+        # unexpanded and the ellipsis is the whole point.
+        self._scope_has_pack = False
 
     # -- recursion control -----------------------------------------------------
 
@@ -660,7 +667,8 @@ class ItaniumParser:
             raise ParseError(self._mangled, reader.pos, "expected a decltype")
         expression = self.expression()
         reader.expect("E")
-        return self.builder.raw(f"decltype({expression})")
+        keyword = "decltype " if self.options.gnu_expression_spelling else "decltype"
+        return self.builder.raw(f"{keyword}({expression})")
 
     # -- 5.1.5 types -----------------------------------------------------------
 
@@ -797,10 +805,9 @@ class ItaniumParser:
         if pair == "Dp":
             reader.pos += 2
             inner = self.type_()
-            if id(inner) in self._packs:
-                # The parameter this expands was bound to an argument pack, which is
-                # already spelled as its comma-separated members: `Dp T_` over
-                # `J i c d E` is `int, char, double`, not `int, char, double...`.
+            if id(inner) in self._packs or self._scope_has_pack:
+                # Expanding a pack yields its members, which are already spelled: `Dp T_`
+                # over `J i c d E` is `int, char, double`, not `int, char, double...`.
                 return inner
             return self.subs.remember(builder.pack(inner), "type")
 
@@ -921,6 +928,7 @@ class ItaniumParser:
         install_scope = install_scope and self._naming
         if install_scope:
             self.targs.restore(())
+            self._scope_has_pack = False
         arguments = []
         while not reader.eat("E"):
             if reader.eof:
@@ -953,8 +961,16 @@ class ItaniumParser:
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated argument pack")
-                members.append(builder.spell(self.template_arg()))
-            handle = builder.raw(", ".join(members))
+                members.append(self.template_arg())
+            self._scope_has_pack = True
+            if len(members) == 1:
+                # A one-member pack *is* its member. Re-wrapping it as text would throw
+                # away everything the handle knows about itself -- that it is a
+                # reference, most importantly, so that a later `O` applied to it
+                # collapses instead of printing `char const&&&`.
+                self._packs.add(id(members[0]))
+                return members[0]
+            handle = builder.raw(", ".join(builder.spell(member) for member in members))
             self._packs.add(id(handle))
             return handle
 
@@ -1028,6 +1044,30 @@ class ItaniumParser:
 
     # -- 5.1.6 expressions -----------------------------------------------------
 
+    def expression_name(self):
+        """A name appearing in an expression -- the callee of a call, most often.
+
+        Records nothing for the name itself. Section 5.1.10 excludes "function and
+        operator names other than extern \"C\" functions" from the candidate set, and
+        adds that "we do not substitute for expressions, though names appearing in them
+        might be substituted": a name in an expression may *refer* to an existing entry,
+        but it does not create one.
+
+        Template arguments applied to it still record their own types, which is how
+        `_ZSt12construct_atIcJRKcEE...cl7declvalIT0_EE...` reaches `S4_` -- that entry is
+        the `T0_` inside `declval`'s argument list, not `declval` itself.
+        """
+        reader = self.reader
+        builder = self.builder
+        if reader.peek() in DIGITS:
+            text = self.source_name()
+            if reader.peek() == "I":
+                arguments = self.template_arguments()
+                rendered = ", ".join(builder.spell(argument) for argument in arguments)
+                return f"{text}<{rendered}>"
+            return text
+        return builder.spell(self.type_())
+
     def initialiser(self):
         """<initializer> ::= pi <expression>* E -- a parenthesised initialiser list."""
         reader = self.reader
@@ -1059,6 +1099,12 @@ class ItaniumParser:
         finally:
             self._leave()
 
+    def _spell_parameter(self, index):
+        """A reference to a function parameter, `fp_` / `fp0_` / `fpT_`."""
+        if self.options.gnu_expression_spelling:
+            return f"{{parm#{int(index) + 2 if index else 1}}}"
+        return f"fp{index}"
+
     def _operand(self):
         """One operand of an operator, parenthesised only if it is itself compound."""
         text = self.expression()
@@ -1081,14 +1127,14 @@ class ItaniumParser:
             reader.eat("T")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
-            return f"fp{index}"
+            return self._spell_parameter(index)
         if pair == "fL":
             reader.pos += 2
             reader.digits()
             reader.eat("p")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
-            return f"fp{index}"
+            return self._spell_parameter(index)
 
         if pair == "sr":
             reader.pos += 2
@@ -1129,7 +1175,9 @@ class ItaniumParser:
 
         if pair == "cl":
             reader.pos += 2
-            target = self.expression()
+            target = self.expression_name() if reader.peek() in DIGITS else self.expression()
+            if self.options.gnu_expression_spelling:
+                target = f"({target})"
             arguments = []
             while not reader.eat("E"):
                 if reader.eof:
@@ -1193,9 +1241,10 @@ class ItaniumParser:
             return "::" + self.expression()
 
         if pair == "sp":
-            # A pack expansion inside an expression.
+            # A pack expansion inside an expression, under the same rule as `Dp`.
             reader.pos += 2
-            return self.expression() + "..."
+            expanded = self.expression()
+            return expanded if self._scope_has_pack else expanded + "..."
 
         if pair == "nw" or pair == "na":
             reader.pos += 2
@@ -1205,8 +1254,9 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "unterminated new expression")
                 arguments.append(self.expression())
             kind = builder.spell(self.type_())
-            placement = f"({', '.join(arguments)})" if arguments else ""
             keyword = "new" if pair == "nw" else "new[]"
+            gap = " " if self.options.gnu_expression_spelling else ""
+            placement = f"{gap}({', '.join(arguments)})" if arguments else ""
             self._compound = True
             if reader.eat("E"):
                 return f"{keyword}{placement} {kind}"
@@ -1234,7 +1284,8 @@ class ItaniumParser:
             left = self._operand()
             right = self._operand()
             self._compound = True
-            return f"{left} {INFIX_OPERATORS[pair]} {right}"
+            gap = "" if self.options.gnu_expression_spelling else " "
+            return f"{left}{gap}{INFIX_OPERATORS[pair]}{gap}{right}"
 
         # What remains that could open a type, is one: array bounds and non-type
         # template arguments both arrive here.
