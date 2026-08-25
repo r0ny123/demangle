@@ -79,6 +79,22 @@ All notable changes to this project are recorded here. The format follows
   this changes nothing for one that does not opt in, and `tests/test_core.py` checks each
   declaration against every corpus rather than trusting it.
 
+- **Rust demangling is a further 33% faster** (80us to 54us a name over the 5,710-name
+  real-world corpus, on top of the 23% below). Nothing clever, and nothing structural:
+  the scheme is a port and it kept the reference's shape, where a helper costs nothing.
+  Here a helper is an interpreter frame, and these run once per *character* -- `eat`,
+  `peek`, `next_func` and the two digit readers between them 1.5 million times over that
+  corpus. They are written out at the call sites that are hot, the three `skip_*`
+  productions no longer reach their bodies through a wrapper that exists only to
+  increment a depth counter, and `<basic-type>` is a module-level dict rather than an
+  `lru_cache`d function that rebuilt its table on every miss. Two allocations went with
+  them: the punycode decoder's 128-element buffer, which was built once per identifier
+  and discarded unread for every ASCII one, and the quadratic `rest = rest[1:]` that
+  stripped a legacy length prefix a character at a time.
+
+  Verified by replaying 60,000 mutated, truncated and spliced Rust symbols through the
+  library before and after: byte-identical on every one.
+
 - **Rust demangling is 23% faster** (99us to 76us a name over the real-world corpus). The
   structure work had put a `contextlib` context manager around every grammar production,
   which on the text path reaches two no-ops through a generator and a wrapper object; and
@@ -95,6 +111,17 @@ All notable changes to this project are recorded here. The format follows
   the cold figure by roughly 3x.
 
 ### Fixed
+
+- **A Rust symbol carrying a literal non-ASCII character is refused, as the reference
+  refuses it.** Both manglings are checked for it, and the check was written as a
+  per-character `ord(c) & 0x80` test -- which is not the rule. The reference reads the
+  symbol as *bytes*, so U+0100 fails it as two bytes that both have bit 7 set, while as
+  one character its value has bit 7 clear and it passed here: `_RC1\u0100` came out as
+  `\u0100` where `rustc-demangle` echoes it back unread. Neither mangling ever carries a
+  non-ASCII character literally -- v0 spells one in punycode, the legacy scheme writes
+  `$u0100$` -- so a name that does is not a Rust symbol. Measured over 8,000 symbols with
+  a non-ASCII character spliced in: agreement with the reference goes from 5,954 to
+  7,932, and nothing that agreed before disagrees now.
 
 - **Substitution numbering for a template template parameter application.** A
   `<template-param>` used as the base of a template application was not recorded as a

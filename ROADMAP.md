@@ -63,11 +63,14 @@ survives.
   composition constant, per-name cost is flat from 500 names to 5,913. It was
   unrepresentative in *composition*, being mostly cheap MSVC names, which flattered the
   headline figure by 3x. The benchmark now spans every corpus and all four schemes.
+- **Rust's remaining cost** — *done*, and what read as an obstacle was the answer.
+  "Spread across `eat`, `ident` and `integer_62` rather than concentrated anywhere"
+  means the cost *is* the interpreter frames: those are per-character helpers, and they
+  run 1.5 million times over the 5,710-name corpus. Writing them out at the hot call
+  sites, and dropping the wrapper that reached each `skip_*` body through a second frame,
+  took 80us a name to 54us without touching the grammar. Verified byte-identical over
+  60,000 mutated names.
 
 What is left:
 
-- Rust is the slowest scheme by a distance — 76us a name against 44us for Itanium and
-  3.6us for MSVC, after a 23% improvement from removing per-production `contextlib` use
-  and hoisting `len()` out of the reader's inner loops. The remaining cost is spread
-  across `eat`, `ident` and `integer_62` rather than concentrated anywhere.
 - A profile-guided pass over the Itanium parser, which has had none.
