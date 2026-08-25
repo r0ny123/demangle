@@ -51,6 +51,26 @@ class Builder(Protocol):
     def literal(self, kind: Handle | None, value: str) -> Handle:
         """A constant appearing in a type, such as a non-type template argument."""
 
+    def expression(self, form: str, parts: Sequence["Handle | str"]) -> Handle:
+        """A constant expression: `sizeof (T)`, `a + b`, `x ? y : z`.
+
+        `parts` interleaves the fixed text of the production with the handles of its
+        operands, in output order, so a builder that wants text concatenates and one
+        that wants a tree keeps the boundaries. `form` names the shape -- `binary`,
+        `call`, `sizeof`, `conditional` -- so a consumer can ask what an expression *is*
+        without matching on its spelling.
+
+        One method rather than one per operator, because the alternative is fifteen
+        methods that every future builder has to implement and that still would not
+        cover the next operator someone mangles. The parser already owns operator
+        spelling: it comes from the tables in `tables.py`, which exist to be checked
+        against the ABI. What the builder decides is structure.
+
+        Brackets are a part like any other. Whether an operand needs them is a question
+        about precedence that only the parser can answer, so it arrives here already
+        settled, as `"("` and `")"` around the operand it applies to.
+        """
+
     # -- composition -----------------------------------------------------------
 
     def qualified(self, parts: Sequence[Handle]) -> Handle:

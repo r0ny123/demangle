@@ -20,6 +20,7 @@ __all__ = [
     "Array",
     "AstBuilder",
     "Builtin",
+    "Expression",
     "Function",
     "Literal",
     "MemberPointer",
@@ -180,6 +181,38 @@ class Literal(Node):
 
 
 # -- composition --------------------------------------------------------------
+
+
+class Expression(Node):
+    """A constant expression appearing in a type or a template argument.
+
+    `parts` interleaves fixed text with operand subtrees, in output order, exactly as
+    the parser reported them -- so rendering concatenates and cannot spell the
+    expression differently from the text path. `form` says which shape it is: `binary`,
+    `unary`, `call`, `conditional`, `sizeof`, and so on.
+
+    Brackets, where the spelling needs them, are plain parts. Precedence is settled by
+    the parser before it reports the production, because only the parser knows what the
+    operand was; a consumer reading the tree sees the operands, not the punctuation.
+    """
+
+    __slots__ = ("form", "parts")
+    kind = "expression"
+
+    def __init__(self, form, parts):
+        self.form = form
+        self.parts = tuple(parts)
+
+    def children(self):
+        return tuple(p for p in self.parts if isinstance(p, Node))
+
+    @property
+    def operands(self):
+        """Just the operands, without the punctuation between them."""
+        return self.children()
+
+    def build(self, builder):
+        return builder.expression(self.form, [p if isinstance(p, str) else p.build(builder) for p in self.parts])
 
 
 class Qualified(Node):
@@ -441,6 +474,10 @@ class AstBuilder(Builder):
 
     def raw(self, text):
         return _sized(Raw(text), len(text))
+
+    def expression(self, form, parts):
+        size = sum(len(p) if isinstance(p, str) else p.size for p in parts)
+        return _sized(Expression(form, parts), size)
 
     def literal(self, kind, value):
         return _sized(Literal(kind, value), len(value) + (kind.size if kind else 0))

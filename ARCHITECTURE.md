@@ -43,17 +43,23 @@ syntax highlighter -- means writing one class and touching no parser.
 This is the single most important thing to understand about the codebase. A change that
 makes a parser build strings directly, however locally convenient, breaks it.
 
-### Where the rule does not yet hold
+### Expressions
 
-One place, stated plainly because a rule with an unadvertised exception is worse than one
-with a documented one:
+Expressions were the last place the rule did not hold: the parser assembled
+`f"sizeof ({...})"` itself, so an expression inside a type reached the tree as one opaque
+node. They now go through `Builder.expression(form, parts)`, where `parts` interleaves the
+production's fixed text with its operands' handles and `form` names the shape — `binary`,
+`conditional`, `call`, `sizeof`.
 
-- **Expressions.** The Itanium parser writes types and names through the builder but
-  assembles expression *text* directly, so an expression inside a type arrives in the
-  tree as one opaque node. `tests/test_architecture.py` enforces the half that is
-  enforceable — no scheme may import `core.spelling` — and cannot enforce this half.
+One method rather than one per operator. Fifteen methods would be fifteen things every
+future builder must implement, and would still not cover the next operator someone
+mangles. The parser already owns operator *spelling* — it comes from `tables.py`, which
+exists to be checked against the ABI — so what is left for the builder to decide is
+structure, and `form` plus operands is that.
 
-It is in ROADMAP.md. All three schemes otherwise build real trees.
+Brackets are parts like any other. Whether an operand needs them is a precedence question
+only the parser can answer, so it arrives settled; a consumer walking the tree sees a
+`paren` expression wrapping the operand rather than punctuation glued into a string.
 
 Rust reaches the same place by a different route, and the difference is worth knowing.
 Its printer emits one linear stream of fragments and a *sink* decides what to do with
