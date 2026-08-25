@@ -143,6 +143,14 @@ above. Independently, `ppudump` prints both a unit's mangled names and the names
 declares, and every name read is one the unit declares. Case is not recoverable: Pascal
 is case-insensitive and the compiler upper-cases before mangling.
 
+✻ A mangled name in Swift *metadata* can hold a one-byte marker and a four-byte offset
+in place of a type the image already describes, so reading one needs the image:
+`swift.demangle_symbolic` takes bytes and a resolver, and `resolve.ContextResolver` is
+one. Each reference resolves to a descriptor; the check is that the symbol the *linker*
+put at that address demangles to the same name, with `swift-demangle` reading both sides.
+Splicing each resolved fragment back in gives a self-contained name the reference can
+read, and it agrees with our spelling on 4,799 of 4,799.
+
 ⁂ Objective-C has no reference demangler, and barely a mangling: what there is comes from
 the compiler rather than the language, so the rules are transcribed from clang's
 `Mangle.cpp`, `CGObjCMac.cpp` and `CGObjCGNU.cpp`. The expected column is not this
@@ -188,6 +196,7 @@ Run live against the reference, not replayed.
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
+| Swift metadata symbolic references ✻ | 4,528 | **100%** |
 
 About 450,000 real symbols, all exact.
 

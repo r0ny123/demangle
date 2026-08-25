@@ -1,0 +1,279 @@
+# Real Swift metadata typerefs: the bytes, the fragments each symbolic reference
+# resolves to, and the spelling.
+#
+# Columns are tab-separated: the name as hex, then `offset=fragment` pairs separated
+# by spaces (the offset is where the reference's own offset field sits in the name),
+# then the spelling. Hex because a name holding a symbolic reference is not text.
+#
+# Taken from the swift5_typeref section of the Swift 5.10.1 runtime and of libraries
+# built here. The fragments are what `resolve.ContextResolver` read out of each
+# image; every one of them was checked against the symbol the *linker* put at the
+# same address, with swift-demangle reading both sides.
+0117020000	1=4demo5PointV	demo.Point
+0131020000	1=4demo4PairV	demo.Pair
+016d020000	1=4demo6ColourO	demo.Colour
+019f020000	1=4demo4NodeC	demo.Node
+01990200005367	1=4demo4NodeC	demo.Node?
+53535f01f40100007901ca01000001310200004774	4=4demo4PairV 10=4demo5PointV 15=4demo6ColourO	(Swift.String, demo.Pair<demo.Point, demo.Colour>)
+01e10100007901b7010000011e02000047	1=4demo4PairV 7=4demo5PointV 12=4demo6ColourO	demo.Pair<demo.Point, demo.Colour>
+53617901d40600007978715f4747	4=3big4PairV	[big.Pair<A, B>]
+014f060000790101060000475367	1=3big5BoxedV 7=3big4Vec2V	big.Boxed<big.Vec2>?
+01810600007901eb050000010a06000047	1=3big4PairV 7=3big4Vec2V 12=3big4Vec3V	big.Pair<big.Vec2, big.Vec3>
+01b70600007953695353536447	1=3big6TripleV	big.Triple<Swift.Int, Swift.String, Swift.Double>
+01f106000079011306000079012d07000047018f08000047	1=3big6EitherO 7=3big5BoxedV 13=3big4SuitO 19=3big5OuterV5InnerV	big.Either<big.Boxed<big.Suit>, big.Outer.Inner>
+536179014406000079535353617901a9050000474747	4=3big4PairV 15=3big4Vec2V	[big.Pair<Swift.String, [big.Vec2]>]
+5344795353017206000079019405000001b305000001f20600004747	6=3big6TripleV 12=3big4Vec2V 17=3big4Vec3V 22=3big4SuitO	[Swift.String : big.Triple<big.Vec2, big.Vec3, big.Suit>]
+01810500005f019f05000001de06000074	1=3big4Vec2V 7=3big4Vec3V 12=3big4SuitO	(big.Vec2, big.Vec3, big.Suit)
+010f070000795353016705000047	1=3big6BucketC 9=3big4Vec2V	big.Bucket<Swift.String, big.Vec2>
+015f050000536963	1=3big4Vec2V	(Swift.Int) -> big.Vec2
+537079014e050000475367	4=3big4Vec3V	Swift.UnsafeMutablePointer<big.Vec3>?
+016f8613005367	1=10Foundation15AffineTransformV	Foundation.AffineTransform?
+5361790236400f0047	4=10Foundation8NSStringC14CompareOptionsV	[Foundation.NSString.CompareOptions]
+536e79017001150047	4=10Foundation16AttributedStringV5IndexV	Swift.Range<Foundation.AttributedString.Index>
+536179017a01150047	4=10Foundation16AttributedStringV12_InternalRunV	[Foundation.AttributedString._InternalRun]
+3556616c7565024f400f00517a53675f536e7901d20015004774	7=10Foundation19AttributedStringKeyP 20=10Foundation16AttributedStringV5IndexV	(A.Foundation.AttributedStringKey.Value?, Swift.Range<Foundation.AttributedString.Index>)
+534979013a031500795f5f784747	4=10Foundation16AttributedStringV4RunsV16AttributesSlice1V	Swift.DefaultIndices<Foundation.AttributedString.Runs.AttributesSlice1<A>>
+0177031500795f5f785f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice1V8IteratorV	Foundation.AttributedString.Runs.AttributesSlice1<A>.Iterator
+3556616c7565029b3f0f00517a53675f41614251795f5367536e7901160015004774	7=10Foundation19AttributedStringKeyP 28=10Foundation16AttributedStringV5IndexV	(A.Foundation.AttributedStringKey.Value?, B.Foundation.AttributedStringKey.Value?, Swift.Range<Foundation.AttributedString.Index>)
+534979016e031500795f5f78715f4747	4=10Foundation16AttributedStringV4RunsV16AttributesSlice2V	Swift.DefaultIndices<Foundation.AttributedString.Runs.AttributesSlice2<A, B>>
+01b3031500795f5f78715f5f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice2V8IteratorV	Foundation.AttributedString.Runs.AttributesSlice2<A, B>.Iterator
+3556616c756502f73e0f00517a53675f41614251795f53674161425179305f5367536e790169ff14004774	7=10Foundation19AttributedStringKeyP 37=10Foundation16AttributedStringV5IndexV	(A.Foundation.AttributedStringKey.Value?, B.Foundation.AttributedStringKey.Value?, C.Foundation.AttributedStringKey.Value?, Swift.Range<Foundation.AttributedString.Index>)
+53497901ae031500795f5f78715f71305f4747	4=10Foundation16AttributedStringV4RunsV16AttributesSlice3V	Swift.DefaultIndices<Foundation.AttributedString.Runs.AttributesSlice3<A, B, C>>
+01f9031500795f5f78715f71305f5f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice3V8IteratorV	Foundation.AttributedString.Runs.AttributesSlice3<A, B, C>.Iterator
+3556616c756502413e0f00517a53675f41614251795f53674161425179305f53674161425179315f5367536e7901aafe14004774	7=10Foundation19AttributedStringKeyP 46=10Foundation16AttributedStringV5IndexV	(A.Foundation.AttributedStringKey.Value?, B.Foundation.AttributedStringKey.Value?, C.Foundation.AttributedStringKey.Value?, D.Foundation.AttributedStringKey.Value?, Swift.Range<Foundation.AttributedString.Index>)
+53497901fc031500795f5f78715f71305f71315f4747	4=10Foundation16AttributedStringV4RunsV16AttributesSlice4V	Swift.DefaultIndices<Foundation.AttributedString.Runs.AttributesSlice4<A, B, C, D>>
+0153041500795f5f78715f71305f71315f5f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice4V8IteratorV	Foundation.AttributedString.Runs.AttributesSlice4<A, B, C, D>.Iterator
+3556616c756502793d0f00517a53675f41614251795f53674161425179305f53674161425179315f53674161425179325f5367536e7901d9fd14004774	7=10Foundation19AttributedStringKeyP 55=10Foundation16AttributedStringV5IndexV	(A.Foundation.AttributedStringKey.Value?, B.Foundation.AttributedStringKey.Value?, C.Foundation.AttributedStringKey.Value?, D.Foundation.AttributedStringKey.Value?, E.Foundation.AttributedStringKey.Value?, Swift.Range<Foundation.AttributedString.Index>)
+5349790148041500795f5f78715f71305f71315f71325f4747	4=10Foundation16AttributedStringV4RunsV16AttributesSlice5V	Swift.DefaultIndices<Foundation.AttributedString.Runs.AttributesSlice5<A, B, C, D, E>>
+01ad041500795f5f78715f71305f71315f71325f5f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice5V8IteratorV	Foundation.AttributedString.Runs.AttributesSlice5<A, B, C, D, E>.Iterator
+534979016aff140047	4=10Foundation16AttributedStringV4RunsV	Swift.DefaultIndices<Foundation.AttributedString.Runs>
+53497901a804150047	4=10Foundation16AttributedStringV13CharacterViewV	Swift.DefaultIndices<Foundation.AttributedString.CharacterView>
+534979013a04150047	4=10Foundation16AttributedStringV17UnicodeScalarViewV	Swift.DefaultIndices<Foundation.AttributedString.UnicodeScalarView>
+0145fa14005367	1=10Foundation16AttributedStringV5IndexV	Foundation.AttributedString.Index?
+01d5fd1400795f5f78715f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice2V	Foundation.AttributedString.Runs.AttributesSlice2<A, B>
+01b3fe1400795f5f78715f71305f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice3V	Foundation.AttributedString.Runs.AttributesSlice3<A, B, C>
+01afff1400795f5f78715f71305f71315f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice4V	Foundation.AttributedString.Runs.AttributesSlice4<A, B, C, D>
+01b7001500795f5f78715f71305f71315f71325f47	1=10Foundation16AttributedStringV4RunsV16AttributesSlice5V	Foundation.AttributedString.Runs.AttributesSlice5<A, B, C, D, E>
+5361790286480f0047	4=10Foundation16AttributedStringV12_InternalRunV	[Foundation.AttributedString._InternalRun]
+013f1c15005f705367	1=10Foundation17_StructBridgeableP	Foundation._StructBridgeable?
+53617902da480f0047	4=10Foundation5NSURLC	[Foundation.NSURL]
+014f3515005f02794e0f0074	1=10Foundation8CalendarV10IdentifierO 7=10Foundation10NSCalendarC10IdentifierV	(Foundation.Calendar.Identifier, Foundation.NSCalendar.Identifier)
+0237540f00336b65795f79703576616c7565745367	1=10Foundation18NSAttributedStringC3KeyV	(key: Foundation.NSAttributedString.Key, value: Any)?
+53447902b8660f00535347	4=10Foundation8NSLocaleC3KeyV	[Foundation.NSLocale.Key : Swift.String]
+01a57e1500496567675f	1=10Foundation10FileHandleC	@escaping @callee_guaranteed (@guaranteed Foundation.FileHandle) -> ()
+53617902fe680f00475367	4=10Foundation7RunLoopC4ModeV	[Foundation.RunLoop.Mode]?
+7901307e1500635367	2=10Foundation10FileHandleC	((Foundation.FileHandle) -> ())?
+01c37d150053675877	1=10Foundation10FileHandleC	weak Foundation.FileHandle?
+01b17d1500536758777a5f5878	1=10Foundation10FileHandleC	{ var weak Foundation.FileHandle? }
+027f6d0f005f02816d0f0002846d0f0070	1=10Foundation9NSCopyingP 7=10Foundation16NSObjectProtocolP 12=10Foundation14NSSecureCodingP	Foundation.NSCopying & Foundation.NSObjectProtocol & Foundation.NSSecureCoding
+018b8c15005f7053675877	1=10Foundation19FileManagerDelegateP	weak Foundation.FileManagerDelegate?
+01538b15005f797074	1=10Foundation16FileAttributeKeyV	(Foundation.FileAttributeKey, Any)
+016b9115005f0209700f00536774	1=3__C4statV 7=10Foundation4DateV	(__C.stat, Foundation.Date?)
+53707901ea901500475367	4=3__C3FTSa	Swift.UnsafeMutablePointer<__C.FTS>?
+53707901b6901500475367	4=3__C7_ftsentV	Swift.UnsafeMutablePointer<__C._ftsent>?
+537079537079016b901500475367475367	7=3__C7_ftsentV	Swift.UnsafeMutablePointer<Swift.UnsafeMutablePointer<__C._ftsent>?>?
+02df710f005f797074	1=10Foundation16FileAttributeKeyV	(Foundation.FileAttributeKey, Any)
+534479535302a0880f0047	6=10Foundation9JSONValueO	[Swift.String : Foundation.JSONValue]
+534479535302808f0f0047	6=10Foundation9JSONValueO	[Swift.String : Foundation.JSONValue]
+5353336b65795f02168f0f003576616c756574	8=10Foundation9JSONValueO	(key: Swift.String, value: Foundation.JSONValue)
+5344795353013cdd150047	6=10Foundation9JSONValueO	[Swift.String : Foundation.JSONValue]
+0293970f005f53693134636861726163746572496e64657874	1=10Foundation4DataV	(Foundation.Data, characterIndex: Swift.Int)
+01d3e115005f535374	1=10Foundation15LengthFormatterC4UnitO	(Foundation.LengthFormatter.Unit, Swift.String)
+0121fe150053675877	1=10Foundation17NotificationQueueC	weak Foundation.NotificationQueue?
+5361790252a10f005f5361790241a10f00477447	4=10Foundation12NotificationV 13=10Foundation7RunLoopC4ModeV	[(Foundation.Notification, [Foundation.RunLoop.Mode])]
+5369366f66667365745f022da10f005f536179021ca10f00477437656c656d656e7474	11=10Foundation12NotificationV 20=10Foundation7RunLoopC4ModeV	(offset: Swift.Int, element: (Foundation.Notification, [Foundation.RunLoop.Mode]))
+5369366f66667365745f0209a10f005f53617902f8a00f00477437656c656d656e74745367	11=10Foundation12NotificationV 20=10Foundation7RunLoopC4ModeV	(offset: Swift.Int, element: (Foundation.Notification, [Foundation.RunLoop.Mode]))?
+02eda00f005f53617902dca00f004774	1=10Foundation12NotificationV 10=10Foundation7RunLoopC4ModeV	(Foundation.Notification, [Foundation.RunLoop.Mode])
+797079700255a30f0049676e6e645f	5=10Foundation16ComparisonResultO	@callee_guaranteed (@in_guaranteed Any, @in_guaranteed Any) -> (@unowned Foundation.ComparisonResult)
+797079700245a30f004965676e6e645f	5=10Foundation16ComparisonResultO	@escaping @callee_guaranteed (@in_guaranteed Any, @in_guaranteed Any) -> (@unowned Foundation.ComparisonResult)
+0115051600336b65795f79703576616c7565745367	1=10Foundation18NSAttributedStringC3KeyV	(key: Foundation.NSAttributedString.Key, value: Any)?
+01db041600336b65795f79703576616c756574	1=10Foundation18NSAttributedStringC3KeyV	(key: Foundation.NSAttributedString.Key, value: Any)
+01a30a16005f7053675877	1=10Foundation15NSCacheDelegateP	weak Foundation.NSCacheDelegate?
+027ba60f00536753625370790277a60f004749677979795f	1=10Foundation4DateV 13=10Foundation8ObjCBoolV	@callee_guaranteed (@unowned Foundation.Date?, @unowned Swift.Bool, @unowned Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> ()
+0261a60f0053675362537079025da60f00474965677979795f	1=10Foundation4DateV 13=10Foundation8ObjCBoolV	@escaping @callee_guaranteed (@unowned Foundation.Date?, @unowned Swift.Bool, @unowned Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> ()
+01d135160036726573756c745f53535367323774657874456e636f64696e674e616d654966417661696c61626c6574	1=10Foundation6NSDataC	(result: Foundation.NSData, textEncodingNameIfAvailable: Swift.String?)
+7970797053707902fcb50f004749676e6e795f	8=10Foundation8ObjCBoolV	@callee_guaranteed (@in_guaranteed Any, @in_guaranteed Any, @unowned Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> ()
+0277b40f007a5f5878	1=10Foundation8ObjCBoolV	{ var Foundation.ObjCBool }
+797079705370790266b40f00474965676e6e795f	8=10Foundation8ObjCBoolV	@escaping @callee_guaranteed (@in_guaranteed Any, @in_guaranteed Any, @unowned Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> ()
+7853707902d3c00f0047715f49676e79725f	5=10Foundation8ObjCBoolV	@callee_guaranteed (@in_guaranteed A, @unowned Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> (@out B)
+7853707902b7bf0f0047715f4965676e79725f	5=10Foundation8ObjCBoolV	@escaping @callee_guaranteed (@in_guaranteed A, @unowned Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> (@out B)
+53617901b8721600475367	4=10Foundation17NSKeyedUnarchiverC15DecodingContextC	[Foundation.NSKeyedUnarchiver.DecodingContext]?
+790278c90f00635367	2=10Foundation12NotificationV	((Foundation.Notification) -> ())?
+02efc80f004965676e5f	1=10Foundation12NotificationV	@escaping @callee_guaranteed (@in_guaranteed Foundation.Notification) -> ()
+01218616004965676f5f	1=10Foundation8NSNumberC	@escaping @callee_guaranteed () -> (@owned Foundation.NSNumber)
+01158616007963	1=10Foundation8NSNumberC	() -> Foundation.NSNumber
+790216d20f0053675f01faa1160053707902bed40f00477463	2=10Foundation20NSTextCheckingResultC 10=10Foundation19NSRegularExpressionC13MatchingFlagsV 18=10Foundation8ObjCBoolV	(Foundation.NSTextCheckingResult?, Foundation.NSRegularExpression.MatchingFlags, Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> ()
+02fdd10f00536701e2a1160053707902a6d40f004779744965676e6e6e725f	1=10Foundation20NSTextCheckingResultC 8=10Foundation19NSRegularExpressionC13MatchingFlagsV 16=10Foundation8ObjCBoolV	@escaping @callee_guaranteed (@in_guaranteed Foundation.NSTextCheckingResult?, @in_guaranteed Foundation.NSRegularExpression.MatchingFlags, @in_guaranteed Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> (@out ())
+02ddd10f00536701c2a116005370790286d40f00474965676779795f	1=10Foundation20NSTextCheckingResultC 8=10Foundation19NSRegularExpressionC13MatchingFlagsV 16=10Foundation8ObjCBoolV	@escaping @callee_guaranteed (@guaranteed Foundation.NSTextCheckingResult?, @unowned Foundation.NSRegularExpression.MatchingFlags, @unowned Swift.UnsafeMutablePointer<Foundation.ObjCBool>) -> ()
+797079700233d50f004965676e6e645f	5=10Foundation16ComparisonResultO	@escaping @callee_guaranteed (@in_guaranteed Any, @in_guaranteed Any) -> (@unowned Foundation.ComparisonResult)
+01dfa616007963	1=10Foundation16NSSortDescriptorC	() -> Foundation.NSSortDescriptor
+02ddd40f0079705f79707463	1=10Foundation16ComparisonResultO	(Any, Any) -> Foundation.ComparisonResult
+7970797002cbd40f004965676e6e725f	5=10Foundation16ComparisonResultO	@escaping @callee_guaranteed (@in_guaranteed Any, @in_guaranteed Any) -> (@out Foundation.ComparisonResult)
+53617902bada0f00475367	4=10Foundation8_NSRangeV	[Foundation._NSRange]?
+02f5db0f00336b65795f79703576616c756574	1=10Foundation14URLResourceKeyV	(key: Foundation.URLResourceKey, value: Any)
+02f1da0f00336b65795f79703576616c7565745367	1=10Foundation14URLResourceKeyV	(key: Foundation.URLResourceKey, value: Any)?
+027dda0f005f7970536774	1=10Foundation14URLResourceKeyV	(Foundation.URLResourceKey, Any?)
+0271da0f00336b65795f797053673576616c756574	1=10Foundation14URLResourceKeyV	(key: Foundation.URLResourceKey, value: Any?)
+5344790298db0f007970475367	4=10Foundation16FileAttributeKeyV	[Foundation.FileAttributeKey : Any]?
+53617902bada0f00475367	4=10Foundation3URLV	[Foundation.URL]?
+53623873656172636865645f029dda0f0053673375726c745367	13=10Foundation3URLV	(searched: Swift.Bool, url: Foundation.URL?)?
+5368790116e61600795f0187e216004747	4=10Foundation9OperationC25PointerHashedUnmanagedBoxV 11=10Foundation9OperationC	Swift.Set<Foundation.Operation.PointerHashedUnmanagedBox<Foundation.Operation>>
+534479534f0198f716003772756e4c6f6f705f536879027be70f0047356d6f6465737447	6=3__C12CFRunLoopRefa 23=10Foundation7RunLoopC4ModeV	[Swift.ObjectIdentifier : (runLoop: __C.CFRunLoopRef, modes: Swift.Set<Foundation.RunLoop.Mode>)]
+790196fa1600635367	2=10Foundation7ProcessC	((Foundation.Process) -> ())?
+79537653675f010ff5160053670168a3160053677458435367	7=3__C12CFRunLoopRefa 14=3__C11CFStringRefa	(@convention(c) (Swift.UnsafeMutableRawPointer?, __C.CFRunLoopRef?, __C.CFStringRef?) -> ())?
+01fdf91600496567675f	1=10Foundation7ProcessC	@escaping @callee_guaranteed (@guaranteed Foundation.Process) -> ()
+01d91b1700496567795f	1=10Foundation7RunLoopC9_ActivityO	@escaping @callee_guaranteed (@unowned Foundation.RunLoop._Activity) -> ()
+5344790260fd0f0053687901d81917004747	4=10Foundation4PortC 12=10Foundation7RunLoopC4ModeV	[Foundation.Port : Swift.Set<Foundation.RunLoop.Mode>]
+01b3191700536758777a5f5878	1=10Foundation7RunLoopC	{ var weak Foundation.RunLoop? }
+7901dc2f170063	2=10Foundation5TimerC	(Foundation.Timer) -> ()
+01d52f170079744965676e725f	1=10Foundation5TimerC	@escaping @callee_guaranteed (@in_guaranteed Foundation.Timer) -> (@out ())
+02bb0810005f02bd08100002c008100070	1=10Foundation9NSCopyingP 7=10Foundation16NSObjectProtocolP 12=10Foundation14NSSecureCodingP	Foundation.NSCopying & Foundation.NSObjectProtocol & Foundation.NSSecureCoding
+0183481700584d54	1=10Foundation12UserDefaultsC	@thick Foundation.UserDefaults.Type
+0153a000005367496567675f	1=20FoundationNetworking17CachedURLResponseC	@escaping @callee_guaranteed (@guaranteed FoundationNetworking.CachedURLResponse?) -> ()
+534479029aec020053447953530298ec02004747	4=20FoundationNetworking18URLProtectionSpaceC 14=20FoundationNetworking13URLCredentialC	[FoundationNetworking.URLProtectionSpace : [Swift.String : FoundationNetworking.URLCredential]]
+01d9b000003776657273696f6e5f536936737461747573535336726561736f6e74	1=20FoundationNetworking16_HTTPURLProtocolC12_HTTPMessageV8_VersionV	(version: FoundationNetworking._HTTPURLProtocol._HTTPMessage._Version, status: Swift.Int, reason: Swift.String)
+0129b000005f536179535347745367	1=20FoundationNetworking16_HTTPURLProtocolC12_HTTPMessageV7_HeaderV	(FoundationNetworking._HTTPURLProtocol._HTTPMessage._Header, [Swift.String])?
+026bf5020038726573706f6e73655f02ccf802003133626f647944617461447261696e74	1=20FoundationNetworking11URLResponseC 16=20FoundationNetworking15_NativeProtocolC10_DataDrainO	(response: FoundationNetworking.URLResponse, bodyDataDrain: FoundationNetworking._NativeProtocol._DataDrain)
+0259fa020053677a5f5878	1=20FoundationNetworking11URLResponseC	{ var FoundationNetworking.URLResponse? }
+53617902aefe02004753617902adfe02004753617902acfe0200474965676767675f	4=20FoundationNetworking18URLSessionDataTaskC 13=20FoundationNetworking20URLSessionUploadTaskC 22=20FoundationNetworking22URLSessionDownloadTaskC	@escaping @callee_guaranteed (@guaranteed [FoundationNetworking.URLSessionDataTask], @guaranteed [FoundationNetworking.URLSessionUploadTask], @guaranteed [FoundationNetworking.URLSessionDownloadTask]) -> ()
+53617902f2fe020047496567675f	4=20FoundationNetworking14URLSessionTaskC	@escaping @callee_guaranteed (@guaranteed [FoundationNetworking.URLSessionTask]) -> ()
+02d90703005367496567675f	1=20FoundationNetworking11URLProtocolC	@escaping @callee_guaranteed (@guaranteed FoundationNetworking.URLProtocol?) -> ()
+02b9070300584d54	1=20FoundationNetworking11URLProtocolC	@thick FoundationNetworking.URLProtocol.Type
+02410c0300313570726f74656374696f6e53706163655f02320c0300313063726564656e7469616c745367	1=20FoundationNetworking18URLProtectionSpaceC 24=20FoundationNetworking13URLCredentialC	(protectionSpace: FoundationNetworking.URLProtectionSpace, credential: FoundationNetworking.URLCredential)?
+01a3c70000584d54	1=20FoundationNetworking14URLSessionTaskC	@thick FoundationNetworking.URLSessionTask.Type
+0199c7000002fc0b030002e70b030053674965676779675f	1=20FoundationNetworking14URLSessionTaskC 6=20FoundationNetworking10URLSessionC24AuthChallengeDispositionO 11=20FoundationNetworking13URLCredentialC	@escaping @callee_guaranteed (@guaranteed FoundationNetworking.URLSessionTask, @unowned FoundationNetworking.URLSession.AuthChallengeDisposition, @guaranteed FoundationNetworking.URLCredential?) -> ()
+017fc7000002e20b030002cd0b0300536779744965676e6e6e725f	1=20FoundationNetworking14URLSessionTaskC 6=20FoundationNetworking10URLSessionC24AuthChallengeDispositionO 11=20FoundationNetworking13URLCredentialC	@escaping @callee_guaranteed (@in_guaranteed FoundationNetworking.URLSessionTask, @in_guaranteed FoundationNetworking.URLSession.AuthChallengeDisposition, @in_guaranteed FoundationNetworking.URLCredential?) -> (@out ())
+01ebcc00005f79796374	1=20FoundationNetworking23URLSessionWebSocketTaskC7MessageO	(FoundationNetworking.URLSessionWebSocketTask.Message, () -> ())
+011ddf0000536758777a5f5878	1=20FoundationNetworking10URLSessionC12_MultiHandleC	{ var weak FoundationNetworking.URLSession._MultiHandle? }
+025d240100584d5431337465737443617365436c6173735f53617953535f7941414b63744738616c6c546573747374	1=6XCTest10XCTestCaseC	(testCaseClass: @thick XCTest.XCTestCase.Type, allTests: [(Swift.String, (XCTest.XCTestCase) throws -> ())])
+01673c000034747970655f74	1=6XCTest14ArgumentParserV13ExecutionModeO8ListTypeO	(type: XCTest.ArgumentParser.ExecutionMode.ListType)
+78536758777a5f785f01f23b0000527a6c5858	10=6XCTest16ManageableWaiterP	<A where A: XCTest.ManageableWaiter> { var weak A? } <A>
+53535f79018f4000004b6374	5=6XCTest10XCTestCaseC	(Swift.String, (XCTest.XCTestCase) throws -> ())
+7901584000004b63	2=6XCTest10XCTestCaseC	(XCTest.XCTestCase) throws -> ()
+53687902de2b01007902e02b01005f704747	4=6XCTest13ObjectWrapperV 10=6XCTest17XCTestObservationP	Swift.Set<XCTest.ObjectWrapper<XCTest.XCTestObservation>>
+02fd30010079019b4e00004753675877	1=6XCTest13WaiterManagerC 7=6XCTest9XCTWaiterC	weak XCTest.WaiterManager<XCTest.XCTWaiter>?
+014f4e0000536758777a5f5878	1=6XCTest9XCTWaiterC	{ var weak XCTest.XCTWaiter? }
+0295300100586f	1=6XCTest17XCTestExpectationC	unowned XCTest.XCTestExpectation
+012363cf0279010564cf02477a5f5878	1=9Optimizer8WorklistV 7=9Optimizer14InstructionSetV	{ var Optimizer.Worklist<Optimizer.InstructionSet> }
+79022e8abd0063	2=3SIL11InstructionC	(SIL.Instruction) -> ()
+027988bd0053534965676e725f	1=3SIL11InstructionC	@escaping @callee_guaranteed (@in_guaranteed SIL.Instruction) -> (@out Swift.String)
+011f69cf0279785f47	1=9Optimizer5StackV8IteratorV	Optimizer.Stack<A>.Iterator
+790152b1cf0263	2=3SIL11InstructionC	(SIL.Instruction) -> ()
+53447953535350790275f6c1004747	9=11swiftASTGen18ExportedSourceFileV	[Swift.String : Swift.UnsafePointer<swiftASTGen.ExportedSourceFile>]
+535639726573756d655074725f02c0f8c1005367356572726f72745367	14=20_CompilerRegexParser16CompilerLexErrorV	(resumePtr: Swift.UnsafeRawPointer, error: _CompilerRegexParser.CompilerLexError?)?
+53565f02acf8c100536774	4=20_CompilerRegexParser16CompilerLexErrorV	(Swift.UnsafeRawPointer, _CompilerRegexParser.CompilerLexError?)
+535639726573756d655074725f028ef8c1005367356572726f7274	14=20_CompilerRegexParser16CompilerLexErrorV	(resumePtr: Swift.UnsafeRawPointer, error: _CompilerRegexParser.CompilerLexError?)
+53535f024e613b01346b696e6474	4=20_CompilerRegexParser9RadixKindO	(Swift.String, kind: _CompilerRegexParser.RadixKind)
+018787f90338616273656e7465655f02dc6c3b0134706970654141346578707274	1=20_CompilerRegexParser3ASTV4NodeO 16=20_CompilerRegexParser6SourceV8LocationV	(absentee: _CompilerRegexParser.AST.Node, pipe: _CompilerRegexParser.Source.Location, expr: _CompilerRegexParser.AST.Node)
+5361790296763b01795f53534747	4=20_CompilerRegexParser6SourceV7LocatedV	[_CompilerRegexParser.Source.Located<Swift.String>]
+5361790174b1f903475f02797e3b01795f0142b2f90347414274	4=20_CompilerRegexParser3ASTV20CustomCharacterClassV6MemberO 11=20_CompilerRegexParser6SourceV7LocatedV 18=20_CompilerRegexParser3ASTV20CustomCharacterClassV5SetOpO	([_CompilerRegexParser.AST.CustomCharacterClass.Member], _CompilerRegexParser.Source.Located<_CompilerRegexParser.AST.CustomCharacterClass.SetOp>, [_CompilerRegexParser.AST.CustomCharacterClass.Member])
+53535367346e616d655f0209883b015367347479706574	11=20_CompilerRegexParser7AnyTypeV	(name: Swift.String?, type: _CompilerRegexParser.AnyType?)
+013b1df4ff7953535f79707447	1=5Swift23_ContiguousArrayStorageC	Swift._ContiguousArrayStorage<(Swift.String, Any)>
+01819ef3ff79019720f4ff790139b9f3ff79535379704753535367356c6162656c5f79703576616c7565744747	1=5Swift26_RandomAccessCollectionBoxC 7=5Swift15LazyMapSequenceV 13=5Swift13KeyValuePairsV	Swift._RandomAccessCollectionBox<Swift.LazyMapSequence<Swift.KeyValuePairs<Swift.String, Any>, (label: Swift.String?, value: Any)>>
+01395df3ff79785f47	1=5Swift18EnumeratedSequenceV8IteratorV	Swift.EnumeratedSequence<A>.Iterator
+011377f3ff79536179784747	1=5Swift16IndexingIteratorV	Swift.IndexingIterator<[A]>
+017776f3ff7901ad5ef3ff79784747	1=5Swift16IndexingIteratorV 7=5Swift10ArraySliceV	Swift.IndexingIterator<Swift.ArraySlice<A>>
+01e785f3ff7978715f5f47	1=5Swift10DictionaryV8IteratorV	[A : B].Iterator
+01e784f3ff7978715f5f47	1=5Swift10DictionaryV5IndexV	[A : B].Index
+0123d0f3ff7953447978715f4747	1=5Swift5SliceV	Swift.Slice<[A : B]>
+01c9cff3ff7901ab82f3ff7978715f5f4747	1=5Swift5SliceV 7=5Swift10DictionaryV4KeysV	Swift.Slice<[A : B].Keys>
+534979019a82f3ff7978715f5f4747	4=5Swift10DictionaryV4KeysV	Swift.DefaultIndices<[A : B].Keys>
+015f83f3ff7978715f5f5f47	1=5Swift10DictionaryV4KeysV8IteratorV	[A : B].Keys.Iterator
+017bcff3ff7901cd82f3ff7978715f5f4747	1=5Swift5SliceV 7=5Swift10DictionaryV6ValuesV	Swift.Slice<[A : B].Values>
+53497901a482f3ff7978715f5f4747	4=5Swift10DictionaryV6ValuesV	Swift.DefaultIndices<[A : B].Values>
+016783f3ff7978715f5f5f47	1=5Swift10DictionaryV6ValuesV8IteratorV	[A : B].Values.Iterator
+01e388f3ff79785f47	1=5Swift21LazyDropWhileSequenceV8IteratorV	Swift.LazyDropWhileSequence<A>.Iterator
+01d5caf3ff7901cfacf3ff7978715f4747	1=5Swift5SliceV 7=5Swift13KeyValuePairsV	Swift.Slice<Swift.KeyValuePairs<A, B>>
+014f6df3ff790195acf3ff7978715f4747	1=5Swift16IndexingIteratorV 7=5Swift13KeyValuePairsV	Swift.IndexingIterator<Swift.KeyValuePairs<A, B>>
+01a9aef3ff7978715f5f47	1=5Swift15LazyMapSequenceV8IteratorV	Swift.LazyMapSequence<A, B>.Iterator
+01a5aff3ff7978715f5f47	1=5Swift17_NativeDictionaryV8IteratorV	Swift._NativeDictionary<A, B>.Iterator
+0187daf3ff7978715f5f47	1=5Swift12Zip2SequenceV8IteratorV	Swift.Zip2Sequence<A, B>.Iterator
+01933af3ff7901c145f3ff7937456c656d656e7453545f41435354515a47475367	1=5Swift16IndexingIteratorV 7=5Swift15ContiguousArrayV	Swift.IndexingIterator<Swift.ContiguousArray<A.Swift.Sequence.Element.Swift.Sequence.Element>>?
+5361790160b4f3ff475f535374	4=5Swift5UInt8V	([Swift.UInt8], Swift.String)
+536179015aa7f3ff79785f4747	4=5Swift20CollectionDifferenceV6ChangeO	[Swift.CollectionDifference<A>.Change]
+01f35af3ff7953535367356c6162656c5f79703576616c75657447	1=5Swift13AnyCollectionV	Swift.AnyCollection<(label: Swift.String?, value: Any)>
+01efa8f3ff53677963	1=5Swift6MirrorV	() -> Swift.Mirror?
+01d9a8f3ff7963	1=5Swift6MirrorV	() -> Swift.Mirror
+0187b1f3ff5f0181b0f3ff41334274	1=5Swift6UInt64V 7=5Swift6UInt16V	(Swift.UInt64, Swift.UInt16, Swift.UInt16, Swift.UInt16, Swift.UInt16)
+0133cdf3ff7901ed6cf3ff367363616c61725f01fccbf3ff386e6f726d446174617447	1=5Swift23_ContiguousArrayStorageC 7=5Swift7UnicodeO6ScalarV 20=5Swift7UnicodeO9_NormDataV	Swift._ContiguousArrayStorage<(scalar: Swift.Unicode.Scalar, normData: Swift.Unicode._NormData)>
+016f4af3ff790151d0f3ff7901cfd0f3ff7979744753535367356c6162656c5f79703576616c7565744747	1=5Swift14_CollectionBoxC 7=5Swift15LazyMapSequenceV 13=5Swift15EmptyCollectionV	Swift._CollectionBox<Swift.LazyMapSequence<Swift.EmptyCollection<()>, (label: Swift.String?, value: Any)>>
+01334af3ff790115d0f3ff79019b90f3ff53535367356c6162656c5f79703576616c7565744747	1=5Swift14_CollectionBoxC 7=5Swift15LazyMapSequenceV 13=5Swift6StringV8UTF8ViewV	Swift._CollectionBox<Swift.LazyMapSequence<Swift.String.UTF8View, (label: Swift.String?, value: Any)>>
+010b4af3ff7901edcff3ff79013b90f3ff53535367356c6162656c5f79703576616c7565744747	1=5Swift14_CollectionBoxC 7=5Swift15LazyMapSequenceV 13=5Swift6StringV9UTF16ViewV	Swift._CollectionBox<Swift.LazyMapSequence<Swift.String.UTF16View, (label: Swift.String?, value: Any)>>
+01e349f3ff7901c5cff3ff7901db8ff3ff53535367356c6162656c5f79703576616c7565744747	1=5Swift14_CollectionBoxC 7=5Swift15LazyMapSequenceV 13=5Swift6StringV17UnicodeScalarViewV	Swift._CollectionBox<Swift.LazyMapSequence<Swift.String.UnicodeScalarView, (label: Swift.String?, value: Any)>>
+01a3cff3ff79536179534a47012390f3ff47	1=5Swift15LazyMapSequenceV 13=5Swift6StringV8UTF8ViewV	Swift.LazyMapSequence<[Swift.Character], Swift.String.UTF8View>
+018f49f3ff7901f5cff3ff7953535367356c6162656c5f79703576616c7565744747	1=5Swift14_CollectionBoxC 7=5Swift15EmptyCollectionV	Swift._CollectionBox<Swift.EmptyCollection<(label: Swift.String?, value: Any)>>
+01314df3ff790147cff3ff79536e7953694753535367356c6162656c5f79703576616c7565744747	1=5Swift26_RandomAccessCollectionBoxC 7=5Swift15LazyMapSequenceV	Swift._RandomAccessCollectionBox<Swift.LazyMapSequence<Swift.Range<Swift.Int>, (label: Swift.String?, value: Any)>>
+01fd9ef3ff496567725f	1=5Swift6MirrorV	@escaping @callee_guaranteed () -> (@out Swift.Mirror)
+53617901486bf3ff367363616c61725f0157caf3ff386e6f726d446174617447	4=5Swift7UnicodeO6ScalarV 17=5Swift7UnicodeO9_NormDataV	[(scalar: Swift.Unicode.Scalar, normData: Swift.Unicode._NormData)]
+0105d1f3ff3269645f01c0d0f3ff396163636573736f72730179d0f3ff536738617267756d656e7474	1=5Swift18ComputedPropertyIDV 10=5Swift20ComputedAccessorsPtrV 25=5Swift16KeyPathComponentO11ArgumentRefV	(id: Swift.ComputedPropertyID, accessors: Swift.ComputedAccessorsPtr, argument: Swift.KeyPathComponent.ArgumentRef?)
+0223b5000053675f79796374	1=8Dispatch13DispatchQueueC	(Dispatch.DispatchQueue?, () -> ())
+0115fcffff496567686e5f	1=11Observation19ObservationTrackingV	@escaping @callee_guaranteed @Sendable (@in_guaranteed Observation.ObservationTracking) -> ()
+018dbbffff7901d7a3ffff7901eda6ffff013cbcffff4747	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf64TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf64Traits>>
+5361790104bbffff7901baa3ffff7901d0a6ffff011fbcffff475f4747	4=12_Backtracing11DwarfReaderV12CallSiteInfoV 10=12_Backtracing8ElfImageC 16=12_Backtracing15FileImageSourceC 21=12_Backtracing11Elf64TraitsV	[_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf64Traits>>.CallSiteInfo]
+5361790156baffff79019ca3ffff7901b2a6ffff0129bcffff475f4747	4=12_Backtracing11DwarfReaderV4UnitV 10=12_Backtracing8ElfImageC 16=12_Backtracing15FileImageSourceC 21=12_Backtracing11Elf32TraitsV	[_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>.Unit]
+53617901aebaffff790164a3ffff79017aa6ffff01f1bbffff475f4747	4=12_Backtracing11DwarfReaderV12CallSiteInfoV 10=12_Backtracing8ElfImageC 16=12_Backtracing15FileImageSourceC 21=12_Backtracing11Elf32TraitsV	[_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>.CallSiteInfo]
+014dabffff7978715f5f475367	1=12_Backtracing8ElfImageC11EHFrameInfoV	_Backtracing.ElfImage<A, B>.EHFrameInfo?
+0157b1ffff7901a199ffff7978715f474753675367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC	_Backtracing.DwarfReader<_Backtracing.ElfImage<A, B>>??
+5344795369018299ffff7901989cffff010fb2ffff4747	6=12_Backtracing8ElfImageC 12=12_Backtracing15FileImageSourceC 17=12_Backtracing11Elf32TraitsV	[Swift.Int : _Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>]
+5344795369016a99ffff7901809cffff01cfb1ffff4747	6=12_Backtracing8ElfImageC 12=12_Backtracing15FileImageSourceC 17=12_Backtracing11Elf64TraitsV	[Swift.Int : _Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf64Traits>]
+53617901eaaeffff79785f4747	4=12_Backtracing11DwarfReaderV4UnitV	[_Backtracing.DwarfReader<A>.Unit]
+536179015cbeffff79785f4747	4=12_Backtracing11DwarfReaderV14LineNumberInfoV	[_Backtracing.DwarfReader<A>.LineNumberInfo]
+01a1bdffff79785f475367	1=12_Backtracing11DwarfReaderV13RangeListInfoV	_Backtracing.DwarfReader<A>.RangeListInfo?
+5361790152afffff79785f47475367	4=12_Backtracing11DwarfReaderV12CallSiteInfoV	[_Backtracing.DwarfReader<A>.CallSiteInfo]?
+53447901a4bbffff013bbbffff79785f4747	4=3__C15Dwarf_AttributeO 9=12_Backtracing11DwarfReaderV10DwarfValueO	[__C.Dwarf_Attribute : _Backtracing.DwarfReader<A>.DwarfValue]
+01c5b9ffff7978715f5f475367	1=12_Backtracing8ElfImageC5RangeV	_Backtracing.ElfImage<A, B>.Range?
+5361790126b9ffff79785f4747	4=12_Backtracing14ElfSymbolTableV6SymbolV	[_Backtracing.ElfSymbolTable<A>.Symbol]
+0175adffff7901bf95ffff790139b4ffff014caeffff474753675367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing25LZMACompressedImageSourceV 18=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.LZMACompressedImageSource, _Backtracing.Elf32Traits>>??
+011badffff79016595ffff7901dfb3ffff01caadffff474753675367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing25LZMACompressedImageSourceV 18=12_Backtracing11Elf64TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.LZMACompressedImageSource, _Backtracing.Elf64Traits>>??
+0175acffff79012b95ffff79014198ffff01b8adffff475f47	1=12_Backtracing11DwarfReaderV12CallSiteInfoV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>.CallSiteInfo
+0175abffff7901bb94ffff7901d197ffff0148adffff475f475367	1=12_Backtracing11DwarfReaderV4UnitV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>.Unit?
+0177b1ffff79017194ffff79018797ffff01feacffff475f47	1=12_Backtracing11DwarfReaderV8FileInfoV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>.FileInfo
+016fbaffff79013594ffff79014b97ffff01c2acffff475f47	1=12_Backtracing11DwarfReaderV14LineNumberInfoV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>.LineNumberInfo
+01b3aaffff7901f993ffff79010f97ffff0186acffff475f47	1=12_Backtracing11DwarfReaderV4UnitV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>.Unit
+01ada9ffff7901f392ffff79010996ffff0158abffff475f475367	1=12_Backtracing11DwarfReaderV4UnitV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf64TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf64Traits>>.Unit?
+018da9ffff7901d791ffff7901ed94ffff013caaffff474753675367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf64TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf64Traits>>??
+0107a9ffff79015191ffff79016794ffff01dea9ffff47475367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf32Traits>>?
+019da8ffff7901e790ffff7901fd93ffff014ca9ffff47475367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing15FileImageSourceC 18=12_Backtracing11Elf64TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.FileImageSource, _Backtracing.Elf64Traits>>?
+015790ffff79011da9ffff790107b7ffff7901c196ffff474701d6a8ffff47	1=12_Backtracing8ElfImageC 7=12_Backtracing14SubImageSourceV 13=12_Backtracing17MemoryImageSourceC 19=12_Backtracing23UnsafeLocalMemoryReaderV 26=12_Backtracing11Elf32TraitsV	_Backtracing.ElfImage<_Backtracing.SubImageSource<_Backtracing.MemoryImageSource<_Backtracing.UnsafeLocalMemoryReader>>, _Backtracing.Elf32Traits>
+013790ffff7901fda8ffff7901e7b6ffff7901a196ffff4747018ea8ffff47	1=12_Backtracing8ElfImageC 7=12_Backtracing14SubImageSourceV 13=12_Backtracing17MemoryImageSourceC 19=12_Backtracing23UnsafeLocalMemoryReaderV 26=12_Backtracing11Elf64TraitsV	_Backtracing.ElfImage<_Backtracing.SubImageSource<_Backtracing.MemoryImageSource<_Backtracing.UnsafeLocalMemoryReader>>, _Backtracing.Elf64Traits>
+01c7a7ffff79011190ffff7901d7a8ffff7901c1b6ffff79017b96ffff47470168a8ffff474753675367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing14SubImageSourceV 19=12_Backtracing17MemoryImageSourceC 25=12_Backtracing23UnsafeLocalMemoryReaderV 32=12_Backtracing11Elf64TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.SubImageSource<_Backtracing.MemoryImageSource<_Backtracing.UnsafeLocalMemoryReader>>, _Backtracing.Elf64Traits>>??
+019ba7ffff7901e58fffff7901aba8ffff790195b6ffff79014f96ffff47470164a8ffff474753675367	1=12_Backtracing11DwarfReaderV 7=12_Backtracing8ElfImageC 13=12_Backtracing14SubImageSourceV 19=12_Backtracing17MemoryImageSourceC 25=12_Backtracing23UnsafeLocalMemoryReaderV 32=12_Backtracing11Elf32TraitsV	_Backtracing.DwarfReader<_Backtracing.ElfImage<_Backtracing.SubImageSource<_Backtracing.MemoryImageSource<_Backtracing.UnsafeLocalMemoryReader>>, _Backtracing.Elf32Traits>>??
+01ebbeffff5f41374174	1=3__C12_libc_fpxregV	(__C._libc_fpxreg, __C._libc_fpxreg, __C._libc_fpxreg, __C._libc_fpxreg, __C._libc_fpxreg, __C._libc_fpxreg, __C._libc_fpxreg, __C._libc_fpxreg)
+01afbeffff5f4131354174	1=3__C12_libc_xmmregV	(__C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg, __C._libc_xmmreg)
+0115ceffff7978536779596163536747	1=5Swift27_AsyncStreamCriticalStorageC	Swift._AsyncStreamCriticalStorage<(() async -> A?)?>
+01fbcdffff797853677959614b63536747	1=5Swift27_AsyncStreamCriticalStorageC	Swift._AsyncStreamCriticalStorage<(() async throws -> A?)?>
+0153c7ffff79785f475367	1=5Swift11AsyncStreamV8_StorageC	Swift.AsyncStream<A>._Storage?
+018fc7ffff7978715f5f475367	1=5Swift19AsyncThrowingStreamV8_StorageC	Swift.AsyncThrowingStream<A, B>._Storage?
+7901dac8ffff79785f5f475962635367	2=5Swift11AsyncStreamV12ContinuationV11TerminationO	(@Sendable (Swift.AsyncStream<A>.Continuation.Termination) -> ())?
+7901c0cbffff7978715f5f5f475962635367	2=5Swift19AsyncThrowingStreamV12ContinuationV11TerminationO	(@Sendable (Swift.AsyncThrowingStream<A, B>.Continuation.Termination) -> ())?
+0151d0ffff7978715f5f5f475367	1=5Swift19AsyncThrowingStreamV8_StorageC8TerminalO	Swift.AsyncThrowingStream<A, B>._Storage.Terminal?
+01a9ccffff79797447	1=5Swift12_DequeBufferC	Swift._DequeBuffer<()>
+0145caffff7978715f5f5f477974496567686e725f	1=5Swift19AsyncThrowingStreamV12ContinuationV11TerminationO	@escaping @callee_guaranteed @Sendable (@in_guaranteed Swift.AsyncThrowingStream<A, B>.Continuation.Termination) -> (@out ())
+012fcaffff7978715f5f5f47496567686e5f	1=5Swift19AsyncThrowingStreamV12ContinuationV11TerminationO	@escaping @callee_guaranteed @Sendable (@in_guaranteed Swift.AsyncThrowingStream<A, B>.Continuation.Termination) -> ()
+01f7c6ffff79785f5f477974496567686e725f	1=5Swift11AsyncStreamV12ContinuationV11TerminationO	@escaping @callee_guaranteed @Sendable (@in_guaranteed Swift.AsyncStream<A>.Continuation.Termination) -> (@out ())
+01e3c6ffff79785f5f47496567686e5f	1=5Swift11AsyncStreamV12ContinuationV11TerminationO	@escaping @callee_guaranteed @Sendable (@in_guaranteed Swift.AsyncStream<A>.Continuation.Termination) -> ()
+313354616e67656e74566563746f720142f7ffff517a0127f9ffff4965676e725f	16=16_Differentiation14DifferentiableP 23=16_Differentiation13AnyDerivativeV	@escaping @callee_guaranteed (@in_guaranteed A._Differentiation.Differentiable.TangentVector) -> (@out _Differentiation.AnyDerivative)
+78011af9ffff4965676e725f	2=16_Differentiation13AnyDerivativeV	@escaping @callee_guaranteed (@in_guaranteed A) -> (@out _Differentiation.AnyDerivative)
+536179313354616e67656e74566563746f720185f5ffff517a4161425179645f5f6347	19=16_Differentiation14DifferentiableP	[(A1._Differentiation.Differentiable.TangentVector) -> A._Differentiation.Differentiable.TangentVector]
+536179313354616e67656e74566563746f720129f5ffff5179645f5f416142517a6347	19=16_Differentiation14DifferentiableP	[(A._Differentiation.Differentiable.TangentVector) -> A1._Differentiation.Differentiable.TangentVector]
+313354616e67656e74566563746f7201d6f4ffff5179645f5f41636142517a4965676e72725f	16=16_Differentiation14DifferentiableP	@escaping @callee_guaranteed (@in_guaranteed A1._Differentiation.Differentiable.TangentVector) -> (@out A1._Differentiation.Differentiable.TangentVector, @out A._Differentiation.Differentiable.TangentVector)
+536179313354616e67656e74566563746f7201abf4ffff5179645f5f5f416142517a7441436347	19=16_Differentiation14DifferentiableP	[(A1._Differentiation.Differentiable.TangentVector) -> (A1._Differentiation.Differentiable.TangentVector, A._Differentiation.Differentiable.TangentVector)]
+536179313354616e67656e74566563746f720153f4ffff5179645f5f41435f416142517a746347	19=16_Differentiation14DifferentiableP	[(A1._Differentiation.Differentiable.TangentVector, A._Differentiation.Differentiable.TangentVector) -> A1._Differentiation.Differentiable.TangentVector]
+010758020038616273656e7465655f016869020034706970654141346578707274	1=12_RegexParser3ASTV4NodeO 16=12_RegexParser6SourceV8LocationV	(absentee: _RegexParser.AST.Node, pipe: _RegexParser.Source.Location, expr: _RegexParser.AST.Node)
+5361790132780200795f53534747	4=12_RegexParser6SourceV7LocatedV	[_RegexParser.Source.Located<Swift.String>]
+53617901ea600200475f0187770200795f018861020047414274	4=12_RegexParser3ASTV20CustomCharacterClassV6MemberO 11=12_RegexParser6SourceV7LocatedV 18=12_RegexParser3ASTV20CustomCharacterClassV5SetOpO	([_RegexParser.AST.CustomCharacterClass.Member], _RegexParser.Source.Located<_RegexParser.AST.CustomCharacterClass.SetOp>, [_RegexParser.AST.CustomCharacterClass.Member])
+53535f01be750200346b696e6474	4=12_RegexParser9RadixKindO	(Swift.String, kind: _RegexParser.RadixKind)
+53535367346e616d655f01456602005367347479706574	11=12_RegexParser7AnyTypeV	(name: Swift.String?, type: _RegexParser.AnyType?)
+017bd401005f0169da01000148da010074	1=17_StringProcessing7DSLTreeV4_ASTO20QuantificationAmountV 7=17_StringProcessing7DSLTreeV18QuantificationKindO 12=17_StringProcessing7DSLTreeV4NodeO	(_StringProcessing.DSLTree._AST.QuantificationAmount, _StringProcessing.DSLTree.QuantificationKind, _StringProcessing.DSLTree.Node)
+53535367346e616d655f0129d301005367397265666572656e63650100da0100014fdf0100536774	11=17_StringProcessing11ReferenceIDV 28=17_StringProcessing7DSLTreeV4NodeO 33=17_StringProcessing16CaptureTransformV	(name: Swift.String?, reference: _StringProcessing.ReferenceID?, _StringProcessing.DSLTree.Node, _StringProcessing.CaptureTransform?)
+017df90100795361790144f90100470116f9010047	1=17_StringProcessing10TypedIndexV 10=17_StringProcessing11InstructionV 16=17_StringProcessing19_InstructionAddressO	_StringProcessing.TypedIndex<[_StringProcessing.Instruction], _StringProcessing._InstructionAddress>
+5361797970536753535f0177f80100744b6347	11=17_StringProcessing9ProcessorV14_StoredCaptureV	[(Swift.String, _StringProcessing.Processor._StoredCapture) throws -> Any?]
+0177ca01005f01d5d00100414274	1=17_StringProcessing7DSLTreeV4_ASTO13ConditionKindV 7=17_StringProcessing7DSLTreeV4NodeO	(_StringProcessing.DSLTree._AST.ConditionKind, _StringProcessing.DSLTree.Node, _StringProcessing.DSLTree.Node)
+5362313669735363616c617244697374616e63655f01e6f00100790114e701004774	22=17_StringProcessing8TypedIntV 28=17_StringProcessing9_DistanceO	(isScalarDistance: Swift.Bool, _StringProcessing.TypedInt<_StringProcessing._Distance>)
+0125f7010079536179534a47018de1010047	1=17_StringProcessing14TypedSetVectorV 13=17_StringProcessing17_SequenceRegisterO	_StringProcessing.TypedSetVector<[Swift.Character], _StringProcessing._SequenceRegister>
+5361790152ec01007901dced010047536747	4=17_StringProcessing8TypedIntV 10=17_StringProcessing19_InstructionAddressO	[_StringProcessing.TypedInt<_StringProcessing._InstructionAddress>?]
+536179013eec01007901c8ed0100475f01bde101007447	4=17_StringProcessing8TypedIntV 10=17_StringProcessing19_InstructionAddressO 17=17_StringProcessing9MEProgramV7BuilderV12AddressFixupV	[(_StringProcessing.TypedInt<_StringProcessing._InstructionAddress>, _StringProcessing.MEProgram.Builder.AddressFixup)]
+5344790122bf010053617901d6eb0100790160ed0100474747	4=17_StringProcessing11ReferenceIDV 12=17_StringProcessing8TypedIntV 18=17_StringProcessing19_InstructionAddressO	[_StringProcessing.ReferenceID : [_StringProcessing.TypedInt<_StringProcessing._InstructionAddress>]]
+536e7938536561726368656401b1b601005f35496e646578536c515a473572616e67655f354d6174636801dbb40100517a356d61746368745367	13=17_StringProcessing18CollectionSearcherP 43=17_StringProcessing26MatchingCollectionSearcherP	(range: Swift.Range<A._StringProcessing.CollectionSearcher.Searched.Swift.Collection.Index>, match: A._StringProcessing.MatchingCollectionSearcher.Match)?
+5361790152ea01007901dceb01004747	4=17_StringProcessing8TypedIntV 10=17_StringProcessing19_InstructionAddressO	[_StringProcessing.TypedInt<_StringProcessing._InstructionAddress>]
+5344797801c1e9010079715f4747	5=17_StringProcessing8TypedIntV	[A : _StringProcessing.TypedInt<B>]

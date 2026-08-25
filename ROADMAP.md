@@ -47,10 +47,13 @@ What is left, ordered by how often an analyst actually meets it:
   `CGObjCMac.cpp` and `CGObjCGNU.cpp`, and checked against what clang emitted for
   declarations this package wrote. The GNU-family method mangling is not injective and
   clang's own source says so; the readings are enumerated rather than guessed at.
-- **Swift's ObjC-runtime forms** beyond `_Tt`: the `$s` mangling covers everything the
-  compiler emits, but a symbolic reference points into the binary's own metadata and
-  cannot be resolved from a name alone. Reading one would mean an API that takes the
-  binary too.
+- ~~**Swift's symbolic references**~~ — *landed*, with the API that takes the binary too.
+  `swift.demangle_symbolic` reads a name as bytes and takes a resolver;
+  `resolve.ContextResolver` is one, over an `Image` that `elf_image` or `macho_image`
+  builds from a file. The reference cannot be resolved from a name alone and so is
+  refused without a resolver, exactly as the reference demangler refuses it. Checked
+  against the linker over the whole Swift 5.10.1 runtime, and against `swift-demangle`
+  after splicing each resolved fragment back in.
 
 ## 2. Performance
 

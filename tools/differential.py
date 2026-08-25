@@ -69,6 +69,10 @@ NOT_REPLAYED = frozenset(
         "objc-refusals.txt",
         "pascal-refusals.txt",
         "swift-refusals.txt",
+        # Three columns, and the first is hex: a name holding a symbolic reference is not
+        # text, and what it spells depends on the image it came out of. Replayed by
+        # tests/test_swift_symbolic.py, which carries the fragments as well.
+        "swift-symbolic.txt",
     }
 )
 
