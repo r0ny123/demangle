@@ -1,7 +1,6 @@
 import contextlib
 import string
 import unicodedata
-from functools import lru_cache
 from typing import NoReturn, Optional
 
 from . import nodes
@@ -47,9 +46,8 @@ class V0Demangler:
         if ".llvm." in inpstr:
             length = self.inpstr.find(".llvm.")
             candidate = self.inpstr[length + 6 :]
-            for i in candidate:
-                if i not in string.hexdigits + "@":
-                    raise UnableTov0Demangle(inpstr)
+            if not _HEXDIGITS_OR_AT.issuperset(candidate):
+                raise UnableTov0Demangle(inpstr)
             self.inpstr = self.inpstr[:length]
 
         parser = Parser(self.inpstr, 0)
@@ -70,12 +68,22 @@ class V0Demangler:
         if not inpstr or not inpstr[0].isupper():
             raise UnableTov0Demangle(inpstr)
 
-        for i in inpstr:
-            if ord(i) & 0x80 != 0:
-                raise UnableTov0Demangle(inpstr)
+        # The reference reads the symbol as *bytes* and refuses it if any has bit 7 set,
+        # so a non-ASCII name is refused whatever it holds -- v0 spells non-ASCII
+        # identifiers in punycode and never carries one literally. Written as a
+        # per-character `ord(i) & 0x80` loop this was a different test: U+0100 is one
+        # character whose value has bit 7 clear, so `_RC1\u0100` printed as `\u0100`
+        # here where `rustfilt` echoes it back unread. `str.isascii` is the reference's
+        # test, and runs in C rather than over 700,000 interpreted `ord` calls.
+        if not inpstr.isascii():
+            raise UnableTov0Demangle(inpstr)
 
 
 class Ident:
+    #: One per identifier of every symbol read, so the dict a plain instance would carry
+    #: is worth removing.
+    __slots__ = ("ascii", "disp", "out", "out_len", "punycode", "small_punycode_len")
+
     def __init__(self, ascii: str, punycode: str) -> None:
         self.ascii = ascii
         self.punycode = punycode
@@ -194,6 +202,12 @@ class Ident:
             bias = k + ((base - t_min + 1) * delta) // (delta + skew)
 
     def display(self) -> None:
+        # Almost every identifier in a real symbol is plain ASCII, and for those the
+        # decode cannot succeed -- it returns False on the first character. Asking first
+        # skips allocating the 128-element buffer once per identifier.
+        if not self.punycode:
+            self.disp += self.ascii
+            return
         if self.try_small_punycode_decode():
             return
         else:
@@ -303,40 +317,38 @@ _CONST_SIGNED = ("a", "s", "l", "x", "n", "i")
 _CONST_DATA_ONLY = ("b", "c", "e")
 
 
-@lru_cache(maxsize=32)
-def basic_type(tag: str) -> Optional[str]:
-    tagval = {
-        "b": "bool",
-        "c": "char",
-        "e": "str",
-        "u": "()",
-        "a": "i8",
-        "s": "i16",
-        "l": "i32",
-        "x": "i64",
-        "n": "i128",
-        "i": "isize",
-        "h": "u8",
-        "t": "u16",
-        "m": "u32",
-        "y": "u64",
-        "o": "u128",
-        "j": "usize",
-        "f": "f32",
-        "d": "f64",
-        "z": "!",
-        "p": "_",
-        "v": "...",
-    }
-    if tag in tagval:
-        return tagval[tag]
-    else:
-        return
+#: `<basic-type>` tags. A module-level dict rather than an `lru_cache`d function that
+#: rebuilt this literal on every miss: the lookup is one of the hottest in the scheme,
+#: reached once per type on both the skip pass and the print pass.
+_BASIC_TYPES = {
+    "b": "bool",
+    "c": "char",
+    "e": "str",
+    "u": "()",
+    "a": "i8",
+    "s": "i16",
+    "l": "i32",
+    "x": "i64",
+    "n": "i128",
+    "i": "isize",
+    "h": "u8",
+    "t": "u16",
+    "m": "u32",
+    "y": "u64",
+    "o": "u128",
+    "j": "usize",
+    "f": "f32",
+    "d": "f64",
+    "z": "!",
+    "p": "_",
+    "v": "...",
+}
 
 
 #: Base-10 and base-62 digit values. A dict lookup replaces a chain of `in`, `islower`
 #: and two `ord` calls per character; `digit_62` alone runs 184,000 times over 2,000 real
 #: symbols, so the difference is measurable rather than theoretical.
+_HEXDIGITS_OR_AT = frozenset(string.hexdigits + "@")
 _BASE_10 = {char: index for index, char in enumerate(string.digits)}
 _BASE_62 = dict(_BASE_10)
 _BASE_62.update({char: 10 + index for index, char in enumerate(string.ascii_lowercase)})
@@ -358,11 +370,6 @@ class Parser:
         # being recomputed in `peek`, `eat` and `next_func` -- over a million `len` calls
         # across two thousand real symbols.
         self.end = len(inn)
-
-    def check_recursion_limit(self):
-        if self.depth >= self.MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle(self.inn)
-        self.depth += 1
 
     def peek(self) -> str:
         at = self.next_val
@@ -396,40 +403,68 @@ class Parser:
                 raise UnableTov0Demangle(self.inn)
         return self.inn[start : self.next_val - 1]
 
+    # `peek`, `eat` and the digit readers are each one interpreter frame around three
+    # bytecodes, and between them they run some 1.5 million times over the Rust corpus.
+    # The bounds test and the table lookup are written out here rather than delegated,
+    # which removes the frame without changing what is accepted: `peek` raises at the end
+    # of input, so a digit reader reached there still raises.
+
     def digit_10(self) -> Optional[int]:
-        d = _BASE_10.get(self.peek())
+        at = self.next_val
+        if at >= self.end:
+            raise UnableTov0Demangle(self.inn)
+        d = _BASE_10.get(self.inn[at])
         if d is None:
             return None
-        self.next_val += 1
+        self.next_val = at + 1
         return d
 
     def digit_62(self) -> int:
-        d = _BASE_62.get(self.peek())
+        at = self.next_val
+        if at >= self.end:
+            raise UnableTov0Demangle(self.inn)
+        d = _BASE_62.get(self.inn[at])
         if d is None:
             raise UnableTov0Demangle(self.inn)
-        self.next_val += 1
+        self.next_val = at + 1
         return d
 
     def integer_62(self) -> int:
-        if self.eat("_"):
-            return 0
+        inn, end = self.inn, self.end
+        at = self.next_val
         x = 0
-        while not self.eat("_"):
-            d = self.digit_62()
-            x *= 62
-            x += d
-        return x + 1
+        first = True
+        while True:
+            if at < end and inn[at] == "_":
+                self.next_val = at + 1
+                return 0 if first else x + 1
+            # Past the end, or not a base-62 digit: what `digit_62` would have raised.
+            if at >= end:
+                raise UnableTov0Demangle(inn)
+            d = _BASE_62.get(inn[at])
+            if d is None:
+                raise UnableTov0Demangle(inn)
+            at += 1
+            self.next_val = at
+            x = x * 62 + d
+            first = False
 
     def opt_integer_62(self, tag: str) -> int:
-        if not self.eat(tag):
+        at = self.next_val
+        if at >= self.end or self.inn[at] != tag:
             return 0
+        self.next_val = at + 1
         return self.integer_62() + 1
 
     def disambiguator(self) -> int:
         return self.opt_integer_62("s")
 
     def namespace(self) -> Optional[str]:
-        n = self.next_func()
+        at = self.next_val
+        if at >= self.end:
+            raise UnableTov0Demangle(self.inn)
+        n = self.inn[at]
+        self.next_val = at + 1
         if n.isupper():
             return n
         elif n.islower():
@@ -446,35 +481,57 @@ class Parser:
         return Parser(self.inn, i)
 
     def ident(self):
-        is_punycode = self.eat("u")
-        length = self.digit_10()
-        if length is not None and length != 0:
-            while True:
-                d = self.digit_10()
-                if d is None:
-                    break
-                length *= 10
-                length += d
+        """A `<identifier>`: an optional `u`, a decimal length, an optional `_`, the text.
+
+        Written out rather than composed from `eat` and `digit_10` because it runs once
+        per path component of every symbol -- 78,000 times over the Rust corpus -- and
+        each of those helpers is an interpreter frame around a bounds test.
+        """
+        inn, end = self.inn, self.end
+        at = self.next_val
+        is_punycode = at < end and inn[at] == "u"
+        if is_punycode:
+            at += 1
+
+        # The reference reads the first digit unconditionally, so a truncated name is a
+        # failure here rather than an empty identifier.
+        if at >= end:
+            raise UnableTov0Demangle(inn)
+        length = _BASE_10.get(inn[at])
         if length is None:
             length = 0
+        else:
+            at += 1
+            # A leading `0` is the whole length; only a non-zero first digit continues.
+            if length:
+                while True:
+                    if at >= end:
+                        raise UnableTov0Demangle(inn)
+                    digit = _BASE_10.get(inn[at])
+                    if digit is None:
+                        break
+                    at += 1
+                    length = length * 10 + digit
 
-        self.eat("_")
+        if at < end and inn[at] == "_":
+            at += 1
 
-        start = self.next_val
-        self.next_val += length
-        if self.next_val > len(self.inn):
-            raise UnableTov0Demangle(self.inn)
+        start = at
+        at += length
+        if at > end:
+            raise UnableTov0Demangle(inn)
+        self.next_val = at
 
-        ident = self.inn[start : self.next_val]
+        ident = inn[start:at]
         if is_punycode:
             if "_" in ident:
-                i = len(ident) - ident[::-1].index("_") - 1
+                i = ident.rindex("_")
                 idt = Ident(ident[:i], ident[i + 1 :])
             else:
                 idt = Ident("", ident)
 
             if not idt.punycode:
-                raise UnableTov0Demangle(self.inn)
+                raise UnableTov0Demangle(inn)
 
             return idt
 
@@ -482,45 +539,57 @@ class Parser:
             idt = Ident(ident, "")
             return idt
 
+    # The three `skip_*` productions kept the depth guard in a wrapper that called an
+    # inner method, which is two interpreter frames per production on a pass whose whole
+    # job is to validate. Guard and body share a frame now, with the same `finally`
+    # restoring the depth on the way out.
+
     def skip_path(self):
-        self.check_recursion_limit()
+        depth = self.depth
+        if depth >= self.MAX_RECURSION_COUNT:
+            raise UnableTov0Demangle(self.inn)
+        self.depth = depth + 1
         try:
             self._skip_path_inner()
         finally:
-            self.depth -= 1
+            self.depth = depth
 
     def _skip_path_inner(self):
-        val = self.next_func()
-        if val.startswith("C"):
+        at = self.next_val
+        if at >= self.end:
+            raise UnableTov0Demangle(self.inn)
+        val = self.inn[at]
+        self.next_val = at + 1
+        if val == "C":
             self.disambiguator()
             self.ident()
-        elif val.startswith("N"):
+        elif val == "N":
             self.namespace()
             self.skip_path()
             self.disambiguator()
             self.ident()
 
-        elif val.startswith("M"):
+        elif val == "M":
             self.disambiguator()
             self.skip_path()
             self.skip_type()
 
-        elif val.startswith("X"):
+        elif val == "X":
             self.disambiguator()
             self.skip_path()
             self.skip_type()
             self.skip_path()
 
-        elif val.startswith("Y"):
+        elif val == "Y":
             self.skip_type()
             self.skip_path()
 
-        elif val.startswith("I"):
+        elif val == "I":
             self.skip_path()
             while not self.eat("E"):
                 self.skip_generic_arg()
 
-        elif val.startswith("B"):
+        elif val == "B":
             self.backref()
 
         else:
@@ -535,16 +604,22 @@ class Parser:
             self.skip_type()
 
     def skip_type(self):
-        self.check_recursion_limit()
+        depth = self.depth
+        if depth >= self.MAX_RECURSION_COUNT:
+            raise UnableTov0Demangle(self.inn)
+        self.depth = depth + 1
         try:
             self._skip_type_inner()
         finally:
-            self.depth -= 1
+            self.depth = depth
 
     def _skip_type_inner(self):
-        n = self.next_func()
-        tag = n
-        if basic_type(tag):
+        at = self.next_val
+        if at >= self.end:
+            raise UnableTov0Demangle(self.inn)
+        n = self.inn[at]
+        self.next_val = at + 1
+        if n in _BASIC_TYPES:
             pass
         elif n == "R" or n == "Q":
             # The lifetime is optional; the referent is not. Skipping the lifetime
@@ -600,11 +675,14 @@ class Parser:
         Structural consts nest, so this needs the same depth guard `skip_type` has: the
         skip pass runs before anything is printed, on input nobody has validated yet.
         """
-        self.check_recursion_limit()
+        depth = self.depth
+        if depth >= self.MAX_RECURSION_COUNT:
+            raise UnableTov0Demangle(self.inn)
+        self.depth = depth + 1
         try:
             self._skip_const_inner()
         finally:
-            self.depth -= 1
+            self.depth = depth
 
     def _skip_const_inner(self):
         if self.eat("B"):
@@ -745,9 +823,16 @@ class Printer:
     # self-referential backref chain raises RecursionError before this guard.
     RUST_MAX_RECURSION_COUNT = 256
 
+    #: `emit` is an instance attribute holding the sink's own bound method, which is why
+    #: it is a slot rather than a method on the class. The printer emits one fragment per
+    #: grammar terminal -- a hundred thousand of them over the Rust corpus -- and a
+    #: forwarding method is a whole interpreter frame to reach `list.append`.
+    __slots__ = ("_plain", "bound_lifetime_depth", "emit", "parser", "recursion", "sink")
+
     def __init__(self, parser, sink, bound, recursion=0):
         self.parser = parser
         self.sink = sink
+        self.emit = sink.emit
         # Asked once per printer rather than once per production.
         self._plain = not isinstance(sink, TreeSink)
         self.bound_lifetime_depth = bound
@@ -768,12 +853,6 @@ class Printer:
         """
         self.emit("?")
         raise UnableTov0Demangle("Error")
-
-    def parser_mut(self):
-        return self.parser
-
-    def emit(self, text):
-        self.sink.emit(text)
 
     def node(self, factory):
         """Bracket a production; see `_node` for what it does when structure is wanted."""
@@ -802,11 +881,15 @@ class Printer:
             box.append(self.sink.close(factory))
 
     def eat(self, b):
-        par = self.parser_mut()
-        return bool(par.eat(b))
+        parser = self.parser
+        at = parser.next_val
+        if at < parser.end and parser.inn[at] == b:
+            parser.next_val = at + 1
+            return True
+        return False
 
     def backref_printer(self):
-        p = self.parser_mut()
+        p = self.parser
         return Printer(p.backref(), self.sink, self.bound_lifetime_depth, self.recursion + 1)
 
     def print_lifetime_from_index(self, lt):
@@ -831,7 +914,7 @@ class Printer:
                 if self.eat("C"):
                     abi = "C"
                 else:
-                    ab = self.parser_mut().ident()
+                    ab = self.parser.ident()
                     if not ab.ascii or ab.punycode:
                         self.invalid()
                     abi = ab.ascii
@@ -862,7 +945,7 @@ class Printer:
             self.print_sep_list("print_dyn_trait", " + ")
             return ""
 
-        bound_lifetimes = self.parser_mut().opt_integer_62("G")
+        bound_lifetimes = self.parser.opt_integer_62("G")
 
         if bound_lifetimes > 0:
             self.emit("for<")
@@ -914,10 +997,20 @@ class Printer:
         production needs a piece of itself back -- an impl wanting its own self-type and
         trait -- it takes it from here rather than re-reading the input.
         """
-        self.check_recursion_limit()
+        # The depth guard is written out here, and in `print_type`, rather than called:
+        # between them these two run 75,000 times over the Rust corpus, and the guard is
+        # a comparison and an increment inside a whole interpreter frame.
+        recursion = self.recursion
+        if recursion >= self.RUST_MAX_RECURSION_COUNT:
+            raise UnableTov0Demangle("Recursion limit exceeded")
+        self.recursion = recursion + 1
         try:
-            p = self.parser_mut()
-            tag = p.next_func()
+            p = self.parser
+            at = p.next_val
+            if at >= p.end:
+                raise UnableTov0Demangle(p.inn)
+            tag = p.inn[at]
+            p.next_val = at + 1
             if tag == "C":
                 p.disambiguator()
                 name = p.ident()
@@ -1000,7 +1093,7 @@ class Printer:
         means "one whole value".
         """
         if self.eat("L"):
-            lt = self.parser_mut().integer_62()
+            lt = self.parser.integer_62()
             with self.node(lambda parts: nodes.Value(parts, "lifetime")) as built:
                 self.print_lifetime_from_index(lt)
             return built[0]
@@ -1020,12 +1113,19 @@ class Printer:
         spelling. A `<path>` type returns the path's own node rather than wrapping it:
         the path is the type, and a wrapper carrying nothing would only be in the way.
         """
-        self.check_recursion_limit()
+        recursion = self.recursion
+        if recursion >= self.RUST_MAX_RECURSION_COUNT:
+            raise UnableTov0Demangle("Recursion limit exceeded")
+        self.recursion = recursion + 1
         try:
-            p = self.parser_mut()
-            tag = p.next_func()
-            if basic_type(tag):
-                ty = basic_type(tag)
+            p = self.parser
+            at = p.next_val
+            if at >= p.end:
+                raise UnableTov0Demangle(p.inn)
+            tag = p.inn[at]
+            p.next_val = at + 1
+            ty = _BASIC_TYPES.get(tag)
+            if ty is not None:
                 with self.node(lambda parts: nodes.Type(parts, "basic")) as built:
                     self.emit(ty)
                 return built[0]
@@ -1101,7 +1201,7 @@ class Printer:
             if tag == "B":
                 return self.backref_printer().print_type()
 
-            p = self.parser_mut()
+            p = self.parser
             p.next_val -= 1
             return self.print_path(False)
         finally:
@@ -1136,7 +1236,7 @@ class Printer:
             else:
                 self.emit(", ")
 
-            name = self.parser_mut().ident()
+            name = self.parser.ident()
             name.display()
             self.emit(name.disp)
             self.emit(" = ")
@@ -1178,7 +1278,7 @@ class Printer:
         """
         self.check_recursion_limit()
         try:
-            parser = self.parser_mut()
+            parser = self.parser
             if self.eat("B"):
                 # The brace decision belongs to whatever the backref resolves to, so
                 # `in_value` is passed through untouched.
@@ -1254,7 +1354,7 @@ class Printer:
 
     def print_const_variant_data(self):
         """The fields of a `V` const, whose shape follows the ADT it came from."""
-        variant = self.parser_mut().next_func()
+        variant = self.parser.next_func()
         if variant == "U":
             return
         if variant == "T":
@@ -1274,7 +1374,7 @@ class Printer:
         The disambiguator is parsed and dropped: two fields of one struct never share a
         name, so it carries nothing the reader needs.
         """
-        parser = self.parser_mut()
+        parser = self.parser
         parser.disambiguator()
         name = parser.ident()
         name.display()
@@ -1284,7 +1384,7 @@ class Printer:
 
     def print_const_str_literal(self):
         """A `<hex-digits>` body as a quoted, escaped string literal."""
-        text = parse_hex_str(self.parser_mut().hex_nibbles())
+        text = parse_hex_str(self.parser.hex_nibbles())
         if text is None:
             self.invalid()
         self.print_quoted_escaped_chars('"', text)
@@ -1306,7 +1406,7 @@ class Printer:
         self.emit(quote)
 
     def print_const_uint(self):
-        nibbles = self.parser_mut().hex_nibbles()
+        nibbles = self.parser.hex_nibbles()
         value = parse_hex_uint(nibbles)
         if value is None:
             # Wider than `u64`: the reference gives up on decimal rather than failing,
@@ -1323,7 +1423,7 @@ class Printer:
         self.print_const_uint()
 
     def print_const_bool(self):
-        value = parse_hex_uint(self.parser_mut().hex_nibbles())
+        value = parse_hex_uint(self.parser.hex_nibbles())
         if value == 0:
             self.emit("false")
         elif value == 1:
@@ -1332,7 +1432,7 @@ class Printer:
             self.invalid()
 
     def print_const_char(self):
-        value = parse_hex_uint(self.parser_mut().hex_nibbles())
+        value = parse_hex_uint(self.parser.hex_nibbles())
         # `char::from_u32` rejects both out-of-range scalars and the surrogate range;
         # Python's `chr` accepts surrogates, so that half has to be checked by hand.
         if value is None or value > 0x10FFFF or 0xD800 <= value <= 0xDFFF:

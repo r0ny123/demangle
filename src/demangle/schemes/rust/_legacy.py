@@ -1,5 +1,13 @@
 import string
 
+#: Character-class tests written as set membership rather than `in string.digits`, which
+#: is a substring search, and rebuilt-per-call concatenations like `string.hexdigits +
+#: "@"`. These run once per character of every symbol offered to the scheme.
+_DIGITS = frozenset(string.digits)
+_HEXDIGITS = frozenset(string.hexdigits)
+_HEXDIGITS_OR_AT = frozenset(string.hexdigits + "@")
+_PUNCTUATION = frozenset(string.punctuation)
+
 
 class UnableToLegacyDemangle(Exception):
     def __init__(self, given_str, message="Not able to demangle the given string using LegacyDemangler"):
@@ -56,27 +64,27 @@ class LegacyDemangler:
         if ".llvm." in inpstr:
             length = inpstr.find(".llvm.")
             candidate = inpstr[length + 6 :]
-            for i in candidate:
-                if i not in string.hexdigits + "@":
-                    raise UnableToLegacyDemangle(original_inpstr)
+            if not _HEXDIGITS_OR_AT.issuperset(candidate):
+                raise UnableToLegacyDemangle(original_inpstr)
             inpstr = inpstr[:length]
 
         inn = inpstr
         for ele in range(self.elements):
-            rest = inn
-            for i in rest:
-                if i in string.digits:
-                    rest = rest[1:]
-                    continue
-                else:
-                    break
+            # Scan the length prefix by index. Stripping it a character at a time with
+            # `rest = rest[1:]` copies the whole remainder per digit, which is quadratic
+            # in the length of the symbol -- and a release binary's symbols are long.
+            prefix = 0
+            limit = len(inn)
+            while prefix < limit and inn[prefix] in _DIGITS:
+                prefix += 1
 
-            if len(inn) == len(rest):
+            if not prefix:
                 # no length prefix remains: the element count came from the pre-strip string
                 raise UnableToLegacyDemangle(original_inpstr)
 
-            num = int(inn[0 : len(inn) - len(rest)])
+            num = int(inn[:prefix])
 
+            rest = inn[prefix:]
             inn = rest[num:]
             rest = rest[:num]
 
@@ -121,9 +129,8 @@ class LegacyDemangler:
                         if not digits:
                             raise UnableToLegacyDemangle(original_inpstr)
 
-                        for i in digits:
-                            if i not in string.hexdigits:
-                                raise UnableToLegacyDemangle(original_inpstr)
+                        if not _HEXDIGITS.issuperset(digits):
+                            raise UnableToLegacyDemangle(original_inpstr)
 
                         try:
                             c = int(digits, 16)
@@ -169,44 +176,47 @@ class LegacyDemangler:
 
     def is_symbol_like(self, suffix):
         for i in suffix:
-            if i.isalnum() or self.is_ascii_punctuation(i):
+            if i.isalnum() or i in _PUNCTUATION:
                 continue
             else:
                 return False
 
         return True
 
-    def is_ascii_punctuation(self, c):
-        return c in string.punctuation
-
     def is_rust_hash(self, s):
         # The final path element of a legacy Rust symbol is a 16 hex digit hash written
         # `17h<hash>` -- a `<source-name>` of length 17 whose text begins with `h`.
         if len(s) == 19 and s.startswith("17h"):
-            return all(i in string.hexdigits for i in s[3:])
+            return _HEXDIGITS.issuperset(s[3:])
         # Older rustc wrote the same component without the length, so a bare `h` followed
         # by hex is accepted too. The exact form is preferred, and tried first.
         if s.startswith("h") and len(s) > 1:
-            return all(i in string.hexdigits for i in s[1:])
+            return _HEXDIGITS.issuperset(s[1:])
         return False
 
     def sanity_check(self, inpstr: str):
-        for i in inpstr:
-            if ord(i) & 0x80 != 0:
-                raise UnableToLegacyDemangle(inpstr)
+        # The reference reads the symbol as *bytes* and rejects it outright if any of
+        # them has bit 7 set, so a non-ASCII name is refused whatever it contains. This
+        # was written as a per-character `ord(i) & 0x80` loop, which is not the same
+        # test: U+0100 is one character whose value has bit 7 clear, so it passed here
+        # and its identifier was printed -- where `rustfilt` echoes the symbol back
+        # unread. `str.isascii` is the reference's test, and runs in C.
+        if not inpstr.isascii():
+            raise UnableToLegacyDemangle(inpstr)
 
         self.elements = 0
         c = 0
-        while c < len(inpstr) and inpstr[c] != "E":
+        limit = len(inpstr)
+        while c < limit and inpstr[c] != "E":
             length = 0
-            if inpstr[c] not in string.digits:
+            if inpstr[c] not in _DIGITS:
                 raise UnableToLegacyDemangle(inpstr)
 
-            while c < len(inpstr) and inpstr[c] in string.digits:
-                length = length * 10 + int(inpstr[c])
+            while c < limit and inpstr[c] in _DIGITS:
+                length = length * 10 + (ord(inpstr[c]) - 48)
                 c += 1
 
-            if c + length > len(inpstr):
+            if c + length > limit:
                 raise UnableToLegacyDemangle(inpstr)
 
             c += length
