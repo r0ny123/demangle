@@ -139,8 +139,15 @@ class TestGrammar:
         assert unmangle("_") == "_"
 
     def test_module_paths_round_trip_under_both_compilers(self):
-        for path in ("system", "pure/collections/tables", "std/private/digitsutils",
-                     "My_Module", "sub/deep/nested_mod", "pure/base64", "a_1"):
+        for path in (
+            "system",
+            "pure/collections/tables",
+            "std/private/digitsutils",
+            "My_Module",
+            "sub/deep/nested_mod",
+            "pure/base64",
+            "a_1",
+        ):
             for nim2 in (False, True):
                 assert unmangle_module(mangle_module(path, nim2), nim2) == path
 
@@ -152,8 +159,7 @@ class TestOtherShapes:
             ("NTIstring__77mFvmsOLKik79ci2hXkHEg_", "type information for string", "type-info"),
             ("tyObject_Widget__uq9ciTN8EVx1oU8m5EUfmRA", "Widget", "type"),
             ("tySequence__3paLwDVN07Xmqd9c79a76Ysg", "sequence", "type"),
-            ("Marker_tySequence__3paLwDVN07Xmqd9c79a76Ysg",
-             "garbage-collector marker for sequence", "marker"),
+            ("Marker_tySequence__3paLwDVN07Xmqd9c79a76Ysg", "garbage-collector marker for sequence", "marker"),
             ("TM__Q5wkpxktOdTGvlSRo9bzt9aw_10", "module temporary #10", "temporary"),
         ],
     )
@@ -168,9 +174,19 @@ class TestClaimsNothingItShouldNot:
 
     @pytest.mark.parametrize(
         "name",
-        ["main", "printf", "_ZN4core3fmt9Formatter3padE", "__libc_start_main",
-         "_D5mypkg5mymod5Point4normMFZi", "foo__bar", "x__y_", "__", "a__b_u",
-         "SYSTEM_$$_init", "_GLOBAL__sub_I_main.cpp"],
+        [
+            "main",
+            "printf",
+            "_ZN4core3fmt9Formatter3padE",
+            "__libc_start_main",
+            "_D5mypkg5mymod5Point4normMFZi",
+            "foo__bar",
+            "x__y_",
+            "__",
+            "a__b_u",
+            "SYSTEM_$$_init",
+            "_GLOBAL__sub_I_main.cpp",
+        ],
     )
     def test_it_refuses(self, name):
         assert not detect(name)
@@ -196,9 +212,12 @@ class TestClaimsNothingItShouldNot:
     def test_it_claims_nothing_in_a_real_c_or_cxx_binary(self, binary):
         if not pathlib.Path(binary).exists():
             pytest.skip(f"{binary} is not installed")
-        out = subprocess.run(["nm", "-D", "--defined-only", binary], capture_output=True, text=True)
+        try:
+            out = subprocess.run(["nm", "-D", "--defined-only", binary], capture_output=True, text=True)
+        except OSError:
+            pytest.skip("nm is not installed")
         if out.returncode != 0:
-            pytest.skip("nm is not available")
+            pytest.skip("nm cannot read this binary")
         names = {line.split()[-1] for line in out.stdout.splitlines() if line.strip()}
         assert [name for name in names if detect(name)] == []
 
@@ -213,9 +232,7 @@ class TestRegisteredAsALanguage:
     def test_it_does_not_take_another_scheme_s_names(self):
         assert demangle.demangle("_Z1fv") == "f()"
         assert demangle.demangle("_D5mypkg5mymod5Point4normMFZi") == "mypkg.mymod.Point.norm()"
-        assert demangle.demangle("example.com/m.(*T).Method", language="go") == (
-            "example.com/m.(*T).Method"
-        )
+        assert demangle.demangle("example.com/m.(*T).Method", language="go") == ("example.com/m.(*T).Method")
 
 
 class TestTree:

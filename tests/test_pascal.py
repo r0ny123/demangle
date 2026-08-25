@@ -181,8 +181,18 @@ class TestGrammar:
 class TestClaimsNothingItShouldNot:
     @pytest.mark.parametrize(
         "name",
-        ["main", "printf", "_Z1fv", "_ZN4core3fmt9Formatter3padE", "area__mymod_u10",
-         "_D5mypkg5mymod5Point4normMFZi", "FLOAT64_ADD", "$", "_$", "A_$$_"],
+        [
+            "main",
+            "printf",
+            "_Z1fv",
+            "_ZN4core3fmt9Formatter3padE",
+            "area__mymod_u10",
+            "_D5mypkg5mymod5Point4normMFZi",
+            "FLOAT64_ADD",
+            "$",
+            "_$",
+            "A_$$_",
+        ],
     )
     def test_it_refuses(self, name):
         assert not detect(name)
@@ -215,14 +225,25 @@ class TestAgainstTheCompilersOwnRecord:
         checked = agreed = 0
         disagreed = []
         for ppu in found:
-            dumped = subprocess.run(["ppudump", "-Va", ppu], capture_output=True, text=True)
+            try:
+                dumped = subprocess.run(["ppudump", "-Va", ppu], capture_output=True, text=True)
+            except OSError:
+                pytest.skip("ppudump is not installed")
             if dumped.returncode != 0:
-                pytest.skip("ppudump is not available")
+                pytest.skip("ppudump cannot read these units")
             out = dumped.stdout
             declared = set()
-            for kind in ("Procedure symbol", "Variable symbol", "Type symbol", "Constant symbol",
-                         "Static Variable symbol", "Property symbol", "Field Variable symbol",
-                         "Absolute Variable symbol", "Enumeration symbol"):
+            for kind in (
+                "Procedure symbol",
+                "Variable symbol",
+                "Type symbol",
+                "Constant symbol",
+                "Static Variable symbol",
+                "Property symbol",
+                "Field Variable symbol",
+                "Absolute Variable symbol",
+                "Enumeration symbol",
+            ):
                 declared.update(m.upper() for m in re.findall(rf"^\s*{kind} (.+)$", out, re.M))
             aliases = [
                 piece.strip()
@@ -240,7 +261,10 @@ class TestAgainstTheCompilersOwnRecord:
                 # `init` and `finalize` are the compiler's own sections; no source
                 # declares them, so they cannot be in the declared set.
                 if symbol.name.upper().lstrip("$") in declared or symbol.name.lower() in (
-                    "init", "finalize", "init_implicit", "finalize_implicit",
+                    "init",
+                    "finalize",
+                    "init_implicit",
+                    "finalize_implicit",
                 ):
                     agreed += 1
                 else:

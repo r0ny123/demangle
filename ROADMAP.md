@@ -5,29 +5,43 @@ change, so anyone can pick one up.
 
 Conformance gaps are **not** listed here any more, because there are none of ours left:
 every checked-in corpus is exact against its reference, and so are whole symbol tables
-from libLLVM, libclang-cpp, the Rust toolchain and libstdc++ — about 112,000 real
-symbols. The three GNU-style shortfalls are disagreements *between the two references*
-about substitution table contents, pinned by name in `tests/test_conformance.py`.
+from libLLVM, libclang-cpp, the Rust toolchain, libstdc++, the Swift runtime, libgphobos
+and the Free Pascal runtime — about 450,000 real symbols. The three GNU-style shortfalls
+are disagreements *between the two references* about substitution table contents, pinned
+by name in `tests/test_conformance.py`. The seven Nim shortfalls are that language's own
+mangling discarding an underscore, listed by name in
+`tests/conformance/nim-lossy.txt`.
 
 ## 1. More schemes
 
 The plugin interface exists so these need no core changes. Go landed this way, without
 touching `core` at all.
 
-D landed the same way, and is registered: 100% against GNU binutils'
-`c++filt --format=dlang` over every symbol it can read in the shipped `libgphobos` and
-`libgdruntime`.
+D, Swift, Nim and Free Pascal have all landed the same way. What each is measured
+against differs, and the difference is the interesting part:
 
-Ordered by how often an analyst actually meets them, which is not the order this list was
-originally in — Go and Rust are the languages modern malware is written in, and D is not:
+- **D** — 100% against GNU binutils' `c++filt --format=dlang`.
+- **Swift** — exact against `swift-demangle` 5.10.1 over the whole shipped runtime and
+  the compiler's own test corpus, in both the current mangling and Swift 3's.
+- **Nim** — no reference demangler exists, so the property is that re-mangling what is
+  read reproduces the symbol, plus agreement with the name the compiler recorded in its
+  own `.ndi` files.
+- **Free Pascal** — no reference demangler either; the property is re-assembly, over all
+  236,570 readable symbols in the shipped runtime, plus a check against `ppudump`.
 
-- **Nim** — real and rising in loaders and droppers (NimzaLoader, Nimbda). Was missing
-  from this list entirely, which was an oversight: it is a more common sight in a sample
-  than D or Delphi.
-- **Swift** — macOS and iOS. `swift-demangle` ships with the toolchain and is a usable
-  oracle.
-- **Delphi** — banking trojans and a long tail of older families, plus packers.
+What is left, ordered by how often an analyst actually meets it:
+
+- **Borland/Embarcadero Delphi** — a *different* scheme from Free Pascal's, written
+  `@Unit@Class@Method$qqrv`, and what a Delphi-built PE's package exports carry. Not
+  implemented, and deliberately: there is no Delphi compiler and no reference demangler
+  to check against on any platform this is developed on, and every other scheme here was
+  settled by measurement rather than by reading a specification. Anyone with a Delphi
+  toolchain, or a corpus of Delphi-built BPLs with known contents, could close this.
 - **Objective-C** — macOS, and barely mangled: mostly `+[Class method]` forms.
+- **Swift's ObjC-runtime forms** beyond `_Tt`: the `$s` mangling covers everything the
+  compiler emits, but a symbolic reference points into the binary's own metadata and
+  cannot be resolved from a name alone. Reading one would mean an API that takes the
+  binary too.
 
 ## 2. Performance
 

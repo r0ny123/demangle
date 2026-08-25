@@ -5,8 +5,12 @@ only through whole-name demangling, where a bug would show up as a puzzling spel
 several layers away.
 """
 
+import pathlib
+import string
+
 import pytest
 
+from demangle.core import registry
 from demangle.core.cache import MISSING, BoundedCache
 from demangle.core.errors import ParseError, TruncatedError
 from demangle.core.reader import Reader
@@ -136,3 +140,45 @@ class TestSubstitutionTable:
         table = SubstitutionTable("_Z1fv")
         with pytest.raises(ParseError, match="refers past"):
             table.lookup(3)
+
+
+class TestFirstCharacterScreen:
+    """`LanguagePlugin.first_characters` lets the registry skip a scheme without calling
+    into it. It is an optimisation that can lose symbols silently if it is wrong, so what
+    is checked here is the property it claims: a scheme that declares a set never accepts
+    a name outside it."""
+
+    def _corpus_names(self):
+        directory = pathlib.Path(__file__).parent / "conformance"
+        for path in sorted(directory.glob("*.txt")):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line and not line.startswith("#"):
+                    yield line.split("\t", 1)[0]
+
+    def test_no_declaring_scheme_claims_a_name_outside_its_set(self, subtests):
+        names = list(self._corpus_names())
+        # Plus every one-and-two-character start, so a scheme that would claim something
+        # short and odd is caught even where no corpus happens to hold one.
+        alphabet = string.ascii_letters + string.digits + "_$?@.%&*<>-+~"
+        names += list(alphabet) + [a + b for a in alphabet for b in alphabet]
+        assert len(names) > 20000
+        for plugin in registry.available():
+            if not plugin.first_characters:
+                continue
+            with subtests.test(name=plugin.name):
+                outside = [
+                    name for name in names if name and name[0] not in plugin.first_characters and plugin.detect(name)
+                ]
+                assert outside == [], outside[:5]
+
+    def test_the_screen_returns_the_same_order_as_asking_everyone(self):
+        for name in ("_ZN1fv", "?f@@YAXH@Z", "$sSi", "notmangled", ""):
+            screened = [p.name for p in registry.candidates(name)]
+            everyone = [p.name for p in registry.available() if p in registry.candidates(name)]
+            assert screened == everyone
+
+    def test_a_scheme_declaring_nothing_is_always_offered(self):
+        for plugin in registry.available():
+            if plugin.first_characters:
+                continue
+            assert plugin in registry.candidates("anything at all")

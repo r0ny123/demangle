@@ -36,6 +36,7 @@ from ._printer import print_root
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
 
+
 def detect(name):
     """One of the prefixes either mangling uses.
 
@@ -92,6 +93,8 @@ PLUGIN = LanguagePlugin(
     description="Swift symbol mangling",
     aliases=(),
     # Above D and Go: `$s` and `_T0` collide with nothing, and the check is a prefix test.
+    # `$s`, `_$s`, `$S`, `_$S`, `_T0`, `_Tt` and `@__swiftmacro_`.
+    first_characters="$_@",
     priority=45,
 )
 

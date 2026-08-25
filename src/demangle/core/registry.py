@@ -33,6 +33,9 @@ _lock = threading.RLock()
 _plugins = {}
 _aliases = {}
 _ordered = None
+#: First character -> the plugins that could claim a name starting with it, built on
+#: demand and thrown away whenever the registry changes.
+_by_first = None
 #: Set only once loading has *finished*. A separate "currently loading on this thread"
 #: marker handles re-entrancy, because a plugin module calls `register()` while being
 #: imported and must not recurse back into loading. Using one flag for both meant a
@@ -44,7 +47,7 @@ _loading_thread = None
 
 def register(plugin):
     """Add a plugin to the registry, replacing any earlier one of the same name."""
-    global _ordered
+    global _by_first, _ordered
     if not isinstance(plugin, LanguagePlugin):
         raise TypeError(f"expected a LanguagePlugin, got {type(plugin).__name__}")
     with _lock:
@@ -52,6 +55,7 @@ def register(plugin):
         for alias in plugin.aliases:
             _aliases[alias] = plugin.name
         _ordered = None
+        _by_first = None
     return plugin
 
 
@@ -113,6 +117,32 @@ def available():
         if _ordered is None:
             _ordered = tuple(sorted(_plugins.values(), key=lambda p: (p.priority, p.name)))
         return _ordered
+
+
+def candidates(mangled):
+    """The plugins worth offering `mangled` to, in detection order.
+
+    Most schemes start their names with one of a handful of characters, and a caller
+    labelling a symbol table offers this every symbol in it -- the great majority of
+    which are not mangled at all. Screening on the first character skips the schemes
+    that could not match without calling into them.
+
+    The order is `available()`'s, filtered; a scheme that declares no first characters
+    is always offered, so adding one changes nothing for a scheme that does not opt in.
+    """
+    if not mangled:
+        return available()
+    global _by_first
+    ordered = available()
+    with _lock:
+        if _by_first is None:
+            _by_first = {}
+        found = _by_first.get(mangled[0])
+        if found is None:
+            found = _by_first[mangled[0]] = tuple(
+                plugin for plugin in ordered if not plugin.first_characters or mangled[0] in plugin.first_characters
+            )
+        return found
 
 
 def names():

@@ -33,35 +33,78 @@ MAX_DEPTH = 768
 #: `genericParameterName`'s alphabet, and the module prefix LLDB gives its own symbols.
 LLDB_EXPRESSIONS_MODULE_NAME_PREFIX = "__lldb_expr_"
 
-_SIMPLE_TYPES = frozenset([
-    "AssociatedType", "AssociatedTypeRef", "BoundGenericClass", "BoundGenericEnum",
-    "BoundGenericStructure", "BoundGenericProtocol", "BoundGenericOtherNominalType",
-    "BoundGenericTypeAlias", "BoundGenericFunction", "BuiltinTypeName", "BuiltinTupleType",
-    "Class", "DependentGenericType", "DependentMemberType", "DependentGenericParamType",
-    "DynamicSelf", "Enum", "ErrorType", "ExistentialMetatype", "Metatype",
-    "MetatypeRepresentation", "Module", "Tuple", "Pack", "SILPackDirect",
-    "SILPackIndirect", "ConstrainedExistentialRequirementList",
-    "ConstrainedExistentialSelf", "Protocol", "ProtocolSymbolicReference", "ReturnType",
-    "SILBoxType", "SILBoxTypeWithLayout", "Structure", "OtherNominalType",
-    "TupleElementName", "TypeAlias", "TypeList", "LabelList", "TypeSymbolicReference",
-    "SugaredOptional", "SugaredArray", "SugaredDictionary", "SugaredParen",
-])
+_SIMPLE_TYPES = frozenset(
+    [
+        "AssociatedType",
+        "AssociatedTypeRef",
+        "BoundGenericClass",
+        "BoundGenericEnum",
+        "BoundGenericStructure",
+        "BoundGenericProtocol",
+        "BoundGenericOtherNominalType",
+        "BoundGenericTypeAlias",
+        "BoundGenericFunction",
+        "BuiltinTypeName",
+        "BuiltinTupleType",
+        "Class",
+        "DependentGenericType",
+        "DependentMemberType",
+        "DependentGenericParamType",
+        "DynamicSelf",
+        "Enum",
+        "ErrorType",
+        "ExistentialMetatype",
+        "Metatype",
+        "MetatypeRepresentation",
+        "Module",
+        "Tuple",
+        "Pack",
+        "SILPackDirect",
+        "SILPackIndirect",
+        "ConstrainedExistentialRequirementList",
+        "ConstrainedExistentialSelf",
+        "Protocol",
+        "ProtocolSymbolicReference",
+        "ReturnType",
+        "SILBoxType",
+        "SILBoxTypeWithLayout",
+        "Structure",
+        "OtherNominalType",
+        "TupleElementName",
+        "TypeAlias",
+        "TypeList",
+        "LabelList",
+        "TypeSymbolicReference",
+        "SugaredOptional",
+        "SugaredArray",
+        "SugaredDictionary",
+        "SugaredParen",
+    ]
+)
 
 #: Inside a metatype these spell `.Protocol` rather than `.Type`.
-_EXISTENTIAL_TYPES = frozenset([
-    "ExistentialMetatype", "ProtocolList", "ProtocolListWithClass", "ProtocolListWithAnyObject",
-])
+_EXISTENTIAL_TYPES = frozenset(
+    [
+        "ExistentialMetatype",
+        "ProtocolList",
+        "ProtocolListWithClass",
+        "ProtocolListWithAnyObject",
+    ]
+)
 
 #: A declarator that reads as a function needs no space between it and what precedes it.
-_NO_SPACE_BEFORE = frozenset([
-    "FunctionType", "NoEscapeFunctionType", "UncurriedFunctionType", "DependentGenericType",
-])
+_NO_SPACE_BEFORE = frozenset(
+    [
+        "FunctionType",
+        "NoEscapeFunctionType",
+        "UncurriedFunctionType",
+        "DependentGenericType",
+    ]
+)
 
 _DIRECTNESS = ("direct", "indirect")
 
-_VALUE_WITNESS_SPELLINGS = {
-    at: name[0].lower() + name[1:] for at, name in enumerate(_VALUE_WITNESS_NAMES)
-}
+_VALUE_WITNESS_SPELLINGS = {at: name[0].lower() + name[1:] for at, name in enumerate(_VALUE_WITNESS_NAMES)}
 
 _DIFFERENTIABILITY = {
     ord("f"): "@differentiable(_forward) ",
@@ -621,7 +664,12 @@ class Printer:
         if entity is not None:
             style, has_name, extra_name, overwrite = entity
             return self.print_entity(
-                node, depth, as_prefix_context, style, has_name, extra_name,
+                node,
+                depth,
+                as_prefix_context,
+                style,
+                has_name,
+                extra_name,
                 overwrite_name=overwrite,
             )
 
@@ -724,8 +772,11 @@ class Printer:
                 while inner.kind == "DependentGenericType":
                     inner = inner.child(1).first
                 if inner.kind not in (
-                    "FunctionType", "NoEscapeFunctionType", "UncurriedFunctionType",
-                    "CFunctionPointer", "ThinFunctionType",
+                    "FunctionType",
+                    "NoEscapeFunctionType",
+                    "UncurriedFunctionType",
+                    "CFunctionPointer",
+                    "ThinFunctionType",
                 ):
                     style = "colon"
             if style == "colon":
@@ -738,8 +789,10 @@ class Printer:
 
         if not as_prefix_context and postfix_context is not None:
             if entity.kind in (
-                "DefaultArgumentInitializer", "Initializer",
-                "PropertyWrapperBackingInitializer", "PropertyWrapperInitFromProjectedValue",
+                "DefaultArgumentInitializer",
+                "Initializer",
+                "PropertyWrapperBackingInitializer",
+                "PropertyWrapperInitFromProjectedValue",
             ):
                 self.write(" of ")
             else:
@@ -819,9 +872,7 @@ _PREFIX_THEN_FIRST_CHILD = {
     "TypeMetadataAccessFunction": "type metadata accessor for ",
     "TypeMetadataInstantiationCache": "type metadata instantiation cache for ",
     "TypeMetadataInstantiationFunction": "type metadata instantiation function for ",
-    "TypeMetadataSingletonInitializationCache": (
-        "type metadata singleton initialization cache for "
-    ),
+    "TypeMetadataSingletonInitializationCache": ("type metadata singleton initialization cache for "),
     "TypeMetadataCompletionFunction": "type metadata completion function for ",
     "TypeMetadataDemanglingCache": "demangling cache variable for type metadata for ",
     "TypeMetadataLazyCache": "lazy cache variable for type metadata for ",
@@ -852,9 +903,7 @@ _PREFIX_THEN_FIRST_CHILD = {
         "canonical specialized generic type metadata accessor for "
     ),
     "MetadataInstantiationCache": "metadata instantiation cache for ",
-    "NoncanonicalSpecializedGenericTypeMetadata": (
-        "noncanonical specialized generic type metadata for "
-    ),
+    "NoncanonicalSpecializedGenericTypeMetadata": ("noncanonical specialized generic type metadata for "),
     "NoncanonicalSpecializedGenericTypeMetadataCache": (
         "cache variable for noncanonical specialized generic type metadata for "
     ),
@@ -920,9 +969,7 @@ _ENTITY_KINDS = {
     "OtherNominalType": ("none", True, "", ""),
     "Initializer": ("none", False, "variable initialization expression", ""),
     "PropertyWrapperBackingInitializer": ("none", False, "property wrapper backing initializer", ""),
-    "PropertyWrapperInitFromProjectedValue": (
-        "none", False, "property wrapper init from projected value", ""
-    ),
+    "PropertyWrapperInitFromProjectedValue": ("none", False, "property wrapper init from projected value", ""),
     "Destructor": ("none", False, "deinit", ""),
     "IVarInitializer": ("none", False, "__ivar_initializer", ""),
     "IVarDestroyer": ("none", False, "__ivar_destroyer", ""),
@@ -962,9 +1009,7 @@ _MACRO_EXPANSION_NAMES = {
 _SPECIALIZATION_PREFIXES = {
     "FunctionSignatureSpecialization": ("function signature specialization", ""),
     "GenericPartialSpecialization": ("generic partial specialization", "Signature = "),
-    "GenericPartialSpecializationNotReAbstracted": (
-        "generic not-reabstracted partial specialization", "Signature = "
-    ),
+    "GenericPartialSpecializationNotReAbstracted": ("generic not-reabstracted partial specialization", "Signature = "),
     "GenericSpecialization": ("generic specialization", ""),
     "GenericSpecializationInResilienceDomain": ("generic specialization", ""),
     "GenericSpecializationPrespecialized": ("generic pre-specialization", ""),
@@ -1008,27 +1053,25 @@ def _simple(kind, spell):
 
 
 for _kind, _text in _ABSTRACT_STORAGE.items():
-    _HANDLERS[_kind] = (
-        lambda self, node, depth, as_prefix_context, _name=_text: self.print_abstract_storage(
-            node.first, depth, as_prefix_context, _name
-        )
+    _HANDLERS[_kind] = lambda self, node, depth, as_prefix_context, _name=_text: self.print_abstract_storage(
+        node.first, depth, as_prefix_context, _name
     )
 
 for _kind, (_description, _prefix) in _SPECIALIZATION_PREFIXES.items():
     _simple(
         _kind,
-        lambda self, node, depth, _d=_description, _p=_prefix: self.print_specialization_prefix(
-            node, _d, depth, _p
-        ),
+        lambda self, node, depth, _d=_description, _p=_prefix: self.print_specialization_prefix(node, _d, depth, _p),
     )
 
 for _kind, _lead in _MACRO_EXPANSION_NAMES.items():
-    _HANDLERS[_kind] = (
-        lambda self, node, depth, as_prefix_context, _lead=_lead: self.print_entity(
-            node, depth, as_prefix_context, "none", True,
-            _lead + _node_to_string(node.child(2)) + " expansion #",
-            node.child(3).index + 1,
-        )
+    _HANDLERS[_kind] = lambda self, node, depth, as_prefix_context, _lead=_lead: self.print_entity(
+        node,
+        depth,
+        as_prefix_context,
+        "none",
+        True,
+        _lead + _node_to_string(node.child(2)) + " expansion #",
+        node.child(3).index + 1,
     )
 
 
@@ -1122,23 +1165,24 @@ def _print_macro(self, node, depth, as_prefix_context):
 @_handler("FreestandingMacroExpansion")
 def _print_freestanding_macro(self, node, depth, as_prefix_context):
     return self.print_entity(
-        node, depth, as_prefix_context, "none", True,
-        "freestanding macro expansion #", node.child(2).index + 1,
+        node,
+        depth,
+        as_prefix_context,
+        "none",
+        True,
+        "freestanding macro expansion #",
+        node.child(2).index + 1,
     )
 
 
 @_handler("MacroExpansionUniqueName")
 def _print_macro_unique_name(self, node, depth, as_prefix_context):
-    return self.print_entity(
-        node, depth, as_prefix_context, "none", True, "unique name #", node.child(2).index + 1
-    )
+    return self.print_entity(node, depth, as_prefix_context, "none", True, "unique name #", node.child(2).index + 1)
 
 
 @_handler("ExplicitClosure")
 def _print_explicit_closure(self, node, depth, as_prefix_context):
-    return self.print_entity(
-        node, depth, as_prefix_context, "function", False, "closure #", node.child(1).index + 1
-    )
+    return self.print_entity(node, depth, as_prefix_context, "function", False, "closure #", node.child(1).index + 1)
 
 
 @_handler("ImplicitClosure")
@@ -1150,9 +1194,7 @@ def _print_implicit_closure(self, node, depth, as_prefix_context):
 
 @_handler("DefaultArgumentInitializer")
 def _print_default_argument(self, node, depth, as_prefix_context):
-    return self.print_entity(
-        node, depth, as_prefix_context, "none", False, "default argument ", node.child(1).index
-    )
+    return self.print_entity(node, depth, as_prefix_context, "none", False, "default argument ", node.child(1).index)
 
 
 @_handler("Allocator")
@@ -1163,9 +1205,7 @@ def _print_allocator(self, node, depth, as_prefix_context):
 
 @_handler("Constructor")
 def _print_constructor(self, node, depth, as_prefix_context):
-    return self.print_entity(
-        node, depth, as_prefix_context, "function", len(node.children) > 2, "init"
-    )
+    return self.print_entity(node, depth, as_prefix_context, "function", len(node.children) > 2, "init")
 
 
 @_handler("Deallocator")
@@ -1209,15 +1249,25 @@ def _print_related_entity(self, node, depth, as_prefix_context):
 
 
 for _kind in (
-    "FunctionType", "UncurriedFunctionType", "NoEscapeFunctionType", "AutoClosureType",
-    "EscapingAutoClosureType", "ThinFunctionType", "CFunctionPointer", "ObjCBlock",
+    "FunctionType",
+    "UncurriedFunctionType",
+    "NoEscapeFunctionType",
+    "AutoClosureType",
+    "EscapingAutoClosureType",
+    "ThinFunctionType",
+    "CFunctionPointer",
+    "ObjCBlock",
     "EscapingObjCBlock",
 ):
     _simple(_kind, lambda self, node, depth: self.print_function_type(None, node, depth))
 
 for _kind in (
-    "BoundGenericClass", "BoundGenericStructure", "BoundGenericEnum", "BoundGenericProtocol",
-    "BoundGenericOtherNominalType", "BoundGenericTypeAlias",
+    "BoundGenericClass",
+    "BoundGenericStructure",
+    "BoundGenericEnum",
+    "BoundGenericProtocol",
+    "BoundGenericOtherNominalType",
+    "BoundGenericTypeAlias",
 ):
     _simple(_kind, lambda self, node, depth: self.print_bound_generic(node, depth))
 
@@ -1619,8 +1669,10 @@ def _print_differentiability_witness(self, node, depth, as_prefix_context):
 
 
 _DIFFERENTIABILITY_WITNESS_KINDS = {
-    ord("f"): "forward-mode", ord("r"): "reverse-mode",
-    ord("d"): "normal", ord("l"): "linear",
+    ord("f"): "forward-mode",
+    ord("r"): "reverse-mode",
+    ord("d"): "normal",
+    ord("l"): "linear",
 }
 
 

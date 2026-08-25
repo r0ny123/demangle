@@ -25,7 +25,7 @@ from .core.cache import MISSING, BoundedCache
 from .core.decorations import split_decorations
 from .core.errors import DemanglingError, NotMangledError, ParseError, reraise_if_operational
 from .core.limits import DEFAULT_LIMITS, Limits
-from .core.registry import available, get, names
+from .core.registry import candidates, get, names
 from .core.style import DEFAULT_STYLE, Style, available_styles, get_style
 
 __all__ = [
@@ -119,9 +119,9 @@ def demangle(
 
     builder = resolved_style.spelling_builder
     plugin = _resolve(language)
-    candidates = (plugin,) if plugin is not None else available()
+    tried = (plugin,) if plugin is not None else candidates(mangled)
 
-    for candidate in candidates:
+    for candidate in tried:
         try:
             if plugin is None and not _claims(candidate, mangled):
                 continue
@@ -190,7 +190,7 @@ def _parse_handle(mangled, builder, language, style, limits):
         return _parse_with(plugin, mangled, builder, limits, style)
 
     first_error = None
-    for candidate in available():
+    for candidate in candidates(mangled):
         try:
             if not _claims(candidate, mangled):
                 continue
@@ -248,7 +248,7 @@ def detect(mangled: str) -> str | None:
     """
     if not mangled or not isinstance(mangled, str):
         return None
-    for plugin in available():
+    for plugin in candidates(mangled):
         if _claims(plugin, mangled):
             return plugin.name
     return None

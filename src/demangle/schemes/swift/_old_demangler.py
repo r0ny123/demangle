@@ -34,10 +34,34 @@ MAX_DEPTH = 1024
 #: `demangleValueWitnessKind`, in the order `ValueWitnessMangling.def` declares them.
 _VALUE_WITNESSES = {
     code: at
-    for at, code in enumerate([
-        "al", "ca", "ta", "de", "xx", "XX", "Xx", "CP", "Cp", "cp", "Tk", "tk", "pr",
-        "TK", "Cc", "Tt", "tT", "xs", "xg", "ug", "up", "ui", "et", "st",
-    ])
+    for at, code in enumerate(
+        [
+            "al",
+            "ca",
+            "ta",
+            "de",
+            "xx",
+            "XX",
+            "Xx",
+            "CP",
+            "Cp",
+            "cp",
+            "Tk",
+            "tk",
+            "pr",
+            "TK",
+            "Cc",
+            "Tt",
+            "tT",
+            "xs",
+            "xg",
+            "ug",
+            "up",
+            "ui",
+            "et",
+            "st",
+        ]
+    )
 }
 
 #: The prefixes a Swift 3 symbol may carry between `_T` and the global itself.
@@ -248,9 +272,7 @@ class OldDemangler:
             # An operator name cannot be the base of a more specific one.
             if kind is not None:
                 return None
-            kind = {"p": "PrefixOperator", "P": "PostfixOperator", "i": "InfixOperator"}.get(
-                reader.next()
-            )
+            kind = {"p": "PrefixOperator", "P": "PostfixOperator", "i": "InfixOperator"}.get(reader.next())
             if kind is None:
                 return None
         if kind is None:
@@ -382,9 +404,7 @@ class OldDemangler:
                 return None
             return self.demangle_protocol_name_given_context(found, depth + 1)
         if reader.next_if("s"):
-            return self.demangle_protocol_name_given_context(
-                Node("Module", text=STDLIB_NAME), depth + 1
-            )
+            return self.demangle_protocol_name_given_context(Node("Module", text=STDLIB_NAME), depth + 1)
         return self.demangle_declaration_name("Protocol", depth + 1)
 
     def demangle_nominal_type(self, depth):
@@ -1073,8 +1093,7 @@ class OldDemangler:
             convention = _IMPL_CONVENTION_NAMES.get(reader.next())
             if convention is None:
                 return None
-            found.add(Node("ImplFunctionConvention",
-                           children=[Node("ImplFunctionConventionName", text=convention)]))
+            found.add(Node("ImplFunctionConvention", children=[Node("ImplFunctionConventionName", text=convention)]))
         if reader.next_if("h"):
             found.add(Node("ImplFunctionAttribute", text="@Sendable"))
         if reader.next_if("H"):
@@ -1221,8 +1240,12 @@ class OldDemangler:
                 parameter.add(_param_kind(_PARAM_IN_OUT_TO_OUT))
             else:
                 value = 0
-                for letter, flag in (("d", _PARAM_DEAD), ("g", _PARAM_OWNED_TO_GUARANTEED),
-                                     ("o", _PARAM_GUARANTEED_TO_OWNED), ("s", _PARAM_SROA)):
+                for letter, flag in (
+                    ("d", _PARAM_DEAD),
+                    ("g", _PARAM_OWNED_TO_GUARANTEED),
+                    ("o", _PARAM_GUARANTEED_TO_OWNED),
+                    ("s", _PARAM_SROA),
+                ):
                     if reader.next_if(letter):
                         value |= flag
                 if not reader.next_if("_") or not value:
@@ -1347,8 +1370,9 @@ class OldDemangler:
             conformance = self.demangle_protocol_conformance(depth + 1)
             return None if conformance is None else Node(conformance_kind, children=[conformance])
         if reader.peek() in ("l", "L"):
-            kind = ("LazyProtocolWitnessTableAccessor" if reader.next() == "l"
-                    else "LazyProtocolWitnessTableCacheVariable")
+            kind = (
+                "LazyProtocolWitnessTableAccessor" if reader.next() == "l" else "LazyProtocolWitnessTableCacheVariable"
+            )
             found = self.demangle_type(depth + 1)
             if found is None:
                 return None
@@ -1393,51 +1417,80 @@ def _starts_an_entity(char):
 
 
 _ENTITY_WITHOUT_TYPE = {
-    "D": "Deallocator", "d": "Destructor", "e": "IVarInitializer", "E": "IVarDestroyer",
+    "D": "Deallocator",
+    "d": "Destructor",
+    "e": "IVarInitializer",
+    "E": "IVarDestroyer",
 }
 
 _MUTABLE_ADDRESSORS = {
-    "O": "OwningMutableAddressor", "o": "NativeOwningMutableAddressor",
-    "p": "NativePinningMutableAddressor", "u": "UnsafeMutableAddressor",
+    "O": "OwningMutableAddressor",
+    "o": "NativeOwningMutableAddressor",
+    "p": "NativePinningMutableAddressor",
+    "u": "UnsafeMutableAddressor",
 }
 
 _ADDRESSORS = {
-    "O": "OwningAddressor", "o": "NativeOwningAddressor",
-    "p": "NativePinningAddressor", "u": "UnsafeAddressor",
+    "O": "OwningAddressor",
+    "o": "NativeOwningAddressor",
+    "p": "NativePinningAddressor",
+    "u": "UnsafeAddressor",
 }
 
 _ACCESSORS = {
-    "g": "Getter", "G": "GlobalGetter", "s": "Setter", "m": "MaterializeForSet",
-    "w": "WillSet", "W": "DidSet", "r": "ReadAccessor", "M": "ModifyAccessor",
+    "g": "Getter",
+    "G": "GlobalGetter",
+    "s": "Setter",
+    "m": "MaterializeForSet",
+    "w": "WillSet",
+    "W": "DidSet",
+    "r": "ReadAccessor",
+    "M": "ModifyAccessor",
 }
 
 _NOMINAL_TYPE_MARKERS = {"C": "Class", "V": "Structure", "O": "Enum", "P": "Protocol"}
 
 _FUNCTION_TYPES = {
-    "b": "ObjCBlock", "c": "CFunctionPointer", "F": "FunctionType",
-    "f": "UncurriedFunctionType", "K": "AutoClosureType",
+    "b": "ObjCBlock",
+    "c": "CFunctionPointer",
+    "F": "FunctionType",
+    "f": "UncurriedFunctionType",
+    "K": "AutoClosureType",
 }
 
 _OLD_BUILTINS = {
-    "b": "Builtin.BridgeObject", "B": "Builtin.UnsafeValueBuffer",
-    "O": "Builtin.UnknownObject", "o": "Builtin.NativeObject",
-    "p": "Builtin.RawPointer", "t": "Builtin.SILToken", "w": "Builtin.Word",
+    "b": "Builtin.BridgeObject",
+    "B": "Builtin.UnsafeValueBuffer",
+    "O": "Builtin.UnknownObject",
+    "o": "Builtin.NativeObject",
+    "p": "Builtin.RawPointer",
+    "t": "Builtin.SILToken",
+    "w": "Builtin.Word",
 }
 
 _METADATA_KINDS = {
-    "P": "GenericTypeMetadataPattern", "a": "TypeMetadataAccessFunction",
-    "L": "TypeMetadataLazyCache", "m": "Metaclass", "n": "NominalTypeDescriptor",
-    "f": "FullTypeMetadata", "p": "ProtocolDescriptor",
+    "P": "GenericTypeMetadataPattern",
+    "a": "TypeMetadataAccessFunction",
+    "L": "TypeMetadataLazyCache",
+    "m": "Metaclass",
+    "n": "NominalTypeDescriptor",
+    "f": "FullTypeMetadata",
+    "p": "ProtocolDescriptor",
 }
 
 _WITNESS_OF_CONFORMANCE = {
-    "P": "ProtocolWitnessTable", "G": "GenericProtocolWitnessTable",
+    "P": "ProtocolWitnessTable",
+    "G": "GenericProtocolWitnessTable",
     "I": "GenericProtocolWitnessTableInstantiationFunction",
     "a": "ProtocolWitnessTableAccessor",
 }
 
 _IMPL_CONVENTION_NAMES = {
-    "b": "block", "c": "c", "m": "method", "O": "objc_method", "w": "witness_method",
+    "b": "block",
+    "c": "c",
+    "m": "method",
+    "O": "objc_method",
+    "w": "witness_method",
 }
 
 #: One letter, three meanings: as the callee's convention, as a parameter's, as a

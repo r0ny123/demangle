@@ -39,9 +39,25 @@ __all__ = ["DemangleFailure", "NimSymbol", "detect", "mangle", "mangle_module", 
 #: Characters `mangle` spells as words rather than escaping. From the compiler's own
 #: table; the order they are tried in matters, so the reverse map is built once.
 SPECIALS = {
-    "dollar": "$", "percent": "%", "amp": "&", "roof": "^", "emark": "!", "qmark": "?",
-    "star": "*", "plus": "+", "minus": "-", "slash": "/", "backslash": "\\", "eq": "=",
-    "lt": "<", "gt": ">", "tilde": "~", "colon": ":", "dot": ".", "at": "@", "bar": "|",
+    "dollar": "$",
+    "percent": "%",
+    "amp": "&",
+    "roof": "^",
+    "emark": "!",
+    "qmark": "?",
+    "star": "*",
+    "plus": "+",
+    "minus": "-",
+    "slash": "/",
+    "backslash": "\\",
+    "eq": "=",
+    "lt": "<",
+    "gt": ">",
+    "tilde": "~",
+    "colon": ":",
+    "dot": ".",
+    "at": "@",
+    "bar": "|",
 }
 _BY_CHARACTER = {character: word for word, character in SPECIALS.items()}
 #: Longest first: `backslash` contains `slash`, and `amp` would swallow the front of one.

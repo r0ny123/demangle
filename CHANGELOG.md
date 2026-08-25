@@ -8,6 +8,35 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Swift symbol names**, both manglings. A port of the compiler's own demangler and node
+  printer, because nothing smaller is enough: the mangling is postfix and compresses
+  against three tables that span a whole name, so a symbol cannot be read a piece at a
+  time, and how a piece is *spelled* depends on where it sits in the tree. Exact against
+  `swift-demangle` 5.10.1 over all 48,368 `$s` symbols in the shipped runtime and
+  Foundation, and over all 376 cases in the compiler's own
+  `test/Demangle/Inputs/manglings.txt` -- which covers SIL function types,
+  function-signature specialisations, key-path thunks, autodiff, macro expansions and
+  the Swift 3 mangling, still what the ObjC runtime holds for a Swift class. It refuses
+  exactly the 69 names the reference itself refuses.
+
+- **Nim symbol names.** Nim compiles to C, so a Nim symbol is an ordinary C identifier
+  with no prefix to key on, and nothing in the toolchain reads one back. The rules are
+  transcribed from the compiler's `mangleutils.mangle` and
+  `modulegraphs.uniqueModuleName`; the correctness argument is Go's -- re-mangling what
+  is read must reproduce the symbol -- plus agreement with the name the compiler recorded
+  in its own `.ndi` debug-mapping files, 2,115 of 2,115. The mangling is not injective in
+  two places, and both are documented rather than papered over: `mangle` drops an
+  underscore before a digit, and `result` contains `lt`, so a greedy decoder reads it as
+  `resu<`. What rules the second out is that Nim names have a grammar.
+
+- **Free Pascal symbol names.** The rules are transcribed from the compiler's
+  `make_mangledname`; the property is re-assembly, and it holds for all 236,570 readable
+  symbols in the 1,074 object files of the shipped 3.2.2 runtime and packages.
+  Independently checked against `ppudump`. Case is not recoverable -- Pascal is
+  case-insensitive and the compiler upper-cases before mangling -- and that is stated
+  rather than hidden. Borland and Embarcadero's own Delphi scheme is a different one and
+  is not read.
+
 - **Go symbol names.** A new scheme, registered like any other -- `core` was not touched.
   Go escapes a `.` that falls after the last `/` of a package path, so
   `example.com/m/v2%2e5.T.M` does not split into package and name where the raw text
@@ -27,6 +56,14 @@ All notable changes to this project are recorded here. The format follows
   had ever asked.
 
 ### Performance
+
+- **Detection screens on the first character.** A `LanguagePlugin` may declare the
+  characters its names can begin with, and the registry then never offers it a name that
+  starts otherwise. With eight schemes registered, labelling names that are not mangled
+  at all costs less than it did with five (65 against 73, machine-relative), where asking
+  every scheme would have cost 100. A scheme that declares nothing is always offered, so
+  this changes nothing for one that does not opt in, and `tests/test_core.py` checks each
+  declaration against every corpus rather than trusting it.
 
 - **Rust demangling is 23% faster** (99us to 76us a name over the real-world corpus). The
   structure work had put a `contextlib` context manager around every grammar production,

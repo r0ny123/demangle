@@ -72,6 +72,8 @@ PLUGIN = LanguagePlugin(
     aliases=("dlang",),
     # Above Go, whose detection is a shape test, and below the schemes with their own
     # unambiguous prefixes. `_D` collides with nothing here.
+    # `_D` and nothing else.
+    first_characters="_",
     priority=40,
 )
 
