@@ -8,6 +8,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Expressions are structure, not text.** `decltype(a + b)` reached the tree as one
+  opaque node, so a caller wanting the operands had to parse C++ back out of a string.
+  The parser now reports them through a new `Builder.expression(form, parts)` method:
+  `form` names the shape (`binary`, `conditional`, `call`, `sizeof`, `cast`, `new`, and
+  the rest) and `parts` interleaves the production's fixed text with its operands'
+  handles. `core.ast` gains an `Expression` node with an `operands` view. Brackets are
+  parts, so a parenthesised operand stays reachable instead of being glued into text.
+
+  One method rather than one per operator: the parser already owns operator spelling,
+  which comes from tables that exist to be checked against the ABI, so what is left for
+  a builder to decide is structure.
+
 - **Rust `parse()` returns a tree.** A Rust symbol was a single `raw` node, so `walk()`
   and `find()` saw nothing below the root. It now comes back as a `symbol` holding a
   `path` of `name` components, with `impl`, `namespace`, `template`, `type` and
