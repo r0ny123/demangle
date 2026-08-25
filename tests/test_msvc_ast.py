@@ -42,7 +42,7 @@ class TestShape:
         assert [parameter.text for parameter in signature.parameters] == ["int"]
 
     def test_the_tree_is_more_than_one_node(self):
-        """The whole point: `parse()` used to answer a single opaque `Raw`."""
+        """`parse()` must yield real structure, not a single opaque `Raw` leaf."""
         assert len(list(tree("?f@@YAXH@Z").walk())) > 1
 
     def test_a_member_function_keeps_its_access_and_its_cv_apart_from_its_type(self):

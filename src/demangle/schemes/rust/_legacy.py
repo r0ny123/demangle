@@ -51,15 +51,14 @@ class LegacyDemangler:
             inn = rest[num:]
             rest = rest[:num]
 
-            # Check if the last element is a hash and hide it if it is,
-            # matching Ghidra's default behavior for cleaner output.
+            # The trailing hash disambiguates monomorphisations; it is not part of the
+            # path a reader wants, and neither `rustfilt` nor Ghidra prints it.
             is_hash = ele + 1 == self.elements and self.is_rust_hash(rest)
 
             if ele != 0 and not is_hash:
                 disp += "::"
 
             if is_hash:
-                # We skip appending 'rest' here to hide the hash
                 break
 
             if rest.startswith("_$"):
@@ -146,14 +145,12 @@ class LegacyDemangler:
         return c in string.punctuation
 
     def is_rust_hash(self, s):
-        # Improved robustness based on Ghidra's RustDemanglerLegacy
-        # Legacy Rust symbols end with a path segment that encodes a 16 hex digit hash,
-        # prefixed with "17h", i.e. '17h[a-f0-9]{16}'.
+        # The final path element of a legacy Rust symbol is a 16 hex digit hash written
+        # `17h<hash>` -- a `<source-name>` of length 17 whose text begins with `h`.
         if len(s) == 19 and s.startswith("17h"):
             return all(i in string.hexdigits for i in s[3:])
-        # Fallback to the original looser check if the strict check fails but it still looks like a hash (just in case)
-        # But Ghidra is strict about the '17h'. The original code just checked for 'h'.
-        # Let's support both but prioritize 17h which is standard for legacy Rust.
+        # Older rustc wrote the same component without the length, so a bare `h` followed
+        # by hex is accepted too. The exact form is preferred, and tried first.
         if s.startswith("h") and len(s) > 1:
             return all(i in string.hexdigits for i in s[1:])
         return False

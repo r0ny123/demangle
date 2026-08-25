@@ -49,7 +49,7 @@ class TestOptions:
         assert out.splitlines() == ["itanium", "msvc", "-"]
 
     def test_detect_honours_a_forced_language(self, capsys):
-        """It used to print the detected scheme regardless, contradicting `--language`."""
+        """`--detect` must report the forced language, not the one it would have guessed."""
         _, out, _ = run(capsys, ["--detect", "--language", "msvc", "_Z1fv"])
         assert out.strip() == "msvc"
 
@@ -118,8 +118,8 @@ class TestPipeline:
     def test_a_closed_pipe_is_not_an_error_per_symbol(self, capsys, monkeypatch):
         """`demangle | head` closes the pipe; that must not print one error per name.
 
-        It used to catch `BrokenPipeError` inside the per-name loop and keep going,
-        producing thousands of identical error lines on a real symbol table.
+        Caught inside the per-name loop instead, a closed pipe produces thousands of
+        identical error lines on a real symbol table.
         """
         written = []
 

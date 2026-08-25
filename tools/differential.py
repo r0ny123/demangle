@@ -29,8 +29,7 @@ REFERENCES = {"itanium": "llvm-cxxfilt", "msvc": "llvm-undname", "gnu": "c++filt
 
 #: How each checked-in corpus must be replayed. A corpus records the output of one
 #: reference under one style, so replaying it under another is guaranteed to disagree --
-#: which is what made a bare `differential.py` report a false failure and left the CI job
-#: that runs it unable to go green. Anything not listed uses the defaults.
+#: a false failure, not a real one. Anything not listed uses the defaults.
 CORPUS_SETTINGS = {
     "itanium-real-world-gnu.txt": {"style": "gnu"},
     "msvc-llvm-corpus.txt": {"language": "msvc"},
