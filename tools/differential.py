@@ -50,6 +50,12 @@ REFERENCES = {"itanium": "llvm-cxxfilt", "msvc": "llvm-undname", "gnu": "c++filt
 CORPUS_SETTINGS = {
     "itanium-real-world-gnu.txt": {"style": "gnu"},
     "msvc-llvm-corpus.txt": {"language": "msvc"},
+    # Go on purpose. Most Go symbols carry nothing that distinguishes them from any other
+    # dotted name -- `bytes.Compare` could be anything -- so the scheme declines to claim
+    # them and a caller names the language instead, which is how a tool that read the
+    # binary's build info would do it. Replaying this corpus on auto-detection would be
+    # measuring the detector's caution rather than the demangler.
+    "go-real-world.txt": {"language": "go"},
 }
 
 #: Names in these corpora that the reference and this library legitimately disagree on,

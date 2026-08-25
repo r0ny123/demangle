@@ -1643,10 +1643,15 @@ class ItaniumParser:
         reader = self.reader
         builder = self.builder
 
+        # These are leaves, and a leaf is already a node that says what it is: a literal,
+        # a template parameter, a name, a type. Wrapping each in an `Expression` would add
+        # a layer carrying nothing its child does not, on the most common productions in
+        # the grammar -- and measurably so, since a template parameter appears in nearly
+        # every generic name.
         if reader.peek() == "L":
-            return builder.expression("literal", [self.expr_primary()])
+            return builder.raw(self.expr_primary())
         if reader.peek() == "T":
-            return builder.expression("parameter", [self.template_param()])
+            return self.template_param()
 
         pair = reader.peek2()
 
@@ -1656,17 +1661,17 @@ class ItaniumParser:
             reader.eat("T")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
-            return builder.expression("parameter", [self._spell_parameter(index)])
+            return builder.raw(self._spell_parameter(index))
         if pair == "fL":
             reader.pos += 2
             reader.digits()
             reader.eat("p")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
-            return builder.expression("parameter", [self._spell_parameter(index)])
+            return builder.raw(self._spell_parameter(index))
 
         if pair == "sr":
-            return builder.expression("name", [self.unresolved_name()])
+            return builder.raw(self.unresolved_name())
         if pair == "sZ":
             reader.pos += 2
             return builder.expression("sizeof_pack", ["sizeof...(", self.template_param(), ")"])
@@ -1780,7 +1785,7 @@ class ItaniumParser:
                 reader.pos += 2
                 self._precedence = UNARY_PRECEDENCE
                 return builder.expression("global_scope", ["::", self.expression()])
-            return builder.expression("name", [self.unresolved_name()])
+            return builder.raw(self.unresolved_name())
 
         if pair == "sp":
             # A pack expansion inside an expression, under the same rule as `Dp`.
@@ -1859,12 +1864,12 @@ class ItaniumParser:
         # does. A constraint like `Q 5Sized I T_ E` must contribute the `T` its argument
         # list mentions and nothing for `Sized` itself.
         if reader.peek() in DIGITS:
-            return builder.expression("name", [self.unresolved_name()])
+            return builder.raw(self.unresolved_name())
 
         # What remains that could open a type, is one: array bounds and non-type
         # template arguments both arrive here.
         if reader.peek() in _TYPE_STARTERS:
-            return builder.expression("type", [self.type_()])
+            return self.type_()
 
         raise ParseError(self._mangled, reader.pos, "unrecognised expression")
 

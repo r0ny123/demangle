@@ -47,11 +47,19 @@ class TestShape:
 
     def test_the_form_says_what_the_expression_is(self):
         """Without the form a caller is back to matching on spelling."""
-        assert {node.form for node in expressions("_Z1fIiEvDTplT_T_E")} == {
-            "decltype",
-            "binary",
-            "parameter",
-        }
+        assert {node.form for node in expressions("_Z1fIiEvDTplT_T_E")} == {"decltype", "binary"}
+
+    def test_a_leaf_operand_is_the_node_it_already_was(self):
+        """A template parameter in expression position is not wrapped in an `Expression`.
+
+        The wrapper would carry nothing its child does not -- the child already says it is
+        a builtin, a name, a literal -- and it sat on the most common productions in the
+        grammar. What matters is that the operand is still reachable and still says what
+        it is, which is what this checks.
+        """
+        binary = only("_Z1fIiEvDTplT_T_E", "binary")
+        assert [operand.kind for operand in binary.operands] == ["builtin", "builtin"]
+        assert [str(operand) for operand in binary.operands] == ["int", "int"]
 
     def test_brackets_are_parts_so_operands_stay_reachable(self):
         """`(a + b) * c` must expose `a + b`, not the string `"(a + b)"`."""

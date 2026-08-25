@@ -1,0 +1,200 @@
+"""Go symbol names.
+
+Go has no reference demangler, so most of this file is not "does it match a reference".
+The correctness argument is a property that needs no reference: re-escaping a decoded
+package path must reproduce the bytes the Go linker wrote. `escape_path` is a
+transcription of Go's own `objabi.PathToPrefix` -- the function that produced these
+names -- so a decoding that survives that round trip is one the linker would have
+written, and one that does not is wrong regardless of what any tool says about it.
+
+`TestRoundTrip` checks it over every symbol in the corpus. `TestAgainstTheCompiler`
+checks the escaping itself against values taken from the Go source, and against symbols
+a real `go build` emitted.
+"""
+
+import pathlib
+
+import pytest
+
+import demangle
+from demangle.core.errors import DemanglingError
+from demangle.schemes.go import detect
+from demangle.schemes.go._parser import escape_path, parse_go_symbol, unescape_path
+from demangle.schemes.go.nodes import Symbol as GoTree
+
+CORPUS = pathlib.Path(__file__).parent / "conformance" / "go-real-world.txt"
+
+
+def corpus():
+    rows = []
+    for line in CORPUS.read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#") and "\t" in line:
+            mangled, expected = line.split("\t", 1)
+            rows.append((mangled, expected))
+    return rows
+
+
+ROWS = corpus()
+
+
+class TestRoundTrip:
+    """The property the whole scheme rests on."""
+
+    def test_the_corpus_is_not_empty(self):
+        assert len(ROWS) > 1000
+
+    def test_the_corpus_actually_exercises_the_escaping(self):
+        """Guards against a corpus that covers everything except the encoded part.
+
+        The shipped Go toolchain contains no escaped symbol at all, so a corpus read only
+        from it would pass every test here while the decoder was broken.
+        """
+        assert sum(1 for mangled, _ in ROWS if "%" in mangled) >= 10
+
+    def test_every_decoded_package_re_escapes_to_what_the_linker_wrote(self, subtests):
+        for mangled, _ in ROWS:
+            symbol = parse_go_symbol(mangled)
+            with subtests.test(name=mangled):
+                written = mangled[len(symbol.generated) :]
+                assert written.startswith(escape_path(symbol.package))
+
+    def test_every_corpus_row_spells_as_recorded(self, subtests):
+        for mangled, expected in ROWS:
+            with subtests.test(name=mangled):
+                assert demangle.demangle(mangled, language="go") == expected
+
+    def test_a_tree_spells_what_the_text_path_spells(self, subtests):
+        for mangled, expected in ROWS:
+            with subtests.test(name=mangled):
+                assert demangle.parse(mangled, language="go").spell() == expected
+
+
+class TestAgainstTheCompiler:
+    """Values taken from Go's own source and from what `go build` emitted."""
+
+    @pytest.mark.parametrize(
+        ("path", "escaped"),
+        [
+            # A `.` after the last `/` is escaped; one before it is not. This is the rule
+            # that makes the package boundary findable at all.
+            ("example.com/corpus/v2.5", "example.com/corpus/v2%2e5"),
+            ("example.com/corpus/weird.pkg.name", "example.com/corpus/weird%2epkg%2ename"),
+            ("example.com/corpus/plain", "example.com/corpus/plain"),
+            # Escaping is over UTF-8 bytes, not characters: `ü` is two bytes.
+            ("pkg-ünï", "pkg-%c3%bcn%c3%af"),
+            ('has"quote', "has%22quote"),
+            ("has%percent", "has%25percent"),
+        ],
+    )
+    def test_escape_matches_path_to_prefix(self, path, escaped):
+        assert escape_path(path) == escaped
+        assert unescape_path(escaped) == path
+
+    @pytest.mark.parametrize(
+        ("symbol", "expected"),
+        [
+            # Emitted by go1.24.7 for tools/corpus_sources/go.
+            ("example.com/corpus/v2%2e5.Ünïcødé.Método", "example.com/corpus/v2.5.Ünïcødé.Método"),
+            ("example.com/corpus/v2%2e5.(*Ünïcødé).Pointeró", "example.com/corpus/v2.5.(*Ünïcødé).Pointeró"),
+            ("example.com/corpus/v2%2e5.Frëe[go.shape.int]", "example.com/corpus/v2.5.Frëe[go.shape.int]"),
+            (
+                "example.com/corpus/weird%2epkg%2ename..dict.G[string,int]",
+                "example.com/corpus/weird.pkg.name..dict.G[string,int]",
+            ),
+        ],
+    )
+    def test_symbols_a_real_build_emitted(self, symbol, expected):
+        assert demangle.demangle(symbol, language="go") == expected
+
+    def test_a_malformed_escape_is_refused_as_go_refuses_it(self):
+        """`PrefixToPath` errors rather than passing the `%` through."""
+        for bad in ("example.com/x/y%2.T", "example.com/x/y%.T", "example.com/x/y%zz.T"):
+            with pytest.raises(DemanglingError):
+                demangle.demangle_strict(bad, language="go")
+
+
+class TestStructure:
+    def test_a_package_is_reachable_without_splitting_on_a_dot(self):
+        """Splitting the raw name on `.` gets this wrong, which is why the tree exists."""
+        tree = demangle.parse("example.com/corpus/v2%2e5.Ünïcødé.Método", language="go")
+        assert next(tree.find("path")).text == "example.com/corpus/v2.5"
+
+    def test_a_pointer_receiver_is_marked_as_one(self):
+        tree = demangle.parse("example.com/corpus/v2%2e5.(*Ünïcødé).Pointeró", language="go")
+        receiver = next(tree.find("receiver"))
+        assert receiver.pointer is True
+        assert next(receiver.find("name")).text == "Ünïcødé"
+
+    def test_a_generic_instantiation_carries_its_arguments(self):
+        tree = demangle.parse("example.com/corpus/v2%2e5.Frëe[go.shape.int]", language="go")
+        assert next(tree.find("template")).arguments == "go.shape.int"
+
+    def test_a_generated_symbol_says_so(self):
+        tree = demangle.parse("go:itab.*errors.errorString,error", language="go")
+        assert isinstance(tree, GoTree)
+        assert tree.generated == "go:"
+
+
+class TestDetection:
+    """Go is the one scheme with no marker, so detection must decline rather than guess."""
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "example.com/corpus/v2%2e5.T.M",
+            "example.com/x.(*T).M",
+            "go:itab.*errors.errorString,error",
+            "type:.eq.example.com/x.T",
+        ],
+    )
+    def test_claims_what_is_unambiguously_go(self, name):
+        assert detect(name) is True
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            # Real Go symbols, deliberately not claimed: nothing distinguishes them from
+            # any other dotted name, and guessing would rewrite names we are unsure of.
+            "fmt.Println",
+            "main.main",
+            # Other schemes' names must never be claimed.
+            "_ZNSt6vectorIiSaIiEE9push_backERKi",
+            "?f@@YAXH@Z",
+            "_RNvCsdEttCVZFADF_8features10btree_work",
+            "_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E",
+            "memcpy",
+            "",
+        ],
+    )
+    def test_declines_everything_else(self, name):
+        assert detect(name) is False
+
+    def test_the_unclaimed_ones_still_work_when_asked_for(self):
+        assert demangle.demangle("fmt.Println", language="go") == "fmt.Println"
+
+    def test_no_corpus_name_from_another_scheme_is_claimed(self):
+        """Checked over every corpus rather than the handful above."""
+        stolen = []
+        for path in sorted((pathlib.Path(__file__).parent / "conformance").glob("*.txt")):
+            if path.name.startswith("go-"):
+                continue
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line and not line.startswith("#") and "\t" in line:
+                    name = line.split("\t", 1)[0]
+                    if detect(name):
+                        stolen.append(name)
+        assert stolen == []
+
+
+class TestSafety:
+    @pytest.mark.parametrize(
+        "value",
+        ["", "%", "%2", "%zz", "a/b.%", "a/b." + "%" * 100, "/" * 100 + ".x", "\x00/\x01.\x02"],
+    )
+    def test_demangle_never_raises(self, value):
+        assert isinstance(demangle.demangle(value), str)
+        assert isinstance(demangle.demangle(value, language="go"), str)
+
+    def test_every_corpus_name_is_answered(self):
+        for mangled, _ in ROWS:
+            assert isinstance(demangle.demangle(mangled), str)

@@ -1,7 +1,7 @@
 # demangle
 
-Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, and **Rust** — in
-pure Python. No dependencies, no native code, no compiler required.
+Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust** and **Go** —
+in pure Python. No dependencies, no native code, no compiler required.
 
 ```python
 >>> import demangle
@@ -11,6 +11,8 @@ pure Python. No dependencies, no native code, no compiler required.
 'void __cdecl f(int)'
 >>> demangle.demangle("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
 'core::fmt::Formatter::pad'
+>>> demangle.demangle("example.com/m/v2%2e5.(*T).Method", language="go")
+'example.com/m/v2.5.(*T).Method'
 ```
 
 ## Why this exists
@@ -120,6 +122,13 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **278 / 278** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **273 / 275** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
+| Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
+
+‡ Go has no reference demangler — `go tool nm` prints symbol names with their escapes
+intact and nothing in the toolchain decodes one. So the check is a property instead:
+re-escaping a decoded package path must reproduce the bytes the linker wrote, where the
+escaping is a transcription of Go's own `objabi.PathToPrefix`. It is verified over every
+symbol in the shipped toolchain binaries, not just the recorded sample.
 
 † The two shortfalls are not ours to fix: in each, the two reference implementations
 disagree with *each other* about what belongs in the substitution table — not about how
