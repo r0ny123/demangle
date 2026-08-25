@@ -10,10 +10,13 @@ stubbed to return `""` for every input -- one that had silently lost every symbo
 given -- passed fourteen of its sixteen tests. `assert isinstance(x, str)` is not a test.
 """
 
+import contextlib
+
 import pytest
 
 import demangle
-from demangle.core.errors import DemanglingError
+from demangle.core.ast import rendered
+from demangle.core.errors import DemanglingError, LimitExceeded
 from demangle.core.limits import Limits
 
 from .conftest import load_corpus
@@ -278,6 +281,32 @@ class TestResourceBounds:
         deep = "_Z1f" + "P" * 50 + "i"
         assert demangle.demangle(deep, limits=shallow) == deep
 
+    def test_a_stack_overflow_while_rendering_is_reported_as_a_bound(self):
+        """`max_depth` bounds the parse; rendering the tree afterwards is a second walk.
+
+        `build`, and every scheme's `render`, are genuinely recursive over the node
+        shapes, so a tree well inside the limit can still be deeper than the
+        interpreter's stack. What must never happen is a bare `RecursionError` reaching a
+        caller: `demangle()` is documented never to raise and `parse()` to raise only
+        `DemanglingError`, and the interpreter's own error is neither.
+
+        Asserted on `rendered` directly rather than by building a tree deep enough to
+        overflow, because *how* deep that is is a property of the interpreter and the
+        platform rather than of this package -- which is exactly what the first version
+        of this test got wrong, passing on CPython 3.11 and failing on everything else.
+        """
+
+        def overflows():
+            raise RecursionError("maximum recursion depth exceeded")
+
+        with pytest.raises(LimitExceeded) as caught:
+            rendered(overflows)
+        assert caught.value.limit_name == "recursion depth"
+        assert isinstance(caught.value, DemanglingError)
+
+    def test_rendering_returns_its_value_when_it_does_not_overflow(self):
+        assert rendered(lambda: "std::vector<int>") == "std::vector<int>"
+
     @pytest.mark.parametrize(
         "mangled",
         [
@@ -287,22 +316,15 @@ class TestResourceBounds:
             "_Z1fIX" + "ng" * 249 + "Li1EEEv",
         ],
     )
-    def test_rendering_a_tree_too_deep_for_the_stack_reports_the_bound(self, mangled):
-        """`max_depth` bounds the parse; rendering the tree afterwards is a second walk.
-
-        Each of these parses -- it is inside the limit -- and then has more levels than
-        the interpreter's stack has frames for. That has to come back as this package's
-        own error: `demangle()` is documented never to raise and `parse()` to raise only
-        `DemanglingError`, and a `RecursionError` escaping either is neither.
-        """
-        tree = demangle.parse(mangled)
-        with pytest.raises(DemanglingError):
-            tree.spell()
-        # The text path never builds the tree, so it answers.
-        assert demangle.demangle(mangled) != mangled
+    def test_a_deep_tree_never_raises_the_interpreters_own_error(self, mangled):
+        """Whether these overflow depends on the interpreter; that they never report it
+        as `RecursionError` does not. Anything but a `DemanglingError` fails here."""
+        with contextlib.suppress(DemanglingError):
+            demangle.parse(mangled).spell()
 
     def test_walking_a_deep_tree_does_not_need_the_stack(self):
-        """`walk` is iterative, so `find` works on a tree too deep to render."""
+        """`walk` is iterative, so `find` works however deep the tree is -- including on
+        a tree too deep for `spell`, where a `yield from` per level would not."""
         tree = demangle.parse("_RINvC1c1f" + "R" * 247 + "lE")
         assert sum(1 for _ in tree.walk()) > 200
         assert [node.text for node in tree.find("name")][:2] == ["c", "f"]
