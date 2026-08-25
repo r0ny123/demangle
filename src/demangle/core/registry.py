@@ -24,6 +24,7 @@ _BUILTIN_MODULES = (
     ("go", "demangle.schemes.go"),
     ("pascal", "demangle.schemes.pascal"),
     ("nim", "demangle.schemes.nim"),
+    ("objc", "demangle.schemes.objc"),
 )
 
 #: The entry-point group third-party packages advertise plugins under.

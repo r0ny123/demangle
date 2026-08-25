@@ -29,6 +29,10 @@ against differs, and the difference is the interesting part:
 - **Free Pascal** — no reference demangler either; the property is re-assembly, over all
   236,570 readable symbols in the shipped runtime, plus a check against `ppudump`.
 
+Objective-C landed the same way, against a different kind of ground truth again: no
+reference demangler exists, so the expectation is what the *declaration* said, and the
+corpus is symbols clang emitted for Objective-C this package wrote.
+
 What is left, ordered by how often an analyst actually meets it:
 
 - **Borland/Embarcadero Delphi** — a *different* scheme from Free Pascal's, written
@@ -37,7 +41,12 @@ What is left, ordered by how often an analyst actually meets it:
   to check against on any platform this is developed on, and every other scheme here was
   settled by measurement rather than by reading a specification. Anyone with a Delphi
   toolchain, or a corpus of Delphi-built BPLs with known contents, could close this.
-- **Objective-C** — macOS, and barely mangled: mostly `+[Class method]` forms.
+- ~~**Objective-C**~~ — *landed*. It turned out to be four families across three
+  runtimes rather than one form, and the interesting part is that the rules belong to the
+  compiler rather than the language: they are transcribed from clang's `Mangle.cpp`,
+  `CGObjCMac.cpp` and `CGObjCGNU.cpp`, and checked against what clang emitted for
+  declarations this package wrote. The GNU-family method mangling is not injective and
+  clang's own source says so; the readings are enumerated rather than guessed at.
 - **Swift's ObjC-runtime forms** beyond `_Tt`: the `$s` mangling covers everything the
   compiler emits, but a symbolic reference points into the binary's own metadata and
   cannot be resolved from a name alone. Reading one would mean an API that takes the

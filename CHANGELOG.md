@@ -8,6 +8,45 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Objective-C symbol names**, across all three runtimes. Objective-C is barely
+  mangled, and what mangling there is belongs to the compiler rather than the language,
+  so the rules are transcribed from clang's `lib/AST/Mangle.cpp`,
+  `lib/CodeGen/CGObjCMac.cpp` and `lib/CodeGen/CGObjCGNU.cpp`, and from the symbols GCC's
+  own front end left in the shipped `libobjc.a`. Four families are read: the Apple
+  runtimes' `-[NSString stringWithFormat:]`, the GNU family's `_i_NSString__length`,
+  Apple's `_OBJC_CLASS_$_NSString` data symbols and the fragile ABI's
+  `.objc_class_name_NSString`, plus block invocation functions, whose parent method is
+  length-prefixed by `mangleObjCMethodNameAsSourceName`, and the GNU runtime's type
+  encodings, where `@` is written as a control byte because `@` marks a version in an
+  ELF symbol.
+
+  There is no reference demangler, so the expected output is not this library's own:
+  every corpus symbol was emitted by clang 18.1.3 for Objective-C this package wrote,
+  and the expectation is what the *declaration* said. 2,665 of 2,665 across the macOS,
+  i386-fragile and GNUstep 2.0 ABIs, and every readable symbol in the shipped
+  `libobjc.a`.
+
+  **The GNU-family method mangling is not injective**, and clang says so where it writes
+  it: "it has obvious collisions in the face of underscores within class names, category
+  names, and selectors". A `:` and a field separator are both `_`. Every reading that
+  re-mangles to the symbol is found; the preferred one is the reading that needs no
+  category, because a method outside a category leaves that field empty and its two
+  separators fall together into a visible doubled underscore. Measured: 445 of 445 when
+  the identifiers are written the way Objective-C is written, 396 of 422 on a corpus
+  built to put underscores in all three, and `ambiguous` is set on every name where
+  another reading exists. The 26 are listed by name in
+  `tests/conformance/objc-lossy.txt`.
+
+  Two GNUstep forms are refused rather than guessed at. `.objc_category_FooBar` joins the
+  two names with no separator at all -- `CGObjCGNU.cpp` writes
+  `".objc_category_" + ClassName + CategoryName` -- so nothing can say where one ends.
+
+  The `_i_`/`_c_` method form is shaped like an ordinary C identifier, so whether to
+  claim it on sight had to be measured rather than argued: over 375,190 symbols from 400
+  shared libraries and archives, plus this package's corpora and the shipped libstdc++,
+  libLLVM, libclang-cpp and Swift runtime, it claims exactly five names, and all five
+  are real Objective-C methods in `libobjc.a`.
+
 - **Swift symbol names**, both manglings. A port of the compiler's own demangler and node
   printer, because nothing smaller is enough: the mangling is postfix and compresses
   against three tables that span a whole name, so a symbol cannot be read a piece at a

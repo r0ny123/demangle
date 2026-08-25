@@ -127,3 +127,34 @@ alongside what the decoder does about them.
         - parse_pascal_symbol
         - spell_routine_name
         - detect
+
+## Objective-C
+
+Barely a mangling, and what there is comes from the compiler rather than the language.
+Four families of name, three runtimes, and one form -- the GNU-family method mangling --
+that is not injective, which clang's own source says out loud.
+
+::: demangle.schemes.objc
+
+### Parser
+
+::: demangle.schemes.objc._parser
+    options:
+      members:
+        - ObjcSymbol
+        - parse_objc_symbol
+        - mangle_gnu_method
+        - gnu_method_readings
+        - decode_type_encoding
+        - detect
+
+### Nodes
+
+::: demangle.schemes.objc.nodes
+    options:
+      members:
+        - Symbol
+        - ClassName
+        - Category
+        - Selector
+        - build

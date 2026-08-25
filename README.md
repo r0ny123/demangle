@@ -1,7 +1,7 @@
 # demangle
 
 Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Swift**,
-**Go**, **D**, **Nim** and **Free Pascal** — in pure Python. No dependencies, no native
+**Objective-C**, **Go**, **D**, **Nim** and **Free Pascal** — in pure Python. No dependencies, no native
 code, no compiler required.
 
 ```python
@@ -134,6 +134,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
+| Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
 
 § Free Pascal ships no demangler either. The property is re-assembly — the parts this
 splits out, rejoined with the compiler's own separators, must reproduce the symbol — and
@@ -141,6 +142,16 @@ it holds for all 236,570 readable symbols in the shipped runtime, not only the s
 above. Independently, `ppudump` prints both a unit's mangled names and the names it
 declares, and every name read is one the unit declares. Case is not recoverable: Pascal
 is case-insensitive and the compiler upper-cases before mangling.
+
+⁂ Objective-C has no reference demangler, and barely a mangling: what there is comes from
+the compiler rather than the language, so the rules are transcribed from clang's
+`Mangle.cpp`, `CGObjCMac.cpp` and `CGObjCGNU.cpp`. The expected column is not this
+library's own output but what the *declaration* said — every symbol was emitted by clang
+for Objective-C this package wrote, or read out of the shipped GCC runtime. The
+GNU-family method mangling is not injective, and clang says so where it writes it:
+`_i_A_B_c` is `-[A(B) c]` and `-[A_B c]` alike. Every reading that re-mangles is found and
+the preferred one is flagged `ambiguous`; the 26 names where the preference differs from
+the declaration are listed in `tests/conformance/objc-lossy.txt` rather than rounded off.
 
 ¶ Nim has no reference demangler either, and its mangling is not injective: `mangle`
 drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
@@ -176,6 +187,7 @@ Run live against the reference, not replayed.
 | Free Pascal runtime and packages § | 236,570 | **100%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
+| Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
 
 About 450,000 real symbols, all exact.
 

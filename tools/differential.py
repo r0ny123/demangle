@@ -65,6 +65,8 @@ CORPUS_SETTINGS = {
 NOT_REPLAYED = frozenset(
     {
         "nim-lossy.txt",
+        "objc-lossy.txt",
+        "objc-refusals.txt",
         "pascal-refusals.txt",
         "swift-refusals.txt",
     }

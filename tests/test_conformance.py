@@ -56,6 +56,13 @@ NIM_TOTAL, NIM_EXACT = 2115, 2115
 #: current mangling and Swift 3's.
 SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 
+#: Objective-C. No reference demangler exists, so the expected column is what the
+#: *declaration* said: every symbol here was emitted by clang 18.1.3 for Objective-C this
+#: package wrote, or read out of the shipped GCC runtime, libobjc.a. Three ABIs are
+#: represented. The mangling's own losses are named rather than counted, in
+#: tests/conformance/objc-lossy.txt.
+OBJC_TOTAL, OBJC_EXACT = 2665, 2665
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the
@@ -172,6 +179,17 @@ def test_rust_matches_the_shipped_toolchain():
     assert (total, exact) == (RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT)
 
 
+def test_objc_matches_what_the_declaration_said():
+    """Auto-detected, not forced.
+
+    The forms that matter here are the ones shaped like ordinary C identifiers -- the
+    `_i_`/`_c_` method mangling above all -- so what has to hold is that detection
+    reaches them without claiming anything else.
+    """
+    total, exact = _score("objc-real-world.txt", "llvm")
+    assert (total, exact) == (OBJC_TOTAL, OBJC_EXACT)
+
+
 def test_gnu_shortfalls_are_only_the_known_reference_divergences():
     """Pin *which* names fail under GNU, not merely how many."""
     failing = []
@@ -194,6 +212,7 @@ def test_gnu_shortfalls_are_only_the_known_reference_divergences():
         "itanium-libstdcxx.txt",
         "rust-real-world.txt",
         "rust-toolchain.txt",
+        "objc-real-world.txt",
     ],
 )
 def test_best_effort_never_raises_on_any_corpus_name(corpus):
