@@ -165,6 +165,48 @@ class TestStructuralConsts(unittest.TestCase):
         self.assertEqual(demangle.demangle_strict("_RIC0KAh1_h2_EKB4_E", language="rust"), "::<{[1, 2]}, 1>")
 
 
+class TestSkipReferenceWithLifetime(unittest.TestCase):
+    """Regression: the skip pass must consume a reference's referent, lifetime or not.
+
+    `<const>` is not the only thing the skipper walks. Impl paths are reached through it,
+    so a `R`/`Q` type that stopped after its optional lifetime desynchronised everything
+    after it and turned a valid name into a parse failure. Spellings are `rustfilt`'s.
+    """
+
+    def test_reference_self_types_survive_the_skip_pass(self):
+        cases = [
+            ("_RNvXs_C3fooRL_hNtC3foo5Trait6method", "<&u8 as foo::Trait>::method"),
+            ("_RNvXs_C3fooQL_hNtC3foo5Trait6method", "<&mut u8 as foo::Trait>::method"),
+            ("_RNvXs_C3fooRhNtC3foo5Trait6method", "<&u8 as foo::Trait>::method"),
+            ("_RNvMs_C3fooRL_h3baz", "<&u8>::baz"),
+        ]
+        for mangled, spelling in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle.demangle_strict(mangled, language="rust"), spelling)
+
+
+class TestDynTraitAssociatedConsts(unittest.TestCase):
+    """A trait object may bind an associated const, not only an associated type.
+
+    Both are spelled `p <ident> ...` after the trait; a `K` in front of the value is what
+    makes it a const. Spellings are `rustfilt`'s.
+    """
+
+    def test_associated_const_bindings(self):
+        cases = [
+            ("_RIC0DNtC3foo5Traitp5AssocKh1_EL_E", "::<dyn foo::Trait<Assoc = 1>>"),
+            ("_RIC0DNtC3foo5Traitp5AssochEL_E", "::<dyn foo::Trait<Assoc = u8>>"),
+            (
+                "_RIC0DNtC3foo5Traitp3LenKj4_p5AssocRhEL_E",
+                "::<dyn foo::Trait<Len = 4, Assoc = &u8>>",
+            ),
+            ("_RIC0DNtC3foo5Traitp3ArrKAh1_h2_EEL_E", "::<dyn foo::Trait<Arr = {[1, 2]}>>"),
+        ]
+        for mangled, spelling in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle.demangle_strict(mangled, language="rust"), spelling)
+
+
 class TestMalformedConsts(unittest.TestCase):
     """Truncated and ill-formed consts degrade rather than escaping the library."""
 
