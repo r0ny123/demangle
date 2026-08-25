@@ -966,12 +966,20 @@ class ItaniumParser:
         if char == "T":
             component = self.template_param()
             if reader.peek() == "I":
-                # <template-template-param> <template-args>. The parameter itself is
-                # *not* recorded again: it was reached through <template-param>, which
-                # resolves to an entity already in the table, and 5.1.10 forbids
-                # entering the same entity twice. Confirmed by probing
-                # `_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EE`, where the
-                # reference has one `outer::inner::Holder` entry, not two.
+                # <template-template-param> <template-args>. The parameter is recorded in
+                # its own right *and* the application is, so this contributes two entries
+                # even though the parameter resolves to something already in the table.
+                # A <template-param> is a distinct grammar component from the entity it
+                # names, and 5.1.10 makes each component a candidate.
+                #
+                # Settled against the manglers rather than a demangler. For
+                # `template<template<class, int> class H, class T> H<T,3> f(H<T,3>)`,
+                # g++ 13.3 and clang++ 18.1.3 both emit `...T_IT0_Li3EES5_` -- the
+                # parameter is `S5_`, which is only reachable if `T_` took an index of
+                # its own. Recording one entry made that name unreadable and shifted
+                # every later back-reference in any name that applies a template
+                # template parameter.
+                subs.remember(component, "template-template-param")
                 return subs.remember(builder.template(component, self.template_arguments()), "type")
             # A <template-param> reached through <type> is a <type>, and <type> is a
             # candidate. Confirmed by `_ZSt4sortIPiEvT_S1_`, where `S1_` resolves to

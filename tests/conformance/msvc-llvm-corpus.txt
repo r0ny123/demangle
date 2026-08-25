@@ -2,7 +2,21 @@
 #
 # The mangled names are LLVM's own demangler test corpus (llvm/test/Demangle/ms-*.test),
 # published under the Apache License 2.0 with the LLVM exception. The expected column is
-# what llvm-undname produces for each one.
+# what llvm-undname produces for each one, with four documented exceptions.
+#
+# Those four are the multi-element vftable base paths, `??_7A@@6BB@@C@@@` and its
+# relatives. llvm-undname reads the first element of the path and drops the rest, so
+# `??_7A@B@@6BC@D@@@`, `??_7A@B@@6BC@D@@E@F@@@` and `??_7A@B@@6BC@D@@E@F@@G@H@@@` --
+# three different symbols, naming three different vtables -- all come back from it as
+# `const B::A::`vftable'{for `D::C'}`. The dropped elements are plainly present in the
+# mangling. A demangler that maps distinct symbols onto one spelling is not a spelling
+# choice to follow; a tool labelling a binary would show three vtables as one. Checked
+# against llvm-undname 16, 18 and 20: all three lose it identically.
+#
+# So these keep the full path, joined the way Microsoft spells a base path -- `{for
+# `D::C's `F::E'}`. `tools/differential.py --cross` reports them, and
+# `tests/test_conformance.py` pins them by name so the day one changes is a deliberate
+# edit rather than a silent drift.
 #
 ?foo@@YAXI@Z	void __cdecl foo(unsigned int)
 ?foo@@YAXN@Z	void __cdecl foo(double)

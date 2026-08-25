@@ -118,10 +118,10 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **278 / 278** |
-| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **272 / 275** † |
-| Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **273 / 275** † |
+| Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
 
-† The three shortfalls are not ours to fix: in each, the two reference implementations
+† The two shortfalls are not ours to fix: in each, the two reference implementations
 disagree with *each other* about what belongs in the substitution table — not about how
 to spell it. Matching both would mean two incompatible parses of the same bytes, so we
 follow LLVM and pin the disagreements by name.
