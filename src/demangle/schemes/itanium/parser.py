@@ -863,7 +863,7 @@ class ItaniumParser:
         expression = self.expression()
         reader.expect("E")
         keyword = "decltype " if self.options.gnu_expression_spelling else "decltype"
-        return self.builder.raw(f"{keyword}({expression})")
+        return self.builder.expression("decltype", [keyword, "(", expression, ")"])
 
     # -- 5.1.5 types -----------------------------------------------------------
 
@@ -1008,7 +1008,7 @@ class ItaniumParser:
             reader.pos += 2
             if pair in ("DB", "DU"):
                 # _BitInt(N): DB <number> _ | DB <expression> _
-                width = reader.digits() if reader.peek() in DIGITS else self.expression()
+                width = reader.digits() if reader.peek() in DIGITS else self.expression_text()
                 reader.expect("_")
                 return builder.raw(f"{EXTENDED_BUILTIN_TYPES[pair]}({width})")
             return builder.builtin(EXTENDED_BUILTIN_TYPES[pair])
@@ -1057,7 +1057,7 @@ class ItaniumParser:
         if pair == "DO":
             # throw(<expression>)
             reader.pos += 2
-            condition = self.expression()
+            condition = self.expression_text()
             reader.expect("E")
             return self.subs.remember(self.function_type(f" throw({condition})"), "type")
 
@@ -1082,7 +1082,7 @@ class ItaniumParser:
         """<type> ::= Dv <number> _ <type> | Dv _ <expression> _ <type>"""
         reader = self.reader
         reader.expect("Dv")
-        size = self.expression() if reader.eat("_") else reader.digits()
+        size = self.expression_text() if reader.eat("_") else reader.digits()
         reader.expect("_")
         inner = self.type_()
         return self.builder.raw(f"{self.builder.spell(inner)} vector[{size}]")
@@ -1152,7 +1152,9 @@ class ItaniumParser:
         elif reader.peek() in DIGITS:
             dimension = reader.digits()
         else:
-            dimension = self.expression()
+            # `Builder.array` takes a dimension as characters: an array bound is part of
+            # the type's spelling, not an operand position a consumer would walk into.
+            dimension = self.expression_text()
         reader.expect("_")
         return self.builder.array(self.type_(), dimension)
 
@@ -1333,7 +1335,7 @@ class ItaniumParser:
         if reader.eat("X"):
             expression = self.expression()
             reader.expect("E")
-            return builder.raw(expression), False
+            return expression, False
 
         if reader.peek() == "L":
             return builder.raw(self.expr_primary()), False
@@ -1576,20 +1578,21 @@ class ItaniumParser:
         if not reader.eat("pi"):
             expression = self.expression()
             reader.eat("E")
-            return f"({expression})"
+            return self.builder.expression("initialiser", ["(", expression, ")"])
         arguments = []
         while not reader.eat("E"):
             if reader.eof:
                 raise ParseError(self._mangled, reader.pos, "unterminated initialiser")
             arguments.append(self.expression())
-        return f"({', '.join(arguments)})"
+        return self.builder.expression("initialiser", ["(", *_separated(arguments), ")"])
 
     def expression(self):
         """A constant expression appearing in a type or template argument.
 
-        Only the shapes a compiler actually emits into a name are modelled. The full
-        expression grammar is enormous, and most of it cannot reach a mangled name
-        because it is not part of any signature.
+        Returns a builder handle, so an expression is structure to a builder that wants
+        structure and text to one that wants text. Only the shapes a compiler actually
+        emits into a name are modelled: the full expression grammar is enormous and most
+        of it cannot reach a mangled name, because it is not part of any signature.
 
         Sets `_precedence`, which a containing operator reads immediately afterwards to
         decide whether this operand needs brackets.
@@ -1601,6 +1604,15 @@ class ItaniumParser:
         finally:
             self._leave()
 
+    def expression_text(self):
+        """An expression where the grammar around it needs characters, not a shape.
+
+        An array bound and a `throw(...)` specification are spelled *into* a type by
+        productions that take text, so those ask for text. Everything reachable from
+        `_expression` keeps the handle.
+        """
+        return self.builder.spell(self.expression())
+
     def _spell_parameter(self, index):
         """A reference to a function parameter, `fp_` / `fp0_` / `fpT_`."""
         if self.options.gnu_expression_spelling:
@@ -1608,18 +1620,25 @@ class ItaniumParser:
         return f"fp{index}"
 
     def _operand(self, binding):
-        """One operand, bracketed only when it binds more loosely than its operator."""
-        text = self.expression()
-        return f"({text})" if self._precedence < binding else text
+        """One operand, bracketed only when it binds more loosely than its operator.
+
+        The brackets are reported as parts of a `paren` expression rather than glued on,
+        so a consumer reading the tree sees the operand it wrapped instead of having to
+        strip punctuation back off a string.
+        """
+        operand = self.expression()
+        if self._precedence < binding:
+            return self.builder.expression("paren", ["(", operand, ")"])
+        return operand
 
     def _expression(self):
         reader = self.reader
         builder = self.builder
 
         if reader.peek() == "L":
-            return self.expr_primary()
+            return builder.expression("literal", [self.expr_primary()])
         if reader.peek() == "T":
-            return builder.spell(self.template_param())
+            return builder.expression("parameter", [self.template_param()])
 
         pair = reader.peek2()
 
@@ -1629,20 +1648,20 @@ class ItaniumParser:
             reader.eat("T")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
-            return self._spell_parameter(index)
+            return builder.expression("parameter", [self._spell_parameter(index)])
         if pair == "fL":
             reader.pos += 2
             reader.digits()
             reader.eat("p")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
-            return self._spell_parameter(index)
+            return builder.expression("parameter", [self._spell_parameter(index)])
 
         if pair == "sr":
-            return self.unresolved_name()
+            return builder.expression("name", [self.unresolved_name()])
         if pair == "sZ":
             reader.pos += 2
-            return f"sizeof...({builder.spell(self.template_param())})"
+            return builder.expression("sizeof_pack", ["sizeof...(", self.template_param(), ")"])
         if pair == "sP":
             reader.pos += 2
             members = []
@@ -1651,63 +1670,63 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "unterminated sizeof... pack")
                 argument, _ = self.template_arg()
                 if argument is not None:
-                    members.append(builder.spell(argument))
-            return f"sizeof...({', '.join(members)})"
+                    members.append(argument)
+            return builder.expression("sizeof_pack", ["sizeof...(", *_separated(members), ")"])
         if pair == "st":
             reader.pos += 2
-            return f"sizeof ({builder.spell(self.type_())})"
+            return builder.expression("sizeof", ["sizeof (", self.type_(), ")"])
         if pair == "sz":
             reader.pos += 2
-            return f"sizeof ({self.expression()})"
+            return builder.expression("sizeof", ["sizeof (", self.expression(), ")"])
         if pair == "at":
             reader.pos += 2
-            return f"alignof ({builder.spell(self.type_())})"
+            return builder.expression("alignof", ["alignof (", self.type_(), ")"])
         if pair == "az":
             reader.pos += 2
-            return f"alignof ({self.expression()})"
+            return builder.expression("alignof", ["alignof (", self.expression(), ")"])
         if pair == "ti":
             reader.pos += 2
-            return f"typeid ({builder.spell(self.type_())})"
+            return builder.expression("typeid", ["typeid (", self.type_(), ")"])
         if pair == "te":
             reader.pos += 2
-            return f"typeid ({self.expression()})"
+            return builder.expression("typeid", ["typeid (", self.expression(), ")"])
         if pair == "nx":
             reader.pos += 2
-            return f"noexcept ({self.expression()})"
+            return builder.expression("noexcept", ["noexcept (", self.expression(), ")"])
 
         if pair == "cl":
             reader.pos += 2
             target = self.expression()
             if self.options.gnu_expression_spelling:
-                target = f"({target})"
+                target = builder.expression("paren", ["(", target, ")"])
             arguments = []
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated call expression")
                 arguments.append(self.expression())
-            return f"{target}({', '.join(arguments)})"
+            return builder.expression("call", [target, "(", *_separated(arguments), ")"])
 
         if pair == "cv":
             reader.pos += 2
-            kind = builder.spell(self.type_())
+            kind = self.type_()
             if reader.eat("_"):
                 arguments = []
                 while not reader.eat("E"):
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated conversion")
                     arguments.append(self.expression())
-                return f"({kind})({', '.join(arguments)})"
-            return f"({kind})({self.expression()})"
+                return builder.expression("cast", ["(", kind, ")(", *_separated(arguments), ")"])
+            return builder.expression("cast", ["(", kind, ")(", self.expression(), ")"])
 
         if pair == "tl":
             reader.pos += 2
-            kind = builder.spell(self.type_())
+            kind = self.type_()
             members = []
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated braced initialiser")
                 members.append(self.expression())
-            return f"{kind}{{{', '.join(members)}}}"
+            return builder.expression("braced", [kind, "{", *_separated(members), "}"])
 
         if pair == "il":
             reader.pos += 2
@@ -1716,7 +1735,7 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated initialiser list")
                 members.append(self.expression())
-            return "{" + ", ".join(members) + "}"
+            return builder.expression("initialiser_list", ["{", *_separated(members), "}"])
 
         if pair == "qu":
             reader.pos += 2
@@ -1725,7 +1744,7 @@ class ItaniumParser:
             when_true = self._operand(binding)
             when_false = self._operand(binding)
             self._precedence = binding
-            return f"{condition} ? {when_true} : {when_false}"
+            return builder.expression("conditional", [condition, " ? ", when_true, " : ", when_false])
 
         if pair in ("dt", "pt"):
             # <expression> ::= dt <expression> <unresolved-name>  (and `pt` for `->`)
@@ -1734,7 +1753,7 @@ class ItaniumParser:
             joiner = "." if pair == "dt" else "->"
             name = self.unresolved_name()
             self._precedence = POSTFIX_PRECEDENCE
-            return owner + joiner + name
+            return builder.expression("member", [owner, joiner, name])
 
         if pair == "ix":
             reader.pos += 2
@@ -1743,7 +1762,7 @@ class ItaniumParser:
             owner = self._operand(PRIMARY_PRECEDENCE)
             index = self.expression()
             self._precedence = POSTFIX_PRECEDENCE
-            return f"{owner}[{index}]"
+            return builder.expression("subscript", [owner, "[", index, "]"])
 
         if pair == "gs":
             # A leading `::` forcing global scope. It introduces either a global-scope
@@ -1752,14 +1771,16 @@ class ItaniumParser:
             if reader.text[reader.pos + 2 : reader.pos + 4] in ("nw", "na", "dl", "da"):
                 reader.pos += 2
                 self._precedence = UNARY_PRECEDENCE
-                return "::" + self.expression()
-            return self.unresolved_name()
+                return builder.expression("global_scope", ["::", self.expression()])
+            return builder.expression("name", [self.unresolved_name()])
 
         if pair == "sp":
             # A pack expansion inside an expression, under the same rule as `Dp`.
             reader.pos += 2
             expanded = self.expression()
-            return expanded if self._scope_has_pack else expanded + "..."
+            if self._scope_has_pack:
+                return expanded
+            return builder.expression("pack_expansion", [expanded, "..."])
 
         if pair == "nw" or pair == "na":
             reader.pos += 2
@@ -1768,25 +1789,25 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated new expression")
                 arguments.append(self.expression())
-            kind = builder.spell(self.type_())
+            kind = self.type_()
             keyword = "new" if pair == "nw" else "new[]"
             gap = " " if self.options.gnu_expression_spelling else ""
-            placement = f"{gap}({', '.join(arguments)})" if arguments else ""
+            placement = [gap, "(", *_separated(arguments), ")"] if arguments else []
             self._precedence = UNARY_PRECEDENCE
-            if reader.eat("E"):
-                return f"{keyword}{placement} {kind}"
-            return f"{keyword}{placement} {kind}{self.initialiser()}"
+            parts = [keyword, *placement, " ", kind]
+            if not reader.eat("E"):
+                parts.append(self.initialiser())
+            return builder.expression("new", parts)
 
         if pair in ("dl", "da"):
             reader.pos += 2
             keyword = "delete" if pair == "dl" else "delete[]"
-            return f"{keyword} {self.expression()}"
+            return builder.expression("delete", [keyword, " ", self.expression()])
 
         if pair in ("dc", "sc", "cc", "rc"):
             reader.pos += 2
             casts = {"dc": "dynamic_cast", "sc": "static_cast", "cc": "const_cast", "rc": "reinterpret_cast"}
-            kind = builder.spell(self.type_())
-            return f"{casts[pair]}<{kind}>({self.expression()})"
+            return builder.expression("named_cast", [casts[pair], "<", self.type_(), ">(", self.expression(), ")"])
 
         if pair in POSTFIX_OPERATORS:
             # 5.1.6: `pp`/`mm` are postfix; `pp_`/`mm_` are the prefix forms.
@@ -1794,10 +1815,10 @@ class ItaniumParser:
             if reader.eat("_"):
                 operand = self._operand(PRIMARY_PRECEDENCE)
                 self._precedence = UNARY_PRECEDENCE
-                return f"{POSTFIX_OPERATORS[pair]}{operand}"
+                return builder.expression("unary", [POSTFIX_OPERATORS[pair], operand])
             operand = self._operand(POSTFIX_PRECEDENCE)
             self._precedence = POSTFIX_PRECEDENCE
-            return f"{operand}{POSTFIX_OPERATORS[pair]}"
+            return builder.expression("postfix", [operand, POSTFIX_OPERATORS[pair]])
 
         if pair in PREFIX_OPERATORS:
             reader.pos += 2
@@ -1805,7 +1826,7 @@ class ItaniumParser:
             # another prefix operator: the references print `!(!true)`, not `!!true`.
             operand = self._operand(PRIMARY_PRECEDENCE)
             self._precedence = UNARY_PRECEDENCE
-            return f"{PREFIX_OPERATORS[pair]}{operand}"
+            return builder.expression("unary", [PREFIX_OPERATORS[pair], operand])
 
         if pair in INFIX_OPERATORS:
             reader.pos += 2
@@ -1820,24 +1841,34 @@ class ItaniumParser:
                 # A comma expression is always bracketed, or it cannot be told from the
                 # argument separator it is sitting next to.
                 self._precedence = PRIMARY_PRECEDENCE
-                return f"({left}, {right})"
+                return builder.expression("comma", ["(", left, ", ", right, ")"])
             self._precedence = binding
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
-            return f"{left}{gap}{spelling}{gap}{right}"
+            return builder.expression("binary", [left, gap, spelling, gap, right])
 
         # A bare name here is an <unresolved-name>: the grammar says so, and it matters
         # because a name in an expression creates no substitution entry while a <type>
         # does. A constraint like `Q 5Sized I T_ E` must contribute the `T` its argument
         # list mentions and nothing for `Sized` itself.
         if reader.peek() in DIGITS:
-            return self.unresolved_name()
+            return builder.expression("name", [self.unresolved_name()])
 
         # What remains that could open a type, is one: array bounds and non-type
         # template arguments both arrive here.
         if reader.peek() in _TYPE_STARTERS:
-            return builder.spell(self.type_())
+            return builder.expression("type", [self.type_()])
 
         raise ParseError(self._mangled, reader.pos, "unrecognised expression")
+
+
+def _separated(items, separator=", "):
+    """Interleave `items` with `separator`, as parts for `Builder.expression`."""
+    parts = []
+    for position, item in enumerate(items):
+        if position:
+            parts.append(separator)
+        parts.append(item)
+    return parts
 
 
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):

@@ -127,6 +127,9 @@ class SpellingBuilder(Builder):
     def literal(self, kind, value):
         return Spelling(value)
 
+    def expression(self, form, parts):
+        return Spelling("".join(part if isinstance(part, str) else self.spell(part) for part in parts))
+
     # -- composition -----------------------------------------------------------
 
     def qualified(self, parts):
