@@ -51,22 +51,46 @@ demangle = "demangle.cli:main"
 # Built-ins are registered directly rather than through entry points; this group is
 # where third-party distributions advertise additional schemes.
 
-[project.optional-dependencies]
-dev = [
+# Development requirements are dependency groups (PEP 735), not optional-dependencies.
+# An extra is a *published* feature of the distribution -- `pip install demangle[dev]`
+# would appear on PyPI as something users are invited to install -- and a linter is not
+# a feature of a demangler. Groups are local to the source tree and never reach the
+# built metadata.
+#
+# Install with `uv sync`, `uv pip install --group dev`, or `pip install --group dev`
+# (pip 25.1 or newer). `hatch run` handles it for you.
+[dependency-groups]
+test = [
     "pytest>=8",
     "pytest-cov",
     "hypothesis>=6",
-    # Both linters are pinned, for the same reason: they add rules in patch releases,
-    # so an unpinned version reddens unrelated changes on someone else's release
-    # schedule. Dependabot proposes the bumps; each is taken deliberately, with the new
-    # rules addressed in the same commit.
+]
+# ruff replaces black, isort, flake8 and pyupgrade; ty replaces mypy. Both are written
+# in Rust and check the whole tree in well under a second, which is what makes it
+# reasonable to gate every commit on them.
+#
+# Both are pinned to an exact version. They add rules in patch releases, so an unpinned
+# one reddens unrelated changes on someone else's release schedule; pinned, Dependabot
+# proposes each bump as its own pull request and the new rules get addressed in the
+# commit that takes it. `format` is a group of its own so the ruff pin has exactly one
+# home -- the documentation build wants ruff as well, to format the signatures it
+# renders.
+format = [
     "ruff==0.16.4",
-    "ty==0.0.69",
+]
+lint = [
+    { include-group = "format" },
+    "ty==0.0.74",
 ]
 docs = [
+    { include-group = "format" },
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
     "mkdocstrings-python>=1.10",
+]
+dev = [
+    { include-group = "test" },
+    { include-group = "lint" },
 ]
 
 # -- build ---------------------------------------------------------------------
@@ -100,14 +124,18 @@ include = [
 
 # -- development environments --------------------------------------------------
 
+# uv resolves and installs an environment in a fraction of the time pip takes, and Hatch
+# drives it directly. Nothing here depends on uv being present -- Hatch falls back --
+# but with it a cold `hatch run check` is seconds rather than a minute.
 [tool.hatch.envs.default]
-features = ["dev"]
+installer = "uv"
+dependency-groups = ["dev"]
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args}"
 cover = "pytest --cov=demangle --cov-report=term-missing {args}"
 lint = ["ruff check {args:.}", "ruff format --check {args:.}", "ty check {args:.}"]
-fmt = ["ruff check --fix {args:.}", "ruff format {args:.}"]
+fmt = ["ruff check --fix {args:.}", "ruff format {args:.}", "lint"]
 bench = "python benchmarks/bench.py {args}"
 differential = "python tools/differential.py {args}"
 # Everything a pull request is expected to pass, in one command.
@@ -116,8 +144,13 @@ check = ["lint", "test", "differential", "bench --check"]
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
 
+# `template` set to its own name so this environment does *not* inherit the default's
+# scripts. It did, and `hatch run docs:lint` ran ty against an environment holding only
+# the documentation tooling -- ten diagnostics that meant nothing.
 [tool.hatch.envs.docs]
-features = ["docs"]
+template = "docs"
+installer = "uv"
+dependency-groups = ["docs"]
 
 [tool.hatch.envs.docs.scripts]
 # `--strict` on purpose: a warning here means a broken cross-reference, an undocumented

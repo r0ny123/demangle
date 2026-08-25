@@ -5,23 +5,40 @@ spelling, or contributing a corpus should not require understanding the whole co
 
 ## Getting set up
 
-The project builds with [Hatch](https://hatch.pypa.io/). You do not need it -- a plain
-editable install works -- but it wraps every check in one command.
+The project builds with [Hatch](https://hatch.pypa.io/) and installs with
+[uv](https://docs.astral.sh/uv/). You need neither -- plain pip works -- but together
+they turn the whole check into one command that finishes in seconds.
 
 ```console
 git clone https://github.com/r0ny123/demangle
 cd demangle
 
-# With Hatch: creates the environment and runs everything a pull request must pass.
+# Creates the environment and runs everything a pull request must pass.
 hatch run check
+```
 
-# Or without it.
-pip install -e ".[dev]"
+The pieces are available on their own: `hatch run test`, `cover`, `lint`, `fmt`,
+`bench`, `differential`. `hatch run test:test` runs the suite across Python 3.11 through
+3.13, and `hatch run docs:serve` previews the documentation site.
+
+Without Hatch:
+
+```console
+uv pip install -e . --group dev     # or: pip install --group dev  (pip 25.1+)
 pytest
 ```
 
-`hatch run` also has the pieces on their own: `test`, `cover`, `lint`, `fmt`, `bench`,
-`differential`. `hatch run test:test` runs the suite across Python 3.11 through 3.13.
+Development requirements are [dependency groups](https://peps.python.org/pep-0735/),
+not extras. An extra is a *published* feature of the distribution -- `pip install
+demangle[dev]` would appear on PyPI as something users are invited to install -- and a
+linter is not a feature of a demangler. The groups are `test`, `format`, `lint`, `docs`,
+and `dev`, which includes the first three.
+
+The toolchain is deliberately the fast one: **ruff** for linting and formatting (it
+replaces black, isort, flake8 and pyupgrade), **ty** for type checking (it replaces
+mypy), **uv** for installing. Both checkers are written in Rust and cover the whole tree
+in well under a second, which is what makes it reasonable to gate every commit on them.
+Both are pinned exactly; Dependabot proposes the bumps.
 
 The reference demanglers are optional but useful. On Debian or Ubuntu:
 

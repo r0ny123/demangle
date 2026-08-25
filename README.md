@@ -39,8 +39,8 @@ Python 3.11 or newer. That is the whole dependency list.
 ### The string you probably want
 
 ```python
-demangle.demangle(name)          # never raises; returns `name` unchanged if unreadable
-demangle.demangle_strict(name)   # raises DemanglingError instead
+demangle.demangle(name)  # never raises; returns `name` unchanged if unreadable
+demangle.demangle_strict(name)  # raises DemanglingError instead
 ```
 
 `demangle()` is built for the case where you are labelling every symbol in a binary and
