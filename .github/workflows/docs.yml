@@ -16,12 +16,11 @@ concurrency:
 
 jobs:
   build:
-    # GitHub Pages is not available on a private repository outside a paid plan, and
-    # `configure-pages` fails the job outright when it is not enabled rather than
-    # skipping. Gating on visibility means this publishes itself the moment the
-    # repository goes public and stays quiet until then. The build is not lost in the
-    # meantime: CI runs `mkdocs build --strict` on every push and pull request, so a
-    # broken cross-reference is still caught here -- only the deployment waits.
+    # Pages is unavailable on a private repository outside a paid plan, and
+    # `configure-pages` fails the job rather than skipping. Gating on visibility means
+    # this starts publishing the moment the repository goes public. Nothing is lost
+    # meanwhile: CI runs `mkdocs build --strict` on every push, so a broken
+    # cross-reference is still caught -- only the deployment waits.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
