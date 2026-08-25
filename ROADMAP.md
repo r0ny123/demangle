@@ -14,37 +14,20 @@ about substitution table contents, pinned by name in `tests/test_conformance.py`
 The plugin interface exists so these need no core changes. Go landed this way, without
 touching `core` at all.
 
-### D — implemented, not registered
+D landed the same way, and is registered: 100% against GNU binutils'
+`c++filt --format=dlang` over every symbol it can read in the shipped `libgphobos` and
+`libgdruntime`.
 
-`src/demangle/schemes/d/` reads **88.4%** of the 16,333 symbols GNU binutils'
-`c++filt --format=dlang` can read across the shipped `libgphobos` and `libgdruntime`, and
-spells **327** of them differently. It is deliberately *not* registered as a language, so
-`demangle()` will not use it: every other scheme here is at 100% on its real-binary
-corpus, and one that mis-spells two names in a hundred would put exactly the
-plausible-but-wrong output this library treats as worse than silence in front of a caller
-with no way to tell. Refusing is safe; guessing is not.
+Ordered by how often an analyst actually meets them, which is not the order this list was
+originally in — Go and Rust are the languages modern malware is written in, and D is not:
 
-It never raises — checked over all 19,315 symbols — and `tests/conformance/d-real-world.txt`
-pins what it reads exactly, so the figure cannot go down while the rest is finished.
-
-What is left, by how much it costs:
-
-- **1,109 refusals from `expected a number`** — the largest single group, and not yet
-  diagnosed to one cause.
-- **327 mis-spellings.** These matter more than the refusals: a refusal returns the symbol
-  unchanged, a mis-spelling does not.
-- **169 array/struct literal template values** (`V...A`, `V...S`), which need the value
-  decoded rather than just its type.
-- **163 `H` template argument markers** and **97 implausible length prefixes**, both
-  likely one grammar production each.
-- 393 names the *reference* cannot read but this scheme answers. Whether that is
-  over-acceptance here or a gap there is unresolved; the LLVM findings above are a
-  reminder that it can be either.
-
-### Others
-
-- **Swift** — currently needs the `swift` binary; a pure-Python reader would be a first.
-- **Delphi**, **Objective-C**.
+- **Nim** — real and rising in loaders and droppers (NimzaLoader, Nimbda). Was missing
+  from this list entirely, which was an oversight: it is a more common sight in a sample
+  than D or Delphi.
+- **Swift** — macOS and iOS. `swift-demangle` ships with the toolchain and is a usable
+  oracle.
+- **Delphi** — banking trojans and a long tail of older families, plus packers.
+- **Objective-C** — macOS, and barely mangled: mostly `+[Class method]` forms.
 
 ## 2. Performance
 

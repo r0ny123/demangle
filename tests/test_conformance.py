@@ -33,6 +33,9 @@ RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 #: property is the correctness argument.
 GO_TOTAL, GO_EXACT = 1498, 1498
 
+#: D, against GNU binutils' D demangler over the shipped libgphobos and libgdruntime.
+D_TOTAL, D_EXACT = 1257, 1257
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the
@@ -86,6 +89,11 @@ def test_go_corpus():
     """See `GO_TOTAL` for what this does and does not establish."""
     total, exact = _score("go-real-world.txt", "llvm", language="go")
     assert (total, exact) == (GO_TOTAL, GO_EXACT)
+
+
+def test_d_matches_gnu_dlang_demangler():
+    total, exact = _score("d-real-world.txt", "llvm", language="d")
+    assert (total, exact) == (D_TOTAL, D_EXACT)
 
 
 def test_msvc_matches_llvm_undname():

@@ -1,7 +1,7 @@
 # demangle
 
-Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust** and **Go** —
-in pure Python. No dependencies, no native code, no compiler required.
+Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Go** and
+**D** — in pure Python. No dependencies, no native code, no compiler required.
 
 ```python
 >>> import demangle
@@ -123,6 +123,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **275 / 277** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
+| D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 
 ‡ Go has no reference demangler — `go tool nm` prints symbol names with their escapes
 intact and nothing in the toolchain decodes one. So the check is a property instead:
@@ -145,8 +146,10 @@ Run live against the reference, not replayed.
 | `libclang-cpp.so` + Polly + LTO | 41,140 | **100%** |
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6` | 5,913 | **100%** |
+| `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
+| Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 
-About 112,000 real symbols, all exact.
+About 160,000 real symbols, all exact.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
