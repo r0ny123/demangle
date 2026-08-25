@@ -7,6 +7,7 @@ they fail at the moment they are broken rather than a year later.
 
 import ast
 import pkgutil
+import sys
 from pathlib import Path
 
 import demangle
@@ -61,17 +62,20 @@ class TestLayering:
         assert offenders == []
 
     def test_no_third_party_imports(self):
-        """The dependency-free promise, checked rather than asserted in a README."""
-        allowed = {"dataclasses", "enum", "string", "threading", "typing", "warnings", "ast", "sys", "importlib"}
+        """The dependency-free promise, checked rather than asserted in a README.
+
+        Membership is decided by `sys.stdlib_module_names` rather than a list kept by
+        hand. A hand-kept list has to be edited every time a parser reaches for another
+        standard module, and the edit looks exactly like someone widening the rule to
+        let a real dependency through.
+        """
         offenders = []
         for path in SOURCE.rglob("*.py"):
             for name in imports_of(path):
                 root = name.split(".")[0]
-                if not root or name.startswith("."):
+                if not root or name.startswith(".") or root == "demangle":
                     continue
-                if root in allowed or root == "demangle":
-                    continue
-                if root in {"functools", "itertools", "collections", "re", "os", "pathlib", "argparse"}:
+                if root in sys.stdlib_module_names:
                     continue
                 offenders.append(f"{path.relative_to(SOURCE)} imports {name}")
         assert offenders == []

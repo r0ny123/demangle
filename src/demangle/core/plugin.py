@@ -45,6 +45,15 @@ class LanguagePlugin:
     options_type: Any = None
     """The dataclass this language accepts as `options`, if it takes any."""
 
+    symbol_table_decorations: bool = False
+    """Whether names in this scheme may carry symbol-table decorations.
+
+    True for schemes that appear in ELF and Mach-O symbol tables, where the linker
+    appends version suffixes and the compiler appends clone suffixes. It must stay False
+    for MSVC, whose decorated names use `@` as their own scope separator and would be
+    truncated at the first one.
+    """
+
     priority: int = 100
     """Detection order, lower first.
 

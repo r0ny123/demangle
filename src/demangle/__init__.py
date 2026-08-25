@@ -26,7 +26,7 @@ from .api import (
     parse,
     styles,
 )
-from .core.ast import Node
+from .core.ast import Decorated, Node
 from .core.errors import (
     DemanglingError,
     LimitExceeded,
@@ -44,6 +44,7 @@ __version__ = "0.1.0"
 __all__ = [
     "DEFAULT_LIMITS",
     "RELAXED_LIMITS",
+    "Decorated",
     "DemanglingError",
     "LanguagePlugin",
     "LimitExceeded",

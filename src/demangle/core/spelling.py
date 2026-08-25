@@ -26,15 +26,22 @@ _TIGHT_ENDINGS = ("*", "&", "(", " ", ":")
 class Spelling:
     """One type or name, split around its declarator position."""
 
-    __slots__ = ("is_array", "is_function", "left", "ref_kind", "right")
+    __slots__ = ("is_array", "is_function", "left", "members", "ref_kind", "right")
 
-    def __init__(self, left, right="", is_function=False, is_array=False, ref_kind=""):
+    def __init__(self, left, right="", is_function=False, is_array=False, ref_kind="", members=None):
         self.left = left
         self.right = right
         self.is_function = is_function
         self.is_array = is_array
         #: "", "&" or "&&". Tracked so reference collapsing can be applied.
         self.ref_kind = ref_kind
+        #: For a parameter pack, its members; None for an ordinary type.
+        #:
+        #: A pack stays a sequence rather than becoming its joined text, because a
+        #: declarator applied to a pack applies to every member: `Dp O T_` over three
+        #: arguments is three rvalue references, not one wrapped around the joined
+        #: spelling. Every constructor below distributes over `members` when present.
+        self.members = members
 
     def spell(self, declarator=""):
         if not declarator:
@@ -52,6 +59,23 @@ class Spelling:
         return f"Spelling({self.left!r}, {self.right!r})"
 
 
+def pack_of(members):
+    """A parameter pack, spelled as its members and still addressable as a sequence.
+
+    Nested packs are spliced. A pack whose one member is an expansion of an empty pack
+    is empty, not a pack of one empty thing -- otherwise `AnalysisManager<T_, J Dp T0_ E>`
+    with `T0_` bound to nothing prints the separator for an argument that is not there.
+    """
+    flattened = []
+    for member in members:
+        if member.members is not None:
+            flattened.extend(member.members)
+        else:
+            flattened.append(member)
+    flattened = tuple(flattened)
+    return Spelling(", ".join(str(member) for member in flattened), members=flattened)
+
+
 def _wrap(inner, token):
     """Apply a declarator token, parenthesising where precedence demands it.
 
@@ -60,6 +84,9 @@ def _wrap(inner, token):
     binding tighter than the one already applied needs grouping, and function and array
     types are precisely the cases where one already has been.
     """
+    if inner.members is not None:
+        # Applying a declarator to a pack applies it to each member.
+        return pack_of(_wrap(member, token) for member in inner.members)
     if inner.is_function or inner.is_array:
         left = inner.left
         # A function's left half already ends in the space after its return type; an
@@ -111,6 +138,8 @@ class SpellingBuilder(Builder):
     def qualify(self, inner, qualifiers):
         if not qualifiers:
             return inner
+        if inner.members is not None:
+            return pack_of(self.qualify(member, qualifiers) for member in inner.members)
         text = " ".join(qualifiers)
         if inner.is_function:
             # cv on a function type qualifies the implicit object parameter, so it
@@ -125,11 +154,16 @@ class SpellingBuilder(Builder):
     def pointer(self, inner):
         return _wrap(inner, "*")
 
+    def parameter_pack(self, members):
+        return pack_of(members)
+
     def reference(self, inner):
         # C++ reference collapsing ([dcl.ref]): applying `&` to any reference yields an
         # lvalue reference. `T& &`, `T&& &` and `T& &&` are all `T&`. This shows up in
         # every `std::forward` instantiation, where `O T_` is applied to a `T` already
         # bound to `char const&` and must not print `char const&&&`.
+        if inner.members is not None:
+            return pack_of(self.reference(member) for member in inner.members)
         if inner.ref_kind == "&":
             return inner
         if inner.ref_kind == "&&":
@@ -140,6 +174,8 @@ class SpellingBuilder(Builder):
 
     def rvalue_reference(self, inner):
         # `T& &&` collapses to `T&`; only `T&& &&` stays an rvalue reference.
+        if inner.members is not None:
+            return pack_of(self.rvalue_reference(member) for member in inner.members)
         if inner.ref_kind:
             return inner
         result = _wrap(inner, "&&")
@@ -158,7 +194,13 @@ class SpellingBuilder(Builder):
 
     def array(self, inner, dimension):
         bound = f" [{dimension}]" if dimension else " []"
-        return Spelling(inner.left, bound + inner.right, is_array=True)
+        right = inner.right
+        # Only the first bracket of a multi-dimensional array is spaced off the type:
+        # `Libcall const (&) [5][4]`, not `[5] [4]`. Dimensions are built inside out, so
+        # the space the inner one added is the one to drop.
+        if inner.is_array and right.startswith(" ["):
+            right = right[1:]
+        return Spelling(inner.left, bound + right, is_array=True)
 
     def function(self, returns, parameters, suffix="", name=None):
         rendered = ", ".join(str(parameter) for parameter in parameters)
@@ -181,6 +223,11 @@ class SpellingBuilder(Builder):
 
     def special(self, label, inner):
         return Spelling(label + str(inner))
+
+    def decorated(self, inner, decoration):
+        from .decorations import describe
+
+        return Spelling(inner.spell() + describe(decoration))
 
     # -- inspection ------------------------------------------------------------
 

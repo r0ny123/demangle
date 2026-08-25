@@ -20,6 +20,7 @@ PLUGIN = LanguagePlugin(
     options_type=ItaniumOptions,
     # After Rust: a legacy Rust symbol is a valid Itanium symbol, so Rust must be
     # offered a name before this plugin claims it.
+    symbol_table_decorations=True,
     priority=200,
 )
 

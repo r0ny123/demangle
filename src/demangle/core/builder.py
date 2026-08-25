@@ -96,7 +96,15 @@ class Builder(Protocol):
         """
 
     def pack(self, inner: Handle) -> Handle:
-        """A parameter pack expansion, `inner...`."""
+        """An *unexpanded* parameter pack expansion, `inner...`."""
+
+    def parameter_pack(self, members: Sequence[Handle]) -> Handle:
+        """A pack of concrete arguments.
+
+        Must stay a sequence rather than collapse to joined text: a declarator applied
+        to a pack applies to every member, so `Dp O T_` over three arguments is three
+        rvalue references.
+        """
 
     def vendor_qualify(self, inner: Handle, qualifier: str) -> Handle:
         """A vendor extended qualifier, spelled after the type it applies to."""
@@ -105,6 +113,13 @@ class Builder(Protocol):
 
     def special(self, label: str, inner: Handle) -> Handle:
         """A symbol that is *about* an entity: `vtable for Foo`, `typeinfo for Bar`."""
+
+    def decorated(self, inner: Handle, decoration: str) -> Handle:
+        """A symbol carrying a symbol-table decoration: an ELF version, a clone suffix.
+
+        Kept as structure rather than folded into text so a caller can ask which copy of
+        a function a symbol names, or strip the version and compare.
+        """
 
     # -- inspection ------------------------------------------------------------
 

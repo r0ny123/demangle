@@ -19,6 +19,7 @@ carry the uncommon one's error handling, so they are two functions.
 
 from .core.ast import AST_BUILDER
 from .core.cache import MISSING, BoundedCache
+from .core.decorations import split_decorations
 from .core.errors import DemanglingError, NotMangledError, reraise_if_operational
 from .core.limits import DEFAULT_LIMITS
 from .core.registry import available, get, names
@@ -53,10 +54,23 @@ def _resolve(language):
 
 
 def _parse_with(plugin, mangled, builder, limits, style):
+    """Run one plugin, handling any symbol-table decoration around the name.
+
+    Splitting here rather than in each parser keeps the grammars free of ELF and
+    toolchain conventions, and means a new scheme inherits the behaviour by setting one
+    flag instead of reimplementing it.
+    """
     options = style.options_for(plugin.name)
+    decoration = ""
+    if plugin.symbol_table_decorations:
+        mangled, decoration = split_decorations(mangled)
+
     if options is None:
-        return plugin.parse(mangled, builder, limits)
-    return plugin.parse(mangled, builder, limits, options)
+        handle = plugin.parse(mangled, builder, limits)
+    else:
+        handle = plugin.parse(mangled, builder, limits, options)
+
+    return builder.decorated(handle, decoration) if decoration else handle
 
 
 def demangle(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS):
@@ -89,7 +103,7 @@ def demangle(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMI
     candidates = (plugin,) if plugin is not None else available()
 
     for candidate in candidates:
-        if plugin is None and not candidate.detect(mangled):
+        if plugin is None and not _claims(candidate, mangled):
             continue
         try:
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
@@ -142,7 +156,7 @@ def _parse_handle(mangled, builder, language, style, limits):
 
     first_error = None
     for candidate in available():
-        if not candidate.detect(mangled):
+        if not _claims(candidate, mangled):
             continue
         try:
             return _parse_with(candidate, mangled, builder, limits, style)
@@ -156,15 +170,33 @@ def _parse_handle(mangled, builder, language, style, limits):
     raise NotMangledError(mangled)
 
 
+def _claims(plugin, mangled):
+    """Whether `plugin` recognises `mangled`, ignoring any symbol-table decoration.
+
+    The raw name is tried first because this runs on every symbol a caller offers, and
+    in a real binary most of them are not mangled at all. A decoration is a *suffix*, so
+    a prefix test sees straight through it and the split is only worth paying for when
+    the cheap test has already failed.
+    """
+    if plugin.detect(mangled):
+        return True
+    if not plugin.symbol_table_decorations:
+        return False
+    base, decoration = split_decorations(mangled)
+    return bool(decoration) and plugin.detect(base)
+
+
 def detect(mangled):
     """Name the scheme `mangled` appears to use, or None.
 
     A prefix test only -- it reports what the name looks like, not that it will parse.
     """
-    from .core.registry import detect as _detect
-
-    plugin = _detect(mangled)
-    return plugin.name if plugin is not None else None
+    if not mangled:
+        return None
+    for plugin in available():
+        if _claims(plugin, mangled):
+            return plugin.name
+    return None
 
 
 def demangle_all(names_, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS):

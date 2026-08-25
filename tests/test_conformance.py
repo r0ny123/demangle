@@ -20,6 +20,9 @@ from .conftest import load_corpus
 ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 196, 196
 ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 196, 195
 MSVC_TOTAL, MSVC_EXACT = 609, 609
+LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
+REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 18, 18
+RUST_TOTAL, RUST_EXACT = 5316, 5316
 
 # The one GNU shortfall is not ours to fix. For
 # `_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_` the two references
@@ -57,6 +60,27 @@ def test_msvc_matches_llvm_undname():
     assert (total, exact) == (MSVC_TOTAL, MSVC_EXACT)
 
 
+def test_matches_llvm_cxxfilt_on_the_system_libstdcxx():
+    """Every mangled symbol the shipped libstdc++ exports.
+
+    Real released C++ rather than something compiled for the test, which is the point:
+    it carries what only a real standard library produces.
+    """
+    total, exact = _score("itanium-libstdcxx.txt", "llvm")
+    assert (total, exact) == (LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT)
+
+
+def test_regression_corpus():
+    """Names that each exposed a distinct defect. Every one must stay fixed."""
+    total, exact = _score("itanium-regressions.txt", "llvm")
+    assert (total, exact) == (REGRESSIONS_TOTAL, REGRESSIONS_EXACT)
+
+
+def test_rust_matches_rustc_demangle():
+    total, exact = _score("rust-real-world.txt", "llvm", language="rust")
+    assert (total, exact) == (RUST_TOTAL, RUST_EXACT)
+
+
 def test_gnu_shortfall_is_only_the_known_reference_divergence():
     """Pin *which* name fails under GNU, not merely how many.
 
@@ -74,7 +98,10 @@ def test_gnu_shortfall_is_only_the_known_reference_divergence():
     assert failing == [GNU_SUBSTITUTION_DIVERGENCE]
 
 
-@pytest.mark.parametrize("corpus", ["itanium-real-world.txt", "msvc-llvm-corpus.txt"])
+@pytest.mark.parametrize(
+    "corpus",
+    ["itanium-real-world.txt", "msvc-llvm-corpus.txt", "itanium-libstdcxx.txt", "rust-real-world.txt"],
+)
 def test_best_effort_never_raises_on_any_corpus_name(corpus):
     """Whatever the corpus holds, `demangle()` answers rather than raising."""
     for mangled, _ in load_corpus(corpus):

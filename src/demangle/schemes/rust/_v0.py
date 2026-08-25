@@ -1,6 +1,7 @@
 import string
+import unicodedata
 from functools import lru_cache
-from typing import Optional
+from typing import NoReturn, Optional
 
 
 class UnableTov0Demangle(Exception):
@@ -70,20 +71,14 @@ class Ident:
         self.out: list = []
         self.out_len = 0
 
-    def try_small_punycode_decode(self) -> Optional[bool]:
-        def f(inp):
-            inp = "".join(inp)
-            self.disp += inp
-            return True
-
+    def try_small_punycode_decode(self) -> bool:
+        """Decode into the fixed buffer and append the result, reporting success."""
         self.out = ["\0"] * self.small_punycode_len
         self.out_len = 0
-        r = self.punycode_decode()
-
-        if r is None:
-            return None
-        else:
-            return f(self.out[: self.out_len])
+        if not self.punycode_decode():
+            return False
+        self.disp += "".join(self.out[: self.out_len])
+        return True
 
     def insert(self, i: int, c: str) -> bool:
         """Insert character at position i, shifting existing chars right.
@@ -101,18 +96,24 @@ class Ident:
         self.out[i] = c
         return True
 
-    def punycode_decode(self) -> Optional[None]:
+    def punycode_decode(self) -> bool:
+        """Decode `self.punycode` into `self.out`, reporting whether it succeeded.
+
+        RFC 3492 decoding, as Rust's v0 mangling uses it for non-ASCII identifiers
+        (`u` followed by a punycode-encoded name). Returns True only when the whole
+        input was consumed and every code point placed.
+        """
         count = 0
         punycode_bytes = self.punycode
         try:
             punycode_bytes[count]
         except IndexError:
-            return None
+            return False
 
         lent = 0
         for c in self.ascii:
             if not self.insert(lent, c):
-                return None
+                return False
             lent += 1
 
         base = 36
@@ -131,7 +132,7 @@ class Ident:
                 k += base
                 t = min(max((k - bias), t_min), t_max)
                 if count >= len(punycode_bytes):
-                    return None
+                    return False
                 d = punycode_bytes[count]
                 count += 1
                 if d in string.ascii_lowercase:
@@ -139,7 +140,7 @@ class Ident:
                 elif d in string.digits:
                     d = 26 + (ord(d) - ord("0"))
                 else:
-                    return None
+                    return False
 
                 delta = delta + (d * w)
                 if d < t:
@@ -154,16 +155,21 @@ class Ident:
             try:
                 c = chr(n)
             except (ValueError, OverflowError):
-                return None
+                return False
 
             if not self.insert(i, c):
-                return None
+                return False
             i += 1
 
             try:
                 punycode_bytes[count]
             except IndexError:
-                return
+                # Input exhausted with every code point placed: this is the *success*
+                # exit. It returned a bare `None` before, which `try_small_punycode_decode`
+                # could not tell from the failure exits -- so a correctly decoded
+                # identifier was discarded and every non-ASCII name fell back to
+                # `punycode{...}`.
+                return True
 
             delta = delta // damp
             damp = 2
@@ -189,6 +195,100 @@ class Ident:
                 self.disp += "}"
             else:
                 self.disp += self.ascii
+
+
+#: Unicode general categories whose members Rust refuses to print literally. libcore's
+#: `printable.rs` table is generated from exactly this set of categories, with the space
+#: character carved back out, and `char::escape_debug` renders anything the table rejects
+#: as `\u{...}`. Reproducing the categories rather than the table means our answer tracks
+#: whichever Unicode version CPython was built against, which can differ from rustc's for
+#: codepoints assigned in between; nothing a compiler emits lives in that gap.
+_UNPRINTABLE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp", "Zs"})
+
+#: Categories standing in for the `Grapheme_Extend` property, which `escape_debug`
+#: escapes so that a combining mark cannot silently attach itself to the opening quote.
+#: The real property is `Mn | Me | Other_Grapheme_Extend`, and the last is not derivable
+#: from anything the standard library exposes -- it is an explicit list in Unicode's
+#: `PropList.txt`, most of whose members are category `Mc` (U+09BE BENGALI VOWEL SIGN AA
+#: and U+09D7 among them). Those few print literally here where the reference escapes
+#: them. Carrying a hand-copied Unicode table to close the gap would cost more than it
+#: buys: a `char` or `&str` const holding a bare combining mark is not something a
+#: compiler emits, and a stale table would drift in both directions.
+_GRAPHEME_EXTEND_CATEGORIES = frozenset({"Mn", "Me"})
+
+#: The characters `char::escape_debug` gives a short escape rather than `\u{...}`.
+#: Both quote characters are here because the reference escapes each one inside its own
+#: kind of literal; `print_quoted_escaped_chars` undoes that for the opposite quote.
+_SHORT_ESCAPES = {
+    "\0": r"\0",
+    "\t": r"\t",
+    "\r": r"\r",
+    "\n": r"\n",
+    "\\": "\\\\",
+    '"': r"\"",
+    "'": r"\'",
+}
+
+
+def escape_debug(character: str) -> str:
+    """One character as `char::escape_debug` would render it.
+
+    Const generic arguments of type `char` and `&str` are printed as Rust source, and the
+    reference demangler reaches for the same escaping the standard library uses in
+    `{:?}`. Getting this wrong is not cosmetic: an unescaped newline or an unassigned
+    codepoint in a symbol name would be copied straight into whatever the caller is
+    writing. Follows rustc-demangle 0.1.28 `v0.rs::print_quoted_escaped_chars`, which
+    calls `char::escape_debug` per character.
+    """
+    short = _SHORT_ESCAPES.get(character)
+    if short is not None:
+        return short
+    category = unicodedata.category(character)
+    if category in _GRAPHEME_EXTEND_CATEGORIES:
+        return f"\\u{{{ord(character):x}}}"
+    if character != " " and category in _UNPRINTABLE_CATEGORIES:
+        return f"\\u{{{ord(character):x}}}"
+    return character
+
+
+def parse_hex_uint(nibbles: str) -> Optional[int]:
+    """A `<hex-digits>` run as an integer, or None when it will not fit in 64 bits.
+
+    Leading zeroes are stripped *before* the width test, so a padded encoding of a small
+    value still reads as that value. The reference then prints anything wider verbatim
+    rather than failing, because a const that large is legal `u128`. From
+    rustc-demangle 0.1.28 `v0.rs::HexNibbles::try_parse_uint`.
+    """
+    trimmed = nibbles.lstrip("0")
+    if len(trimmed) > 16:
+        return None
+    return int(trimmed, 16) if trimmed else 0
+
+
+def parse_hex_str(nibbles: str) -> Optional[str]:
+    """A `<hex-digits>` run as the UTF-8 string it encodes, or None if it is not UTF-8.
+
+    Each byte is a pair of nibbles, so an odd count cannot be a byte string at all. The
+    reference validates the whole sequence before printing anything, to avoid emitting
+    half a string literal and then failing; decoding eagerly here has the same effect.
+    From rustc-demangle 0.1.28 `v0.rs::HexNibbles::try_parse_str_chars`.
+    """
+    if len(nibbles) % 2 != 0:
+        return None
+    try:
+        return bytes.fromhex(nibbles).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+
+#: `<const>` leaf tags, grouped by how the bytes after the tag are read. The tag is the
+#: const's *type*, spelled exactly as in `<basic-type>`, and the grammar in RFC 2603
+#: gives the unsigned integers a bare `<hex-digits>` body while the signed ones may carry
+#: a leading `n` for the sign. `bool`, `char` and `str` share the unsigned shape but are
+#: rendered differently, so they are kept apart.
+_CONST_UNSIGNED = ("h", "t", "m", "y", "o", "j")
+_CONST_SIGNED = ("a", "s", "l", "x", "n", "i")
+_CONST_DATA_ONLY = ("b", "c", "e")
 
 
 @lru_cache(maxsize=32)
@@ -469,6 +569,18 @@ class Parser:
             self.skip_path()
 
     def skip_const(self):
+        """Advance past one `<const>` without rendering it.
+
+        Structural consts nest, so this needs the same depth guard `skip_type` has: the
+        skip pass runs before anything is printed, on input nobody has validated yet.
+        """
+        self.check_recursion_limit()
+        try:
+            self._skip_const_inner()
+        finally:
+            self.depth -= 1
+
+    def _skip_const_inner(self):
         if self.eat("B"):
             self.backref()
             return
@@ -476,17 +588,37 @@ class Parser:
         ty_tag = self.next_func()
         if ty_tag == "p":
             return
-        type1 = ["h", "t", "m", "y", "o", "j", "b", "c"]
-        type2 = ["a", "s", "l", "x", "n", "i"]
 
-        if ty_tag in type1:
-            pass
-        elif ty_tag in type2:
-            _ = self.eat("n")
+        if ty_tag in _CONST_UNSIGNED or ty_tag in _CONST_DATA_ONLY:
+            self.hex_nibbles()
+        elif ty_tag in _CONST_SIGNED:
+            self.eat("n")
+            self.hex_nibbles()
+        elif ty_tag in ("R", "Q"):
+            # `Re<hex>_` is a string literal rather than a reference to a nested const,
+            # so only the non-`e` spelling continues into another `<const>`.
+            if ty_tag == "R" and self.eat("e"):
+                self.hex_nibbles()
+            else:
+                self.skip_const()
+        elif ty_tag in ("A", "T"):
+            while not self.eat("E"):
+                self.skip_const()
+        elif ty_tag == "V":
+            self.skip_path()
+            variant = self.next_func()
+            if variant == "T":
+                while not self.eat("E"):
+                    self.skip_const()
+            elif variant == "S":
+                while not self.eat("E"):
+                    self.disambiguator()
+                    self.ident()
+                    self.skip_const()
+            elif variant != "U":
+                raise UnableTov0Demangle(self.inn)
         else:
             raise UnableTov0Demangle(self.inn)
-        self.hex_nibbles()
-        return
 
 
 class Printer:
@@ -508,7 +640,13 @@ class Printer:
             raise UnableTov0Demangle("Recursion limit exceeded")
         self.recursion += 1
 
-    def invalid(self):
+    def invalid(self) -> NoReturn:
+        """Abandon this name.
+
+        Declared `NoReturn` because it always raises: callers treat it as a terminator
+        and read on as though the value they were about to use is well-formed, which is
+        only sound if control never comes back.
+        """
         self.out += "?"
         raise UnableTov0Demangle("Error")
 
@@ -600,11 +738,19 @@ class Printer:
         return r
 
     def print_sep_list(self, f, sep):
+        """Print elements until the closing `E`, returning how many there were.
+
+        `f` is either the name of a method on this printer or any callable. Structural
+        consts need the callable form: their elements are printed by `print_const` with
+        an argument, and the count decides whether a one-element tuple gets its trailing
+        comma.
+        """
+        element = f if callable(f) else getattr(self, f)
         i = 0
         while not self.eat("E"):
             if i > 0:
                 self.out += str(sep)
-            getattr(self, f)()
+            element()
             i += 1
         return i
 
@@ -684,7 +830,9 @@ class Printer:
             lt = self.parser_mut().integer_62()
             self.print_lifetime_from_index(lt)
         elif self.eat("K"):
-            self.print_const()
+            # Generic argument position: an expression here is not already inside another
+            # one, so a structural const has to brace itself to stay unambiguous.
+            self.print_const(False)
         else:
             self.print_type()
 
@@ -725,7 +873,9 @@ class Printer:
 
                 if tag == "A":
                     self.out += "; "
-                    self.print_const()
+                    # `[T; N]` already reads as an expression context, so the length
+                    # never needs braces however structural it is.
+                    self.print_const(True)
                 self.out += "]"
 
             elif tag == "T":
@@ -801,49 +951,172 @@ class Printer:
         if open:
             self.out += ">"
 
-    def print_const(self):
+    def print_const(self, in_value):
+        """Print one `<const>`.
+
+        The grammar, from RFC 2603 and rustc-demangle 0.1.28 `v0.rs::print_const`:
+
+            <const> = <type> <const-data>       // a leaf value, tag names its type
+                    | "p"                       // a placeholder, printed as `_`
+                    | "R" [<const>]             // a shared reference, or `Re<hex>_` for
+                    | "Q" <const>               //   a `&str` literal; `Q` is `&mut`
+                    | "A" {<const>} "E"         // an array
+                    | "T" {<const>} "E"         // a tuple
+                    | "V" <path> <variant-data> // a struct or enum-variant value
+                    | <backref>
+
+            <variant-data> = "U"                            // unit
+                           | "T" {<const>} "E"              // tuple fields
+                           | "S" {<disambiguator> <ident> <const>} "E"   // named fields
+
+        `in_value` says whether this const is already nested inside another expression.
+        Only a literal can sit in generic argument position unadorned, so every
+        composite spelling braces itself when it is the outermost one -- `::<{[1, 2]}>`,
+        not `::<[1, 2]>`. String literals are the exception the reference calls out:
+        `Re..._` prints as `"abc"` rather than `&*"abc"`, and needs no braces because a
+        quoted literal is unambiguous wherever it appears.
+        """
         self.check_recursion_limit()
         try:
+            parser = self.parser_mut()
             if self.eat("B"):
-                prin = self.backref_printer()
-                prin.print_const()
-                self.out = prin.out
+                # The brace decision belongs to whatever the backref resolves to, so
+                # `in_value` is passed through untouched.
+                printer = self.backref_printer()
+                printer.print_const(in_value)
+                self.out = printer.out
                 return
 
-            ty_tag = self.parser_mut().next_func()
+            opened_brace = False
+
+            def open_brace_if_outside_expr():
+                nonlocal opened_brace
+                if in_value:
+                    return
+                opened_brace = True
+                self.out += "{"
+
+            def nested():
+                self.print_const(True)
+
+            ty_tag = parser.next_func()
             if ty_tag == "p":
                 self.out += "_"
-                return
-
-            type1 = ["h", "t", "m", "y", "o", "j"]
-            type2 = ["a", "s", "l", "x", "n", "i"]
-
-            if ty_tag in type1:
+            elif ty_tag in _CONST_UNSIGNED:
                 self.print_const_uint()
-            elif ty_tag in type2:
+            elif ty_tag in _CONST_SIGNED:
                 self.print_const_int()
             elif ty_tag == "b":
                 self.print_const_bool()
             elif ty_tag == "c":
                 self.print_const_char()
+            elif ty_tag == "e":
+                # A bare `str` const, as opposed to the `&str` that `Re..._` encodes.
+                # There is no Rust syntax for it, so the reference writes the deref of a
+                # string literal and braces the result.
+                open_brace_if_outside_expr()
+                self.out += "*"
+                self.print_const_str_literal()
+            elif ty_tag in ("R", "Q"):
+                if ty_tag == "R" and self.eat("e"):
+                    self.print_const_str_literal()
+                else:
+                    open_brace_if_outside_expr()
+                    self.out += "&"
+                    if ty_tag != "R":
+                        self.out += "mut "
+                    nested()
+            elif ty_tag == "A":
+                open_brace_if_outside_expr()
+                self.out += "["
+                self.print_sep_list(nested, ", ")
+                self.out += "]"
+            elif ty_tag == "T":
+                open_brace_if_outside_expr()
+                self.out += "("
+                count = self.print_sep_list(nested, ", ")
+                if count == 1:
+                    # `(x)` is parenthesised `x`, not a one-tuple; Rust needs `(x,)`.
+                    self.out += ","
+                self.out += ")"
+            elif ty_tag == "V":
+                open_brace_if_outside_expr()
+                # `in_value` is True for the path so an enum variant of a generic type
+                # comes out as `Option::<usize>::None` rather than `Option<usize>::None`.
+                self.print_path(True)
+                self.print_const_variant_data()
             else:
                 self.invalid()
 
-            return
+            if opened_brace:
+                self.out += "}"
         finally:
             self.recursion -= 1
 
-    def print_const_uint(self):
-        hex_val = self.parser_mut().hex_nibbles()
-        if not hex_val:
+    def print_const_variant_data(self):
+        """The fields of a `V` const, whose shape follows the ADT it came from."""
+        variant = self.parser_mut().next_func()
+        if variant == "U":
+            return
+        if variant == "T":
+            self.out += "("
+            self.print_sep_list(lambda: self.print_const(True), ", ")
+            self.out += ")"
+        elif variant == "S":
+            self.out += " { "
+            self.print_sep_list(self.print_const_field, ", ")
+            self.out += " }"
+        else:
             self.invalid()
 
-        if len(hex_val) > 16:
-            self.out += "0x"
-            self.out += hex_val
-            return
+    def print_const_field(self):
+        """One `<disambiguator> <ident> <const>` of a struct-shaped `V` const.
 
-        self.out += str(int(hex_val, 16))
+        The disambiguator is parsed and dropped: two fields of one struct never share a
+        name, so it carries nothing the reader needs.
+        """
+        parser = self.parser_mut()
+        parser.disambiguator()
+        name = parser.ident()
+        name.display()
+        self.out += name.disp
+        self.out += ": "
+        self.print_const(True)
+
+    def print_const_str_literal(self):
+        """A `<hex-digits>` body as a quoted, escaped string literal."""
+        text = parse_hex_str(self.parser_mut().hex_nibbles())
+        if text is None:
+            self.invalid()
+        self.print_quoted_escaped_chars('"', text)
+
+    def print_quoted_escaped_chars(self, quote, characters):
+        """Write `characters` escaped and wrapped in `quote`.
+
+        The one departure from `escape_debug` is that the quote character *not* being
+        used is left alone, so a `char` const holding a double quote is `'"'` and a
+        string containing an apostrophe is `"'"` -- matching rustc-demangle 0.1.28
+        `v0.rs::print_quoted_escaped_chars`.
+        """
+        self.out += quote
+        for character in characters:
+            if (quote == "'" and character == '"') or (quote == '"' and character == "'"):
+                self.out += character
+            else:
+                self.out += escape_debug(character)
+        self.out += quote
+
+    def print_const_uint(self):
+        nibbles = self.parser_mut().hex_nibbles()
+        value = parse_hex_uint(nibbles)
+        if value is None:
+            # Wider than `u64`: the reference gives up on decimal rather than failing,
+            # because a `u128` const is perfectly legal, and echoes the nibbles as
+            # written -- padding included, since it no longer knows what was padding.
+            self.out += "0x"
+            self.out += nibbles
+            return
+        self.out += str(value)
 
     def print_const_int(self):
         if self.eat("n"):
@@ -851,26 +1124,18 @@ class Printer:
         self.print_const_uint()
 
     def print_const_bool(self):
-        hex_val = self.parser_mut().hex_nibbles()
-
-        if hex_val == "0":
+        value = parse_hex_uint(self.parser_mut().hex_nibbles())
+        if value == 0:
             self.out += "false"
-        elif hex_val == "1":
+        elif value == 1:
             self.out += "true"
         else:
             self.invalid()
 
     def print_const_char(self):
-        hex_val = self.parser_mut().hex_nibbles()
-
-        if len(hex_val) > 8:
+        value = parse_hex_uint(self.parser_mut().hex_nibbles())
+        # `char::from_u32` rejects both out-of-range scalars and the surrogate range;
+        # Python's `chr` accepts surrogates, so that half has to be checked by hand.
+        if value is None or value > 0x10FFFF or 0xD800 <= value <= 0xDFFF:
             self.invalid()
-
-        char_val = "0x"
-        char_val += hex_val
-        c = ""
-        try:
-            c = chr(int(char_val, 16))
-        except (OverflowError, ValueError):
-            self.invalid()
-        self.out += repr(c)
+        self.print_quoted_escaped_chars("'", chr(value))
