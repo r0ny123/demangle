@@ -195,7 +195,7 @@ class ItaniumParser:
         name, quals, ref_qualifier, is_template = self.name()
 
         reader = self.reader
-        if reader.eof or reader.peek() in "E.":
+        if reader.eof or reader.peek() in ("E", "."):
             # A data symbol: a name and nothing after it.
             return name
         return self.bare_function_type(name, quals, ref_qualifier, is_template)
@@ -218,7 +218,7 @@ class ItaniumParser:
 
             parameters = []
             reader = self.reader
-            while not reader.eof and reader.peek() not in "E.":
+            while not reader.eof and reader.peek() not in ("E", "."):
                 parameter = self.type_()
                 # `Dp T_` over a pack bound to nothing expands to no parameters at all,
                 # so it must not leave a separator behind.
@@ -285,7 +285,7 @@ class ItaniumParser:
             self.call_offset()
             return self.builder.special("covariant return thunk to ", self.encoding())
 
-        if reader.peek() == "T" and reader.peek(1) in "hv":
+        if reader.peek() == "T" and reader.peek(1) in ("h", "v"):
             # T <call-offset> <base encoding>
             reader.take()
             virtual = reader.peek() == "v"
@@ -299,7 +299,7 @@ class ItaniumParser:
         """<call-offset> ::= h <nv-offset> _ | v <v-offset> _"""
         reader = self.reader
         kind = reader.take()
-        if kind not in "hv":
+        if kind not in ("h", "v"):
             raise ParseError(self._mangled, reader.pos, "expected a call offset")
         reader.number()
         if kind == "v":
@@ -334,7 +334,7 @@ class ItaniumParser:
                 inner = self.unqualified_name()
                 base = self.builder.qualified([self.builder.name("std"), inner])
             else:
-                base = self.substitution(as_scope=True)
+                base = self.substitution()
             if reader.peek() == "I":
                 # <unscoped-template-name> is a candidate in its own right, recorded
                 # before the arguments that specialise it. Verified against both
@@ -421,7 +421,7 @@ class ItaniumParser:
         char = reader.peek()
 
         if char == "S":
-            parts.append(self.substitution(as_scope=True, expanded=self._abbreviation_scopes_a_structor()))
+            parts.append(self.substitution(expanded=self._abbreviation_scopes_a_structor()))
             return False
 
         if char == "T":
@@ -430,7 +430,7 @@ class ItaniumParser:
             self.subs.remember(component, "template-template-param")
             return False
 
-        if char == "D" and reader.peek(1) in "tT":
+        if char == "D" and reader.peek(1) in ("t", "T"):
             parts.append(self.decltype_())
             return False
 
@@ -508,7 +508,7 @@ class ItaniumParser:
                 entity_is_type = as_type or reader.peek() == "U"
                 inner, quals, ref_qualifier, is_template = self.name()
                 combined = builder.qualified([outer, inner])
-                if not entity_is_type and not reader.eof and reader.peek() not in "E_":
+                if not entity_is_type and not reader.eof and reader.peek() not in ("E", "_"):
                     combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             finally:
                 self._naming = outer_naming
@@ -535,7 +535,7 @@ class ItaniumParser:
             # lambda's `operator()` reads `auto f()::'lambda'<...>::operator()(...)` and
             # not `f()::auto 'lambda'...`.
             combined = builder.qualified([outer, inner])
-            if not entity_is_type and not reader.eof and reader.peek() not in "E_":
+            if not entity_is_type and not reader.eof and reader.peek() not in ("E", "_"):
                 combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             self.discriminator()
         finally:
@@ -786,16 +786,16 @@ class ItaniumParser:
             following[0] == "D" and following[1] in DESTRUCTOR_KINDS
         )
 
-    def substitution(self, as_scope=False, expanded=False):
+    def substitution(self, expanded=False):
         """A back-reference or a predefined abbreviation.
 
         ```
         <substitution> ::= S <seq-id> _ | S_ | St | Sa | Sb | Ss | Si | So | Sd
         ```
 
-        `as_scope` is accepted for call-site clarity; the abbreviation spelling is a
-        single policy set by `ItaniumOptions`, because both reference demanglers spell
-        an abbreviation the same way in scope and in type position.
+        `expanded` forces the full spelling of an abbreviation regardless of style,
+        which is what a constructor's scope needs: a constructor is named for its class,
+        and the class is the template rather than the typedef.
         """
         reader = self.reader
         reader.expect("S")
@@ -859,7 +859,7 @@ class ItaniumParser:
         reader = self.reader
         reader.expect("D")
         marker = reader.take()
-        if marker not in "tT":
+        if marker not in ("t", "T"):
             raise ParseError(self._mangled, reader.pos, "expected a decltype")
         expression = self.expression()
         reader.expect("E")
@@ -994,7 +994,7 @@ class ItaniumParser:
             if extended is not None:
                 return extended
 
-        if char in DIGITS or char in "NZ" or char == "L":
+        if char in DIGITS or char in ("N", "Z", "L"):
             return subs.remember(self.class_enum_type(), "type")
 
         raise ParseError(self._mangled, reader.pos, f"unknown type code {char!r}")

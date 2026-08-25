@@ -305,9 +305,11 @@ SPECIAL_ENCODING_NAMES = {
     "GR": "reference temporary for ",
 }
 
-#: Constructor and destructor variant markers (5.1.4.3). The variant does not change
-#: the spelling -- all of them are written `Foo::Foo` or `Foo::~Foo` -- but it must be
-#: consumed, and it is recorded on the AST so tools that care can see it.
+#: Constructor and destructor variant markers (5.1.4.3). The variant does not change the
+#: spelling -- all of them are written `Foo::Foo` or `Foo::~Foo` -- so it is consumed and
+#: discarded. The values are here to document what each marker means, and because a
+#: membership test against them is how the parser tells a constructor from an operator.
+#: Carrying the variant on the AST would be a reasonable thing to add; nothing does today.
 CONSTRUCTOR_KINDS = {
     "1": "complete object constructor",
     "2": "base object constructor",

@@ -37,9 +37,7 @@ def readme():
     ],
 )
 def test_every_pinned_count_appears_in_the_readme(readme, exact, total):
-    assert f"{exact} / {total}" in readme, (
-        f"README does not state {exact} / {total}; regenerate the conformance table"
-    )
+    assert f"{exact} / {total}" in readme, f"README does not state {exact} / {total}; regenerate the conformance table"
 
 
 def test_the_readme_states_no_stale_conformance_numbers(readme):
