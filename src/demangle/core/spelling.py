@@ -76,7 +76,7 @@ def pack_of(members):
     return Spelling(", ".join(str(member) for member in flattened), members=flattened)
 
 
-def _wrap(inner, token):
+def _wrap(inner, token, ref_kind=""):
     """Apply a declarator token, parenthesising where precedence demands it.
 
     Without the parentheses `int (*)(char)` would read as `int *(char)`: a function
@@ -92,8 +92,8 @@ def _wrap(inner, token):
         # A function's left half already ends in the space after its return type; an
         # array's ends in an identifier character and needs one added.
         spacer = "" if not left or left.endswith((" ", "(")) else " "
-        return Spelling(left + spacer + "(" + token, ")" + inner.right)
-    return Spelling(inner.left + token, inner.right)
+        return Spelling(left + spacer + "(" + token, ")" + inner.right, ref_kind=ref_kind)
+    return Spelling(inner.left + token, inner.right, ref_kind=ref_kind)
 
 
 class SpellingBuilder(Builder):
@@ -171,9 +171,7 @@ class SpellingBuilder(Builder):
             return inner
         if inner.ref_kind == "&&":
             return Spelling(inner.left[:-1], inner.right, ref_kind="&")
-        result = _wrap(inner, "&")
-        result.ref_kind = "&"
-        return result
+        return _wrap(inner, "&", ref_kind="&")
 
     def rvalue_reference(self, inner):
         # `T& &&` collapses to `T&`; only `T&& &&` stays an rvalue reference.
@@ -181,9 +179,7 @@ class SpellingBuilder(Builder):
             return pack_of(self.rvalue_reference(member) for member in inner.members)
         if inner.ref_kind:
             return inner
-        result = _wrap(inner, "&&")
-        result.ref_kind = "&&"
-        return result
+        return _wrap(inner, "&&", ref_kind="&&")
 
     def member_pointer(self, owner, inner):
         # `int Foo::*` needs the separating space that `int (Foo::*)()` does not: in the
@@ -191,8 +187,10 @@ class SpellingBuilder(Builder):
         token = f"{owner}::*"
         if inner.is_function or inner.is_array:
             return _wrap(inner, token)
+        # Always spaced, unlike a bare `*`. `int* A::*` needs the gap even though `int*`
+        # does not, because `int*A::*` would read as one token; the references agree.
         left = inner.left
-        joiner = "" if not left or left.endswith(_TIGHT_ENDINGS) else " "
+        joiner = "" if not left or left.endswith((" ", "(")) else " "
         return Spelling(left + joiner + token, inner.right)
 
     def array(self, inner, dimension):
@@ -236,6 +234,10 @@ class SpellingBuilder(Builder):
 
     def spell(self, handle, declarator=""):
         return handle.spell(declarator)
+
+    def size(self, handle):
+        # Both halves are already built, so their lengths are free.
+        return len(handle.left) + len(handle.right)
 
 
 #: Shared instances. Both are immutable after construction, so one of each serves every

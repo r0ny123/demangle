@@ -45,8 +45,15 @@ class Node:
     a few hundred thousand symbols, so per-instance dictionaries are not affordable.
     """
 
-    __slots__ = ()
+    __slots__ = ("size",)
     kind = "node"
+
+    #: Upper bound on the rendered length of this subtree, filled in by `AstBuilder` as
+    #: it constructs. An over-estimate is fine and deliberate -- it is used to enforce a
+    #: resource bound, where erring high is the safe direction.
+    #: Carried rather than computed so the output bound can be checked in constant time:
+    #: the tree is a DAG with shared subtrees, and walking it to measure would be
+    #: exponential in exactly the cases the bound exists to stop.
 
     def children(self):
         """Direct children, in source order. Leaves return an empty tuple."""
@@ -66,26 +73,47 @@ class Node:
         """Yield every descendant of the given `kind`, including this node."""
         return (node for node in self.walk() if node.kind == kind)
 
-    def spell(self, declarator=""):
-        """Render as C++ declaration text."""
-        from .spelling import SPELLING_BUILDER
+    def spell(self, declarator="", style=None):
+        """Render as declaration text.
 
-        return SPELLING_BUILDER.spell(self.build(SPELLING_BUILDER), declarator)
+        `style` selects the spelling policy, and should be the style the tree was parsed
+        under: some choices -- whether a `std::` abbreviation is expanded, for instance --
+        are made during parsing and are already baked into the tree, so spelling a
+        gnu-parsed tree with LLVM's builder gives a mixture of the two.
+        """
+        from .style import get_style
+
+        builder = get_style(style).spelling_builder
+        return builder.spell(self.build(builder), declarator)
 
     def __str__(self):
         return self.spell()
 
+    def _fields(self):
+        """Every declared slot in the class hierarchy, outermost base first.
+
+        `self.__slots__` alone gives only the most-derived class's, which is empty for
+        `Pointer`, `Reference` and every other node whose state lives on a shared base --
+        so comparing on it made all of them equal to each other regardless of content.
+        """
+        names = []
+        for klass in reversed(type(self).__mro__):
+            for slot in getattr(klass, "__slots__", ()):
+                if slot != "size" and slot not in names:
+                    names.append(slot)
+        return names
+
     def __repr__(self):  # pragma: no cover - debugging aid
-        fields = ", ".join(f"{slot}={getattr(self, slot)!r}" for slot in self.__slots__)
+        fields = ", ".join(f"{slot}={getattr(self, slot, None)!r}" for slot in self._fields())
         return f"{type(self).__name__}({fields})"
 
     def __eq__(self, other):
         if type(self) is not type(other):
             return NotImplemented
-        return all(getattr(self, s) == getattr(other, s) for s in self.__slots__)
+        return all(getattr(self, s, None) == getattr(other, s, None) for s in self._fields())
 
     def __hash__(self):
-        return hash((type(self).__name__, *(_hashable(getattr(self, s)) for s in self.__slots__)))
+        return hash((type(self).__name__, *(_hashable(getattr(self, s, None)) for s in self._fields())))
 
 
 def _hashable(value):
@@ -386,70 +414,89 @@ class Special(Node):
 # -- the builder ---------------------------------------------------------------
 
 
+def _sized(node, size):
+    node.size = size
+    return node
+
+
+def _sizes(nodes):
+    return sum(node.size for node in nodes)
+
+
 class AstBuilder(Builder):
     """Builds `Node` trees. The backend behind `parse()`.
 
-    Stateless, like its sibling, so one instance serves every call.
+    Stateless, like its sibling, so one instance serves every call. Each method records
+    the rendered size of what it built, which is what makes `size()` constant time --
+    see the note on `Node.size`.
     """
 
     __slots__ = ()
 
     def builtin(self, spelling):
-        return Builtin(spelling)
+        return _sized(Builtin(spelling), len(spelling))
 
     def name(self, text):
-        return Name(text)
+        return _sized(Name(text), len(text))
 
     def raw(self, text):
-        return Raw(text)
+        return _sized(Raw(text), len(text))
 
     def literal(self, kind, value):
-        return Literal(kind, value)
+        return _sized(Literal(kind, value), len(value) + (kind.size if kind else 0))
 
     def qualified(self, parts):
-        return Qualified(parts)
+        return _sized(Qualified(parts), _sizes(parts) + 2 * max(len(parts) - 1, 0))
 
     def template(self, base, arguments):
-        return Template(base, arguments)
+        return _sized(Template(base, arguments), base.size + _sizes(arguments) + 2 * len(arguments) + 2)
 
     def qualify(self, inner, qualifiers):
-        return Qualify(inner, qualifiers) if qualifiers else inner
+        if not qualifiers:
+            return inner
+        width = sum(len(q) + 1 for q in qualifiers)
+        return _sized(Qualify(inner, qualifiers), inner.size + width)
 
     def pointer(self, inner):
-        return Pointer(inner)
+        return _sized(Pointer(inner), inner.size + 3)
 
     def reference(self, inner):
-        return Reference(inner)
+        return _sized(Reference(inner), inner.size + 3)
 
     def rvalue_reference(self, inner):
-        return RValueReference(inner)
+        return _sized(RValueReference(inner), inner.size + 4)
 
     def member_pointer(self, owner, inner):
-        return MemberPointer(owner, inner)
+        return _sized(MemberPointer(owner, inner), owner.size + inner.size + 5)
 
     def array(self, inner, dimension):
-        return Array(inner, dimension)
+        return _sized(Array(inner, dimension), inner.size + len(dimension) + 4)
 
     def function(self, returns, parameters, suffix="", name=None):
-        return Function(returns, parameters, suffix, name)
+        width = (returns.size + 1 if returns is not None else 0) + (name.size if name is not None else 0)
+        width += _sizes(parameters) + 2 * len(parameters) + len(suffix) + 2
+        return _sized(Function(returns, parameters, suffix, name), width)
 
     def pack(self, inner):
-        return Pack(inner)
+        return _sized(Pack(inner), inner.size + 3)
 
     def parameter_pack(self, members):
-        return ParameterPack(members)
+        return _sized(ParameterPack(members), _sizes(members) + 2 * len(members))
 
     def vendor_qualify(self, inner, qualifier):
-        return VendorQualify(inner, qualifier)
+        return _sized(VendorQualify(inner, qualifier), inner.size + len(qualifier) + 1)
 
     def special(self, label, inner):
-        return Special(label, inner)
+        return _sized(Special(label, inner), inner.size + len(label))
 
     def decorated(self, inner, decoration):
-        return Decorated(inner, decoration)
+        return _sized(Decorated(inner, decoration), inner.size + len(decoration) + 10)
 
     def spell(self, handle, declarator=""):
         return handle.spell(declarator)
+
+    def size(self, handle):
+        return handle.size
 
 
 AST_BUILDER = AstBuilder()

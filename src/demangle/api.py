@@ -20,7 +20,7 @@ carry the uncommon one's error handling, so they are two functions.
 from .core.ast import AST_BUILDER
 from .core.cache import MISSING, BoundedCache
 from .core.decorations import split_decorations
-from .core.errors import DemanglingError, NotMangledError, reraise_if_operational
+from .core.errors import DemanglingError, NotMangledError, ParseError, reraise_if_operational
 from .core.limits import DEFAULT_LIMITS
 from .core.registry import available, get, names
 from .core.style import DEFAULT_STYLE, available_styles, get_style
@@ -39,7 +39,12 @@ __all__ = [
 
 #: Symbol tables repeat names relentlessly -- one binary can name `std::allocator<char>`
 #: thousands of times -- so memoisation is worth more here than any micro-optimisation.
-#: Keyed by (name, language, style) because all three change the answer.
+#:
+#: Keyed by everything that changes the answer, `limits` included. Leaving the limits
+#: out is not merely a missed bound: one caller passing tight limits would poison the
+#: entry for every other caller of that name in the process, and `demangle()` cannot
+#: report it because it never raises. `Limits` is a frozen slots dataclass, so it
+#: hashes by value and two equal limit sets share a cache entry.
 _CACHE = BoundedCache(max_size=16384)
 
 
@@ -92,8 +97,13 @@ def demangle(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMI
     """
     if not mangled:
         return mangled
+    if not isinstance(mangled, str):
+        # Symbol tables are read as bytes, so this is the likeliest caller mistake.
+        # Returning the argument untouched keeps the "never raises" contract, and a
+        # caller who wanted a demangled name gets an obviously unchanged one back.
+        return mangled
     resolved_style = get_style(style)
-    key = (mangled, language, resolved_style.name)
+    key = (mangled, language, resolved_style.name, limits)
     cached = _CACHE.get(key)
     if cached is not MISSING:
         return cached
@@ -103,14 +113,16 @@ def demangle(mangled, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMI
     candidates = (plugin,) if plugin is not None else available()
 
     for candidate in candidates:
-        if plugin is None and not _claims(candidate, mangled):
-            continue
         try:
+            if plugin is None and not _claims(candidate, mangled):
+                continue
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
         except Exception as exc:
             reraise_if_operational(exc)
-            # Try the next scheme: detection is a cheap prefix test and is allowed to
-            # be wrong. Only when every candidate has failed is the name given back.
+            # Try the next scheme. Detection is a cheap prefix test and is allowed to be
+            # wrong, and a third-party plugin is allowed to be buggy -- the registry
+            # already takes care not to let a broken plugin bring the library down, and
+            # keeping the `detect` call inside this `try` is what stops it doing so here.
             continue
         return _CACHE.put(key, builder.spell(handle))
 
@@ -156,15 +168,25 @@ def _parse_handle(mangled, builder, language, style, limits):
 
     first_error = None
     for candidate in available():
-        if not _claims(candidate, mangled):
-            continue
         try:
+            if not _claims(candidate, mangled):
+                continue
             return _parse_with(candidate, mangled, builder, limits, style)
         except DemanglingError as exc:
             # Keep the first failure: it came from the highest-priority plugin that
             # claimed the name, so it is the most likely to be the useful diagnostic.
             if first_error is None:
                 first_error = exc
+        except Exception as exc:
+            reraise_if_operational(exc)
+            # A plugin raised something that is not a demangling failure -- a defect in
+            # it, or in this package. The documented contract is that these entry points
+            # raise `DemanglingError` and nothing else, so it is wrapped rather than
+            # allowed to escape as an `AttributeError` a caller cannot reasonably catch.
+            # The original is chained, so the bug is still diagnosable.
+            if first_error is None:
+                first_error = ParseError(mangled, None, f"{candidate.name} parser failed: {exc!r}")
+                first_error.__cause__ = exc
     if first_error is not None:
         raise first_error
     raise NotMangledError(mangled)
@@ -177,21 +199,31 @@ def _claims(plugin, mangled):
     in a real binary most of them are not mangled at all. A decoration is a *suffix*, so
     a prefix test sees straight through it and the split is only worth paying for when
     the cheap test has already failed.
+
+    Never raises. `detect` belongs to a plugin that may be a third party's, and the
+    registry already declines to let a broken one take the library down; this is the
+    other half of that, since a `detect` that throws would otherwise escape through
+    `demangle()`, which is documented never to raise.
     """
-    if plugin.detect(mangled):
-        return True
-    if not plugin.symbol_table_decorations:
+    try:
+        if plugin.detect(mangled):
+            return True
+        if not plugin.symbol_table_decorations:
+            return False
+        base, decoration = split_decorations(mangled)
+        return bool(decoration) and plugin.detect(base)
+    except Exception as exc:
+        reraise_if_operational(exc)
         return False
-    base, decoration = split_decorations(mangled)
-    return bool(decoration) and plugin.detect(base)
 
 
 def detect(mangled):
     """Name the scheme `mangled` appears to use, or None.
 
     A prefix test only -- it reports what the name looks like, not that it will parse.
+    Never raises: like `demangle()`, it is called on every symbol in a table.
     """
-    if not mangled:
+    if not mangled or not isinstance(mangled, str):
         return None
     for plugin in available():
         if _claims(plugin, mangled):
@@ -202,12 +234,21 @@ def detect(mangled):
 def demangle_all(names_, *, language=None, style=DEFAULT_STYLE, limits=DEFAULT_LIMITS):
     """Demangle an iterable of names, yielding results in order.
 
-    A generator, so a caller streaming a large symbol table never holds more than one
-    result at a time beyond what it keeps itself. Shares the module cache, which is
-    where the real gain is: symbol tables repeat names heavily.
+    Returns a generator, so a caller streaming a large symbol table never holds more
+    than one result at a time beyond what it keeps itself. Shares the module cache,
+    which is where the real gain is: symbol tables repeat names heavily.
+
+    Arguments are validated before the generator is created, so a bad `language` or
+    `style` is reported at the call rather than at the first `next()`.
     """
-    for name in names_:
-        yield demangle(name, language=language, style=style, limits=limits)
+    _resolve(language)
+    get_style(style)
+
+    def _stream():
+        for name in names_:
+            yield demangle(name, language=language, style=style, limits=limits)
+
+    return _stream()
 
 
 def languages():

@@ -28,7 +28,13 @@ _lock = threading.RLock()
 _plugins = {}
 _aliases = {}
 _ordered = None
+#: Set only once loading has *finished*. A separate "currently loading on this thread"
+#: marker handles re-entrancy, because a plugin module calls `register()` while being
+#: imported and must not recurse back into loading. Using one flag for both meant a
+#: second thread arriving mid-import saw a half-populated registry and got
+#: `unknown language 'msvc'` from a library that supports it.
 _loaded = False
+_loading_thread = None
 
 
 def register(plugin):
@@ -45,18 +51,24 @@ def register(plugin):
 
 
 def _load():
-    global _loaded
+    global _loaded, _loading_thread
     if _loaded:
+        return
+    if _loading_thread == threading.get_ident():
+        # Re-entered from a plugin module's own import. Returning lets that module
+        # finish registering; the outer call completes the rest.
         return
     with _lock:
         if _loaded:
             return
-        # Set before importing: a plugin module calls register(), which must not
-        # recurse back into loading.
-        _loaded = True
-        for _name, module_path in _BUILTIN_MODULES:
-            __import__(module_path)
-        _load_entry_points()
+        _loading_thread = threading.get_ident()
+        try:
+            for _name, module_path in _BUILTIN_MODULES:
+                __import__(module_path)
+            _load_entry_points()
+            _loaded = True
+        finally:
+            _loading_thread = None
 
 
 def _load_entry_points():
@@ -83,35 +95,30 @@ def _load_entry_points():
 def get(name):
     """Look up a plugin by name or alias. Raises KeyError if unknown."""
     _load()
-    resolved = _aliases.get(name, name)
-    return _plugins[resolved]
+    with _lock:
+        resolved = _aliases.get(name, name)
+        return _plugins[resolved]
 
 
 def available():
     """Every registered plugin, in detection order."""
     global _ordered
     _load()
-    if _ordered is None:
-        with _lock:
+    with _lock:
+        if _ordered is None:
             _ordered = tuple(sorted(_plugins.values(), key=lambda p: (p.priority, p.name)))
-    return _ordered
+        return _ordered
 
 
 def names():
     """Registered language names, sorted."""
     _load()
-    return sorted(_plugins)
+    with _lock:
+        return sorted(_plugins)
 
 
-def detect(name):
-    """The first plugin claiming `name`, or None.
-
-    Order is by plugin priority, which is how overlapping schemes are resolved: Rust's
-    legacy mangling is Itanium mangling, so Rust is offered the name first.
-    """
-    if not name:
-        return None
-    for plugin in available():
-        if plugin.detect(name):
-            return plugin
-    return None
+def aliases():
+    """Every alias, mapped to the plugin name it resolves to."""
+    _load()
+    with _lock:
+        return dict(_aliases)

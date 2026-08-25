@@ -18,6 +18,16 @@ from .errors import ParseError, TruncatedError
 DIGITS = frozenset(string.digits)
 #: <seq-id> is base 36 with the digits ordered before the capitals.
 SEQ_ID_ALPHABET = string.digits + string.ascii_uppercase
+
+#: Longest <seq-id> worth reading. Base 36 in 12 digits already exceeds 4 * 10**18, far
+#: past any real substitution table, and the accumulation is quadratic in the digit
+#: count -- so an unbounded run lets a single symbol burn arbitrary time building an
+#: integer whose only use is to fail a bounds check.
+MAX_SEQ_ID_DIGITS = 12
+
+#: Likewise for decimal runs. CPython refuses `int()` on more than 4300 digits anyway,
+#: with a ValueError that is not this package's error type.
+MAX_NUMBER_DIGITS = 20
 _SEQ_ID_VALUES = {char: index for index, char in enumerate(SEQ_ID_ALPHABET)}
 
 
@@ -91,12 +101,19 @@ class Reader:
     # -- numbers ---------------------------------------------------------------
 
     def digits(self):
-        """Consume a run of decimal digits and return it, or raise if there are none."""
+        """Consume a run of decimal digits and return it, or raise if there are none.
+
+        Bounded: an unbounded run would reach `int()`, which CPython refuses above 4300
+        digits with a `ValueError` -- not this package's error type, and so not something
+        a caller of `parse()` can be expected to catch.
+        """
         start = self.pos
         text, length = self.text, self.length
         pos = start
         while pos < length and text[pos] in DIGITS:
             pos += 1
+            if pos - start > MAX_NUMBER_DIGITS:
+                raise ParseError(text, start, "number too long")
         if pos == start:
             raise ParseError(text, start, "expected a number")
         self.pos = pos
@@ -122,6 +139,8 @@ class Reader:
         pos = start
         while pos < length and text[pos] in _SEQ_ID_VALUES:
             pos += 1
+            if pos - start > MAX_SEQ_ID_DIGITS:
+                raise ParseError(text, start, "substitution index too long")
         raw = text[start:pos]
         self.pos = pos
         self.expect("_")

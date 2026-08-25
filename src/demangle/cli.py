@@ -11,6 +11,7 @@ over a whole symbol table.
 """
 
 import argparse
+import os
 import sys
 
 from . import __version__
@@ -24,7 +25,7 @@ def build_parser():
         epilog="With no NAME arguments, names are read from standard input, one per line.",
     )
     parser.add_argument("names", nargs="*", metavar="NAME", help="symbol names to demangle")
-    parser.add_argument("-l", "--language", choices=None, help="force a scheme instead of detecting")
+    parser.add_argument("-l", "--language", help="force a scheme instead of detecting (aliases accepted)")
     parser.add_argument("-s", "--style", default="llvm", help="output style (default: llvm)")
     parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
     parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
@@ -39,7 +40,9 @@ def _dump(node, indent=0):
     """Render a parse tree, one node per line."""
     pad = "  " * indent
     detail = ""
-    for slot in getattr(node, "__slots__", ()):
+    # Every slot in the hierarchy, not just the most-derived class's: a node whose text
+    # lives on a shared base declares none of its own and would print no detail at all.
+    for slot in node._fields() if hasattr(node, "_fields") else getattr(node, "__slots__", ()):
         value = getattr(node, slot, None)
         if isinstance(value, str) and value:
             detail = f" {value!r}"
@@ -66,18 +69,42 @@ def main(argv=None):
             print(name)
         return 0
 
-    if arguments.language and arguments.language not in languages():
-        parser.error(f"unknown language {arguments.language!r}; choose from {', '.join(languages())}")
+    # Validated through the registry rather than against `languages()`, so the aliases
+    # that `--list-languages` advertises are actually accepted.
+    if arguments.language:
+        from .core.registry import aliases, get
+
+        try:
+            get(arguments.language)
+        except KeyError:
+            known = ", ".join(sorted(set(languages()) | set(aliases())))
+            parser.error(f"unknown language {arguments.language!r}; choose from {known}")
+    if arguments.style not in styles():
+        parser.error(f"unknown style {arguments.style!r}; choose from {', '.join(styles())}")
 
     names = arguments.names or (line.rstrip("\n") for line in sys.stdin)
 
+    status = 0
+    try:
+        status = _run(names, arguments)
+    except BrokenPipeError:
+        # `demangle | head` closes the pipe on us. Catching this per name -- which the
+        # loop's own `except Exception` used to do -- printed one error per remaining
+        # symbol, thousands of them. Redirect stdout to devnull so the interpreter's
+        # shutdown flush does not raise it again, and exit cleanly.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
+    return status
+
+
+def _run(names, arguments):
     status = 0
     for name in names:
         if not name:
             print()
             continue
         if arguments.detect:
-            print(detect(name) or "-")
+            print(arguments.language or detect(name) or "-")
             continue
         try:
             if arguments.tree:
@@ -88,6 +115,8 @@ def main(argv=None):
                 print(demangle_strict(name, language=arguments.language, style=arguments.style))
                 continue
             print(demangle(name, language=arguments.language, style=arguments.style))
+        except BrokenPipeError:
+            raise
         except Exception as exc:
             print(f"{name}: {exc}", file=sys.stderr)
             status = 1

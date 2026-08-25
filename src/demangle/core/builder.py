@@ -126,5 +126,15 @@ class Builder(Protocol):
     def spell(self, handle: Handle, declarator: str = "") -> str:
         """Render a handle, placing `declarator` in the type's declarator position."""
 
+    def size(self, handle: Handle) -> int:
+        """How many characters `handle` would render to, without rendering it.
+
+        Must be O(1). This is what lets a parser enforce an output bound *while*
+        building: the substitution scheme allows each component to be assembled from two
+        copies of an earlier one, so output can double every few input bytes. Checking
+        the bound by measuring `spell()` would mean materialising the very string the
+        bound exists to prevent -- a few hundred bytes of input can reach gigabytes.
+        """
+
 
 __all__ = ["Builder", "Handle"]

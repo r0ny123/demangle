@@ -86,7 +86,14 @@ def test_regression_corpus():
 
 
 def test_rust_matches_rustc_demangle():
-    total, exact = _score("rust-real-world.txt", "llvm", language="rust")
+    """Auto-detected, not forced.
+
+    Forcing `language="rust"` would skip detection, which is the part most likely to be
+    wrong: legacy Rust mangling *is* Itanium mangling, so a detection miss hands the
+    name to the C++ parser and yields a plausible but quite wrong spelling rather than
+    an error.
+    """
+    total, exact = _score("rust-real-world.txt", "llvm")
     assert (total, exact) == (RUST_TOTAL, RUST_EXACT)
 
 

@@ -999,6 +999,7 @@ class _Demangler:
                 if index >= len(self.arg_backrefs):
                     raise _Bail
                 node = self.arg_backrefs[index]
+                # spelled for the bound and then kept whole: see the docstring
                 self.rendered(node)
                 params.append(node)
                 continue
