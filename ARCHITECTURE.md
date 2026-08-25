@@ -43,6 +43,31 @@ syntax highlighter -- means writing one class and touching no parser.
 This is the single most important thing to understand about the codebase. A change that
 makes a parser build strings directly, however locally convenient, breaks it.
 
+### Where the rule does not yet hold
+
+Two places, both stated plainly because a rule with an unadvertised exception is worse
+than one with a documented one:
+
+- **Expressions.** The Itanium parser writes types and names through the builder but
+  assembles expression *text* directly, so an expression inside a type arrives in the
+  tree as one opaque node. `tests/test_architecture.py` enforces the half that is
+  enforceable — no scheme may import `core.spelling` — and cannot enforce this half.
+- **Rust.** Its parsers predate the protocol and return a single `raw` node from
+  `parse()`. `demangle()` is unaffected.
+
+Both are in ROADMAP.md. Itanium and MSVC otherwise build real trees.
+
+### When a scheme needs its own spelling
+
+`core/spelling.py` implements *C-family* declarator placement. A scheme whose output
+looks like a C declaration uses it and gets the hard part for free. A scheme whose output
+does not — MSVC, where the calling convention sits inside the parentheses and the spacing
+rules differ — supplies its own node kinds and renderer instead, subclassing `core.ast.Node`
+so `walk()`, `find()` and `spell()` keep working. `AstBuilder` is shared regardless.
+
+That is the extension point, not a workaround: forcing every scheme through one
+renderer would mean MSVC-shaped branches inside `core`.
+
 ## Layout
 
 ```
@@ -63,8 +88,12 @@ demangle/
     rust/             Rust legacy (_ZN) and v0 (_R)
 ```
 
-`core` never imports from `schemes`. `schemes/*` never import from each other.
-Both rules are enforced by a test, because both are the kind of thing that erodes.
+`core` never imports from `schemes`; `schemes/*` never import from each other. Both are
+enforced by a test — including a test that the enforcement itself fires on a constructed
+violation, because the first version of the rule had a hole in it and looked fine.
+
+One exception, and it is in the test: `core/style.py` names the built-in option objects
+inside a function body, so the import is lazy and cycle-free.
 
 ## Why declarator placement is its own module
 

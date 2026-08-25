@@ -1,62 +1,69 @@
 # Roadmap
 
-What is not done yet, in the order it matters. Each entry says what would have to change,
-so anyone can pick one up.
+What is not done yet, in the order it matters. Each entry says what would have to
+change, so anyone can pick one up.
 
-## Known conformance gaps
+Conformance gaps are **not** listed here any more, because there are none of ours left:
+every checked-in corpus is exact against its reference, and so are whole symbol tables
+from libLLVM, libclang-cpp, the Rust toolchain and libstdc++ — about 112,000 real
+symbols. The three GNU-style shortfalls are disagreements *between the two references*
+about substitution table contents, pinned by name in `tests/test_conformance.py`.
 
-Three names in the 196-symbol Itanium corpus and two in the 609-name MSVC corpus do not
-match the reference. They are listed here rather than quietly excluded.
+## 1. Rust returns a leaf from `parse()`
 
-| Scheme | Name | Issue |
-|---|---|---|
-| Itanium | `_ZSt12construct_atIcJRKcEE...` | Pack expansion over a substituted parameter appends a spurious `...`, and names appearing inside a `decltype` expression are entered into the substitution table when ABI 5.1.10 says expressions are not substitutable. |
-| Itanium (gnu) | `_ZN5outer5inner7deducedIiEEDTplfp_fp_ET_` | GNU spells function parameters in expressions as `{parm#1}` and puts a space after `decltype`. Needs a GNU expression-spelling option. |
-| MSVC | 2 names | Inherited from the original implementation; not yet diagnosed. |
+The Rust parsers predate the builder protocol and still assemble text directly, so
+`parse()` gives a single `raw` node for a Rust symbol: `walk()` and `find()` see nothing
+below the root. `demangle()` is unaffected.
 
-## 1. Convert the MSVC and Rust parsers to the builder protocol
+Itanium and MSVC are both converted, and MSVC is the closer model — it keeps its own node
+kinds and renderer because its declarator spelling genuinely differs. Rust's output has
+no declarator syntax at all; its natural shape is a path with generic arguments, a hash,
+and a namespace tag, which is what a consumer would want to inspect.
 
-**The highest-priority item.** Both were written before this architecture existed and
-still assemble text directly, so `parse()` returns a single `Raw` node for them instead
-of a tree. `demangle()` is unaffected.
+The public API does not change when this lands. Only the shape of what `parse()` returns
+gets richer.
 
-The public API does not change when this lands — only the shape of what `parse()`
-returns gets richer. The Itanium parser is the worked example to follow.
+## 2. Structure for expressions
 
-## 2. Expression substitution semantics
+The Itanium parser writes types and names through the builder, but assembles expression
+*text* directly — `f"sizeof ({...})"`, `"::".join(levels)`. So an expression inside a
+type arrives in the tree as one opaque `raw` node.
 
-ABI 5.1.10: "we do not substitute for expressions, though names appearing in them might
-be substituted." The parser currently records types met inside expressions, which is what
-causes the `construct_at` failure above. Fixing it needs a careful reading of what
-"names appearing in them" includes, and probe-driven confirmation.
+This is the honest limit of the "parsers never build their own output" rule as it stands,
+and it is stated as such in ARCHITECTURE.md rather than glossed over. Closing it means
+expression node kinds and builder methods for them. Worth doing; not worth blocking
+anything else on.
 
-## 3. Broader corpora
+## 3. Reference diversity
 
-Present coverage is two compilers on one platform. Worth adding:
+Everything is measured against exactly one build of each reference: `llvm-cxxfilt`
+18.1.3, GNU `c++filt` 2.42, `llvm-undname` 18.1.3, `rustc-demangle` 0.1.28. That catches
+our defects; it does not catch a reference's.
 
-- More toolchains and versions (older GCC, MSVC proper, Intel).
-- Other architectures and platforms, where calling conventions and thunks differ.
-- Symbols scraped from real distribution binaries rather than only from purpose-built
-  sources.
-- A Rust conformance corpus generated with `rustc-demangle`, which the project does not
-  yet have — Rust is currently covered by unit tests only.
+- A matrix over several LLVM and binutils versions, so a reference changing its own
+  output shows up as a diff rather than a mystery.
+- For MSVC there is no second opinion at all. Microsoft's `UnDecorateSymbolName` is the
+  real ground truth, and `llvm-undname` is a reimplementation with known gaps — it
+  rejects `?f@@YAX_L@Z`, which `clang-cl` itself emits for `__int128`.
+- More platforms and architectures, where calling conventions and thunks differ.
 
 ## 4. More schemes
 
-The plugin interface exists so these do not need core changes:
+The plugin interface exists so these need no core changes:
 
 - **Swift** — currently needs the `swift` binary; a pure-Python reader would be a first.
 - **D**, **Delphi**, **Go**, **Objective-C**.
 
 ## 5. Performance
 
-- A C-free fast path for detection over a whole symbol table at once.
-- Interning repeated components within a single binary's symbol table.
-- Benchmarks on a corpus large enough to be representative (the present one is small
-  enough to sit in cache).
+- Interning repeated components within one binary's symbol table.
+- A batch detection pass over a whole table, rather than name by name.
+- A benchmark corpus large enough not to sit entirely in cache.
+- The benchmark gate compares against an absolute baseline recorded on one machine.
+  Comparing against a same-run reference workload would survive a noisy CI runner.
 
 ## 6. Documentation
 
-- API reference published from docstrings.
-- A worked example of using `parse()` for a real analysis task, which is the feature most
-  likely to be overlooked.
+- The API reference is published from docstrings at
+  <https://r0ny123.github.io/demangle/>. What it still lacks is a worked example of
+  using `parse()` for a real analysis task — the feature most likely to be overlooked.

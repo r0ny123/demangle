@@ -63,6 +63,10 @@ symbol nor the declaration.
 
 Every node supports `.walk()`, `.find(kind)`, `.children()` and `.spell()`.
 
+Itanium and MSVC return full trees. **Rust does not yet** — it returns a single `raw`
+node holding the spelling, so `walk()` and `find()` see nothing below the root for a
+Rust symbol. `demangle()` is unaffected. See [ROADMAP.md](ROADMAP.md).
+
 ### Detection and batches
 
 ```python
@@ -97,24 +101,66 @@ $ demangle --detect _RNvC6_123foo3bar
 Correctness is defined against the reference implementations and measured on symbols
 real compilers actually emit, not on hand-picked examples.
 
-| Scheme | Reference | Corpus | Exact |
-|---|---|---|---|
-| Itanium | `llvm-cxxfilt` 18.1.3 | 196 real-world symbols | **195 / 196** (99.5%) |
-| Itanium | GNU `c++filt` 2.42 | 196 real-world symbols | **193 / 196** (98.5%) |
-| MSVC | `llvm-undname` 18.1.3 | 609 (LLVM's own test corpus) | **607 / 609** (99.7%) |
+### Checked-in corpora
 
-The Itanium corpus is compiled from real C++ by **both** `clang++` and `g++`, at four
-language standards (C++11 through C++20) and two optimisation levels, so it contains the
-things that only turn up in real output: ABI tags, lambda numbering, cloned and
-thunked functions, guard variables, internal-linkage names, and deep template nesting.
+Replayed by the test suite. No compiler and no reference demangler needed.
 
-Pass counts are pinned as exact numbers in the test suite. A change in either direction
-has to be a deliberate edit, so an improvement cannot quietly mask a regression.
+| Corpus | Reference | Exact |
+|---|---|---|
+| Real shipped libstdc++ | `llvm-cxxfilt` 18.1.3 | **5913 / 5913** |
+| Rust, both schemes | `rustfilt` (rustc-demangle 0.1.28) | **5316 / 5316** |
+| MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
+| Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
+| Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **278 / 278** |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **272 / 275** † |
+| Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
 
-Regenerate the corpora with `tools/generate_corpus.py`; compare against a live reference
-with `tools/differential.py`.
+† The three shortfalls are not ours to fix: in each, the two reference implementations
+disagree with *each other* about what belongs in the substitution table — not about how
+to spell it. Matching both would mean two incompatible parses of the same bytes, so we
+follow LLVM and pin the disagreements by name.
 
-Known gaps are listed in [ROADMAP.md](ROADMAP.md).
+### Whole symbol tables
+
+Run live against the reference, not replayed.
+
+| Binary | Symbols | Agree |
+|---|---|---|
+| `libLLVM.so.18.1` | 44,186 | **100%** |
+| `libclang-cpp.so` + Polly + LTO | 41,140 | **100%** |
+| `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
+| `libstdc++.so.6` | 5,913 | **100%** |
+
+About 112,000 real symbols, all exact.
+
+This matters more than it might look. The purpose-built corpus reached 100% while
+libstdc++ was demangling *one symbol in 5,913* — the very first one carried an ELF version suffix, a
+shape no hand-written test case thinks to include. Nearly every defect fixed in this
+project came from reading real shipped binaries.
+
+The purpose-built corpus is still worth having: it is compiled by **both** `clang++` and
+`g++` at four language standards (C++11 through C++20) and two optimisation levels, so
+it reaches constructs a released library happens not to contain — concepts, coroutine
+frames, generic lambdas, requires-clauses.
+
+Pass counts are pinned as exact numbers, so an improvement cannot quietly mask a
+regression, and `tests/test_readme.py` checks this table against those pins.
+
+Regenerate with `tools/generate_corpus.py` and `tools/generate_rust_corpus.py`; compare
+against a live reference with `tools/differential.py`.
+
+### On trusting the references
+
+Not blindly. `clang-cl` emits `?f@@YAX_L@Z` for `__int128`, and `llvm-undname` — LLVM's
+own demangler — rejects it. The two C++ references contradict each other on substitution
+numbering. Both echo their input on failure, which is indistinguishable from success
+unless you look.
+
+So the split is deliberate: the **ABI specification** governs grammar and structure, and
+the **references** govern spelling. Where the specification is ambiguous the behaviour
+was settled by probing both references and only accepted when they agreed
+(`tools/probe_substitutions.py` makes a reference print its own substitution table).
+Where they genuinely differ, the difference is a `style`, not a silent winner.
 
 ## Safety
 
@@ -134,10 +180,13 @@ Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
 
 | Workload | Throughput |
 |---|---|
-| Cold — every name distinct | ~74,000 names/sec |
-| Warm — names repeat, as in a real symbol table | ~2,800,000 names/sec |
-| Non-mangled names rejected | ~764,000 names/sec |
+| Cold — every name distinct | ~48,000 names/sec |
+| Warm — names repeat, as in a real symbol table | ~1,900,000 names/sec |
+| Non-mangled names rejected | ~430,000 names/sec |
 | Full AST construction | ~15,000 names/sec |
+
+Measured on the machine that produced `benchmarks/baseline.json`; treat them as ratios
+rather than absolutes.
 
 The gap between cold and warm is the point: symbol tables repeat themselves relentlessly,
 and results are cached. Benchmarks are committed with a baseline and `--check` fails on
@@ -155,7 +204,8 @@ separate distribution can add Swift or D support through the `demangle.languages
 entry-point group without patching this package. Both rules are enforced by tests.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture, and
-[docs/adding-a-scheme.md](docs/adding-a-scheme.md) to add a language.
+[docs/adding-a-scheme.md](docs/adding-a-scheme.md) to add a language. The API reference
+is published at <https://r0ny123.github.io/demangle/>.
 
 ## Security
 

@@ -103,9 +103,13 @@ class TestNeverRaises:
         assert answered(value)
 
     def test_non_string_input_is_returned_not_raised(self):
-        """Symbol tables are read as bytes; this is the likeliest caller mistake."""
+        """Symbol tables are read as bytes; this is the likeliest caller mistake.
+
+        The annotations say `str`, and these calls deliberately violate them -- which is
+        the point. A type checker protects callers who use one; this protects the rest.
+        """
         for value in (b"_Z1fv", 42, None, ["_Z1fv"]):
-            assert demangle.demangle(value) is value
+            assert demangle.demangle(value) is value  # ty: ignore[invalid-argument-type]
             assert demangle.detect(value) is None
 
 

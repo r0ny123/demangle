@@ -113,6 +113,29 @@ jobs:
           python tools/generate_corpus.py --out /tmp/fresh
           python tools/differential.py --corpus /tmp/fresh/itanium-real-world.txt
 
+  docs:
+    name: documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[docs]"
+      # Strict: a warning is a broken cross-reference or an undocumented parameter.
+      - run: mkdocs build --strict
+      - uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: site/
+
   benchmark:
     name: benchmark regression
     runs-on: ubuntu-latest

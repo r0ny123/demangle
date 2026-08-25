@@ -15,12 +15,31 @@ a scheme-agnostic core.
 ### Added
 
 - **Itanium C++ ABI** demangler, written from the specification. Parses to a structured
-  tree; 195/196 exact against `llvm-cxxfilt` and 193/196 against GNU `c++filt` on a
-  corpus compiled from real source by both toolchains at four language standards and two
-  optimisation levels.
-- **MSVC** decorated-name demangler. 607/609 exact against `llvm-undname` on LLVM's own
-  demangler corpus.
-- **Rust** legacy (`_ZN`) and v0 (`_R`) demangling.
+  tree.
+- **MSVC** decorated-name demangler, also structured, with its own node kinds and
+  renderer because its declarator spelling genuinely differs from the C-family one.
+- **Rust** legacy (`_ZN`) and v0 (`_R`) demangling, including punycode identifiers and
+  v0 structural const arguments.
+- **Symbol-table decorations** — ELF version suffixes and compiler clone suffixes —
+  handled as structure rather than as each grammar's problem.
+
+### Conformance
+
+Every checked-in corpus is exact against its reference, and so are whole symbol tables
+read from shipped binaries — about 112,000 real symbols:
+
+| Source | Reference | Exact |
+|---|---|---|
+| `libLLVM.so.18.1` | `llvm-cxxfilt` 18.1.3 | 44,186 / 44,186 |
+| `libclang-cpp.so` + Polly + LTO | `llvm-cxxfilt` 18.1.3 | 41,140 / 41,140 |
+| Rust toolchain | `rustc-demangle` 0.1.28 | 20,697 / 20,697 |
+| `libstdc++.so.6` | `llvm-cxxfilt` 18.1.3 | 5,913 / 5,913 |
+| Rust, both schemes | `rustc-demangle` 0.1.28 | 5,316 / 5,316 |
+| MSVC (LLVM's own corpus) | `llvm-undname` 18.1.3 | 609 / 609 |
+| Purpose-built C++ | `llvm-cxxfilt` 18.1.3 | 278 / 278 |
+
+The three GNU-style shortfalls are disagreements between the two references about
+substitution table contents, pinned by name.
 - A **builder protocol** so one parser serves both a fast text path and a structured AST
   path without a second implementation to keep in sync.
 - **Plugin registry** with `demangle.languages` entry-point discovery, so a separate
@@ -29,7 +48,9 @@ a scheme-agnostic core.
   legitimately disagree.
 - `demangle` command-line tool.
 - Conformance, property-based, fuzz, robustness and architecture-boundary test suites;
-  reproducible benchmarks with a regression gate.
+  reproducible benchmarks with a regression gate that also fails when a benchmark gets
+  faster by doing less work.
+- API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
 [Unreleased]: https://github.com/r0ny123/demangle/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/r0ny123/demangle/releases/tag/v0.1.0

@@ -363,8 +363,12 @@ class ItaniumParser:
         return self.builder.template(base, self.template_arguments(install_scope=True))
 
     def nested_name(self, as_type=False):
-        """<nested-name> ::= N [<CV-qualifiers>] [<ref-qualifier>] <prefix> <unqualified-name> E
-        | N [<CV-qualifiers>] [<ref-qualifier>] <template-prefix> <template-args> E
+        """A qualified name.
+
+        ```
+        <nested-name> ::= N [<CV-qualifiers>] [<ref-qualifier>] <prefix> <unqualified-name> E
+                        | N [<CV-qualifiers>] [<ref-qualifier>] <template-prefix> <template-args> E
+        ```
         """
         reader = self.reader
         reader.expect("N")
@@ -540,7 +544,11 @@ class ItaniumParser:
         return combined
 
     def discriminator(self):
-        """<discriminator> ::= _ <non-negative number> | __ <number> _
+        """Tells apart same-named entities in one function.
+
+        ```
+        <discriminator> ::= _ <non-negative number> | __ <number> _
+        ```
 
         Tells apart same-named entities in one function. It carries no spelling, but it
         has to be consumed or it looks like trailing junk.
@@ -610,7 +618,12 @@ class ItaniumParser:
         return builder.name(self.operator_name() + self.abi_tags())
 
     def constructor_name(self, scope):
-        """<ctor-dtor-name> ::= C1 | C2 | C3 | CI1 <base class type> | CI2 <base class type>"""
+        """A constructor name.
+
+        ```
+        <ctor-dtor-name> ::= C1 | C2 | C3 | CI1 <base class type> | CI2 <base class type>
+        ```
+        """
         reader = self.reader
         reader.expect("C")
         self._ctor_dtor = True
@@ -662,7 +675,12 @@ class ItaniumParser:
         return text + self.abi_tags()
 
     def abi_tags(self):
-        """<abi-tags> ::= <abi-tag>* where <abi-tag> ::= B <source-name>"""
+        """ABI tags, spelled `[abi:tag]`.
+
+        ```
+        <abi-tags> ::= <abi-tag>*     <abi-tag> ::= B <source-name>
+        ```
+        """
         tags = []
         while self.reader.peek() == "B":
             self.reader.take()
@@ -670,9 +688,12 @@ class ItaniumParser:
         return "".join(tags)
 
     def unnamed_type_name(self):
-        """<unnamed-type-name> ::= Ut [<number>] _ | <closure-type-name>
+        """A closure or unnamed type.
 
+        ```
+        <unnamed-type-name> ::= Ut [<number>] _ | <closure-type-name>
         <closure-type-name> ::= Ul <lambda-sig> E [<number>] _
+        ```
         """
         reader = self.reader
         reader.expect("U")
@@ -766,7 +787,11 @@ class ItaniumParser:
         )
 
     def substitution(self, as_scope=False, expanded=False):
-        """<substitution> ::= S <seq-id> _ | S_ | St | Sa | Sb | Ss | Si | So | Sd
+        """A back-reference or a predefined abbreviation.
+
+        ```
+        <substitution> ::= S <seq-id> _ | S_ | St | Sa | Sb | Ss | Si | So | Sd
+        ```
 
         `as_scope` is accepted for call-site clarity; the abbreviation spelling is a
         single policy set by `ItaniumOptions`, because both reference demanglers spell
@@ -784,8 +809,12 @@ class ItaniumParser:
         return self.subs.lookup(reader.seq_id())
 
     def template_param(self):
-        """<template-param> ::= T_ | T <parameter-2 non-negative number> _
-                              | TL <level> _ [<parameter-2 non-negative number>] _
+        """A reference to a template parameter.
+
+        ```
+        <template-param> ::= T_ | T <parameter-2 non-negative number> _
+                           | TL <level> _ [<parameter-2 non-negative number>] _
+        ```
 
         The `TL` form names a parameter of an enclosing template by level as well as by
         index, which Clang emits inside the constraints of a nested template. It is
@@ -840,7 +869,11 @@ class ItaniumParser:
     # -- 5.1.5 types -----------------------------------------------------------
 
     def cv_qualifiers(self):
-        """<CV-qualifiers> ::= [r] [V] [K], returned in C++'s canonical order.
+        """cv-qualifiers, returned in C++'s canonical order.
+
+        ```
+        <CV-qualifiers> ::= [r] [V] [K]
+        ```
 
         At most one of each, in the order the grammar gives. Consuming a whole run
         instead would fold `KK` into a single qualified type where the ABI has two
@@ -1068,8 +1101,12 @@ class ItaniumParser:
         return name
 
     def function_type(self, exception_spec=""):
-        """<function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx] F [Y]
-                               <bare-function-type> [<ref-qualifier>] E
+        """A function type.
+
+        ```
+        <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx] F [Y]
+                            <bare-function-type> [<ref-qualifier>] E
+        ```
 
         `exception_spec` is already-spelled text from the caller, which read it before
         the `F` because that is where the grammar puts it.
@@ -1103,7 +1140,12 @@ class ItaniumParser:
         return builder.function(returns, parameters, suffix + exception_spec)
 
     def array_type(self):
-        """<array-type> ::= A [<number>] _ <type> | A <expression> _ <type>"""
+        """An array type.
+
+        ```
+        <array-type> ::= A [<number>] _ <type> | A <expression> _ <type>
+        ```
+        """
         reader = self.reader
         reader.expect("A")
         if reader.peek() == "_":
@@ -1134,8 +1176,12 @@ class ItaniumParser:
             self._leave()
 
     def _template_param_decl(self):
-        """<template-param-decl> ::= Ty | Tk <concept-name> | Tn <type>
-                                   | Tt <template-param-decl>* E | Tp <template-param-decl>
+        """A declared template parameter.
+
+        ```
+        <template-param-decl> ::= Ty | Tk <concept-name> | Tn <type>
+                                | Tt <template-param-decl>* E | Tp <template-param-decl>
+        ```
 
         Declares a template parameter rather than supplying an argument. Newer than the
         grammar snapshot in docs/specs/, and emitted by Clang for constrained templates
@@ -1189,7 +1235,11 @@ class ItaniumParser:
         return f"${kind}" + ("" if index == 0 else str(index - 1))
 
     def template_arguments(self, install_scope=False):
-        """<template-args> ::= I <template-arg>+ E
+        """A template argument list.
+
+        ```
+        <template-args> ::= I <template-arg>+ E
+        ```
 
         `T_` names a parameter of the innermost enclosing template *declaration*, so
         which argument list is in scope matters and the two callers differ:
@@ -1248,7 +1298,11 @@ class ItaniumParser:
         return arguments
 
     def template_arg(self):
-        """<template-arg> ::= <type> | X <expression> E | <expr-primary> | J <template-arg>* E
+        """One template argument.
+
+        ```
+        <template-arg> ::= <type> | X <expression> E | <expr-primary> | J <template-arg>* E
+        ```
 
         Returns `(handle, is_empty_pack)`. The handle is None for a
         <template-param-decl>, which declares a parameter rather than supplying one.
@@ -1310,7 +1364,12 @@ class ItaniumParser:
     # -- 5.1.6.1 literals ------------------------------------------------------
 
     def expr_primary(self):
-        """<expr-primary> ::= L <type> <value number> E | L <mangled-name> E | L _Z <encoding> E"""
+        """A literal or a reference to a declared entity.
+
+        ```
+        <expr-primary> ::= L <type> <value number> E | L <mangled-name> E | L _Z <encoding> E
+        ```
+        """
         reader = self.reader
         builder = self.builder
         reader.expect("L")
@@ -1386,11 +1445,15 @@ class ItaniumParser:
     # -- 5.1.6 unresolved names ------------------------------------------------
 
     def unresolved_name(self):
-        """<unresolved-name> ::= [gs] <base-unresolved-name>
-                               | sr <unresolved-type> <base-unresolved-name>
-                               | srN <unresolved-type> <unresolved-qualifier-level>+ E
-                                     <base-unresolved-name>
-                               | [gs] sr <unresolved-qualifier-level>+ E <base-unresolved-name>
+        """A name the compiler could not resolve.
+
+        ```
+        <unresolved-name> ::= [gs] <base-unresolved-name>
+                            | sr <unresolved-type> <base-unresolved-name>
+                            | srN <unresolved-type> <unresolved-qualifier-level>+ E
+                                  <base-unresolved-name>
+                            | [gs] sr <unresolved-qualifier-level>+ E <base-unresolved-name>
+        ```
 
         A name written in a template that the compiler could not resolve, because it
         depends on a parameter: `std::is_signed_v<T>` inside an `enable_if`. These reach
@@ -1426,7 +1489,12 @@ class ItaniumParser:
         return prefix + "::".join(levels)
 
     def unresolved_type(self):
-        """<unresolved-type> ::= <template-param> [<template-args>] | <decltype> | <substitution>"""
+        """A dependent type at the head of an unresolved name.
+
+        ```
+        <unresolved-type> ::= <template-param> [<template-args>] | <decltype> | <substitution>
+        ```
+        """
         reader = self.reader
         builder = self.builder
         if reader.peek() == "T":
@@ -1439,7 +1507,10 @@ class ItaniumParser:
         return builder.spell(self.substitution())
 
     def simple_id(self):
-        """<simple-id> ::= <source-name> [<template-args>]"""
+        """```
+        <simple-id> ::= <source-name> [<template-args>]
+        ```
+        """
         text = self.source_name()
         if self.reader.peek() == "I":
             text += self.spelled_template_arguments()
@@ -1496,7 +1567,12 @@ class ItaniumParser:
         return builder.spell(self.type_())
 
     def initialiser(self):
-        """<initializer> ::= pi <expression>* E -- a parenthesised initialiser list."""
+        """A parenthesised initialiser list.
+
+        ```
+        <initializer> ::= pi <expression>* E
+        ```
+        """
         reader = self.reader
         if not reader.eat("pi"):
             expression = self.expression()

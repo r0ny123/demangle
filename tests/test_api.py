@@ -190,9 +190,12 @@ class TestDecorations:
         assert demangle.demangle(name) == "std::io::stdio::OUTPUT_CAPTURE_USED.0"
 
     def test_the_ast_keeps_the_decoration_as_structure(self):
+        from demangle.core.ast import Decorated
+
         tree = demangle.parse("_ZN3Foo3barEv.cold")
-        assert tree.kind == "decorated"
+        assert isinstance(tree, Decorated)
         assert tree.decoration == ".cold"
+        assert tree.inner.spell() == "Foo::bar()"
 
 
 class TestStyleRegistration:

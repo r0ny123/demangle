@@ -45,7 +45,8 @@ what the suite actually achieves.
 ## The rules that matter
 
 Most of the codebase is ordinary Python. Three rules are not negotiable, because the
-design rests on them and each is enforced by a test:
+design rests on them. Two are fully enforced by a test; the first is enforced as far as
+a test can reach, and ARCHITECTURE.md says where it does not:
 
 1. **Parsers never build their own output.** Write against the `Builder` protocol
    (`core/builder.py`). Building a string directly is locally convenient and breaks both
