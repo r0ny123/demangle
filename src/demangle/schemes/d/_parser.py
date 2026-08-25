@@ -137,6 +137,29 @@ SPECIAL_COMPONENTS = {
 }
 
 
+#: How the reference writes a character inside a string literal that cannot stand as
+#: itself. Anything else below space, or above ASCII, goes out as `\xNN`.
+_STRING_ESCAPES = {
+    0x0A: "\\n",
+    0x09: "\\t",
+    0x0D: "\\r",
+    0x5C: "\\\\",
+    0x07: "\\a",
+    0x08: "\\b",
+    0x0C: "\\f",
+    0x0B: "\\v",
+}
+
+
+def _escaped(code):
+    escape = _STRING_ESCAPES.get(code)
+    if escape is not None:
+        return escape
+    if code < 0x20 or code == 0x7F:
+        return f"\\x{code:02x}"
+    return chr(code)
+
+
 class DemangleFailure(Exception):
     """This name is not one this parser can read."""
 
@@ -174,15 +197,20 @@ class _Reader:
     def starts_with(self, prefix):
         return self.text.startswith(prefix, self.pos)
 
-    def number(self):
+    def number(self, bounded=True):
+        """Read a decimal run.
+
+        `bounded` caps the digit count, which is right for a *length prefix* -- one longer
+        than the name itself is malformed, not enormous -- and wrong for a *value*: a
+        `ulong` template argument such as `Vmi3988292384` is ten digits and perfectly
+        ordinary. Capping both refused every symbol carrying a large constant.
+        """
         start = self.pos
         while self.pos < self.end and self.text[self.pos] in DIGITS:
             self.pos += 1
         if self.pos == start:
             raise DemangleFailure("expected a number")
-        # A length prefix long enough to overflow anything real is a malformed name, not
-        # a very large one.
-        if self.pos - start > 9:
+        if bounded and self.pos - start > 9:
             raise DemangleFailure("implausible length prefix")
         return int(self.text[start : self.pos])
 
@@ -190,10 +218,11 @@ class _Reader:
 class DSymbol:
     """One parsed D symbol: its dotted path, and the type of what it declares."""
 
-    __slots__ = ("path", "raw", "suffix", "text")
+    __slots__ = ("generated", "path", "raw", "suffix", "text")
 
-    def __init__(self, raw, path, text, suffix=""):
+    def __init__(self, raw, path, text, suffix="", generated=""):
         self.raw = raw
+        self.generated = generated
         self.path = path
         self.text = text
         self.suffix = suffix
@@ -225,6 +254,12 @@ class _Parser:
 
     def __init__(self, text):
         self.reader = _Reader(text)
+        # A symbol used as a *template argument* is spelled without the qualifiers an
+        # enclosing scope would carry: `FilterResult!(bitsSet(), ...)` where the same
+        # function in the path reads `initializer() const`. Tracked rather than passed
+        # down because every production between the two is unaware of it.
+        self._in_symbol_argument = False
+        self._trailing_had_attributes = True
 
     # -- entry -----------------------------------------------------------------
 
@@ -237,10 +272,9 @@ class _Parser:
         if not path:
             raise DemangleFailure("no qualified name")
         prefix = ""
-        if len(path) > 1 and path[-1] in SPECIAL_COMPONENTS:
-            pass
-        else:
-            path = [self._spelled_component(part) for part in path]
+        # `__postblit` is renamed by the reference only when the function has no
+        # attributes, so the decision needs the type, which is read after the path.
+        postblit = len(path) > 1 and path[-1] == "__postblit"
         if len(path) > 1 and path[-1] in SPECIAL_COMPONENTS:
             prefix = SPECIAL_COMPONENTS[path.pop()]
             # These carry no type of their own beyond the `Z` that ends them.
@@ -248,7 +282,13 @@ class _Parser:
             if self.reader.pos != self.reader.end:
                 raise DemangleFailure("unconsumed input after a generated symbol")
             return prefix + ".".join(path)
+        self._trailing_had_attributes = True
         trailing = self.trailing_type()
+        if postblit and not self._trailing_had_attributes:
+            # `this(this)` reads as a declaration already, so the reference writes no
+            # parameter list after it.
+            path[-1] = "this(this)"
+            trailing = ""
         return prefix + ".".join(path) + trailing
 
     # -- names -----------------------------------------------------------------
@@ -264,11 +304,20 @@ class _Parser:
     def qualified_name(self):
         parts = []
         while self._opens_symbol_name():
-            component = self.symbol_name()
+            saved, saved_depth = self.reader.pos, self.reader.depth
+            try:
+                component = self.symbol_name()
+            except DemangleFailure:
+                # `Q` opens both an identifier back reference and a *type* back
+                # reference, and only position tells them apart. One that does not
+                # resolve to an identifier is the symbol's own type starting, so the
+                # path ends here.
+                self.reader.pos, self.reader.depth = saved, saved_depth
+                break
             # A scope's own function type *is* spelled -- a symbol inside a function is
             # written `enclosing(params).inner` -- so the parameters come back here rather
             # than being discarded.
-            parts.append(component + self.scope_type())
+            parts.append(self._spelled_component(component) + self.scope_type())
         return parts
 
     def symbol_name(self):
@@ -296,11 +345,11 @@ class _Parser:
         reader = self.reader
         reader.pos += 3
         name = self._spelled_component(self.symbol_name())
-        reader.eat("H")
         arguments = []
         while not reader.eat("Z"):
             if reader.pos >= reader.end:
                 raise DemangleFailure("unterminated template instance")
+            reader.eat("H")
             arguments.append(self.template_argument())
         return f"{name}!({', '.join(arguments)})"
 
@@ -313,7 +362,30 @@ class _Parser:
             # A whole qualified name, not one component: `SQBaQz3run` is
             # `std.parallelism.run`, and reading a single component left the rest to be
             # taken for further arguments.
-            return ".".join(self.qualified_name())
+            #
+            # The name may carry its own `_D` prefix -- a symbol argument is mangled as a
+            # complete symbol, so `S_DQBg3net4curl7CurlAPI7_handle` appears where a bare
+            # path would do just as well.
+            if reader.starts_with("_D"):
+                # A complete mangled symbol, path *and* type: the `_handle` in
+                # `S_DQBg3net4curl7CurlAPI7_handlePv` is a `void*`, and the `Pv` has to be
+                # consumed even though the reference prints only the path.
+                reader.pos += 2
+                outer = self._in_symbol_argument
+                self._in_symbol_argument = True
+                try:
+                    # Its own type is spelled too where it is a function: the reference
+                    # writes `regexImpl(const(char)[], ...)` for one naming a function.
+                    spelled = ".".join(self.qualified_name())
+                    return spelled + self.trailing_type()
+                finally:
+                    self._in_symbol_argument = outer
+            outer = self._in_symbol_argument
+            self._in_symbol_argument = True
+            try:
+                return ".".join(self.qualified_name())
+            finally:
+                self._in_symbol_argument = outer
         if marker == "V":
             kind = self.type_()
             return self.template_value(kind)
@@ -331,7 +403,7 @@ class _Parser:
             return reader.text[start : reader.pos]
         raise DemangleFailure(f"unknown template argument marker {marker!r}")
 
-    def template_value(self, kind):
+    def template_value(self, kind, suffix=True):
         """A value argument. Only the forms a compiler emits are modelled."""
         reader = self.reader
         char = reader.peek()
@@ -340,20 +412,24 @@ class _Parser:
             return "null"
         if char == "i":
             reader.pos += 1
-            return self._integer_literal(kind, reader.number())
+            return self._integer_literal(kind, reader.number(bounded=False), suffix=suffix)
         if char == "N":
             reader.pos += 1
-            return self._integer_literal(kind, reader.number(), negative=True)
+            return self._integer_literal(kind, reader.number(bounded=False), negative=True, suffix=suffix)
         if char in DIGITS:
-            value = reader.number()
-            if kind == "bool":
-                return "true" if value else "false"
-            if kind == "char":
-                return f"'\\x{value:02x}'"
-            return str(value)
+            return self._integer_literal(kind, reader.number(bounded=False), suffix=suffix)
         if char in ("a", "u", "w"):
             return self.string_literal()
-        if char in ("e", "c", "A", "S"):
+        if char == "A":
+            # An array literal: `A <count> <value>...`, where each value has the element
+            # type. `VAmA2i104i1281` is a `ulong[]` holding `[104, 1281]`.
+            reader.pos += 1
+            count = reader.number()
+            element = kind.removesuffix("[]")
+            # No literal suffix inside an array: the reference writes `[104, 1281]`, not
+            # `[104uL, 1281uL]`, even though each element is a `ulong`.
+            return "[" + ", ".join(self.template_value(element, suffix=False) for _ in range(count)) + "]"
+        if char in ("e", "c", "S"):
             # Real and complex literals, array literals, struct literals. The reference
             # spells each in a way that needs the value decoded, and inventing a spelling
             # would be worse than declining: the name is refused rather than answered
@@ -404,14 +480,23 @@ class _Parser:
                 modifiers = self.type_modifiers()
             if reader.peek() not in CALLING_CONVENTIONS:
                 raise DemangleFailure("not a scope")
-            _, _, parameters, _ = self.function_type(returns=False)
+            _, attributes, parameters, _ = self.function_type(returns=False)
+            # A full symbol name has to follow, not merely a byte that could open one.
+            # `Qq` opens an identifier back reference *and* a type back reference, so
+            # testing the byte alone made the return type of `rt_linkOption` look like
+            # another path component and took the whole name with it.
             if not self._opens_symbol_name():
                 raise DemangleFailure("not a scope")
+            after = reader.pos
+            self.symbol_name()
+            reader.pos = after
         except DemangleFailure:
             reader.pos, reader.depth = saved, saved_depth
             return ""
+        del saved_depth
         spelled = f"({', '.join(parameters)})"
-        trailing = " ".join(modifiers)
+        trailing = "" if self._in_symbol_argument else " ".join(modifiers)
+        self._last_scope_had_attributes = bool(attributes)
         return f"{spelled} {trailing}" if trailing else spelled
 
     def type_modifiers(self):
@@ -453,8 +538,14 @@ class _Parser:
                 reader.pos += 1
                 break
             if char in ("X", "Y"):
+                # `X` is `f(T t...)` and `Y` is `f(T t, ...)`. The difference is exactly
+                # the separator, so `X` glues the ellipsis to the last parameter and `Y`
+                # stands as one of its own.
                 reader.pos += 1
-                parameters.append("...")
+                if char == "X" and parameters:
+                    parameters[-1] += "..."
+                else:
+                    parameters.append("...")
                 break
             if not char:
                 raise DemangleFailure("unterminated parameter list")
@@ -499,12 +590,21 @@ class _Parser:
             codes = [int(raw[at : at + width * 2], 16) for at in range(0, digits, width * 2)]
         except ValueError:
             raise DemangleFailure("string literal is not hex") from None
-        return '"' + "".join(chr(code) for code in codes) + '"'
+        return '"' + "".join(_escaped(code) for code in codes) + '"'
 
     @staticmethod
-    def _integer_literal(kind, value, negative=False):
+    def _integer_literal(kind, value, negative=False, suffix=True):
+        """A numeric literal, spelled as the type it belongs to is spelled.
+
+        A `bool` reads `false`/`true` and a `char` reads as a quoted character; both are
+        mangled as integers, so the type has to be consulted rather than the value.
+        """
+        if kind == "bool":
+            return "true" if value else "false"
+        if kind in ("char", "wchar", "dchar"):
+            return "'" + _escaped(value).replace('\\"', '"') + "'"
         sign = "-" if negative else ""
-        return f"{sign}{value}{INTEGER_SUFFIX.get(kind, '')}"
+        return f"{sign}{value}{INTEGER_SUFFIX.get(kind, '') if suffix else ''}"
 
     def type_(self):
         reader = self.reader
@@ -530,6 +630,9 @@ class _Parser:
         if char == "Q":
             return self.type_back_reference()
         pair = reader.text[reader.pos : reader.pos + 2]
+        if pair == "Nn":
+            reader.pos += 2
+            return "noreturn"
         if pair in WIDE_BASIC_TYPES:
             reader.pos += 2
             return WIDE_BASIC_TYPES[pair]
@@ -560,6 +663,13 @@ class _Parser:
         if char == "D":
             reader.pos += 1
             modifiers = self.type_modifiers()
+            if reader.peek() == "Q":
+                # The function type is a back reference: `MxDQsm` is a delegate whose
+                # signature was written earlier in the name.
+                inner = self.type_back_reference()
+                trailing = " ".join(modifiers)
+                spelled = inner.removesuffix(" function")
+                return f"{spelled} {trailing} delegate" if trailing else f"{spelled} delegate"
             convention, attributes, parameters, returns = self.function_type()
             words = " ".join([*attributes, *modifiers])
             spelled = f"{convention}{returns}({', '.join(parameters)})"
@@ -614,7 +724,8 @@ class _Parser:
             modifiers = self.type_modifiers()
         char = reader.peek()
         if char in CALLING_CONVENTIONS:
-            _, _, parameters, _ = self.function_type()
+            _, attributes, parameters, _ = self.function_type()
+            self._trailing_had_attributes = bool(attributes)
             spelled = f"({', '.join(parameters)})"
             trailing = " ".join(modifiers)
             return f"{spelled} {trailing}" if trailing else spelled
@@ -632,4 +743,17 @@ def parse_d_symbol(symbol):
     text = parser.parse()
     if parser.reader.pos != parser.reader.end:
         raise DemangleFailure("unconsumed input")
-    return DSymbol(raw=symbol, path=text.split("(")[0], text=text)
+    generated = ""
+    body = text
+    for prefix in SPECIAL_COMPONENTS.values():
+        if text.startswith(prefix):
+            generated, body = prefix, text[len(prefix) :]
+            break
+    path, _, rest = body.partition("(")
+    return DSymbol(
+        raw=symbol,
+        path=path,
+        text=text,
+        suffix=f"({rest}" if rest else "",
+        generated=generated,
+    )

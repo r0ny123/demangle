@@ -1,15 +1,13 @@
-"""D mangled names -- the scheme, and an honest record of how far it goes.
+"""D mangled names.
 
-D is implemented and is *not registered* as a language. It reads 88.4% of the 16,333
-symbols GNU binutils' D demangler can read across the shipped `libgphobos` and
-`libgdruntime`, and spells 327 of them differently. Every other scheme here is at 100% on
-its real-binary corpus, and a scheme that mis-spells two names in a hundred would put
-exactly the plausible-but-wrong output this library treats as worse than silence in front
-of a caller who cannot tell.
+100% against GNU binutils' D demangler (`c++filt --format=dlang`) over every symbol it
+can read in the shipped `libgphobos` and `libgdruntime` -- 16,333 of 19,315 -- with
+nothing mis-spelled and nothing refused among them, and no name anywhere raising anything
+but `DemangleFailure`.
 
-So it stays behind the door until it is finished. What these tests do is hold the floor:
-the corpus is the names it reads exactly today, and the safety properties below are the
-ones that must hold whatever the conformance figure is.
+The grammar rules that had to be *measured* rather than read off the specification are
+pinned below, each with the name that settled it. Every one of them was wrong on the
+first reading.
 """
 
 import contextlib
@@ -33,7 +31,7 @@ def corpus():
 ROWS = corpus()
 
 
-class TestConformanceFloor:
+class TestConformance:
     def test_the_corpus_is_not_empty(self):
         assert len(ROWS) > 1000
 
@@ -109,3 +107,60 @@ class TestSafety:
             for cut in (len(mangled) // 2, len(mangled) - 1):
                 with contextlib.suppress(DemangleFailure):
                     parse_d_symbol(mangled[:cut])
+
+
+class TestRulesThatHadToBeMeasured:
+    """Each of these was wrong on the first reading of the specification."""
+
+    def test_a_scope_function_has_no_return_type(self):
+        """The grammar gives a scope `TypeFunctionNoReturn`.
+
+        Reading a return type anyway swallowed the following path component, so a symbol
+        declared inside a function lost its own name.
+        """
+        name = "_D2rt3aaA11fakeEntryTIFNbKSQzQy4ImplxC8TypeInfoxQlZ13tiMangledNameyAa"
+        assert parse_d_symbol(name).text.endswith(".tiMangledName")
+
+    def test_a_scope_spells_its_parameters(self):
+        name = "_D2rt3aaA11fakeEntryTIFNbKSQzQy4ImplxC8TypeInfoxQlZ13tiMangledNameyAa"
+        assert "fakeEntryTI(ref rt.aaA.Impl, const(TypeInfo), const(TypeInfo))" in parse_d_symbol(name).text
+
+    def test_q_is_ambiguous_between_an_identifier_and_a_type(self):
+        """The trailing `Qq` here is the *return type*, not another path component.
+
+        Testing only whether the byte could open a name made it look like one and took
+        the rest of the symbol with it.
+        """
+        name = "_D2rt6config13rt_linkOptionFNbNiAyaMDFNbNiQkZQnZQq"
+        assert parse_d_symbol(name).text.startswith("rt.config.rt_linkOption(")
+
+    def test_a_value_may_have_more_digits_than_a_length_prefix_may(self):
+        """`Vmi3988292384` is a perfectly ordinary `ulong`; a 10-digit *length* is not."""
+        name = "_D3std6digest3crc__T3CRCVki32Vmi3988292384ZQx3putMFNaNbNiNeAxhXv"
+        assert "CRC!(32u, 3988292384uL)" in parse_d_symbol(name).text
+
+    def test_a_symbol_argument_is_a_whole_mangled_name(self):
+        """`S_D...` carries a path *and* its type, and the type has to be consumed."""
+        name = "_D3std11concurrency__T8initOnceS_DQBg3net4curl7CurlAPI7_handlePvZQBrFNcLQkZQn"
+        assert (
+            parse_d_symbol(name).text == "std.concurrency.initOnce!(std.net.curl.CurlAPI._handle).initOnce(lazy void*)"
+        )
+
+    def test_variadic_x_takes_no_separator(self):
+        """`f(T t...)` for `X`, `f(T t, ...)` for `Y` -- the difference is the comma."""
+        name = "_D3std6digest3crc__T3CRCVki32Vmi3988292384ZQx3putMFNaNbNiNeAxhXv"
+        assert parse_d_symbol(name).text.endswith("(const(ubyte)[]...)")
+
+    def test_an_array_literal_drops_the_element_suffix(self):
+        """`[104, 1281]`, not `[104uL, 1281uL]`, though each element is a `ulong`."""
+        name = "_D6object__T10RTInfoImplVAmA2i104i1281ZQBbyG2m"
+        assert parse_d_symbol(name).text == "object.RTInfoImpl!([104, 1281]).RTInfoImpl"
+
+    def test_postblit_is_renamed_only_when_the_function_has_no_attributes(self):
+        """A reference quirk, not a distinction the language makes.
+
+        Followed exactly rather than approximated in either direction, because the
+        corpus is what this library is measured against.
+        """
+        assert parse_d_symbol("_D3foo3Bar10__postblitMFZv").text == "foo.Bar.this(this)"
+        assert parse_d_symbol("_D3foo3Bar10__postblitMFNaNbNiNfZv").text == "foo.Bar.__postblit()"
