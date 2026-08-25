@@ -51,37 +51,31 @@ demangle = "demangle.cli:main"
 # Built-ins are registered directly rather than through entry points; this group is
 # where third-party distributions advertise additional schemes.
 
-# Development requirements are dependency groups (PEP 735), not optional-dependencies.
-# An extra is a *published* feature of the distribution -- `pip install demangle[dev]`
-# would appear on PyPI as something users are invited to install -- and a linter is not
-# a feature of a demangler. Groups are local to the source tree and never reach the
-# built metadata.
+# Development requirements are dependency groups (PEP 735), not optional-dependencies:
+# an extra is a *published* feature of the distribution, and a linter is not a feature
+# of a demangler. Groups stay in the source tree and never reach the built metadata.
 #
-# Install with `uv sync`, `uv pip install --group dev`, or `pip install --group dev`
-# (pip 25.1 or newer). `hatch run` handles it for you.
+# `hatch run` handles these. Directly: `uv pip install --group dev`, or `pip install
+# --group dev` on pip 25.1 or newer.
 [dependency-groups]
 test = [
     "pytest>=8",
     "pytest-cov",
     "hypothesis>=6",
 ]
-# ruff replaces black, isort, flake8 and pyupgrade; ty replaces mypy. Both are written
-# in Rust and check the whole tree in well under a second, which is what makes it
-# reasonable to gate every commit on them.
+# ruff replaces black, isort, flake8 and pyupgrade; ty replaces mypy. Both check the
+# whole tree in under a second, which is what makes gating every commit on them
+# reasonable.
 #
-# Both are pinned to an exact version. They add rules in patch releases, so an unpinned
-# one reddens unrelated changes on someone else's release schedule; pinned, Dependabot
-# proposes each bump as its own pull request and the new rules get addressed in the
-# commit that takes it. `format` is a group of its own so the ruff pin has exactly one
-# home -- the documentation build wants ruff as well, to format the signatures it
-# renders.
+# Both are pinned exactly: they add rules in patch releases, so an unpinned one reddens
+# unrelated changes on someone else's release schedule. Dependabot proposes each bump as
+# its own pull request. `format` is separate so the ruff pin has one home -- the
+# documentation build wants ruff too, to format the signatures it renders.
 format = [
     "ruff==0.16.4",
 ]
-# `test` is here because ty checks `tests/` too, and it cannot type-check a file whose
-# imports it cannot resolve. Leaving it out made `ty check .` pass locally -- where the
-# default environment happens to install everything -- and report ten unresolved-import
-# errors in CI, where the lint job installed only this group.
+# `test` belongs here: ty checks `tests/` too, and cannot type-check a file whose
+# imports it cannot resolve. Without it the lint job resolves nothing under `tests/`.
 lint = [
     { include-group = "format" },
     { include-group = "test" },
@@ -106,10 +100,8 @@ path = "src/demangle/__init__.py"
 packages = ["src/demangle"]
 
 [tool.hatch.build.targets.sdist]
-# The corpora are the project's main correctness asset and the suite cannot run without
-# them, so an sdist ships everything needed to test the thing you just built. Packagers
-# build from an sdist and run the tests; one that ships a suite it cannot collect is
-# worse than one that ships none.
+# An sdist ships everything needed to test what you just built. Packagers build from one
+# and run the suite; a suite that cannot collect its corpora is worse than none.
 include = [
     "/src",
     "/tests",
@@ -128,9 +120,8 @@ include = [
 
 # -- development environments --------------------------------------------------
 
-# uv resolves and installs an environment in a fraction of the time pip takes, and Hatch
-# drives it directly. Nothing here depends on uv being present -- Hatch falls back --
-# but with it a cold `hatch run check` is seconds rather than a minute.
+# uv installs an environment in a fraction of the time pip takes; a cold `hatch run
+# check` is seconds rather than a minute. Nothing requires it -- Hatch falls back.
 [tool.hatch.envs.default]
 installer = "uv"
 dependency-groups = ["dev"]
@@ -149,8 +140,8 @@ check = ["lint", "test", "differential", "bench --check"]
 python = ["3.11", "3.12", "3.13"]
 
 # `template` set to its own name so this environment does *not* inherit the default's
-# scripts. It did, and `hatch run docs:lint` ran ty against an environment holding only
-# the documentation tooling -- ten diagnostics that meant nothing.
+# scripts, which would run the type checker against an environment holding only the
+# documentation tooling.
 [tool.hatch.envs.docs]
 template = "docs"
 installer = "uv"

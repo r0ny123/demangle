@@ -20,7 +20,6 @@ class V0Demangler:
         self.suffix = ""
 
     def demangle(self, inpstr: str) -> str:
-        # Reset state for each call to ensure independent demangling
         self.suffix = ""
         self.disp = ""
 
@@ -38,12 +37,10 @@ class V0Demangler:
             self.inpstr = self.inpstr[:length]
 
         parser = Parser(self.inpstr, 0)
-        # Validate the path structure
         parser.skip_path()
         if (len(parser.inn) > parser.next_val) and parser.inn[parser.next_val].isupper():
             parser.skip_path()
 
-        # Reset parser position for printing
         parser.next_val = 0
         printer = Printer(parser, self.disp, 0)
         printer.print_path(True)
@@ -164,11 +161,10 @@ class Ident:
             try:
                 punycode_bytes[count]
             except IndexError:
-                # Input exhausted with every code point placed: this is the *success*
-                # exit. It returned a bare `None` before, which `try_small_punycode_decode`
-                # could not tell from the failure exits -- so a correctly decoded
-                # identifier was discarded and every non-ASCII name fell back to
-                # `punycode{...}`.
+                # Input exhausted with every code point placed: the success exit. It
+                # must be distinguishable from the failure exits by the caller, or a
+                # correctly decoded identifier is discarded and every non-ASCII name
+                # falls back to `punycode{...}`.
                 return True
 
             delta = delta // damp
@@ -528,11 +524,11 @@ class Parser:
         if basic_type(tag):
             pass
         elif n == "R" or n == "Q":
-            # The lifetime is optional; the referent is not. Skipping the lifetime and
-            # stopping left the referent to be read as whatever came next, which
-            # desynchronised every later offset -- `<&'_ u8 as Trait>::method` was
-            # rejected outright because the impl path is reached through this skipper.
-            # `print_type` has always had the shape right; this now matches it.
+            # The lifetime is optional; the referent is not. Skipping the lifetime
+            # without then skipping the referent leaves it to be read as whatever comes
+            # next, desynchronising every later offset -- and because an impl path is
+            # reached through this skipper, `<&'_ u8 as Trait>::method` is then rejected
+            # outright.
             if self.eat("L"):
                 self.integer_62()
             self.skip_type()
@@ -629,8 +625,6 @@ class Parser:
 
 
 class Printer:
-    # Following Ghidra's RustDemanglerV0, we limit recursion to prevent stack overflows
-    # or excessive resource usage on malformed inputs.
     # Must fire well below CPython's own recursion limit (default 1000), or a
     # self-referential backref chain raises RecursionError before this guard.
     RUST_MAX_RECURSION_COUNT = 256
@@ -666,7 +660,6 @@ class Printer:
 
     def backref_printer(self):
         p = self.parser_mut()
-        # Increment recursion count for backrefs as they involve recursive printing
         return Printer(p.backref(), self.out, self.bound_lifetime_depth, self.recursion + 1)
 
     def print_lifetime_from_index(self, lt):

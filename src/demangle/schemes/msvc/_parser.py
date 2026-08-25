@@ -344,23 +344,22 @@ class _Demangler:
             else:
                 base = operator
             args = []
+            # "$S", "$$V" and "$$$V" all spell an empty pack -- "f<>" has an argument
+            # list with no arguments in it -- and "$$Z" separates arguments without
+            # being one. All four are consumed and contribute no argument.
             while not self.eat("@"):
                 if self.eof():
                     raise _Bail
                 if self.text.startswith("$S", self.pos):
-                    # a third spelling of the empty pack
                     self.pos += 2
                     continue
                 if self.text.startswith("$$V", self.pos) and not self.text.startswith("$$$V", self.pos):
-                    # the other spelling of an empty pack
                     self.pos += 3
                     continue
                 if self.text.startswith("$$$V", self.pos):
-                    # an empty pack: "f<>" has an argument list and no arguments in it
                     self.pos += 4
                     continue
                 if self.text.startswith("$$Z", self.pos):
-                    # a pack separator, which stands between arguments and is not one
                     self.pos += 3
                     continue
                 self.at_argument = True

@@ -17,14 +17,13 @@ pure Python. No dependencies, no native code, no compiler required.
 
 Every existing option in Python binds to a native demangler: `cxxfilt` and `pycxxfilt`
 wrap LLVM or libstdc++, `undname` wraps Wine through CFFI. That means a C toolchain at
-install time, a platform-specific wheel, and — for MSVC names — nothing maintained at
-all. For a tool that has to run anywhere Python runs, that is a real constraint.
+install time, a platform-specific wheel, and — for MSVC — nothing maintained at all.
 
-It also means every one of them hands back a string. If you want the namespace, the
-template arguments, or the parameter types, you get to write a regular expression
-against C++ declaration syntax, which nests, and so cannot be parsed that way.
+They also all hand back a string. Want the namespace, the template arguments, or the
+parameter types, and you are writing a regular expression against C++ declaration syntax,
+which nests, and so cannot be parsed that way.
 
-This library does neither. It is pure Python, and it can give you a tree.
+This library is pure Python, and it can give you a tree.
 
 ## Install
 
@@ -133,38 +132,36 @@ Run live against the reference, not replayed.
 
 About 112,000 real symbols, all exact.
 
-This matters more than it might look. The purpose-built corpus reached 100% while
-libstdc++ was demangling *one symbol in 5,913* — the very first one carried an ELF version suffix, a
-shape no hand-written test case thinks to include. Nearly every defect fixed in this
-project came from reading real shipped binaries.
+The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
+5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
+to include. Nearly every defect fixed here came from reading real shipped binaries.
 
-The purpose-built corpus is still worth having: it is compiled by **both** `clang++` and
-`g++` at four language standards (C++11 through C++20) and two optimisation levels, so
-it reaches constructs a released library happens not to contain — concepts, coroutine
-frames, generic lambdas, requires-clauses.
+The purpose-built corpus still earns its place: compiled by **both** `clang++` and `g++`
+across C++11 through C++20 at two optimisation levels, it reaches constructs a released
+library happens not to contain — concepts, coroutine frames, generic lambdas,
+requires-clauses.
 
 Pass counts are pinned as exact numbers, so an improvement cannot quietly mask a
-regression, and `tests/test_readme.py` checks this table against those pins.
+regression; `tests/test_readme.py` checks this table against those pins.
 
 Regenerate with `tools/generate_corpus.py` and `tools/generate_rust_corpus.py`; compare
 against a live reference with `tools/differential.py`.
 
 ### On trusting the references
 
-Not blindly. `clang-cl` emits `?f@@YAX_L@Z` for `__int128`, and `llvm-undname` — LLVM's
+Not blindly. `clang-cl` emits `?f@@YAX_L@Z` for `__int128` and `llvm-undname` — LLVM's
 own demangler — rejects it. The two C++ references contradict each other on substitution
-numbering. Both echo their input on failure, which is indistinguishable from success
-unless you look.
+numbering. Both echo their input on failure, which reads exactly like success.
 
-So the split is deliberate: the **ABI specification** governs grammar and structure, and
-the **references** govern spelling. Where the specification is ambiguous the behaviour
-was settled by probing both references and only accepted when they agreed
-(`tools/probe_substitutions.py` makes a reference print its own substitution table).
-Where they genuinely differ, the difference is a `style`, not a silent winner.
+So the split is deliberate: the **ABI specification** governs grammar and structure, the
+**references** govern spelling. Ambiguities were settled by probing both references and
+accepted only where they agreed (`tools/probe_substitutions.py` makes one print its own
+substitution table). Where they genuinely differ, the difference is a `style` rather than
+a silent winner.
 
 ## Safety
 
-A mangled name is untrusted input in any tool that opens files it did not produce, so:
+A mangled name is untrusted input in any tool that opens files it did not produce.
 
 - `demangle()` never raises, for any input, including binary junk.
 - Recursion depth, output size, substitution count and input length are all bounded,
@@ -185,22 +182,12 @@ Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
 | Non-mangled names rejected | ~430,000 names/sec |
 | Full AST construction | ~15,000 names/sec |
 
-Measured on the machine that produced `benchmarks/baseline.json`; treat them as ratios
-rather than absolutes.
+Treat these as ratios rather than absolutes. The gap between cold and warm is the point:
+symbol tables repeat themselves relentlessly, and results are cached.
 
-The gap between cold and warm is the point: symbol tables repeat themselves relentlessly,
-and results are cached.
-
-`bench.py --check` gates CI against the committed baseline, and it compares *normalised*
-figures: each run also times a fixed workload that never touches the demangler, and every
-result is divided by it. Absolute microseconds are not comparable across machines and no
-tolerance factor makes them so — a shared CI runner is comfortably 1.5-2x slower than a
-laptop, which is enough to fail a gate on raw wall time for reasons that have nothing to
-do with the change under test. Normalised, the gate asks whether the demangler got slower
-relative to the interpreter it is running on, which is a property of the code. Running the
-suite against three times as many busy processes as cores moves the cold figure from 20.0
-to 57.7 microseconds a name — 2.9x, and a certain failure on raw time — while the
-normalised figure moves 511 to 487.
+`bench.py --check` gates CI against the committed baseline. It compares figures normalised
+against a calibration workload measured in the same run, so the gate reports a slower
+*demangler* rather than a slower *machine*.
 
 ## Architecture
 
@@ -227,10 +214,10 @@ report privately.
 
 New schemes, corpus contributions, and conformance bug reports are all welcome — see
 [CONTRIBUTING.md](CONTRIBUTING.md). A good bug report is a mangled name, what the
-reference demangler prints, and what this library prints.
+reference prints, and what this library prints.
 
-You should not need to understand the whole codebase to fix a spelling or add a
-language. That is a design goal, and if it is not true somewhere, that is a bug.
+Fixing a spelling or adding a language should not require understanding the whole
+codebase. Where it does, that is a bug.
 
 ## Licence
 

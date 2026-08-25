@@ -336,17 +336,16 @@ class ItaniumParser:
             else:
                 base = self.substitution()
             if reader.peek() == "I":
-                # <unscoped-template-name> is a candidate in its own right, recorded
-                # before the arguments that specialise it. Verified against both
-                # reference demanglers: in `_ZSt4sortIPiEvT_S_`, `S_` is `std::sort`.
+                # An <unscoped-template-name> is a substitution candidate in its own
+                # right (5.1.10), recorded before the arguments that specialise it.
+                # Verified against both references: in `_ZSt4sortIPiEvT_S_`, `S_` is
+                # `std::sort`.
                 self.subs.remember(base, "unscoped-template-name")
                 return self.apply_template_args(base), (), "", True
             return base, (), "", False
 
         base = self.unqualified_name()
         if reader.peek() == "I":
-            # <unscoped-template-name> is a substitution candidate in its own right
-            # (5.1.10), recorded before the arguments that specialise it.
             self.subs.remember(base, "unscoped-template-name")
             return self.apply_template_args(base), (), "", True
         return base, (), "", False
