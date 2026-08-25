@@ -34,6 +34,7 @@ from .tables import (
     SPECIAL_TYPE_NAMES,
     STD_ABBREVIATIONS,
     STD_ABBREVIATIONS_EXPANDED,
+    STD_ABBREVIATIONS_EXPANDED_GNU,
 )
 
 __all__ = ["ItaniumParser", "detect", "parse"]
@@ -41,6 +42,10 @@ __all__ = ["ItaniumParser", "detect", "parse"]
 #: Characters that can open a <type>. Used only to decide whether an ambiguous
 #: expression position holds a type, so it errs towards inclusion.
 _TYPE_STARTERS = frozenset("vwbcahstijlmxynofdegzPRODCGUFAMTSN0123456789")
+
+#: <template-param-decl> introducers. None can be confused with a <template-param>,
+#: which is always `T_` or `T` followed by digits.
+_PARAMETER_DECLARATIONS = frozenset({"Ty", "Tk", "Tn", "Tt", "Tp"})
 
 
 def detect(name):
@@ -61,6 +66,7 @@ class ItaniumParser:
 
     __slots__ = (
         "_abbrev",
+        "_abbrev_expanded",
         "_compound",
         "_ctor_dtor",
         "_depth",
@@ -82,7 +88,9 @@ class ItaniumParser:
             raise LimitExceeded(mangled, "input length", limits.max_input)
         self._mangled = mangled
         self.options = options
-        self._abbrev = STD_ABBREVIATIONS_EXPANDED if options.expand_std_abbreviations else STD_ABBREVIATIONS
+        expanded = STD_ABBREVIATIONS_EXPANDED_GNU if options.expand_std_abbreviations else STD_ABBREVIATIONS_EXPANDED
+        self._abbrev_expanded = expanded
+        self._abbrev = expanded if options.expand_std_abbreviations else STD_ABBREVIATIONS
         self.reader = Reader(mangled)
         self.builder = builder
         self.limits = limits
@@ -96,7 +104,13 @@ class ItaniumParser:
         # Identities of template arguments that were argument packs. A pack is already
         # spelled as its comma-separated members, so expanding it must not also append
         # an ellipsis.
-        self._packs = set()
+        # Pack handles seen in this name, held by strong reference. Identity is the
+        # right test -- a pack is the object the parser just built -- but `id()` is not:
+        # CPython reuses an address once an object is collected, so an id-keyed set can
+        # report a brand new handle as a pack it has never seen. That failure is silent
+        # and data-dependent, which is the worst kind.
+        self._packs = []
+
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
         self._ctor_dtor = False
@@ -142,15 +156,9 @@ class ItaniumParser:
         result = self.encoding()
 
         if not reader.eof:
-            suffix = reader.remaining
-            # A `.cold`, `.part.0` or `.llvm.1234` suffix is a clone marker the compiler
-            # appends after the mangled name proper. The ABI calls it a vendor-specific
-            # suffix; it is everywhere in optimised binaries, so carry it rather than
-            # refuse the name.
-            if suffix.startswith("."):
-                result = self.builder.special("", result)
-                return self.builder.raw(self.builder.spell(result) + f" [clone {suffix}]")
-            raise ParseError(self._mangled, reader.pos, f"unconsumed input {suffix!r}")
+            # Clone and version suffixes are stripped by the API before a parser sees
+            # the name (see core/decorations.py), so anything left here really is junk.
+            raise ParseError(self._mangled, reader.pos, f"unconsumed input {reader.remaining!r}")
 
         rendered_length = len(self.builder.spell(result))
         if rendered_length > self.limits.max_output:
@@ -190,7 +198,11 @@ class ItaniumParser:
             parameters = []
             reader = self.reader
             while not reader.eof and reader.peek() not in "E.":
-                parameters.append(self.type_())
+                parameter = self.type_()
+                # `Dp T_` over a pack bound to nothing expands to no parameters at all,
+                # so it must not leave a separator behind.
+                if builder.spell(parameter):
+                    parameters.append(parameter)
         finally:
             self._naming = was_naming
 
@@ -264,7 +276,7 @@ class ItaniumParser:
 
     # -- 5.1.2 names -----------------------------------------------------------
 
-    def name(self):
+    def name(self, as_type=False):
         """<name> ::= <nested-name> | <unscoped-name>
                     | <unscoped-template-name> <template-args> | <local-name>
 
@@ -277,9 +289,9 @@ class ItaniumParser:
         char = reader.peek()
 
         if char == "N":
-            return self.nested_name()
+            return self.nested_name(as_type)
         if char == "Z":
-            return self.local_name(), (), "", False
+            return self.local_name(as_type), (), "", False
 
         if char == "S":
             # Either an abbreviation or a back-reference, each of which may be an
@@ -317,7 +329,7 @@ class ItaniumParser:
         """
         return self.builder.template(base, self.template_arguments(install_scope=True))
 
-    def nested_name(self):
+    def nested_name(self, as_type=False):
         """<nested-name> ::= N [<CV-qualifiers>] [<ref-qualifier>] <prefix> <unqualified-name> E
         | N [<CV-qualifiers>] [<ref-qualifier>] <template-prefix> <template-args> E
         """
@@ -340,7 +352,7 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "unterminated nested name")
                 self._enter()
                 try:
-                    is_template = self.prefix_component(parts)
+                    is_template = self.prefix_component(parts, as_type)
                 finally:
                     self._leave()
 
@@ -356,7 +368,7 @@ class ItaniumParser:
         name = parts[0] if len(parts) == 1 else self.builder.qualified(parts)
         return name, quals, ref_qualifier, is_template
 
-    def prefix_component(self, parts):
+    def prefix_component(self, parts, as_type=False):
         """One component of a <prefix>, appended to `parts`.
 
         Returns whether this component was a template specialisation; only the answer
@@ -372,7 +384,7 @@ class ItaniumParser:
         char = reader.peek()
 
         if char == "S":
-            parts.append(self.substitution(as_scope=True))
+            parts.append(self.substitution(as_scope=True, expanded=self._abbreviation_scopes_a_structor()))
             return False
 
         if char == "T":
@@ -413,7 +425,7 @@ class ItaniumParser:
             self.subs.remember(combined, "prefix")
         return False
 
-    def local_name(self):
+    def local_name(self, as_type=False):
         """<local-name> ::= Z <function encoding> E <entity name> [<discriminator>]
         | Z <function encoding> E s [<discriminator>]
         | Z <function encoding> Ed [<parameter number>] _ <entity name>
@@ -421,6 +433,14 @@ class ItaniumParser:
         reader = self.reader
         builder = self.builder
         reader.expect("Z")
+        # `Z <encoding> E` holds a complete function declaration, with template
+        # parameters of its own. Without a fresh naming context its `T_` and `T0_`
+        # resolve against whatever enclosing template mentioned this local entity --
+        # which is exactly what happens when a lambda defined inside one function
+        # template is passed as an argument to another.
+        outer_naming = self._naming
+        outer_scope = self.targs.snapshot()
+        self._naming = True
         self._drop_return = not self.options.local_name_return_type
         try:
             outer = self.encoding()
@@ -431,21 +451,37 @@ class ItaniumParser:
             if reader.peek() != "_":
                 reader.number(allow_negative=False)
             reader.expect("_")
-            inner, quals, ref_qualifier, is_template = self.name()
-            if not reader.eof and reader.peek() not in "E_":
-                inner = self.bare_function_type(inner, quals, ref_qualifier, is_template)
+            try:
+                entity_is_type = as_type or reader.peek() == "U"
+                inner, quals, ref_qualifier, is_template = self.name()
+                if not entity_is_type and not reader.eof and reader.peek() not in "E_":
+                    inner = self.bare_function_type(inner, quals, ref_qualifier, is_template)
+            finally:
+                self._naming = outer_naming
+                self.targs.restore(outer_scope)
             return builder.qualified([outer, inner])
 
         reader.expect("E")
 
         if reader.eat("s"):
             self.discriminator()
+            self._naming = outer_naming
+            self.targs.restore(outer_scope)
             return builder.qualified([outer, builder.raw("string literal")])
 
-        inner, quals, ref_qualifier, is_template = self.name()
-        if not reader.eof and reader.peek() not in "E_":
-            inner = self.bare_function_type(inner, quals, ref_qualifier, is_template)
-        self.discriminator()
+        try:
+            # A closure or unnamed type is a *type*, so nothing follows it. Any other
+            # entity may be a function, in which case its signature does. Without this
+            # test, `Z1gvEUlvE_S_` reads the following parameter as the lambda's
+            # signature and the substitution table is a parameter short from then on.
+            entity_is_type = as_type or reader.peek() == "U"
+            inner, quals, ref_qualifier, is_template = self.name()
+            if not entity_is_type and not reader.eof and reader.peek() not in "E_":
+                inner = self.bare_function_type(inner, quals, ref_qualifier, is_template)
+            self.discriminator()
+        finally:
+            self._naming = outer_naming
+            self.targs.restore(outer_scope)
         return builder.qualified([outer, inner])
 
     def discriminator(self):
@@ -539,8 +575,19 @@ class ItaniumParser:
         if not scope:
             raise ParseError(self._mangled, self.reader.pos, "constructor outside any class scope")
         spelled = self.builder.spell(scope[-1])
-        bracket = spelled.find("<")
-        return spelled[:bracket] if bracket > 0 else spelled
+        # Drop everything the class name carries but the constructor does not: template
+        # arguments (`Foo<int>::Foo`, never `Foo<int>::Foo<int>`) and ABI tags
+        # (`failure[abi:cxx11]::failure`). Both attach directly to the class name, so
+        # cutting at whichever comes first removes them and nothing else.
+        cut = min((index for index in (spelled.find("<"), spelled.find("[")) if index > 0), default=-1)
+        if cut > 0:
+            spelled = spelled[:cut]
+        # Then take the last component. A scope reached through an abbreviation arrives
+        # as one part rather than as separate prefixes -- `Sa` is the single component
+        # `std::allocator` -- and the class name is only its tail, so without this the
+        # constructor of `std::allocator<char>` reads `std::allocator<char>::std::allocator`.
+        separator = spelled.rfind("::")
+        return spelled[separator + 2 :] if separator >= 0 else spelled
 
     def source_name(self):
         """<source-name> ::= <positive length number> <identifier>"""
@@ -623,7 +670,27 @@ class ItaniumParser:
 
     # -- 5.1.10 substitutions --------------------------------------------------
 
-    def substitution(self, as_scope=False):
+    def _abbreviation_scopes_a_structor(self):
+        """Whether an abbreviation at the cursor is the scope of a constructor or destructor.
+
+        It decides how the abbreviation is spelled. `Ss::c_str` prints as
+        `std::string::c_str()`, but `Ss`'s constructor prints as
+        `std::basic_string<char, ...>::basic_string()` -- because the constructor is
+        named for the class, and the class is the template, not the typedef. Both
+        reference demanglers agree, and it is why `_ZNSdC1EOSd` spells its scope in full
+        while spelling the very same abbreviation short as a parameter type.
+        """
+        reader = self.reader
+        if reader.peek2() not in STD_ABBREVIATIONS:
+            return False
+        following = reader.text[reader.pos + 2 : reader.pos + 4]
+        if len(following) != 2:
+            return False
+        return (following[0] == "C" and following[1] in CONSTRUCTOR_KINDS) or (
+            following[0] == "D" and following[1] in DESTRUCTOR_KINDS
+        )
+
+    def substitution(self, as_scope=False, expanded=False):
         """<substitution> ::= S <seq-id> _ | S_ | St | Sa | Sb | Ss | Si | So | Sd
 
         `as_scope` is accepted for call-site clarity; the abbreviation spelling is a
@@ -633,7 +700,7 @@ class ItaniumParser:
         reader = self.reader
         reader.expect("S")
         code = "S" + reader.peek()
-        table = self._abbrev
+        table = self._abbrev_expanded if expanded else self._abbrev
         if code in table:
             reader.take()
             # An abbreviation is pre-defined: referring to it adds no dictionary entry,
@@ -702,6 +769,14 @@ class ItaniumParser:
 
         if char in QUALIFIER_LETTERS:
             qualifiers = self.cv_qualifiers()
+            if reader.peek() == "F":
+                # 5.1.5.3: <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx]
+                # F [Y] <bare-function-type> [<ref-qualifier>] E. The qualifiers are part
+                # of *this* production, so `KFbvE` is the single component
+                # `bool () const` -- not a `bool ()` that a qualifier is then applied to.
+                # Recording both would enter one component too many and shift every
+                # later back-reference.
+                return subs.remember(builder.qualify(self.function_type(), qualifiers), "type")
             inner = self.type_()
             return subs.remember(builder.qualify(inner, qualifiers), "type")
 
@@ -805,10 +880,19 @@ class ItaniumParser:
         if pair == "Dp":
             reader.pos += 2
             inner = self.type_()
-            if id(inner) in self._packs or self._scope_has_pack:
-                # Expanding a pack yields its members, which are already spelled: `Dp T_`
-                # over `J i c d E` is `int, char, double`, not `int, char, double...`.
-                return inner
+            if any(inner is pack for pack in self._packs) or self._scope_has_pack:
+                # The expansion is a <type> in its own right and is recorded as one,
+                # separately from the type it expands: `Dp R T1_` contributes both the
+                # `R T1_` entry and the expansion's. Both reference demanglers do this,
+                # and a name referring past them comes out short otherwise.
+                #
+                # `inner` is a pack, and every declarator between here and the `T_` has
+                # already distributed over its members -- so `Dp O T_` over three
+                # arguments arrives as three rvalue references, fully spelled. Expansion
+                # is what those members *are*; an ellipsis would be spelling it twice.
+                return self.subs.remember(inner, "type")
+            # No pack in scope: this is an unexpanded expansion, and the ellipsis is the
+            # whole content of it.
             return self.subs.remember(builder.pack(inner), "type")
 
         if pair == "Dv":
@@ -852,8 +936,15 @@ class ItaniumParser:
         return self.builder.raw(f"{self.builder.spell(inner)} vector[{size}]")
 
     def class_enum_type(self):
-        """<class-enum-type> ::= <name> | Ts <name> | Tu <name> | Te <name>"""
-        name, _, _, _ = self.name()
+        """<class-enum-type> ::= <name> | Ts <name> | Tu <name> | Te <name>
+
+        `as_type` matters for a <local-name>: whether a signature follows the entity is
+        not decidable from the grammar alone, only from where the name sits.
+        `Z <encoding> E <entity>` reached as an <encoding> may be a local *function*, and
+        the types after it are its parameters; reached as a <type> it names a local class,
+        and what follows belongs to whatever mentioned it.
+        """
+        name, _, _, _ = self.name(as_type=True)
         return name
 
     def function_type(self):
@@ -877,7 +968,9 @@ class ItaniumParser:
                 reader.take()
                 suffix = " &&"
                 continue
-            parameters.append(self.type_())
+            parameter = self.type_()
+            if builder.spell(parameter):
+                parameters.append(parameter)
 
         if len(parameters) == 1 and builder.spell(parameters[0]) == "void":
             parameters = []
@@ -906,6 +999,38 @@ class ItaniumParser:
 
     # -- 5.1.5.10 template arguments -------------------------------------------
 
+    def template_param_decl(self):
+        """<template-param-decl> ::= Ty | Tk <concept> | Tn <type>
+                                   | Tt <template-param-decl>* E | Tp <template-param-decl>
+
+        A constrained or explicitly-declared template parameter. This production is
+        newer than the published grammar snapshot in docs/specs/ and is emitted by Clang
+        for constrained templates; both reference demanglers print nothing for it, since
+        it declares a parameter rather than supplying an argument. It still has to be
+        consumed, or everything after it is misread.
+        """
+        reader = self.reader
+        pair = reader.peek2()
+        reader.pos += 2
+        if pair == "Ty":
+            return
+        if pair == "Tk":
+            self.simple_id()
+            return
+        if pair == "Tn":
+            self.type_()
+            return
+        if pair == "Tp":
+            self.template_param_decl()
+            return
+        if pair == "Tt":
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated template parameter list")
+                self.template_param_decl()
+            return
+        raise ParseError(self._mangled, reader.pos, f"unknown template parameter declaration {pair!r}")
+
     def template_arguments(self, install_scope=False):
         """<template-args> ::= I <template-arg>+ E
 
@@ -929,52 +1054,82 @@ class ItaniumParser:
         if install_scope:
             self.targs.restore(())
             self._scope_has_pack = False
+        # Whatever these arguments contain, it is a type mentioned in passing, not the
+        # entity being declared -- so a nested argument list inside one of them must not
+        # install a scope of its own. Without this, the arguments of the
+        # `__normal_iterator<wchar_t*, ...>` passed to a `basic_string` constructor
+        # replace the constructor's own, and every `T_` in the signature resolves to
+        # `wchar_t*`.
+        was_naming = self._naming
+        self._naming = False
         arguments = []
-        while not reader.eat("E"):
-            if reader.eof:
-                raise ParseError(self._mangled, reader.pos, "unterminated template argument list")
-            self._enter()
-            try:
-                argument = self.template_arg()
-            finally:
-                self._leave()
-            arguments.append(argument)
-            if install_scope:
-                self.targs.add(argument)
+        try:
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated template argument list")
+                self._enter()
+                try:
+                    argument, is_empty_pack = self.template_arg()
+                finally:
+                    self._leave()
+                if argument is None:
+                    # A <template-param-decl>: it declares a parameter rather than
+                    # supplying an argument, and neither prints nor occupies a slot.
+                    continue
+                if not is_empty_pack:
+                    arguments.append(argument)
+                if install_scope:
+                    self.targs.add(argument)
+        finally:
+            self._naming = was_naming
         return arguments
 
     def template_arg(self):
-        """<template-arg> ::= <type> | X <expression> E | <expr-primary> | J <template-arg>* E"""
+        """<template-arg> ::= <type> | X <expression> E | <expr-primary> | J <template-arg>* E
+
+        Returns `(handle, is_empty_pack)`. The handle is None for a
+        <template-param-decl>, which declares a parameter rather than supplying one.
+
+        Emptiness is returned rather than recorded on the parser because argument lists
+        nest: an empty pack inside `AnalysisManager<Module, JE>` would otherwise still be
+        flagged when the enclosing `PassManager<Function, AnalysisManager<...>>` finished
+        its own argument, and the enclosing argument would be dropped.
+        """
         reader = self.reader
         builder = self.builder
+
+        if reader.peek2() in _PARAMETER_DECLARATIONS:
+            self.template_param_decl()
+            return None, False
 
         if reader.eat("X"):
             expression = self.expression()
             reader.expect("E")
-            return builder.raw(expression)
+            return builder.raw(expression), False
 
         if reader.peek() == "L":
-            return builder.raw(self.expr_primary())
+            return builder.raw(self.expr_primary()), False
 
         if reader.eat("J"):
             members = []
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated argument pack")
-                members.append(self.template_arg())
+                member, _ = self.template_arg()
+                if member is not None:
+                    members.append(member)
             self._scope_has_pack = True
-            if len(members) == 1:
-                # A one-member pack *is* its member. Re-wrapping it as text would throw
-                # away everything the handle knows about itself -- that it is a
-                # reference, most importantly, so that a later `O` applied to it
-                # collapses instead of printing `char const&&&`.
-                self._packs.add(id(members[0]))
-                return members[0]
-            handle = builder.raw(", ".join(builder.spell(member) for member in members))
-            self._packs.add(id(handle))
-            return handle
+            handle = builder.parameter_pack(members)
+            self._packs.append(handle)
+            # An empty pack still occupies an argument position for `T_` numbering, but
+            # contributes nothing to spell: `AnalysisManager<Module, JE>` is
+            # `AnalysisManager<llvm::Module>`, not `AnalysisManager<llvm::Module, >`.
+            # Asked of the builder rather than counted here, because a pack whose only
+            # member expands another, empty pack is itself empty and only the builder
+            # knows that -- it is what flattened them.
+            return handle, not builder.spell(handle)
 
-        return self.type_()
+        return self.type_(), False
 
     # -- 5.1.6.1 literals ------------------------------------------------------
 
@@ -1043,6 +1198,94 @@ class ItaniumParser:
         return f"({kind}){value}"
 
     # -- 5.1.6 expressions -----------------------------------------------------
+
+    # -- 5.1.6 unresolved names ------------------------------------------------
+
+    def unresolved_name(self):
+        """<unresolved-name> ::= [gs] <base-unresolved-name>
+                               | sr <unresolved-type> <base-unresolved-name>
+                               | srN <unresolved-type> <unresolved-qualifier-level>+ E
+                                     <base-unresolved-name>
+                               | [gs] sr <unresolved-qualifier-level>+ E <base-unresolved-name>
+
+        A name written in a template that the compiler could not resolve, because it
+        depends on a parameter: `std::is_signed_v<T>` inside an `enable_if`. These reach
+        a mangled name through SFINAE return types, which is why they are everywhere in
+        heavily templated C++ and absent from simple test cases.
+
+        The two `sr` forms without `N` are told apart by what follows: an
+        <unresolved-qualifier-level> is a <simple-id> and so begins with a digit, while
+        an <unresolved-type> begins with `T`, `D` or `S`.
+        """
+        reader = self.reader
+        prefix = "::" if reader.eat("gs") else ""
+
+        if not reader.eat("sr"):
+            return prefix + self.base_unresolved_name()
+
+        levels = []
+        if reader.eat("N"):
+            levels.append(self.unresolved_type())
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
+                levels.append(self.simple_id())
+        elif reader.peek() in DIGITS:
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
+                levels.append(self.simple_id())
+        else:
+            levels.append(self.unresolved_type())
+
+        levels.append(self.base_unresolved_name())
+        return prefix + "::".join(levels)
+
+    def unresolved_type(self):
+        """<unresolved-type> ::= <template-param> [<template-args>] | <decltype> | <substitution>"""
+        reader = self.reader
+        builder = self.builder
+        if reader.peek() == "T":
+            component = self.template_param()
+            if reader.peek() == "I":
+                component = builder.template(component, self.template_arguments())
+            return builder.spell(self.subs.remember(component, "unresolved-type"))
+        if reader.peek() == "D":
+            return builder.spell(self.subs.remember(self.decltype_(), "unresolved-type"))
+        return builder.spell(self.substitution())
+
+    def simple_id(self):
+        """<simple-id> ::= <source-name> [<template-args>]"""
+        text = self.source_name()
+        if self.reader.peek() == "I":
+            text += self.spelled_template_arguments()
+        return text
+
+    def spelled_template_arguments(self):
+        """A template argument list rendered as text, for use inside a name."""
+        arguments = self.template_arguments()
+        rendered = ", ".join(self.builder.spell(argument) for argument in arguments)
+        return f"<{rendered}>"
+
+    def base_unresolved_name(self):
+        """<base-unresolved-name> ::= <simple-id> | on <operator-name> [<template-args>]
+        | dn <destructor-name>
+        """
+        reader = self.reader
+        if reader.eat("on"):
+            text = self.operator_name()
+            if reader.peek() == "I":
+                text += self.spelled_template_arguments()
+            return text
+        if reader.eat("dn"):
+            return "~" + self.destructor_name()
+        return self.simple_id()
+
+    def destructor_name(self):
+        """<destructor-name> ::= <unresolved-type> | <simple-id>"""
+        if self.reader.peek() in DIGITS:
+            return self.simple_id()
+        return self.unresolved_type()
 
     def expression_name(self):
         """A name appearing in an expression -- the callee of a call, most often.
@@ -1137,9 +1380,7 @@ class ItaniumParser:
             return self._spell_parameter(index)
 
         if pair == "sr":
-            reader.pos += 2
-            scope = builder.spell(self.type_())
-            return scope + "::" + builder.spell(self.unqualified_name())
+            return self.unresolved_name()
         if pair == "sZ":
             reader.pos += 2
             return f"sizeof...({builder.spell(self.template_param())})"
@@ -1224,10 +1465,12 @@ class ItaniumParser:
             return f"({condition}) ? ({when_true}) : ({when_false})"
 
         if pair in ("dt", "pt"):
+            # <expression> ::= dt <expression> <unresolved-name>  (and `pt` for `->`)
             reader.pos += 2
             owner = self.expression()
             joiner = "." if pair == "dt" else "->"
-            return owner + joiner + builder.spell(self.unqualified_name())
+            self._compound = True
+            return owner + joiner + self.unresolved_name()
 
         if pair == "ix":
             reader.pos += 2
@@ -1235,10 +1478,14 @@ class ItaniumParser:
             return f"{owner}[{self.expression()}]"
 
         if pair == "gs":
-            # A leading `::`, forcing global scope: `::new`, `::delete`, `::name`.
-            reader.pos += 2
-            self._compound = True
-            return "::" + self.expression()
+            # A leading `::` forcing global scope. It introduces either a global-scope
+            # allocation -- `::new`, `::delete` -- or a global-scope name, and only the
+            # next production says which.
+            if reader.text[reader.pos + 2 : reader.pos + 4] in ("nw", "na", "dl", "da"):
+                reader.pos += 2
+                self._compound = True
+                return "::" + self.expression()
+            return self.unresolved_name()
 
         if pair == "sp":
             # A pack expansion inside an expression, under the same rule as `Dp`.

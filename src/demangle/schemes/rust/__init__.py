@@ -81,6 +81,13 @@ PLUGIN = LanguagePlugin(
     aliases=("rs",),
     # Before Itanium: legacy Rust mangling *is* Itanium mangling, and only this plugin
     # knows how to strip the trailing hash and read the path correctly.
+    # Deliberately NOT set. The generic splitter in core/decorations.py cuts at the
+    # first `.`, which is right for Itanium -- where a dot can only start a clone suffix
+    # -- and wrong for Rust, where `.` is grammar: legacy mangling writes `..` for `::`
+    # and spells shims `{{vtable.shim}}`. Rust also has its own suffix rule, which
+    # rustc-demangle defines and this scheme already implements: cut after the mangled
+    # name's final `E`, drop a `.llvm.<hash>`, and append anything else verbatim rather
+    # than wrapping it as `[clone ...]`.
     priority=50,
 )
 

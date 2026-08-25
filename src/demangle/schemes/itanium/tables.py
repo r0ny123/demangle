@@ -193,9 +193,27 @@ STD_ABBREVIATIONS = {
     "Sd": "std::iostream",
 }
 
-#: Fully expanded spellings, as GNU c++filt prints them. Selected by
-#: `ItaniumOptions(expand_std_abbreviations=True)` for callers matching GNU output.
+#: Fully expanded spellings. Needed in two places: when the caller asks for GNU output,
+#: and -- in *either* style -- when an abbreviation is the scope of a constructor or
+#: destructor, since those are named for the class and the class is the template rather
+#: than the typedef. `_ZNSdC1Ev` is `std::basic_iostream<char, ...>::basic_iostream()`
+#: even under LLVM's style, which spells the same abbreviation `std::iostream` as a type.
+#:
+#: Two tables because the closing-bracket spacing is part of the spelling and the two
+#: references differ on it. Written out rather than derived, so each matches its
+#: reference exactly and by inspection.
 STD_ABBREVIATIONS_EXPANDED = {
+    "St": "std",
+    "Sa": "std::allocator",
+    "Sb": "std::basic_string",
+    "Ss": "std::basic_string<char, std::char_traits<char>, std::allocator<char>>",
+    "Si": "std::basic_istream<char, std::char_traits<char>>",
+    "So": "std::basic_ostream<char, std::char_traits<char>>",
+    "Sd": "std::basic_iostream<char, std::char_traits<char>>",
+}
+
+#: The same expansions with the pre-C++11 spacing GNU c++filt still prints.
+STD_ABBREVIATIONS_EXPANDED_GNU = {
     "St": "std",
     "Sa": "std::allocator",
     "Sb": "std::basic_string",
@@ -217,8 +235,9 @@ SPECIAL_TYPE_NAMES = {
 
 #: Special names taking an <encoding> operand.
 SPECIAL_ENCODING_NAMES = {
-    "TH": "thread-local wrapper for ",
-    "TW": "thread-local initialization routine for ",
+    # `TH` is the initialisation routine and `TW` the wrapper, not the other way round.
+    "TH": "thread-local initialization routine for ",
+    "TW": "thread-local wrapper routine for ",
     "GV": "guard variable for ",
     "GR": "reference temporary for ",
 }

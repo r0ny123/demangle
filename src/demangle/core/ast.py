@@ -251,6 +251,22 @@ class Pack(_Unary):
         return builder.pack(self.inner.build(builder))
 
 
+class ParameterPack(Node):
+    """A pack of concrete template arguments."""
+
+    __slots__ = ("members",)
+    kind = "parameter_pack"
+
+    def __init__(self, members):
+        self.members = tuple(members)
+
+    def children(self):
+        return self.members
+
+    def build(self, builder):
+        return builder.parameter_pack([member.build(builder) for member in self.members])
+
+
 class MemberPointer(Node):
     """A pointer to member, `Type Owner::*`."""
 
@@ -328,6 +344,28 @@ class Function(Node):
         )
 
 
+class Decorated(Node):
+    """A symbol plus what the symbol table appended to it.
+
+    `decoration` keeps its separator: `"@@GLIBCXX_3.4"`, `".cold"`. A tool that wants
+    the undecorated entity walks to `inner`; one that wants to know which clone or which
+    library version this is reads `decoration`.
+    """
+
+    __slots__ = ("decoration", "inner")
+    kind = "decorated"
+
+    def __init__(self, inner, decoration):
+        self.inner = inner
+        self.decoration = decoration
+
+    def children(self):
+        return (self.inner,)
+
+    def build(self, builder):
+        return builder.decorated(self.inner.build(builder), self.decoration)
+
+
 class Special(Node):
     """A symbol *about* an entity: `vtable for Foo`, `typeinfo for Bar`."""
 
@@ -398,11 +436,17 @@ class AstBuilder(Builder):
     def pack(self, inner):
         return Pack(inner)
 
+    def parameter_pack(self, members):
+        return ParameterPack(members)
+
     def vendor_qualify(self, inner, qualifier):
         return VendorQualify(inner, qualifier)
 
     def special(self, label, inner):
         return Special(label, inner)
+
+    def decorated(self, inner, decoration):
+        return Decorated(inner, decoration)
 
     def spell(self, handle, declarator=""):
         return handle.spell(declarator)

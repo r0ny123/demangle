@@ -31,6 +31,10 @@ SOURCES = HERE / "corpus_sources" / "rust"
 EDITION = "2021"
 SCHEMES = ("legacy", "v0")
 OPTIMISATIONS = ("0", "2")
+#: More than one codegen unit is what makes the compiler internalise symbols and give
+#: them an `.llvm.<hash>` suffix, a spelling that exists in every release build and in no
+#: hand-written test file.
+CODEGEN_UNITS = ("1", "16")
 #: Both an object file and a linked executable. The object holds this crate's own
 #: monomorphisations; the executable additionally holds everything the standard library
 #: contributed, which is where the long names live.
@@ -48,9 +52,9 @@ def run(command, **kwargs):
     return subprocess.run(command, capture_output=True, text=True, **kwargs)
 
 
-def compile_source(source, scheme, optimisation, artefact, out_dir):
+def compile_source(source, scheme, optimisation, units, artefact, out_dir):
     """Compile one source under one scheme, returning the output path or None."""
-    output = out_dir / f"{source.stem}-{scheme}-O{optimisation}-{artefact}"
+    output = out_dir / f"{source.stem}-{scheme}-O{optimisation}-cgu{units}-{artefact}"
     command = [
         "rustc",
         f"--edition={EDITION}",
@@ -61,7 +65,7 @@ def compile_source(source, scheme, optimisation, artefact, out_dir):
         "-C",
         f"opt-level={optimisation}",
         "-C",
-        "codegen-units=1",
+        f"codegen-units={units}",
         "-C",
         "debuginfo=0",
     ]
@@ -70,7 +74,7 @@ def compile_source(source, scheme, optimisation, artefact, out_dir):
     command += ["-o", str(output), str(source)]
     result = run(command, env=BOOTSTRAP)
     if result.returncode != 0:
-        print(f"  {source.name} {scheme} -O{optimisation} {artefact}: {result.stderr.splitlines()[:1]}")
+        print(f"  {source.name} {scheme} -O{optimisation} cgu{units} {artefact}: {result.stderr.splitlines()[:1]}")
         return None
     return output
 
@@ -127,11 +131,12 @@ def main():
     for source in sorted(SOURCES.glob("*.rs")):
         for scheme in SCHEMES:
             for optimisation in OPTIMISATIONS:
-                for artefact in ARTEFACTS:
-                    built = compile_source(source, scheme, optimisation, artefact, build_dir)
-                    if built is None:
-                        continue
-                    mangled |= {s for s in symbols_of(built) if s.startswith(PREFIXES)}
+                for units in CODEGEN_UNITS:
+                    for artefact in ARTEFACTS:
+                        built = compile_source(source, scheme, optimisation, units, artefact, build_dir)
+                        if built is None:
+                            continue
+                        mangled |= {s for s in symbols_of(built) if s.startswith(PREFIXES)}
 
     print(f"collected {len(mangled)} distinct mangled symbols")
     ordered = sorted(mangled)
@@ -152,6 +157,7 @@ def main():
         handle.write(f"# edition: {EDITION}\n")
         handle.write(f"# mangling: {', '.join(SCHEMES)}\n")
         handle.write(f"# optimisation: {', '.join('-C opt-level=' + o for o in OPTIMISATIONS)}\n")
+        handle.write(f"# codegen units: {', '.join(CODEGEN_UNITS)}\n")
         handle.write(f"# artefacts: {', '.join(ARTEFACTS)}\n#\n")
         for name in ordered:
             spelled = expected[name]
