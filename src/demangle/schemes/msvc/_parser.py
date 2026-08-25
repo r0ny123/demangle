@@ -213,6 +213,13 @@ _POINTER_KINDS = {"P": (), "Q": ("const",), "R": ("volatile",), "S": ("const", "
 _MEMBER_DATA_QUALS = {"Q": (), "R": ("const",), "S": ("volatile",), "T": ("const", "volatile")}
 _CV_QUALS = {"A": (), "B": ("const",), "C": ("volatile",), "D": ("const", "volatile")}
 _CV = {"A": "", "B": " const", "C": " volatile", "D": " const volatile"}
+# a type read out of a table is the same node every time it is read: a node holds no parse
+# state, and one binary reads "int" hundreds of thousands of times
+_BASIC_TYPE_NODES = {code: Raw(name) for code, name in _BASIC_TYPES.items()}
+_EXTENDED_TYPE_NODES = {code: Raw(name) for code, name in _EXTENDED_TYPES.items()}
+_NULLPTR = Raw("std::nullptr_t")
+_ELLIPSIS = Raw("...")
+_VOID_PARAMETERS = (Raw("void"),)
 
 
 class _Conversion:
@@ -657,13 +664,13 @@ class _Demangler:
         """
         char = self.take()
         if char in _BASIC_TYPES:
-            return apply_qualifiers(Raw(_BASIC_TYPES[char]), quals)
+            return apply_qualifiers(_BASIC_TYPE_NODES[char], quals)
         if char == "_":
-            name = _EXTENDED_TYPES.get(self.take())
-            if name is None:
+            node = _EXTENDED_TYPE_NODES.get(self.take())
+            if node is None:
                 raise _Bail
             self.simple = False
-            return apply_qualifiers(Raw(name), quals)
+            return apply_qualifiers(node, quals)
         if char in _TAGGED_TYPES:
             kind = _TAGGED_TYPES[char]
             if kind == "enum":
@@ -803,7 +810,7 @@ class _Demangler:
             return self.type(merge_qualifiers(extra, quals))
         if kind == "T":
             self.simple = False
-            return apply_qualifiers(Raw("std::nullptr_t"), quals)
+            return apply_qualifiers(_NULLPTR, quals)
         if kind == "A":
             return self.functionTypeArgument()
         raise _Bail
@@ -974,7 +981,7 @@ class _Demangler:
         across a parameter list expands multiplicatively.
         """
         if self.eat("X"):
-            return (Raw("void"),)
+            return _VOID_PARAMETERS
         params = []
         while True:
             if self.eof():
@@ -985,7 +992,7 @@ class _Demangler:
                 if not params:
                     raise _Bail
                 self.take()
-                params.append(Raw("..."))
+                params.append(_ELLIPSIS)
                 break
             if self.peek() in string.digits:
                 index = int(self.take())

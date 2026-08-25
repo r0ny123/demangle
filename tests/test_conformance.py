@@ -23,6 +23,7 @@ MSVC_TOTAL, MSVC_EXACT = 609, 609
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 RUST_TOTAL, RUST_EXACT = 5316, 5316
+RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
@@ -89,6 +90,12 @@ def test_rust_matches_rustc_demangle():
     assert (total, exact) == (RUST_TOTAL, RUST_EXACT)
 
 
+def test_rust_matches_the_shipped_toolchain():
+    """Symbols from rustc's own libraries, including ELF-versioned ones."""
+    total, exact = _score("rust-toolchain.txt", "llvm")
+    assert (total, exact) == (RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT)
+
+
 def test_gnu_shortfalls_are_only_the_known_reference_divergences():
     """Pin *which* names fail under GNU, not merely how many."""
     failing = []
@@ -105,7 +112,13 @@ def test_gnu_shortfalls_are_only_the_known_reference_divergences():
 
 @pytest.mark.parametrize(
     "corpus",
-    ["itanium-real-world.txt", "msvc-llvm-corpus.txt", "itanium-libstdcxx.txt", "rust-real-world.txt"],
+    [
+        "itanium-real-world.txt",
+        "msvc-llvm-corpus.txt",
+        "itanium-libstdcxx.txt",
+        "rust-real-world.txt",
+        "rust-toolchain.txt",
+    ],
 )
 def test_best_effort_never_raises_on_any_corpus_name(corpus):
     """Whatever the corpus holds, `demangle()` answers rather than raising."""
