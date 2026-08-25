@@ -119,8 +119,8 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Rust, both schemes | `rustfilt` (rustc-demangle 0.1.28) | **5316 / 5316** |
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
-| Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **278 / 278** |
-| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **273 / 275** † |
+| Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **275 / 277** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 
@@ -215,6 +215,11 @@ both `demangle()` and `parse()` with no second implementation to drift.
 Schemes are plugins. `core` never imports one, they never import each other, and a
 separate distribution can add Swift or D support through the `demangle.languages`
 entry-point group without patching this package. Both rules are enforced by tests.
+
+[docs/analysing-a-binary.md](docs/analysing-a-binary.md) works one real task through
+`parse()` end to end — finding every function in libstdc++ that takes a string by const
+reference, and measuring what the regular-expression version of the same question gets
+wrong.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture, and
 [docs/adding-a-scheme.md](docs/adding-a-scheme.md) to add a language. The API reference

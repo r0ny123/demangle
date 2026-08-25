@@ -6,6 +6,26 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Go symbol names.** A new scheme, registered like any other -- `core` was not touched.
+  Go escapes a `.` that falls after the last `/` of a package path, so
+  `example.com/m/v2%2e5.T.M` does not split into package and name where the raw text
+  suggests; the rules are transcribed from Go's own `cmd/internal/objabi/path.go`. Both
+  directions are implemented, because that is what makes the decoder checkable without a
+  reference: re-escaping a decoded path must reproduce the bytes the linker wrote.
+  Verified over all 30,733 Go symbols in the shipped toolchain.
+
+- **A worked `parse()` example**, `docs/analysing-a-binary.md`, taking one real question
+  through the tree against the system libstdc++ and measuring what the regular-expression
+  version of the same question gets wrong. Its code and its numbers are executed by the
+  test suite, so the page cannot drift from the library.
+
+- `demangle.parse(..., style="gnu")` now spells `Dn` as `decltype(nullptr)`, which is
+  what GNU c++filt writes; LLVM's `std::nullptr_t` remains the default. Found by
+  `tools/differential.py --cross`: no name in the gnu corpus carried a `Dn`, so nothing
+  had ever asked.
+
 ### Fixed
 
 - **Substitution numbering for a template template parameter application.** A

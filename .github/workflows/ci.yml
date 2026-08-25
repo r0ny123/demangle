@@ -144,8 +144,13 @@ jobs:
       # Exit status is non-zero only when every reference agrees and we do not. A split
       # between the references is reported, not failed: it means the question is open,
       # and it has to be settled against the ABI or against what a compiler emits.
-      - name: Itanium across llvm-cxxfilt versions
-        run: python tools/differential.py --cross llvm-cxxfilt-16 llvm-cxxfilt-18
+      # GNU is in the set on purpose, not just several builds of LLVM. Two versions of
+      # one implementation share its bugs: llvm-cxxfilt 16 and 18 agree with each other
+      # about a template template parameter's substitution index and are both wrong, and
+      # a cross-check over only those two would report us as the outlier. A second
+      # implementation is what makes the disagreement visible as a disagreement.
+      - name: Itanium across llvm-cxxfilt versions and GNU
+        run: python tools/differential.py --cross llvm-cxxfilt-16 llvm-cxxfilt-18 c++filt
       - name: MSVC across llvm-undname versions
         run: |
           python tools/differential.py --cross llvm-undname-16 llvm-undname-18 \

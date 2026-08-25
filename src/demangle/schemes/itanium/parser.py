@@ -1019,6 +1019,8 @@ class ItaniumParser:
                 width = reader.digits() if reader.peek() in DIGITS else self.expression_text()
                 reader.expect("_")
                 return builder.raw(f"{EXTENDED_BUILTIN_TYPES[pair]}({width})")
+            if pair == "Dn" and self.options.gnu_nullptr_spelling:
+                return builder.builtin("decltype(nullptr)")
             return builder.builtin(EXTENDED_BUILTIN_TYPES[pair])
 
         if pair == "DF":
