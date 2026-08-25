@@ -26,6 +26,23 @@ All notable changes to this project are recorded here. The format follows
   `tools/differential.py --cross`: no name in the gnu corpus carried a `Dn`, so nothing
   had ever asked.
 
+### Performance
+
+- **Rust demangling is 23% faster** (99us to 76us a name over the real-world corpus). The
+  structure work had put a `contextlib` context manager around every grammar production,
+  which on the text path reaches two no-ops through a generator and a wrapper object; and
+  the reader recomputed `len()` of its input in `peek`, `eat` and `next_func`, over a
+  million times across 2,000 symbols. Digit decoding is now a table lookup rather than a
+  chain of `in`, `islower` and two `ord` calls.
+
+- **`parse()` uses 40% less memory and is about 6% faster.** Leaf nodes are interned,
+  keyed by their text: they are 55% of all nodes in a real tree and repeat 49 times over,
+  and 15,654 `builtin` instances across the shipped libstdc++ hold 32 distinct spellings.
+
+- The benchmark corpus now spans every conformance corpus and all four schemes, 14,041
+  names rather than 887. The old sample was dominated by cheap MSVC names and flattered
+  the cold figure by roughly 3x.
+
 ### Fixed
 
 - **Substitution numbering for a template template parameter application.** A

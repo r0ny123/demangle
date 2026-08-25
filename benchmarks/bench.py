@@ -130,9 +130,26 @@ def time_it(function, repeats=5):
 
 
 def benchmarks():
+    # `structured` stays on the purpose-built Itanium corpus: it is the one compiled at
+    # four language standards by two compilers, so it exercises the widest range of node
+    # shapes per name.
     itanium = corpus_names("itanium-real-world.txt")
-    msvc = corpus_names("msvc-llvm-corpus.txt")
-    everything = itanium + msvc
+
+    # Every corpus, not a couple of small ones. The earlier selection was 887 names --
+    # about 40KB of text and a few hundred KB of cache entries -- which fits in L2 on any
+    # machine this runs on. That flatters the whole measurement: it is the shape of a
+    # microbenchmark, not of a tool walking a symbol table, where the working set is tens
+    # of thousands of distinct names and nothing stays resident. Taking everything in the
+    # conformance directory gives ~14,000 names across all four schemes.
+    everything = corpus_names(
+        "itanium-real-world.txt",
+        "itanium-libstdcxx.txt",
+        "itanium-regressions.txt",
+        "msvc-llvm-corpus.txt",
+        "rust-real-world.txt",
+        "rust-toolchain.txt",
+        "go-real-world.txt",
+    )
     negatives = [f"not_a_mangled_symbol_{index}" for index in range(len(everything))]
 
     def cold():
@@ -141,7 +158,7 @@ def benchmarks():
             demangle.demangle(name)
 
     def warm():
-        for _ in range(10):
+        for _ in range(3):
             for name in everything:
                 demangle.demangle(name)
 
@@ -157,7 +174,7 @@ def benchmarks():
     #: 16% run-to-run spread -- more than half the regression tolerance, which would make
     #: the gate flake rather than gate. Several passes make the measurement long enough
     #: to be stable without making the suite slow.
-    structured_passes = 5
+    structured_passes = 2
 
     def structured():
         # The successes are counted, and `main` asserts the count. Suppressing failures
@@ -174,7 +191,7 @@ def benchmarks():
 
     return parsed, [
         ("cold", cold, len(everything)),
-        ("warm", warm, len(everything) * 10),
+        ("warm", warm, len(everything) * 3),
         ("negative", negative, len(negatives)),
         ("structured", structured, len(itanium) * structured_passes),
     ]

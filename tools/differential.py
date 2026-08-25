@@ -84,6 +84,9 @@ KNOWN_DIVERGENCES = {
     # reachable if the parameter took an index. We follow the manglers. Listed here so a
     # comparison against an older llvm-cxxfilt reports a known divergence rather than a
     # failure; when the oldest reference in CI is 20 or newer this can go.
+    "_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_",
+    # The two below are the pinned GNU divergences: the references disagree with each
+    # other about substitution table contents, not about spelling.
     "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
     "_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_",
 }
