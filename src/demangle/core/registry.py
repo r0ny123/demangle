@@ -22,6 +22,7 @@ _BUILTIN_MODULES = (
     ("swift", "demangle.schemes.swift"),
     ("d", "demangle.schemes.d"),
     ("go", "demangle.schemes.go"),
+    ("pascal", "demangle.schemes.pascal"),
     ("nim", "demangle.schemes.nim"),
 )
 

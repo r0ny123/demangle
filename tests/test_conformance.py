@@ -36,6 +36,13 @@ GO_TOTAL, GO_EXACT = 1498, 1498
 #: D, against GNU binutils' D demangler over the shipped libgphobos and libgdruntime.
 D_TOTAL, D_EXACT = 1257, 1257
 
+#: Free Pascal. Like Go and Nim there is no reference demangler, so the expected column
+#: is this library's own reading and the count alone would be a record of agreeing with
+#: itself. What makes it mean something is the re-assembly property in
+#: tests/test_pascal.py -- checked over all 236,570 readable symbols in the shipped
+#: runtime, not just this sample -- and the independent check against `ppudump`.
+PASCAL_TOTAL, PASCAL_EXACT = 3899, 3899
+
 #: Nim, against the name the compiler itself recorded in its `.ndi` debug-mapping files.
 #: Unlike the others this is not a reference demangler -- Nim has none -- so the count is
 #: agreement with the compiler's own record, and the correctness *property* lives in
@@ -111,6 +118,12 @@ def test_d_matches_gnu_dlang_demangler():
 def test_swift_matches_swift_demangle():
     total, exact = _score("swift-real-world.txt", "llvm", language="swift")
     assert (total, exact) == (SWIFT_TOTAL, SWIFT_EXACT)
+
+
+def test_pascal_corpus():
+    """See `PASCAL_TOTAL` for what this does and does not establish."""
+    total, exact = _score("pascal-real-world.txt", "llvm", language="pascal")
+    assert (total, exact) == (PASCAL_TOTAL, PASCAL_EXACT)
 
 
 def test_nim_matches_the_compilers_own_record():
