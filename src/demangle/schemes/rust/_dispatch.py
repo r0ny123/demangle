@@ -30,11 +30,20 @@ class RustDemangler:
         Args:
             inpstr (str): String to be demangled
         """
-        curr_type = self.determine_type(inpstr)
-        if curr_type == ManglingType.LEGACY:
-            return self.legacy.demangle(inpstr)
-        else:
-            return self.v0.demangle(inpstr)
+        return self._for(inpstr).demangle(inpstr)
+
+    def structure(self, inpstr: str):
+        """Demangle to a tree rather than to text.
+
+        Same parser, same pass; only what it emits into differs. The tree renders to
+        exactly what `demangle` returns for the same input.
+        """
+        return self._for(inpstr).structure(inpstr)
+
+    def _for(self, inpstr):
+        if self.determine_type(inpstr) == ManglingType.LEGACY:
+            return self.legacy
+        return self.v0
 
     def determine_type(self, inpstr: str) -> ManglingType:
         """Determine the type of the given string

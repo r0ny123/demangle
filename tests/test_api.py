@@ -255,10 +255,10 @@ class TestParseOptions:
         tree = demangle.parse("?f@@YAXH@Z")
         assert len(list(tree.walk())) > 1
 
-    def test_rust_returns_a_leaf_for_now(self):
-        """Documented in ROADMAP.md; pinned so the day it changes is a deliberate edit."""
+    def test_rust_returns_a_tree(self):
         tree = demangle.parse("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
-        assert tree.kind == "raw"
+        assert tree.kind == "symbol"
+        assert [node.text for node in tree.find("name")] == ["core", "fmt", "Formatter", "pad"]
 
 
 class TestCacheStatistics:

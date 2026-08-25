@@ -173,9 +173,11 @@ def parse(
     Raises the same errors as `demangle_strict`.
 
     Note:
-        Itanium and MSVC return full trees. The Rust parser does not yet -- it returns a
-        single `Raw` node holding the spelling -- so `walk()` and `find()` see nothing
-        below the root for a Rust symbol. See ROADMAP.md.
+        Every scheme returns a tree, but the kinds differ with what each language has to
+        say. C++ trees carry declarator shape -- pointers, references, parameter lists --
+        because C++ types wrap the name they declare. Rust has no declarator syntax, so
+        its trees carry path structure instead: `symbol`, `path`, `impl`, `namespace`.
+        `name`, `template` and `literal` mean the same thing in all three.
     """
     return _parse_handle(mangled, AST_BUILDER, language, get_style(style), limits)
 

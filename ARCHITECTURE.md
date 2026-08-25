@@ -45,17 +45,24 @@ makes a parser build strings directly, however locally convenient, breaks it.
 
 ### Where the rule does not yet hold
 
-Two places, both stated plainly because a rule with an unadvertised exception is worse
-than one with a documented one:
+One place, stated plainly because a rule with an unadvertised exception is worse than one
+with a documented one:
 
 - **Expressions.** The Itanium parser writes types and names through the builder but
   assembles expression *text* directly, so an expression inside a type arrives in the
   tree as one opaque node. `tests/test_architecture.py` enforces the half that is
   enforceable — no scheme may import `core.spelling` — and cannot enforce this half.
-- **Rust.** Its parsers predate the protocol and return a single `raw` node from
-  `parse()`. `demangle()` is unaffected.
 
-Both are in ROADMAP.md. Itanium and MSVC otherwise build real trees.
+It is in ROADMAP.md. All three schemes otherwise build real trees.
+
+Rust reaches the same place by a different route, and the difference is worth knowing.
+Its printer emits one linear stream of fragments and a *sink* decides what to do with
+them: `TextSink` concatenates, `TreeSink` remembers where each production began and
+ended. So the tree is not a second traversal that has to be kept in step with the text —
+it is the same traversal with its boundaries kept, and a tree renders to what
+`demangle()` returns by construction rather than by test. Rust can do this because its
+spelling is strictly left to right; a C-family declarator, which wraps the name it
+declares, cannot be recovered from a linear stream and needs the builder proper.
 
 ### When a scheme needs its own spelling
 
