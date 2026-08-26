@@ -84,7 +84,7 @@ def build(symbol):
     parts = [DelphiName([head]), "("]
     if params:
         inner = []
-        for at, piece in enumerate(params.split(", ")):
+        for at, piece in enumerate(_top_level_parameters(params)):
             if at:
                 inner.append(", ")
             inner.append(DelphiName([piece]))
@@ -93,3 +93,36 @@ def build(symbol):
     if tail:
         parts.append(tail)
     return Symbol(parts, symbol.kind)
+
+
+def _top_level_parameters(text):
+    """Split on `", "` that is not inside `()`, `<>` or `[]`.
+
+    A parameter can itself be a function type -- `double (*)(float, int)` is one
+    argument, not two -- so a naive split on the comma is the wrong arity.
+    """
+    pieces = []
+    buf = []
+    depth = 0
+    i = 0
+    n = len(text)
+    while i < n:
+        char = text[i]
+        if char in "({<[":
+            depth += 1
+            buf.append(char)
+            i += 1
+        elif char in ")}>]":
+            if depth:
+                depth -= 1
+            buf.append(char)
+            i += 1
+        elif depth == 0 and char == "," and i + 1 < n and text[i + 1] == " ":
+            pieces.append("".join(buf))
+            buf = []
+            i += 2
+        else:
+            buf.append(char)
+            i += 1
+    pieces.append("".join(buf))
+    return pieces

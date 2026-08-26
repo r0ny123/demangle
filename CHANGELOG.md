@@ -230,6 +230,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Delphi: a `%` (or `$`) where a type was expected hung the parser.** `copy_type`
+  treated those terminator letters as a no-op and did not advance, so `copy_args` called
+  it forever on names such as `@foo$q%`. They are now refused as an unknown type.
+  `Limits.max_depth` and `Limits.max_substitutions` are counted through `copy_type` /
+  `copy_name` and the argument back-reference table, raising `LimitExceeded` like the
+  other schemes. A function-pointer parameter (`double (*)(float, int)`) is one tree
+  child; splitting the spelling on every `", "` had made it two.
+
 - **Two Itanium gaps, found by checking against the references over whole shipped
   libraries rather than over the recorded sample.** The library now agrees with
   `llvm-cxxfilt` on all 264,610 readable C++ symbols in libLLVM, libclang-cpp and
