@@ -67,6 +67,7 @@ CORPUS += [name for name, _ in load_corpus("nim-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("pascal-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("objc-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("delphi-real-world.txt")]
+CORPUS += [name for name, _ in load_corpus("delphi-tdump.txt")][:200]
 
 
 @st.composite
@@ -187,6 +188,11 @@ class TestErrorContract:
         finally:
             registry._plugins.pop("boom", None)
             registry._ordered = None
+            # `_by_first` too, or the per-first-character screen keeps handing out
+            # tuples that still hold this plugin after it has been unregistered --
+            # `candidates()` and `available()` then disagree, and whichever test runs
+            # next and asks both fails for a reason that has nothing to do with it.
+            registry._by_first = None
             demangle.cache_clear()
 
 
