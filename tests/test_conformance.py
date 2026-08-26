@@ -328,7 +328,7 @@ class TestAgainstLibcxxabisOwnCorpus:
 
     #: Raised as gaps close; never lowered silently. A drop means a vector that used to
     #: pass has stopped, which is a regression whatever the total.
-    EXPECTED_EXACT = 29763
+    EXPECTED_EXACT = 29791
 
     def _score(self):
         return sum(

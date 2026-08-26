@@ -74,6 +74,10 @@ _FIXED_POINT_INTEGERS = {
 #: a suffix -- which is what the reference prints.
 _ALLOC_TOKEN = "__alloc_token_"
 
+#: What a comma expression binds at. An operand that binds no tighter than this needs
+#: brackets to sit in a comma-separated list.
+_COMMA_BINDING = PRECEDENCE["cm"]
+
 
 #: The C escapes, by the value they stand for. Values below seven have none, and are
 #: written as a single octal digit -- `\0`, `\1`, `\6` -- which is what the reference does.
@@ -880,6 +884,20 @@ class ItaniumParser:
             return "(anonymous namespace)"
         return text + self.abi_tags()
 
+    def _identifier(self):
+        """The <source-name> of an ABI tag: a length and an identifier, and no more.
+
+        `source_name` reads any tags that follow the identifier, which is right
+        everywhere but here: inside a tag, a following `B` opens the *next* tag of the
+        run rather than one nested in this one. Reading it as nested spelled
+        `f[abi:foo[abi:bar]]()` for what is two tags on one name.
+        """
+        reader = self.reader
+        length = int(reader.digits())
+        if length <= 0:
+            raise ParseError(self._mangled, reader.pos, "abi tag of non-positive length")
+        return reader.take_exactly(length)
+
     def abi_tags(self):
         """ABI tags, spelled `[abi:tag]`.
 
@@ -895,7 +913,7 @@ class ItaniumParser:
         tags = []
         while reader.peek() == "B":
             reader.pos += 1
-            tags.append(f"[abi:{self.source_name()}]")
+            tags.append(f"[abi:{self._identifier()}]")
         return "".join(tags)
 
     def unnamed_type_name(self):
@@ -1134,15 +1152,15 @@ class ItaniumParser:
             return builder.builtin(builtin)
 
         if char in QUALIFIER_LETTERS:
-            qualifiers = self.cv_qualifiers()
-            if reader.peek() == "F":
+            if self._at_function_type():
                 # 5.1.5.3: <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx]
                 # F [Y] <bare-function-type> [<ref-qualifier>] E. The qualifiers are part
                 # of *this* production, so `KFbvE` is the single component
                 # `bool () const` -- not a `bool ()` that a qualifier is then applied to.
                 # Recording both would enter one component too many and shift every
                 # later back-reference.
-                return subs.remember(builder.qualify(self.function_type(), qualifiers), "type")
+                return self.function_type_production()
+            qualifiers = self.cv_qualifiers()
             inner = self.type_()
             return subs.remember(builder.qualify(inner, qualifiers), "type")
 
@@ -1176,7 +1194,7 @@ class ItaniumParser:
             return subs.remember(builder.vendor_qualify(inner, qualifier), "type")
 
         if char == "F":
-            return subs.remember(self.function_type(), "type")
+            return self.function_type_production()
         if char == "A":
             return subs.remember(self.array_type(), "type")
         if char == "M":
@@ -1330,31 +1348,8 @@ class ItaniumParser:
         # Spelling it around the result instead loses the declarator: a pointer to a
         # `void () noexcept` would come out `void () noexcept*` rather than
         # `void (*)() noexcept`.
-        if pair == "Do":
-            reader.pos += 2
-            return self.subs.remember(self.function_type(" noexcept"), "type")
-
-        if pair == "DO":
-            # throw(<expression>)
-            reader.pos += 2
-            condition = self.expression_text()
-            reader.expect("E")
-            return self.subs.remember(self.function_type(f" throw({condition})"), "type")
-
-        if pair == "Dw":
-            # throw(<type>...)
-            reader.pos += 2
-            thrown = []
-            while not reader.eat("E"):
-                if reader.eof:
-                    raise ParseError(self._mangled, reader.pos, "unterminated throw specification")
-                thrown.append(builder.spell(self.type_()))
-            return self.subs.remember(self.function_type(f" throw({', '.join(thrown)})"), "type")
-
-        if pair == "Dx":
-            # A transaction-safe function type.
-            reader.pos += 2
-            return self.subs.remember(self.function_type(" transaction_safe"), "type")
+        if pair in ("Do", "DO", "Dw", "Dx"):
+            return self.function_type_production()
 
         if pair in ("DA", "DR") or (pair == "DS" and reader.peek(2) == "D" and reader.peek(3) in "AR"):
             return builder.builtin(self.fixed_point_type())
@@ -1400,7 +1395,67 @@ class ItaniumParser:
         name, _, _, _ = self.name(as_type=True)
         return name
 
-    def function_type(self, exception_spec=""):
+    def _at_function_type(self):
+        """Whether the cursor is on a <function-type>, cv-qualifiers and all.
+
+        The optional prefixes -- up to three cv-qualifiers, then one exception
+        specification, then `Dx` -- belong to the production rather than wrapping it, so
+        recognising it means looking past them.
+        """
+        reader = self.reader
+        at = reader.pos
+        for letter in ("r", "V", "K"):
+            if reader.peek(at - reader.pos) == letter:
+                at += 1
+        if reader.text[at : at + 2] in ("Do", "DO", "Dw", "Dx"):
+            return True
+        return reader.text[at : at + 1] == "F"
+
+    def function_type_production(self):
+        """The whole of `[<CV-qualifiers>] [<exception-spec>] [Dx] F ... E`.
+
+        One grammar component, and so one substitution entry, however many of the
+        optional prefixes are present. Reading the exception specification as a type in
+        its own right and then qualifying the result would enter two, shifting every
+        later back-reference in the name.
+
+        The pieces are spelled in the order C++ writes them -- cv-qualifiers, then the
+        ref-qualifier, then the exception specification -- which is not the order the
+        scheme encodes them in: `M1XKFivOE` is `int (X::*)() const &&`, with the `K` read
+        first and printed second.
+        """
+        reader = self.reader
+        builder = self.builder
+        qualifiers = self.cv_qualifiers()
+        specification = ""
+        pair = reader.peek2()
+        if pair == "Do":
+            reader.pos += 2
+            specification = " noexcept"
+        elif pair == "DO":
+            # DO <expression> E -- a computed noexcept, `noexcept(sizeof(T) < 8)`.
+            reader.pos += 2
+            condition = self.expression_text()
+            reader.expect("E")
+            specification = f" noexcept({condition})"
+        elif pair == "Dw":
+            # Dw <type>* E -- the pre-C++17 dynamic specification, `throw(int, char)`.
+            reader.pos += 2
+            thrown = []
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated throw specification")
+                spelled = builder.spell(self.type_())
+                # An expansion of an empty pack contributes no type, and listing it
+                # anyway left `throw(int, )`.
+                if spelled:
+                    thrown.append(spelled)
+            specification = f" throw({', '.join(thrown)})"
+        if reader.eat("Dx"):
+            specification += " transaction_safe"
+        return self.subs.remember(self.function_type(specification, qualifiers), "type")
+
+    def function_type(self, exception_spec="", cv_qualifiers=()):
         """A function type.
 
         ```
@@ -1437,7 +1492,8 @@ class ItaniumParser:
 
         if parameters and _is_all_void(builder, parameters):
             parameters = []
-        return builder.function(returns, parameters, suffix + exception_spec)
+        written = "".join(f" {qualifier}" for qualifier in cv_qualifiers)
+        return builder.function(returns, parameters, written + suffix + exception_spec)
 
     def array_type(self):
         """An array type.
@@ -1649,8 +1705,16 @@ class ItaniumParser:
 
         if char == "X":
             reader.take()
+            # `>` and `>>` are bracketed inside an argument list, or the closing angle
+            # bracket of the list cannot be told from the operator; and a comma is
+            # bracketed here for the same reason it is in any other comma-separated
+            # list. Which of the three this is, is decided by the two characters that
+            # open the expression, so no lookahead over the parsed shape is needed.
+            angled = reader.peek2() in ("gt", "rs", "cm")
             expression = self.expression()
             reader.expect("E")
+            if angled:
+                expression = builder.expression("paren", ["(", expression, ")"])
             return expression, False
 
         if char == "L":
@@ -1724,8 +1788,14 @@ class ItaniumParser:
             reader.expect("E")
             return builder.spell(handle)
 
+        # `L <array-type> E` is a string literal. The contents are not mangled at all,
+        # so there is nothing to print but the type, and the reference prints it in
+        # angle brackets inside the quotes to say as much.
+        was_array = reader.peek() == "A"
         kind = self.type_()
         spelling = builder.spell(kind)
+        if was_array and reader.eat("E"):
+            return f'"<{spelling}>"'
 
         if reader.eat("E"):
             # A literal with no value: how the scheme writes `nullptr`.
@@ -1750,6 +1820,9 @@ class ItaniumParser:
         if value.startswith("n"):
             value = "-" + value[1:]
 
+        if kind == "std::nullptr_t":
+            # `LDn0E`. The value is written and means nothing; there is one of these.
+            return "nullptr"
         if kind == "bool":
             return {"0": "false", "1": "true"}.get(value, f"(bool){value}")
         if kind == "int":
@@ -1920,7 +1993,7 @@ class ItaniumParser:
         while not reader.eat("E"):
             if reader.eof:
                 raise ParseError(self._mangled, reader.pos, "unterminated initialiser")
-            arguments.append(self.expression())
+            arguments.append(self._element())
         return self.builder.expression("initialiser", ["(", *_separated(arguments), ")"])
 
     def expression(self):
@@ -1978,6 +2051,14 @@ class ItaniumParser:
                 return None
             values.append(-value if negative else value)
         return _string_literal(values)
+
+    def _element(self):
+        """One member of a comma-separated list, bracketed if it is a comma expression.
+
+        `f((a, b))` passes one argument and `f(a, b)` passes two; without the brackets
+        the two spell alike.
+        """
+        return self._operand(_COMMA_BINDING + 1)
 
     def _operand(self, binding):
         """One operand, bracketed only when it binds more loosely than its operator.
@@ -2080,7 +2161,7 @@ class ItaniumParser:
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated call expression")
-                arguments.append(self.expression())
+                arguments.append(self._element())
             return builder.expression("call", [target, "(", *_separated(arguments), ")"])
 
         if pair == "cv":
@@ -2091,10 +2172,10 @@ class ItaniumParser:
                 while not reader.eat("E"):
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated conversion")
-                    arguments.append(self.expression())
+                    arguments.append(self._element())
                 cast = builder.expression("cast", ["(", kind, ")(", *_separated(arguments), ")"])
             else:
-                cast = builder.expression("cast", ["(", kind, ")(", self.expression(), ")"])
+                cast = builder.expression("cast", ["(", kind, ")(", self._element(), ")"])
             # A cast binds *looser* than a postfix operator, so it needs brackets when it
             # is the object of one: `((A*)(0))->member`, not `(A*)(0)->member`, which
             # reads as a cast of `0->member`. It looks parenthesised already -- the
@@ -2123,7 +2204,7 @@ class ItaniumParser:
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated braced initialiser")
-                members.append(self.expression())
+                members.append(self._element())
             return builder.expression("braced", [kind, "{", *_separated(members), "}"])
 
         if pair == "il":
@@ -2132,7 +2213,7 @@ class ItaniumParser:
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated initialiser list")
-                members.append(self.expression())
+                members.append(self._element())
             return builder.expression("initialiser_list", ["{", *_separated(members), "}"])
 
         if pair == "qu":
@@ -2149,7 +2230,10 @@ class ItaniumParser:
             reader.pos += 2
             owner = self._operand(POSTFIX_PRECEDENCE)
             joiner = "." if pair == "dt" else "->"
-            name = self.unresolved_name()
+            # Ordinarily an <unresolved-name>, and the fast path for it is inside
+            # `expression`; but the grammar Clang emits allows any expression on the
+            # right, and `ptT_Li4E` -- `4u->4` -- is one of those.
+            name = self.expression()
             self._precedence = POSTFIX_PRECEDENCE
             return builder.expression("member", [owner, joiner, name])
 
@@ -2236,10 +2320,11 @@ class ItaniumParser:
             right = self._operand(binding if right_associative else binding + 1)
             spelling = INFIX_OPERATORS[pair]
             if pair == "cm":
-                # A comma expression is always bracketed, or it cannot be told from the
-                # argument separator it is sitting next to.
-                self._precedence = PRIMARY_PRECEDENCE
-                return builder.expression("comma", ["(", left, ", ", right, ")"])
+                # Bracketed only where it sits in a comma-separated list -- a call's
+                # arguments, a braced initialiser, a template argument -- which is what
+                # `_element` is for. `decltype(4, 3)` has no brackets and gets none.
+                self._precedence = binding
+                return builder.expression("comma", [left, ", ", right])
             self._precedence = binding
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
             return builder.expression("binary", [left, gap, spelling, gap, right])
