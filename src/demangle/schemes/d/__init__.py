@@ -22,14 +22,25 @@ from ._parser import DemangleFailure, DSymbol, _Exhausted, parse_d_symbol
 _STRUCTURED = {}
 
 
+#: D's entry point. The only symbol the compiler writes with no path and no type, and
+#: the reference spells it `D main`.
+_MAIN = "_Dmain"
+
+
 def detect(name):
     """`_D` and something after it.
 
     Narrower than it looks: a D symbol's path components are length-prefixed, so the
     character after `_D` is a digit for every name a compiler emits. That keeps this from
     claiming an ordinary C identifier that happens to begin `_D`.
+
+    `_Dmain` is the one exception, and it has to be named: it is D's entry point, it has
+    no path and no type, and the digit rule turned it away -- so the one symbol every D
+    programme has was the one this scheme did not claim.
     """
-    return bool(name) and name.startswith("_D") and len(name) > 2 and name[2].isdigit()
+    if not name or not name.startswith("_D"):
+        return False
+    return name == _MAIN or (len(name) > 2 and name[2].isdigit())
 
 
 def _wants_structure(builder):
@@ -46,6 +57,15 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise NotMangledError(mangled, "empty name")
     if not mangled.startswith("_D"):
         raise NotMangledError(mangled, "not a D mangled name")
+    if mangled == _MAIN:
+        # The one name with no path and no type: D's entry point, which the runtime calls
+        # and the compiler does not mangle like anything else. The reference spells it
+        # `D main`.
+        return (
+            builder.raw("D main")
+            if not _wants_structure(builder)
+            else nodes.build(DSymbol(raw=mangled, path="D main", text="D main"))
+        )
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
