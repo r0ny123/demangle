@@ -401,6 +401,20 @@ class ItaniumParser:
         For a template they can, so it is part of the signature (5.1.5.3).
         """
         builder = self.builder
+        reader = self.reader
+        attributes = ""
+        if reader.startswith("Ua9enable_ifI"):
+            # `Ua <source-name> <template-arg>* E` is a vendor attribute; `enable_if` is
+            # the only one either reference spells, and it goes after the signature.
+            reader.pos += len("Ua9enable_ifI")
+            conditions = []
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated enable_if attribute")
+                condition, _ = self.template_arg()
+                if condition is not None:
+                    conditions.append(builder.spell(condition))
+            attributes = f" [enable_if:{', '.join(conditions)}]"
         explicit_object = self._explicit_object
         self._explicit_object = False
         was_naming = self._naming
@@ -412,7 +426,6 @@ class ItaniumParser:
                 self._drop_return = False
 
             parameters = []
-            reader = self.reader
             while not reader.eof and reader.peek() not in ("E", ".", "Q"):
                 parameter = self.type_()
                 if explicit_object and not parameters:
@@ -431,6 +444,7 @@ class ItaniumParser:
             suffix += " " + " ".join(quals)
         if ref_qualifier:
             suffix += " " + ref_qualifier
+        suffix += attributes
         if reader.eat("Q"):
             # The requires-clause closes the declaration, after the qualifiers.
             suffix += " requires " + builder.spell(self.constraint_expression())
@@ -1162,36 +1176,66 @@ class ItaniumParser:
             return self.builder.raw(f"'unnamed{index}'")
 
         if reader.eat("l"):
+            # <lambda-sig> ::= <template-param-decl>* [Q <constraint>] <parameter type>+
+            #
             # A generic lambda declares its template parameters first, and they become
-            # the `T_` scope its own signature is written against.
+            # the `T_` scope its own signature is written against -- *replacing* the
+            # enclosing one rather than extending it. ABI 5.1.8: a use of `auto` in the
+            # parameter list is mangled as the corresponding artificial parameter, so a
+            # `T_` the lambda did not declare is an `auto` and not the enclosing
+            # template's argument. Extending the scope resolved those against whatever
+            # the enclosing template happened to have, printing `int&&` where the
+            # parameter was written `auto&&`.
             declarations = []
             saved_counts = self._parameter_counts
             saved_scope = self.targs.snapshot()
             self._parameter_counts = {}
+            self.targs.restore(())
+            constraint = ""
             try:
                 while reader.peek2() in _PARAMETER_DECLARATIONS:
                     binding, declaration = self.template_param_decl()
                     declarations.append(declaration)
                     self.targs.add(self.builder.raw(binding))
+                if reader.eat("Q"):
+                    constraint = f" requires {self.builder.spell(self.constraint_expression())} "
                 parameters = []
                 while not reader.eat("E"):
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated lambda signature")
+                    if reader.eat("Q"):
+                        # A trailing requires-clause, after the parameters.
+                        trailing = self.builder.spell(self.constraint_expression())
+                        reader.expect("E")
+                        return self._closure(declarations, constraint, parameters, f" requires {trailing}")
                     parameters.append(self.builder.spell(self.type_()))
             finally:
                 self._parameter_counts = saved_counts
                 self.targs.restore(saved_scope)
-            template_header = f"<{', '.join(declarations)}>" if declarations else ""
-            if parameters == ["void"]:
-                parameters = []
-            index = reader.digits() if reader.peek() in DIGITS else ""
+            return self._closure(declarations, constraint, parameters, "")
+
+        if reader.eat("b"):
+            # <unnamed-type-name> ::= Ub [<number>] _ -- an Objective-C block literal.
+            if reader.peek() in DIGITS:
+                reader.digits()
             reader.expect("_")
-            if self.options.gnu_closure_spelling:
-                number = int(index) + 2 if index else 1
-                return self.builder.raw(f"{{lambda{template_header}({', '.join(parameters)})#{number}}}")
-            return self.builder.raw(f"'lambda{index}'{template_header}({', '.join(parameters)})")
+            return self.builder.raw("'block-literal'")
 
         raise ParseError(self._mangled, reader.pos, "unknown unnamed-type-name")
+
+    def _closure(self, declarations, constraint, parameters, trailing):
+        """Spell a closure type, once its signature has been read."""
+        reader = self.reader
+        template_header = f"<{', '.join(declarations)}>" if declarations else ""
+        if parameters == ["void"]:
+            parameters = []
+        index = reader.digits() if reader.peek() in DIGITS else ""
+        reader.expect("_")
+        signature = f"{template_header}{constraint}({', '.join(parameters)}){trailing}"
+        if self.options.gnu_closure_spelling:
+            number = int(index) + 2 if index else 1
+            return self.builder.raw(f"{{lambda{signature}#{number}}}")
+        return self.builder.raw(f"'lambda{index}'{signature}")
 
     def operator_name(self):
         """<operator-name>, including conversions and literal operators."""
@@ -1646,6 +1690,13 @@ class ItaniumParser:
             # No pack in scope: this is an unexpanded expansion, and the ellipsis is the
             # whole content of it.
             return self.subs.remember(builder.pack(inner), "type")
+
+        if pair == "Dy":
+            # <type> ::= Dy <pack> <index> -- C++26 pack indexing.
+            reader.pos += 2
+            pattern = self.type_()
+            index = self.expression()
+            return self.subs.remember(builder.raw(f"({builder.spell(pattern)})[{builder.spell(index)}]"), "type")
 
         if pair == "Dv":
             return self.subs.remember(self.vector_type(), "type")
