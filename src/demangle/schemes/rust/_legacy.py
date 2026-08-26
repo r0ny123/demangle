@@ -22,11 +22,16 @@ class UnableToLegacyDemangle(Exception):
 class LegacyDemangler:
     _UNESCAPED = {"SP": "@", "BP": "*", "RF": "&", "LT": "<", "GT": ">", "LP": "(", "RP": ")", "C": ","}
 
-    def demangle(self, inpstr: str) -> str:
-        """Demangle to text."""
+    def demangle(self, inpstr: str, limit: int) -> str:
+        """Demangle to text.
+
+        `limit` is accepted for one signature across both grammars; this one builds its
+        output linearly in the length of the input, so there is nothing here that can
+        outrun the bound the caller checks afterwards.
+        """
         return self._run(inpstr)
 
-    def structure(self, inpstr: str):
+    def structure(self, inpstr: str, limit: int):
         """Demangle to a tree, which renders to exactly what `demangle` returns.
 
         The same pass builds both. `_run` records where each path component begins and
