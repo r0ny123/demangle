@@ -36,7 +36,7 @@ mangling libiberty still reads and current DMD and GDC no longer write.
 answered with a different spelling — every failure is a refusal. The eight are new
 function-signature specialisation kinds, variadic-generic conformances, macro expansion
 source locations, and one opaque-return-type shape. `simplified-manglings.txt` is a
-whole output mode this does not have; see the render-time modes below.
+whole output mode this does not have; see section 3.
 
 **Rust**, rustc-demangle's own `#[test]` vectors: 47 of 51. Three of the other four are
 its `{:#}` "no hash" mode rather than the `{}` this prints, and the fourth is a legacy
@@ -155,3 +155,22 @@ survives.
 
 Nothing is left under this heading. The next thing worth measuring is `parse()`, which
 has had the same attention only once.
+
+## 3. Output modes
+
+A caller does not always want the whole spelling. `signature()` answers with the parts —
+namespace, base name, parameter types, return type, and what the name does *not* say —
+and the CLI's `-p`, `--base-name` and `--no-return-type` print one of them. Those are
+render-time selections over what the parse already found; a mode is a different question,
+which is whether to spell something *differently*.
+
+One is left, and it is Swift's:
+
+- **Swift's simplified manglings** — `test/Demangle/Inputs/simplified-manglings.txt` is
+  the same names printed with module qualifications, generic signatures and the argument
+  labels dropped: `Foundation.FileHandle.readToEnd() throws -> Foundation.Data?` becomes
+  `FileHandle.readToEnd()`. It is what `swift-demangle --simplified` prints, and what an
+  IDE shows in a stack trace. This has no such mode. It belongs in the Swift printer as
+  an option object the way the Itanium scheme carries `GNU_OPTIONS`, not as a pass over
+  the text: dropping a module qualification needs to know which run of characters *was*
+  the module, and after printing nothing does.

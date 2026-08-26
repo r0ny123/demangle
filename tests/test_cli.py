@@ -210,3 +210,87 @@ class TestLimitFlags:
     def test_a_non_positive_bound_is_rejected(self):
         with pytest.raises(SystemExit):
             main(["--max-depth", "0", "_Z1fv"])
+
+
+class TestPartFlags:
+    """`-p`, `--base-name` and `--no-return-type`: one piece of a name, not the whole.
+
+    Checked against `c++filt -p` where the two agree by design. They differ on one
+    thing, deliberately: a version decoration is part of the symbol, not part of the
+    signature, so `-p` keeps `@@GLIBCXX_3.4` where `c++filt` drops it.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            (VECTOR, "std::vector<int, std::allocator<int>>::push_back"),
+            ("_ZSt4sortIPiEvT_S1_", "std::sort<int*>"),
+            ("_ZTVN3FooE", "vtable for Foo"),
+            ("_Znwm", "operator new"),
+            ("_ZN3FooC1Ei", "Foo::Foo"),
+            ("?f@Foo@@AEBAXH@Z", "Foo::f"),
+        ],
+    )
+    def test_no_params(self, capsys, name, expected):
+        _, out, _ = run(capsys, ["-p", name])
+        assert out.strip() == expected
+
+    def test_no_params_keeps_the_symbols_decoration(self, capsys):
+        _, out, _ = run(capsys, ["-p", "_ZN3Foo3barEv@@GLIBCXX_3.4"])
+        assert out.strip() == "Foo::bar@@GLIBCXX_3.4"
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            (VECTOR, "push_back"),
+            ("_ZSt4sortIPiEvT_S1_", "sort<int*>"),
+            ("?f@Foo@@AEBAXH@Z", "f"),
+            ("$s4main3FooV3baryS2i_SStF", "bar"),
+        ],
+    )
+    def test_base_name(self, capsys, name, expected):
+        _, out, _ = run(capsys, ["--base-name", name])
+        assert out.strip() == expected
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            (VECTOR, VECTOR_SPELLED),
+            ("_ZSt4sortIPiEvT_S1_", "std::sort<int*>(int*, int*)"),
+            ("?f@Foo@@AEBAXH@Z", "private: void __cdecl Foo::f(int) const"),
+        ],
+    )
+    def test_no_return_type(self, capsys, name, expected):
+        """Cut by what the return type *is*, so one with spaces in it goes whole."""
+        _, out, _ = run(capsys, ["--no-return-type", name])
+        assert out.strip() == expected
+
+    def test_a_return_type_with_spaces_is_cut_whole(self, capsys):
+        _, out, _ = run(capsys, ["--no-return-type", "_Z1fIPKcET_v"])
+        assert out.strip() == "f<char const*>()"
+
+    @pytest.mark.parametrize("flag", ["-p", "--base-name", "--no-return-type"])
+    def test_a_name_that_is_not_mangled_passes_through(self, capsys, flag):
+        _, out, _ = run(capsys, [flag, "memcpy"])
+        assert out.strip() == "memcpy"
+
+    @pytest.mark.parametrize("flag", ["-p", "--base-name", "--no-return-type"])
+    def test_strict_reports_a_name_with_no_parts(self, capsys, flag):
+        assert main([flag, "--strict", "memcpy"]) == 1
+        assert "memcpy" in capsys.readouterr().err
+
+    def test_they_apply_in_the_stream_filter_too(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.stdin", io.StringIO(f"0000000000001139 T {VECTOR}\n"))
+        main(["-p"])
+        expected = "std::vector<int, std::allocator<int>>::push_back"
+        assert capsys.readouterr().out == f"0000000000001139 T {expected}\n"
+
+    @pytest.mark.parametrize("argv", [["-p", "--base-name"], ["-p", "--no-return-type"], ["--base-name", "-p"]])
+    def test_two_of_them_at_once_is_an_error(self, argv):
+        """A flag that is silently ignored is worse than an error."""
+        with pytest.raises(SystemExit):
+            main([*argv, "_Z1fv"])
+
+    def test_the_style_reaches_them(self, capsys):
+        _, out, _ = run(capsys, ["-p", "--style", "gnu", VECTOR])
+        assert out.strip() == "std::vector<int, std::allocator<int> >::push_back"

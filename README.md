@@ -84,6 +84,29 @@ the path carries:
 ['core', 'fmt', 'Formatter', 'pad']
 ```
 
+### The parts, when the spelling is not what you want
+
+`signature()` gives the pieces rather than the string — the base name without its
+scope, the scope without the base name, the parameter types on their own:
+
+```python
+>>> parts = demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi")
+>>> parts.namespace, parts.base_name
+('std::vector<int, std::allocator<int>>', 'push_back')
+>>> parts.parameters
+('int const&',)
+>>> demangle.signature("$s4main3FooV3baryS2i_SStF").return_type
+'Swift.Int'
+```
+
+`namespace`, the scheme's separator and `base_name` spell `qualified_name` exactly, so
+the three recombine. Splitting the *string* would not give that: `::` and `.` and `,`
+occur inside template arguments and inside operator names as well as between components.
+
+What each scheme records differs, and the fields say so rather than guessing. A C++ or
+Swift name carries a signature; a Rust or Go path does not, and its `parameters` is
+`None` — which is not `()`. `is_function` is `False` where the name does not say.
+
 ### Detection and batches
 
 ```python
@@ -91,6 +114,21 @@ the path carries:
 'msvc'
 >>> list(demangle.demangle_all(symbol_table))     # generator, shares the cache
 ```
+
+### Bytes, when the names came from a symbol table
+
+An ELF or Mach-O string table holds bytes, and they are not reliably UTF-8 — a truncated
+table cuts a name mid-character. Every entry point has a bytes form, so reading one does
+not mean guessing an encoding first:
+
+```python
+>>> demangle.demangleb(b"_ZN3foo3barEv")
+b'foo::bar()'
+```
+
+`demangleb_strict`, `detectb`, `parseb` and `signatureb` go with it. Undecodable bytes
+survive the round trip: `demangleb` hands back exactly what it was given, byte for byte,
+rather than raising.
 
 ### Styles
 
@@ -111,7 +149,18 @@ $ nm -a libfoo.so | demangle
 $ demangle _ZNSt6vectorIiSaIiEE9push_backERKi
 $ demangle --tree _Z1fPKc
 $ demangle --detect _RNvC6_123foo3bar
+$ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the signature
+$ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
+$ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
 ```
+
+`-p` is `c++filt -p`: over the shipped libstdc++ and the GNU-style corpus the two agree
+on **6132 / 6213** names. The 81 are deliberate. `c++filt` strips the parameter list only
+from the outermost declaration, so a thunk keeps its target's — `non-virtual thunk to
+X::~X()` — and it drops a `[clone .cold]` suffix while keeping an `@@GLIBCXX_3.4` one.
+This strips throughout and keeps both suffixes, because a filter over a symbol table
+should not quietly discard part of the symbol. One more is a name `c++filt` refuses and
+this reads.
 
 ## Correctness
 

@@ -25,6 +25,10 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 31, 31
 RUST_TOTAL, RUST_EXACT = 5316, 5316
 RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 
+#: What the CLI's `-p` prints, against `c++filt -p`, over the libstdc++ and GNU-style
+#: corpora. The differences are deliberate and are enumerated in tests/test_signature.py.
+NO_PARAMS_TOTAL, NO_PARAMS_AGREE = 6213, 6132
+
 #: Go is pinned like the rest, but what it is pinned *against* is different: there is no
 #: reference demangler for Go, so the expected column is this library's own decoding and
 #: the count alone would be a record of agreeing with itself. What makes it mean

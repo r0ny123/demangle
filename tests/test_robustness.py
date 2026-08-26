@@ -151,6 +151,7 @@ class TestNeverRaises:
             assert demangle.demangleb(value) == value
         assert demangle.detectb(b"?f@@YAXH@Z") == "msvc"
         assert demangle.parseb(b"_ZN3foo3barEv").spell() == "foo::bar()"
+        assert demangle.signatureb(b"_ZN3foo3barEv").base_name == "bar"
 
 
 class TestErrorContract:

@@ -1,6 +1,6 @@
 # Public API
 
-Five functions cover what callers actually do. Everything else on this page is either an
+Six functions cover what callers actually do. Everything else on this page is either an
 error type you may want to catch or an extension point you may want to use.
 
 ```python
@@ -22,6 +22,38 @@ demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi")
         - styles
         - cache_clear
         - cache_stats
+
+## The parts of a name
+
+`demangle()` answers what a name says; `signature()` answers what its pieces are. The
+split is done on the tree rather than on the string, because `::` and `.` and `,` occur
+inside template arguments and operator names as well as between components.
+
+```python
+demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi").base_name
+# 'push_back'
+```
+
+::: demangle._signature
+    options:
+      members:
+        - signature
+        - signatureb
+        - Signature
+
+## Bytes
+
+A symbol table holds bytes, and they are not reliably UTF-8. Every entry point has a
+bytes form, so reading one does not mean guessing an encoding first; undecodable bytes
+survive the round trip rather than raising.
+
+::: demangle.api
+    options:
+      members:
+        - demangleb
+        - demangleb_strict
+        - parseb
+        - detectb
 
 ## Errors
 

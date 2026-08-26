@@ -35,6 +35,7 @@ def readme():
         (pins.ITANIUM_LLVM_EXACT, pins.ITANIUM_LLVM_TOTAL),
         (pins.ITANIUM_GNU_EXACT, pins.ITANIUM_GNU_TOTAL),
         (pins.REGRESSIONS_EXACT, pins.REGRESSIONS_TOTAL),
+        (pins.NO_PARAMS_AGREE, pins.NO_PARAMS_TOTAL),
     ],
 )
 def test_every_pinned_count_appears_in_the_readme(readme, exact, total):
@@ -60,6 +61,7 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.DELPHI_EXACT, pins.DELPHI_TOTAL),
         (pins.DELPHI_TABLE_EXACT, pins.DELPHI_TABLE_TOTAL),
         (pins.DELPHI_CONSTRUCT_EXACT, pins.DELPHI_CONSTRUCT_TOTAL),
+        (pins.NO_PARAMS_AGREE, pins.NO_PARAMS_TOTAL),
     }
     stated = {(int(a), int(b)) for a, b in re.findall(r"\*\*(\d+) / (\d+)\*\*", readme)}
     assert stated <= pinned, f"README states counts that are not pinned anywhere: {sorted(stated - pinned)}"
@@ -106,6 +108,21 @@ class TestExamples:
     def test_example_output_is_what_the_readme_prints(self, readme, call, expected):
         assert call() == expected
         assert expected in readme, f"README no longer shows {expected!r}"
+
+    def test_the_bytes_example(self, readme):
+        assert demangle.demangleb(b"_ZN3foo3barEv") == b"foo::bar()"
+        assert "b'foo::bar()'" in readme
+        for name in ("demangleb_strict", "detectb", "parseb", "signatureb"):
+            assert hasattr(demangle, name), name
+            assert name in readme, name
+
+    def test_the_signature_example(self, readme):
+        parts = demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi")
+        assert (parts.namespace, parts.base_name) == ("std::vector<int, std::allocator<int>>", "push_back")
+        assert parts.parameters == ("int const&",)
+        assert demangle.signature("$s4main3FooV3baryS2i_SStF").return_type == "Swift.Int"
+        for shown in ("('std::vector<int, std::allocator<int>>', 'push_back')", "('int const&',)", "'Swift.Int'"):
+            assert shown in readme, f"README no longer shows {shown}"
 
     def test_the_tree_example(self, readme):
         tree = demangle.parse("_ZNK3Foo3barIiEEvPKc")
