@@ -29,8 +29,14 @@ refusals and six wrong spellings, in four groups.
 - The rest are single shapes: a `cp` call inside a `decltype` whose arguments come from
   an enclosing pack, and a variadic-generic conformance path.
 
-**D**, libiberty's `d-demangle-expected`: 293 of 366. The remainder is the older
-mangling libiberty still reads and current DMD and GDC no longer write.
+**D**, libiberty's `d-demangle-expected`: 366 of 366. What the last of them needed was
+not in the D ABI at all -- the five characters the reference names inside a string, the
+different rule for a character *literal*, hex float and complex values, associative-array
+values written as pairs where the type says so (through a back reference, if that is how
+it was written), struct and function-literal values, `extern(Pascal)`, the anonymous and
+`__S<n>` path components it leaves out, and the malformed template instances it refuses
+outright. Each was derived by running the reference over the input space rather than read
+from a specification that does not describe it.
 
 **Swift**, `test/Demangle/Inputs/manglings.txt`: 505 of 513, and *no* name in it
 answered with a different spelling — every failure is a refusal. The eight are new

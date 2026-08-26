@@ -169,26 +169,196 @@ class TestRulesThatHadToBeMeasured:
         assert parse_d_symbol("_D3foo3Bar10__postblitMFNaNbNiNfZv").text == "foo.Bar.__postblit()"
 
 
+class TestSpellingsOnlyTheReferenceCouldSettle:
+    """Rules with no counterpart in the D ABI: each was derived from the reference.
+
+    `c++filt --format=dlang` was run over the input space rather than read from -- every
+    byte value through a string literal, every character type through a literal, the
+    boundaries of what it will accept -- because these are the demangler's own choices
+    and the specification says nothing about any of them.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # Five named escapes and no more: `\a` and `\b` are *not* among them.
+            ("_D8demangle32__T4testVAyaa8_20090a0d0c0b00ffZv", 'demangle.test!(" \\t\\n\\r\\f\\v\\x00\\xff")'),
+            ("_D8demangle18__T4testVAyaa1_07Zv", 'demangle.test!("\\x07")'),
+            # Neither a quote nor a backslash is escaped inside a string.
+            ("_D8demangle18__T4testVAyaa1_22Zv", 'demangle.test!(""")'),
+            ("_D8demangle18__T4testVAyaa1_5cZv", 'demangle.test!("\\")'),
+            # Printable ASCII stands as itself; 0x7f and everything above does not.
+            ("_D8demangle18__T4testVAyaa1_7eZv", 'demangle.test!("~")'),
+            ("_D8demangle18__T4testVAyaa1_7fZv", 'demangle.test!("\\x7f")'),
+        ],
+    )
+    def test_string_escapes(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # A character literal names none of the escapes a string names.
+            ("_D8demangle14__T4testVai10Zv", "demangle.test!('\\x0a')"),
+            ("_D8demangle14__T4testVai32Zv", "demangle.test!(' ')"),
+            # Not even a quote or a backslash, which is the reference's own oddity.
+            ("_D8demangle14__T4testVai39Zv", "demangle.test!(''')"),
+            ("_D8demangle14__T4testVai92Zv", "demangle.test!('\\')"),
+            # Only a `char` is ever written as itself; a printable `wchar` is not.
+            ("_D8demangle14__T4testVui10Zv", "demangle.test!('\\u000a')"),
+            ("_D8demangle16__T4testVui1000Zv", "demangle.test!('\\u03e8')"),
+            ("_D8demangle18__T4testVwi100000Zv", "demangle.test!('\\U000186a0')"),
+            # The width is a minimum, not a cap.
+            ("_D8demangle15__T4testVai256Zv", "demangle.test!('\\x100')"),
+        ],
+    )
+    def test_character_literals(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_character_wider_than_thirty_two_bits_is_refused(self):
+        """The reference refuses it, and answers the same value as an *integer*."""
+        name = "_D4test21__T3funVwi4294967296Z3funFNaNbNiNfZv"
+        assert demangle.demangle(name, language="d") == name
+        wide = "_D8demangle32__T4testVmi18446744073709551616Zv"
+        assert "18446744073709551616uL" in demangle.demangle(wide, language="d")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The point goes after the first digit, wherever the digits start.
+            ("_D8demangle17__T4testVde0A8P6Zv", "demangle.test!(0x0.A8p6)"),
+            ("_D8demangle16__T4testVdeA8P2Zv", "demangle.test!(0xA.8p2)"),
+            ("_D8demangle18__T4testVdeN0A8P6Zv", "demangle.test!(-0x0.A8p6)"),
+            ("_D8demangle19__T4testVfe08PN125Zv", "demangle.test!(0x0.8p-125)"),
+            ("_D8demangle15__T4testVdeNANZv", "demangle.test!(NaN)"),
+            ("_D8demangle15__T4testVdeINFZv", "demangle.test!(Inf)"),
+            ("_D8demangle16__T4testVdeNINFZv", "demangle.test!(-Inf)"),
+        ],
+    )
+    def test_real_literals(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_complex_literal_is_two_reals(self):
+        name = "_D8demangle51__T4testVrc0C4CCCCCCCCCCCCCDP4c0B666666666666666P6Zv"
+        expected = "demangle.test!(0x0.C4CCCCCCCCCCCCCDp4+0x0.B666666666666666p6i)"
+        assert demangle.demangle(name, language="d") == expected
+
+    def test_a_struct_literal_names_its_type(self):
+        name = "_D8demangle28__T4testVS8demangle1SS2i1i2Zv"
+        assert demangle.demangle(name, language="d") == "demangle.test!(demangle.S(1, 2))"
+
+    def test_a_struct_field_carries_no_type_of_its_own(self):
+        """So a field mangled as an integer is never spelled as a character or a bool."""
+        name = "_D8demangle35__T4testVS8demangle1SS2i1a3_616263Zv"
+        assert demangle.demangle(name, language="d") == 'demangle.test!(demangle.S(1, "abc"))'
+
+    def test_an_associative_array_value_is_written_as_pairs(self):
+        name = "_D8demangle23__T4testVHiiA2i1i2i3i4Zv"
+        assert demangle.demangle(name, language="d") == "demangle.test!([1:2, 3:4])"
+
+    def test_a_back_referenced_type_is_followed_to_find_its_shape(self):
+        """`[0:"c", 2:"a"]` and `[0, "c", 2, "a"]` differ, and only the type says which.
+
+        Written `QFh`, the type says nothing until it is followed -- and the whole name
+        was refused, because the pairs were read as a flat list and the count ran out.
+        """
+        name = (
+            "_D3std9algorithm9iteration__T12FilterResultSQBq8typecons__T5TupleTiVAyaa1_61TiVQla1_62TiVQva1_63ZQBm"
+            "__T6renameVHiQBtA2i0a1_63i2a1_61ZQBeMFNcZ9__lambda1TAiZQEw9__xtoHashFNbNeKxSQGsQGrQGk__TQGdSQHiQFs"
+            "__TQFmTiVQFja1_61TiVQFua1_62TiVQGfa1_63ZQGx__TQFlVQFhA2i0a1_63i2a1_61ZQGjMFNcZQFfTQEyZQJvZm"
+        )
+        assert 'rename!([0:"c", 2:"a"])' in demangle.demangle(name, language="d")
+
+    def test_a_function_literal_reaches_a_struct_field_as_a_whole_symbol(self):
+        name = "_D6mangle__T8fun21753VSQv6S21753S1f_DQBj10__lambda71MFNaNbNiNfZvZQCbQp"
+        expected = "mangle.fun21753!(mangle.S21753(mangle.__lambda71())).fun21753"
+        assert demangle.demangle(name, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The marker is the literal's *suffix*, not its encoding: all three read one
+            # byte a character.
+            ("_D8demangle22__T4testVAyaa3_616263Zv", 'demangle.test!("abc")'),
+            ("_D8demangle22__T4testVAyaw3_616263Zv", 'demangle.test!("abc"w)'),
+            ("_D8demangle22__T4testVAyad3_616263Zv", 'demangle.test!("abc"d)'),
+        ],
+    )
+    def test_string_literal_markers(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_u_is_not_a_string_literal_marker(self):
+        name = "_D8demangle22__T4testVAyau3_616263Zv"
+        assert demangle.demangle(name, language="d") == name
+
+    def test_extern_pascal(self):
+        name = "_D8demangle4testFVZaZv"
+        assert demangle.demangle(name, language="d") == "demangle.test(extern(Pascal) char() function)"
+
+    def test_a_delegates_own_qualifier_goes_after_the_word(self):
+        """Its *attributes* belong to the function it wraps and go before."""
+        assert demangle.demangle("_D8demangle4testFDxFZaZv", language="d") == "demangle.test(char() delegate const)"
+        assert (
+            demangle.demangle("_D8demangle4testFDxFNaZaZv", language="d") == "demangle.test(char() pure delegate const)"
+        )
+
+    def test_an_array_bound_is_a_value_and_not_a_length_prefix(self):
+        """Ten digits reach no further into the name than two do."""
+        name = "_D8demangle4testFG1234567890aZv"
+        assert demangle.demangle(name, language="d") == "demangle.test(char[1234567890])"
+
+    def test_a_numeric_literal_is_still_bounded(self):
+        """The interpreter refuses to convert a digit string this long, and its refusal
+        is not this parser saying the name is malformed."""
+        assert demangle.demangle("_D8demangle4testFG" + "9" * 5000 + "aZv", language="d").startswith("_D")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D8demangle004testFaZv", "demangle.test(char)"),
+            ("_D8demangle9anonymous0Z", "demangle.anonymous"),
+            ("_D8demangle4mainFZ4__S11xi", "demangle.main().x"),
+            ("_D3mod4funcFZ__T6nestedTiZ4__S1QpMFNaNbNiNfZi", "mod.func().nested!(int).nested()"),
+        ],
+    )
+    def test_anonymous_and_compiler_scope_components_are_left_out(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_name_that_only_looks_like_a_compiler_scope_is_kept(self):
+        """`__S` alone and `__S1a` are ordinary names; only `__S<digits>` is dropped."""
+        assert demangle.demangle("_D8demangle4mainFZ5__S1a1xi", language="d") == "demangle.main().__S1a.x"
+        assert demangle.demangle("_D8demangle4mainFZ3__S1xi", language="d") == "demangle.main().__S.x"
+
+    def test_a_malformed_template_instance_is_refused_not_printed_back(self):
+        """Printing the mangling back inside a path answers with something the symbol
+        does not say, and the reference refuses the whole name."""
+        for name in ("_D10__T4testYZv", "_D12__T4testViiZv", "_D15__T4testVfe0p1Zv"):
+            assert demangle.demangle(name, language="d") == name
+
+
 class TestAgainstLibibertysOwnCorpus:
     """The reference's vectors, not this project's.
 
     `d-real-world.txt` is a corpus this project assembled, and the ROADMAP's claim of
-    100% against `c++filt --format=dlang` is true of it. It is not true of libiberty's
-    own `d-demangle-expected`, which is larger and which this project had not adopted:
-    73 of its 366 vectors still do not match, in a handful of systematic groups: hex
-    float template values (`Vde0A8P6` for `0x0.A8p6`, and `NaN`, `Inf`, `-Inf`), array,
-    associative-array and struct literal values, the escapes libiberty writes for a
-    character or a non-ASCII byte (`'\x0a'` where this writes `'\n'`), `"abc"w` and
-    `"abc"d` wide string values, `extern(Pascal)` linkage, and where a qualifier goes on
-    a delegate.
+    100% against `c++filt --format=dlang` was true of it before libiberty's own
+    `d-demangle-expected` had been adopted -- which is larger, and which found 149 of its
+    366 vectors failing when it was.
 
-    Checked in with the score pinned, so the number can only go down. A test that says
-    "some of these fail" is worth more than a claim that none do.
+    All 366 pass now. What closed the last of them was worth recording, because each was
+    a rule that could only be *derived* from the reference rather than read out of the D
+    ABI: the five characters it names inside a string (`\a` and `\b` are not among them,
+    and neither `"` nor a backslash is escaped at all), the different rule for a
+    character *literal*, hex float values written with the point after the first digit,
+    associative-array values written as pairs where the type says so -- through a back
+    reference, if that is how the type was written -- struct and function-literal values,
+    `extern(Pascal)`, the anonymous and `__S<n>` path components it leaves out, and the
+    malformed template instances it refuses outright rather than printing back.
+
+    Pinned exactly, in both directions.
     """
 
-    #: Raised as the gaps close. Never lowered silently: a drop means a vector that used
-    #: to pass has stopped, which is a regression whatever the total.
-    EXPECTED_EXACT = 293
+    #: Every vector. A drop means a regression whatever the total, and this cannot rise.
+    EXPECTED_EXACT = 366
 
     def _score(self):
         exact = 0

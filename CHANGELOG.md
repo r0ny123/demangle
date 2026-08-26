@@ -407,8 +407,15 @@ All notable changes to this project are recorded here. The format follows
   shipped libLLVM the two now differ on 31, and on every one of those this matches
   `llvm-cxxfilt` exactly.
 
-- **D**: the constructs libiberty's own corpus exercises, and its output bounded while it
-  is built.
+- **D**: every construct libiberty's own corpus exercises, and its output bounded while
+  it is built. The spellings that closed the last 73 have no counterpart in the D ABI and
+  were derived by running `c++filt --format=dlang` over the input space: the five
+  characters it names inside a string (`\a` and `\b` are not among them, and neither `"`
+  nor a backslash is escaped at all), the different rule for a character literal, hex
+  float and complex values, associative-array values written as pairs where the type says
+  so -- through a back reference, if that is how the type was written -- struct and
+  function-literal values, `extern(Pascal)`, the anonymous and `__S<n>` path components it
+  leaves out, and the malformed template instances it refuses rather than printing back.
 
 ### Conformance
 
@@ -419,7 +426,7 @@ a number can only go up and cannot quietly stop being accurate.
 - **Swift**, `test/Demangle/Inputs/manglings.txt`: 457 to **505 of 513**, with no name
   answered by a *different* spelling -- every remaining failure is a refusal.
 - **Rust**, rustc-demangle's own vectors: 38 to **47 of 51**.
-- **D**, libiberty's `d-demangle-expected`: **293 of 366**.
+- **D**, libiberty's `d-demangle-expected`: 293 to **366 of 366**.
 - **GNU style** against `c++filt` 2.42 over libLLVM's 44,049 C++ symbols: 1,419
   differences to **31**, every one of which matches `llvm-cxxfilt` instead. A further 97
   names `c++filt` refuses outright and this reads.
