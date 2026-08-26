@@ -16,6 +16,8 @@ import pathlib
 import pytest
 
 import demangle
+from demangle.core.errors import LimitExceeded
+from demangle.core.limits import Limits
 from demangle.schemes.delphi._parser import DemangleFailure, detect, parse_delphi_symbol
 from demangle.schemes.delphi.nodes import Symbol
 
@@ -125,6 +127,8 @@ class TestClaimsNothingItShouldNot:
             "@",
             "@@",
             "@@bug@@x",
+            "@foo$q%",
+            "@foo$q$",
         ],
     )
     def test_it_refuses(self, name):
@@ -175,3 +179,33 @@ class TestTree:
         assert tree.delphi_kind == "function"
         parameters = next(tree.find("parameters"))
         assert [node.text for node in parameters.children()] == ["int", "long"]
+
+    def test_a_function_pointer_parameter_is_one_child(self):
+        tree = demangle.parse("@foo$qpqfi$d")
+        assert tree.spell() == "foo(double (*)(float, int))"
+        parameters = next(tree.find("parameters"))
+        assert [node.text for node in parameters.children()] == ["double (*)(float, int)"]
+
+
+class TestLimitsAndRefusal:
+    def test_a_percent_in_the_arglist_is_refused_rather_than_hanging(self):
+        with pytest.raises(DemangleFailure, match="unknown type"):
+            parse_delphi_symbol("@foo$q%")
+        assert not detect("@foo$q%")
+        assert demangle.demangle("@foo$q%") == "@foo$q%"
+
+    def test_max_depth_is_enforced(self):
+        with pytest.raises(LimitExceeded) as caught:
+            demangle.parse("@foo$qpi", limits=Limits(max_depth=1))
+        assert caught.value.limit_name == "recursion depth"
+        assert caught.value.limit_value == 1
+
+    def test_max_substitutions_is_enforced(self):
+        with pytest.raises(LimitExceeded) as caught:
+            demangle.parse("@foo$qiit1", limits=Limits(max_substitutions=1))
+        assert caught.value.limit_name == "substitution"
+        assert caught.value.limit_value == 1
+
+    def test_default_limits_still_read_ordinary_names(self):
+        assert parse_delphi_symbol("@foo$qpi").text == "foo(int *)"
+        assert parse_delphi_symbol("@foo$qiit1").text == "foo(int, int, int)"

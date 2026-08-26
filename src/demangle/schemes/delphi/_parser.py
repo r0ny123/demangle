@@ -19,6 +19,9 @@ from __future__ import annotations
 import re
 import string
 
+from ...core.errors import LimitExceeded
+from ...core.limits import DEFAULT_LIMITS
+
 __all__ = ["DelphiSymbol", "DemangleFailure", "detect", "parse_delphi_symbol"]
 
 QUALIFIER = "@"
@@ -137,8 +140,11 @@ class _Parser:
         "base_end",
         "base_name",
         "buf",
+        "depth",
         "kind",
         "length",
+        "limits",
+        "mangled",
         "namebase",
         "pos",
         "prevqual",
@@ -149,10 +155,13 @@ class _Parser:
         "vtbl_flags",
     )
 
-    def __init__(self, src):
+    def __init__(self, src, mangled, limits):
         self.src = src
+        self.mangled = mangled
+        self.limits = limits
         self.length = len(src)
         self.pos = 0
+        self.depth = 0
         self.buf = ""
         self.kind = ""
         self.savechar = ""
@@ -164,6 +173,14 @@ class _Parser:
         self.base_name = None
         self.base_end = None
         self.vtbl_flags = []
+
+    def _push(self):
+        self.depth += 1
+        if self.depth > self.limits.max_depth:
+            raise LimitExceeded(self.mangled, "recursion depth", self.limits.max_depth)
+
+    def _pop(self):
+        self.depth -= 1
 
     def peek(self):
         return self.src[self.pos] if self.pos < self.length else ""
@@ -233,6 +250,13 @@ class _Parser:
         self.insert_at(start, inserted)
 
     def copy_type(self, start, arglvl):
+        self._push()
+        try:
+            self._copy_type(start, arglvl)
+        finally:
+            self._pop()
+
+    def _copy_type(self, start, arglvl):
         is_const = is_volatile = is_signed = is_unsigned = False
         char = self.peek()
         while True:
@@ -375,8 +399,10 @@ class _Parser:
                 self.advance()
             if hasret or callconv or regconv:
                 self.copy_return_type(start, callconv, regconv, hasret)
-        elif char in (ARGLIST, TMPLCODE):
-            pass
+        elif char in (ARGLIST, TMPLCODE) or not char:
+            # `$` and `%` terminate an argument list; they are not types. Treating them
+            # as a no-op left the cursor unmoved, so `copy_args` called us forever.
+            raise DemangleFailure("unknown type")
         else:
             raise DemangleFailure(f"unknown type {char!r}")
 
@@ -410,6 +436,8 @@ class _Parser:
             begin = self.pos
             start = len(self.buf)
             table.append([start, 0])
+            if len(table) > self.limits.max_substitutions:
+                raise LimitExceeded(self.mangled, "substitution", self.limits.max_substitutions)
             scanned = False
             while char in "xw":
                 self.buf += "const " if char == "x" else "volatile "
@@ -429,7 +457,10 @@ class _Parser:
                 ref_start, ref_len = table[index]
                 self.buf += self.buf[ref_start : ref_start + ref_len]
             else:
+                before = self.pos
                 self.copy_type(len(self.buf), arglvl=not tmplargs)
+                if self.pos == before:
+                    raise DemangleFailure("unknown type")
             table[-1][1] = len(self.buf) - table[-1][0]
             char = self.peek()
             if tmplargs and char == "$":
@@ -543,6 +574,13 @@ class _Parser:
         return "".join(chars)
 
     def copy_name(self, tmplname):
+        self._push()
+        try:
+            self._copy_name(tmplname)
+        finally:
+            self._pop()
+
+    def _copy_name(self, tmplname):
         while True:
             if self.set_qual:
                 self.base_name = len(self.buf)
@@ -732,7 +770,7 @@ class _Parser:
         return text
 
 
-def parse_delphi_symbol(name):
+def parse_delphi_symbol(name, limits=DEFAULT_LIMITS):
     """Parse `name`, returning a `DelphiSymbol`, or raise `DemangleFailure`."""
     if not name or name[0] != "@":
         raise DemangleFailure("not a Delphi mangled name")
@@ -740,13 +778,17 @@ def parse_delphi_symbol(name):
         raise DemangleFailure("MSVC fastcall decoration")
     if not any(char.isalpha() for char in name):
         raise DemangleFailure("no identifier")
-    parser = _Parser(name[1:])
+    if len(name) > limits.max_input:
+        raise LimitExceeded(name, "input length", limits.max_input)
+    parser = _Parser(name[1:], name, limits)
     try:
         text = parser.finish(do_args=True)
     except RecursionError as error:
-        raise DemangleFailure("too deep") from error
+        raise LimitExceeded(name, "recursion depth", limits.max_depth) from error
     if not text:
         raise DemangleFailure("empty result")
+    if len(text) > limits.max_output:
+        raise LimitExceeded(name, "output length", limits.max_output)
     return DelphiSymbol(name, text, parser.kind or KIND_DATA)
 
 
@@ -769,6 +811,6 @@ def detect(name):
         return False
     try:
         parse_delphi_symbol(name)
-    except DemangleFailure:
+    except (DemangleFailure, LimitExceeded):
         return False
     return True
