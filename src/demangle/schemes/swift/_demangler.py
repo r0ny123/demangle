@@ -2195,11 +2195,16 @@ class Demangler:
         pair, a generic parameter conforming to a protocol.
         """
         found = _GENERIC_REQUIREMENTS.get(self.peek())
+        inverted = None
         if found is None:
             constraint, type_kind = "protocol", "generic"
         else:
             constraint, type_kind = found
             self.pos += 1
+            if constraint == "inverse":
+                inverted = self.index_as_node()
+                if inverted is None:
+                    return None
 
         if type_kind == "generic":
             constrained = self.make_type_or_none(self.demangle_generic_param_index())
@@ -2212,6 +2217,8 @@ class Demangler:
         else:
             constrained = self.pop("Type")
 
+        if constraint == "inverse":
+            return self.with_children("DependentGenericInverseConformanceRequirement", constrained, inverted)
         if constraint == "pack-marker":
             return self.with_child("DependentGenericParamPackMarker", constrained)
         if constraint == "protocol":
@@ -2479,6 +2486,14 @@ _WITNESS_OF_CONFORMANCE = {
 }
 
 _OUTLINED_VALUE_WITNESSES = {
+    # The uppercase letters are the same operations performed without going through the
+    # type's value witness table, which is what a specialised or embedded build emits.
+    # They print the same words.
+    "B": "OutlinedInitializeWithTakeNoValueWitness",
+    "C": "OutlinedInitializeWithCopyNoValueWitness",
+    "D": "OutlinedAssignWithTakeNoValueWitness",
+    "F": "OutlinedAssignWithCopyNoValueWitness",
+    "H": "OutlinedDestroyNoValueWitness",
     "y": "OutlinedCopy",
     "e": "OutlinedConsume",
     "r": "OutlinedRetain",
@@ -2570,6 +2585,12 @@ _GENERIC_REQUIREMENTS = {
     "P": ("protocol", "compound-assoc"),
     "Q": ("protocol", "substitution"),
     "h": ("same-shape", "generic"),
+    # A suppressed conformance -- `~Copyable`, `~Escapable`. The protocol is written as
+    # a bit index rather than a name, and it comes *before* the constrained type.
+    "i": ("inverse", "generic"),
+    "I": ("inverse", "substitution"),
+    "j": ("inverse", "assoc"),
+    "J": ("inverse", "compound-assoc"),
 }
 
 #: `ValueWitnessMangling.def`, in file order -- the index is the enumerator's value, and
