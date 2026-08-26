@@ -55,6 +55,19 @@ _TYPE_STARTERS = frozenset("vwbcahstijlmxynofdegzPRODCGUFAMTSN0123456789")
 _PARAMETER_DECLARATIONS = frozenset({"Ty", "Tk", "Tn", "Tt", "Tp"})
 
 
+#: N1169 fixed-point types. The letter after `DA`/`DR` names the underlying integer,
+#: and a plain `int` contributes no word of its own: `DAi` is `_Accum`, `DAs` is
+#: `short _Accum`, `DAm` is `unsigned long _Accum`.
+_FIXED_POINT_INTEGERS = {
+    "s": "short ",
+    "t": "unsigned short ",
+    "i": "",
+    "j": "unsigned ",
+    "l": "long ",
+    "m": "unsigned long ",
+}
+
+
 def detect(name):
     """Cheap test for "is this plausibly an Itanium mangled name".
 
@@ -608,13 +621,40 @@ class ItaniumParser:
             # lambda's `operator()` reads `auto f()::'lambda'<...>::operator()(...)` and
             # not `f()::auto 'lambda'...`.
             combined = builder.qualified([outer, inner])
-            if not entity_is_type and not reader.eof and reader.peek() not in ("E", "_"):
+            if (
+                not entity_is_type
+                and not reader.eof
+                and reader.peek() not in ("E", "_")
+                and not self._at_bare_discriminator()
+            ):
                 combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             self.discriminator()
         finally:
             self._naming = outer_naming
             self.targs.restore(outer_scope)
         return combined
+
+    def _at_bare_discriminator(self):
+        """Whether what is left is a discriminator written without its `_`.
+
+        The grammar says `_ <number>`, and a compiler writes it that way -- but not
+        always. Clang emits a bare digit run for a local static whose name already ends
+        in a digit, and the reference accepts it *only* when it runs to the end of the
+        name, which is what keeps it from being confused with a length-prefixed anything.
+
+        Without this, `_ZZN12_GLOBAL__N_115ARMDAGToDAGISel6SelectEPN4llvm6SDNodeEE7Opcodes8`
+        read its trailing `8` as the start of a signature and the whole name was refused.
+        65 of the names in libcxxabi's own corpus are this shape -- the largest single
+        group of refusals in it.
+        """
+        reader = self.reader
+        at = reader.pos
+        text, end = reader.text, reader.length
+        if at >= end or text[at] not in DIGITS:
+            return False
+        while at < end and text[at] in DIGITS:
+            at += 1
+        return at == end
 
     def discriminator(self):
         """Tells apart same-named entities in one function.
@@ -628,6 +668,8 @@ class ItaniumParser:
         """
         reader = self.reader
         if reader.peek() != "_":
+            if self._at_bare_discriminator():
+                reader.pos = reader.length
             return
         if reader.peek(1) == "_":
             saved = reader.pos
@@ -1084,6 +1126,24 @@ class ItaniumParser:
                 return subs.remember(builder.template(component, self.template_arguments()), "type")
             return component
 
+        if char == "u":
+            # <builtin-type> ::= u <source-name> [<template-args>]
+            #
+            # A vendor extended type, and the one builtin that *is* a substitution
+            # candidate: 5.1.10 excludes builtins "other than vendor extended types", so
+            # `_Z1fu3fooS_` is `f(foo, foo)` with `S_` naming the first one. This is how
+            # ARM's SVE types (`__SVInt8_t`), `__bf16`, `__uuidof` and Clang's builtin
+            # type transformations (`__add_pointer(int)`) all reach a mangled name.
+            reader.pos += 1
+            spelled = self.source_name()
+            if reader.peek() == "I":
+                rendered = ", ".join([builder.spell(argument) for argument in self.template_arguments()])
+                # A transformation is spelled as a call, a vendor *type* as a template.
+                # Clang writes `__add_pointer(int)` and `__uuidof(T)`, both of which are
+                # named with a leading double underscore; anything else keeps `<...>`.
+                spelled = f"{spelled}({rendered})" if spelled.startswith("__") else f"{spelled}<{rendered}>"
+            return subs.remember(builder.raw(spelled), "type")
+
         if char == "D":
             extended = self.extended_type()
             if extended is not None:
@@ -1198,7 +1258,28 @@ class ItaniumParser:
             reader.pos += 2
             return self.subs.remember(self.function_type(" transaction_safe"), "type")
 
+        if pair in ("DA", "DR") or (pair == "DS" and reader.peek(2) == "D" and reader.peek(3) in "AR"):
+            return builder.builtin(self.fixed_point_type())
+
         return None
+
+    def fixed_point_type(self):
+        """<builtin-type> ::= [DS] DA <int-code> | [DS] DR <int-code>
+
+        Embedded C's saturating and non-saturating fixed-point types (N1169), added to
+        the ABI in 2023. `DS` is the `_Sat` qualifier and comes first.
+        """
+        reader = self.reader
+        saturating = reader.eat("DS")
+        kind = reader.take_exactly(2)
+        if kind not in ("DA", "DR"):
+            reader.fail("expected a fixed-point type")
+        code = reader.take()
+        integer = _FIXED_POINT_INTEGERS.get(code)
+        if integer is None:
+            reader.fail(f"unknown fixed-point underlying type {code!r}")
+        prefix = "_Sat " if saturating else ""
+        return f"{prefix}{integer}{'_Accum' if kind == 'DA' else '_Fract'}"
 
     def vector_type(self):
         """<type> ::= Dv <number> _ <type> | Dv _ <expression> _ <type>"""
