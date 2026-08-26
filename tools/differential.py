@@ -74,6 +74,13 @@ NOT_REPLAYED = frozenset(
         # text, and what it spells depends on the image it came out of. Replayed by
         # tests/test_swift_symbolic.py, which carries the fragments as well.
         "swift-symbolic.txt",
+        # The reference's own D vectors, and 149 of the 366 do not match yet. This file
+        # is a record of where the gaps are, not a claim that there are none, so it is
+        # pinned by tests/test_d.py -- which asserts the score in both directions, so it
+        # can only go up and cannot quietly stop being accurate -- rather than replayed
+        # here, where one number for the whole suite would say only that something
+        # somewhere disagreed.
+        "d-libiberty.txt",
     }
 )
 
