@@ -159,7 +159,67 @@ _LITERAL_ESCAPES = {
     "8": "'",
     "9": "-",
 }
-_LITERAL_SPELLINGS = {"\\": "\\\\", "\n": "\\n", "\t": "\\t", "'": "\\'", "\0": "\\0", '"': '\\"'}
+_LITERAL_SPELLINGS = {
+    0x00: "\\0",
+    0x07: "\\a",
+    0x08: "\\b",
+    0x09: "\\t",
+    0x0A: "\\n",
+    0x0B: "\\v",
+    0x0C: "\\f",
+    0x0D: "\\r",
+    0x22: '\\"',
+    0x27: "\\'",
+    0x5C: "\\\\",
+}
+
+#: However long the string, only this many bytes of it are written into the name.
+_LITERAL_MAX_BYTES = 64
+
+#: And this many bytes is as much as any of them decodes to. The documented maximum is
+#: 32; some compilers wrote more, so the reference allows four times that rather than
+#: refusing a name it can read.
+_LITERAL_MAX_DECODED = 32 * 4
+
+
+def _escaped_literal_character(value):
+    """One character of a string literal, spelled the way the reference spells it."""
+    escape = _LITERAL_SPELLINGS.get(value)
+    if escape is not None:
+        return escape
+    if 0x1F < value < 0x7F:
+        return chr(value)
+    # Hex, in as many byte-wide pairs as the value needs and no more.
+    digits = f"{value:X}"
+    return "\\x" + digits.rjust(len(digits) + len(digits) % 2, "0")
+
+
+def _guess_character_width(raw, length):
+    """How many bytes to the character a narrow literal's bytes are.
+
+    The encoding does not say -- `char`, `char16_t` and `char32_t` all mangle as `_0` --
+    so this is the reference's guess, transcribed. An odd length settles it at one. A
+    string short enough to have been written whole is settled by the width of its
+    terminator. Otherwise the embedded nul bytes decide: over two thirds of them nul is
+    four bytes to the character, over a third is two.
+    """
+    if length % 2:
+        return 1
+    if length < 32:
+        trailing = 0
+        for value in reversed(raw):
+            if value:
+                break
+            trailing += 1
+        if trailing >= 4 and length % 4 == 0:
+            return 4
+        return 2 if trailing >= 2 else 1
+    nuls = sum(1 for value in raw if not value)
+    if nuls >= 2 * len(raw) // 3 and length % 4 == 0:
+        return 4
+    return 2 if nuls >= len(raw) // 3 else 1
+
+
 _RTTI_NAMES = {
     "2": "`RTTI Base Class Array'",
     "3": "`RTTI Class Hierarchy Descriptor'",
@@ -1150,38 +1210,67 @@ class _Demangler:
         The length counts the terminator, the eight characters after it are a hash of the
         bytes, and the bytes themselves are written plainly or as an escape - a digit for
         one of ten punctuation characters, or "$" and two nibbles for any byte at all.
+
+        Only 32 bytes are ever written, however long the string is, so a longer one is
+        truncated and the reference says so with a trailing "...". A "_1" name is wide,
+        two bytes to the character and most significant first; a "_0" name is narrow, and
+        whether its bytes are one, two or four to the character is a guess -- the
+        encoding does not say, and the reference guesses from the trailing and embedded
+        nul bytes.
         """
         self.expect("@")
         self.expect("_")
-        if self.take() != "0":
-            # "_0" is a narrow string; the wider encodings spell their bytes differently
+        wide = self.take()
+        if wide not in ("0", "1"):
             raise _Bail
+        wide = wide == "1"
         length = int(self.templateInteger())
+        if length < (2 if wide else 1):
+            raise _Bail
         while not self.eat("@"):
             # the hash is not spelled, but it has to be walked past
             self.take()
-        decoded = []
+        raw = []
         while not self.eat("@"):
-            char = self.take()
-            if char != "?":
-                decoded.append(char)
-                continue
-            marker = self.take()
-            if marker == "$":
-                high, low = self.take(), self.take()
-                if not ("A" <= high <= "P" and "A" <= low <= "P"):
-                    raise _Bail
-                decoded.append(chr((ord(high) - 65) * 16 + ord(low) - 65))
-            elif marker in _LITERAL_ESCAPES:
-                decoded.append(_LITERAL_ESCAPES[marker])
-            else:
-                raise _Bail
-        if len(decoded) != length or (decoded and decoded[-1] != "\0"):
-            raise _Bail
+            raw.append(self._literalByte())
         if not self.nested and not self.eof():
             raise _Bail
-        spelled = "".join(_LITERAL_SPELLINGS.get(char, char) for char in decoded[:-1])
-        return f'"{spelled}"'
+
+        if wide:
+            if length % 2 or len(raw) % 2:
+                raise _Bail
+            truncated = length > _LITERAL_MAX_BYTES
+            values = [(raw[at] << 8) | raw[at + 1] for at in range(0, len(raw), 2)]
+            prefix = "L"
+        else:
+            truncated = length > len(raw)
+            width = _guess_character_width(raw, length)
+            if len(raw) % width:
+                raise _Bail
+            values = [int.from_bytes(bytes(raw[at : at + width]), "little") for at in range(0, len(raw), width)]
+            prefix = {1: "", 2: "u", 4: "U"}[width]
+
+        # The last character is the terminator and is not part of the string -- unless
+        # the string was cut short, in which case there is no terminator to drop.
+        if not truncated:
+            values = values[:-1]
+        spelled = "".join(_escaped_literal_character(value) for value in values)
+        return f'{prefix}"{spelled}"' + ("..." if truncated else "")
+
+    def _literalByte(self):
+        """One byte of a string literal: plain, a digit escape, or "$" and two nibbles."""
+        char = self.take()
+        if char != "?":
+            return ord(char) & 0xFF
+        marker = self.take()
+        if marker == "$":
+            high, low = self.take(), self.take()
+            if not ("A" <= high <= "P" and "A" <= low <= "P"):
+                raise _Bail
+            return (ord(high) - 65) * 16 + ord(low) - 65
+        if marker in _LITERAL_ESCAPES:
+            return ord(_LITERAL_ESCAPES[marker])
+        raise _Bail
 
     def signedDisplacement(self):
         """One of a vtordisp thunk's two displacements, which are signed and 32 bits wide."""
