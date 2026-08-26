@@ -9,7 +9,8 @@
     'rust'
 
 No dependencies, no native code, no compiler required. Supports the Itanium C++ ABI
-(GCC and Clang), Microsoft's decorated names, and both Rust schemes.
+(GCC and Clang), Microsoft's decorated names, both Rust schemes, Swift, Objective-C,
+Go, D, Nim, Free Pascal, and Delphi/C++Builder.
 
 `demangle()` never raises: a name it cannot read comes back unchanged. Use
 `demangle_strict()` or `parse()` when you need to know the difference.

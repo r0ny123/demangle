@@ -65,6 +65,8 @@ CORPUS += [name for name, _ in load_corpus("d-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("go-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("nim-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("pascal-real-world.txt")][:200]
+CORPUS += [name for name, _ in load_corpus("objc-real-world.txt")][:200]
+CORPUS += [name for name, _ in load_corpus("delphi-real-world.txt")]
 
 
 @st.composite

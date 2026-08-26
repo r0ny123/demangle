@@ -21,7 +21,7 @@ before it mangles, so `Add` and `ADD` are the same symbol and nothing can tell t
 
 This is *Free Pascal's* mangling, which is what Lazarus and any `{$MODE DELPHI}` code
 built with `fpc` produces. Borland and Embarcadero's own Delphi compilers use a different
-scheme -- `@Unit@Class@Method$qqrv` -- which is not read here.
+scheme -- `@Unit@Class@Method$qqrv` -- which the `delphi` plugin reads.
 """
 
 from ...core.ast import Node

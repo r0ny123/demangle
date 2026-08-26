@@ -1,7 +1,7 @@
 # demangle
 
 Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Swift**,
-**Objective-C**, **Go**, **D**, **Nim** and **Free Pascal** — in pure Python. No dependencies, no native
+**Objective-C**, **Go**, **D**, **Nim**, **Free Pascal** and **Delphi** — in pure Python. No dependencies, no native
 code, no compiler required.
 
 ```python
@@ -20,6 +20,8 @@ code, no compiler required.
 'system/assertions.=destroy'
 >>> demangle.demangle("MYUNIT$_$TWIDGET_$__$$_AREA$$LONGINT")
 'MYUNIT.TWIDGET.AREA: LONGINT'
+>>> demangle.demangle("@Unit@Class@Method$qqrv")
+'__fastcall Unit::Class::Method()'
 ```
 
 ## Why this exists
@@ -72,7 +74,7 @@ symbol nor the declaration.
 
 Every node supports `.walk()`, `.find(kind)`, `.children()` and `.spell()`.
 
-All three schemes return full trees. A Rust symbol comes back as a `symbol` holding a
+All schemes return full trees. A Rust symbol comes back as a `symbol` holding a
 `path` of `name` components, with `impl`, `template`, `type` and `literal` nodes for what
 the path carries:
 
@@ -135,6 +137,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
+| Delphi/C++Builder, against Embarcadero's unmangler ◊ | `unmangle.c` / TDUMP | **28 / 28** |
 
 § Free Pascal ships no demangler either. The property is re-assembly — the parts this
 splits out, rejoined with the compiler's own separators, must reproduce the symbol — and
@@ -160,6 +163,13 @@ GNU-family method mangling is not injective, and clang says so where it writes i
 `_i_A_B_c` is `-[A(B) c]` and `-[A_B c]` alike. Every reading that re-mangles is found and
 the preferred one is flagged `ambiguous`; the 26 names where the preference differs from
 the declaration are listed in `tests/conformance/objc-lossy.txt` rather than rounded off.
+
+◊ Delphi and C++Builder share one mangling, `@Unit@Class@Method$qqrv`. There is no Delphi
+compiler on the platforms this is developed on, so the grammar is Embarcadero's own
+`unmangle.c` — the code TDUMP, the linker and the debugger run — and the expected column
+is the spelling that unmangler prints. Microsoft's 32-bit `__fastcall` C decoration
+`@name@N` is refused, because it is not this scheme. Free Pascal's `$`-delimited names
+are a different mangling and are read by the `pascal` scheme.
 
 ¶ Nim has no reference demangler either, and its mangling is not injective: `mangle`
 drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
