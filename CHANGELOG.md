@@ -430,11 +430,21 @@ All notable changes to this project are recorded here. The format follows
 Measured against the reference projects' *own* corpora, all pinned in both directions so
 a number can only go up and cannot quietly stop being accurate.
 
-- **Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,728 to **29,910 of 29,928**.
+- **Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,728 to **29,918 of 29,928**.
 - **Swift**, `test/Demangle/Inputs/manglings.txt`: 457 to **513 of 513**, with no name
   answered by a *different* spelling at any point along the way.
 - **Rust**, rustc-demangle's own vectors: 38 to **47 of 51**.
 - **D**, libiberty's `d-demangle-expected`: 293 to **366 of 366**.
+- Four productions taken from libcxxabi's own parser rather than from the ABI document,
+  which describes none of them the way the reference reads them: a block written in a
+  C++ function (`___Z3foov_block_invoke`, which the Objective-C scheme had been claiming
+  and spelling without reading the enclosing name); a vendor qualifier and the
+  cv-qualifiers under it as *one* substitutable component, so `S0_` in
+  `_Z1fPU3AS1KiS0_` names the pointer and the second parameter keeps it; a vendor
+  qualifier written after the whole declarator, `void () block_pointer`; a built-in
+  abbreviation carrying ABI tags becoming substitutable where the bare abbreviation is
+  not; and a lambda written as a template argument, `X<[](){...}>`.
+
 - **GNU style** against `c++filt` 2.42 over libLLVM's 44,049 C++ symbols: 1,419
   differences to **31**, every one of which matches `llvm-cxxfilt` instead. A further 97
   names `c++filt` refuses outright and this reads.

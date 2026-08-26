@@ -76,6 +76,12 @@ _FIXED_POINT_INTEGERS = {
 #: a suffix -- which is what the reference prints.
 _ALLOC_TOKEN = "__alloc_token_"
 
+#: What follows a block invocation function's encoding. The leading group is greedy, so
+#: the split is at the *last* `_block_invoke`: an enclosing function may be called that
+#: itself. A number may follow with or without its own underscore, but an underscore
+#: with no number after it is not one of these names at all.
+_BLOCK_INVOKE = re.compile(r"(.*)_block_invoke(?:_\d+|\d*)(?:\..*)?\Z", re.DOTALL)
+
 #: What a comma expression binds at. An operand that binds no tighter than this needs
 #: brackets to sit in a comma-separated list.
 _COMMA_BINDING = PRECEDENCE["cm"]
@@ -164,7 +170,12 @@ def detect(name):
     not mangled at all, so it does no work beyond a prefix comparison.
     """
     return (
-        name.startswith("_Z") or name.startswith("__Z") or name.startswith("_GLOBAL__") or name.startswith(_ALLOC_TOKEN)
+        name.startswith("_Z")
+        or name.startswith("__Z")
+        or name.startswith("___Z")
+        or name.startswith("____Z")
+        or name.startswith("_GLOBAL__")
+        or name.startswith(_ALLOC_TOKEN)
     )
 
 
@@ -381,6 +392,8 @@ class ItaniumParser:
     def parse(self):
         """<mangled-name> ::= _Z <encoding> [. <vendor-specific suffix>]"""
         reader = self.reader
+        if reader.startswith("___Z") or reader.startswith("____Z"):
+            return self.block_invocation()
         # `__alloc_token_[<digits>_]` wraps an ordinary mangled name. It says which
         # allocation a hardened allocator should account to which type and names no part
         # of the entity, so it comes off the front and goes back on as a suffix -- which
@@ -422,6 +435,43 @@ class ItaniumParser:
             result = self.builder.decorated(result, alloc_token)
         if self.builder.size(result) > self.limits.max_output:
             raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
+        return result
+
+    def block_invocation(self):
+        """`___Z <encoding> _block_invoke [[_] <digits>] [. <suffix>]`, a Clang extension.
+
+        The function a block's body compiles to. Its name is the enclosing function's,
+        with an underscore in front for the block and another for the leading one a
+        Mach-O symbol table adds -- which is why `___Z` is three underscores and
+        `____Z` is four.
+
+        The reference finds the encoding's end by parsing until a type will not read and
+        then requiring the literal; this bounds the encoding at the literal instead,
+        which is the same split and does not need the parameter loop to swallow an
+        error. Bounded at the *last* occurrence, because a function may be called
+        `_block_invoke` itself and the encoding is as long as it can be.
+
+        Neither the trailing number nor a `.` suffix is printed: the number distinguishes
+        several blocks in one function, and what a caller is told is which function the
+        block was written in.
+        """
+        reader = self.reader
+        # The prefix ends in `Z`, so the two spellings cannot be confused for one
+        # another however they are tried: `____Z` does not start with `___Z`.
+        if not (reader.eat("___Z") or reader.eat("____Z")):
+            raise NotMangledError(self._mangled, "not an Itanium mangled name")
+        found = _BLOCK_INVOKE.match(reader.remaining)
+        if found is None:
+            raise NotMangledError(self._mangled, "not a block invocation function")
+        whole = reader.length
+        reader.length = reader.pos + len(found.group(1))
+        try:
+            result = self.builder.special("invocation function for block in ", self.encoding())
+            if not reader.eof:
+                raise ParseError(self._mangled, reader.pos, f"unconsumed input {reader.remaining!r}")
+        finally:
+            reader.length = whole
+        reader.pos = whole
         return result
 
     def encoding(self):
@@ -1217,8 +1267,12 @@ class ItaniumParser:
             tags.append(f"[abi:{self._identifier()}]")
         return "".join(tags)
 
-    def unnamed_type_name(self):
+    def unnamed_type_name(self, lambda_expression=False):
         """A closure or unnamed type.
+
+        `lambda_expression` spells the closure as the *expression* that made it rather
+        than as its type -- `[](){...}`, which is what a lambda written as a template
+        argument reads as.
 
         ```
         <unnamed-type-name> ::= Ut [<number>] _ | <closure-type-name>
@@ -1267,12 +1321,14 @@ class ItaniumParser:
                         # A trailing requires-clause, after the parameters.
                         trailing = self.builder.spell(self.constraint_expression())
                         reader.expect("E")
-                        return self._closure(declarations, constraint, parameters, f" requires {trailing}")
+                        return self._closure(
+                            declarations, constraint, parameters, f" requires {trailing}", lambda_expression
+                        )
                     parameters.append(self.builder.spell(self.type_()))
             finally:
                 self._parameter_counts = saved_counts
                 self.targs.restore(saved_scope)
-            return self._closure(declarations, constraint, parameters, "")
+            return self._closure(declarations, constraint, parameters, "", lambda_expression)
 
         if reader.eat("b"):
             # <unnamed-type-name> ::= Ub [<number>] _ -- an Objective-C block literal.
@@ -1283,7 +1339,7 @@ class ItaniumParser:
 
         raise ParseError(self._mangled, reader.pos, "unknown unnamed-type-name")
 
-    def _closure(self, declarations, constraint, parameters, trailing):
+    def _closure(self, declarations, constraint, parameters, trailing, lambda_expression=False):
         """Spell a closure type, once its signature has been read."""
         reader = self.reader
         template_header = f"<{', '.join(declarations)}>" if declarations else ""
@@ -1292,6 +1348,12 @@ class ItaniumParser:
         index = reader.digits() if reader.peek() in DIGITS else ""
         reader.expect("_")
         signature = f"{template_header}{constraint}({', '.join(parameters)}){trailing}"
+        if lambda_expression:
+            # The lambda that made the closure, not the closure: `[]` and its declarator
+            # and a body the mangling does not carry. The discriminator says which
+            # closure in the enclosing scope this is, and no spelling of the expression
+            # writes it.
+            return self.builder.raw(f"[]{signature}{{...}}")
         if self.options.gnu_closure_spelling:
             number = int(index) + 2 if index else 1
             return self.builder.raw(f"{{lambda{signature}#{number}}}")
@@ -1384,8 +1446,13 @@ class ItaniumParser:
         table = self._abbrev_expanded if expanded else self._abbrev
         if code in table:
             reader.take()
-            # An abbreviation is pre-defined: referring to it adds no dictionary entry,
-            # because the encoder never had to add one either.
+            tags = self.abi_tags()
+            if tags:
+                # 5.1.2: where a name that would use a built-in substitution carries ABI
+                # tags, the tags are appended and *the result* is a substitutable
+                # component. The abbreviation on its own is not one -- the encoder never
+                # had to enter it either -- so only the tagged form is remembered.
+                return self.subs.remember(self.builder.raw(table[code] + tags), "type")
             return self.builder.raw(table[code])
         return self._pack_aware(self.subs.lookup(reader.seq_id()))
 
@@ -1574,35 +1641,7 @@ class ItaniumParser:
 
         if char == "U":
             # <type> ::= U <source-name> [<template-args>] <type>  -- vendor qualifier
-            reader.pos += 1
-            qualifier = self.source_name()
-            if reader.peek() == "I":
-                arguments = self.template_arguments()
-                qualifier += self._angled(", ".join(builder.spell(argument) for argument in arguments))
-            inner = self.type_()
-            if qualifier.startswith(_OBJC_PROTOCOL):
-                # `U <n>objcproto<protocol> <type>` is an Objective-C type conforming to
-                # a protocol, and the references write it in angle brackets:
-                # `NSArray<A>`, not `NSArray objcproto1A`. A qualified `objc_object` is
-                # written `id<A>` once a pointer is applied to it -- and only then, so
-                # the rewrite is recorded here and done in the `P` branch.
-                # The protocol is itself a length-prefixed name inside the qualifier's:
-                # `11objcproto1A` carries `1A`, which is `A`.
-                protocol = qualifier[len(_OBJC_PROTOCOL) :]
-                digits = 0
-                while digits < len(protocol) and protocol[digits] in DIGITS:
-                    digits += 1
-                if digits and int(protocol[:digits]) == len(protocol) - digits:
-                    protocol = protocol[digits:]
-                spelled = builder.spell(inner)
-                if spelled == _OBJC_OBJECT:
-                    handle = builder.raw(f"id<{protocol}>")
-                    self._objc_ids.append(handle)
-                    self._objc_id_ids.add(id(handle))
-                else:
-                    handle = builder.raw(f"{spelled}<{protocol}>")
-                return subs.remember(handle, "type")
-            return subs.remember(builder.vendor_qualify(inner, qualifier), "type")
+            return subs.remember(self.qualified_type(), "type")
 
         if char == "F":
             return self.function_type_production()
@@ -1871,6 +1910,54 @@ class ItaniumParser:
         if reader.text[at : at + 2] in ("Do", "DO", "Dw", "Dx"):
             return True
         return reader.text[at : at + 1] == "F"
+
+    def qualified_type(self):
+        """<qualified-type>, as the reference reads it: one production, one candidate.
+
+        A vendor qualifier and the cv-qualifiers underneath it are read together, so
+        `U3AS1Ki` enters *one* substitution and not two. That matters for every later
+        back-reference in the name: with two, the `S0_` in `_Z1fPU3AS1KiS0_` names
+        `int const AS1` where it should name `int const AS1*`, and the second parameter
+        loses its pointer.
+        """
+        reader = self.reader
+        builder = self.builder
+        if reader.peek() == "U":
+            reader.pos += 1
+            qualifier = self.source_name()
+            if reader.peek() == "I":
+                arguments = self.template_arguments()
+                qualifier += self._angled(", ".join(builder.spell(argument) for argument in arguments))
+            inner = self.qualified_type()
+            if qualifier.startswith(_OBJC_PROTOCOL):
+                # `U <n>objcproto<protocol> <type>` is an Objective-C type conforming to
+                # a protocol, and the references write it in angle brackets:
+                # `NSArray<A>`, not `NSArray objcproto1A`. A qualified `objc_object` is
+                # written `id<A>` once a pointer is applied to it -- and only then, so
+                # the rewrite is recorded here and done in the `P` branch.
+                # The protocol is itself a length-prefixed name inside the qualifier's:
+                # `11objcproto1A` carries `1A`, which is `A`.
+                protocol = qualifier[len(_OBJC_PROTOCOL) :]
+                digits = 0
+                while digits < len(protocol) and protocol[digits] in DIGITS:
+                    digits += 1
+                if digits and int(protocol[:digits]) == len(protocol) - digits:
+                    protocol = protocol[digits:]
+                spelled = builder.spell(inner)
+                if spelled == _OBJC_OBJECT:
+                    handle = builder.raw(f"id<{protocol}>")
+                    self._objc_ids.append(handle)
+                    self._objc_id_ids.add(id(handle))
+                else:
+                    handle = builder.raw(f"{spelled}<{protocol}>")
+                return handle
+            return builder.vendor_qualify(inner, qualifier)
+        if self._at_function_type():
+            # A cv-qualified function type is its own production either way round.
+            return self.type_()
+        qualifiers = self.cv_qualifiers()
+        inner = self.type_()
+        return builder.qualify(inner, qualifiers) if qualifiers else inner
 
     def function_type_production(self):
         """The whole of `[<CV-qualifiers>] [<exception-spec>] [Dx] F ... E`.
@@ -2267,6 +2354,15 @@ class ItaniumParser:
                 # resolving against the wrong argument list.
                 self._naming = was_naming
                 self.targs.restore(outer_scope)
+            reader.expect("E")
+            return builder.spell(handle)
+
+        if reader.peek2() == "Ul":
+            # `L <closure-type-name> E` is a *lambda*, written where a value was
+            # expected: a closure object as a template argument. The reference spells
+            # the expression that made it rather than the type it has, and accepts only
+            # `Ul` here -- an unnamed type that is not a closure is not a value.
+            handle = self.unnamed_type_name(lambda_expression=True)
             reader.expect("E")
             return builder.spell(handle)
 

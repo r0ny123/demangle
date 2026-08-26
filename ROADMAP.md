@@ -11,23 +11,28 @@ symbolic reference in the Swift metadata — well over half a million real symbo
 follows is what the upstream corpora still find, all of it pinned in both directions by
 the test suite so it can only go up and cannot quietly stop being accurate.
 
-**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,910 of 29,928 exact. Twelve
-refusals and six wrong spellings, in four groups.
+**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,918 of 29,928 exact. Five
+refusals and five wrong spellings, in three groups.
 
 - Four are `<type>` manglings with no `_Z` prefix at all — `i` for `int`,
   `PKFvRiE` for `void (*)(int&) const`. `__cxa_demangle` reads them; `llvm-cxxfilt`
   refuses them and so does this, deliberately: a demangler offered every symbol in a
   binary and willing to read `i` as `int` will rename half a C library.
-- Four are `_block_invoke` names whose enclosing function is itself Itanium-mangled.
-  The Objective-C scheme claims them and spells them its own way, `block #1 in ...`,
-  without reading the enclosing name; the reference spells them
-  `invocation function for block in ...`. Closing it means deciding which scheme owns
-  the shape.
-- Six need per-level template parameter tracking: `TL<level>_<index>_` inside a
-  generic lambda's own parameter list, where the parameter belongs to a template two
-  levels out. This tracks one level.
-- The rest are single shapes: a `cp` call inside a `decltype` whose arguments come from
-  an enclosing pack, and a variadic-generic conformance path.
+- **Five need per-level template parameter tracking**, and they are all of what is
+  left that answers *wrongly* rather than declining. The reference keeps a stack of
+  parameter lists, one per template level, and resolves `T_` against the innermost and
+  `TL<level>_<index>_` against the level named; each entry is either the argument bound
+  to that parameter or, for a parameter a generic lambda declared, the parameter itself
+  — which is why the reference prints `$T0` where this prints `T`, and why
+  `[]<typename $T, template<typename $T0, $T0 $N> typename $TT>(auto, float, $T){...}`
+  comes out with its three parameters in the wrong order.
+
+  This tracks one level: `TemplateArgumentTable` is a single list that a lambda saves
+  and restores across. Closing it means making that a stack, which is the mechanism
+  every one of the 29,918 depends on, so it wants its own pass rather than being
+  tacked onto another.
+- One is a `sr` inside a template argument, where the qualified name is written against
+  an argument list the parser has not finished reading.
 
 **D**, libiberty's `d-demangle-expected`: 366 of 366. What the last of them needed was
 not in the D ABI at all -- the five characters the reference names inside a string, the
