@@ -1,12 +1,14 @@
-# Borland/Embarcadero Delphi and C++Builder exports.
+# Borland/Embarcadero Delphi and C++Builder exports, with the spelling
+# Embarcadero's own unmangler prints for each.
 #
-# Sampled by tools/generate_delphi_corpus.py from real PE export tables / a TDUMP
-# dump of them. There is no Delphi compiler here; the expected column is this
-# library's reading, and agreement with TDUMP over the whole dump is pinned in
-# tests/test_conformance.py.
+# Written by tools/generate_delphi_corpus.py from a TDUMP dump -- the real
+# tdump.exe -q -um, run over the export tables of real BPLs and C++Builder DLLs.
+# The expected column is that reference output, not this library's reading.
 #
-# Sources: borland.yaml (11286 names).
-# Readable: 11276; refused: 10; kinds: constructor 436, conversion 4, data 651, destructor 253, function 9369, linkproc 172, operator 30, thunk 65, tpdsc 296.
+# Sources: borland.yaml (11373 names).
+# Readable: 11363; refused: 10; kinds: constructor 456, conversion 4, data 651, destructor 253, function 9435, linkproc 172, operator 31, thunk 65, tpdsc 296.
+#
+# A sample of 8 per kind; the whole table is delphi-tdump.txt.
 @$beql$qrx5_GUIDt1	operator ==(_GUID&, _GUID&)
 @$vc1$B0$1$0$	__thunk__ [B,0,1,0]
 @$vc1$B0$121$0$	__thunk__ [B,0,121,0]
@@ -28,61 +30,50 @@
 @%TVariantInParamT$10tagVARIANT%@$bdtr$qv	TVariantInParamT<tagVARIANT>::~TVariantInParamT<tagVARIANT>()
 @%TVariantT$10tagVARIANTo$i1$%@$op8IUnknown$qv	TVariantT<tagVARIANT, 1>::operator IUnknown *()
 @@AsClass	__linkproc__ AsClass
-@@InitExe	__linkproc__ InitExe
 @ADODB@_16477	ADODB::_16477
 @ATL@%CComObjectRootEx$25ATL@CComSingleThreadModel%@$bctr$qv	ATL::CComObjectRootEx<ATL::CComSingleThreadModel>::CComObjectRootEx<ATL::CComSingleThreadModel>()
-@AllocateHWnd$qqrynpqqrr8TMessage$v	__fastcall AllocateHWnd(void __fastcall __closure(*)(TMessage&))
 @CCriticalSection@$op21_RTL_CRITICAL_SECTION$qv	CCriticalSection::operator _RTL_CRITICAL_SECTION *()
 @Classes@TFileStream@$bdtr$qqrv	__fastcall Classes::TFileStream::~TFileStream()
-@Classes@TList@Sort$qqrpqqrpvt1$i	__fastcall Classes::TList::Sort(int __fastcall (*)(void *, void *))
-@Comctrls@TCoolBar@GetAlign$qqrv	__fastcall Comctrls::TCoolBar::GetAlign()
-@Comobj@EOleException@$bctr$qqrx17System@AnsiStringixt1xt1i	__fastcall Comobj::EOleException::EOleException(const System::AnsiString, int, const System::AnsiString, const System::AnsiString, int)
-@Controls@initialization$qqrv	__fastcall Controls::initialization()
+@Comctrls@TCoolBar@CNBandChange$qqrr17Messages@TMessage	__fastcall Comctrls::TCoolBar::CNBandChange(Messages::TMessage&)
+@Comobj@EOleException@$bctr$qqrx17System@AnsiStringixt1xt1i	__fastcall Comobj::EOleException::EOleException(const System::AnsiString, int, const const System::AnsiString, const const System::AnsiString, int)
+@Convutils@RegisterConversionFamily$qqrx20System@UnicodeString	__fastcall Convutils::RegisterConversionFamily(const System::UnicodeString)
 @Dbclientactns@TClientDataSetApply@$bdtr$qqrv	__fastcall Dbclientactns::TClientDataSetApply::~TClientDataSetApply()
-@Dbctrls@TPaintControl@$bctr$qqrp20Controls@TWinControlx17System@AnsiString	__fastcall Dbctrls::TPaintControl::TPaintControl(Controls::TWinControl *, const System::AnsiString)
+@Dbctrls@TDBLookupListBox@$bctr$qqrp18Classes@TComponent	__fastcall Dbctrls::TDBLookupListBox::TDBLookupListBox(Classes::TComponent *)
 @Dbxconst@_16388	Dbxconst::_16388
-@Dbxtrace@TDBXTraceConnection@GetConnectionProperties$qqrv	__fastcall Dbxtrace::TDBXTraceConnection::GetConnectionProperties()
+@Ddeman@TDdeClientConv@ChangeLink$qqrx17System@AnsiStringt1t1	__fastcall Ddeman::TDdeClientConv::ChangeLink(const System::AnsiString, const System::AnsiString, const System::AnsiString)
 @Extctrls@TTimer@$bdtr$qqrv	__fastcall Extctrls::TTimer::~TTimer()
-@Graphics@TFont@$bctr$qqrv	__fastcall Graphics::TFont::TFont()
+@Gencreator@TGenCreator@$bctr$qqrv	__fastcall Gencreator::TGenCreator::TGenCreator()
 @IWDsnWizard@_16467	IWDsnWizard::_16467
-@Ibfilterdialog@TfrmIBFilterDialog@btnClearFieldValueClick$qqrp14System@TObject	__fastcall Ibfilterdialog::TfrmIBFilterDialog::btnClearFieldValueClick(System::TObject *)
+@Ibintf@LoadIBInstallLibrary$qqrv	__fastcall Ibintf::LoadIBInstallLibrary()
 @Iddnsresolver@TIdDNSResolver@$bdtr$qqrv	__fastcall Iddnsresolver::TIdDNSResolver::~TIdDNSResolver()
-@Idhttp@TIdCustomHTTP@$bctr$qqrp18Classes@TComponent	__fastcall Idhttp::TIdCustomHTTP::TIdCustomHTTP(Classes::TComponent *)
+@Idheaderlist@TIdHeaderList@$bctr$qqrv	__fastcall Idheaderlist::TIdHeaderList::TIdHeaderList()
 @InitISAPIApplicationList	InitISAPIApplicationList
-@Inosfilename@FileNameUnixToWin32$qqrx17System@AnsiString	__fastcall Inosfilename::FileNameUnixToWin32(const System::AnsiString)
 @Inquire_v1@BusinessInfo@$bdtr$qqrv	__fastcall Inquire_v1::BusinessInfo::~BusinessInfo()
-@Iwscriptevents@TIWScriptEventsItem@$bctr$qqr20System@UnicodeStringt1	__fastcall Iwscriptevents::TIWScriptEventsItem::TIWScriptEventsItem(System::UnicodeString, System::UnicodeString)
+@Inreply@TInReply@UpdateText$qqrv	__fastcall Inreply::TInReply::UpdateText()
+@Iwservercontrollerbase@TIWCompression@$bctr$qqrv	__fastcall Iwservercontrollerbase::TIWCompression::TIWCompression()
 @Qcomctrls@TPageControl@$bdtr$qqrv	__fastcall Qcomctrls::TPageControl::~TPageControl()
-@Quickrpt@TQRBasePanel@CreateParams$qqrr22Controls@TCreateParams	__fastcall Quickrpt::TQRBasePanel::CreateParams(Controls::TCreateParams&)
-@Quickrpt@TQuickRep@$bctr$qqrp18Classes@TComponent	__fastcall Quickrpt::TQuickRep::TQuickRep(Classes::TComponent *)
+@Quickrpt@TQRCustomController@PrintEmptyController$qqrv	__fastcall Quickrpt::TQRCustomController::PrintEmptyController()
 @Registry@_16392	Registry::_16392
+@Scktcomp@TCustomWinSocket@$bctr$qqri	__fastcall Scktcomp::TCustomWinSocket::TCustomWinSocket(int)
 @Stdctrls@TCustomMemo@$bdtr$qqrv	__fastcall Stdctrls::TCustomMemo::~TCustomMemo()
 @System@%StaticArray$20System@UnicodeStringi$i2$%@$bsubs$qi	System::StaticArray<System::UnicodeString, 2>::operator [](int)
-@System@@DynArrayAddRef$qqrv	__fastcall System::__linkproc__ DynArrayAddRef()
-@System@@INT$qqrv	__fastcall System::__linkproc__ INT()
-@System@@LStrFromPWCharLen$qqrr27System@%AnsiStringT$us$i0$%pbius	__fastcall System::__linkproc__ LStrFromPWCharLen(System::AnsiStringT<0>&, wchar_t *, int, unsigned short)
-@System@@RandInt$qqrv	__fastcall System::__linkproc__ RandInt()
-@System@@Str0UInt64$qqrj	__fastcall System::__linkproc__ Str0UInt64(long long)
-@System@@VarFromWStr$qqrr14System@Variantx17System@WideString	__fastcall System::__linkproc__ VarFromWStr(System::Variant&, const System::WideString)
-@System@@WriteLong$qqrv	__fastcall System::__linkproc__ WriteLong()
+@System@@DynArrayAddRef$qqrv	System::__linkproc__ __fastcall DynArrayAddRef()
+@System@@INT$qqrv	System::__linkproc__ __fastcall INT()
+@System@@LStrFromPWCharLen$qqrr27System@%AnsiStringT$us$i0$%pbius	System::__linkproc__ __fastcall LStrFromPWCharLen(System::AnsiStringT<0>&, wchar_t *, int, unsigned short)
+@System@@RandInt$qqrv	System::__linkproc__ __fastcall RandInt()
+@System@@Str0UInt64$qqrj	System::__linkproc__ __fastcall Str0UInt64(long long)
+@System@@VarFromWStr$qqrr14System@Variantx17System@WideString	System::__linkproc__ __fastcall VarFromWStr(System::Variant&, const System::WideString)
+@System@@WriteLong$qqrv	System::__linkproc__ __fastcall WriteLong()
 @System@AnsiString@$blss$xqqrrx17System@AnsiString	__fastcall System::AnsiString::operator <(System::AnsiString&) const
 @System@AnsiStringBase@$basg$qqrrx21System@AnsiStringBase	__fastcall System::AnsiStringBase::operator =(System::AnsiStringBase&)
 @System@AnsiStringBase@$blss$xqqrrx21System@AnsiStringBase	__fastcall System::AnsiStringBase::operator <(System::AnsiStringBase&) const
 @System@TDateTime@$o17System@AnsiString$xqqrv	__fastcall System::TDateTime::operator System::AnsiString() const
-@System@Var	System::Var
 @System@Variant@$o17System@WideString$xqqrv	__fastcall System::Variant::operator System::WideString() const
 @TCommonDialog@WMDestroy	TCommonDialog::WMDestroy
 @TIdUDPClient@Send	TIdUDPClient::Send
 @TStorageStreamBase@3$vsn	TStorageStreamBase::__vdthk__ (rtti)
-@Teengine@TChartSeries@SetChartValueList$qqrp24Teengine@TChartValueListt1	__fastcall Teengine::TChartSeries::SetChartValueList(Teengine::TChartValueList *, Teengine::TChartValueList *)
-@Teeprevi@TTeePreviewPage@$bctr$qqrp18Classes@TComponent	__fastcall Teeprevi::TTeePreviewPage::TTeePreviewPage(Classes::TComponent *)
-@Unit@Class@Field	Unit::Class::Field
-@Unit@Class@Method$qqrv	__fastcall Unit::Class::Method()
+@Teengine@TChartSeries@SetSeriesColor$qqr15Graphics@TColor	__fastcall Teengine::TChartSeries::SetSeriesColor(Graphics::TColor)
+@Testframework@TTestFailure@$bctr$qqr47System@%DelphiInterface$t19Testframework@ITest%pv17System@AnsiString	__fastcall Testframework::TTestFailure::TTestFailure(System::DelphiInterface<Testframework::ITest>, void *, System::AnsiString)
 @Varcmplx@_16386	Varcmplx::_16386
 @__rwstd@%locale_vector$p17__rwstd@facet_imp%@$bsubs$xqui	__rwstd::locale_vector<__rwstd::facet_imp *>::operator [](unsigned int) const
-@afunc$qxzcupi	afunc(const signed char, int *)
-@foo$qi$i	int foo(int)
-@foo$qpqfi$d	foo(double (*)(float, int))
-@foo$qv	foo()
-@myclass@func$qil	myclass::func(int, long)
 @std@%fpos$13std@mbstate_t%@$brmin$ql	std::fpos<std::mbstate_t>::operator -=(long)

@@ -58,6 +58,7 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.PASCAL_EXACT, pins.PASCAL_TOTAL),
         (pins.OBJC_EXACT, pins.OBJC_TOTAL),
         (pins.DELPHI_EXACT, pins.DELPHI_TOTAL),
+        (pins.DELPHI_TABLE_EXACT, pins.DELPHI_TABLE_TOTAL),
     }
     stated = {(int(a), int(b)) for a, b in re.findall(r"\*\*(\d+) / (\d+)\*\*", readme)}
     assert stated <= pinned, f"README states counts that are not pinned anywhere: {sorted(stated - pinned)}"

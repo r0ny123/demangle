@@ -48,8 +48,9 @@ Delphi:
   unmangler TDUMP runs) because there is no Delphi compiler on the platforms this is
   developed on. Spelling is what that unmangler prints. Microsoft's `@name@N` 32-bit
   `__fastcall` C decoration is refused. Checked against the unmangler's own test vectors
-  and a TDUMP dump of real BPL and C++Builder DLL export tables, 11,276 of 11,276, with
-  the whole symbol consumed. The checked-in corpus is a sample of each construct.
+  and a recorded dump of the real `tdump.exe -q -um` over the export tables of real BPLs
+  and C++Builder DLLs, 11,363 of 11,363, with the whole symbol consumed. That dump is
+  checked in and replayed, so the number is a test result rather than a claim.
 
 - ~~**Objective-C**~~ — *landed*. It turned out to be four families across three
   runtimes rather than one form, and the interesting part is that the rules belong to the
