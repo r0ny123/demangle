@@ -3,32 +3,55 @@
 What is not done yet, in the order it matters. Each entry says what would have to
 change, so anyone can pick one up.
 
-> **Being re-measured.** The paragraph below was written against the corpora checked
-> into this repository, and it holds against those. It does not hold against the
-> reference projects' *own* corpora, which are larger and which this project had not
-> adopted: measured since, D fails 149 of libiberty's 366 `d-demangle-expected` vectors,
-> Itanium fails 294 of libcxxabi's 29,930 `DemangleTestCases.inc` cases, Swift refuses
-> 56 of the 513 in `test/Demangle/Inputs/manglings.txt`, and freshly compiled C++20
-> turns up eight manglings `llvm-cxxfilt` reads and this does not. Those corpora are
-> being adopted; until they are, read "no gaps" as "no gaps against what is checked in
-> here", which is a weaker claim than it was meant to be.
+Conformance is measured against the reference projects' *own* corpora as well as the
+ones checked in here. Every checked-in corpus is exact against its reference, and so are
+whole symbol tables from libLLVM, libclang-cpp, the Rust toolchain, libstdc++, the Swift
+runtime, libgphobos, the Free Pascal runtime, the shipped Objective-C runtime and every
+symbolic reference in the Swift metadata — well over half a million real symbols. What
+follows is what the upstream corpora still find, all of it pinned in both directions by
+the test suite so it can only go up and cannot quietly stop being accurate.
 
-Conformance gaps are **not** listed here any more, because there are none of ours left:
-every checked-in corpus is exact against its reference, and so are whole symbol tables
-from libLLVM, libclang-cpp, the Rust toolchain, libstdc++, the Swift runtime, libgphobos,
-the Free Pascal runtime, the shipped Objective-C runtime and every symbolic reference in
-the Swift metadata — well over half a million real symbols. The last two gaps of ours
-closed with this release, and both came from checking against the references over *whole
-libraries* rather than over the recorded sample: the `TC` construction vtable was not
-implemented at all, and a `Dp` expansion over an empty pack printed one argument where it
-should print none. The five GNU-style shortfalls
-are disagreements *between the two references*: two about substitution table contents and
-three about the space GNU omits between two closing angle brackets when the last template
-argument is an empty pack, which is a bookkeeping slip rather than a rule -- the same
-output shows both spellings in one name. All five are pinned by name in
-`tests/test_conformance.py`. The seven Nim shortfalls are that language's own
-mangling discarding an underscore, listed by name in
-`tests/conformance/nim-lossy.txt`.
+**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,910 of 29,928 exact. Twelve
+refusals and six wrong spellings, in four groups.
+
+- Four are `<type>` manglings with no `_Z` prefix at all — `i` for `int`,
+  `PKFvRiE` for `void (*)(int&) const`. `__cxa_demangle` reads them; `llvm-cxxfilt`
+  refuses them and so does this, deliberately: a demangler offered every symbol in a
+  binary and willing to read `i` as `int` will rename half a C library.
+- Four are `_block_invoke` names whose enclosing function is itself Itanium-mangled.
+  The Objective-C scheme claims them and spells them its own way, `block #1 in ...`,
+  without reading the enclosing name; the reference spells them
+  `invocation function for block in ...`. Closing it means deciding which scheme owns
+  the shape.
+- Six need per-level template parameter tracking: `TL<level>_<index>_` inside a
+  generic lambda's own parameter list, where the parameter belongs to a template two
+  levels out. This tracks one level.
+- The rest are single shapes: a `cp` call inside a `decltype` whose arguments come from
+  an enclosing pack, and a variadic-generic conformance path.
+
+**D**, libiberty's `d-demangle-expected`: 293 of 366. The remainder is the older
+mangling libiberty still reads and current DMD and GDC no longer write.
+
+**Swift**, `test/Demangle/Inputs/manglings.txt`: 505 of 513, and *no* name in it
+answered with a different spelling — every failure is a refusal. The eight are new
+function-signature specialisation kinds, variadic-generic conformances, macro expansion
+source locations, and one opaque-return-type shape. `simplified-manglings.txt` is a
+whole output mode this does not have; see the render-time modes below.
+
+**Rust**, rustc-demangle's own `#[test]` vectors: 47 of 51. Three of the other four are
+its `{:#}` "no hash" mode rather than the `{}` this prints, and the fourth is a legacy
+name with no leading underscore, no hash and no `$...$` escape, which this declines
+because `ZN` is a perfectly ordinary start to a C identifier.
+
+**GNU style**, against `c++filt` 2.42 over the 44,049 C++ symbols in the shipped
+libLLVM: 31 differ, and on every one of those this matches `llvm-cxxfilt` exactly — they
+are names the two references spell differently from *each other*, a back-reference they
+resolve to different entries and a `const` applied to a type that already carries one.
+A further 97 `c++filt` refuses outright and this reads. Two names in the purpose-built
+gnu corpus are pinned for the same reason.
+
+**Nim**: seven shortfalls, that language's own mangling discarding an underscore, listed
+by name in `tests/conformance/nim-lossy.txt`.
 
 ## 1. More schemes
 
