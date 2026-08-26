@@ -240,6 +240,14 @@ ALL_KINDS = frozenset(
         "Structure",
         "Subscript",
         "Suffix",
+        "CoroFunctionPointer",
+        "DefaultOverride",
+        "PropertyWrappedFieldInitAccessor",
+        "YieldingBorrowAccessor",
+        "YieldingMutateAccessor",
+        "BorrowAccessor",
+        "MutateAccessor",
+        "BuiltinBorrow",
         "DependentGenericInverseConformanceRequirement",
         "OutlinedInitializeWithTakeNoValueWitness",
         "OutlinedInitializeWithCopyNoValueWitness",
@@ -458,6 +466,8 @@ FUNCTION_ATTR_KINDS = frozenset(
         "BackDeploymentThunk",
         "BackDeploymentFallback",
         "HasSymbolQuery",
+        "CoroFunctionPointer",
+        "DefaultOverride",
     ]
 )
 

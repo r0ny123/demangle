@@ -817,6 +817,7 @@ class Printer:
                 "DefaultArgumentInitializer",
                 "Initializer",
                 "PropertyWrapperBackingInitializer",
+                "PropertyWrappedFieldInitAccessor",
                 "PropertyWrapperInitFromProjectedValue",
             ):
                 self.write(" of ")
@@ -973,6 +974,8 @@ _JUST_TEXT = {
     "AsyncFunctionPointer": "async function pointer to ",
     "HasSymbolQuery": "#_hasSymbol query for ",
     "MergedFunction": "merged ",
+    "CoroFunctionPointer": "coro function pointer to ",
+    "DefaultOverride": "default override of ",
     "DistributedThunk": "distributed thunk ",
     "DistributedAccessor": "distributed accessor for ",
     "AccessibleFunctionRecord": "accessible function runtime record for ",
@@ -1004,6 +1007,7 @@ _ENTITY_KINDS = {
     "OtherNominalType": ("none", True, "", ""),
     "Initializer": ("none", False, "variable initialization expression", ""),
     "PropertyWrapperBackingInitializer": ("none", False, "property wrapper backing initializer", ""),
+    "PropertyWrappedFieldInitAccessor": ("none", False, "property wrapped field init accessor", ""),
     "PropertyWrapperInitFromProjectedValue": ("none", False, "property wrapper init from projected value", ""),
     "Destructor": ("none", False, "deinit", ""),
     "IVarInitializer": ("none", False, "__ivar_initializer", ""),
@@ -1027,8 +1031,12 @@ _ABSTRACT_STORAGE = {
     "WillSet": "willset",
     "DidSet": "didset",
     "ReadAccessor": "read",
+    "YieldingBorrowAccessor": "yielding_borrow",
     "ModifyAccessor": "modify",
+    "YieldingMutateAccessor": "yielding_mutate",
     "InitAccessor": "init",
+    "BorrowAccessor": "borrow",
+    "MutateAccessor": "mutate",
 }
 
 #: `<macro kind> @<name> expansion #<n>`, keyed by node kind.
@@ -2058,6 +2066,14 @@ def _print_inverse_conformance(self, node, depth, as_prefix_context):
     self.write(": ~")
     bit = node.child(1).index
     self.write(_INVERTIBLE_PROTOCOLS.get(bit, f"Swift.<bit {bit}>"))
+    return None
+
+
+@_handler("BuiltinBorrow")
+def _print_builtin_borrow(self, node, depth, as_prefix_context):
+    self.write("Builtin.Borrow<")
+    self.print(node.first, depth + 1)
+    self.write(">")
     return None
 
 
