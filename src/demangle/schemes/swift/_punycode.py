@@ -41,6 +41,13 @@ def _adapt(delta, points, first):
     return k + ((_BASE - _TMIN + 1) * delta) // (delta + _SKEW)
 
 
+#: Largest code point a decoded scalar can be, and the ceiling the running value is
+#: tested against. `i` is an offset into a string of at most `len(out) + 1` positions,
+#: so anything past this cannot become a character however the rest of the input reads.
+_MAX_SCALAR = 0x10FFFF
+_MAX_INSERTION = _MAX_SCALAR * (_MAX_SCALAR + 1)
+
+
 def _scalars(text):
     """RFC 3492 section 6.2, over Swift's alphabet."""
     n = _INITIAL_N
@@ -56,18 +63,30 @@ def _scalars(text):
             out.append(ord(char))
         text = text[last + 1 :]
 
-    while text:
+    # An index rather than `text = text[1:]`. Consuming a digit by re-slicing copies the
+    # whole remainder every time, which made decoding cost time quadratic in the length
+    # of the identifier -- and the length is the attacker's choice.
+    at = 0
+    length = len(text)
+    while at < length:
         old = i
         weight = 1
         k = _BASE
         while True:
-            if not text:
+            if at >= length:
                 raise PunycodeError("truncated punycode")
-            digit = _DIGITS.get(text[0], -1)
-            text = text[1:]
+            digit = _DIGITS.get(text[at], -1)
+            at += 1
             if digit < 0:
                 raise PunycodeError("not a punycode digit")
             i += digit * weight
+            if i > _MAX_INSERTION:
+                # RFC 3492's reference decoder tests for overflow against the machine's
+                # integer width. Python has none, so the same test is written against
+                # the largest value that could still become a code point. Without it a
+                # long digit run drives `weight` to 36**k and does arbitrary bignum
+                # arithmetic to reach a number whose only use is to fail a range check.
+                raise PunycodeError("punycode value out of range")
             threshold = _TMIN if k <= bias else _TMAX if k >= bias + _TMAX else k - bias
             if digit < threshold:
                 break
@@ -76,7 +95,7 @@ def _scalars(text):
         bias = _adapt(i - old, len(out) + 1, old == 0)
         n += i // (len(out) + 1)
         i %= len(out) + 1
-        if n < 0x80:
+        if n < 0x80 or n > _MAX_SCALAR:
             raise PunycodeError("a basic code point cannot be inserted")
         out.insert(i, n)
         i += 1

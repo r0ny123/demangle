@@ -28,11 +28,12 @@ import struct
 
 from .symbolic import CONTEXT, DIRECT, INDIRECT
 
-__all__ = ["ContextResolver", "Image", "elf_image", "macho_image"]
+__all__ = ["ContextResolver", "Image", "MalformedImage", "elf_image", "macho_image"]
 
 _U32 = struct.Struct("<I")
 _I32 = struct.Struct("<i")
 _U64 = struct.Struct("<Q")
+_U16 = struct.Struct("<H")
 
 #: `ContextDescriptorKind`, from `include/swift/ABI/MetadataValues.h`. Only the kinds
 #: that can appear in the parent chain of a nominal type are named; anything else stops
@@ -76,6 +77,11 @@ class Image:
 
     def read(self, address, length):
         """`length` bytes at virtual `address`, or None if they are not all mapped."""
+        if length < 0:
+            # A negative length made the bounds test below vacuous, and the slice then
+            # ran the wrong way and came back as bytes -- where the contract is the bytes
+            # asked for, or None.
+            return None
         for start, blob in self._segments:
             offset = address - start
             if offset >= 0 and offset + length <= len(blob):
@@ -94,24 +100,58 @@ class Image:
         return None
 
 
+class MalformedImage(ValueError):
+    """The file is not a well-formed image of the kind it claims to be.
+
+    A `ValueError` rather than whatever the arithmetic happened to raise. These loaders
+    read a file the calling tool did not produce -- the same threat model as a mangled
+    name -- so a truncated or hostile header has to arrive as a refusal a caller can
+    catch, not as an `IndexError` from a header field or a `struct.error` from an offset
+    that pointed past the end.
+    """
+
+
+def _field(unpacker, data, at, what):
+    """Read one header field, or say which one was not there."""
+    try:
+        return unpacker.unpack_from(data, at)[0]
+    except struct.error:
+        raise MalformedImage(f"truncated before {what} at offset {at}") from None
+
+
 def elf_image(data):
-    """An `Image` over a 64-bit little-endian ELF file's PT_LOAD segments."""
-    if data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
-        raise ValueError("not a 64-bit little-endian ELF file")
-    (program_offset,) = _U64.unpack_from(data, 0x20)
-    (entry_size,) = struct.unpack_from("<H", data, 0x36)
-    (count,) = struct.unpack_from("<H", data, 0x38)
+    """An `Image` over a 64-bit little-endian ELF file's PT_LOAD segments.
+
+    Raises `MalformedImage` -- a `ValueError` -- for anything that is not one, including
+    a file too short to hold the header it claims.
+    """
+    if len(data) < 0x40 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
+        raise MalformedImage("not a 64-bit little-endian ELF file")
+    program_offset = _field(_U64, data, 0x20, "the program header offset")
+    entry_size = _field(_U16, data, 0x36, "the program header entry size")
+    count = _field(_U16, data, 0x38, "the program header count")
     segments = []
     for index in range(count):
         at = program_offset + index * entry_size
-        (kind,) = _U32.unpack_from(data, at)
-        if kind != 1:  # PT_LOAD
+        # A header the file is too short to hold ends the walk rather than raising: a
+        # truncated image is common enough -- a core dump, a partial download -- that
+        # answering from the segments that *are* there is more useful than refusing.
+        if at + 0x38 > len(data):
+            break
+        if _U32.unpack_from(data, at)[0] != 1:  # PT_LOAD
             continue
-        (offset,) = _U64.unpack_from(data, at + 0x08)
-        (vaddr,) = _U64.unpack_from(data, at + 0x10)
-        (filesz,) = _U64.unpack_from(data, at + 0x20)
+        offset = _U64.unpack_from(data, at + 0x08)[0]
+        vaddr = _U64.unpack_from(data, at + 0x10)[0]
+        filesz = _U64.unpack_from(data, at + 0x20)[0]
         segments.append((vaddr, data[offset : offset + filesz]))
     return Image(segments)
+
+
+#: Smallest a load command can be: the command word and its size. A command claiming
+#: less than this does not advance the walk, and a header claiming four billion of them
+#: then spins for as long as the process lives -- which is what a forty-byte file did
+#: before this bound existed.
+_MIN_LOAD_COMMAND = 8
 
 
 def macho_image(data):
@@ -119,18 +159,25 @@ def macho_image(data):
 
     A fat binary is not unwrapped: pick the slice first. Only the little-endian 64-bit
     magic is accepted, which is every Mach-O anyone demangles Swift out of.
+
+    Raises `MalformedImage` for anything else, including a header whose command count or
+    command sizes do not fit the file.
     """
-    if data[:4] not in (b"\xcf\xfa\xed\xfe",):
-        raise ValueError("not a 64-bit little-endian Mach-O file")
-    (commands,) = _U32.unpack_from(data, 0x10)
+    if len(data) < 0x20 or data[:4] != b"\xcf\xfa\xed\xfe":
+        raise MalformedImage("not a 64-bit little-endian Mach-O file")
+    commands = _field(_U32, data, 0x10, "the load command count")
     at = 0x20
     segments = []
     for _ in range(commands):
-        (command, size) = struct.unpack_from("<II", data, at)
-        if command == 0x19:  # LC_SEGMENT_64
-            (vmaddr,) = _U64.unpack_from(data, at + 0x18)
-            (fileoff,) = _U64.unpack_from(data, at + 0x28)
-            (filesize,) = _U64.unpack_from(data, at + 0x30)
+        if at + _MIN_LOAD_COMMAND > len(data):
+            break
+        command, size = struct.unpack_from("<II", data, at)
+        if size < _MIN_LOAD_COMMAND:
+            raise MalformedImage(f"load command at offset {at} claims {size} bytes")
+        if command == 0x19 and at + 0x48 <= len(data):  # LC_SEGMENT_64
+            vmaddr = _U64.unpack_from(data, at + 0x18)[0]
+            fileoff = _U64.unpack_from(data, at + 0x28)[0]
+            filesize = _U64.unpack_from(data, at + 0x30)[0]
             segments.append((vmaddr, data[fileoff : fileoff + filesize]))
         at += size
     return Image(segments)
