@@ -16,10 +16,12 @@ writes are replayed: `delphi-tdump.txt` is every entry in the dump, and
 A PE image can be passed as well, but only to report coverage. Its exports come with no
 reference spelling, so they are counted and never written.
 
-Reading the dump needs PyYAML -- the emitter uses the explicit `? key` / `: value` form
-for long keys and folds long plain scalars across lines, and a hand-rolled reader that
-missed either silently dropped 87 of 11,373 entries. Nothing in the package itself gains
-a dependency; this script is run by hand when the dump changes.
+The dump is read here rather than with PyYAML, because this package has no dependencies
+and a tool sitting beside it should not need one either. That is only safe because the
+reader is strict: the emitter uses the explicit `? key` / `: value` form for a long key
+and folds long scalars across lines, and the reader that recognised neither silently
+dropped 87 of 11,373 entries. A line it does not recognise is an error, not something to
+skip past.
 """
 
 from __future__ import annotations
@@ -86,17 +88,69 @@ def pe_export_names(path: Path):
 
 def load_tdump_yaml(path: Path):
     """(mangled, reference spelling) pairs from a TDUMP dump."""
-    try:
-        import yaml
-    except ImportError:  # pragma: no cover - a by-hand tool, not part of the package
-        raise SystemExit("reading a TDUMP dump needs PyYAML: pip install pyyaml") from None
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8", errors="replace"))
-    if not isinstance(loaded, dict):
-        raise SystemExit(f"{path} is not a mangled-name mapping")
-    rejected = [key for key, value in loaded.items() if not isinstance(key, str) or not isinstance(value, str)]
-    if rejected:
-        raise SystemExit(f"{path} holds {len(rejected)} non-string entries")
-    return sorted(loaded.items())
+    seen = {}
+    for name, spelling in load_reference_dump(path.read_text(encoding="utf-8", errors="replace"), path):
+        if seen.setdefault(name, spelling) != spelling:
+            raise SystemExit(f"{path}: {name} is recorded twice with different spellings")
+    return sorted(seen.items())
+
+
+def load_reference_dump(text, source="<dump>"):
+    """The two entry shapes the emitter that wrote this dump produces.
+
+    * `! 'key': value` -- the ordinary mapping entry;
+    * `? ! 'key'` then `: value` -- the explicit form, used when the key is long;
+
+    and either can be folded onto further indented lines, which YAML reads back as a
+    single space. A line that is neither is an error rather than something to skip: the
+    reader this replaced recognised only the first shape and silently dropped 87 of the
+    dump's 11,373 entries, which is where a whole-table figure of 11,286 came from.
+
+    Checked scalar for scalar against PyYAML over the whole dump.
+    """
+    entries = []
+    #: Whether the entry at the same index was written `! 'key': value`, which leaves its
+    #: key and value in one string until the fold is undone.
+    implicit = []
+    field = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line in ("---", "") or line.startswith("#"):
+            continue
+        if line.startswith("? "):
+            entries.append([line[2:], ""])
+            implicit.append(False)
+            field = 0
+        elif line.startswith(": ") and entries and field == 0 and not implicit[-1]:
+            entries[-1][1] = line[2:]
+            field = 1
+        elif line.startswith("! "):
+            entries.append([line[2:], ""])
+            implicit.append(True)
+            field = 0
+        elif line.startswith("  ") and entries and field is not None:
+            entries[-1][field] += " " + line.strip()
+        else:
+            raise SystemExit(f"{source}:{number}: not a form this reads: {line!r}")
+
+    pairs = []
+    for (key, value), one_string in zip(entries, implicit, strict=True):
+        if one_string:
+            key, separator, value = key.partition("': ")
+            if not separator:
+                raise SystemExit(f"{source}: entry with no value: {key!r}")
+            key += "'"
+        pairs.append((_scalar(key), _scalar(value)))
+    return pairs
+
+
+def _scalar(text):
+    """One scalar as the emitter writes it: an optional `!` tag, then either a
+    single-quoted string -- which a value needs too, where TDUMP echoed a name back
+    unchanged and it begins with `@` -- or a plain one."""
+    text = text.removeprefix("! ")
+    if len(text) >= 2 and text.startswith("'") and text.endswith("'"):
+        return text[1:-1].replace("''", "'")
+    return text
 
 
 def sort_by_kind(pairs):
