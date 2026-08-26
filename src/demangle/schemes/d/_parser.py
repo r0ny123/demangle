@@ -35,6 +35,7 @@ method returning `int` -- and this follows, because a demangler nobody's output 
 of no use to a tool showing symbols beside those of other demanglers.
 """
 
+import re
 import string
 
 from ...core.limits import DEFAULT_LIMITS
@@ -45,6 +46,13 @@ __all__ = ["DSymbol", "parse_d_symbol"]
 #: `"" in string.digits` is True -- `in` on a string is substring containment, so an
 #: empty character tests as a member of everything. Against a set it is not.
 DIGITS = frozenset(string.digits)
+
+#: A compiler-generated anonymous scope, which the reference leaves out of the path.
+_ANONYMOUS = re.compile(r"__S\d+")
+
+#: A real literal's significand, which the mangling writes in upper case and the
+#: reference passes through as it stands.
+HEX_DIGITS = frozenset(string.hexdigits)
 
 #: Basic types, from the ABI's Type production.
 BASIC_TYPES = {
@@ -102,8 +110,13 @@ CALLING_CONVENTIONS = {
     "U": "extern(C) ",
     "W": "extern(Windows) ",
     "R": "extern(C++) ",
+    "V": "extern(Pascal) ",
     "Y": "extern(Objective-C) ",
 }
+
+#: The three string-literal markers, and what the reference writes after the closing
+#: quote for each. A `char` string gets nothing; the wide ones name their width.
+STRING_SUFFIX = {"a": "", "w": "w", "d": "d"}
 
 #: The suffix D writes on an integer literal of each type, as the reference spells it.
 INTEGER_SUFFIX = {"uint": "u", "long": "L", "ulong": "uL", "ubyte": "u", "ushort": "u"}
@@ -139,27 +152,47 @@ SPECIAL_COMPONENTS = {
 }
 
 
-#: How the reference writes a character inside a string literal that cannot stand as
-#: itself. Anything else below space, or above ASCII, goes out as `\xNN`.
-_STRING_ESCAPES = {
-    0x0A: "\\n",
-    0x09: "\\t",
-    0x0D: "\\r",
-    0x5C: "\\\\",
-    0x07: "\\a",
-    0x08: "\\b",
-    0x0C: "\\f",
-    0x0B: "\\v",
-}
+#: The five characters the reference names inside a string literal. Derived by running
+#: `c++filt --format=dlang` over every byte value rather than from the C escapes it looks
+#: like: `\a` and `\b` are *not* among them, and neither `"` nor `\\` is escaped at all.
+_STRING_ESCAPES = {0x09: "\\t", 0x0A: "\\n", 0x0B: "\\v", 0x0C: "\\f", 0x0D: "\\r"}
+
+#: What the reference writes before a character it cannot print, and how many digits it
+#: pads the value to, by the width of the character type.
+_CHARACTER_ESCAPES = {"char": ("\\x", 2), "wchar": ("\\u", 4), "dchar": ("\\U", 8)}
+
+
+def _printable(code):
+    """Whether the reference writes this byte as itself. Printable ASCII, and no more."""
+    return 0x20 <= code <= 0x7E
 
 
 def _escaped(code):
+    """One character of a string literal, as the reference spells it."""
+    if _printable(code):
+        return chr(code)
     escape = _STRING_ESCAPES.get(code)
-    if escape is not None:
-        return escape
-    if code < 0x20 or code == 0x7F:
-        return f"\\x{code:02x}"
-    return chr(code)
+    return escape if escape is not None else f"\\x{code:02x}"
+
+
+def _character(kind, code):
+    """A character *literal*, which the reference spells differently from a string.
+
+    None of the named escapes appear here -- a newline in a `char` literal is `'\\x0a'`,
+    not `'\\n'` -- and only a `char` is ever written as itself: a printable `wchar` is
+    still `'\\u0041'`.
+
+    The width is a minimum and not a cap: the reference writes `'\\x100'` for a `char`
+    mangled as 256, and refuses a value that will not fit in 32 bits. Integer literals
+    carry no such limit -- `Vmi18446744073709551616` is answered -- so this is the
+    character path's own.
+    """
+    if code > 0xFFFFFFFF:
+        raise DemangleFailure("character literal out of range")
+    if kind == "char" and _printable(code):
+        return f"'{chr(code)}'"
+    prefix, width = _CHARACTER_ESCAPES[kind]
+    return f"'{prefix}{code:0{width}x}'"
 
 
 class _Exhausted(Exception):
@@ -184,6 +217,11 @@ class _Reader:
     __slots__ = ("depth", "end", "pos", "text")
 
     MAX_DEPTH = 200
+
+    #: Digits allowed in a value. A `ulong` is twenty of them and the reference answers
+    #: one digit longer still, so this is fifty times any real constant -- it is a guard
+    #: against a name built to be long, not a limit on what D can write.
+    MAX_VALUE_DIGITS = 1024
 
     def __init__(self, text):
         self.text = text
@@ -226,6 +264,12 @@ class _Reader:
             raise DemangleFailure("expected a number")
         if bounded and self.pos - start > 9:
             raise DemangleFailure("implausible length prefix")
+        if self.pos - start > self.MAX_VALUE_DIGITS:
+            # A value has no length to check it against, so it needs a bound of its own.
+            # Not for the arithmetic -- the interpreter refuses to convert a digit string
+            # this long at all, and that refusal would reach a caller as its own message
+            # rather than as this parser saying the name is malformed.
+            raise DemangleFailure("implausible numeric literal")
         return int(self.text[start : self.pos])
 
 
@@ -396,7 +440,15 @@ class _Parser:
             # A scope's own function type *is* spelled -- a symbol inside a function is
             # written `enclosing(params).inner` -- so the parameters come back here rather
             # than being discarded.
-            parts.append(self._spelled_component(component) + self.scope_type())
+            spelled = self._spelled_component(component) + self.scope_type()
+            # A zero-length component is anonymous and a `__S<n>` one is a compiler
+            # scope; the reference writes neither, and writing an empty one gives
+            # `demangle..test` rather than `demangle.test`. `__S` alone and `__S1a` are
+            # ordinary names and are kept -- and so is a `__S<n>` that carries a scope
+            # type of its own, because dropping it would drop that scope's parameters
+            # with it and no name recorded here does that.
+            if spelled and not _ANONYMOUS.fullmatch(spelled):
+                parts.append(spelled)
         return parts
 
     def symbol_name(self):
@@ -434,11 +486,17 @@ class _Parser:
                     reader.end = saved_end
                     reader.pos = start + length
                     return spelled
-            except (DemangleFailure, _Exhausted):
+            except _Exhausted:
+                raise
+            except DemangleFailure:
                 pass
             finally:
                 reader.end = saved_end
             reader.pos = saved
+            # A body that opens `__T` and does not parse is a malformed template, not an
+            # identifier that happens to look like one: the reference refuses the whole
+            # name rather than printing the mangling back inside a path.
+            raise DemangleFailure("malformed template instance")
         reader.pos = start + length
         return text
 
@@ -486,16 +544,7 @@ class _Parser:
                 # A complete mangled symbol, path *and* type: the `_handle` in
                 # `S_DQBg3net4curl7CurlAPI7_handlePv` is a `void*`, and the `Pv` has to be
                 # consumed even though the reference prints only the path.
-                reader.pos += 2
-                outer = self._in_symbol_argument
-                self._in_symbol_argument = True
-                try:
-                    # Its own type is spelled too where it is a function: the reference
-                    # writes `regexImpl(const(char)[], ...)` for one naming a function.
-                    spelled = ".".join(self.qualified_name())
-                    spelled += self.trailing_type()
-                finally:
-                    self._in_symbol_argument = outer
+                spelled = self.mangled_symbol()
                 if bounded is not None:
                     reader.pos = bounded
                 return self._cap(spelled)
@@ -509,8 +558,12 @@ class _Parser:
                 reader.pos = bounded
             return self._cap(spelled)
         if marker == "V":
+            # The type's own first character is kept: an associative array writes its
+            # values as key/value pairs, and nothing in the *spelling* of `int[int]`
+            # distinguishes it from a static array of one.
+            code = self._type_code()
             kind = self.type_()
-            return self.template_value(kind)
+            return self.template_value(kind, code=code)
         if marker in DIGITS or marker == "Q" or marker == "_":
             # A bare symbol name, with no `S` in front of it. The compiler emits these
             # where the argument is a symbol whose kind is unambiguous from the grammar.
@@ -525,7 +578,25 @@ class _Parser:
             return reader.text[start : reader.pos]
         raise DemangleFailure(f"unknown template argument marker {marker!r}")
 
-    def template_value(self, kind, suffix=True):
+    def mangled_symbol(self):
+        """A whole `_D`-prefixed symbol appearing where a name or a value was expected.
+
+        Its own type is spelled too where it is a function: the reference writes
+        `regexImpl(const(char)[], ...)` for an argument naming one, and
+        `mangle.__lambda71()` for a function literal in a struct value.
+        """
+        reader = self.reader
+        if not reader.starts_with("_D"):
+            raise DemangleFailure("expected a mangled symbol")
+        reader.pos += 2
+        outer = self._in_symbol_argument
+        self._in_symbol_argument = True
+        try:
+            return ".".join(self.qualified_name()) + self.trailing_type()
+        finally:
+            self._in_symbol_argument = outer
+
+    def template_value(self, kind, suffix=True, code=""):
         """A value argument. Only the forms a compiler emits are modelled."""
         reader = self.reader
         char = reader.peek()
@@ -540,24 +611,83 @@ class _Parser:
             return self._integer_literal(kind, reader.number(bounded=False), negative=True, suffix=suffix)
         if char in DIGITS:
             return self._integer_literal(kind, reader.number(bounded=False), suffix=suffix)
-        if char in ("a", "u", "w"):
+        if char in STRING_SUFFIX:
             return self.string_literal()
+        if char == "e":
+            reader.pos += 1
+            return self.real_literal()
+        if char == "c":
+            # A complex literal: two reals, written `<real>+<imaginary>i`, each introduced
+            # by its own `c`.
+            reader.pos += 1
+            real = self.real_literal()
+            if not reader.eat("c"):
+                raise DemangleFailure("complex literal without its imaginary part")
+            return f"{real}+{self.real_literal()}i"
         if char == "A":
             # An array literal: `A <count> <value>...`, where each value has the element
-            # type. `VAmA2i104i1281` is a `ulong[]` holding `[104, 1281]`.
+            # type. `VAmA2i104i1281` is a `ulong[]` holding `[104, 1281]`. Where the type
+            # is an associative array the values come in pairs -- `[1:2, 3:4]` -- and
+            # neither half is spelled as the element type, because there is no one
+            # element type to spell them as.
             reader.pos += 1
             count = reader.number()
-            element = kind.removesuffix("[]")
+            if code == "H":
+                pairs = (
+                    f"{self.template_value(None, suffix=False)}:{self.template_value(None, suffix=False)}"
+                    for _ in range(count)
+                )
+                return "[" + ", ".join(pairs) + "]"
+            element = kind.removesuffix("[]") if kind else None
             # No literal suffix inside an array: the reference writes `[104, 1281]`, not
             # `[104uL, 1281uL]`, even though each element is a `ulong`.
             return "[" + ", ".join(self.template_value(element, suffix=False) for _ in range(count)) + "]"
-        if char in ("e", "c", "S"):
-            # Real and complex literals, array literals, struct literals. The reference
-            # spells each in a way that needs the value decoded, and inventing a spelling
-            # would be worse than declining: the name is refused rather than answered
-            # wrongly.
-            raise DemangleFailure(f"template value form {char!r} not modelled")
+        if char == "f":
+            # A function literal: a whole mangled symbol standing where a value was
+            # expected, which is how a lambda reaches a struct's field.
+            reader.pos += 1
+            return self.mangled_symbol()
+        if char == "S":
+            # A struct literal: the type's own name, then `S <count>` and that many field
+            # values. A field carries no type of its own, so none of them is spelled as a
+            # character or a bool however it was mangled.
+            reader.pos += 1
+            count = reader.number()
+            fields = ", ".join(self.template_value(None, suffix=False) for _ in range(count))
+            return f"{kind or ''}({fields})"
         raise DemangleFailure(f"unknown template value {char!r}")
+
+    def real_literal(self):
+        """`NAN | INF | NINF | [N] <hexdigit> <hexdigits> P [N] <digits>`.
+
+        Written the way D source writes a hexadecimal float, with the point after the
+        first digit: `0A8P6` is `0x0.A8p6` and `A8P2` is `0xA.8p2`.
+        """
+        reader = self.reader
+        for mangled, spelled in (("NAN", "NaN"), ("INF", "Inf"), ("NINF", "-Inf")):
+            if reader.starts_with(mangled):
+                reader.pos += len(mangled)
+                return spelled
+        sign = "-" if reader.eat("N") else ""
+        digits = self._hex_digits()
+        if not digits:
+            raise DemangleFailure("real literal without a significand")
+        if not reader.eat("P"):
+            raise DemangleFailure("real literal without an exponent")
+        exponent = "-" if reader.eat("N") else ""
+        start = reader.pos
+        while reader.pos < reader.end and reader.text[reader.pos] in DIGITS:
+            reader.pos += 1
+        if reader.pos == start:
+            raise DemangleFailure("real literal without an exponent")
+        return f"{sign}0x{digits[0]}.{digits[1:]}p{exponent}{reader.text[start : reader.pos]}"
+
+    def _hex_digits(self):
+        reader = self.reader
+        start = reader.pos
+        while reader.pos < reader.end and reader.text[reader.pos] in HEX_DIGITS:
+            reader.pos += 1
+        return reader.text[start : reader.pos]
 
     def _symbol_argument_bound(self):
         """Where a length-prefixed symbol template argument ends, or None if unprefixed.
@@ -800,26 +930,33 @@ class _Parser:
         return " ".join([*storage, rendered]) if storage else rendered
 
     def string_literal(self):
-        """`a|u|w <Number> "_" <hex>`, the characters written two hex digits each.
+        """`a|w|d <Number> "_" <hex>`, the characters written two hex digits each.
 
         `VAyaa1_2b` is a one-character `immutable(char)[]` holding 0x2b, which the
         reference spells `"+"`.
+
+        The marker is the *literal's* width and not the encoding's: all three read one
+        byte a character, and `w` and `d` differ only in the suffix they put after the
+        closing quote -- `"abc"w`, `"abc"d`. `u` is not one of them, and the reference
+        refuses a name that uses it.
         """
         reader = self.reader
-        width = {"a": 1, "u": 2, "w": 4}[reader.take()]
+        suffix = STRING_SUFFIX.get(reader.take())
+        if suffix is None:
+            raise DemangleFailure("unknown string literal marker")
         count = reader.number()
         if not reader.eat("_"):
             raise DemangleFailure("string literal without its separator")
-        digits = count * width * 2
+        digits = count * 2
         if reader.pos + digits > reader.end:
             raise DemangleFailure("string literal runs past the end of the name")
         raw = reader.text[reader.pos : reader.pos + digits]
         reader.pos += digits
         try:
-            codes = [int(raw[at : at + width * 2], 16) for at in range(0, digits, width * 2)]
+            codes = [int(raw[at : at + 2], 16) for at in range(0, digits, 2)]
         except ValueError:
             raise DemangleFailure("string literal is not hex") from None
-        return '"' + "".join(_escaped(code) for code in codes) + '"'
+        return '"' + "".join(_escaped(code) for code in codes) + f'"{suffix}'
 
     @staticmethod
     def _integer_literal(kind, value, negative=False, suffix=True):
@@ -830,8 +967,8 @@ class _Parser:
         """
         if kind == "bool":
             return "true" if value else "false"
-        if kind in ("char", "wchar", "dchar"):
-            return "'" + _escaped(value).replace('\\"', '"') + "'"
+        if kind in _CHARACTER_ESCAPES:
+            return _character(kind, value)
         sign = "-" if negative else ""
         return f"{sign}{value}{INTEGER_SUFFIX.get(kind, '') if suffix else ''}"
 
@@ -884,8 +1021,11 @@ class _Parser:
             reader.pos += 1
             return self._cap(f"{self.type_()}[]")
         if char == "G":
+            # The bound is a *value*, not a length prefix into the name: `char[1234567890]`
+            # is an ordinary declaration and its ten digits reach no further than the two
+            # of `char[10]`.
             reader.pos += 1
-            count = reader.number()
+            count = reader.number(bounded=False)
             return self._cap(f"{self.type_()}[{count}]")
         if char == "H":
             reader.pos += 1
@@ -908,13 +1048,14 @@ class _Parser:
                 # The function type is a back reference: `MxDQsm` is a delegate whose
                 # signature was written earlier in the name.
                 inner = self.type_back_reference()
-                trailing = " ".join(modifiers)
                 spelled = inner.removesuffix(" function")
-                return self._cap(f"{spelled} {trailing} delegate" if trailing else f"{spelled} delegate")
+                return self._cap(" ".join(["", spelled, "delegate", *modifiers]).strip())
             convention, attributes, parameters, returns = self.function_type()
-            words = " ".join([*attributes, *modifiers])
             spelled = f"{convention}{returns}({', '.join(parameters)})"
-            return self._cap(f"{spelled} {words} delegate" if words else f"{spelled} delegate")
+            # A delegate's *attributes* belong to the function it wraps and are written
+            # before the word; its own modifiers qualify the delegate and are written
+            # after it -- `char() pure delegate const`.
+            return self._cap(" ".join([spelled, *attributes, "delegate", *modifiers]))
         if char in CALLING_CONVENTIONS:
             convention, attributes, parameters, returns = self.function_type()
             words = " ".join(attributes)
@@ -928,6 +1069,34 @@ class _Parser:
             count = reader.number()
             return self._cap(f"Tuple!({', '.join(self.type_() for _ in range(count))})")
         raise DemangleFailure(f"unknown type code {char!r}")
+
+    def _type_code(self):
+        """The first character of the type about to be read, through any back reference.
+
+        A value's spelling can depend on its type's *shape* -- an associative array
+        writes `[0:"c"]` where a static array writes `[0, "c"]` -- and a type written as
+        `QFh` says nothing about its shape until it is followed. The reference follows it
+        for the same reason; a chain is followed to its end, and anything malformed comes
+        back as the `Q` itself so the ordinary parse reports it.
+        """
+        reader = self.reader
+        at = reader.pos
+        for _ in range(_Reader.MAX_DEPTH):
+            if reader.text[at : at + 1] != "Q":
+                return reader.text[at : at + 1]
+            saved = reader.pos
+            reader.pos = at + 1
+            try:
+                distance = _back_reference_number(reader)
+            except DemangleFailure:
+                return "Q"
+            finally:
+                reader.pos = saved
+            target = at - distance
+            if distance <= 0 or target < 0 or target >= at:
+                return "Q"
+            at = target
+        return "Q"
 
     def type_back_reference(self):
         reader = self.reader

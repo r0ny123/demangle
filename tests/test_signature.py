@@ -54,10 +54,16 @@ class TestTheNameFields:
             with subtests.test(mangled=mangled):
                 assert parts.qualified_name in parts.demangled
 
-    def test_a_base_name_is_empty_only_where_the_name_is(self):
-        """D's anonymous symbols have an empty last component, and nothing else does."""
-        assert signature("_D8demangle9anonymous0Z").base_name == ""
-        assert signature("_D8demangle9anonymous0Z").namespace == "demangle.anonymous"
+    @pytest.mark.parametrize("corpus", CORPORA)
+    def test_a_base_name_is_never_empty(self, corpus, subtests):
+        """A name that parsed has a last component; nothing here answers with a blank."""
+        for mangled, _ in load_corpus(corpus):
+            try:
+                parts = signature(mangled)
+            except DemanglingError:
+                continue
+            with subtests.test(mangled=mangled):
+                assert parts.base_name
 
 
 class TestItanium:

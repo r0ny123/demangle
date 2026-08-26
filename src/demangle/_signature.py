@@ -98,12 +98,7 @@ class Signature:
     """The entity's name with its scope and without its type."""
 
     base_name: str
-    """The last component of that.
-
-    Empty only where the name's own last component is: D writes an anonymous symbol as
-    `demangle.anonymous.`, and inventing a name for it would say more than the mangling
-    does.
-    """
+    """The last component of that. Never empty for a name that parsed."""
 
     namespace: str
     """Everything before the last component. Empty at the top level."""
@@ -430,15 +425,14 @@ def _from_parts(reading, found, node):
             continue
         if region == "name" and part == reading.separator:
             components.append("")
-        elif region == "name" and components[-1] and "(" in part:
-            # A `(` after a component opens the parameter list; a `(` where a component
-            # has not started yet is part of one. Swift writes a file-private routine as
-            # `Foundation.FileHandle.(_check in _2DF8)()`, where the first bracket is the
-            # name and the second is the call. D writes the whole list as one literal,
-            # so what precedes the bracket in this fragment is still name.
-            head, _, opening = part.partition("(")
-            components[-1] += head
-            parameters, at = _parameter_list(reading, parts, at, opening)
+        elif region == "name" and components[-1] and part.startswith("("):
+            # A fragment that *opens* with `(` after a component that has started is the
+            # parameter list. A `(` anywhere else in a fragment is text: Swift writes a
+            # file-private routine as `Foundation.FileHandle.(_check in _2DF8)()`, where
+            # only the second bracket is a call, and an LLDB expression as
+            # `__lldb_expr_1.(unknown context at $10016c2d8)`, where neither is. D writes
+            # the whole list as one fragment, `(int)`, which does open with the bracket.
+            parameters, at = _parameter_list(reading, parts, at, part[1:])
             region = "signed"
         elif region != "result" and part.strip() in _RESULT_MARKERS:
             region, result = "result", ""
