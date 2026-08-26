@@ -120,8 +120,13 @@ All notable changes to this project are recorded here. The format follows
   `unmangle.c` -- the unmangler TDUMP, the linker and the debugger run -- because there
   is no Delphi compiler on the platforms this package is developed on. Spelling is what
   that unmangler prints, including C++ `::`. Microsoft's 32-bit `__fastcall` C decoration
-  `@name@N` is refused. 28 of 28 against that unmangler's own vectors and documented BPL
-  exports.
+  `@name@N` is refused. Checked against that unmangler's own vectors and against a TDUMP
+  dump of real BPL and C++Builder DLL export tables: 11,276 of 11,276 Delphi names exact,
+  with the 10 MSVC `@name@N` decorations sitting next to them refused. Two defects showed
+  up only on that dump -- conversion operators (`$o`) consumed the following `$` so `qv`
+  looked like junk in the name, and a method that already led with `__fastcall` stole the
+  same word from a callback parameter -- and both are fixed. The checked-in corpus is a
+  sample of each construct from that dump.
 
 - **Go symbol names.** A new scheme, registered like any other -- `core` was not touched.
   Go escapes a `.` that falls after the last `/` of a package path, so

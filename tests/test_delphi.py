@@ -1,11 +1,12 @@
 """Borland/Embarcadero Delphi and C++Builder symbol names.
 
-There is no Delphi compiler here, so nothing is a live comparison against `tdump`.
-Two other things stand in:
+There is no Delphi compiler here, so nothing is a live `tdump` of a BPL in CI. Two
+other things stand in:
 
-* **Agreement with Embarcadero's unmangler.** The corpus is the vectors `unmangle.c`
-  (the code TDUMP runs) is tested against, plus documented BPL exports. The expected
-  column is that spelling, including C++ `::`.
+* **Agreement with Embarcadero's unmangler.** The checked-in corpus is sampled from real
+  BPL and C++Builder DLL export tables. The expected column is the spelling TDUMP
+  prints, including C++ `::`. The whole dump -- 11,276 Delphi names -- is pinned in
+  `tests/test_conformance.py`.
 * **The whole symbol is accounted for.** A reading that cannot consume the bytes is
   refused, so a parse cannot invent a suffix or drop a type.
 """
@@ -39,7 +40,19 @@ REFUSALS = [
 
 class TestConformance:
     def test_the_corpus_covers_the_shapes(self):
-        assert len(ROWS) >= 20
+        assert len(ROWS) >= 60
+        kinds = {parse_delphi_symbol(mangled).kind for mangled, _expected in ROWS}
+        assert kinds >= {
+            "function",
+            "constructor",
+            "destructor",
+            "operator",
+            "conversion",
+            "data",
+            "tpdsc",
+            "thunk",
+            "linkproc",
+        }
 
     def test_every_recorded_symbol_still_reads_the_same(self, subtests):
         for mangled, expected in ROWS:
@@ -67,6 +80,20 @@ class TestGrammar:
             ("@foo$qi$i", "int foo(int)"),
             ("@Classes@TThread@$bctr$qqrv", "__fastcall Classes::TThread::TThread()"),
             ("@Classes@TThread@$bdtr$qqrv", "__fastcall Classes::TThread::~TThread()"),
+            ("@CCriticalSection@$op21_RTL_CRITICAL_SECTION$qv", "CCriticalSection::operator _RTL_CRITICAL_SECTION *()"),
+            (
+                "@System@TDateTime@$o17System@AnsiString$xqqrv",
+                "__fastcall System::TDateTime::operator System::AnsiString() const",
+            ),
+            (
+                "@Classes@TList@Sort$qqrpqqrpvt1$i",
+                "__fastcall Classes::TList::Sort(int __fastcall (*)(void *, void *))",
+            ),
+            (
+                "@AllocateHWnd$qqrynpqqrr8TMessage$v",
+                "__fastcall AllocateHWnd(void __fastcall __closure(*)(TMessage&))",
+            ),
+            ("@@InitExe", "__linkproc__ InitExe"),
             ("@Classes@TThread@$bcdtr$qqrv", "__fastcall Classes::TThread::`class destructor`()"),
             ("@System@Var", "System::Var"),
         ],
@@ -105,6 +132,10 @@ class TestClaimsNothingItShouldNot:
 
     def test_a_qualified_data_name_without_dollar_is_still_claimed(self):
         assert detect("@System@Var")
+
+    def test_a_bare_linker_procedure_from_a_bpl_is_claimed(self):
+        assert detect("@@InitExe")
+        assert not detect("@@bug@@x")
 
     def test_it_claims_nothing_in_the_other_schemes_corpora(self, subtests):
         for path in sorted(CONFORMANCE.glob("*.txt")):
