@@ -72,11 +72,11 @@ class TestAgainstSwiftsOwnCorpus:
     this number to be re-read rather than left to rot.
     """
 
-    #: What matches today. The 12 that do not are Swift 6 and later: value generics,
+    #: What matches today. The 8 that do not are Swift 6 and later: value generics,
     #: `yield_once_2` accessors, variadic-generic conformances, several new
     #: function-signature specialisation kinds, macro expansion locations, and the
     #: `Builtin.ImplicitActor` and `Builtin.Borrow` types.
-    EXPECTED_EXACT = 501
+    EXPECTED_EXACT = 505
 
     def _score(self):
         return sum(1 for mangled, expected in UPSTREAM if demangle.demangle(mangled) == expected)

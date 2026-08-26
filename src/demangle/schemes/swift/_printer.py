@@ -382,6 +382,8 @@ class Printer:
             self.write("@autoclosure ")
         elif kind == "ThinFunctionType":
             self.write("@convention(thin) ")
+        elif kind == "CalledOnceFunctionType":
+            self.write("@called(once) ")
         elif kind == "CFunctionPointer":
             convention_with_clang_type("c")
         elif kind in ("EscapingObjCBlock", "ObjCBlock"):
@@ -1152,6 +1154,8 @@ _simple("ImplConvention", lambda self, node, depth: self.write(node.text))
 _simple("ImplFunctionAttribute", lambda self, node, depth: self.write(node.text))
 _simple("Index", lambda self, node, depth: self.write(str(node.index)))
 _simple("Number", lambda self, node, depth: self.write(str(node.index)))
+_simple("Integer", lambda self, node, depth: self.write(str(node.index)))
+_simple("NegativeInteger", lambda self, node, depth: self.write(str(node.index)))
 _simple("SpecializationPassID", lambda self, node, depth: self.write(str(node.index)))
 _simple("InfixOperator", lambda self, node, depth: self.write(f"{node.text} infix"))
 _simple("PrefixOperator", lambda self, node, depth: self.write(f"{node.text} prefix"))
@@ -1268,6 +1272,13 @@ def _print_deallocator(self, node, depth, as_prefix_context):
     return self.print_entity(node, depth, as_prefix_context, "none", False, name)
 
 
+@_handler("IsolatedDeallocator")
+def _print_isolated_deallocator(self, node, depth, as_prefix_context):
+    """The deinit of an actor-isolated type, which hops to its executor first."""
+    name = "__isolated_deallocating_deinit" if _is_class_type(node.first) else "deinit"
+    return self.print_entity(node, depth, as_prefix_context, "none", False, name)
+
+
 @_handler("TypeMangling")
 def _print_type_mangling(self, node, depth, as_prefix_context):
     if node.first.kind == "LabelList":
@@ -1312,6 +1323,7 @@ for _kind in (
     "CFunctionPointer",
     "ObjCBlock",
     "EscapingObjCBlock",
+    "CalledOnceFunctionType",
 ):
     _simple(_kind, lambda self, node, depth: self.print_function_type(None, node, depth))
 
@@ -2102,6 +2114,16 @@ def _print_inverse_conformance(self, node, depth, as_prefix_context):
     self.write(": ~")
     bit = node.child(1).index
     self.write(_INVERTIBLE_PROTOCOLS.get(bit, f"Swift.<bit {bit}>"))
+    return None
+
+
+@_handler("BuiltinFixedArray")
+def _print_builtin_fixed_array(self, node, depth, as_prefix_context):
+    self.write("Builtin.FixedArray<")
+    self.print(node.first, depth + 1)
+    self.write(", ")
+    self.print(node.child(1), depth + 1)
+    self.write(">")
     return None
 
 
