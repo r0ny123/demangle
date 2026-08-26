@@ -1298,7 +1298,12 @@ class ItaniumParser:
             finally:
                 self._try_template_args = was_trying
             self._pending_conversion = (start, mark)
-            self._drop_return = True
+            # Only the entity's own name suppresses a return type. A conversion operator
+            # mentioned inside an expression -- `&A::operator int` as a template
+            # argument -- is not this declaration's name, and letting it set the flag
+            # would drop the return type of whatever function the name belongs to.
+            if self._naming:
+                self._drop_return = True
             return spelled
 
         if code == "li":
