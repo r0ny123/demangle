@@ -115,15 +115,42 @@ class TestNeverRaises:
         """The strategy that actually reaches the grammars."""
         assert answered(value)
 
-    def test_non_string_input_is_returned_not_raised(self):
-        """Symbol tables are read as bytes; this is the likeliest caller mistake.
+    def test_non_string_input_is_reported_rather_than_ignored(self):
+        """A wrong argument type is the caller's mistake, and is now said out loud.
 
-        The annotations say `str`, and these calls deliberately violate them -- which is
-        the point. A type checker protects callers who use one; this protects the rest.
+        This used to hand the argument straight back. That read as safe and was not: a
+        tool reading an ELF string table -- where names *are* bytes -- got every symbol
+        back exactly as it went in, with no error and no expansion, and nothing to tell
+        it why. The strict entry points were worse, reaching the registry's
+        first-character screen and raising `TypeError: 'in <string>' requires string as
+        left operand, not int`, which names neither the problem nor the fix, and which
+        the documented "raises only DemanglingError" contract said could not happen.
+
+        The "never raises" promise is about the *name* -- any string, mangled or not --
+        not about the type of the argument.
         """
         for value in (b"_Z1fv", 42, None, ["_Z1fv"]):
-            assert demangle.demangle(value) is value  # ty: ignore[invalid-argument-type]
-            assert demangle.detect(value) is None
+            with pytest.raises(TypeError):
+                demangle.demangle(value)  # ty: ignore[invalid-argument-type]
+            with pytest.raises(TypeError):
+                demangle.demangle_strict(value)  # ty: ignore[invalid-argument-type]
+            with pytest.raises(TypeError):
+                demangle.parse(value)  # ty: ignore[invalid-argument-type]
+            # `detect` still answers rather than raising: it is offered every symbol in a
+            # table and its whole vocabulary is "this scheme, or none".
+            assert demangle.detect(value) is None  # ty: ignore[invalid-argument-type]
+
+    def test_the_bytes_entry_points_round_trip_what_they_cannot_read(self):
+        """`demangleb` makes the same promise `demangle` does, in bytes.
+
+        Including for bytes that are not valid UTF-8, which a truncated symbol table
+        produces by cutting a name mid-character.
+        """
+        assert demangle.demangleb(b"_ZN3foo3barEv") == b"foo::bar()"
+        for value in (b"", b"memcpy", b"\xff\xfe_Z1fv", b"_Z1fv\x80\x81"):
+            assert demangle.demangleb(value) == value
+        assert demangle.detectb(b"?f@@YAXH@Z") == "msvc"
+        assert demangle.parseb(b"_ZN3foo3barEv").spell() == "foo::bar()"
 
 
 class TestErrorContract:

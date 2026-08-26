@@ -142,3 +142,71 @@ class TestPipeline:
         assert main([]) == 0
         assert devnull_calls, "stdout should be redirected to devnull after a broken pipe"
         assert capsys.readouterr().err == ""
+
+
+class TestTheStreamFilter:
+    """With no arguments the command is a filter, not a line reader.
+
+    It was a line reader, and that made the README's own first example a no-op:
+
+        $ printf '0000000000001139 T _ZN3foo3barEv\n' | demangle
+        0000000000001139 T _ZN3foo3barEv
+
+    `nm` writes an address and a type letter before the name, so a whole line is never
+    a symbol. `c++filt`, `demumble` and `rustfilt` all substitute symbol-shaped words
+    and copy the rest through, and now so does this.
+    """
+
+    @staticmethod
+    def _filter(monkeypatch, capsys, text, argv=()):
+        import io
+
+        monkeypatch.setattr("sys.stdin", io.StringIO(text))
+        status = main(list(argv))
+        return status, capsys.readouterr().out
+
+    def test_the_symbol_in_an_nm_line_is_replaced_in_place(self, monkeypatch, capsys):
+        _, out = self._filter(monkeypatch, capsys, "0000000000001139 T _ZN3foo3barEv\n")
+        assert out == "0000000000001139 T foo::bar()\n"
+
+    def test_text_around_a_symbol_is_copied_through(self, monkeypatch, capsys):
+        _, out = self._filter(monkeypatch, capsys, "call\t_ZN3foo3barEv@plt ; comment\n")
+        assert out == "call\tfoo::bar()@plt ; comment\n"
+
+    def test_several_schemes_in_one_stream(self, monkeypatch, capsys):
+        _, out = self._filter(monkeypatch, capsys, "a _ZN3foo3barEv b ?f@@YAXH@Z c\n")
+        assert out == "a foo::bar() b void __cdecl f(int) c\n"
+
+    def test_an_ordinary_word_is_left_alone(self, monkeypatch, capsys):
+        """demumble's warning: a bare type mangling looks like an English word."""
+        _, out = self._filter(monkeypatch, capsys, "I like Pi and cake\n")
+        assert out == "I like Pi and cake\n"
+
+    def test_both_shows_the_mangled_name_too(self, monkeypatch, capsys):
+        _, out = self._filter(monkeypatch, capsys, "T _ZN3foo3barEv\n", ["--both"])
+        assert out == "T _ZN3foo3barEv ==> foo::bar()\n"
+
+    def test_only_demangled_drops_everything_else(self, monkeypatch, capsys):
+        _, out = self._filter(monkeypatch, capsys, "T _ZN3foo3barEv x\nnothing here\n", ["-m"])
+        assert out == "foo::bar()\n"
+
+    def test_an_argument_is_one_whole_name(self, capsys):
+        """Word-splitting belongs to the stream, not to a name a caller typed."""
+        main(["-[NSString length]"])
+        assert capsys.readouterr().out == "-[NSString length]\n"
+
+
+class TestLimitFlags:
+    def test_a_tight_output_bound_refuses(self, capsys):
+        assert main(["--max-output", "4", "--strict", "_ZNSt6vectorIiSaIiEE9push_backERKi"]) == 1
+        assert "output length" in capsys.readouterr().err
+
+    def test_relaxed_reads_what_the_default_refuses(self, capsys):
+        deep = "_Z1f" + "P" * 400 + "i"
+        assert main(["--strict", deep]) == 1
+        capsys.readouterr()
+        assert main(["--relaxed", "--strict", deep]) == 0
+
+    def test_a_non_positive_bound_is_rejected(self):
+        with pytest.raises(SystemExit):
+            main(["--max-depth", "0", "_Z1fv"])
