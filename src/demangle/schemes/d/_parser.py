@@ -415,8 +415,32 @@ class _Parser:
         start = reader.pos
         if start + length > reader.end:
             raise DemangleFailure("identifier runs past the end of the name")
+        # A template instance is a *length-prefixed* identifier whose content happens to
+        # be `__T<name><args>Z`. The test above catches only the bare form, so
+        # `_D8demangle11__T4testTaZv` -- where `11` counts `__T4testTaZ` -- was read as
+        # an identifier called `__T4testTaZ` and printed as one. The reference spells it
+        # `demangle.test!(char)`, and this is the largest single group of disagreements
+        # with libiberty's corpus.
+        #
+        # Bounded by the length prefix, so a malformed body cannot read past its own
+        # identifier: the cursor is put back and the raw text used if it does not parse.
+        text = reader.text[start : start + length]
+        if text.startswith(("__T", "__U")):
+            saved, saved_end = reader.pos, reader.end
+            reader.end = start + length
+            try:
+                spelled = self.template_instance()
+                if reader.pos == start + length:
+                    reader.end = saved_end
+                    reader.pos = start + length
+                    return spelled
+            except (DemangleFailure, _Exhausted):
+                pass
+            finally:
+                reader.end = saved_end
+            reader.pos = saved
         reader.pos = start + length
-        return reader.text[start : start + length]
+        return text
 
     @staticmethod
     def _spelled_component(name):
@@ -448,6 +472,16 @@ class _Parser:
             # The name may carry its own `_D` prefix -- a symbol argument is mangled as a
             # complete symbol, so `S_DQBg3net4curl7CurlAPI7_handle` appears where a bare
             # path would do just as well.
+            # Newer compilers write the argument's *length* first: `S11` then eleven
+            # characters holding `6symbol3foo`, or `S20` then twenty holding a complete
+            # `_D`-prefixed symbol. Without reading it, the length ran together with the
+            # name -- `S116symbol3foo` was read as a name beginning `116symbol` -- and the
+            # whole template instance was refused. Between them the two shapes account
+            # for 73 of the 79 vectors in libiberty's corpus that still disagreed.
+            #
+            # The length bounds the argument, so the cursor cannot run past it into the
+            # arguments that follow.
+            bounded = self._symbol_argument_bound()
             if reader.starts_with("_D"):
                 # A complete mangled symbol, path *and* type: the `_handle` in
                 # `S_DQBg3net4curl7CurlAPI7_handlePv` is a `void*`, and the `Pv` has to be
@@ -459,15 +493,21 @@ class _Parser:
                     # Its own type is spelled too where it is a function: the reference
                     # writes `regexImpl(const(char)[], ...)` for one naming a function.
                     spelled = ".".join(self.qualified_name())
-                    return spelled + self.trailing_type()
+                    spelled += self.trailing_type()
                 finally:
                     self._in_symbol_argument = outer
+                if bounded is not None:
+                    reader.pos = bounded
+                return self._cap(spelled)
             outer = self._in_symbol_argument
             self._in_symbol_argument = True
             try:
-                return ".".join(self.qualified_name())
+                spelled = ".".join(self.qualified_name())
             finally:
                 self._in_symbol_argument = outer
+            if bounded is not None:
+                reader.pos = bounded
+            return self._cap(spelled)
         if marker == "V":
             kind = self.type_()
             return self.template_value(kind)
@@ -518,6 +558,60 @@ class _Parser:
             # wrongly.
             raise DemangleFailure(f"template value form {char!r} not modelled")
         raise DemangleFailure(f"unknown template value {char!r}")
+
+    def _symbol_argument_bound(self):
+        """Where a length-prefixed symbol template argument ends, or None if unprefixed.
+
+        Newer compilers write the argument's length first, and the digits run straight
+        into the name -- which is itself length-prefixed. `S116symbol3foo` is `S`, the
+        length `11`, and eleven characters of `6symbol3foo`; read greedily the length
+        comes out as `116`, which does not fit.
+
+        So the split is chosen by what parses rather than by how many digits there are.
+        Longest first, because a longer length is the more specific reading, and the
+        candidate is accepted only if the region it delimits is exactly a qualified name
+        -- no leftovers, nothing running on into the arguments that follow.
+        """
+        reader = self.reader
+        start = reader.pos
+        digits = start
+        while digits < reader.end and reader.text[digits] in DIGITS:
+            digits += 1
+        if digits == start:
+            return None
+        for stop in range(digits, start, -1):
+            length = int(reader.text[start:stop])
+            end = stop + length
+            if end > reader.end:
+                continue
+            if self._is_symbol_argument(stop, end):
+                reader.pos = stop
+                return end
+        # No split works, so the digits are not a length at all: this is the older form,
+        # `S <LName>`, where the argument is an ordinary length-prefixed name and the
+        # first digits belong to *it*. `S6symbol` is that shape, and reading its `6` as
+        # an outer length left nothing that parsed.
+        return None
+
+    def _is_symbol_argument(self, start, end):
+        """Whether `[start, end)` is exactly one qualified name, optionally `_D`-prefixed."""
+        reader = self.reader
+        saved, saved_end, saved_depth = reader.pos, reader.end, reader.depth
+        outer = self._in_symbol_argument
+        try:
+            reader.pos, reader.end = start, end
+            self._in_symbol_argument = True
+            if reader.starts_with("_D"):
+                reader.pos += 2
+            self.qualified_name()
+            if reader.pos < end:
+                self.trailing_type()
+            return reader.pos == end
+        except (DemangleFailure, _Exhausted):
+            return False
+        finally:
+            reader.pos, reader.end, reader.depth = saved, saved_end, saved_depth
+            self._in_symbol_argument = outer
 
     def _cap(self, text):
         """Return `text`, unless it is already larger than the whole answer may be.
@@ -770,7 +864,16 @@ class _Parser:
         pair = reader.text[reader.pos : reader.pos + 2]
         if pair == "Nn":
             reader.pos += 2
-            return "noreturn"
+            # The reference spells this `typeof(*null)` -- what the type is written as in
+            # D source -- rather than by its name. `noreturn` is the newer spelling and
+            # reads better, but the point of this scheme is to agree with the demangler
+            # everyone else's tooling uses.
+            return "typeof(*null)"
+        if pair == "Nh":
+            # `Nh <Type>`, a SIMD vector. The element type is an array, and the reference
+            # writes the pair as `__vector(byte[8])`.
+            reader.pos += 2
+            return self._cap(f"__vector({self.type_()})")
         if pair in WIDE_BASIC_TYPES:
             reader.pos += 2
             return WIDE_BASIC_TYPES[pair]
@@ -818,10 +921,12 @@ class _Parser:
             spelled = f"{convention}{returns}({', '.join(parameters)})"
             return self._cap(f"{spelled} {words} function" if words else f"{spelled} function")
         if char == "B":
-            # A tuple: `B <Number> <Type>...`
+            # A tuple: `B <Number> <Type>...`, which the reference names rather than
+            # spelling as a bare parenthesised list -- `Tuple!(char, char)`, because that
+            # is the type D source would write.
             reader.pos += 1
             count = reader.number()
-            return self._cap(f"({', '.join(self.type_() for _ in range(count))})")
+            return self._cap(f"Tuple!({', '.join(self.type_() for _ in range(count))})")
         raise DemangleFailure(f"unknown type code {char!r}")
 
     def type_back_reference(self):

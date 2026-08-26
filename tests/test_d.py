@@ -185,7 +185,7 @@ class TestAgainstLibibertysOwnCorpus:
 
     #: Raised as the gaps close. Never lowered silently: a drop means a vector that used
     #: to pass has stopped, which is a regression whatever the total.
-    EXPECTED_EXACT = 217
+    EXPECTED_EXACT = 293
 
     def _score(self):
         exact = 0
