@@ -1418,6 +1418,7 @@ def _starts_an_entity(char):
 
 _ENTITY_WITHOUT_TYPE = {
     "D": "Deallocator",
+    "Z": "IsolatedDeallocator",
     "d": "Destructor",
     "e": "IVarInitializer",
     "E": "IVarDestroyer",

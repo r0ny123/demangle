@@ -730,6 +730,15 @@ class Demangler:
                 return None
             stem = element.text[len(BUILTIN_TYPE_NAME_PREFIX) :]
             return self.make_type(Node("BuiltinTypeName", text=f"Builtin.Vec{count}x{stem}"))
+        if char == "V":
+            # `Builtin.FixedArray<count, element>`, whose count is a value generic.
+            element = self.pop("Type")
+            if element is None:
+                return None
+            size = self.pop("Type")
+            if size is None:
+                return None
+            return self.make_type(Node("BuiltinFixedArray", children=[size, element]))
         if char == "W":
             referent = self.pop("Type")
             if referent is None:
@@ -2095,6 +2104,19 @@ class Demangler:
             self.stack.append(found)
         return self.pop_assoc_type_path()
 
+    def demangle_integer_type(self):
+        """`$` -- a value bound to a value generic parameter, `Slab<2, Int>`.
+
+        The value is an index, negated when an `n` precedes it, and it stands where a
+        type would: `$1_` is `2` and `$n3_` is `-4`.
+        """
+        negative = self.next_if("n")
+        value = self.index()
+        if value is None:
+            return None
+        kind = "NegativeInteger" if negative else "Integer"
+        return self.make_type(Node(kind, index=-value if negative else value))
+
     def demangle_accessor(self, child):
         """A variable or subscript may be followed by which accessor of it this is."""
         char = self.next_char()
@@ -2560,6 +2582,7 @@ _OUTLINED_VALUE_WITNESSES = {
 
 _SPECIAL_FUNCTION_TYPES = {
     "E": "NoEscapeFunctionType",
+    "O": "CalledOnceFunctionType",
     "A": "EscapingAutoClosureType",
     "f": "ThinFunctionType",
     "K": "AutoClosureType",
@@ -2580,6 +2603,7 @@ _SPECIAL_TYPE_WRAPPERS = {
 
 _FUNCTION_ENTITIES = {
     "D": ("none", "Deallocator"),
+    "Z": ("none", "IsolatedDeallocator"),
     "d": ("none", "Destructor"),
     "E": ("none", "IVarDestroyer"),
     "e": ("none", "IVarInitializer"),
@@ -2888,6 +2912,7 @@ _OPERATORS = {
     "z": lambda self: self.make_type_or_none(self.with_child("InOut", self.pop_type_and_get_child())),
     "_": lambda self: Node("FirstElementMarker"),
     ".": _demangle_suffix,
+    "$": Demangler.demangle_integer_type,
 }
 
 
