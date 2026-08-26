@@ -628,6 +628,12 @@ class _Parser:
             if char == QUALIFIER:
                 self.advance()
                 self.buf += "__linkproc__ "
+                # `System::__linkproc__ __fastcall AbstractError()` is what the
+                # unmangler prints: the convention is inserted at `namebase`, and the
+                # marker is part of the qualification in front of it, so the base moves
+                # past it. Left where `finish` set it, the convention landed in front of
+                # the whole name on all 163 `__linkproc__` exports in a TDUMP dump.
+                self.namebase = len(self.buf)
                 self.copy_name(False)
                 self.kind = KIND_LINKPROC
                 return
@@ -778,16 +784,14 @@ class _Parser:
         elif self.vtbl_flags:
             self.buf += " (" + ", ".join(self.vtbl_flags) + ")"
 
+        # No rewriting of the finished text. `copy_return_type` already inserts the
+        # calling convention where the unmangler puts it, and a duplicated qualifier --
+        # `SetFlat(const const bool)` for `qqrxo` -- is what the unmangler prints, from
+        # `copy_args` emitting `const ` and the type spelling it again. Collapsing it
+        # here, and hoisting `__fastcall` to the front afterwards, moved 692 of 11,363
+        # real exports away from the reference; both also ran `str.replace` over the
+        # whole spelling, where an identifier holding the same text is not safe.
         text = self.buf
-        # TDUMP prints a method's `__fastcall` at the front. A parameter can also be a
-        # `__fastcall` function (or `__closure`), and that one stays in the argument
-        # list. Only shuffle when the convention is not already leading -- otherwise a
-        # callback type is stolen and the spelling grows a second `__fastcall`.
-        pos = text.find(" __fastcall ")
-        if pos > 0 and not text.startswith("__fastcall "):
-            text = "__fastcall " + text.replace(" __fastcall ", " ", 1)
-        text = text.replace("const const ", "const ")
-        text = text.replace("::operator `class", "::`class")
         if self.pos != self.length:
             raise DemangleFailure("unconsumed input")
         return text
