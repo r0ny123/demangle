@@ -642,5 +642,9 @@ class AstBuilder(Builder):
     def size(self, handle):
         return handle.size
 
+    def members(self, handle):
+        """The members of a parameter pack, or None if this is not one."""
+        return handle.members if type(handle) is ParameterPack else None
+
 
 AST_BUILDER = AstBuilder()

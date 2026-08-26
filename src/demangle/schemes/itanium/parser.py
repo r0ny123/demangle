@@ -188,12 +188,17 @@ class ItaniumParser:
         "_in_constraint",
         "_mangled",
         "_naming",
+        "_pack_arity",
         "_pack_ids",
+        "_pack_index",
         "_packs",
         "_parameter_counts",
+        "_pending_conversion",
         "_precedence",
         "_saw_empty_pack",
+        "_saw_pack",
         "_scope_has_pack",
+        "_try_template_args",
         "builder",
         "limits",
         "options",
@@ -243,6 +248,16 @@ class ItaniumParser:
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
         self._drop_return = False
+        # Where an unread conversion operator's type starts, and how many substitution
+        # entries there were before it: `(position, mark)`, or None. See
+        # `_reread_conversion`.
+        self._pending_conversion = None
+        # Whether a `<template-param>` at the head of a type may take template arguments
+        # of its own. False while reading a conversion operator's type, where an `I`
+        # that follows opens the *operator's* argument list: in `cvT_I4MerpE` the
+        # argument belongs to the operator, and reading it as `T_<Merp>` leaves the
+        # operator's own list unread and the name unreadable.
+        self._try_template_args = True
         # Whether the template arguments currently in scope include a parameter pack.
         # An expansion is written `Dp <type>`, and what it expands to is the pack's
         # members -- so when a pack is in scope the ellipsis has already been spent and
@@ -260,6 +275,16 @@ class ItaniumParser:
         # `std::decay<>::type` -- and only the emptiness of the pack it ranges over says
         # there are no copies of it.
         self._saw_empty_pack = False
+        # Whether the type just read mentioned a parameter bound to a pack. An
+        # expansion whose pattern did has already been expanded -- its members are
+        # spelled out -- so an ellipsis would be spelling it a second time.
+        self._saw_pack = False
+        # How many members the pack a pattern mentions has, and which of them is being
+        # spelled. `Dp` reads its pattern once per member with `_pack_index` set, which
+        # is what turns `Dp unary<T_>` into `unary<int>, unary<float>` rather than the
+        # one type `unary<int, float>`.
+        self._pack_arity = None
+        self._pack_index = None
 
     # -- recursion control -----------------------------------------------------
 
@@ -341,7 +366,9 @@ class ItaniumParser:
 
         reader = self.reader
         if reader.eof or reader.peek() in ("E", "."):
-            # A data symbol: a name and nothing after it.
+            # A data symbol: a name and nothing after it, and so no return type for a
+            # conversion operator's name to have suppressed.
+            self._drop_return = False
             return name
         return self.bare_function_type(name, quals, ref_qualifier, is_template)
 
@@ -524,6 +551,75 @@ class ItaniumParser:
             return self.apply_template_args(base), (), "", True
         return base, (), "", False
 
+    def _expand_pattern(self, start, mark, arity):
+        """Read a pack expansion's pattern once per member of the pack it ranges over.
+
+        The reader and the substitution table are put back exactly as the first reading
+        left them, so a back-reference later in the name still counts what that reading
+        entered and nothing the re-readings did.
+        """
+        reader = self.reader
+        resume = reader.pos
+        recorded = self.subs.capture(mark)
+        outer_index = self._pack_index
+        members = []
+        try:
+            for index in range(arity):
+                reader.pos = start
+                self.subs.restore_from(mark, [])
+                self._pack_index = index
+                members.append(self.type_())
+        finally:
+            self._pack_index = outer_index
+            reader.pos = resume
+            self.subs.restore_from(mark, recorded)
+        return self.builder.parameter_pack(members)
+
+    def _reread_conversion(self, pending):
+        """Spell a conversion operator's type again, now that its arguments are bound.
+
+        `operator T_<char>` is written with the type before the arguments, so the first
+        reading of it has nothing to resolve `T_` against and spells `auto`. Rather than
+        carry an unresolved node through the builders -- the spelling builder has no
+        node to carry -- the span is simply read a second time, with the table wound
+        back so the second reading records what the first did and no more, and then
+        wound forward again to where the arguments left it.
+        """
+        start, mark = pending
+        reader = self.reader
+        resume = reader.pos
+        recorded = self.subs.capture(mark)
+        scope = self.targs.snapshot()
+        # Not naming anything the second time round: the arguments are already in
+        # scope, and a list nested inside the type -- `Muncher<T_*...>` has one -- would
+        # otherwise install itself over them, which is what made the first reading
+        # spell `auto` in the first place.
+        was_naming = self._naming
+        was_trying = self._try_template_args
+        had_pack = self._scope_has_pack
+        self._naming = False
+        self._try_template_args = False
+        # The arguments now in scope are the operator's own, so whether an expansion in
+        # the type has a pack to expand is decided by them.
+        self._scope_has_pack = any(id(argument) in self._pack_ids for argument in scope)
+        self.subs.restore_from(mark, [])
+        reader.pos = start
+        try:
+            return "operator " + self.builder.spell(self.type_())
+        finally:
+            self._scope_has_pack = had_pack
+            self._try_template_args = was_trying
+            self._naming = was_naming
+            self.targs.restore(scope)
+            reader.pos = resume
+            self.subs.restore_from(mark, recorded)
+
+    def _conversion_pending(self):
+        """The conversion operator's type waiting to be read again, cleared. Or None."""
+        pending = self._pending_conversion
+        self._pending_conversion = None
+        return pending
+
     def apply_template_args(self, base):
         """Attach <template-args> to a name.
 
@@ -533,7 +629,11 @@ class ItaniumParser:
         `f`. Where the specialisation is a *type* rather than a function, `_type()`
         records it, because there the candidate is <type>.
         """
-        return self.builder.template(base, self.template_arguments(install_scope=True))
+        pending = self._conversion_pending()
+        arguments = self.template_arguments(install_scope=True)
+        if pending is not None:
+            base = self.builder.name(self._reread_conversion(pending))
+        return self.builder.template(base, arguments)
 
     def nested_name(self, as_type=False):
         """A qualified name.
@@ -618,7 +718,10 @@ class ItaniumParser:
             # just read, and the pair becomes one substitutable component.
             if not parts:
                 raise ParseError(self._mangled, reader.pos, "template arguments with no name")
+            pending = self._conversion_pending()
             arguments = self.template_arguments(install_scope=True)
+            if pending is not None:
+                parts[-1] = builder.name(self._reread_conversion(pending))
             parts[-1] = builder.template(parts[-1], arguments)
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
             # Only an *interior* <template-prefix> <template-args> is a separate
@@ -825,7 +928,13 @@ class ItaniumParser:
         if char == "U":
             return self.unnamed_type_name()
 
-        return builder.name(self.operator_name() + self.abi_tags())
+        operator = builder.name(self.operator_name() + self.abi_tags())
+        if reader.peek() != "I":
+            # Nothing is going to bind a conversion operator's template parameters, so
+            # there is nothing to read again. Cleared here rather than left to expire,
+            # because the next template argument list in the name is somebody else's.
+            self._pending_conversion = None
+        return operator
 
     def constructor_name(self, scope):
         """A constructor name.
@@ -972,10 +1081,26 @@ class ItaniumParser:
         code = reader.peek2()
 
         if code == "cv":
-            # A conversion operator names the type it converts to. Its operand may
-            # reference template parameters, so it parses as a full type.
+            # A conversion operator names the type it converts to, and that type may
+            # reference the operator's own template parameters -- which are written
+            # *after* it. When it does, the position and the table mark are kept so the
+            # type can be read again once the arguments are in scope; see
+            # `_reread_conversion`.
+            #
+            # A conversion operator also encodes no return type, however template it is:
+            # what it returns is in its name.
             reader.pos += 2
-            return "operator " + self.builder.spell(self.type_())
+            start = reader.pos
+            mark = self.subs.mark()
+            was_trying = self._try_template_args
+            self._try_template_args = False
+            try:
+                spelled = "operator " + self.builder.spell(self.type_())
+            finally:
+                self._try_template_args = was_trying
+            self._pending_conversion = (start, mark)
+            self._drop_return = True
+            return spelled
 
         if code == "li":
             reader.pos += 2
@@ -1035,7 +1160,26 @@ class ItaniumParser:
             # An abbreviation is pre-defined: referring to it adds no dictionary entry,
             # because the encoder never had to add one either.
             return self.builder.raw(table[code])
-        return self.subs.lookup(reader.seq_id())
+        return self._pack_aware(self.subs.lookup(reader.seq_id()))
+
+    def _pack_aware(self, handle):
+        """Report a pack, and stand in for one of its members while one is being read.
+
+        A pack reaches a pattern as a `<template-param>` most of the time, but it can
+        also arrive as a back-reference -- `Dp N S3_ 4type E` names its members through
+        `S3_` -- and an expansion has to range over it either way.
+        """
+        members = self.builder.members(handle)
+        if members is None:
+            return handle
+        self._saw_pack = True
+        if not members:
+            self._saw_empty_pack = True
+        if self._pack_arity is None:
+            self._pack_arity = len(members)
+        if self._pack_index is not None and self._pack_index < len(members):
+            return members[self._pack_index]
+        return handle
 
     def template_param(self):
         """A reference to a template parameter.
@@ -1073,9 +1217,18 @@ class ItaniumParser:
             return self._symbolic_parameter(index)
         bound = self.targs.lookup(index)
         if bound is not None:
-            if id(bound) in self._pack_ids and not self.builder.spell(bound):
-                self._saw_empty_pack = True
+            if id(bound) in self._pack_ids:
+                self._saw_pack = True
+                if not self.builder.spell(bound):
+                    self._saw_empty_pack = True
+                members = self.builder.members(bound)
+                if members is not None:
+                    if self._pack_arity is None:
+                        self._pack_arity = len(members)
+                    if self._pack_index is not None and self._pack_index < len(members):
+                        return members[self._pack_index]
             return bound
+
         # A return type is encoded before the arguments that bind its parameters, so a
         # name may legitimately reference one we do not know yet. The reference
         # demanglers spell that `auto`.
@@ -1202,7 +1355,7 @@ class ItaniumParser:
 
         if char == "T":
             component = self.template_param()
-            if reader.peek() == "I":
+            if reader.peek() == "I" and self._try_template_args:
                 # <template-template-param> <template-args>. The parameter is recorded in
                 # its own right *and* the application is, so this contributes two entries
                 # even though the parameter resolves to something already in the table.
@@ -1309,13 +1462,23 @@ class ItaniumParser:
 
         if pair == "Dp":
             reader.pos += 2
+            start = reader.pos
+            mark = self.subs.mark()
             outer_empty = self._saw_empty_pack
+            outer_pack = self._saw_pack
+            outer_arity = self._pack_arity
             self._saw_empty_pack = False
+            self._saw_pack = False
+            self._pack_arity = None
             try:
                 inner = self.type_()
                 over_empty = self._saw_empty_pack
+                over_pack = self._saw_pack
+                arity = self._pack_arity
             finally:
                 self._saw_empty_pack = outer_empty
+                self._saw_pack = outer_pack or self._saw_pack
+                self._pack_arity = outer_arity
             if over_empty:
                 # The pattern ranges over a pack with no members, so it expands to no
                 # types at all -- not to one type with an empty argument list. Both
@@ -1325,7 +1488,14 @@ class ItaniumParser:
                 # It is still a <type> and still enters the substitution table: what is
                 # empty is what it expands to, not the production.
                 return self.subs.remember(builder.parameter_pack([]), "type")
-            if id(inner) in self._pack_ids or self._scope_has_pack:
+            if over_pack and arity and len(builder.members(inner) or ()) != arity:
+                # The pattern is more than a declarator round the parameter -- a
+                # template applied to it, say -- so distributing the members through it
+                # is not something the builders can do to a finished handle. It is read
+                # again, once per member: `Dp unary<T_>` over `{int, float}` is
+                # `unary<int>, unary<float>`, not the single `unary<int, float>`.
+                return self.subs.remember(self._expand_pattern(start, mark, arity), "type")
+            if id(inner) in self._pack_ids or over_pack or self._scope_has_pack:
                 # The expansion is a <type> in its own right and is recorded as one,
                 # separately from the type it expands: `Dp R T1_` contributes both the
                 # `R T1_` entry and the expansion's. Both reference demanglers do this,
@@ -2090,8 +2260,14 @@ class ItaniumParser:
 
         if pair == "fp":
             # A function parameter reference (5.1.5.9).
+            if reader.startswith("fpT"):
+                # The implicit object parameter, and the one form with no index: the
+                # reference spells it `this`. Read as `fp` with a `T` to skip, the `1`
+                # of a following `1b` became its index and the `b` became `bool`.
+                reader.pos += 3
+                self._precedence = PRIMARY_PRECEDENCE
+                return builder.raw("this")
             reader.pos += 2
-            reader.eat("T")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
             return builder.raw(self._spell_parameter(index))
@@ -2119,6 +2295,12 @@ class ItaniumParser:
             return builder.raw(self.unresolved_name())
         if pair == "sZ":
             reader.pos += 2
+            outer_index = self._pack_index
+            self._pack_index = None
+            try:
+                return builder.expression("sizeof_pack", ["sizeof...(", self.template_param(), ")"])
+            finally:
+                self._pack_index = outer_index
             return builder.expression("sizeof_pack", ["sizeof...(", self.template_param(), ")"])
         if pair == "sP":
             reader.pos += 2
@@ -2129,7 +2311,9 @@ class ItaniumParser:
                 argument, _ = self.template_arg()
                 if argument is not None:
                     members.append(argument)
-            return builder.expression("sizeof_pack", ["sizeof...(", *_separated(members), ")"])
+            # `sZ` writes `sizeof...(`; `sP`, over a captured pack, writes it with a
+            # space. Both references agree, and it is the only thing separating them.
+            return builder.expression("sizeof_pack", ["sizeof... (", *_separated(members), ")"])
         if pair == "st":
             reader.pos += 2
             return builder.expression("sizeof", ["sizeof (", self.type_(), ")"])
@@ -2259,8 +2443,14 @@ class ItaniumParser:
         if pair == "sp":
             # A pack expansion inside an expression, under the same rule as `Dp`.
             reader.pos += 2
-            expanded = self.expression()
-            if self._scope_has_pack:
+            outer_pack = self._saw_pack
+            self._saw_pack = False
+            try:
+                expanded = self.expression()
+                over_pack = self._saw_pack
+            finally:
+                self._saw_pack = outer_pack or self._saw_pack
+            if over_pack or self._scope_has_pack:
                 return expanded
             return builder.expression("pack_expansion", [expanded, "..."])
 
