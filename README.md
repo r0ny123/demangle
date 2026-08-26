@@ -204,6 +204,12 @@ disagree with *each other* about what belongs in the substitution table — not 
 to spell it — and matching both would mean two incompatible parses of the same bytes.
 Both are pinned by name.
 
+‖ The 31 names the `gnu` style spells differently from `c++filt` are all names the two
+references spell differently from *each other*, and on every one of them this matches
+`llvm-cxxfilt` exactly: a back-reference the two resolve to different entries, and a
+`const` applied to a type that already carries one, which the mangling really does say
+and which GNU folds. A further 97 names `c++filt` refuses outright and this reads.
+
 A third disagreement used to be here and is now reproduced instead. GNU omits the space
 it otherwise puts between two closing angle brackets when the last template argument is
 an empty pack, which is a bookkeeping slip rather than a rule: libiberty decides on a
@@ -223,6 +229,7 @@ Run live against the reference, not replayed.
 | `libclang-cpp.so` + Polly + LTO | 41,140 | **100%** |
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6`, gnu style | 5,990 | **100%** |
+| `libLLVM.so.18.1`, gnu style ‖ | 44,049 | **99.93%** |
 | `libLLVM`, `libclang-cpp`, `libstdc++`, llvm style | 264,610 | **100%** |
 | Swift runtime + Foundation | 48,368 | **100%** |
 | Nim standard library routine names ¶ | 5,946 | **99.87%** |

@@ -15,6 +15,8 @@ Reference: Itanium C++ ABI section 5.1, https://itanium-cxx-abi.github.io/cxx-ab
 A transcription of the productions is vendored at docs/specs/itanium-grammar.txt.
 """
 
+import re
+
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.reader import DIGITS, Reader
@@ -93,6 +95,12 @@ _COMPLEX_WORDS = (
     {"C": "complex", "G": "imaginary"},
     {"C": "_Complex", "G": "_Imaginary"},
 )
+
+#: A callee GNU c++filt leaves unbracketed: a plain identifier, a `::`-qualified path of
+#: them, or a function parameter. Anything else -- a template-id, an operator name, a
+#: name rooted at global scope -- it wraps, because the text would otherwise run into the
+#: bracket that follows it.
+_PLAIN_CALLEE = re.compile(r"(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*|\{parm#\d+\})\Z")
 
 _OBJC_PROTOCOL = "objcproto"
 _OBJC_OBJECT = "objc_object"
@@ -2742,7 +2750,11 @@ class ItaniumParser:
         if pair == "cl":
             reader.pos += 2
             target = self.expression()
-            if self.options.gnu_expression_spelling:
+            if self.options.gnu_expression_spelling and not _PLAIN_CALLEE.match(builder.spell(target)):
+                # GNU brackets a callee that is anything but a plain identifier path:
+                # `(std::declval<int>)()`, `(operator+)(...)`, `(::foo)()`, but
+                # `foo(int)`, `std::foo(int)` and `{parm#1}(int)`. Bracketing every one
+                # of them was eight of the differences from `c++filt` over libLLVM.
                 target = builder.expression("paren", ["(", target, ")"])
             arguments = []
             while not reader.eat("E"):
