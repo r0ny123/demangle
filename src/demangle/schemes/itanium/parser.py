@@ -413,7 +413,7 @@ class ItaniumParser:
 
             parameters = []
             reader = self.reader
-            while not reader.eof and reader.peek() not in ("E", "."):
+            while not reader.eof and reader.peek() not in ("E", ".", "Q"):
                 parameter = self.type_()
                 if explicit_object and not parameters:
                     explicit_object = False
@@ -431,6 +431,9 @@ class ItaniumParser:
             suffix += " " + " ".join(quals)
         if ref_qualifier:
             suffix += " " + ref_qualifier
+        if reader.eat("Q"):
+            # The requires-clause closes the declaration, after the qualifiers.
+            suffix += " requires " + builder.spell(self.constraint_expression())
         return builder.function(returns, parameters, suffix, name)
 
     # -- 5.1.4 special names ---------------------------------------------------
@@ -949,10 +952,14 @@ class ItaniumParser:
         builder = self.builder
         if reader.peek() == "W":
             module = self.module_name(module)
+        # `F` marks a friend declared inside the class it is a friend of. The scope is
+        # already in `parts`, which `qualified` joins with `::`, so the marker is the
+        # word that follows the last `::`.
+        friend = "friend " if scope and reader.eat("F") else ""
         char = reader.peek()
 
         if char in DIGITS:
-            return builder.name(self._in_module(self.plain_source_name(), module) + self.abi_tags())
+            return builder.name(friend + self._in_module(self.plain_source_name(), module) + self.abi_tags())
 
         if char == "L":
             # An internal-linkage name. The marker carries no spelling, but it recurses,
@@ -962,9 +969,10 @@ class ItaniumParser:
             if depth > self.limits.max_depth:
                 raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
             try:
-                return self.unqualified_name(scope, module)
+                inner = self.unqualified_name(scope, module)
             finally:
                 self._depth = depth - 1
+            return builder.name(friend + builder.spell(inner)) if friend else inner
 
         if char == "C":
             return self.constructor_name(scope, module)
@@ -983,12 +991,12 @@ class ItaniumParser:
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated structured binding")
                     names.append(self.source_name())
-                return builder.name(self._in_module("[" + ", ".join(names) + "]", module))
+                return builder.name(friend + self._in_module("[" + ", ".join(names) + "]", module))
 
         if char == "U":
             return self.unnamed_type_name()
 
-        operator = builder.name(self._in_module(self.operator_name(), module) + self.abi_tags())
+        operator = builder.name(friend + self._in_module(self.operator_name(), module) + self.abi_tags())
         if reader.peek() != "I":
             # Nothing is going to bind a conversion operator's template parameters, so
             # there is nothing to read again. Cleared here rather than left to expire,
@@ -1300,6 +1308,7 @@ class ItaniumParser:
         newer than the grammar snapshot in docs/specs/.
         """
         reader = self.reader
+        begin = reader.pos
         reader.expect("T")
 
         if reader.eat("L"):
@@ -1307,6 +1316,8 @@ class ItaniumParser:
             reader.expect("_")
             level_index = reader.integer(allow_negative=False) + 1 if reader.peek() != "_" else 0
             reader.expect("_")
+            if self._in_constraint and self.options.symbolic_constraint_parameters:
+                return self.builder.raw(reader.text[begin : reader.pos - 1])
             return self._symbolic_parameter(level_index)
 
         # Tp/Ts mark a pack expansion of the parameter; the pack was recorded as one
@@ -1316,11 +1327,11 @@ class ItaniumParser:
         reader.expect("_")
 
         if self._in_constraint and self.options.symbolic_constraint_parameters:
-            # Inside a requires-clause the references spell a parameter symbolically --
-            # `T`, `T0` -- rather than substituting the argument bound to it. The clause
-            # itself is not printed, but the entry it adds to the substitution table is
-            # referred to from the signature, so the spelling matters.
-            return self._symbolic_parameter(index)
+            # Inside a requires-clause the references spell a parameter by its own
+            # mangled name -- `T_` is `T`, `TL0__` is `TL0_` -- rather than substituting
+            # the argument bound to it, because not every enclosing template's
+            # parameters are tracked well enough to substitute reliably.
+            return self.builder.raw(reader.text[begin : reader.pos - 1])
         bound = self.targs.lookup(index)
         if bound is not None:
             if id(bound) in self._pack_ids:
@@ -1869,6 +1880,13 @@ class ItaniumParser:
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated template parameter list")
+                if reader.eat("Q"):
+                    # A constraint on the template template parameter. The reference
+                    # keeps it out of the spelling; it is read for the substitution
+                    # entries its operands contribute.
+                    self.constraint_expression()
+                    reader.expect("E")
+                    break
                 inner.append(self.template_param_decl()[1])
             binding = self._parameter_name("TT")
             return binding, f"template<{', '.join(inner)}> typename {binding}"
@@ -2309,6 +2327,21 @@ class ItaniumParser:
         finally:
             self._depth = depth - 1
 
+    def constraint_expression(self):
+        """`Q <expression>`, the C++20 requires-clause.
+
+        Every enclosing template's parameters are in scope inside it, and this parser
+        does not track them all -- so a `<template-param>` inside a clause is spelled by
+        its own mangled name rather than by whatever it is bound to, which is what the
+        reference does for the same reason.
+        """
+        outer = self._in_constraint
+        self._in_constraint = True
+        try:
+            return self.expression()
+        finally:
+            self._in_constraint = outer
+
     def expression_text(self):
         """An expression where the grammar around it needs characters, not a shape.
 
@@ -2344,6 +2377,62 @@ class ItaniumParser:
                 return None
             values.append(-value if negative else value)
         return _string_literal(values)
+
+    def requires_expression(self):
+        """A C++20 requires-expression.
+
+        ```
+        <expression>  ::= rq <requirement>+ E
+                        | rQ <bare-function-type> _ <requirement>+ E
+        <requirement> ::= X <expression> [N] [R <type-constraint>]
+                        | T <type>
+                        | Q <constraint-expression>
+        ```
+
+        `rQ` is the form with a parameter list, `requires (T) { ... }`. Each requirement
+        is written with a leading space and a closing semicolon, which is how the
+        reference lays the braces out.
+        """
+        reader = self.reader
+        builder = self.builder
+        parts = ["requires"]
+        if reader.startswith("rQ"):
+            reader.pos += 2
+            parameters = []
+            while not reader.eat("_"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated requires parameters")
+                parameters.append(self.type_())
+            parts += [" (", *_separated(parameters), ")"]
+        else:
+            reader.pos += 2
+        parts.append(" {")
+        while not reader.eat("E"):
+            if reader.eof:
+                raise ParseError(self._mangled, reader.pos, "unterminated requires expression")
+            marker = reader.take()
+            if marker == "X":
+                # A compound requirement is braced when it says anything more than that
+                # the expression is valid.
+                expression = self.expression()
+                no_throw = reader.eat("N")
+                constraint = self.name()[0] if reader.eat("R") else None
+                braced = no_throw or constraint is not None
+                parts += [" {", expression, "}"] if braced else [" ", expression]
+                if no_throw:
+                    parts.append(" noexcept")
+                if constraint is not None:
+                    parts += [" -> ", constraint]
+            elif marker == "T":
+                parts += [" typename ", self.type_()]
+            elif marker == "Q":
+                parts += [" requires ", self.constraint_expression()]
+            else:
+                raise ParseError(self._mangled, reader.pos, f"unknown requirement {marker!r}")
+            parts.append(";")
+        parts.append(" }")
+        self._precedence = PRIMARY_PRECEDENCE
+        return builder.expression("requires", parts)
 
     def _fold_pack(self):
         """The pack half of a fold expression, bracketed and expanded.
@@ -2694,6 +2783,9 @@ class ItaniumParser:
             self._precedence = binding
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
             return builder.expression("binary", [left, gap, spelling, gap, right])
+
+        if pair in ("rq", "rQ"):
+            return self.requires_expression()
 
         if reader.peek() == "u":
             # <expression> ::= u <source-name> <template-arg>* E
