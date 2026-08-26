@@ -24,7 +24,7 @@ from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from ._dispatch import ManglingType, RustDemangler, TypeNotFoundError
 from ._legacy import UnableToLegacyDemangle
-from ._v0 import UnableTov0Demangle
+from ._v0 import OutputTooLong, UnableTov0Demangle
 
 _DEMANGLER = RustDemangler()
 
@@ -163,7 +163,9 @@ def _guard(mangled, limits, demangle_with):
     so the translation lives here rather than twice.
     """
     try:
-        return demangle_with(mangled)
+        return demangle_with(mangled, limits.max_output)
+    except OutputTooLong as exc:
+        raise LimitExceeded(mangled, "output length", limits.max_output) from exc
     except TypeNotFoundError as exc:
         raise NotMangledError(mangled, "not a Rust mangled name") from exc
     except (UnableTov0Demangle, UnableToLegacyDemangle) as exc:

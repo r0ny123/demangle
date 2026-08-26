@@ -34,21 +34,22 @@ class RustDemangler:
     microseconds, so per-name construction does not show up in the benchmark.
     """
 
-    def demangle(self, inpstr: str) -> str:
+    def demangle(self, inpstr: str, limit: int) -> str:
         """Demangle the given string
 
         Args:
             inpstr (str): String to be demangled
+            limit (int): most characters the printer may write
         """
-        return self._for(inpstr).demangle(inpstr)
+        return self._for(inpstr).demangle(inpstr, limit)
 
-    def structure(self, inpstr: str):
+    def structure(self, inpstr: str, limit: int):
         """Demangle to a tree rather than to text.
 
         Same parser, same pass; only what it emits into differs. The tree renders to
         exactly what `demangle` returns for the same input.
         """
-        return self._for(inpstr).structure(inpstr)
+        return self._for(inpstr).structure(inpstr, limit)
 
     def _for(self, inpstr):
         if self.determine_type(inpstr) == ManglingType.LEGACY:

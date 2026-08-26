@@ -6,6 +6,18 @@ from typing import NoReturn, Optional
 from . import nodes
 
 
+class OutputTooLong(Exception):
+    """The printer was asked to write more than the caller's `max_output` allows.
+
+    Raised *while* printing rather than checked afterwards, which is the difference
+    between a bound and a report. `_RMC0FGZZZZ_Eu` is fourteen characters and asks for
+    fourteen million bound lifetimes: checking the length of the finished string meant
+    building all of it first, which took fourteen seconds, and one more character would
+    have taken a quarter of an hour. The count comes out of a base-62 field, so the
+    input grows by one character while the work grows sixty-two-fold.
+    """
+
+
 class UnableTov0Demangle(Exception):
     def __init__(self, given_str, message="Not able to demangle the given string using v0Demangler"):
         self.message = message
@@ -68,17 +80,17 @@ class V0Demangler:
         self.inpstr = ""
         self.suffix = ""
 
-    def demangle(self, inpstr: str) -> str:
-        """Demangle to text."""
-        return self._run(inpstr, TextSink()).text()
+    def demangle(self, inpstr: str, limit: int) -> str:
+        """Demangle to text, writing at most `limit` characters."""
+        return self._run(inpstr, TextSink(limit)).text()
 
-    def structure(self, inpstr: str):
+    def structure(self, inpstr: str, limit: int):
         """Demangle to a tree, which renders to exactly what `demangle` returns.
 
         The same printer over the same input; only the sink differs. There is no second
         traversal that could disagree with the first.
         """
-        sink = self._run(inpstr, TreeSink())
+        sink = self._run(inpstr, TreeSink(limit))
         return nodes.Symbol(sink.parts(), suffix=self.suffix)
 
     def _run(self, inpstr, sink):
@@ -799,12 +811,16 @@ class TextSink:
     thousand of them.
     """
 
-    __slots__ = ("_parts",)
+    __slots__ = ("_parts", "_remaining")
 
-    def __init__(self):
+    def __init__(self, limit):
         self._parts = []
+        self._remaining = limit
 
     def emit(self, text):
+        remaining = self._remaining = self._remaining - len(text)
+        if remaining < 0:
+            raise OutputTooLong
         self._parts.append(text)
 
     def open(self):
@@ -826,12 +842,16 @@ class TreeSink:
     only one stream and this is it with the brackets kept.
     """
 
-    __slots__ = ("_stack",)
+    __slots__ = ("_remaining", "_stack")
 
-    def __init__(self):
+    def __init__(self, limit):
         self._stack = [[]]
+        self._remaining = limit
 
     def emit(self, text):
+        remaining = self._remaining = self._remaining - len(text)
+        if remaining < 0:
+            raise OutputTooLong
         self._stack[-1].append(text)
 
     def open(self):
