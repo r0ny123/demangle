@@ -136,6 +136,7 @@ _BUILTIN_SIMPLE = {
     "t": "Builtin.SILToken",
     "w": "Builtin.Word",
     "P": "Builtin.PackIndex",
+    "A": "Builtin.ImplicitActor",
 }
 
 _ANY_PROTOCOL_CONFORMANCE_KINDS = frozenset(
@@ -729,6 +730,11 @@ class Demangler:
                 return None
             stem = element.text[len(BUILTIN_TYPE_NAME_PREFIX) :]
             return self.make_type(Node("BuiltinTypeName", text=f"Builtin.Vec{count}x{stem}"))
+        if char == "W":
+            referent = self.pop("Type")
+            if referent is None:
+                return None
+            return self.make_type(self.with_child("BuiltinBorrow", referent))
         if char == "T":
             return self.make_type(Node("BuiltinTupleType"))
         return None
@@ -1534,7 +1540,7 @@ class Demangler:
             return self.with_child("DefaultAssociatedTypeMetadataAccessor", self.pop_assoc_type_name())
         if char in ("n", "N"):
             requirement = self.pop_protocol()
-            path = self.pop_assoc_type_path()
+            path = self.pop_associated_conformance_subject()
             protocol = self.pop("Type")
             kind = "AssociatedConformanceDescriptor" if char == "n" else "DefaultAssociatedConformanceAccessor"
             return self.with_children(kind, protocol, path, requirement)
@@ -1575,6 +1581,8 @@ class Demangler:
             return {
                 "b": lambda: Node("BackDeploymentThunk"),
                 "B": lambda: Node("BackDeploymentFallback"),
+                "c": lambda: Node("CoroFunctionPointer"),
+                "d": lambda: Node("DefaultOverride"),
                 "S": lambda: Node("HasSymbolQuery"),
             }.get(self.next_char(), lambda: None)()
         return None
@@ -2045,6 +2053,25 @@ class Demangler:
             "T": lambda: Node("MetatypeRepresentation", text="@thick"),
             "o": lambda: Node("MetatypeRepresentation", text="@objc_metatype"),
         }.get(self.next_char(), lambda: None)()
+
+    @staticmethod
+    def _is_generic_param_type(node):
+        while node is not None and node.kind == "Type":
+            node = node.first if node.children else None
+        return node is not None and node.kind == "DependentGenericParamType"
+
+    def pop_associated_conformance_subject(self):
+        """What an associated conformance is *about*: a parameter, or a path to one.
+
+        `mini.Seq.A` is the bare parameter `x`, not an associated type path, and reading
+        it as a path refused the name.
+        """
+        found = self.pop("Type")
+        if found is not None:
+            if self._is_generic_param_type(found):
+                return found
+            self.stack.append(found)
+        return self.pop_assoc_type_path()
 
     def demangle_accessor(self, child):
         """A variable or subscript may be followed by which accessor of it this is."""
@@ -2538,6 +2565,7 @@ _FUNCTION_ENTITIES = {
     "A": ("index", "DefaultArgumentInitializer"),
     "P": ("none", "PropertyWrapperBackingInitializer"),
     "W": ("none", "PropertyWrapperInitFromProjectedValue"),
+    "F": ("none", "PropertyWrappedFieldInitAccessor"),
 }
 
 _ACCESSORS = {
@@ -2548,8 +2576,12 @@ _ACCESSORS = {
     "w": "WillSet",
     "W": "DidSet",
     "r": "ReadAccessor",
+    "y": "YieldingBorrowAccessor",
     "M": "ModifyAccessor",
+    "x": "YieldingMutateAccessor",
     "i": "InitAccessor",
+    "b": "BorrowAccessor",
+    "z": "MutateAccessor",
 }
 
 _MUTABLE_ADDRESSORS = {
