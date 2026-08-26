@@ -89,8 +89,36 @@ each is measured against differs, and the difference is the interesting part:
   `unmangle.c` and the spelling is what TDUMP prints. A different scheme from Free
   Pascal's.
 
-Nothing is left under this heading that an analyst actually meets. The last one was
-Delphi:
+- **JNI** — *landed*. `Java_com_example_Foo_bar__Ljava_lang_String_2` is the C function
+  a `native` method is called through, and Android ships them by the thousand; the usual
+  way to read one is by eye, because neither binutils nor LLVM reads them and neither
+  does Ghidra or IDA. It is also the one scheme here whose encoding is *written down
+  normatively* -- the JNI specification's "Resolving Native Method Names" -- rather than
+  having to be transcribed from a reference implementation. What it cannot recover is
+  the package/class boundary, which the encoding genuinely does not carry, so the
+  spelling puts the whole path in one run rather than inventing a structure.
+
+Two schemes are worth weighing, and a survey of what the reverse-engineering tools
+actually ship says so:
+
+- **Pre-Itanium C++: the GNU v2 / cfront / ARM family**, and Metrowerks CodeWarrior's
+  variant. `__ls__7ostreamPCc`, `BuildLight__9CGuiLightCFv`. binutils *deleted* these
+  styles in 2019 and Ghidra ships a second, older copy of libiberty specifically to keep
+  reading them, which is the loudest available signal that analysts still meet them —
+  console and embedded decompilation lives on this. There is no normative document (the
+  ARM is the origin), so it would be transcribed from
+  `Decompollaborate/gnuv2_demangle` and `encounter/cwdemangle`. The largest single gap.
+- **Ada/GNAT** — `pkg__proc$2`, still carried by libiberty as `--format=gnat` when the
+  others were dropped, and documented normatively in GCC's own `exp_dbug.ads`. Narrow
+  but concentrated: avionics, rail, defence.
+
+Everything else surveyed is either not a mangling scheme at all (Zig, Erlang, Julia, V,
+Odin and Kotlin/Native emit readable or unencoded names), already covered here
+(Borland C++Builder *is* this project's Delphi scheme; Objective-C++ is Itanium with
+Objective-C types), or extinct enough not to be worth the transcription (Watcom,
+Sun Studio's undocumented `libdemangle`, gcj's `DMGL_JAVA`).
+
+The last one before JNI was Delphi:
 
 - ~~**Borland/Embarcadero Delphi**~~ — *landed*. A different scheme from Free Pascal's,
   written `@Unit@Class@Method$qqrv`, transcribed from Embarcadero's `unmangle.c` (the
