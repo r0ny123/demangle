@@ -42,6 +42,7 @@ __all__ = [
     "Special",
     "Template",
     "VendorQualify",
+    "builder_for",
 ]
 
 
@@ -542,7 +543,7 @@ class AstBuilder(Builder):
     a particular result can.
     """
 
-    __slots__ = ("_leaves",)
+    __slots__ = ("_leaves", "_style")
 
     #: Bound on distinct leaves held. A binary's symbol table draws from a small pool of
     #: identifiers, so this is not reached in ordinary use; it exists so a tool walking a
@@ -551,8 +552,11 @@ class AstBuilder(Builder):
     #: the operation being optimised.
     MAX_LEAVES = 4096
 
-    def __init__(self):
+    def __init__(self, style=None):
         self._leaves = {}
+        # The style's *name*, not the style: one registered again under a name it
+        # already had must be picked up rather than remembered.
+        self._style = style
 
     def _leaf(self, cls, text):
         key = (cls, text)
@@ -642,7 +646,7 @@ class AstBuilder(Builder):
         return _sized(Decorated(inner, decoration), inner.size + len(decoration) + 10)
 
     def spell(self, handle, declarator=""):
-        return handle.spell(declarator)
+        return handle.spell(declarator, style=self._style)
 
     def size(self, handle):
         return handle.size
@@ -653,3 +657,25 @@ class AstBuilder(Builder):
 
 
 AST_BUILDER = AstBuilder()
+
+#: One tree builder per style, held by style name. Not one for all of them: a parser
+#: sometimes has to flatten a subtree to text while building the tree -- a conversion
+#: operator names a type, and the name is text -- and flattening under the default style
+#: while building under another gives a spelling that is neither. `A::operator
+#: std::vector<int, std::allocator<int> >` came back with LLVM's `>>` nested inside GNU's
+#: `> >` for exactly that reason.
+_BUILDERS = {None: AST_BUILDER}
+
+
+def builder_for(style):
+    """The tree builder for `style`.
+
+    `setdefault` rather than a lock: two threads arriving together each build one and
+    the loser's is discarded, which costs an allocation and cannot produce two builders
+    in use for one style.
+    """
+    name = getattr(style, "name", style)
+    found = _BUILDERS.get(name)
+    if found is None:
+        found = _BUILDERS.setdefault(name, AstBuilder(name))
+    return found

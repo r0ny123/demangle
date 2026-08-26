@@ -278,8 +278,9 @@ def _every_corpus():
     return sorted(path.name for path in CONFORMANCE.glob("*.txt"))
 
 
+@pytest.mark.parametrize("style", demangle.styles())
 @pytest.mark.parametrize("corpus", _every_corpus())
-def test_the_tree_spells_what_the_fast_path_spells(corpus):
+def test_the_tree_spells_what_the_fast_path_spells(corpus, style):
     """The two builders must never disagree, over every name recorded here.
 
     `tests/test_api.py` checks this on five hand-picked names, and five names cannot
@@ -292,13 +293,19 @@ def test_the_tree_spells_what_the_fast_path_spells(corpus):
 
     One name, in one corpus, out of 44,556. That is the size of corpus the property
     needs; running it costs a few seconds.
+
+    Under every style, not just the default. The second one it found needed that: the
+    tree builder flattened a conversion operator's type with whatever style was default
+    rather than the one the tree was being built under, so under `gnu` a name came back
+    as `operator std::vector<int, std::allocator<int>>` inside a spelling that wrote
+    `> >` everywhere else.
     """
     for mangled, _ in load_corpus(corpus):
         try:
-            tree = demangle.parse(mangled)
+            tree = demangle.parse(mangled, style=style)
         except demangle.DemanglingError:
             continue
-        assert tree.spell() == demangle.demangle(mangled), mangled
+        assert tree.spell(style=style) == demangle.demangle(mangled, style=style), mangled
 
 
 class TestAgainstLibcxxabisOwnCorpus:
@@ -336,11 +343,12 @@ class TestAgainstLibcxxabisOwnCorpus:
         for mangled, _ in load_corpus("itanium-libcxxabi.txt"):
             assert demangle.demangle(mangled) != ""
 
-    def test_the_tree_agrees_with_the_text_throughout(self):
+    @pytest.mark.parametrize("style", demangle.styles())
+    def test_the_tree_agrees_with_the_text_throughout(self, style):
         """29,928 names is the size at which declarator placement disagreements show up."""
         for mangled, _ in load_corpus("itanium-libcxxabi.txt"):
             try:
-                tree = demangle.parse(mangled)
+                tree = demangle.parse(mangled, style=style)
             except demangle.DemanglingError:
                 continue
-            assert tree.spell() == demangle.demangle(mangled), mangled
+            assert tree.spell(style=style) == demangle.demangle(mangled, style=style), mangled
