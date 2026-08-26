@@ -22,7 +22,7 @@ from typing import Any
 
 from .core import registry as _registry
 from .core import style as _style_module
-from .core.ast import AST_BUILDER, Node
+from .core.ast import Node, builder_for
 from .core.cache import MISSING, BoundedCache
 from .core.decorations import split_decorations
 from .core.errors import (
@@ -238,7 +238,8 @@ def parse(
         its trees carry path structure instead: `symbol`, `path`, `impl`, `namespace`.
         `name`, `template` and `literal` mean the same thing in all three.
     """
-    return _parse_handle(mangled, AST_BUILDER, language, get_style(style), limits)
+    resolved = get_style(style)
+    return _parse_handle(mangled, builder_for(resolved), language, resolved, limits)
 
 
 def _parse_handle(mangled, builder, language, style, limits):
