@@ -102,6 +102,8 @@ DELPHI4_TEMPLATE = re.compile(r"^(Set|DynamicArray|SmallString|DelphiInterface)\
 
 #: `@name@12` is MSVC 32-bit fastcall, not a Delphi export.
 _MSVC_FASTCALL = re.compile(r"^@[^$]*@\d+$")
+#: `@@InitExe` is a linker procedure with no type encoding. `@@bug@@x` is not.
+_LINKPROC_BARE = re.compile(r"^@@[A-Za-z_][A-Za-z0-9_]*$")
 
 _TABLE_KIND = {
     "FL": "frndl",
@@ -615,7 +617,11 @@ class _Parser:
                     self.set_qual = False
                     self.copy_type(len(self.buf), arglvl=False)
                     self.set_qual = saved
-                    self.expect(ARGLIST)
+                    # Leave the following `$` for `finish`, the same way a constructor
+                    # leaves `$qqrv`. Consuming it here made `qv` look like junk in the
+                    # name, so conversion operators from real BPLs never parsed.
+                    if self.peek() != ARGLIST:
+                        raise DemangleFailure("bad conversion operator")
                     self.kind = KIND_CONVERSION
                 elif char in "vd":
                     tkind = char
@@ -712,8 +718,12 @@ class _Parser:
             self.buf += " (" + ", ".join(self.vtbl_flags) + ")"
 
         text = self.buf
+        # TDUMP prints a method's `__fastcall` at the front. A parameter can also be a
+        # `__fastcall` function (or `__closure`), and that one stays in the argument
+        # list. Only shuffle when the convention is not already leading -- otherwise a
+        # callback type is stolen and the spelling grows a second `__fastcall`.
         pos = text.find(" __fastcall ")
-        if pos > 0:
+        if pos > 0 and not text.startswith("__fastcall "):
             text = "__fastcall " + text.replace(" __fastcall ", " ", 1)
         text = text.replace("const const ", "const ")
         text = text.replace("::operator `class", "::`class")
@@ -746,14 +756,14 @@ def detect(name):
     `@__swiftmacro_` is Swift's macro mangling and is left for that scheme: the two
     share a first character, and guessing would rewrite a Swift name.
 
-    A leading `@@` without a `$` encoding is `__linkproc__` in the unmangler, but it is
-    also a shape any `@`-prefixed toy name can stumble into. Auto-detection requires `$`
-    for that prefix so a broken plugin's `@@bug@@…` fixture is not rewritten; a qualified
-    data name such as `@System@Var` has no `$` and is still claimed.
+    A leading `@@` without a `$` encoding is `__linkproc__` in the unmangler. Real BPL
+    exports of that shape are a single identifier (`@@InitExe`). `@@bug@@x` is not, and
+    is left unclaimed so a broken plugin's fixture is not rewritten. A qualified data
+    name such as `@System@Var` has no `$` and is still claimed.
     """
     if not name or name[0] != "@" or name.startswith("@__swift") or _MSVC_FASTCALL.match(name):
         return False
-    if name.startswith("@@") and "$" not in name:
+    if name.startswith("@@") and "$" not in name and not _LINKPROC_BARE.match(name):
         return False
     if not any(ch.isalpha() for ch in name):
         return False
