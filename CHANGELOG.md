@@ -132,6 +132,10 @@ All notable changes to this project are recorded here. The format follows
   -- collapsing the duplicated qualifier the unmangler really does print, and hoisting
   `__fastcall` to the front afterwards -- moved 692 real exports away from the reference
   and are gone. The spelling is now whatever the transcription produces, unedited.
+  Those tables exercise 75% of the parser; the constructs they never produce are covered
+  separately by `tests/conformance/delphi-constructs.txt`, 53 hand-built names
+  corroborated against the independent Ruby port of the same unmangler rather than
+  against TDUMP -- weaker evidence, kept in its own file and labelled as such.
 
 - **Go symbol names.** A new scheme, registered like any other -- `core` was not touched.
   Go escapes a `.` that falls after the last `/` of a package path, so

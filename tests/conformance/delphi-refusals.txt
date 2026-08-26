@@ -5,6 +5,11 @@
 # of the parser before the empty string stopped counting as a member of a code set --
 # `"" in "xw"` is True for a string -- so they are here as much for how they fail as
 # for that they do.
+#
+# The last two are the multi-argument Delphi 4 template forms. They are refused by the
+# independent Ruby port of this unmangler as well, so this is a gap in the transcribed
+# grammar rather than a divergence -- recorded here so that closing it is a deliberate
+# act with a real C++Builder name behind it.
 @func@4
 @name@12
 @TTabPage@$bctr
@@ -19,3 +24,5 @@ _Z1fv
 @a$qp
 @oo$qt$i
 @a$qit$
+@%Set$uc$0$255%
+@%Set$t17System@TMsgDlgBtn$0$11%
