@@ -408,6 +408,10 @@ COMPLETING_FORMS = [
     ("??_C@_02PCEFGMJL@hi?$AA@", '"hi"'),
     ("??_C@_00CNPNBAHC@?$AA@", '""'),
     ("??_C@_0M@LACCLLLM@Hello?5world?$AA@", '"Hello world"'),
+    # a wide literal is two bytes to the character, most significant first
+    ("??_C@_19FINJPIIF@?$AAw?$AAi?$AAd?$AAe?$AA?$AA@", 'L"wide"'),
+    # only 32 bytes of a string are ever written, so a longer one is cut short and says so
+    ("??_C@_05ABCDEFGH@hi?$AA@", '"hi\\0"...'),
     # the rest of the RTTI family names a class, and the descriptor says where the base sits
     ("??_R1A@?0A@EA@Base@@8", "Base::`RTTI Base Class Descriptor at (0, -1, 0, 64)'"),
     ("??_R2Base@@8", "Base::`RTTI Base Class Array'"),
@@ -434,10 +438,9 @@ COMPLETING_DECLINED = [
     "??_R2Base@@8X",  # nor does the rest of the RTTI family carry anything after its storage
     "??_Bx@@51X",  # nor a guard
     "??__EFoo@@3HA",  # what runs code takes a signature, never a storage class
-    "??_C@_12ABCDEFGH@hi?$AA@",  # a wide literal spells its bytes differently
+    "??_C@_12ABCDEFGH@hi?$AA@",  # a wide literal is two bytes to the character, so never an odd count
     "??_C@_02ABCDEFGH@h?$Qi?$AA@",  # a byte is written as two nibbles from "A" to "P"
     "??_C@_02ABCDEFGH@h?zi?$AA@",  # and an escape names one of ten characters
-    "??_C@_05ABCDEFGH@hi?$AA@",  # the length counts the bytes, terminator included
     "??_C@_02ABCDEFGH@hi?$AA@X",  # and nothing follows the literal
     "??_9Base@@$RB7AA",  # a thunk through a virtual base names an access this does not
     # a conversion operator is named by its return, which a template argument list displaces
