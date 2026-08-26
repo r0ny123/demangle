@@ -15,7 +15,10 @@ import pathlib
 
 import pytest
 
+import demangle
 from demangle.schemes.d._parser import DemangleFailure, parse_d_symbol
+
+from .conftest import load_corpus
 
 CORPUS = pathlib.Path(__file__).parent / "conformance" / "d-real-world.txt"
 
@@ -164,3 +167,54 @@ class TestRulesThatHadToBeMeasured:
         """
         assert parse_d_symbol("_D3foo3Bar10__postblitMFZv").text == "foo.Bar.this(this)"
         assert parse_d_symbol("_D3foo3Bar10__postblitMFNaNbNiNfZv").text == "foo.Bar.__postblit()"
+
+
+class TestAgainstLibibertysOwnCorpus:
+    """The reference's vectors, not this project's.
+
+    `d-real-world.txt` is a corpus this project assembled, and the ROADMAP's claim of
+    100% against `c++filt --format=dlang` is true of it. It is not true of libiberty's
+    own `d-demangle-expected`, which is larger and which this project had not adopted:
+    149 of its 366 vectors do not match, in a handful of systematic groups (`__T`/`__U`
+    template instantiations, `B<n>` tuples spelled `Tuple!(...)`, `Nh` vector types,
+    `Nn` as `typeof(*null)`, `_Dmain`).
+
+    Checked in with the score pinned, so the number can only go down. A test that says
+    "some of these fail" is worth more than a claim that none do.
+    """
+
+    #: Raised as the gaps close. Never lowered silently: a drop means a vector that used
+    #: to pass has stopped, which is a regression whatever the total.
+    EXPECTED_EXACT = 217
+
+    def _score(self):
+        exact = 0
+        for mangled, expected in load_corpus("d-libiberty.txt"):
+            if demangle.demangle(mangled, language="d") == expected:
+                exact += 1
+        return exact
+
+    def test_the_score_has_not_gone_backwards(self):
+        exact = self._score()
+        total = len(load_corpus("d-libiberty.txt"))
+        assert exact >= self.EXPECTED_EXACT, f"{exact}/{total}, was {self.EXPECTED_EXACT}"
+
+    def test_the_pinned_number_is_still_accurate(self):
+        """So the pin is a fact rather than a floor nobody has looked at."""
+        assert self._score() == self.EXPECTED_EXACT
+
+    def test_every_vector_is_answered_promptly(self):
+        """The corpus holds a real symbol that took over 35 seconds.
+
+        `std.format.formattedWrite`, 2,695 characters with 441 `Q` back references in
+        it. The parser was not looping -- three hundred thousand calls in all -- it was
+        assembling a string far larger than any caller would accept, and `max_output`
+        was checked on the finished string. A bound observed after the work is a report.
+        """
+        import time
+
+        for mangled, _ in load_corpus("d-libiberty.txt"):
+            started = time.perf_counter()
+            demangle.demangle(mangled, language="d")
+            elapsed = time.perf_counter() - started
+            assert elapsed < 1.0, f"{elapsed:.1f}s for {mangled[:60]}"

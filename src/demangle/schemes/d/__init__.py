@@ -16,7 +16,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import DemangleFailure, DSymbol, parse_d_symbol
+from ._parser import DemangleFailure, DSymbol, _Exhausted, parse_d_symbol
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -50,7 +50,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
     try:
-        symbol = parse_d_symbol(mangled)
+        symbol = parse_d_symbol(mangled, limits.max_substitutions)
+    except _Exhausted as error:
+        raise LimitExceeded(mangled, "substitution", limits.max_substitutions) from error
     except DemangleFailure as error:
         raise ParseError(mangled, None, str(error)) from error
     except RecursionError as error:
