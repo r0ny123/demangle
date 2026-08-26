@@ -480,7 +480,11 @@ class ItaniumParser:
             # GR <object name> _  /  GR <object name> <seq-id> _
             reader.pos += 2
             inner = self.name()[0]
-            reader.seq_id()
+            # A seq-id numbers the temporary when a scope has more than one. Where
+            # there is none there is no `_` either, and demanding one refused
+            # `_ZGRZN1N1gEvE1a`.
+            if not reader.eof:
+                reader.seq_id()
             return self.builder.special(SPECIAL_ENCODING_NAMES["GR"], inner)
 
         if code in SPECIAL_ENCODING_NAMES:
@@ -2238,14 +2242,17 @@ class ItaniumParser:
         | dn <destructor-name>
         """
         reader = self.reader
-        if reader.eat("on"):
-            text = self.operator_name()
-            if reader.peek() == "I":
-                text += self.spelled_template_arguments()
-            return text
+        if reader.peek() in DIGITS:
+            return self.simple_id()
         if reader.eat("dn"):
             return "~" + self.destructor_name()
-        return self.simple_id()
+        # The `on` marker is optional: `srT_pl` names `T::operator+` with nothing to say
+        # so, and the reference reads the operator code either way.
+        reader.eat("on")
+        text = self.operator_name()
+        if reader.peek() == "I":
+            text += self.spelled_template_arguments()
+        return text
 
     def destructor_name(self):
         """<destructor-name> ::= <unresolved-type> | <simple-id>"""
@@ -2786,6 +2793,81 @@ class ItaniumParser:
 
         if pair in ("rq", "rQ"):
             return self.requires_expression()
+
+        if pair in ("di", "dx", "dX"):
+            # A designated initialiser inside a braced initialiser list.
+            #
+            #   di <field source-name> <braced-expression>       # .name = expr
+            #   dx <index expression> <braced-expression>        # [expr] = expr
+            #   dX <begin expression> <end expression> <braced-expression>  # [a ... b] = expr
+            #
+            # They chain: `.a.b[3][1 ... 4] = 9` is four of them round one value, and
+            # only the innermost writes the `=`.
+            reader.pos += 2
+            if pair == "di":
+                designator = ["." + self.source_name()]
+            elif pair == "dx":
+                designator = ["[", self.expression(), "]"]
+            else:
+                designator = ["[", self.expression(), " ... ", self.expression(), "]"]
+            nested = reader.peek2() in ("di", "dx", "dX")
+            value = self.expression()
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("designator", [*designator, *([] if nested else [" = "]), value])
+
+        if pair == "so":
+            # so <referent type> <expression> [<offset>] <union-selector>* [p] E
+            #
+            # A subobject of a named object, used for a template argument that points
+            # into one. The selectors and the one-past-the-end marker narrow which
+            # subobject; neither reference prints them.
+            reader.pos += 2
+            kind = self.type_()
+            inner = self.expression()
+            offset = reader.number(allow_negative=True) if reader.peek() not in ("E", "_", "p") else "0"
+            while reader.eat("_"):
+                if reader.peek() in DIGITS:
+                    reader.number(allow_negative=False)
+            reader.eat("p")
+            reader.expect("E")
+            if offset.startswith("n"):
+                offset = "-" + offset[1:]
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("subobject", [inner, ".<", kind, f" at offset {offset or '0'}>"])
+
+        if pair == "mc":
+            # mc <type> <expression> [<offset>] E -- a pointer-to-member conversion.
+            reader.pos += 2
+            kind = self.type_()
+            inner = self.expression()
+            if reader.peek() not in ("E", ""):
+                reader.number(allow_negative=True)
+            reader.expect("E")
+            self._precedence = UNARY_PRECEDENCE
+            return builder.expression("cast", ["(", kind, ")(", inner, ")"])
+
+        if pair == "sy":
+            # sy <pack> <index> -- C++26 pack indexing, `(pack...)[index]`.
+            reader.pos += 2
+            pattern = self.template_param() if reader.peek() == "T" else self.expression()
+            index = self.expression()
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("pack_index", ["(", pattern, "...)[", index, "]"])
+
+        if pair == "cp":
+            # cp <base-unresolved-name> <expression>* E
+            #
+            # A call written with the callee parenthesised, which suppresses the
+            # argument-dependent lookup a bare name would have had.
+            reader.pos += 2
+            target = builder.raw(self.base_unresolved_name())
+            arguments = []
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated call expression")
+                arguments.append(self._element())
+            self._precedence = POSTFIX_PRECEDENCE
+            return builder.expression("call", ["(", target, ")(", *_separated(arguments), ")"])
 
         if reader.peek() == "u":
             # <expression> ::= u <source-name> <template-arg>* E
