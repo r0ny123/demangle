@@ -145,3 +145,66 @@ class TestOperatorNamesAsCallees:
     def test_the_tree_agrees(self):
         name = "_Z1fI1AEDTclonplfp_fp_EET_"
         assert demangle.parse(name).spell() == demangle.demangle(name)
+
+
+class TestProductionsTakenFromLibcxxabi:
+    """Four shapes libcxxabi's own vectors found, each read from its parser.
+
+    They are grouped because what they have in common is the source: LLVM's
+    `ItaniumDemangle.h`, rather than the ABI document, which describes none of the
+    four the way the reference actually reads them.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("___Z10blocksNRVOv_block_invoke", "invocation function for block in blocksNRVO()"),
+            # The number distinguishes several blocks in one function and is not printed.
+            ("___Z3foov_block_invoke_2", "invocation function for block in foo()"),
+            ("___Z3foov_block_invoke2", "invocation function for block in foo()"),
+            # Nor is a `.` suffix, where the reference discards the rest of the name.
+            ("___Z3foov_block_invoke.25", "invocation function for block in foo()"),
+            # `____Z` is the same thing with the symbol table's own underscore as well.
+            ("____Z3foov_block_invoke", "invocation function for block in foo()"),
+        ],
+    )
+    def test_a_block_written_in_a_cxx_function(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize("mangled", ["___Z3foov_block_invoke_", "___Z3foov_block_invokex"])
+    def test_what_is_not_a_block_invocation(self, mangled):
+        """An underscore with no number after it, and trailing text that is not a suffix."""
+        assert demangle.demangle(mangled) == mangled
+
+    def test_an_objective_c_block_is_still_objective_cs(self):
+        """Only `__` and an *Itanium* encoding is claimed here; `__foo_block_invoke` is not."""
+        assert demangle.demangle("___cfunc_block_invoke") == "block #1 in cfunc"
+
+    def test_a_vendor_qualifier_and_its_cv_qualifiers_are_one_component(self):
+        """`U3AS1Ki` enters one substitution, so `S0_` is the pointer and not the type.
+
+        Two entries put `S0_` on `int const AS1` instead, and the second parameter lost
+        its pointer -- a wrong answer rather than a refusal, which is worse.
+        """
+        assert demangle.demangle("_Z1fPU3AS1KiS0_") == "f(int const AS1*, int const AS1*)"
+        assert demangle.demangle("_Z1fPU3AS1KiS_") == "f(int const AS1*, int const AS1)"
+        assert demangle.demangle("_Z1fU3AS1KiS_") == "f(int const AS1, int const AS1)"
+
+    def test_a_vendor_qualifier_goes_after_the_whole_declarator(self):
+        """`void () block_pointer`, not `void block_pointer()`."""
+        assert demangle.demangle("_Z1fU13block_pointerFvvE") == "f(void () block_pointer)"
+        assert demangle.demangle("_Z1fPU13block_pointerFvvE") == "f(void () block_pointer*)"
+
+    def test_a_tagged_abbreviation_is_substitutable_and_a_bare_one_is_not(self):
+        """ABI 5.1.2: the tags are appended and *the result* is a component."""
+        assert demangle.demangle("_Z1fSsB1XS_") == "f(std::string[abi:X], std::string[abi:X])"
+        assert demangle.demangle("_Z1fSsS_") == "_Z1fSsS_"
+
+    @pytest.mark.parametrize("mangled", ["_ZN1S1fILb1EEEv1XILUlvE_EE", "_ZN1S1fILb1EEEv1XILUlvE0_EE"])
+    def test_a_lambda_written_as_a_template_argument(self, mangled):
+        """The expression that made the closure, not the type it has."""
+        assert demangle.demangle(mangled) == "void S::f<true>(X<[](){...}>)"
+
+    def test_an_unnamed_type_is_not_a_value(self):
+        """Only `Ul` is a lambda expression; `Ut` names a type and cannot be one."""
+        assert demangle.demangle("_ZN1S1fILb1EEEv1XILUt_EE") == "_ZN1S1fILb1EEEv1XILUt_EE"

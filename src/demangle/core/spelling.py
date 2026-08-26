@@ -244,7 +244,13 @@ class SpellingBuilder(Builder):
         return Spelling(inner.left + "...", inner.right)
 
     def vendor_qualify(self, inner, qualifier):
-        return Spelling(inner.left + " " + qualifier, inner.right)
+        """A vendor qualifier goes after the *whole* type, declarator and all.
+
+        The reference prints the type and then the extension, so a function type comes
+        out `void () block_pointer` -- not `void block_pointer()`, which is what putting
+        the word in the left half alone gives for anything that has a right half.
+        """
+        return Spelling(inner.spell() + " " + qualifier)
 
     # -- whole symbols ---------------------------------------------------------
 

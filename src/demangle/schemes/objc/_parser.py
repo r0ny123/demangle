@@ -116,6 +116,10 @@ _APPLE_METHOD = re.compile(r"^([-+])\[([A-Za-z_][A-Za-z0-9_]*)(?:\(([A-Za-z_][A-
 #: digit.
 _BLOCK = re.compile(r"^__(.+)_block_invoke(?:_([0-9]+))?$")
 
+#: What a block written in a C++ function starts with: the block's own underscore, and
+#: the enclosing function's `_Z` -- or `__Z`, where the symbol table added one as well.
+_CXX_BLOCK = ("___Z", "____Z")
+
 
 def _valid_selector(text):
     """Whether `text` is a selector.
@@ -698,6 +702,14 @@ def parse_objc_symbol(name):
     """
     if not name:
         raise DemangleFailure("empty name")
+    if name.startswith(_CXX_BLOCK):
+        # `__` and a C++ function's Itanium encoding: a block written in that function.
+        # It is shaped like an Objective-C block, and reading it as one hands the
+        # encoding back unspelled -- `block #1 in Z3foov` where the C++ scheme, which
+        # has the production, reads `invocation function for block in foo()`. Refused
+        # here rather than un-preferred in the registry, because being able to parse a
+        # name is what claims it and this scheme cannot parse this one.
+        raise DemangleFailure("a C++ block invocation function, not an Objective-C one")
     for candidate in _candidates(name):
         for reader in _READERS:
             try:
