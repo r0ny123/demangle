@@ -17,8 +17,15 @@ class UnableTov0Demangle(Exception):
 
 
 class V0Demangler:
+    """Reads one v0 name. Single use: the name, its suffix and the cursor live here.
+
+    `RustDemangler` builds a fresh one per name for that reason -- see its docstring.
+    """
+
+    __slots__ = ("inpstr", "suffix")
+
     def __init__(self):
-        self.disp = ""
+        self.inpstr = ""
         self.suffix = ""
 
     def demangle(self, inpstr: str) -> str:
@@ -36,7 +43,6 @@ class V0Demangler:
 
     def _run(self, inpstr, sink):
         self.suffix = ""
-        self.disp = ""
 
         if "R" not in inpstr:
             raise UnableTov0Demangle(inpstr)
