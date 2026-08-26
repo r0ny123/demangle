@@ -25,7 +25,13 @@ from .core import style as _style_module
 from .core.ast import AST_BUILDER, Node
 from .core.cache import MISSING, BoundedCache
 from .core.decorations import split_decorations
-from .core.errors import DemanglingError, NotMangledError, ParseError, reraise_if_operational
+from .core.errors import (
+    DemanglingError,
+    LimitExceeded,
+    NotMangledError,
+    ParseError,
+    reraise_if_operational,
+)
 from .core.limits import DEFAULT_LIMITS, Limits
 from .core.registry import candidates, get, names
 from .core.style import DEFAULT_STYLE, Style, available_styles, get_style
@@ -242,7 +248,10 @@ def _parse_handle(mangled, builder, language, style, limits):
         raise NotMangledError(mangled, "empty name")
     plugin = _resolve(language)
     if plugin is not None:
-        return _parse_with(plugin, mangled, builder, limits, style)
+        try:
+            return _parse_with(plugin, mangled, builder, limits, style)
+        except RecursionError as exc:
+            raise _depth_exceeded(mangled, limits) from exc
 
     first_error = None
     for candidate in candidates(mangled):
@@ -250,6 +259,10 @@ def _parse_handle(mangled, builder, language, style, limits):
             if not _claims(candidate, mangled):
                 continue
             return _parse_with(candidate, mangled, builder, limits, style)
+        except RecursionError as exc:
+            if first_error is None:
+                first_error = _depth_exceeded(mangled, limits)
+                first_error.__cause__ = exc
         except DemanglingError as exc:
             # Keep the first failure: it came from the highest-priority plugin that
             # claimed the name, so it is the most likely to be the useful diagnostic.
@@ -268,6 +281,31 @@ def _parse_handle(mangled, builder, language, style, limits):
     if first_error is not None:
         raise first_error
     raise NotMangledError(mangled)
+
+
+def _depth_exceeded(mangled, limits):
+    """A `RecursionError` from a parser, reported as the bound it is.
+
+    Two bounds govern how deep a name may nest, and `max_depth` is only one of them. The
+    other is the interpreter's own stack, and it is the *lower* of the two in practice:
+    a production costs several Python frames, so at the default recursion limit of 1000
+    an Itanium name gives out around 141 levels of nested template, 164 of `decltype`,
+    197 of function type and 493 of pointer -- all of them under the default
+    `max_depth` of 256, let alone `RELAXED_LIMITS`' 2048.
+
+    Which of the two binds first therefore depends on the shape of the name and on how
+    deep the caller's own stack already was. Both are the same fact -- this name nests
+    further than this process will follow -- so both are reported the same way. Before
+    this, one arrived as `LimitExceeded` and the other as
+    `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
+    the parser rather than a bound doing its job, and leaks an implementation detail
+    into a message a caller was meant to be able to act on.
+
+    A caller who needs the deeper limits to be reachable can raise
+    `sys.setrecursionlimit()`; on the versions this package supports, a Python-to-Python
+    call does not consume the C stack, so that is safer than it once was.
+    """
+    return LimitExceeded(mangled, "recursion depth", limits.max_depth)
 
 
 def _claims(plugin, mangled):
