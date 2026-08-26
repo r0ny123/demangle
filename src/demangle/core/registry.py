@@ -2,8 +2,8 @@
 
 Built-in languages are imported lazily -- naming a language should not cost the import
 of every other one -- and third-party languages are found through the
-`demangle.languages` entry-point group, so a separate distribution can add Swift, D or
-Delphi support without a patch here.
+`demangle.languages` entry-point group, so a separate distribution can add a language
+without a patch here.
 
 The registry is process-global and populated once. Registration is idempotent, so
 importing a plugin module twice is harmless.
@@ -23,6 +23,7 @@ _BUILTIN_MODULES = (
     ("d", "demangle.schemes.d"),
     ("go", "demangle.schemes.go"),
     ("pascal", "demangle.schemes.pascal"),
+    ("delphi", "demangle.schemes.delphi"),
     ("nim", "demangle.schemes.nim"),
     ("objc", "demangle.schemes.objc"),
 )

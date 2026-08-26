@@ -1,0 +1,8 @@
+# Names that sit next to Delphi exports and must not be claimed: MSVC 32-bit
+# __fastcall C decoration, incomplete special names, and other schemes.
+@func@4
+@name@12
+@TTabPage@$bctr
+_Z1fv
+?f@@YAXH@Z
+@__swiftmacro_18macro_expand_peers1SV1f20addCompletionHandlerfMp_

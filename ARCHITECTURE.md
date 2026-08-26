@@ -105,6 +105,7 @@ demangle/
     nim/              Nim, whose symbols are ordinary C identifiers
     objc/             Objective-C
     pascal/           Free Pascal
+    delphi/           Borland/Embarcadero Delphi and C++Builder
 ```
 
 `core` never imports from `schemes`; `schemes/*` never import from each other. Both are

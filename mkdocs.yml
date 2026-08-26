@@ -1,5 +1,5 @@
 site_name: demangle
-site_description: Read mangled symbol names -- Itanium C++, MSVC and Rust -- in pure Python.
+site_description: Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Delphi and more -- in pure Python.
 site_url: https://r0ny123.github.io/demangle/
 repo_url: https://github.com/r0ny123/demangle
 repo_name: r0ny123/demangle

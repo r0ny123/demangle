@@ -128,6 +128,22 @@ alongside what the decoder does about them.
         - spell_routine_name
         - detect
 
+## Delphi / C++Builder
+
+Borland and Embarcadero's scheme, shared by Delphi BPLs and C++Builder objects. A
+different mangling from Free Pascal. Transcribed from `unmangle.c`.
+
+::: demangle.schemes.delphi
+
+### Parser
+
+::: demangle.schemes.delphi._parser
+    options:
+      members:
+        - DelphiSymbol
+        - parse_delphi_symbol
+        - detect
+
 ## Objective-C
 
 Barely a mangling, and what there is comes from the compiler rather than the language.
