@@ -452,6 +452,7 @@ class Printer:
         """A lowered SIL type: `(params) -> (results)`, with the attributes in front."""
         pattern_substitutions = None
         invocation_substitutions = None
+        sending_result = None
         state = 0  # 0 attributes, 1 inputs, 2 results
 
         def transition(wanted):
@@ -464,7 +465,11 @@ class Printer:
                         self.write(" ")
                     self.write("(")
                 elif state == 1:
-                    self.write(") -> (")
+                    self.write(") -> ")
+                    if sending_result is not None:
+                        self.print(sending_result, depth + 1)
+                        self.write(" ")
+                    self.write("(")
                 state += 1
 
         for child in node.children:
@@ -482,6 +487,8 @@ class Printer:
                 pattern_substitutions = child
             elif child.kind == "ImplInvocationSubstitutions":
                 invocation_substitutions = child
+            elif child.kind == "ImplSendingResult":
+                sending_result = child
             else:
                 self.print(child, depth + 1)
                 self.write(" ")
@@ -961,10 +968,14 @@ _JUST_TEXT = {
     "ConstrainedExistentialSelf": "Self",
     "ErrorType": "<ERROR TYPE>",
     "ImplEscaping": "@escaping",
+    "ImplErasedIsolation": "@isolated(any)",
+    "ImplNonisolatedNonsendingIsolation": "@caller_isolated",
+    "ImplCalledOnceFunction": "@called(once)",
     "ConcurrentFunctionType": "@Sendable ",
     "IsolatedAnyFunctionType": "@isolated(any) ",
     "NonIsolatedCallerFunctionType": "nonisolated(nonsending) ",
     "SendingResultFunctionType": "sending ",
+    "ImplSendingResult": "sending",
     "AsyncAnnotation": " async",
     "ThrowsAnnotation": " throws",
     "EmptyList": " empty-list ",
@@ -1911,9 +1922,32 @@ _IMPL_DIFFERENTIABILITY = {ord("l"): "(_linear)", ord("f"): "(_forward)", ord("r
 
 
 @_handler("ImplParameterResultDifferentiability")
+@_handler("ImplParameterSending")
 def _print_impl_parameter_differentiability(self, node, depth, as_prefix_context):
+    """A marker on one lowered parameter. Empty text is the default and prints nothing."""
     if node.text:
         self.write(node.text + " ")
+    return None
+
+
+@_handler("ImplParameterIsolated")
+@_handler("ImplParameterImplicitLeading")
+def _print_impl_parameter_unspelled(self, node, depth, as_prefix_context):
+    """A marker the reference reads and does not spell.
+
+    `I` and `L` after a lowered parameter mark it as the isolated parameter and as the
+    compiler-inserted leading one. Every vector in the reference's own corpus that
+    carries them -- `$sBAIgHgIL_BAIegHgIL_TR` and the two beside it -- prints the
+    parameter without either word, so they are kept on the node for a consumer walking
+    the tree and left out of the spelling.
+    """
+    return None
+
+
+@_handler("ImplCoroutineKind")
+def _print_impl_coroutine_kind(self, node, depth, as_prefix_context):
+    if node.text:
+        self.write("@" + node.text)
     return None
 
 
@@ -1942,11 +1976,13 @@ for _kind, _lead in (("ImplErrorResult", "@error "), ("ImplYield", "@yields ")):
 for _kind in ("ImplParameter", "ImplResult"):
 
     def _print_impl_parameter(self, node, depth, as_prefix_context):
-        # `convention, differentiability?, type`
+        # `convention, marker*, type`. The markers -- differentiability, `sending`,
+        # `isolated`, the implicit leading parameter -- each print themselves with a
+        # trailing space, and each prints nothing when its text is empty.
         self.print(node.first, depth + 1)
         self.write(" ")
-        if len(node.children) == 3:
-            self.print(node.child(1), depth + 1)
+        for child in node.children[1:-1]:
+            self.print(child, depth + 1)
         self.print(node.last, depth + 1)
         return None
 
