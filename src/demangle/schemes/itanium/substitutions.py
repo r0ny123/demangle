@@ -86,6 +86,24 @@ class SubstitutionTable:
         self._entries.append(handle)
         return handle
 
+    def mark(self):
+        """How many entries there are, for `rewind`."""
+        return len(self._entries)
+
+    def capture(self, mark):
+        """Everything recorded since `mark`, for `restore_from`."""
+        return self._entries[mark:]
+
+    def restore_from(self, mark, entries):
+        """Put back exactly what `capture` took, discarding whatever replaced it.
+
+        Used to read one span of a name twice. A conversion operator's type is written
+        before the template arguments that bind its parameters, so it cannot be spelled
+        until they have been read -- and the second reading must leave the table exactly
+        as the first did, or every later back-reference in the name shifts.
+        """
+        self._entries[mark:] = entries
+
     def lookup(self, index):
         """Resolve `S<index>_`."""
         if index < 0 or index >= len(self._entries):

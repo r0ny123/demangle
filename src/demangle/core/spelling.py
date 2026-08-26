@@ -263,6 +263,10 @@ class SpellingBuilder(Builder):
         # Both halves are already built, so their lengths are free.
         return len(handle.left) + len(handle.right)
 
+    def members(self, handle):
+        """The members of a parameter pack, or None if this is not one."""
+        return handle.members
+
 
 #: Shared instances. Both are immutable after construction, so one of each serves every
 #: call rather than being allocated per name. Parsers take a builder argument rather
