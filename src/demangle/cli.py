@@ -1,28 +1,66 @@
 """The `demangle` command.
 
-Reads names from arguments or standard input and writes their expansions, one per line,
-so it drops into a pipeline the way `c++filt` does:
+Reads names from arguments or standard input and writes their expansions, so it drops
+into a pipeline the way `c++filt` does:
 
     nm -a libfoo.so | demangle
     demangle _ZNSt6vectorIiSaIiEE9push_backERKi
 
 Names that cannot be read pass through unchanged, which is what makes it safe to run
 over a whole symbol table.
+
+On reading a stream
+-------------------
+With no arguments this is a *filter*, not a line reader: every symbol-shaped word in the
+input is a candidate and everything around it is copied through untouched. That is what
+`c++filt`, `demumble` and `rustfilt` all do, and it is the only behaviour under which
+the first example above works. `nm` writes an address and a type letter before the name,
+so treating the whole line as one symbol demangled nothing at all:
+
+    $ printf '0000000000001139 T _ZN3foo3barEv\\n' | demangle
+    0000000000001139 T _ZN3foo3barEv        # every line, unchanged
+
+Encoding
+--------
+A symbol table holds bytes, and they are not reliably UTF-8. Both streams are read and
+written with `surrogateescape`, so a name this package cannot read comes back byte for
+byte -- and so a non-UTF-8 symbol does not end the run with a `UnicodeDecodeError`
+traceback, which is what happened wherever the interpreter's error handler was `strict`.
 """
 
 import argparse
+import contextlib
 import os
+import re
 import sys
 
 from . import __version__
 from .api import demangle, demangle_strict, detect, languages, parse, styles
+from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
+
+#: A candidate symbol in a stream of mixed text. Deliberately wider than any one scheme:
+#: offering a word that turns out not to be mangled costs one failed prefix test, and
+#: not offering one loses a symbol silently.
+#:
+#: `?` and `@` are here for MSVC, `$` for Swift and Free Pascal, `.` for clone suffixes
+#: and Go package paths, `-`, `+`, `[` and `]` for Objective-C method names, `/` for Go
+#: import paths.
+_TOKEN = re.compile(r"[A-Za-z0-9_$@?.\-+\[\]/:]+")
+
+#: A word is worth offering only if it holds one of these. Without it every ordinary
+#: word in a disassembly listing walks the whole detection chain, and `demumble`'s
+#: warning applies -- `I like Pi` should not become `I like int*`.
+_TOKEN_MUST_HOLD = re.compile(r"[_$?@\[]")
 
 
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="demangle",
-        description="Demangle C++, Rust and MSVC symbol names.",
-        epilog="With no NAME arguments, names are read from standard input, one per line.",
+        description="Demangle C++, Rust, Swift, MSVC and other symbol names.",
+        epilog=(
+            "With no NAME arguments, names are read from standard input: every "
+            "symbol-shaped word is demangled and the text around it is copied through."
+        ),
     )
     parser.add_argument("names", nargs="*", metavar="NAME", help="symbol names to demangle")
     parser.add_argument("-l", "--language", help="force a scheme instead of detecting (aliases accepted)")
@@ -30,10 +68,37 @@ def build_parser():
     parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
     parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
     parser.add_argument("--strict", action="store_true", help="report failures instead of echoing the input")
+    parser.add_argument(
+        "-b", "--both", action="store_true", help="print the mangled name and its expansion, as `mangled ==> demangled`"
+    )
+    parser.add_argument(
+        "-m", "--only-demangled", action="store_true", help="print only what demangled, skipping the rest"
+    )
+    parser.add_argument("--relaxed", action="store_true", help="raise the resource bounds, for input you trust")
+    parser.add_argument("--max-input", type=int, metavar="N", help="characters of input to consider")
+    parser.add_argument("--max-output", type=int, metavar="N", help="characters of output to allow")
+    parser.add_argument("--max-depth", type=int, metavar="N", help="nesting depth to allow")
     parser.add_argument("--list-languages", action="store_true", help="list supported schemes and exit")
     parser.add_argument("--list-styles", action="store_true", help="list output styles and exit")
     parser.add_argument("--version", action="version", version=f"demangle {__version__}")
     return parser
+
+
+def _limits_from(arguments):
+    """The bounds this run should use.
+
+    `--relaxed` moves the floor; the three explicit flags override whatever is under
+    them, so `--relaxed --max-output 4096` means what it reads as.
+    """
+    base = RELAXED_LIMITS if arguments.relaxed else DEFAULT_LIMITS
+    if arguments.max_input is arguments.max_output is arguments.max_depth is None:
+        return base
+    return Limits(
+        max_depth=base.max_depth if arguments.max_depth is None else arguments.max_depth,
+        max_output=base.max_output if arguments.max_output is None else arguments.max_output,
+        max_substitutions=base.max_substitutions,
+        max_input=base.max_input if arguments.max_input is None else arguments.max_input,
+    )
 
 
 def _dump(node, indent=0):
@@ -50,6 +115,20 @@ def _dump(node, indent=0):
     yield f"{pad}{node.kind}{detail}"
     for child in node.children():
         yield from _dump(child, indent + 1)
+
+
+def _reconfigure(stream, **kwargs):
+    """Set an error handler on a stream, where the stream has one to set.
+
+    Under `pytest`'s capture, and behind some redirections, the standard streams are
+    substitutes with no `reconfigure`. Nothing here is load-bearing for correctness --
+    it decides how undecodable bytes are handled -- so a stream that cannot be
+    reconfigured is left alone.
+    """
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        with contextlib.suppress(ValueError, OSError):
+            reconfigure(**kwargs)
 
 
 def main(argv=None):
@@ -81,45 +160,121 @@ def main(argv=None):
             parser.error(f"unknown language {arguments.language!r}; choose from {known}")
     if arguments.style not in styles():
         parser.error(f"unknown style {arguments.style!r}; choose from {', '.join(styles())}")
+    for flag in ("max_input", "max_output", "max_depth"):
+        value = getattr(arguments, flag)
+        if value is not None and value < 1:
+            parser.error(f"--{flag.replace('_', '-')} must be positive")
 
-    names = arguments.names or (line.rstrip("\n") for line in sys.stdin)
+    _reconfigure(sys.stdin, errors="surrogateescape")
+    _reconfigure(sys.stdout, errors="surrogateescape")
 
-    status = 0
     try:
-        status = _run(names, arguments)
+        if arguments.names:
+            return _run_names(arguments.names, arguments)
+        return _run_stream(sys.stdin, arguments)
     except BrokenPipeError:
         # `demangle | head` closes the pipe on us. This has to be caught outside the
         # loop: caught per name it prints one error for every remaining symbol, thousands
-        # of them. Redirect stdout to devnull so the interpreter's shutdown flush does not
-        # raise it again, and exit cleanly.
-        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        # of them. Point stdout at the null device so the interpreter's shutdown flush
+        # does not raise it again, and exit cleanly.
+        _silence_stdout()
         return 0
-    return status
 
 
-def _run(names, arguments):
+def _silence_stdout():
+    """Point stdout at the null device, so the shutdown flush has somewhere to go."""
+    try:
+        null = os.open(os.devnull, os.O_WRONLY)
+    except OSError:  # pragma: no cover - no /dev/null
+        return
+    try:
+        os.dup2(null, sys.stdout.fileno())
+    except (OSError, ValueError, AttributeError):  # pragma: no cover - not a real stream
+        pass
+    finally:
+        # `dup2` duplicated the descriptor, so this one has done its job either way.
+        # Left open it leaked -- which mattered not at all for one exit, and would have
+        # mattered for a library caller invoking `main()` in a loop.
+        os.close(null)
+
+
+def _expand(name, arguments, limits):
+    """What this run has to say about one name."""
+    if arguments.detect:
+        return arguments.language or detect(name) or "-"
+    if arguments.tree:
+        return "\n".join(_dump(parse(name, language=arguments.language, style=arguments.style, limits=limits)))
+    if arguments.strict:
+        return demangle_strict(name, language=arguments.language, style=arguments.style, limits=limits)
+    return demangle(name, language=arguments.language, style=arguments.style, limits=limits)
+
+
+def _run_names(names, arguments):
+    """One name per argument: the whole argument is the name, whatever it holds.
+
+    No word-splitting here. A caller who typed a name meant that name, and an
+    Objective-C method or a Go symbol has spaces and slashes in it.
+    """
+    limits = _limits_from(arguments)
     status = 0
+    out = sys.stdout
     for name in names:
         if not name:
-            print()
-            continue
-        if arguments.detect:
-            print(arguments.language or detect(name) or "-")
+            out.write("\n")
             continue
         try:
-            if arguments.tree:
-                tree = parse(name, language=arguments.language, style=arguments.style)
-                print("\n".join(_dump(tree)))
-                continue
-            if arguments.strict:
-                print(demangle_strict(name, language=arguments.language, style=arguments.style))
-                continue
-            print(demangle(name, language=arguments.language, style=arguments.style))
+            expanded = _expand(name, arguments, limits)
         except BrokenPipeError:
             raise
         except Exception as exc:
             print(f"{name}: {exc}", file=sys.stderr)
             status = 1
+            continue
+        if arguments.only_demangled and expanded == name:
+            continue
+        out.write(f"{name} ==> {expanded}\n" if arguments.both else f"{expanded}\n")
+    return status
+
+
+def _run_stream(stream, arguments):
+    """A filter: substitute every symbol-shaped word, copy everything else through.
+
+    Line by line rather than all at once, so `demangle` in a pipe stays a pipe: someone
+    watching `nm ... | demangle` should not have to wait for the input to end.
+    """
+    limits = _limits_from(arguments)
+    status = 0
+    out = sys.stdout
+
+    for line in stream:
+        pieces = []
+        demangled = []
+        end = 0
+        for match in _TOKEN.finditer(line):
+            word = match.group()
+            if not _TOKEN_MUST_HOLD.search(word):
+                continue
+            try:
+                expanded = _expand(word, arguments, limits)
+            except BrokenPipeError:
+                raise
+            except Exception as exc:
+                print(f"{word}: {exc}", file=sys.stderr)
+                status = 1
+                continue
+            if expanded == word and not arguments.detect:
+                continue
+            replacement = f"{word} ==> {expanded}" if arguments.both else expanded
+            demangled.append(replacement)
+            pieces.append(line[end : match.start()])
+            pieces.append(replacement)
+            end = match.end()
+        if arguments.only_demangled:
+            for replacement in demangled:
+                out.write(replacement + "\n")
+            continue
+        pieces.append(line[end:])
+        out.write("".join(pieces))
     return status
 
 

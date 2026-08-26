@@ -36,9 +36,13 @@ __all__ = [
     "demangle",
     "demangle_all",
     "demangle_strict",
+    "demangleb",
+    "demangleb_strict",
     "detect",
+    "detectb",
     "languages",
     "parse",
+    "parseb",
     "styles",
 ]
 
@@ -63,6 +67,22 @@ _CACHE = BoundedCache(max_size=16384)
 #: warm path than clearing a cache on the rare occasion one has.
 _style_module.notify_on_change(_CACHE.clear)
 _registry.notify_on_change(_CACHE.clear)
+
+
+def _refuse_non_string(mangled):
+    """Report a non-`str` argument as the caller's mistake it is.
+
+    Bytes used to be handed straight back, unchanged and unremarked, so a tool reading
+    an ELF string table -- where names *are* bytes -- saw every symbol come back exactly
+    as it went in and concluded the library did not work. The strict entry points were
+    worse: they reached the registry's first-character screen and raised
+    `TypeError: 'in <string>' requires string as left operand, not int`, which names
+    neither the problem nor the fix, and which the documented "raises only
+    `DemanglingError`" contract said could not happen.
+    """
+    if isinstance(mangled, _BYTES_LIKE):
+        raise TypeError(f"expected str, got {type(mangled).__name__}; symbol tables hold bytes, so use demangleb()")
+    raise TypeError(f"expected str, got {type(mangled).__name__}")
 
 
 def _keep(key, value):
@@ -109,10 +129,12 @@ def demangle(
 ) -> str:
     """Return the readable spelling of `mangled`, or `mangled` unchanged.
 
-    Never raises for any input. A name this library cannot read comes back exactly as it
-    went in, because a wrong expansion is worse than a mangled name: it matches neither
-    the original symbol nor the real declaration, so it corrupts every downstream lookup
-    that trusted it.
+    Never raises for any *string*: a name this library cannot read comes back exactly as
+    it went in, because a wrong expansion is worse than a mangled name -- it matches
+    neither the original symbol nor the real declaration, so it corrupts every
+    downstream lookup that trusted it. That promise is about the name, not about the
+    argument's type: passing something that is not a `str` is a mistake in the calling
+    code and is reported as one.
 
     Args:
         mangled: the symbol name. Any string; need not be mangled.
@@ -122,13 +144,13 @@ def demangle(
 
     Returns:
         The demangled name, or `mangled` unchanged.
+
+    Raises:
+        TypeError: `mangled` is not a `str`. Use `demangleb()` for bytes.
     """
-    if not mangled:
-        return mangled
     if not isinstance(mangled, str):
-        # Symbol tables are read as bytes, so this is the likeliest caller mistake.
-        # Returning the argument untouched keeps the "never raises" contract, and a
-        # caller who wanted a demangled name gets an obviously unchanged one back.
+        _refuse_non_string(mangled)
+    if not mangled:
         return mangled
     resolved_style = get_style(style)
     # A caller may hand in a `Style` object rather than a name, and two different objects
@@ -214,6 +236,8 @@ def parse(
 
 
 def _parse_handle(mangled, builder, language, style, limits):
+    if not isinstance(mangled, str):
+        _refuse_non_string(mangled)
     if not mangled:
         raise NotMangledError(mangled, "empty name")
     plugin = _resolve(language)
@@ -277,12 +301,102 @@ def detect(mangled: str) -> str | None:
     A prefix test only -- it reports what the name looks like, not that it will parse.
     Never raises: like `demangle()`, it is called on every symbol in a table.
     """
-    if not mangled or not isinstance(mangled, str):
+    if not isinstance(mangled, str):
+        # `detect` is offered every symbol in a table and answers None for anything it
+        # does not recognise, so a wrong type is answered the same way rather than
+        # raised: a caller looping over a table wants a verdict, not an exception.
+        return None
+    if not mangled:
         return None
     for plugin in candidates(mangled):
         if _claims(plugin, mangled):
             return plugin.name
     return None
+
+
+#: How a symbol table's bytes become a `str` and back again.
+#:
+#: A mangled name is read out of an object file, where it is a run of bytes ending at a
+#: NUL and nothing else -- not text in any declared encoding. Almost all of them are
+#: ASCII, but not all: a raw identifier can carry anything the assembler accepted, and a
+#: truncated symbol table can cut a name mid-character.
+#:
+#: `surrogateescape` is what makes the round trip total. Every byte that is not valid
+#: UTF-8 is parked in a lone surrogate, and encoding back with the same handler restores
+#: exactly the byte that went in. So a name this package cannot read comes back out of
+#: `demangleb` byte for byte, which is the same promise `demangle` makes for a `str`.
+_BYTES_ENCODING = "utf-8"
+_BYTES_ERRORS = "surrogateescape"
+
+#: The types `demangleb` accepts. `memoryview` is included because that is what a caller
+#: slicing a mapped object file has in hand, and copying it to ask a question would be a
+#: strange thing to make them do.
+_BYTES_LIKE = (bytes, bytearray, memoryview)
+
+
+def _decode(mangled):
+    """Bytes in, `str` out, or a `TypeError` naming what was actually passed."""
+    if isinstance(mangled, _BYTES_LIKE):
+        return bytes(mangled).decode(_BYTES_ENCODING, _BYTES_ERRORS)
+    raise TypeError(f"expected bytes, got {type(mangled).__name__}")
+
+
+def demangleb(
+    mangled: bytes,
+    *,
+    language: str | None = None,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> bytes:
+    """`demangle()` over bytes, returning bytes.
+
+    The form to use when the names come from a symbol table, which is where they usually
+    do: an ELF or Mach-O string table holds bytes, and a tool that has read one should
+    not have to guess an encoding to ask what a name says.
+
+    Like `demangle()`, never raises for a name it cannot read -- it hands the bytes back
+    exactly as they arrived, including any that are not valid UTF-8. Raises `TypeError`
+    if given something that is not bytes-like, which is a mistake in the calling code
+    rather than a property of the symbol.
+
+        >>> import demangle
+        >>> demangle.demangleb(b"_ZN3foo3barEv")
+        b'foo::bar()'
+    """
+    return demangle(_decode(mangled), language=language, style=style, limits=limits).encode(
+        _BYTES_ENCODING, _BYTES_ERRORS
+    )
+
+
+def demangleb_strict(
+    mangled: bytes,
+    *,
+    language: str | None = None,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> bytes:
+    """`demangle_strict()` over bytes, returning bytes. Raises what it raises."""
+    return demangle_strict(_decode(mangled), language=language, style=style, limits=limits).encode(
+        _BYTES_ENCODING, _BYTES_ERRORS
+    )
+
+
+def parseb(
+    mangled: bytes,
+    *,
+    language: str | None = None,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> Node:
+    """`parse()` over bytes. The tree it returns spells `str`, as every tree does."""
+    return parse(_decode(mangled), language=language, style=style, limits=limits)
+
+
+def detectb(mangled: bytes) -> str | None:
+    """`detect()` over bytes. The scheme's name is a `str`; it is this package's own."""
+    if not isinstance(mangled, _BYTES_LIKE):
+        return None
+    return detect(bytes(mangled).decode(_BYTES_ENCODING, _BYTES_ERRORS))
 
 
 def demangle_all(
