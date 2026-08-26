@@ -356,6 +356,12 @@ class Demangler:
             return None
 
         top = Node("Global")
+        # IRGen's own `.<n>` disambiguator is pushed last and so sits on top of the
+        # stack, where it hid the function attributes underneath it: nothing was popped,
+        # the closure was never moved inside the forwarder that applies it, and the
+        # name came out as its parts in stack order. Taken off first and put back at the
+        # end, which is where it is spelled.
+        suffix = self.pop("Suffix")
         parent = top
         while True:
             attribute = self.pop(lambda kind: kind in FUNCTION_ATTR_KINDS)
@@ -369,6 +375,9 @@ class Demangler:
             # A `Type` wrapper is dropped at the top level: `Global` holds what the type
             # *is*, not the fact that it is one.
             parent.add(node.first if node.kind == "Type" and node.children else node)
+
+        if suffix is not None:
+            top.add(suffix)
 
         return top if top.children else None
 
@@ -773,7 +782,7 @@ class Demangler:
                 return None
             self.add_child(found, clang)
         for annotation in _FUNCTION_ANNOTATIONS:
-            self.add_child(found, self.pop(annotation))
+            self.add_child(found, self.pop(annotation.__contains__))
         found = self.add_child(found, self.pop_function_params("ArgumentTuple"))
         found = self.add_child(found, self.pop_function_params("ReturnType"))
         return self.make_type(found)
@@ -805,7 +814,7 @@ class Demangler:
 
         at = 0
         for annotation in _FUNCTION_ANNOTATIONS:
-            if at < len(function.children) and function.child(at).kind == annotation:
+            if at < len(function.children) and function.child(at).kind in annotation:
                 at += 1
         if at >= len(function.children):
             return None
@@ -2282,18 +2291,31 @@ class Demangler:
         char = self.next_char()
         if char == "a":
             return Node("AsyncAnnotation")
+        if char == "A":
+            return Node("IsolatedAnyFunctionType")
         if char == "b":
             return Node("ConcurrentFunctionType")
         if char == "c":
             return self.with_child("GlobalActorFunctionType", self.pop_type_and_get_child())
+        if char == "C":
+            return Node("NonIsolatedCallerFunctionType")
         if char == "i":
             return self.make_type_or_none(self.with_child("Isolated", self.pop_type_and_get_child()))
         if char == "j":
             return self.demangle_differentiable_function_type()
         if char == "k":
             return self.make_type_or_none(self.with_child("NoDerivative", self.pop_type_and_get_child()))
+        if char == "K":
+            # Swift 6 typed throws: the error type is named rather than implied.
+            return self.with_child("TypedThrowsAnnotation", self.pop_type_and_get_child())
         if char == "t":
             return self.make_type_or_none(self.with_child("CompileTimeConst", self.pop_type_and_get_child()))
+        if char == "g":
+            return self.make_type_or_none(self.with_child("ConstValue", self.pop_type_and_get_child()))
+        if char == "T":
+            return Node("SendingResultFunctionType")
+        if char == "u":
+            return self.make_type_or_none(self.with_child("Sending", self.pop_type_and_get_child()))
         return None
 
 
@@ -2303,12 +2325,18 @@ _SYMBOLIC_REFERENCE_BYTES = frozenset(chr(byte) for byte in range(1, 0xD))
 
 #: Popped in this order by `pop_function_type`, and skipped in this order by
 #: `pop_function_param_labels`. The two must agree; both are the reference's order.
+#:
+#: Each slot is a set because two of them accept more than one node: a function's
+#: isolation is written as a global actor, as `@isolated(any)`, or as
+#: `nonisolated(nonsending)`, and never as more than one; and a `throws` is either bare
+#: or names the error type it throws.
 _FUNCTION_ANNOTATIONS = (
-    "GlobalActorFunctionType",
-    "DifferentiableFunctionType",
-    "ThrowsAnnotation",
-    "ConcurrentFunctionType",
-    "AsyncAnnotation",
+    frozenset({"SendingResultFunctionType"}),
+    frozenset({"GlobalActorFunctionType", "IsolatedAnyFunctionType", "NonIsolatedCallerFunctionType"}),
+    frozenset({"DifferentiableFunctionType"}),
+    frozenset({"ThrowsAnnotation", "TypedThrowsAnnotation"}),
+    frozenset({"ConcurrentFunctionType"}),
+    frozenset({"AsyncAnnotation"}),
 )
 
 #: Contexts that declare no generic parameters of their own, so a nested generic type's

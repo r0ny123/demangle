@@ -3748,7 +3748,7 @@ $s4main19returnInstantiationSo34__CxxTemplateInst12MagicWrapperIiEVyF	main.retur
 $s4main1gyySiXBvp	main.g : @convention(block) (Swift.Int) -> ()
 $s4main1gyySiXCvp	main.g : @convention(c) (Swift.Int) -> ()
 $s4main20receiveInstantiationyySo34__CxxTemplateInst12MagicWrapperIiEVzF	main.receiveInstantiation(inout __C.__CxxTemplateInst12MagicWrapperIiE) -> ()
-$s4main3fooyySiFyyXEfU_TA.1	closure #1 () -> () in main.foo(Swift.Int) -> ()partial apply forwarder with unmangled suffix ".1"
+$s4main3fooyySiFyyXEfU_TA.1	partial apply forwarder for closure #1 () -> () in main.foo(Swift.Int) -> () with unmangled suffix ".1"
 $s4main6testityyYaFTu	async function pointer to main.testit() async -> ()
 $s4test10returnsOptyxycSgxyScMYccSglF	test.returnsOpt<A>((@Swift.MainActor () -> A)?) -> (() -> A)?
 $s4test3FooVAAyyAA1P_pF	test.Foo.test(test.P) -> ()

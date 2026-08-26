@@ -391,9 +391,23 @@ class Printer:
 
         arguments_at = len(node.children) - 2
         at = 0
-        sendable = asynchronous = throws = False
+        sendable = asynchronous = sending_result = False
+        thrown = nonisolated_caller = None
         differentiability = None
+        # The order here is the order the demangler *adds* these, which is the reverse
+        # of the order they are written in the mangling.
         if node.child(at).kind == "ClangType":
+            at += 1
+        if node.child(at).kind == "SendingResultFunctionType":
+            at += 1
+            sending_result = True
+        # A function's isolation, of which it has at most one.
+        if node.child(at).kind == "IsolatedAnyFunctionType":
+            self.print(node.child(at), depth + 1)
+            at += 1
+        if node.child(at).kind == "NonIsolatedCallerFunctionType":
+            # Held back rather than printed here: it goes after the differentiability.
+            nonisolated_caller = node.child(at)
             at += 1
         if node.child(at).kind == "GlobalActorFunctionType":
             self.print(node.child(at), depth + 1)
@@ -401,9 +415,9 @@ class Printer:
         if node.child(at).kind == "DifferentiableFunctionType":
             differentiability = node.child(at).index
             at += 1
-        if node.child(at).kind == "ThrowsAnnotation":
+        if node.child(at).kind in ("ThrowsAnnotation", "TypedThrowsAnnotation"):
+            thrown = node.child(at)
             at += 1
-            throws = True
         if node.child(at).kind == "ConcurrentFunctionType":
             at += 1
             sendable = True
@@ -413,15 +427,26 @@ class Printer:
 
         if differentiability is not None:
             self.write(_DIFFERENTIABILITY.get(differentiability, ""))
+        if nonisolated_caller is not None:
+            self.print(nonisolated_caller, depth + 1)
         if sendable:
             self.write("@Sendable ")
 
         self.print_function_parameters(labels, node.child(arguments_at), depth)
         if asynchronous:
             self.write(" async")
-        if throws:
-            self.write(" throws")
-        self.print(node.child(arguments_at + 1), depth + 1)
+        if thrown is not None:
+            self.print(thrown, depth + 1)
+        # The arrow is written here rather than by the `ReturnType` handler, because a
+        # sending result puts a word between the two: `-> sending T`.
+        returns = node.child(arguments_at + 1)
+        self.write(" -> ")
+        if sending_result:
+            self.write("sending ")
+        if not returns.children:
+            self.write(returns.text)
+        else:
+            self.print_children(returns, depth)
 
     def print_impl_function_type(self, node, depth):
         """A lowered SIL type: `(params) -> (results)`, with the attributes in front."""
@@ -842,6 +867,8 @@ _PREFIX_THEN_FIRST_CHILD = {
     "Type": "",
     "InOut": "inout ",
     "Isolated": "isolated ",
+    "Sending": "sending ",
+    "ConstValue": "@const ",
     "CompileTimeConst": "_const ",
     "Shared": "__shared ",
     "Owned": "__owned ",
@@ -929,8 +956,11 @@ _JUST_TEXT = {
     "ErrorType": "<ERROR TYPE>",
     "ImplEscaping": "@escaping",
     "ConcurrentFunctionType": "@Sendable ",
-    "AsyncAnnotation": " async ",
-    "ThrowsAnnotation": " throws ",
+    "IsolatedAnyFunctionType": "@isolated(any) ",
+    "NonIsolatedCallerFunctionType": "nonisolated(nonsending) ",
+    "SendingResultFunctionType": "sending ",
+    "AsyncAnnotation": " async",
+    "ThrowsAnnotation": " throws",
     "EmptyList": " empty-list ",
     "FirstElementMarker": " first-element-marker ",
     "VariadicMarker": " variadic-marker ",
@@ -2005,6 +2035,16 @@ def _print_differentiable_function_type(self, node, depth, as_prefix_context):
     self.write("@differentiable")
     self.write(_IMPL_DIFFERENTIABILITY.get(node.index, ""))
     self.write(" ")
+    return None
+
+
+@_handler("TypedThrowsAnnotation")
+def _print_typed_throws_annotation(self, node, depth, as_prefix_context):
+    """Swift 6 typed throws: the error type is named rather than implied."""
+    self.write(" throws(")
+    if len(node.children) == 1:
+        self.print(node.first, depth + 1)
+    self.write(")")
     return None
 
 

@@ -87,6 +87,10 @@ NOT_REPLAYED = frozenset(
         # that something somewhere disagreed. It is also stored gzipped, which this
         # replay does not read.
         "itanium-libcxxabi.txt",
+        # Swift's own vectors, 513 of them, of which 46 name Swift 6 constructs this
+        # does not read yet. Pinned by tests/test_swift.py, for the reason the two
+        # above are.
+        "swift-upstream.txt",
     }
 )
 
