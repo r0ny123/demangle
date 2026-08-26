@@ -25,8 +25,8 @@ mangling discarding an underscore, listed by name in
 The plugin interface exists so these need no core changes. Go landed this way, without
 touching `core` at all.
 
-D, Swift, Nim and Free Pascal have all landed the same way. What each is measured
-against differs, and the difference is the interesting part:
+D, Swift, Nim, Free Pascal, Objective-C and Delphi have all landed the same way. What
+each is measured against differs, and the difference is the interesting part:
 
 - **D** — 100% against GNU binutils' `c++filt --format=dlang`.
 - **Swift** — exact against `swift-demangle` 5.10.1 over the whole shipped runtime and
@@ -36,19 +36,20 @@ against differs, and the difference is the interesting part:
   own `.ndi` files.
 - **Free Pascal** — no reference demangler either; the property is re-assembly, over all
   236,570 readable symbols in the shipped runtime, plus a check against `ppudump`.
+- **Delphi / C++Builder** — no Delphi compiler here, so the grammar is Embarcadero's
+  `unmangle.c` and the spelling is what TDUMP prints. A different scheme from Free
+  Pascal's.
 
-Objective-C landed the same way, against a different kind of ground truth again: no
-reference demangler exists, so the expectation is what the *declaration* said, and the
-corpus is symbols clang emitted for Objective-C this package wrote.
+Nothing is left under this heading that an analyst actually meets. The last one was
+Delphi:
 
-What is left, ordered by how often an analyst actually meets it:
+- ~~**Borland/Embarcadero Delphi**~~ — *landed*. A different scheme from Free Pascal's,
+  written `@Unit@Class@Method$qqrv`, transcribed from Embarcadero's `unmangle.c` (the
+  unmangler TDUMP runs) because there is no Delphi compiler on the platforms this is
+  developed on. Spelling is what that unmangler prints. Microsoft's `@name@N` 32-bit
+  `__fastcall` C decoration is refused. Checked against the unmangler's own test vectors
+  and documented BPL exports, 28 of 28, with the whole symbol consumed.
 
-- **Borland/Embarcadero Delphi** — a *different* scheme from Free Pascal's, written
-  `@Unit@Class@Method$qqrv`, and what a Delphi-built PE's package exports carry. Not
-  implemented, and deliberately: there is no Delphi compiler and no reference demangler
-  to check against on any platform this is developed on, and every other scheme here was
-  settled by measurement rather than by reading a specification. Anyone with a Delphi
-  toolchain, or a corpus of Delphi-built BPLs with known contents, could close this.
 - ~~**Objective-C**~~ — *landed*. It turned out to be four families across three
   runtimes rather than one form, and the interesting part is that the rules belong to the
   compiler rather than the language: they are transcribed from clang's `Mangle.cpp`,

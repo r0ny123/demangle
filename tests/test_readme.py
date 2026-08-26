@@ -57,6 +57,7 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.NIM_EXACT, pins.NIM_TOTAL),
         (pins.PASCAL_EXACT, pins.PASCAL_TOTAL),
         (pins.OBJC_EXACT, pins.OBJC_TOTAL),
+        (pins.DELPHI_EXACT, pins.DELPHI_TOTAL),
     }
     stated = {(int(a), int(b)) for a, b in re.findall(r"\*\*(\d+) / (\d+)\*\*", readme)}
     assert stated <= pinned, f"README states counts that are not pinned anywhere: {sorted(stated - pinned)}"
@@ -94,6 +95,10 @@ class TestExamples:
                 lambda: demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi", style="gnu"),
                 "std::vector<int, std::allocator<int> >::push_back(int const&)",
             ),
+            (
+                lambda: demangle.demangle("@Unit@Class@Method$qqrv"),
+                "__fastcall Unit::Class::Method()",
+            ),
         ],
     )
     def test_example_output_is_what_the_readme_prints(self, readme, call, expected):
@@ -107,7 +112,7 @@ class TestExamples:
         assert len(function.parameters) == 1
 
     def test_every_scheme_returns_a_tree_as_the_readme_says(self, readme):
-        assert "All three schemes return full trees" in readme
+        assert "All schemes return full trees" in readme
         # Real names from the conformance corpora; an invented one is as likely to be
         # malformed as to prove anything.
         for name in ("_ZNSt6vectorIiSaIiEE9push_backERKi", "?f@@YAXH@Z", "_RNvCsdEttCVZFADF_8features10btree_work"):

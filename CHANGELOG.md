@@ -113,8 +113,15 @@ All notable changes to this project are recorded here. The format follows
   symbols in the 1,074 object files of the shipped 3.2.2 runtime and packages.
   Independently checked against `ppudump`. Case is not recoverable -- Pascal is
   case-insensitive and the compiler upper-cases before mangling -- and that is stated
-  rather than hidden. Borland and Embarcadero's own Delphi scheme is a different one and
-  is not read.
+  rather than hidden.
+
+- **Borland/Embarcadero Delphi symbol names.** A different scheme from Free Pascal's,
+  `@Unit@Class@Method$qqrv`, shared with C++Builder. Transcribed from Embarcadero's
+  `unmangle.c` -- the unmangler TDUMP, the linker and the debugger run -- because there
+  is no Delphi compiler on the platforms this package is developed on. Spelling is what
+  that unmangler prints, including C++ `::`. Microsoft's 32-bit `__fastcall` C decoration
+  `@name@N` is refused. 28 of 28 against that unmangler's own vectors and documented BPL
+  exports.
 
 - **Go symbol names.** A new scheme, registered like any other -- `core` was not touched.
   Go escapes a `.` that falls after the last `/` of a package path, so

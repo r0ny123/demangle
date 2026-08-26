@@ -1,0 +1,36 @@
+# Borland/Embarcadero Delphi and C++Builder exports.
+#
+# There is no Delphi compiler on the platforms this package is developed on, so these
+# names are not harvested from a shipped BPL. They are the vectors Embarcadero's own
+# unmangler (`unmangle.c`, the code TDUMP runs) is tested against, plus documented BPL
+# exports whose spelling that unmangler prints. What carries correctness is agreement
+# with that spelling, and that a reading consumes the whole symbol.
+
+@afunc$qxzcupi	afunc(const signed char, int *)
+@foo$qpqfi$d	foo(double (*)(float, int))
+@myclass@func$qil	myclass::func(int, long)
+@Sysinit@@InitExe$qqrpv	__fastcall Sysinit::__linkproc__ InitExe(void *)
+@Forms@TApplication@SetTitle$qqrx17System@AnsiString	__fastcall Forms::TApplication::SetTitle(const System::AnsiString)
+@Forms@TApplication@CreateForm$qqrp17System@TMetaClasspv	__fastcall Forms::TApplication::CreateForm(System::TMetaClass *, void *)
+@System@@LStrCatN$qqrv	__fastcall System::__linkproc__ LStrCatN()
+@System@DynArraySetLength$qqrrpvpvipi	__fastcall System::DynArraySetLength(void *&, void *, int, int *)
+@System@Variant@PutElement$qqrrx14System@Variantxixi	__fastcall System::Variant::PutElement(System::Variant&, const int, const int)
+@Windows@HwndMSWheel$qqrruit1t1rit4	__fastcall Windows::HwndMSWheel(unsigned int&, unsigned int&, unsigned int&, int&, int&)
+@Sysutils@TryStrToInt64$qqrx17System@AnsiStringrj	__fastcall Sysutils::TryStrToInt64(const System::AnsiString, long long&)
+@Sysutils@Supports$qqrpx14System@TObjectrx5_GUIDpv	__fastcall Sysutils::Supports(System::TObject *, _GUID&, void *)
+@Dbcommon@GetTableNameFromSQLEx$qqrx17System@WideString25Dbcommon@IDENTIFIEROption	__fastcall Dbcommon::GetTableNameFromSQLEx(const System::WideString, Dbcommon::IDENTIFIEROption)
+@Classes@TThread@$bcdtr$qqrv	__fastcall Classes::TThread::`class destructor`()
+@Timespan@TTimeSpan@$bcctr$qqrv	__fastcall Timespan::TTimeSpan::`class constructor`()
+@$xt$p27System@%AnsiStringT$us$i0$%	__tpdsc__ System::AnsiStringT<0> *
+@std@%vector$51boost@archive@detail@basic_iarchive_impl@cobject_id69std@%allocator$51boost@archive@detail@basic_iarchive_impl@cobject_id%%@$bsubs$qui	std::vector<boost::archive::detail::basic_iarchive_impl::cobject_id, std::allocator<boost::archive::detail::basic_iarchive_impl::cobject_id> >::operator [](unsigned int)
+@Adomcore_4_3@TDomNamedNodeMap@$bctr$qqrpx21Adomcore_4_3@TDomNodepx13Classes@TListx54System@%Set$t25Adomcore_4_3@TDomNodeType$iuc$0$iuc$11%xo	__fastcall Adomcore_4_3::TDomNamedNodeMap::TDomNamedNodeMap(Adomcore_4_3::TDomNode *, Classes::TList *, const System::Set<Adomcore_4_3::TDomNodeType, 0, 11>, const bool)
+@ATL@%CComObjectRootEx$25ATL@CComSingleThreadModel%@$bctr$qv	ATL::CComObjectRootEx<ATL::CComSingleThreadModel>::CComObjectRootEx<ATL::CComSingleThreadModel>()
+@Hellopas@HelloFromPas$qqsv	__stdcall Hellopas::HelloFromPas()
+@Unit@Class@Method$qqrv	__fastcall Unit::Class::Method()
+@Vcl@Tmsfncwebbrowser@TTMSFNCCustomWebBrowser@DoDevToolsMethodCompleted$qqr20System@UnicodeStringt1	__fastcall Vcl::Tmsfncwebbrowser::TTMSFNCCustomWebBrowser::DoDevToolsMethodCompleted(System::UnicodeString, System::UnicodeString)
+@System@Var	System::Var
+@Unit@Class@Field	Unit::Class::Field
+@foo$qv	foo()
+@foo$qi$i	int foo(int)
+@Classes@TThread@$bctr$qqrv	__fastcall Classes::TThread::TThread()
+@Classes@TThread@$bdtr$qqrv	__fastcall Classes::TThread::~TThread()
