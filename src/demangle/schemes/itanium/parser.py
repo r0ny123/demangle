@@ -78,6 +78,13 @@ _ALLOC_TOKEN = "__alloc_token_"
 #: brackets to sit in a comma-separated list.
 _COMMA_BINDING = PRECEDENCE["cm"]
 
+#: `Ts`, `Tu` and `Te` name a dependent type with the keyword the writer used.
+_ELABORATED_KEYWORDS = {"s": "struct", "u": "union", "e": "enum"}
+
+#: What a `<template-param>` index looks like where an elaborated specifier would have a
+#: name: `Ts0_` is the pack marker, `TsN...E` is `struct ...`.
+_INDEX_START = frozenset("0123456789_")
+
 
 #: The C escapes, by the value they stand for. Values below seven have none, and are
 #: written as a single octal digit -- `\0`, `\1`, `\6` -- which is what the reference does.
@@ -185,6 +192,7 @@ class ItaniumParser:
         "_ctor_dtor",
         "_depth",
         "_drop_return",
+        "_explicit_object",
         "_in_constraint",
         "_mangled",
         "_module_names",
@@ -256,6 +264,10 @@ class ItaniumParser:
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
         self._drop_return = False
+        # Whether the name just read declares its object parameter explicitly, `N H ...`.
+        # C++23 lets a member function name the object it is called on, and the
+        # reference marks that parameter `this`.
+        self._explicit_object = False
         # Where an unread conversion operator's type starts, and how many substitution
         # entries there were before it: `(position, mark)`, or None. See
         # `_reread_conversion`.
@@ -377,6 +389,7 @@ class ItaniumParser:
             # A data symbol: a name and nothing after it, and so no return type for a
             # conversion operator's name to have suppressed.
             self._drop_return = False
+            self._explicit_object = False
             return name
         return self.bare_function_type(name, quals, ref_qualifier, is_template)
 
@@ -388,6 +401,8 @@ class ItaniumParser:
         For a template they can, so it is part of the signature (5.1.5.3).
         """
         builder = self.builder
+        explicit_object = self._explicit_object
+        self._explicit_object = False
         was_naming = self._naming
         self._naming = False
         try:
@@ -400,6 +415,9 @@ class ItaniumParser:
             reader = self.reader
             while not reader.eof and reader.peek() not in ("E", "."):
                 parameter = self.type_()
+                if explicit_object and not parameters:
+                    explicit_object = False
+                    parameter = builder.raw("this " + builder.spell(parameter))
                 if not _drops_out(builder, parameter):
                     parameters.append(parameter)
         finally:
@@ -661,12 +679,19 @@ class ItaniumParser:
         """
         reader = self.reader
         reader.expect("N")
-        quals = self.cv_qualifiers()
+        # `N H` marks a C++23 explicit object member function. It stands where the
+        # qualifiers would be, and there are none: what would have qualified the
+        # implicit object parameter is written on the explicit one instead.
+        quals = ()
         ref_qualifier = ""
-        if reader.eat("R"):
-            ref_qualifier = "&"
-        elif reader.eat("O"):
-            ref_qualifier = "&&"
+        if reader.eat("H"):
+            self._explicit_object = True
+        else:
+            quals = self.cv_qualifiers()
+            if reader.eat("R"):
+                ref_qualifier = "&"
+            elif reader.eat("O"):
+                ref_qualifier = "&&"
 
         parts = []
         is_template = False
@@ -800,11 +825,14 @@ class ItaniumParser:
         outer_scope = self.targs.snapshot()
         self._naming = True
         outer_drop_return = self._drop_return
+        outer_explicit_object = self._explicit_object
         self._drop_return = not self.options.local_name_return_type
+        self._explicit_object = False
         try:
             outer = self.encoding()
         finally:
             self._drop_return = outer_drop_return
+            self._explicit_object = outer_explicit_object
 
         if reader.eat("Ed"):
             if reader.peek() != "_":
@@ -1431,6 +1459,16 @@ class ItaniumParser:
         if char == "M":
             return subs.remember(self.member_pointer_type(), "type")
 
+        if char == "T" and reader.peek(1) in _ELABORATED_KEYWORDS and reader.peek(2) not in _INDEX_START:
+            # <class-enum-type> ::= Ts <name> | Tu <name> | Te <name>
+            #
+            # A dependent type the writer had to spell out: `struct T::c`. `Ts` is told
+            # from the `Ts <index> _` pack marker by what follows -- an index is digits
+            # or `_`, and a name is neither.
+            keyword = _ELABORATED_KEYWORDS[reader.peek(1)]
+            reader.pos += 2
+            return subs.remember(builder.raw(f"{keyword} {builder.spell(self.class_enum_type())}"), "type")
+
         if char == "T":
             component = self.template_param()
             if reader.peek() == "I" and self._try_template_args:
@@ -2019,14 +2057,15 @@ class ItaniumParser:
         builder = self.builder
         reader.expect("L")
 
-        if reader.startswith("_Z"):
+        if reader.startswith("_Z") or reader.startswith("Z"):
             # A reference to a declared entity rather than a value (5.1.6.2): a complete
             # mangled name embedded in this one. It is parsed with *this* parser's state
             # rather than a fresh one, because the compiler writes substitutions inside
             # it that index the enclosing name's table -- Clang emits exactly that for
             # the address of a function template passed as a non-type argument, and a
             # fresh table makes every one of those unresolvable.
-            reader.expect("_Z")
+            reader.eat("_")
+            reader.expect("Z")
             was_naming = self._naming
             outer_scope = self.targs.snapshot()
             self._naming = True
@@ -2306,6 +2345,18 @@ class ItaniumParser:
             values.append(-value if negative else value)
         return _string_literal(values)
 
+    def _fold_pack(self):
+        """The pack half of a fold expression, bracketed and expanded.
+
+        A pack that is bound prints as its members -- `(1, 2, 3)` -- and one that is not
+        prints with the ellipsis that says it is still a pack: `(y...)`.
+        """
+        builder = self.builder
+        expanded = self.expression()
+        if builder.members(expanded) is not None:
+            return builder.expression("paren", ["(", expanded, ")"])
+        return builder.expression("paren", ["(", expanded, "...)"])
+
     def _element(self):
         """One member of a comma-separated list, bracketed if it is a comma expression.
 
@@ -2355,7 +2406,9 @@ class ItaniumParser:
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
             return builder.raw(self._spell_parameter(index))
-        if pair == "fL":
+        if pair == "fL" and reader.peek(2) in DIGITS:
+            # `fL <number> p ...` is a parameter of an enclosing function; `fL` followed
+            # by an operator code is a left fold with an initialiser, read below.
             reader.pos += 2
             reader.digits()
             reader.eat("p")
@@ -2584,6 +2637,45 @@ class ItaniumParser:
             self._precedence = UNARY_PRECEDENCE
             return builder.expression("unary", [PREFIX_OPERATORS[pair], operand])
 
+        if pair[:1] == "f" and pair[1:] in ("l", "r", "L", "R"):
+            # <expression> ::= fL <binary-operator> <expression> <expression>  # left, init
+            #                | fR <binary-operator> <expression> <expression>  # right, init
+            #                | fl <binary-operator> <expression>               # left
+            #                | fr <binary-operator> <expression>               # right
+            marker = pair[1]
+            reader.pos += 2
+            code = reader.peek2()
+            if code not in INFIX_OPERATORS:
+                raise ParseError(self._mangled, reader.pos, f"unknown fold operator {code!r}")
+            reader.pos += 2
+            left_fold = marker in ("l", "L")
+            initialiser = None
+            if marker == "L":
+                # The initialiser comes first for a left fold and second for a right one.
+                initialiser = self._operand(UNARY_PRECEDENCE)
+                pack = self._fold_pack()
+            elif marker == "R":
+                pack = self._fold_pack()
+                initialiser = self._operand(UNARY_PRECEDENCE)
+            else:
+                pack = self._fold_pack()
+            operator = f" {INFIX_OPERATORS[code]} "
+            # `[init op ]... [op pack]` for a left fold and `[pack op ]... [op init]`
+            # for a right one, with the halves an absent initialiser leaves out.
+            before = initialiser if left_fold else pack
+            after = pack if left_fold else initialiser
+            parts = ["("]
+            if before is not None:
+                parts.append(before)
+                parts.append(operator)
+            parts.append("...")
+            if after is not None:
+                parts.append(operator)
+                parts.append(after)
+            parts.append(")")
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("fold", parts)
+
         if pair in INFIX_OPERATORS:
             reader.pos += 2
             binding = PRECEDENCE.get(pair, 1)
@@ -2602,6 +2694,31 @@ class ItaniumParser:
             self._precedence = binding
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
             return builder.expression("binary", [left, gap, spelling, gap, right])
+
+        if reader.peek() == "u":
+            # <expression> ::= u <source-name> <template-arg>* E
+            #
+            # A vendor extended expression, spelled as a call: `u11__alignof__T_E` is
+            # `__alignof__(int)`. Clang emits it for the alignof and uuidof builtins.
+            reader.pos += 1
+            name = self.source_name()
+            arguments = []
+            if name == "__uuidof" and reader.peek() in ("t", "z"):
+                # The legacy `__uuidof` mangling puts a `t` or `z` where the grammar
+                # expects a <template-arg>, and takes exactly one operand with no
+                # closing `E`. Neither `__uuidof(short)` nor `__uuidof(...)` can be
+                # written, so the marker is not ambiguous with the <type> it looks like.
+                marker = reader.take()
+                arguments.append(self.type_() if marker == "t" else self.expression())
+            else:
+                while not reader.eat("E"):
+                    if reader.eof:
+                        raise ParseError(self._mangled, reader.pos, "unterminated vendor expression")
+                    argument, _ = self.template_arg()
+                    if argument is not None:
+                        arguments.append(argument)
+            self._precedence = POSTFIX_PRECEDENCE
+            return builder.expression("call", [builder.raw(name), "(", *_separated(arguments), ")"])
 
         # A bare name here is an <unresolved-name>: the grammar says so, and it matters
         # because a name in an expression creates no substitution entry while a <type>
