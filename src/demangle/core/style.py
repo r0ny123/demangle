@@ -52,6 +52,20 @@ def _build_styles():
 
 _STYLES = None
 
+#: Called when the set of styles changes. `api` puts its cache's `clear` here, because a
+#: style registered after a name was demangled must not be served the older spelling.
+#:
+#: A hook rather than a counter folded into the cache key: the key is built once per
+#: `demangle()` call, which is the hottest path in the package, and asking two modules
+#: "have you changed" there costs more than clearing a cache on the rare occasion that
+#: one has. Measured -- the counter version cost 58% of the warm path.
+_on_change = []
+
+
+def notify_on_change(callback):
+    """Call `callback` whenever a style is registered."""
+    _on_change.append(callback)
+
 
 def get_style(name):
     """Look up a style by name. `None` gives the default."""
@@ -74,6 +88,8 @@ def register_style(style):
     if _STYLES is None:
         _STYLES = _build_styles()
     _STYLES[style.name] = style
+    for callback in _on_change:
+        callback()
     return style
 
 

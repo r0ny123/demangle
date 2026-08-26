@@ -3,6 +3,7 @@
 import string
 from functools import lru_cache
 
+from ...core.limits import DEFAULT_LIMITS
 from .nodes import (
     Array,
     Declaration,
@@ -242,6 +243,16 @@ class _Structor:
         self.arguments = arguments
 
 
+class _LimitHit(Exception):
+    """A resource bound stopped the parse, rather than the grammar refusing the name.
+
+    Kept apart from `_Bail` so the caller can report it as what it is. Reported as "not
+    a decorated name this demangler can read" it was actively misleading: the name may
+    be perfectly well formed and simply larger than the caller allowed, and a tool
+    deciding whether to widen its `Limits` cannot tell the two apart from that message.
+    """
+
+
 class _Bail(Exception):
     """The name is not one this demangler fully understands."""
 
@@ -258,7 +269,7 @@ class _Demangler:
 
     MAX_DEPTH = 64
 
-    def __init__(self, mangled):
+    def __init__(self, mangled, limits=DEFAULT_LIMITS):
         self.text = mangled
         self.pos = 0
         self.name_backrefs = []
@@ -274,7 +285,12 @@ class _Demangler:
         self.at_argument = False
         self.member_cv = ""
         self.depth = 0
-        self.max_render = 8 * len(mangled) + 256
+        # The caller's bounds, narrowed by this scheme's own. `MAX_DEPTH` stays a
+        # ceiling whatever the caller asks for, because a level here costs several
+        # interpreter frames and letting a caller past it would make the answer depend
+        # on how deep its own stack already was. A caller may only tighten.
+        self.max_depth = min(limits.max_depth, self.MAX_DEPTH)
+        self.max_render = min(limits.max_output, 8 * len(mangled) + 256)
 
     def eof(self):
         return self.pos >= len(self.text)
@@ -646,8 +662,8 @@ class _Demangler:
 
     def type(self, quals=()):
         self.depth += 1
-        if self.depth > self.MAX_DEPTH:
-            raise _Bail
+        if self.depth > self.max_depth:
+            raise _LimitHit("recursion depth")
         at_argument, self.at_argument = self.at_argument, False
         try:
             return self.typeBody(quals, at_argument)
@@ -710,7 +726,7 @@ class _Demangler:
     def rendered(self, node, declarator=""):
         text = render(node, declarator)
         if len(text) > self.max_render:
-            raise _Bail
+            raise _LimitHit("output length")
         return text
 
     def dimension(self):
@@ -1284,7 +1300,7 @@ class _Demangler:
         return Declaration("".join(pieces), Name(name), signature, trailing)
 
 
-def parse_msvc_symbol(name):
+def parse_msvc_symbol(name, limits=DEFAULT_LIMITS):
     """Return the tree behind a decorated name, or None when it is not fully understood.
 
     None rather than an exception: which names this demangler declines is a property of
@@ -1296,18 +1312,34 @@ def parse_msvc_symbol(name):
     holding it would travel into the report as a symbol name. The identifier is copied into
     the answer verbatim, so testing the input is what keeps the answer clean.
     """
+    try:
+        return parse_msvc_symbol_strict(name, limits)
+    except _LimitHit:
+        # This entry point answers None for every name it cannot hand back a tree for,
+        # whatever the reason. `parse_msvc_symbol_strict` is where a caller that wants to
+        # know a *bound* was the reason goes.
+        return None
+
+
+def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS):
+    """As `parse_msvc_symbol`, but raises `_LimitHit` when a bound stopped the parse.
+
+    The plugin uses this one, so that `demangle_strict()` can report `LimitExceeded`
+    rather than claiming the name is unreadable -- it may be perfectly well formed and
+    merely larger than this caller allowed.
+    """
     if not name or not name.startswith("?"):
         return None
     if any(char < " " or char == "\x7f" for char in name):
         return None
     try:
-        return _Demangler(name).parse()
+        return _Demangler(name, limits).parse()
     except (_Bail, RecursionError):
         return None
 
 
 @lru_cache(maxsize=4096)
-def demangle_msvc_symbol(name):
+def demangle_msvc_symbol(name, limits=DEFAULT_LIMITS):
     """Return a readable C++ name, or the original when it is not fully understood.
 
     Cached, because this is the call a symbol table makes hundreds of thousands of times
@@ -1315,5 +1347,5 @@ def demangle_msvc_symbol(name):
     caller that wants structure asks for it directly and is not repeating itself the way
     a caller labelling symbols is.
     """
-    tree = parse_msvc_symbol(name)
+    tree = parse_msvc_symbol(name, limits)
     return name if tree is None else render(tree)

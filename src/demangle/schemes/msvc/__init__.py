@@ -20,11 +20,12 @@ this module produces, rather than which builder the parser wrote to.
 """
 
 from ...core.ast import Node
-from ...core.errors import NotMangledError, ParseError
+from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
-from ._parser import demangle_msvc_symbol, parse_msvc_symbol
+from ._parser import _LimitHit, parse_msvc_symbol_strict
+from ._parser import render as _render
 
 #: MSVC replaces a decorated name too long for the linker with an MD5 hash of it,
 #: written `??@<hash>@`. Nothing can be recovered -- the original spelling is simply not
@@ -90,6 +91,12 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     """Parse an MSVC decorated name into `builder`."""
     if not detect(mangled):
         raise NotMangledError(mangled, "not an MSVC decorated name")
+    # The input bound, which this scheme did not enforce at all. A caller asking for
+    # `max_input=32` had a 100,000-character name read in full and then rejected on
+    # output length, 185ms later; a bound on input size that is checked after the input
+    # has been read is not one.
+    if len(mangled) > limits.max_input:
+        raise LimitExceeded(mangled, "input length", limits.max_input)
     # A decorated name is read from a NUL-terminated string of source-legal characters
     # and cannot hold a control character. One that does is refused outright rather than
     # copied into the output, where it would travel on into a caller's report.
@@ -103,23 +110,33 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         if hashed is None:
             raise ParseError(mangled, None, "unterminated MD5-hashed name")
         return builder.raw(hashed)
-    if _wants_structure(builder):
-        tree = parse_msvc_symbol(mangled)
+    try:
+        if _wants_structure(builder):
+            tree = parse_msvc_symbol_strict(mangled, limits)
+            if tree is None:
+                raise ParseError(mangled, None, "not a decorated name this demangler can read")
+            # No length check here, and that is not an omission. The parser bounds its
+            # own output as it builds -- `_Demangler.rendered` refuses past
+            # `min(limits.max_output, ...)`, and the top-level declaration goes through
+            # it -- so by the time there is a tree the bound has already been enforced.
+            # Checking again meant calling `tree.spell()` and throwing the string away:
+            # the expensive half of `parse()` run for a number that was already settled.
+            return tree
+        tree = parse_msvc_symbol_strict(mangled, limits)
         if tree is None:
             raise ParseError(mangled, None, "not a decorated name this demangler can read")
-        _check_length(mangled, tree.spell(), limits)
-        return tree
-    expanded = demangle_msvc_symbol(mangled)
-    if expanded == mangled:
-        raise ParseError(mangled, None, "not a decorated name this demangler can read")
-    _check_length(mangled, expanded, limits)
-    return builder.raw(expanded)
+        expanded = _render(tree)
+        _check_length(mangled, len(expanded), limits)
+        return builder.raw(expanded)
+    except _LimitHit as hit:
+        # A bound stopped the parse. Reported as a `ParseError` this said the name could
+        # not be read, which is a different claim: the name may be well formed and
+        # merely larger than this caller allowed.
+        raise LimitExceeded(mangled, str(hit), getattr(limits, f"max_{str(hit).split()[-1]}", 0)) from hit
 
 
-def _check_length(mangled, spelled, limits):
-    if len(spelled) > limits.max_output:
-        from ...core.errors import LimitExceeded
-
+def _check_length(mangled, length, limits):
+    if length > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)
 
 

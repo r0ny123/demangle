@@ -32,6 +32,11 @@ _BUILTIN_MODULES = (
 ENTRY_POINT_GROUP = "demangle.languages"
 
 _lock = threading.RLock()
+
+#: Called when the set of plugins changes; see the note on `style._on_change`. Replacing
+#: a language and then being served the previous one's spelling out of a cache is the
+#: same defect as replacing a style and being served the old one.
+_on_change = []
 _plugins = {}
 _aliases = {}
 _ordered = None
@@ -47,6 +52,11 @@ _loaded = False
 _loading_thread = None
 
 
+def notify_on_change(callback):
+    """Call `callback` whenever a plugin is registered."""
+    _on_change.append(callback)
+
+
 def register(plugin):
     """Add a plugin to the registry, replacing any earlier one of the same name."""
     global _by_first, _ordered
@@ -58,6 +68,8 @@ def register(plugin):
             _aliases[alias] = plugin.name
         _ordered = None
         _by_first = None
+    for callback in _on_change:
+        callback()
     return plugin
 
 
