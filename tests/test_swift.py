@@ -59,6 +59,96 @@ class TestConformance:
                 assert spell(mangled) == expected
 
 
+class TestWhatSwiftAddedAfterThisWasWritten:
+    """The last eight vectors, each transcribed from the reference rather than guessed.
+
+    A grammar fitted to eight examples is how a demangler with no wrong spellings starts
+    having them, so every rule here comes from swiftlang/swift's own `Demangler.cpp` and
+    `NodePrinter.cpp`: what the mangling means, and what the reference prints for it.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `E` is `c` for a closure that escapes, and `C<n>` says the closure is the
+            # same one an earlier argument carried.
+            (
+                "$s3foo7closureSSTf1cC0_n",
+                "function signature specialization <Arg[0] = [Closure Propagated : closure, "
+                "Argument Types : [Swift.String], Arg[1] = [Same As Argument 0]> of foo",
+            ),
+            (
+                "$s3foo7closureSSTf1EC0_n",
+                "function signature specialization <Arg[0] = [Escaping Closure Propagated : closure, "
+                "Argument Types : [Swift.String], Arg[1] = [Same As Argument 0]> of foo",
+            ),
+            # `p` is a *run*: one argument, five propagated constants.
+            (
+                "$s3foo4main1SVs5Int32VSbTf3npSSi3Si0_n",
+                "function signature specialization <Arg[1] = [Constant Propagated Struct : main.S]"
+                "[Constant Propagated Struct : Swift.Int32][Constant Propagated Integer : 3]"
+                "[Constant Propagated Struct : Swift.Bool][Constant Propagated Integer : 0]> of foo",
+            ),
+        ],
+    )
+    def test_function_signature_specialization_kinds(self, mangled, expected):
+        assert demangle.demangle(mangled, language="swift") == expected
+
+    def test_arguments_the_optimiser_dropped(self):
+        """`Ttt1g5`: a `t` per dropped argument, then the specialisation's own letter.
+
+        The reference does not print them -- it says they carry nothing a reader wants --
+        so what this has to get right is consuming them.
+        """
+        name = "$s4test7genFuncyyx_q_tr0_lFSi_SbTtt1g5"
+        expected = "generic specialization <Swift.Int, Swift.Bool> of test.genFunc<A, B>(A, B) -> ()"
+        assert demangle.demangle(name, language="swift") == expected
+
+    def test_representation_changed_has_no_argument_list(self):
+        """`Tfr` says only how the function is represented, so there are no parameters."""
+        name = "$s4test4BaseCyxGAA1PA2aEP3fooyyFTWTfr9"
+        expected = (
+            "representation changed of protocol witness for test.P.foo() -> () "
+            "in conformance test.Base<A> : test.P in test"
+        )
+        assert demangle.demangle(name, language="swift") == expected
+
+    def test_the_embedded_swift_prefix(self):
+        """`$e` names an Embedded Swift symbol and is read exactly as `$s` is."""
+        embedded = "$e4test4BaseCyxGAA1PA2aEP3fooyyFTW"
+        current = "$s4test4BaseCyxGAA1PA2aEP3fooyyFTW"
+        assert demangle.demangle(embedded, language="swift") == demangle.demangle(current, language="swift")
+        assert demangle.demangle(embedded, language="swift").startswith("protocol witness for")
+
+    def test_a_macro_expansions_source_location(self):
+        """`MX436_4_` is line 437 column 5: both are indices, so both read one less."""
+        name = "$s9MacroUser0023macro_expandswift_elFCffMX436_4_23bitwidthNumberedStructsfMf_"
+        expected = (
+            "freestanding macro expansion #1 of bitwidthNumberedStructs "
+            "in module MacroUser file macro_expand.swift line 437 column 5"
+        )
+        assert demangle.demangle(name, language="swift") == expected
+
+    def test_a_pack_protocol_conformance(self):
+        """`HX` is one conformance per pack element, and `HC` writes the conditional
+        requirements the reference prints after `with conditional requirements:`."""
+        name = "$s23variadic_generic_opaque2G2VyAA2S1V_AA2S2VQPGAA1PHPAeA1QHPyHC_AgaJHPyHCHX_HC"
+        spelled = demangle.demangle(name, language="swift")
+        assert spelled.startswith("concrete protocol conformance variadic_generic_opaque.G2<Pack{")
+        assert " to protocol conformance ref (type's module) variadic_generic_opaque.P" in spelled
+        assert " with conditional requirements: (pack protocol conformance (" in spelled
+
+    def test_an_opaque_result_types_conformance(self):
+        name = "$s3use1xAA3OfPVy3lib1GVyAA1fQryFQOyQo_GAjE1PAAxAeKHD1_AIHO_HCg_Gvp"
+        expected = "use.x : use.OfP<lib.G<<<opaque return type of use.f() -> some>>.0>>"
+        assert demangle.demangle(name, language="swift") == expected
+
+    def test_the_attribute_the_reference_no_longer_writes_is_still_read(self):
+        """`m` was dropped upstream, and the shipped runtime still holds symbols with it."""
+        name = "$sSUss17FixedWidthIntegerRzrlEyxqd__cSzRd__lufCSu_SiTgm5"
+        assert demangle.demangle(name, language="swift").startswith("generic specialization <Swift.UInt, Swift.Int>")
+
+
 class TestAgainstSwiftsOwnCorpus:
     """`test/Demangle/Inputs/manglings.txt` from the swiftlang/swift repository.
 
@@ -72,11 +162,9 @@ class TestAgainstSwiftsOwnCorpus:
     this number to be re-read rather than left to rot.
     """
 
-    #: What matches today. The 8 that do not are Swift 6 and later: value generics,
-    #: `yield_once_2` accessors, variadic-generic conformances, several new
-    #: function-signature specialisation kinds, macro expansion locations, and the
-    #: `Builtin.ImplicitActor` and `Builtin.Borrow` types.
-    EXPECTED_EXACT = 505
+    #: Every vector. Nothing left to raise, and a drop is a regression whatever the
+    #: total -- which is what the two tests below are for.
+    EXPECTED_EXACT = 513
 
     def _score(self):
         return sum(1 for mangled, expected in UPSTREAM if demangle.demangle(mangled) == expected)

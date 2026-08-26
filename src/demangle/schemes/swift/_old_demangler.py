@@ -1171,14 +1171,14 @@ class OldDemangler:
             if name is None or not reader.next_if("_"):
                 return False
             parent.add(_param_kind(_PARAM_CONSTANT_PROP_FUNCTION))
-            parent.add(_param_payload(name.text))
+            parent.add(name)
             return True
         if reader.next_if("g"):
             name = self.demangle_identifier(depth + 1)
             if name is None or not reader.next_if("_"):
                 return False
             parent.add(_param_kind(_PARAM_CONSTANT_PROP_GLOBAL))
-            parent.add(_param_payload(name.text))
+            parent.add(name)
             return True
         for prefix, kind in (("i", _PARAM_CONSTANT_PROP_INTEGER), ("fl", _PARAM_CONSTANT_PROP_FLOAT)):
             if reader.next_if(prefix):
@@ -1201,8 +1201,10 @@ class OldDemangler:
             if text is None or not reader.next_if("_"):
                 return False
             parent.add(_param_kind(_PARAM_CONSTANT_PROP_STRING))
+            # The encoding is what the mangling wrote inline; the string itself was read
+            # as an identifier and stays one, which is how the printer tells them apart.
             parent.add(_param_payload("u8" if encoding == "0" else "u16"))
-            parent.add(_param_payload(text.text))
+            parent.add(text)
             return True
         return False
 
