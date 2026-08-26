@@ -68,13 +68,73 @@ _FIXED_POINT_INTEGERS = {
 }
 
 
+#: Clang's allocation-token prefix, `__alloc_token_[<digits>_]` before an ordinary
+#: mangled name. It marks the allocation call a hardened allocator should account to a
+#: particular type, and it carries no part of the name, so it is stripped and reported as
+#: a suffix -- which is what the reference prints.
+_ALLOC_TOKEN = "__alloc_token_"
+
+
+#: The C escapes, by the value they stand for. Values below seven have none, and are
+#: written as a single octal digit -- `\0`, `\1`, `\6` -- which is what the reference does.
+_STRING_ESCAPES = {7: "\\a", 8: "\\b", 9: "\\t", 10: "\\n", 11: "\\v", 12: "\\f", 13: "\\r"}
+
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def _string_literal(values):
+    r"""Spell a run of character values as a quoted string, the way the reference does.
+
+    A `char` array in a braced initialiser is a string: `tl A6_c Lc72E Lc101E ...` is
+    `"Hello"`, not `char [6]{(char)72, (char)101, ...}`. Both say the same thing and one
+    of them is readable.
+
+    Bytes above 127 are decoded as UTF-8 where they form it, so an emoji in a template
+    argument comes back as itself rather than as four escapes. Where they do not, each
+    byte is escaped on its own.
+
+    The one subtlety is `"\xF""ello"`. A hex escape has no length limit in C, so `\xF`
+    followed by `e` would read as `\xFe`; the reference closes the string and opens
+    another rather than emit something that means a different thing.
+    """
+    raw = bytes(value & 0xFF for value in values)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    out = []
+    previous_was_hex_escape = False
+    for character in text:
+        code = ord(character)
+        if character == '"':
+            piece = '\\"'
+        elif character == "\\":
+            piece = "\\\\"
+        elif code < 7:
+            piece = f"\\{code}"
+        elif code in _STRING_ESCAPES:
+            piece = _STRING_ESCAPES[code]
+        elif code < 0x20 or code == 0x7F:
+            piece = f"\\x{code:X}"
+        else:
+            piece = character
+        if previous_was_hex_escape and piece[:1] in _HEX_DIGITS:
+            out.append('""')
+        out.append(piece)
+        previous_was_hex_escape = piece.startswith("\\x")
+    return '"' + "".join(out) + '"'
+
+
 def detect(name):
     """Cheap test for "is this plausibly an Itanium mangled name".
 
     Runs on every symbol a caller passes, including the overwhelming majority that are
     not mangled at all, so it does no work beyond a prefix comparison.
     """
-    return name.startswith("_Z") or name.startswith("__Z") or name.startswith("_GLOBAL__")
+    return (
+        name.startswith("_Z") or name.startswith("__Z") or name.startswith("_GLOBAL__") or name.startswith(_ALLOC_TOKEN)
+    )
 
 
 #: `void` is four characters, and `builder.size` is O(1) on both builders. Filtering on
@@ -224,6 +284,22 @@ class ItaniumParser:
     def parse(self):
         """<mangled-name> ::= _Z <encoding> [. <vendor-specific suffix>]"""
         reader = self.reader
+        # `__alloc_token_[<digits>_]` wraps an ordinary mangled name. It says which
+        # allocation a hardened allocator should account to which type and names no part
+        # of the entity, so it comes off the front and goes back on as a suffix -- which
+        # is how the reference prints it. `__alloc_token_malloc` is not one: what follows
+        # has to be a mangled name in its own right, and `malloc` is not.
+        alloc_token = ""
+        if reader.startswith(_ALLOC_TOKEN):
+            after = reader.pos + len(_ALLOC_TOKEN)
+            digits = after
+            while digits < reader.length and reader.text[digits] in DIGITS:
+                digits += 1
+            if digits > after and digits < reader.length and reader.text[digits] == "_":
+                after = digits + 1
+            if reader.text.startswith(("_Z", "__Z"), after):
+                reader.pos = after
+                alloc_token = " (.alloc_token)"
         # A Mach-O symbol table carries the extra leading underscore the linker adds, so
         # `__Z...` and `_Z...` name the same thing. Strip it only when a second
         # underscore follows, or `_Z1fv` would lose the one the grammar needs.
@@ -245,6 +321,8 @@ class ItaniumParser:
             else:
                 raise ParseError(self._mangled, reader.pos, f"unconsumed input {suffix!r}")
 
+        if alloc_token:
+            result = self.builder.decorated(result, alloc_token)
         if self.builder.size(result) > self.limits.max_output:
             raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
         return result
@@ -321,6 +399,17 @@ class ItaniumParser:
         if code in SPECIAL_TYPE_NAMES:
             reader.pos += 2
             return self.builder.special(SPECIAL_TYPE_NAMES[code], self.type_())
+
+        if code == "TA":
+            # <special-name> ::= TA <template-arg>
+            #
+            # The object a class-type template argument is bound to. Its operand is a
+            # <template-arg> rather than a <type>, so `_ZTAX...E` carries an expression.
+            reader.pos += 2
+            argument, _ = self.template_arg()
+            if argument is None:
+                raise ParseError(self._mangled, reader.pos, "template parameter object without an argument")
+            return self.builder.special("template parameter object for ", argument)
 
         if code == "GR":
             # GR <object name> _  /  GR <object name> <seq-id> _
@@ -1164,9 +1253,18 @@ class ItaniumParser:
             reader.pos += 2
             if pair in ("DB", "DU"):
                 # _BitInt(N): DB <number> _ | DB <expression> _
+                #
+                # Recorded as a substitution candidate, unlike every other builtin.
+                # 5.1.10 excludes "<builtin-type> other than vendor extended types", and
+                # a `_BitInt` carries a width -- so there is something to refer back to,
+                # and the reference does refer back: `_Z6myfuncRDB8_S0_` is
+                # `myfunc(_BitInt(8)&, _BitInt(8)&)`, which needs `_BitInt(8)` to be
+                # entry zero. Without it every later back-reference in such a name was
+                # off by one, and the name was refused rather than mis-spelled -- which
+                # is the one mercy in it.
                 width = reader.digits() if reader.peek() in DIGITS else self.expression_text()
                 reader.expect("_")
-                return builder.raw(f"{EXTENDED_BUILTIN_TYPES[pair]}({width})")
+                return self.subs.remember(builder.raw(f"{EXTENDED_BUILTIN_TYPES[pair]}({width})"), "type")
             if pair == "Dn" and self.options.gnu_nullptr_spelling:
                 return builder.builtin("decltype(nullptr)")
             return builder.builtin(EXTENDED_BUILTIN_TYPES[pair])
@@ -1860,6 +1958,27 @@ class ItaniumParser:
             return f"{{parm#{int(index) + 2 if index else 1}}}"
         return f"fp{index}"
 
+    def _string_members(self):
+        """The spelled string for a run of `Lc<value>E` members, or None if it is not one.
+
+        Reads to the closing `E`. Returns None -- having consumed whatever it read, which
+        the caller undoes -- as soon as a member is anything but a character literal.
+        """
+        reader = self.reader
+        values = []
+        while not reader.eat("E"):
+            if reader.eof or not reader.startswith("Lc"):
+                return None
+            reader.pos += 2
+            negative = reader.eat("n")
+            if reader.peek() not in DIGITS:
+                return None
+            value = int(reader.digits())
+            if not reader.eat("E"):
+                return None
+            values.append(-value if negative else value)
+        return _string_literal(values)
+
     def _operand(self, binding):
         """One operand, bracketed only when it binds more loosely than its operator.
 
@@ -1973,12 +2092,33 @@ class ItaniumParser:
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated conversion")
                     arguments.append(self.expression())
-                return builder.expression("cast", ["(", kind, ")(", *_separated(arguments), ")"])
-            return builder.expression("cast", ["(", kind, ")(", self.expression(), ")"])
+                cast = builder.expression("cast", ["(", kind, ")(", *_separated(arguments), ")"])
+            else:
+                cast = builder.expression("cast", ["(", kind, ")(", self.expression(), ")"])
+            # A cast binds *looser* than a postfix operator, so it needs brackets when it
+            # is the object of one: `((A*)(0))->member`, not `(A*)(0)->member`, which
+            # reads as a cast of `0->member`. It looks parenthesised already -- the
+            # spelling puts brackets round the type and round the operand -- and leaving
+            # the precedence at primary on that account produced the second form, which
+            # is a different expression. The reference brackets it, and this is thirteen
+            # of the disagreements with libcxxabi's corpus.
+            self._precedence = UNARY_PRECEDENCE
+            return cast
 
         if pair == "tl":
             reader.pos += 2
             kind = self.type_()
+            spelled = builder.spell(kind)
+            if spelled.startswith("char [") or spelled == "char []":
+                # A `char` array in a braced initialiser is a string. Tried first and
+                # backed out of, because whether it *is* one is not decidable until the
+                # members have been read: they must all be character literals.
+                saved = reader.pos
+                literal = self._string_members()
+                if literal is not None:
+                    self._precedence = PRIMARY_PRECEDENCE
+                    return builder.expression("string_literal", [builder.raw(literal)])
+                reader.pos = saved
             members = []
             while not reader.eat("E"):
                 if reader.eof:
