@@ -176,6 +176,15 @@ where a C++ programmer would not: `SetFlat(const const bool)` for `qqrxo`, which
 `copy_args` emitting the qualifier and the type spelling it again. Free Pascal's
 `$`-delimited names are a different mangling and are read by the `pascal` scheme.
 
+Those export tables do not contain every construct the grammar has: they exercise 75% of
+the parser, and the missing quarter is C++Builder territory — pointer to member,
+`char16_t`, rvalue references, `__saveregs`, the special tables, the Delphi 4 template
+forms. `tests/conformance/delphi-constructs.txt` covers those with 53 hand-built names,
+corroborated against an independent implementation of the same unmangler rather than
+against TDUMP. That is **weaker evidence**, it is kept in its own file so it cannot be
+read as part of the row above, and its header says so. A C++Builder `.map` or TDUMP dump
+carrying these shapes would replace it with real evidence.
+
 ¶ Nim has no reference demangler either, and its mangling is not injective: `mangle`
 drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
 carries correctness is the same round-trip property Go uses — re-mangling what we read

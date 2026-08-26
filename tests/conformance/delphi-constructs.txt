@@ -1,0 +1,93 @@
+# Delphi/C++Builder constructs the real export tables never produce.
+#
+# WEAKER EVIDENCE THAN delphi-tdump.txt, AND DELIBERATELY SEPARATE FROM IT. Those names
+# are real exports scored against what Embarcadero's own unmangler printed. These are
+# hand-built: no TDUMP output exists for them here, because the BPL and C++Builder DLL
+# tables in that dump contain none of these shapes -- coverage of the parser from the
+# whole dump is 75%, and this file is what the missing quarter is made of. Pointer to
+# member, char16_t/char32_t, rvalue references, __saveregs, volatile placement, the
+# vtable flag bits, the __vdflg__ virtual-definition marker, the five special tables,
+# template arguments, the Delphi 4 template forms, and a structor with no qualifier.
+#
+# What stands behind the expected column is corroboration, not a reference: every row
+# was checked against the independent Ruby port of the same unmangler in
+# zed-0xff/unmangler (lib/unmangler/borland.rb, a different author's reading of the same
+# algorithm), and the two agree on all 53. Two documented deviations were normalised
+# away before comparing, because that port makes them and TDUMP does not: it collapses
+# the duplicated qualifier, and it hoists a calling convention to the front of a
+# __linkproc__ name. Scored against the dump, that port is 10,681/11,373 where this is
+# 11,363/11,363, so where the two disagreed the port was not treated as right.
+#
+# Agreement between two implementations of one algorithm is not the same as agreement
+# with the algorithm. A C++Builder .map or TDUMP dump carrying these shapes would
+# replace this file with real evidence, and should.
+#
+# Two shapes are refused by BOTH implementations and are in delphi-refusals.txt instead:
+# the multi-argument Delphi 4 forms `Set$uc$0$255` and `Set$t<type>$0$11`. The Ruby port
+# does read `Set$i$9` and `SmallString$i$9`, but only by way of the non-advancing no-op
+# in a type position that this parser refuses -- the same defect that let `@a$qx` loop
+# forever -- so those are not evidence of anything either.
+#
+# What is still unreached after this file, and why nothing was invented for it: template
+# *value* arguments (`<type ...>`, a bool spelled true/false, an `m` pointer-to-member
+# argument) in both the ordinary and the Delphi 4 form -- every shape tried was refused
+# by both implementations, so there was nothing to corroborate against; and the `huge`
+# and `fastthis` vtable flag bits, which need a name of the form `@Unit@TClass@<digit>`
+# that `_MSVC_FASTCALL` claims first. That last one is a deliberate trade: Microsoft's
+# `@name@4` is the far commoner symbol, and reading it as a Delphi vtable would be worse
+# than declining a vtable flag. Coverage of the parser: 75% from the dump alone, 83%
+# with this file, 91% from the whole suite.
+#
+@f$qM8TMyClassi	f(int TMyClass::*)
+@f$qM8TMyClassd	f(double TMyClass::*)
+@f$qM8TMyClasspi	f(int * TMyClass::*)
+@f$qM8TMyClassc	f(char TMyClass::*)
+@f$qM8TMyClassqi$v	f(void (TMyClass::*)(int))
+@f$qM8TMyClassqv$i	f(int (TMyClass::*)())
+@f$qpM8TMyClassi	f(int TMyClass::* *)
+@f$qxM8TMyClassi	f(const int TMyClass::* const)
+@f$qM8TMyClassxi	f(int TMyClass::* const)
+@f$qCs	f(char16_t)
+@f$qCi	f(char32_t)
+@f$qpCs	f(char16_t *)
+@f$qrCi	f(char32_t&)
+@f$qhi	f(int&&)
+@f$qh8TMyClass	f(TMyClass&&)
+@f$qhpi	f(int *&&)
+@f$qqgv	__saveregs f()
+@f$qqgi	__saveregs f(int)
+@f$qqrgi	__fastcall f(long double, int)
+@f$qwpi	f(volatile int * volatile)
+@f$qxwpi	f(const volatile int * const volatile)
+@f$qwri	f(volatile int& volatile)
+@f$qwi	f(volatile volatile int)
+@f$qxi	f(const const int)
+@f@#$cf$@bar	f::__vdflg__ bar
+@#$cf$@bar	__vdflg__ bar
+@_$FL$@TMyClass	__frndl__ TMyClass
+@_$FLA$@TMyClass	__frndl__ TMyClass
+@_$CH$@TMyClass	__chtbl__ TMyClass
+@_$CHA$@TMyClass	__chtbl__ TMyClass
+@_$DC$@TMyClass	__odtbl__ TMyClass
+@_$DCA$@TMyClass	__odtbl__ TMyClass
+@_$TL$@TMyClass	__thrwl__ TMyClass
+@_$TLA$@TMyClass	__thrwl__ TMyClass
+@_$EC$@TMyClass	__ectbl__ TMyClass
+@_$ECA$@TMyClass	__ectbl__ TMyClass
+@_$XX$@TMyClass	____ TMyClass
+@_$XXA$@TMyClass	____ TMyClass
+@%TFoo$ii%@f$qv	TFoo<int, int>::f()
+@%TFoo$i%@f$qv	TFoo<int>::f()
+@std@%vector$i%@f$qv	std::vector<int>::f()
+@%Set$ti%@f$qv	Set<int>::f()
+@%Set$ti%	Set<int>
+@%DynamicArray$ti%@f$qv	DynamicArray<int>::f()
+@%DynamicArray$ti%	DynamicArray<int>
+@%SmallString$ti%@f$qv	SmallString<int>::f()
+@%SmallString$ti%	SmallString<int>
+@%DelphiInterface$ti%@f$qv	DelphiInterface<int>::f()
+@%DelphiInterface$ti%	DelphiInterface<int>
+@$bctr$qqrv	__fastcall unknown()
+@$bdtr$qqrv	__fastcall ~unknown()
+@f$qynqi$v	f(void __closure(int))
+@f$qyfqi$v	f(void __closure(int))

@@ -72,6 +72,11 @@ OBJC_TOTAL, OBJC_EXACT = 2665, 2665
 #: refused, and are pinned in `tests/conformance/delphi-refusals.txt`.
 DELPHI_TOTAL, DELPHI_EXACT = 68, 68
 DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT = 11363, 11363
+#: The constructs those export tables never produce -- a quarter of the parser, which the
+#: whole dump leaves unexercised. Hand-built, and corroborated against an independent
+#: implementation rather than against TDUMP, which is weaker evidence and kept in its own
+#: file so it cannot be mistaken for the row above. See the file's header.
+DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT = 53, 53
 
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
@@ -227,6 +232,12 @@ def test_delphi_whole_export_tables_match_the_dump():
     """
     total, exact = _score("delphi-tdump.txt", "llvm")
     assert (total, exact) == (DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT)
+
+
+def test_delphi_constructs_absent_from_the_export_tables():
+    """See `DELPHI_CONSTRUCT_TOTAL` for what this does and does not establish."""
+    total, exact = _score("delphi-constructs.txt", "llvm")
+    assert (total, exact) == (DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT)
 
 
 def test_gnu_shortfalls_are_only_the_known_reference_divergences():
