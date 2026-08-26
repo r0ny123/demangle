@@ -37,6 +37,8 @@ of no use to a tool showing symbols beside those of other demanglers.
 
 import string
 
+from ...core.limits import DEFAULT_LIMITS
+
 __all__ = ["DSymbol", "parse_d_symbol"]
 
 #: A *set* of digits, not the string. `peek()` returns "" at the end of the name, and
@@ -160,6 +162,18 @@ def _escaped(code):
     return chr(code)
 
 
+class _Exhausted(Exception):
+    """The work budget ran out. Deliberately *not* a `DemangleFailure`.
+
+    This parser backtracks: `qualified_name` and `scope_type` both try a production and
+    catch `DemangleFailure` to mean "that was not it, put the cursor back". A budget that
+    reported exhaustion as a `DemangleFailure` was therefore caught by the very handlers
+    it was meant to stop -- the parse backtracked, tried again, and made no progress
+    towards finishing. Raising something those handlers do not catch is what makes the
+    budget a bound rather than a suggestion.
+    """
+
+
 class DemangleFailure(Exception):
     """This name is not one this parser can read."""
 
@@ -252,7 +266,12 @@ def _back_reference_number(reader):
 class _Parser:
     """Recursive descent over one mangled name."""
 
-    def __init__(self, text):
+    def __init__(
+        self,
+        text,
+        max_substitutions=DEFAULT_LIMITS.max_substitutions,
+        max_output=DEFAULT_LIMITS.max_output,
+    ):
         self.reader = _Reader(text)
         # A symbol used as a *template argument* is spelled without the qualifiers an
         # enclosing scope would carry: `FilterResult!(bitsSet(), ...)` where the same
@@ -260,6 +279,66 @@ class _Parser:
         # down because every production between the two is unaware of it.
         self._in_symbol_argument = False
         self._trailing_had_attributes = True
+        # How many back references this name may still follow. A `Q` names an earlier
+        # position and is read by parsing that position again, so following one can
+        # follow more -- and the work is exponential in how deeply they nest rather than
+        # linear in the length of the name.
+        #
+        # Memoising the result (below) helps and is not enough: a back reference into
+        # the middle of a qualified name re-reads the *sequence* from there, and the
+        # `_in_symbol_argument` state that a template argument flips changes what a
+        # position means, so the same position is genuinely read more than once.
+        #
+        # So there is also a budget, proportional to the length of the name, and a name
+        # that exhausts it is refused. That is the right answer as well as the cheap one:
+        # `c++filt --format=dlang` refuses this name too, and libiberty ships it as a
+        # regression vector -- `std.format.formattedWrite` out of a real D binary, 2,695
+        # characters carrying 441 `Q`s. An 800-character prefix of it took over 25
+        # seconds here; the whole name never finished.
+        #
+        # The budget is `max_substitutions`, which is exactly what that bound is for and
+        # which this scheme was not consulting -- only Itanium and Delphi were. It does
+        # not scale with the length of the name on purpose: the work a follow does grows
+        # with the name too, so a length-proportional budget still grows super-linearly.
+        self._follows = max_substitutions
+        # A budget on *productions entered*, which is the only thing that bounds this
+        # parser reliably.
+        #
+        # It backtracks in two places and reads speculatively in a third, so a bound on
+        # any one mechanism can be sidestepped by another: bounding back references left
+        # the speculative lookahead free to explode, and memoising the lookahead left the
+        # back references free. Counting the work itself is indifferent to which path is
+        # taken.
+        #
+        # Sixty-four times the length of the name: a well-formed symbol needs a number of
+        # productions linear in its length, so this is two orders of magnitude of
+        # headroom for anything a compiler emits, and still finite for a name whose
+        # back references feed on each other.
+        self._work = 64 * len(text) + 4096
+        # The output bound, consulted *while* building rather than on the finished
+        # string. This is what the profile actually said: on a real 2,695-character D
+        # symbol out of `std.format.formattedWrite`, 18 of 35 seconds were inside 4,047
+        # calls to `str.join` -- four milliseconds each, because the pieces being joined
+        # were enormous. Only three hundred thousand function calls in total, so the
+        # parser was not looping; it was assembling a string far larger than any caller
+        # would accept, and the check on `len(symbol.text)` at the end could not know
+        # that until it was too late to matter.
+        self._max_output = max_output
+        # What a back reference at a given position resolved to, keyed by the position,
+        # the production read there and the one piece of parser state that can change
+        # the answer.
+        #
+        # Without this, following a back reference re-parsed the region it points at --
+        # and that region contains back references of its own, so the work was
+        # exponential in how deeply they nest. It is not a theoretical shape: this is
+        # `std.format.formattedWrite` out of a real D binary, 2,695 characters with 441
+        # `Q`s in it, which libiberty ships as a regression vector of its own. An
+        # 800-character *prefix* of it took over 25 seconds; the whole name did not
+        # finish. A back reference names a position, the grammar at a position is
+        # deterministic, so reading it twice can only ever produce the same answer.
+        self._resolved = {}
+        # Whether a whole symbol name starts at a position -- see `_symbol_name_follows`.
+        self._starts_symbol = {}
 
     # -- entry -----------------------------------------------------------------
 
@@ -321,6 +400,9 @@ class _Parser:
         return parts
 
     def symbol_name(self):
+        work = self._work = self._work - 1
+        if work < 0:
+            raise _Exhausted
         reader = self.reader
         if reader.peek() == "Q":
             return self.identifier_back_reference()
@@ -351,7 +433,7 @@ class _Parser:
                 raise DemangleFailure("unterminated template instance")
             reader.eat("H")
             arguments.append(self.template_argument())
-        return f"{name}!({', '.join(arguments)})"
+        return self._cap(f"{name}!({', '.join(arguments)})")
 
     def template_argument(self):
         reader = self.reader
@@ -437,6 +519,46 @@ class _Parser:
             raise DemangleFailure(f"template value form {char!r} not modelled")
         raise DemangleFailure(f"unknown template value {char!r}")
 
+    def _cap(self, text):
+        """Return `text`, unless it is already larger than the whole answer may be.
+
+        Applied to what the recursive productions hand back, because a component larger
+        than `max_output` guarantees a result larger than `max_output` -- and the point
+        of saying so here rather than at the end is that here it has not yet been joined
+        into something larger still.
+        """
+        if len(text) > self._max_output:
+            raise _Exhausted
+        return text
+
+    def _symbol_name_follows(self, at):
+        """Whether a whole symbol name starts at `at`. Memoised by position.
+
+        The test is "read one and see", which means a full speculative parse whose result
+        is then thrown away. `scope_type` runs it for every component of the path, and
+        the region it reads contains scopes that run it again -- so the same position was
+        read over and over, and a real 2,695-character D symbol out of
+        `std.format.formattedWrite` took seconds rather than milliseconds.
+
+        Whether a symbol name starts at a position is a property of the position, so
+        asking twice can only get the same answer. The one piece of parser state that
+        changes what a position means is in the key.
+        """
+        key = (at, self._in_symbol_argument)
+        answer = self._starts_symbol.get(key)
+        if answer is None:
+            reader = self.reader
+            saved, saved_depth = reader.pos, reader.depth
+            try:
+                self.symbol_name()
+                answer = True
+            except DemangleFailure:
+                answer = False
+            finally:
+                reader.pos, reader.depth = saved, saved_depth
+            self._starts_symbol[key] = answer
+        return answer
+
     def identifier_back_reference(self):
         reader = self.reader
         at = reader.pos
@@ -446,6 +568,13 @@ class _Parser:
         target = at - distance
         if distance <= 0 or target < 0 or target >= at:
             raise DemangleFailure("back reference outside the name")
+        self._follows -= 1
+        if self._follows < 0:
+            raise _Exhausted
+        key = (target, "identifier", self._in_symbol_argument)
+        found = self._resolved.get(key)
+        if found is not None:
+            return found[0]
         saved = reader.pos
         reader.pos = target
         try:
@@ -453,15 +582,20 @@ class _Parser:
                 raise DemangleFailure("back reference recursion")
             reader.depth += 1
             try:
-                return self.symbol_name()
+                resolved = self.symbol_name()
             finally:
                 reader.depth -= 1
         finally:
             reader.pos = saved
+        self._resolved[key] = (resolved,)
+        return resolved
 
     # -- types -----------------------------------------------------------------
 
     def scope_type(self):
+        work = self._work = self._work - 1
+        if work < 0:
+            raise _Exhausted
         """Read this component's own function type if it is a scope, and spell it.
 
         Nothing marks a scope, so the only way to tell is to read a function type and see
@@ -488,7 +622,8 @@ class _Parser:
             if not self._opens_symbol_name():
                 raise DemangleFailure("not a scope")
             after = reader.pos
-            self.symbol_name()
+            if not self._symbol_name_follows(after):
+                raise DemangleFailure("not a scope")
             reader.pos = after
         except DemangleFailure:
             reader.pos, reader.depth = saved, saved_depth
@@ -497,7 +632,7 @@ class _Parser:
         spelled = f"({', '.join(parameters)})"
         trailing = "" if self._in_symbol_argument else " ".join(modifiers)
         self._last_scope_had_attributes = bool(attributes)
-        return f"{spelled} {trailing}" if trailing else spelled
+        return self._cap(f"{spelled} {trailing}" if trailing else spelled)
 
     def type_modifiers(self):
         found = []
@@ -607,6 +742,9 @@ class _Parser:
         return f"{sign}{value}{INTEGER_SUFFIX.get(kind, '') if suffix else ''}"
 
     def type_(self):
+        work = self._work = self._work - 1
+        if work < 0:
+            raise _Exhausted
         reader = self.reader
         if reader.depth > _Reader.MAX_DEPTH:
             raise DemangleFailure("type nesting too deep")
@@ -641,25 +779,25 @@ class _Parser:
             return BASIC_TYPES[char]
         if char == "A":
             reader.pos += 1
-            return f"{self.type_()}[]"
+            return self._cap(f"{self.type_()}[]")
         if char == "G":
             reader.pos += 1
             count = reader.number()
-            return f"{self.type_()}[{count}]"
+            return self._cap(f"{self.type_()}[{count}]")
         if char == "H":
             reader.pos += 1
             key = self.type_()
-            return f"{self.type_()}[{key}]"
+            return self._cap(f"{self.type_()}[{key}]")
         if char == "P":
             reader.pos += 1
             pointee = self.type_()
             # D spells a pointer to a function as `int(char[]) function`, not with a `*`:
             # the word *is* the pointer. Adding one gives `... function*`, which is not a
             # type anyone writes.
-            return pointee if pointee.endswith(" function") else f"{pointee}*"
+            return self._cap(pointee if pointee.endswith(" function") else f"{pointee}*")
         if char in ("C", "S", "E", "T"):
             reader.pos += 1
-            return ".".join(self.qualified_name())
+            return self._cap(".".join(self.qualified_name()))
         if char == "D":
             reader.pos += 1
             modifiers = self.type_modifiers()
@@ -669,21 +807,21 @@ class _Parser:
                 inner = self.type_back_reference()
                 trailing = " ".join(modifiers)
                 spelled = inner.removesuffix(" function")
-                return f"{spelled} {trailing} delegate" if trailing else f"{spelled} delegate"
+                return self._cap(f"{spelled} {trailing} delegate" if trailing else f"{spelled} delegate")
             convention, attributes, parameters, returns = self.function_type()
             words = " ".join([*attributes, *modifiers])
             spelled = f"{convention}{returns}({', '.join(parameters)})"
-            return f"{spelled} {words} delegate" if words else f"{spelled} delegate"
+            return self._cap(f"{spelled} {words} delegate" if words else f"{spelled} delegate")
         if char in CALLING_CONVENTIONS:
             convention, attributes, parameters, returns = self.function_type()
             words = " ".join(attributes)
             spelled = f"{convention}{returns}({', '.join(parameters)})"
-            return f"{spelled} {words} function" if words else f"{spelled} function"
+            return self._cap(f"{spelled} {words} function" if words else f"{spelled} function")
         if char == "B":
             # A tuple: `B <Number> <Type>...`
             reader.pos += 1
             count = reader.number()
-            return f"({', '.join(self.type_() for _ in range(count))})"
+            return self._cap(f"({', '.join(self.type_() for _ in range(count))})")
         raise DemangleFailure(f"unknown type code {char!r}")
 
     def type_back_reference(self):
@@ -695,6 +833,13 @@ class _Parser:
         target = at - distance
         if distance <= 0 or target < 0 or target >= at:
             raise DemangleFailure("type back reference outside the name")
+        self._follows -= 1
+        if self._follows < 0:
+            raise _Exhausted
+        key = (target, "type", self._in_symbol_argument)
+        found = self._resolved.get(key)
+        if found is not None:
+            return found[0]
         saved = reader.pos
         reader.pos = target
         try:
@@ -702,11 +847,13 @@ class _Parser:
                 raise DemangleFailure("back reference recursion")
             reader.depth += 1
             try:
-                return self.type_()
+                resolved = self.type_()
             finally:
                 reader.depth -= 1
         finally:
             reader.pos = saved
+        self._resolved[key] = (resolved,)
+        return resolved
 
     # -- what follows the path -------------------------------------------------
 
@@ -737,9 +884,13 @@ class _Parser:
         return ""
 
 
-def parse_d_symbol(symbol):
+def parse_d_symbol(
+    symbol,
+    max_substitutions=DEFAULT_LIMITS.max_substitutions,
+    max_output=DEFAULT_LIMITS.max_output,
+):
     """Parse `symbol`, returning a `DSymbol`, or raise `DemangleFailure`."""
-    parser = _Parser(symbol)
+    parser = _Parser(symbol, max_substitutions, max_output)
     text = parser.parse()
     if parser.reader.pos != parser.reader.end:
         raise DemangleFailure("unconsumed input")
