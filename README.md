@@ -137,7 +137,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
-| Delphi/C++Builder, against Embarcadero's unmangler ◊ | `unmangle.c` / TDUMP | **79 / 79** |
+| Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
 
 § Free Pascal ships no demangler either. The property is re-assembly — the parts this
 splits out, rejoined with the compiler's own separators, must reproduce the symbol — and
@@ -166,12 +166,15 @@ the declaration are listed in `tests/conformance/objc-lossy.txt` rather than rou
 
 ◊ Delphi and C++Builder share one mangling, `@Unit@Class@Method$qqrv`. There is no Delphi
 compiler on the platforms this is developed on, so the grammar is Embarcadero's own
-`unmangle.c` — the code TDUMP, the linker and the debugger run — and the expected column
-is the spelling that unmangler prints. The checked-in corpus is a sample; the whole-table
-row is every `@`-prefixed export in a TDUMP dump of real BPL and C++Builder DLL tables
-(11,286 names: 11,276 exact, 10 MSVC `@name@N` decorations refused). Microsoft's 32-bit
-`__fastcall` C decoration `@name@N` is refused, because it is not this scheme. Free
-Pascal's `$`-delimited names are a different mangling and are read by the `pascal` scheme.
+`unmangle.c` — the code TDUMP, the linker and the debugger run. The reference is a
+recorded one: `tests/conformance/delphi-tdump.txt` is a dump of the real `tdump.exe
+-q -um` over the export tables of real BPLs and C++Builder DLLs, and its expected column
+is what that unmangler printed. All 11,363 readable entries are replayed in CI, and the
+10 MSVC `@name@N` decorations sitting in the same tables are refused — Microsoft's 32-bit
+`__fastcall` C decoration is not this scheme. That includes what the unmangler prints
+where a C++ programmer would not: `SetFlat(const const bool)` for `qqrxo`, which is
+`copy_args` emitting the qualifier and the type spelling it again. Free Pascal's
+`$`-delimited names are a different mangling and are read by the `pascal` scheme.
 
 ¶ Nim has no reference demangler either, and its mangling is not injective: `mangle`
 drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
@@ -216,7 +219,7 @@ Run live against the reference, not replayed.
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
-| Delphi/C++Builder BPL and DLL export tables ◊ | 11,276 | **100%** |
+| Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
 About 460,000 real symbols, all exact.
 

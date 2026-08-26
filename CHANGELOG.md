@@ -120,13 +120,18 @@ All notable changes to this project are recorded here. The format follows
   `unmangle.c` -- the unmangler TDUMP, the linker and the debugger run -- because there
   is no Delphi compiler on the platforms this package is developed on. Spelling is what
   that unmangler prints, including C++ `::`. Microsoft's 32-bit `__fastcall` C decoration
-  `@name@N` is refused. Checked against that unmangler's own vectors and against a TDUMP
-  dump of real BPL and C++Builder DLL export tables: 11,276 of 11,276 Delphi names exact,
-  with the 10 MSVC `@name@N` decorations sitting next to them refused. Two defects showed
-  up only on that dump -- conversion operators (`$o`) consumed the following `$` so `qv`
-  looked like junk in the name, and a method that already led with `__fastcall` stole the
-  same word from a callback parameter -- and both are fixed. The checked-in corpus is a
-  sample of each construct from that dump.
+  `@name@N` is refused. Checked against that unmangler's own vectors and against a dump of
+  the real `tdump.exe -q -um` over the export tables of real BPLs and C++Builder DLLs:
+  11,363 of 11,363 Delphi names exact, with the 10 MSVC `@name@N` decorations sitting next
+  to them refused. That dump is checked in as `tests/conformance/delphi-tdump.txt` and
+  replayed in CI, with its expected column being the reference's output rather than this
+  library's own reading. Several defects showed up only against it: conversion operators
+  (`$o`) consumed the following `$` so `qv` looked like junk in the name; the calling
+  convention was inserted in front of the whole name rather than after the `__linkproc__`
+  marker, which is where the unmangler puts it; and two rewrites of the finished spelling
+  -- collapsing the duplicated qualifier the unmangler really does print, and hoisting
+  `__fastcall` to the front afterwards -- moved 692 real exports away from the reference
+  and are gone. The spelling is now whatever the transcription produces, unedited.
 
 - **Go symbol names.** A new scheme, registered like any other -- `core` was not touched.
   Go escapes a `.` that falls after the last `/` of a package path, so
