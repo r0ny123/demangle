@@ -85,6 +85,11 @@ _ELABORATED_KEYWORDS = {"s": "struct", "u": "union", "e": "enum"}
 #: name: `Ts0_` is the pack marker, `TsN...E` is `struct ...`.
 _INDEX_START = frozenset("0123456789_")
 
+#: Clang's vendor qualifier for "conforms to this Objective-C protocol", and the type
+#: that a pointer to it is spelled `id<...>` rather than `objc_object<...>*`.
+_OBJC_PROTOCOL = "objcproto"
+_OBJC_OBJECT = "objc_object"
+
 
 #: The C escapes, by the value they stand for. Values below seven have none, and are
 #: written as a single octal digit -- `\0`, `\1`, `\6` -- which is what the reference does.
@@ -198,6 +203,8 @@ class ItaniumParser:
         "_module_names",
         "_modules",
         "_naming",
+        "_objc_id_ids",
+        "_objc_ids",
         "_pack_arity",
         "_pack_ids",
         "_pack_index",
@@ -260,6 +267,11 @@ class ItaniumParser:
         # follows it rather than being a component of its own.
         self._modules = []
         self._module_names = {}
+        # Handles for a protocol-qualified `objc_object`, which a pointer collapses into
+        # `id<...>`. Tracked by identity with a strong reference beside it, the same way
+        # packs and module names are.
+        self._objc_ids = []
+        self._objc_id_ids = set()
         # Set for exactly one encoding: the function enclosing a local name, whose
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
@@ -1484,7 +1496,12 @@ class ItaniumParser:
 
         if char == "P":
             reader.pos += 1
-            return subs.remember(builder.pointer(self.type_()), "type")
+            inner = self.type_()
+            if id(inner) in self._objc_id_ids:
+                # `objc_object` conforming to a protocol, pointed to, is `id<A>` -- the
+                # pointer is part of what `id` means, so it is not written again.
+                return subs.remember(inner, "type")
+            return subs.remember(builder.pointer(inner), "type")
         if char == "R":
             reader.pos += 1
             return subs.remember(builder.reference(self.type_()), "type")
@@ -1509,6 +1526,28 @@ class ItaniumParser:
                 rendered = ", ".join(builder.spell(argument) for argument in arguments)
                 qualifier += f"<{rendered}>"
             inner = self.type_()
+            if qualifier.startswith(_OBJC_PROTOCOL):
+                # `U <n>objcproto<protocol> <type>` is an Objective-C type conforming to
+                # a protocol, and the references write it in angle brackets:
+                # `NSArray<A>`, not `NSArray objcproto1A`. A qualified `objc_object` is
+                # written `id<A>` once a pointer is applied to it -- and only then, so
+                # the rewrite is recorded here and done in the `P` branch.
+                # The protocol is itself a length-prefixed name inside the qualifier's:
+                # `11objcproto1A` carries `1A`, which is `A`.
+                protocol = qualifier[len(_OBJC_PROTOCOL) :]
+                digits = 0
+                while digits < len(protocol) and protocol[digits] in DIGITS:
+                    digits += 1
+                if digits and int(protocol[:digits]) == len(protocol) - digits:
+                    protocol = protocol[digits:]
+                spelled = builder.spell(inner)
+                if spelled == _OBJC_OBJECT:
+                    handle = builder.raw(f"id<{protocol}>")
+                    self._objc_ids.append(handle)
+                    self._objc_id_ids.add(id(handle))
+                else:
+                    handle = builder.raw(f"{spelled}<{protocol}>")
+                return subs.remember(handle, "type")
             return subs.remember(builder.vendor_qualify(inner, qualifier), "type")
 
         if char == "F":
@@ -1690,6 +1729,14 @@ class ItaniumParser:
             # No pack in scope: this is an unexpanded expansion, and the ellipsis is the
             # whole content of it.
             return self.subs.remember(builder.pack(inner), "type")
+
+        if pair in ("Dk", "DK"):
+            # <type> ::= Dk <type-constraint>   # `C auto`
+            #          | DK <type-constraint>   # `C decltype(auto)`
+            placeholder = "auto" if pair == "Dk" else "decltype(auto)"
+            reader.pos += 2
+            constraint = builder.spell(self.name()[0])
+            return self.subs.remember(builder.raw(f"{constraint} {placeholder}"), "type")
 
         if pair == "Dy":
             # <type> ::= Dy <pack> <index> -- C++26 pack indexing.
@@ -1883,17 +1930,17 @@ class ItaniumParser:
 
     # -- 5.1.5.10 template arguments -------------------------------------------
 
-    def template_param_decl(self):
+    def template_param_decl(self, ellipsis=""):
         """Guarded wrapper: `Tp` and `Tt` both recurse into this production."""
         depth = self._depth = self._depth + 1
         if depth > self.limits.max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
         try:
-            return self._template_param_decl()
+            return self._template_param_decl(ellipsis)
         finally:
             self._depth = depth - 1
 
-    def _template_param_decl(self):
+    def _template_param_decl(self, ellipsis=""):
         """A declared template parameter.
 
         ```
@@ -1917,19 +1964,29 @@ class ItaniumParser:
 
         if pair == "Ty":
             binding = self._parameter_name("T")
-            return binding, f"typename {binding}"
+            return binding, f"typename {ellipsis}{binding}"
         if pair == "Tk":
             # A constrained parameter: the concept it must satisfy, then the parameter.
-            concept = self.builder.spell(self.name()[0])
+            # The concept's own arguments are constraint operands, and the reference
+            # spells a parameter inside one by its own mangled name.
+            outer = self._in_constraint
+            self._in_constraint = True
+            try:
+                concept = self.builder.spell(self.name()[0])
+            finally:
+                self._in_constraint = outer
             binding = self._parameter_name("T")
-            return binding, f"{concept} {binding}"
+            return binding, f"{concept} {ellipsis}{binding}"
         if pair == "Tn":
-            kind = self.builder.spell(self.type_())
+            # The name goes where a declarator goes, so a parameter of array-of-pointer
+            # type is `$T0 (*$N) [3]` and not `$T0 (*) [3] $N`.
+            kind = self.type_()
             binding = self._parameter_name("N")
-            return binding, f"{kind} {binding}"
+            return binding, self.builder.spell(kind, f"{ellipsis}{binding}")
         if pair == "Tp":
-            binding, declaration = self.template_param_decl()
-            return binding, f"{declaration}..."
+            # A pack. The ellipsis goes immediately before the name, wherever the name
+            # ends up: `$T0 (*...$N0) [3]`.
+            return self.template_param_decl("...")
         if pair == "Tt":
             inner = []
             while not reader.eat("E"):
@@ -1944,7 +2001,7 @@ class ItaniumParser:
                     break
                 inner.append(self.template_param_decl()[1])
             binding = self._parameter_name("TT")
-            return binding, f"template<{', '.join(inner)}> typename {binding}"
+            return binding, f"template<{', '.join(inner)}> typename {ellipsis}{binding}"
         raise ParseError(self._mangled, reader.pos, f"unknown template parameter declaration {pair!r}")
 
     def _parameter_name(self, kind):
