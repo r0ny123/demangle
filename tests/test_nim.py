@@ -255,3 +255,34 @@ class TestTree:
         tree = demangle.parse("bitincl__pureZcollectionsZintsets_u387")
         assert [node.text for node in tree.find("name")] == ["bitincl"]
         assert [node.text for node in tree.find("path")] == ["pure/collections/intsets"]
+
+
+class TestForeignSymbolsAreDeclined:
+    """Nim recognises names by shape, and other compilers produce the same shape.
+
+    OCaml's is the collision that matters: `caml<Module>__<name>_<id>` splits at the
+    last `__` into a name, an all-lower-case module and a numeric id, and *re-mangles to
+    exactly the symbol it came from* -- so the round-trip property this scheme relies on
+    says yes. `camlStdlib__Int__compare_296` read as `compare.camlStdlib__Int`.
+
+    Every symbol the OCaml compiler emits carries the prefix and no Nim symbol does, so
+    declining it costs nothing a caller wanted.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "camlStdlib__Int__compare_296",
+            "camlStdlib__List__map_310",
+            "camlDune__exe__Main__entry_42",
+            "caml_apply2",
+        ],
+    )
+    def test_an_ocaml_symbol_is_not_claimed(self, mangled):
+        assert demangle.detect(mangled) is None
+        assert demangle.demangle(mangled) == mangled
+
+    def test_a_caller_who_knows_can_still_ask(self):
+        """The refusal is in detection, not in the grammar."""
+        with pytest.raises(demangle.DemanglingError):
+            demangle.demangle_strict("caml_apply2", language="nim")

@@ -485,6 +485,29 @@ def _sized(node, size):
     return node
 
 
+#: An empty pack of concrete arguments, which is what a declarator applied to one
+#: becomes. Built once: it carries no state and every occurrence means the same thing.
+_EMPTY_PACK = _sized(ParameterPack(()), 0)
+
+
+def _distributes_to_nothing(inner):
+    """Whether applying a declarator to `inner` yields nothing at all.
+
+    A declarator applied to a pack applies to every member -- `Dp O T_` over three
+    arguments is three rvalue references -- so over *no* members it is no references,
+    and the result renders to nothing. `SpellingBuilder` has always done this, because
+    its `_wrap` distributes through `pack_of` and `pack_of(())` is empty.
+
+    This builder did not, and the difference was visible. It reported a size for a
+    parameter that rendered to nothing, and `size` is documented as an over-estimate --
+    so the parser, asking "did this parameter drop out entirely" the cheap way, was told
+    no and left a separator behind: `f(std::launch, std::function<void ()>&&, )`.
+    Mirroring the distribution here makes `size == 0` an exact answer to that question
+    for the one shape where it was not.
+    """
+    return type(inner) is ParameterPack and not inner.members
+
+
 def _sizes(nodes):
     return sum(node.size for node in nodes)
 
@@ -561,22 +584,34 @@ class AstBuilder(Builder):
     def qualify(self, inner, qualifiers):
         if not qualifiers:
             return inner
+        if _distributes_to_nothing(inner):
+            return _EMPTY_PACK
         width = sum(len(q) + 1 for q in qualifiers)
         return _sized(Qualify(inner, qualifiers), inner.size + width)
 
     def pointer(self, inner):
+        if _distributes_to_nothing(inner):
+            return _EMPTY_PACK
         return _sized(Pointer(inner), inner.size + 3)
 
     def reference(self, inner):
+        if _distributes_to_nothing(inner):
+            return _EMPTY_PACK
         return _sized(Reference(inner), inner.size + 3)
 
     def rvalue_reference(self, inner):
+        if _distributes_to_nothing(inner):
+            return _EMPTY_PACK
         return _sized(RValueReference(inner), inner.size + 4)
 
     def member_pointer(self, owner, inner):
+        if _distributes_to_nothing(inner):
+            return _EMPTY_PACK
         return _sized(MemberPointer(owner, inner), owner.size + inner.size + 5)
 
     def array(self, inner, dimension):
+        if _distributes_to_nothing(inner):
+            return _EMPTY_PACK
         return _sized(Array(inner, dimension), inner.size + len(dimension) + 4)
 
     def function(self, returns, parameters, suffix="", name=None):
@@ -591,6 +626,8 @@ class AstBuilder(Builder):
         return _sized(ParameterPack(members), _sizes(members) + 2 * len(members))
 
     def vendor_qualify(self, inner, qualifier):
+        if _distributes_to_nothing(inner):
+            return _EMPTY_PACK
         return _sized(VendorQualify(inner, qualifier), inner.size + len(qualifier) + 1)
 
     def special(self, label, inner):

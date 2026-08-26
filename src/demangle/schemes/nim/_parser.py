@@ -382,6 +382,23 @@ def parse_nim_symbol(name):
 #: else this reads is a `<name>__<module>_[u]<id>`.
 _COMPILER_PREFIXES = ("NTI", "Marker_", "TM_", "ty")
 
+#: Prefixes that belong to another language, and that this scheme must decline whatever
+#: else the name looks like.
+#:
+#: Nim has no marker of its own -- a Nim symbol is an ordinary C identifier -- so this
+#: scheme recognises names by shape, and `<name>__<module>_<id>` is a shape other
+#: compilers produce too. OCaml's is the one that collides: it writes
+#: `caml<Module>__<name>_<id>`, which splits at the last `__` into a name of
+#: `camlStdlib__Int`, a module of `compare` (all lower case, so it passes the module
+#: test) and an id of 296 -- and re-mangles to exactly the symbol it came from, so even
+#: the re-mangling property this scheme relies on says yes. It read
+#: `camlStdlib__Int__compare_296` as `compare.camlStdlib__Int`.
+#:
+#: Every symbol the OCaml compiler emits carries this prefix, and no Nim symbol does, so
+#: declining it costs nothing and settles the collision the shape cannot. A caller who
+#: knows the binary is Nim can still pass `language="nim"` and get the whole scheme.
+_FOREIGN_PREFIXES = ("caml",)
+
 #: How every `<name>__<module>_[u]<id>` ends. A *necessary* condition of `_SYMBOL` -- the
 #: same `_ (u?) ([0-9]+) $` that pattern requires -- so screening on it turns away only
 #: names `_routine` would have refused anyway. It is worth testing separately because
@@ -406,8 +423,14 @@ def detect(name):
     scheme's detection. `__` alone does not screen -- `std::__cxx11` has one, and so does
     a fifth of the shipped libstdc++ -- and neither does a trailing digit, which 95% of
     those symbols also have. The tail does: none of them survives it.
+
+    `_FOREIGN_PREFIXES` is the other half, and it is a refusal rather than a screen: the
+    shape this scheme reads is one another compiler also produces, and where a name
+    carries that compiler's marker the marker wins. See the note there.
     """
     if not name:
+        return False
+    if name.startswith(_FOREIGN_PREFIXES):
         return False
     if not name.startswith(_COMPILER_PREFIXES) and not (_ROUTINE_TAIL.search(name) and "__" in name):
         return False
