@@ -30,6 +30,24 @@ TMPLCODE = "%"
 
 DIGITS = frozenset(string.digits)
 
+#: Single-character code sets, every one a frozenset rather than a string. `peek` and
+#: `advance` answer `""` at end of input, and `"" in "xw"` is True for a *string* -- an
+#: empty substring is a substring of everything. Written that way, the qualifier loop in
+#: `copy_args` never terminated on a name whose argument list ended in `x` or `w`, and
+#: the indirection test read the end of the input as a pointer. `"" in frozenset("xw")`
+#: is False, which is the question these are actually asking.
+_CV_CODES = frozenset("xw")
+_INDIRECTION_CODES = frozenset("Mrhp")
+_CLOSURE_CODES = frozenset("fn")
+_TPDSC_CODES = frozenset("pt")
+_TEMPLATE_VALUE_CODES = frozenset("jge")
+_THUNK_CODES = frozenset("vd")
+_STRUCTOR_CODES = frozenset("cd")
+_FUNCTION_CODES = frozenset("qxw")
+#: What `int(digit, 36)` accepts. A back-reference index is one base-36 digit, and any
+#: other byte there is a malformed name, not a `ValueError` out of the parser.
+_BASE36 = frozenset(string.digits + string.ascii_letters)
+
 KIND_FUNCTION = "function"
 KIND_CONSTRUCTOR = "constructor"
 KIND_DESTRUCTOR = "destructor"
@@ -270,7 +288,7 @@ class _Parser:
                 is_volatile = True
             elif char == "y":
                 char = self.advance()
-                if char not in "fn":
+                if char not in _CLOSURE_CODES:
                     raise DemangleFailure("bad closure")
                 self.buf += "__closure"
             else:
@@ -333,7 +351,7 @@ class _Parser:
                 tname = "char32_t"
             else:
                 raise DemangleFailure("unknown wide char")
-        elif char in "Mrhp":
+        elif char in _INDIRECTION_CODES:
             if self.savechar == "M":
                 inner = self.peek()
                 if inner == "x":
@@ -439,7 +457,7 @@ class _Parser:
             if len(table) > self.limits.max_substitutions:
                 raise LimitExceeded(self.mangled, "substitution", self.limits.max_substitutions)
             scanned = False
-            while char in "xw":
+            while char in _CV_CODES:
                 self.buf += "const " if char == "x" else "volatile "
                 scanned = True
                 char = self.advance()
@@ -448,8 +466,8 @@ class _Parser:
             if char == "t":
                 self.advance()
                 digit = self.peek()
-                if not digit:
-                    raise DemangleFailure("truncated back-reference")
+                if digit not in _BASE36:
+                    raise DemangleFailure("bad back-reference")
                 index = int(digit, 36) - 1
                 self.advance()
                 if index < 0 or index >= len(table) - 1:
@@ -481,7 +499,7 @@ class _Parser:
                             break
                         char = "j"
                         continue
-                    if char in "jge":
+                    if char in _TEMPLATE_VALUE_CODES:
                         self.copy_until("$", TMPLCODE)
                         self.buf += termchar
                         break
@@ -520,7 +538,7 @@ class _Parser:
                         break
                     char = "j"
                     continue
-                if char in "jge":
+                if char in _TEMPLATE_VALUE_CODES:
                     type_at = len(self.buf)
                     self.copy_type(len(self.buf), arglvl=False)
                     self.buf = self.buf[:type_at]
@@ -622,7 +640,7 @@ class _Parser:
                 char = self.advance()
                 if char == "x":
                     char = self.advance()
-                    if char in "pt":
+                    if char in _TPDSC_CODES:
                         if self.advance() != ARGLIST:
                             raise DemangleFailure("bad type descriptor")
                         self.advance()
@@ -634,7 +652,12 @@ class _Parser:
                 if char == "b":
                     char = self.advance()
                     start = self.pos
-                    if char in "cd" and self.advance() == "t" and self.advance() == "r" and self.advance() == ARGLIST:
+                    if (
+                        char in _STRUCTOR_CODES
+                        and self.advance() == "t"
+                        and self.advance() == "r"
+                        and self.advance() == ARGLIST
+                    ):
                         self.kind = KIND_CONSTRUCTOR if char == "c" else KIND_DESTRUCTOR
                     else:
                         self.pos = start
@@ -661,7 +684,7 @@ class _Parser:
                     if self.peek() != ARGLIST:
                         raise DemangleFailure("bad conversion operator")
                     self.kind = KIND_CONVERSION
-                elif char in "vd":
+                elif char in _THUNK_CODES:
                     tkind = char
                     char = self.advance()
                     if tkind == "v" and char == "s":
@@ -743,7 +766,7 @@ class _Parser:
                 self.buf += "unknown"
 
         if self.peek() == ARGLIST and do_args:
-            if self.advance() not in "qxw":
+            if self.advance() not in _FUNCTION_CODES:
                 raise DemangleFailure("bad function type")
             self.set_qual = False
             self.adjust_quals = True
