@@ -1172,6 +1172,14 @@ class Demangler:
 
         if self.next_if("e"):
             found.add(Node("ImplEscaping"))
+        # The function's isolation, and whether it may be called only once. All three
+        # come before the differentiability, where the coroutine kind's `A` cannot reach.
+        if self.next_if("A"):
+            found.add(Node("ImplErasedIsolation"))
+        if self.next_if("N"):
+            found.add(Node("ImplNonisolatedNonsendingIsolation"))
+        if self.next_if("O"):
+            found.add(Node("ImplCalledOnceFunction"))
 
         if self.peek() in ("d", "l", "f", "r"):
             found.add(Node("ImplDifferentiabilityKind", index=ord(self.next_char())))
@@ -1202,13 +1210,19 @@ class Demangler:
                 self.add_child(attribute, self.demangle_clang_type())
             found.add(attribute)
 
-        coroutine = "@yield_once" if self.next_if("A") else "@yield_many" if self.next_if("G") else None
+        coroutine = None
+        for marker, kind in (("A", "yield_once"), ("I", "yield_once_2"), ("G", "yield_many")):
+            if self.next_if(marker):
+                coroutine = kind
+                break
         if coroutine is not None:
-            found.add(Node("ImplFunctionAttribute", text=coroutine))
+            found.add(Node("ImplCoroutineKind", text=coroutine))
         if self.next_if("h"):
             found.add(Node("ImplFunctionAttribute", text="@Sendable"))
         if self.next_if("H"):
             found.add(Node("ImplFunctionAttribute", text="@async"))
+        if self.next_if("T"):
+            found.add(Node("ImplSendingResult"))
 
         self.add_child(found, signature)
 
@@ -1219,6 +1233,14 @@ class Demangler:
                 break
             found = self.add_child(found, parameter)
             self.add_child(parameter, self.demangle_impl_differentiability())
+            # Each of these is a marker with no operand, in this order.
+            for marker, kind, text in (
+                ("T", "ImplParameterSending", "sending"),
+                ("I", "ImplParameterIsolated", "isolated"),
+                ("L", "ImplParameterImplicitLeading", "sil_implicit_leading_param"),
+            ):
+                if self.next_if(marker):
+                    self.add_child(parameter, Node(kind, text=text))
             pending += 1
         while True:
             result = self.demangle_impl_result_convention("ImplResult")
@@ -2404,6 +2426,7 @@ _IMPL_PARAM_CONVENTIONS = {
     "l": "@inout",
     "b": "@inout_aliasable",
     "n": "@in_guaranteed",
+    "X": "@in_cxx",
     "x": "@owned",
     "g": "@guaranteed",
     "e": "@deallocating",
@@ -2420,6 +2443,9 @@ _IMPL_RESULT_CONVENTIONS = {
     "u": "@unowned_inner_pointer",
     "a": "@autoreleased",
     "k": "@pack_out",
+    "l": "@guaranteed_address",
+    "g": "@guaranteed",
+    "m": "@inout",
 }
 
 _IMPL_CALLEE_CONVENTIONS = {
