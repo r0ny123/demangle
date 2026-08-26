@@ -10,10 +10,11 @@ the same code `tdump -um` runs -- via the comments and control flow preserved in
 file. Spelling is what that unmangler prints, including the C++ `::` qualifier, because
 that is the output a Delphi-built PE's exports are compared against by the toolchain.
 
-The names in `tests/conformance/delphi-real-world.txt` are sampled from real BPL and
-C++Builder DLL export tables, scored against the spelling TDUMP prints. Independently, a
-reading must consume the whole symbol -- a parse that cannot account for the bytes is
-refused.
+`tests/conformance/delphi-tdump.txt` is a dump of the real `tdump.exe -q -um` over the
+export tables of real BPLs and C++Builder DLLs; its expected column is what that
+unmangler printed, and every readable entry is replayed. `delphi-real-world.txt` is a
+per-kind sample of the same dump. Independently, a reading must consume the whole symbol
+-- a parse that cannot account for the bytes is refused.
 """
 
 from ...core.ast import Node
