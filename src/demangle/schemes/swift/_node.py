@@ -240,6 +240,12 @@ ALL_KINDS = frozenset(
         "Structure",
         "Subscript",
         "Suffix",
+        "DependentGenericInverseConformanceRequirement",
+        "OutlinedInitializeWithTakeNoValueWitness",
+        "OutlinedInitializeWithCopyNoValueWitness",
+        "OutlinedAssignWithTakeNoValueWitness",
+        "OutlinedAssignWithCopyNoValueWitness",
+        "OutlinedDestroyNoValueWitness",
         "Sending",
         "SendingResultFunctionType",
         "ConstValue",
@@ -490,6 +496,7 @@ _REQUIREMENT_KINDS = frozenset(
         "DependentGenericSameShapeRequirement",
         "DependentGenericLayoutRequirement",
         "DependentGenericConformanceRequirement",
+        "DependentGenericInverseConformanceRequirement",
     ]
 )
 

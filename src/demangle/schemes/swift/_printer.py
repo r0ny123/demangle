@@ -863,6 +863,11 @@ _PREFIX_THEN_FIRST_CHILD = {
     "OutlinedAssignWithTake": "outlined assign with take of ",
     "OutlinedAssignWithCopy": "outlined assign with copy of ",
     "OutlinedDestroy": "outlined destroy of ",
+    "OutlinedInitializeWithTakeNoValueWitness": "outlined init with take of ",
+    "OutlinedInitializeWithCopyNoValueWitness": "outlined init with copy of ",
+    "OutlinedAssignWithTakeNoValueWitness": "outlined assign with take of ",
+    "OutlinedAssignWithCopyNoValueWitness": "outlined assign with copy of ",
+    "OutlinedDestroyNoValueWitness": "outlined destroy of ",
     "DeclContext": "",
     "Type": "",
     "InOut": "inout ",
@@ -2035,6 +2040,24 @@ def _print_differentiable_function_type(self, node, depth, as_prefix_context):
     self.write("@differentiable")
     self.write(_IMPL_DIFFERENTIABILITY.get(node.index, ""))
     self.write(" ")
+    return None
+
+
+#: `InvertibleProtocols.def`: the bit each suppressible conformance is written as.
+_INVERTIBLE_PROTOCOLS = {0: "Swift.Copyable", 1: "Swift.Escapable"}
+
+
+@_handler("DependentGenericInverseConformanceRequirement")
+def _print_inverse_conformance(self, node, depth, as_prefix_context):
+    """`A: ~Swift.Copyable` -- a conformance the declaration suppresses.
+
+    The protocol is written as a bit index rather than a name, so one this reader has
+    never heard of still prints as the bit it is, which is what the reference does.
+    """
+    self.print(node.first, depth + 1)
+    self.write(": ~")
+    bit = node.child(1).index
+    self.write(_INVERTIBLE_PROTOCOLS.get(bit, f"Swift.<bit {bit}>"))
     return None
 
 
