@@ -158,3 +158,35 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
         tight = Limits(max_output=8)
         assert demangle.demangle(self.NAME, limits=tight) == self.NAME
         assert demangle.demangle(self.NAME) != self.NAME
+
+
+class TestDepthExhaustionIsReportedAsABound:
+    """Two ceilings govern nesting, and both mean the same thing about the name.
+
+    `max_depth` is one. The interpreter's own recursion limit is the other, and it is
+    the lower of the two in practice -- a production costs several Python frames, so at
+    the default limit an Itanium name gives out around 141 levels of nested template,
+    well under the default `max_depth` of 256. Which binds first depends on the shape of
+    the name and on how deep the caller's stack already was.
+
+    One used to arrive as `LimitExceeded` and the other as
+    `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
+    the parser rather than a bound doing its job.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_Z1f" + "1XI" * 400 + "i" + "E" * 400,
+            "_Z1f" + "DT" * 400 + "fp_" + "E" * 400,
+            "_Z1f" + "PF" * 400 + "i" + "E" * 400,
+            "?f@@YAX" + "PA" * 400 + "H@Z",
+        ],
+    )
+    def test_a_name_too_deep_to_follow_says_so(self, mangled):
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict(mangled, limits=demangle.RELAXED_LIMITS)
+
+    def test_and_demangle_still_answers(self):
+        deep = "_Z1f" + "1XI" * 400 + "i" + "E" * 400
+        assert demangle.demangle(deep) == deep
