@@ -87,6 +87,13 @@ _INDEX_START = frozenset("0123456789_")
 
 #: Clang's vendor qualifier for "conforms to this Objective-C protocol", and the type
 #: that a pointer to it is spelled `id<...>` rather than `objc_object<...>*`.
+#: How the two references spell C99's complex and imaginary qualifiers, indexed by
+#: `gnu_complex_spelling`.
+_COMPLEX_WORDS = (
+    {"C": "complex", "G": "imaginary"},
+    {"C": "_Complex", "G": "_Imaginary"},
+)
+
 _OBJC_PROTOCOL = "objcproto"
 _OBJC_OBJECT = "objc_object"
 
@@ -217,6 +224,7 @@ class ItaniumParser:
         "_saw_empty_pack",
         "_saw_pack",
         "_scope_has_pack",
+        "_trailing_empty_pack",
         "_try_template_args",
         "builder",
         "limits",
@@ -332,6 +340,11 @@ class ItaniumParser:
         # one type `unary<int, float>`.
         self._pack_arity = None
         self._pack_index = None
+        # Whether the argument list just read ended in a pack with no members. GNU
+        # c++filt writes `A<B<int>>` for that and `A<B<int> >` for everything else, and
+        # the pack is dropped rather than kept, so the answer has to travel beside the
+        # list rather than be recoverable from it.
+        self._trailing_empty_pack = False
 
     # -- recursion control -----------------------------------------------------
 
@@ -723,9 +736,10 @@ class ItaniumParser:
         """
         pending = self._conversion_pending()
         arguments = self.template_arguments(install_scope=True)
+        angle_space = not self._trailing_empty_pack
         if pending is not None:
             base = self.builder.name(self._reread_conversion(pending))
-        return self.builder.template(base, arguments)
+        return self.builder.template(base, arguments, angle_space)
 
     def nested_name(self, as_type=False):
         """A qualified name.
@@ -827,9 +841,10 @@ class ItaniumParser:
                 raise ParseError(self._mangled, reader.pos, "template arguments with no name")
             pending = self._conversion_pending()
             arguments = self.template_arguments(install_scope=True)
+            angle_space = not self._trailing_empty_pack
             if pending is not None:
                 parts[-1] = builder.name(self._reread_conversion(pending))
-            parts[-1] = builder.template(parts[-1], arguments)
+            parts[-1] = builder.template(parts[-1], arguments, angle_space)
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
             # Only an *interior* <template-prefix> <template-args> is a separate
             # candidate. When the closing `E` follows, this specialisation is the whole
@@ -1539,14 +1554,15 @@ class ItaniumParser:
         if char == "O":
             reader.pos += 1
             return subs.remember(builder.rvalue_reference(self.type_()), "type")
-        if char == "C":
+        if char == "C" or char == "G":
+            # C99's `_Complex` and `_Imaginary`. Both references qualify the type from
+            # the right, which is what makes `PCd` a pointer to a complex double rather
+            # than a complex pointer; they differ only in the word, and the style says
+            # which. Spelling it `std::complex<double>` named a different type -- a C++
+            # class template -- and lost the declarator besides.
             reader.pos += 1
-            inner = self.type_()
-            return subs.remember(builder.raw(f"std::complex<{builder.spell(inner)}>"), "type")
-        if char == "G":
-            reader.pos += 1
-            inner = self.type_()
-            return subs.remember(builder.raw(f"_Imaginary {builder.spell(inner)}"), "type")
+            qualifier = _COMPLEX_WORDS[self.options.gnu_complex_spelling][char]
+            return subs.remember(builder.qualify(self.type_(), (qualifier,)), "type")
 
         if char == "U":
             # <type> ::= U <source-name> [<template-args>] <type>  -- vendor qualifier
@@ -1554,8 +1570,7 @@ class ItaniumParser:
             qualifier = self.source_name()
             if reader.peek() == "I":
                 arguments = self.template_arguments()
-                rendered = ", ".join(builder.spell(argument) for argument in arguments)
-                qualifier += f"<{rendered}>"
+                qualifier += self._angled(", ".join(builder.spell(argument) for argument in arguments))
             inner = self.type_()
             if qualifier.startswith(_OBJC_PROTOCOL):
                 # `U <n>objcproto<protocol> <type>` is an Objective-C type conforming to
@@ -1615,7 +1630,8 @@ class ItaniumParser:
                 # every later back-reference in any name that applies a template
                 # template parameter.
                 subs.remember(component, "template-template-param")
-                return subs.remember(builder.template(component, self.template_arguments()), "type")
+                arguments = self.template_arguments()
+                return subs.remember(builder.template(component, arguments, not self._trailing_empty_pack), "type")
             # A <template-param> reached through <type> is a <type>, and <type> is a
             # candidate. Confirmed by `_ZSt4sortIPiEvT_S1_`, where `S1_` resolves to
             # `int*` -- the entry the `T_` parameter itself contributed.
@@ -1634,7 +1650,8 @@ class ItaniumParser:
                 # own -- the module entry alone is not one a later `S<n>_` can mean.
                 component = subs.remember(self.unqualified_name(module=named), "type")
             if reader.peek() == "I":
-                return subs.remember(builder.template(component, self.template_arguments()), "type")
+                arguments = self.template_arguments()
+                return subs.remember(builder.template(component, arguments, not self._trailing_empty_pack), "type")
             return component
 
         if char == "u":
@@ -1652,7 +1669,7 @@ class ItaniumParser:
                 # A transformation is spelled as a call, a vendor *type* as a template.
                 # Clang writes `__add_pointer(int)` and `__uuidof(T)`, both of which are
                 # named with a leading double underscore; anything else keeps `<...>`.
-                spelled = f"{spelled}({rendered})" if spelled.startswith("__") else f"{spelled}<{rendered}>"
+                spelled = f"{spelled}({rendered})" if spelled.startswith("__") else spelled + self._angled(rendered)
             return subs.remember(builder.raw(spelled), "type")
 
         if char == "D":
@@ -2087,6 +2104,7 @@ class ItaniumParser:
         was_naming = self._naming
         self._naming = False
         arguments = []
+        trailing_empty_pack = False
         try:
             while True:
                 char = reader.peek()
@@ -2106,6 +2124,7 @@ class ItaniumParser:
                     # A <template-param-decl>: it declares a parameter rather than
                     # supplying an argument, and neither prints nor occupies a slot.
                     continue
+                trailing_empty_pack = is_empty_pack
                 if not is_empty_pack:
                     arguments.append(argument)
                 if install_scope:
@@ -2114,6 +2133,7 @@ class ItaniumParser:
             self._naming = was_naming
             if not install_scope:
                 self._scope_has_pack = outer_has_pack
+        self._trailing_empty_pack = trailing_empty_pack
         return arguments
 
     def template_arg(self):
@@ -2373,7 +2393,18 @@ class ItaniumParser:
     def spelled_template_arguments(self):
         """A template argument list rendered as text, for use inside a name."""
         arguments = self.template_arguments()
-        rendered = ", ".join(self.builder.spell(argument) for argument in arguments)
+        return self._angled(", ".join(self.builder.spell(argument) for argument in arguments))
+
+    def _angled(self, rendered):
+        """Close a hand-built argument list the way the style closes one.
+
+        The builder does this for a list attached to a name; a list spelled into text --
+        inside an unresolved name, or a vendor qualifier -- has to ask for the same rule
+        rather than write the brackets itself, or `A<B<int> >` comes out `A<B<int>>` in
+        a style that separates them.
+        """
+        if self.options.gnu_angle_spacing and not self._trailing_empty_pack and rendered.endswith(">"):
+            rendered += " "
         return f"<{rendered}>"
 
     def base_unresolved_name(self):
@@ -2419,7 +2450,7 @@ class ItaniumParser:
             if reader.peek() == "I":
                 arguments = self.template_arguments()
                 rendered = ", ".join(builder.spell(argument) for argument in arguments)
-                return f"{text}<{rendered}>"
+                return text + self._angled(rendered)
             return text
         # `on <operator-name>` and `dn <destructor-name>`: a callee named by the operator
         # it *is*, which is how an unresolved `a + b` inside a `decltype` is written.

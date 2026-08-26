@@ -267,18 +267,23 @@ class Qualified(Node):
 class Template(Node):
     """A template specialisation, `base<arguments...>`."""
 
-    __slots__ = ("arguments", "base")
+    __slots__ = ("angle_space", "arguments", "base")
     kind = "template"
 
-    def __init__(self, base, arguments):
+    def __init__(self, base, arguments, angle_space=True):
         self.base = base
         self.arguments = tuple(arguments)
+        #: Whether a style that separates consecutive closing angle brackets should do
+        #: so here. False where the last argument was a pack with no members: GNU
+        #: c++filt writes `A<B<int>>` for that and `A<B<int> >` for everything else, and
+        #: the pack is not in the tree to be asked about later.
+        self.angle_space = angle_space
 
     def children(self):
         return (self.base, *self.arguments)
 
     def build(self, builder):
-        return builder.template(self.base.build(builder), [a.build(builder) for a in self.arguments])
+        return builder.template(self.base.build(builder), [a.build(builder) for a in self.arguments], self.angle_space)
 
 
 class Qualify(Node):
@@ -578,8 +583,8 @@ class AstBuilder(Builder):
     def qualified(self, parts):
         return _sized(Qualified(parts), _sizes(parts) + 2 * max(len(parts) - 1, 0))
 
-    def template(self, base, arguments):
-        return _sized(Template(base, arguments), base.size + _sizes(arguments) + 2 * len(arguments) + 2)
+    def template(self, base, arguments, angle_space=True):
+        return _sized(Template(base, arguments, angle_space), base.size + _sizes(arguments) + 2 * len(arguments) + 2)
 
     def qualify(self, inner, qualifiers):
         if not qualifiers:
