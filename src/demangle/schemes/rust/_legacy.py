@@ -1,12 +1,12 @@
 import string
 
+from ._v0 import _is_symbol_like, _strip_llvm_suffix
+
 #: Character-class tests written as set membership rather than `in string.digits`, which
 #: is a substring search, and rebuilt-per-call concatenations like `string.hexdigits +
 #: "@"`. These run once per character of every symbol offered to the scheme.
 _DIGITS = frozenset(string.digits)
 _HEXDIGITS = frozenset(string.hexdigits)
-_HEXDIGITS_OR_AT = frozenset(string.hexdigits + "@")
-_PUNCTUATION = frozenset(string.punctuation)
 
 
 class UnableToLegacyDemangle(Exception):
@@ -56,17 +56,17 @@ class LegacyDemangler:
 
         original_inpstr = inpstr
         disp = ""
-        if "N" not in inpstr:
+        # By prefix, not by the first `N` anywhere in the name -- see the note on the
+        # same change in `_v0`.
+        if inpstr.startswith("__ZN"):
+            inpstr = inpstr[4:]
+        elif inpstr.startswith("_ZN"):
+            inpstr = inpstr[3:]
+        else:
             raise UnableToLegacyDemangle(original_inpstr)
-        inpstr = inpstr[inpstr.index("N") + 1 :]
         self.sanity_check(inpstr)
 
-        if ".llvm." in inpstr:
-            length = inpstr.find(".llvm.")
-            candidate = inpstr[length + 6 :]
-            if not _HEXDIGITS_OR_AT.issuperset(candidate):
-                raise UnableToLegacyDemangle(original_inpstr)
-            inpstr = inpstr[:length]
+        inpstr = _strip_llvm_suffix(inpstr)
 
         inn = inpstr
         for ele in range(self.elements):
@@ -168,20 +168,19 @@ class LegacyDemangler:
             disp += rest
             self.spans.append((component, len(disp)))
 
+        # `inn` is positioned on the `E` that closes the path, so what follows it is
+        # whatever the grammar did not account for. The reference carries it only when
+        # it is a vendor suffix -- introduced by `.`, and spelled in characters a symbol
+        # can hold -- and refuses the name otherwise. Dropping it instead, which is what
+        # this did, meant `_ZN3fooE.llvm moocow` read as plain `foo`: a name that is not
+        # the symbol and not the truth.
         self.suffix = inn[1:]
-        if self.suffix and self.suffix.startswith(".") and self.is_symbol_like(self.suffix):
+        if self.suffix:
+            if not (self.suffix.startswith(".") and _is_symbol_like(self.suffix)):
+                raise UnableToLegacyDemangle(original_inpstr)
             disp += self.suffix
 
         return disp
-
-    def is_symbol_like(self, suffix):
-        for i in suffix:
-            if i.isalnum() or i in _PUNCTUATION:
-                continue
-            else:
-                return False
-
-        return True
 
     def is_rust_hash(self, s):
         """`h` followed by hex digits, which is the reference's whole test.

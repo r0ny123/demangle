@@ -16,6 +16,46 @@ class UnableTov0Demangle(Exception):
         return f"[{self.given_str}] {self.message}"
 
 
+#: ASCII punctuation, for the vendor-suffix test below. `_legacy` imports this rule
+#: rather than keeping its own copy: the two schemes carry a suffix on the same terms,
+#: and two copies of a rule are two chances to disagree about it.
+_PUNCTUATION = frozenset(string.punctuation)
+
+#: Characters LLVM's internaliser writes in the hash of a `.llvm.<hash>` suffix. Upper
+#: case only, and `@` because a versioned symbol keeps its `@@VERS` inside the run. This
+#: is the reference's set verbatim: a *lower* case run is not one of these suffixes, and
+#: reading it as one silently deletes text that belongs to the symbol.
+_LLVM_HASH_CHARACTERS = frozenset(string.digits + "ABCDEF@")
+
+_LLVM_MARKER = "llvm."
+
+
+def _strip_llvm_suffix(text):
+    """Drop a `.llvm.<hash>` internalisation suffix, which names no part of the symbol.
+
+    `rfind`, not `find`: the marker is looked for from the right because an identifier
+    in the path may legitimately contain it.
+    """
+    marker = text.rfind(_LLVM_MARKER)
+    if marker < 0:
+        return text
+    if not _LLVM_HASH_CHARACTERS.issuperset(text[marker + len(_LLVM_MARKER) :]):
+        return text
+    head = text[:marker]
+    return head[:-1] if head.endswith(".") else head
+
+
+def _is_symbol_like(text):
+    """Whether every character is one a linker can put in a symbol name.
+
+    The reference's test for a vendor suffix it is willing to carry through: ASCII
+    alphanumeric or ASCII punctuation, and nothing else. A space or a control character
+    means the trailing text is not a suffix at all, and the name is refused rather than
+    half-read.
+    """
+    return all(char.isascii() and (char.isalnum() or char in _PUNCTUATION) for char in text)
+
+
 class V0Demangler:
     """Reads one v0 name. Single use: the name, its suffix and the cursor live here.
 
@@ -44,28 +84,43 @@ class V0Demangler:
     def _run(self, inpstr, sink):
         self.suffix = ""
 
-        if "R" not in inpstr:
+        # The prefix is stripped by what it is, not by looking for the first `R` in the
+        # name. `str.index` happened to be right for `_R` and `__R` and wrong in
+        # principle for everything else, and a mangling scheme is a bad place to keep a
+        # rule that is only accidentally true.
+        if inpstr.startswith("__R"):
+            self.inpstr = inpstr[3:]
+        elif inpstr.startswith("_R"):
+            self.inpstr = inpstr[2:]
+        else:
             raise UnableTov0Demangle(inpstr)
-        self.inpstr = inpstr[inpstr.index("R") + 1 :]
         self.sanity_check(self.inpstr)
 
-        if ".llvm." in inpstr:
-            length = self.inpstr.find(".llvm.")
-            candidate = self.inpstr[length + 6 :]
-            if not _HEXDIGITS_OR_AT.issuperset(candidate):
-                raise UnableTov0Demangle(inpstr)
-            self.inpstr = self.inpstr[:length]
+        self.inpstr = _strip_llvm_suffix(self.inpstr)
 
         parser = Parser(self.inpstr, 0)
         parser.skip_path()
+        # An <instantiating-crate> is a second <path>, and only a <path> can follow the
+        # first one. Every path production opens with a capital.
         if (len(parser.inn) > parser.next_val) and parser.inn[parser.next_val].isupper():
             parser.skip_path()
+
+        # Whatever the grammar did not consume. The reference keeps it only when it is a
+        # vendor suffix -- introduced by `.`, and made of characters a symbol can hold --
+        # and refuses the name otherwise. Refusing matters: without this the parser
+        # silently dropped the rest of the input, so `_RNvC1a1b1b` read as `a::b` and
+        # `_RNvC1a1b` + forty thousand more characters read as `a::b` as well. A name
+        # that means something other than what it says is the one outcome this package
+        # treats as worse than declining to read it.
+        residual = parser.inn[parser.next_val :]
+        if residual and not (residual.startswith(".") and _is_symbol_like(residual)):
+            raise UnableTov0Demangle(inpstr)
 
         parser.next_val = 0
         Printer(parser, sink, 0).print_path(True)
 
-        if "." in self.inpstr:
-            self.suffix = self.inpstr[self.inpstr.index(".") : len(self.inpstr)]
+        if residual:
+            self.suffix = residual
             sink.emit(self.suffix)
 
         return sink
@@ -354,7 +409,6 @@ _BASIC_TYPES = {
 #: Base-10 and base-62 digit values. A dict lookup replaces a chain of `in`, `islower`
 #: and two `ord` calls per character; `digit_62` alone runs 184,000 times over 2,000 real
 #: symbols, so the difference is measurable rather than theoretical.
-_HEXDIGITS_OR_AT = frozenset(string.hexdigits + "@")
 _BASE_10 = {char: index for index, char in enumerate(string.digits)}
 _BASE_62 = dict(_BASE_10)
 _BASE_62.update({char: 10 + index for index, char in enumerate(string.ascii_lowercase)})
