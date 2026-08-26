@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Sample a Delphi/C++Builder conformance corpus from real export tables.
+"""Build the Delphi/C++Builder conformance corpora from a real TDUMP dump.
 
-There is no Delphi compiler here, and TDUMP is a Windows RAD Studio tool. What stands
-in is the export names of real BPLs and C++Builder DLLs, scored against the spelling
-Embarcadero's unmangler prints. This script:
+There is no Delphi compiler here, and TDUMP is a Windows RAD Studio tool. What stands in
+is a recorded dump: `zed-0xff/unmangler` ships `samples/borland.yaml`, which its
+`misc/2_tdump.rb` produces by running the real `tdump.exe -q -um` under wine over the
+export tables of real BPLs and C++Builder DLLs. The keys are the mangled names and the
+values are what Embarcadero's own unmangler printed for them.
 
-* reads those names from PE export tables (a `.bpl` / `.dll` / `.exe`), or from a
-  TDUMP dump in the YAML form `zed-0xff/unmangler` records (`samples/borland.yaml`);
-* keeps a small sample of each parser kind so the checked-in corpus covers the
-  constructs that actually occur, not only the unmangler's own unit tests.
+**The expected column is that reference spelling, never this library's own reading.** A
+corpus scored against its own output measures nothing, and the whole-table agreement it
+is supposed to establish then rests on a number no test can check. Both files this
+writes are replayed: `delphi-tdump.txt` is every entry in the dump, and
+`delphi-real-world.txt` is a per-kind sample of it for a reader to look at.
 
-The expected column is this library's reading. Agreement with TDUMP over the whole dump
-is measured separately and pinned in `tests/test_conformance.py`.
+A PE image can be passed as well, but only to report coverage. Its exports come with no
+reference spelling, so they are counted and never written.
+
+Reading the dump needs PyYAML -- the emitter uses the explicit `? key` / `: value` form
+for long keys and folds long plain scalars across lines, and a hand-rolled reader that
+missed either silently dropped 87 of 11,373 entries. Nothing in the package itself gains
+a dependency; this script is run by hand when the dump changes.
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+CONFORMANCE = ROOT / "tests" / "conformance"
 sys.path.insert(0, str(ROOT / "src"))
 
 from demangle.schemes.delphi._parser import (  # noqa: E402
@@ -76,23 +85,29 @@ def pe_export_names(path: Path):
 
 
 def load_tdump_yaml(path: Path):
-    """Mangled names from a TDUMP dump. Wrapped values are ignored; names are enough."""
-    names = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.startswith("! '"):
-            continue
-        rest = line[3:]
-        cut = rest.find("': ")
-        if cut < 0:
-            continue
-        names.append(rest[:cut])
-    return names
+    """(mangled, reference spelling) pairs from a TDUMP dump."""
+    try:
+        import yaml
+    except ImportError:  # pragma: no cover - a by-hand tool, not part of the package
+        raise SystemExit("reading a TDUMP dump needs PyYAML: pip install pyyaml") from None
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8", errors="replace"))
+    if not isinstance(loaded, dict):
+        raise SystemExit(f"{path} is not a mangled-name mapping")
+    rejected = [key for key, value in loaded.items() if not isinstance(key, str) or not isinstance(value, str)]
+    if rejected:
+        raise SystemExit(f"{path} holds {len(rejected)} non-string entries")
+    return sorted(loaded.items())
 
 
-def sample(names, per_kind):
+def sort_by_kind(pairs):
+    """Group `(mangled, reference spelling)` by what this parser calls each name.
+
+    The kind is only used to spread the sample across the constructs that occur. The
+    spelling written out is the reference's, whatever this parser made of the name.
+    """
     by_kind = defaultdict(list)
     refused = 0
-    for name in names:
+    for name, spelling in pairs:
         if not name.startswith("@"):
             continue
         try:
@@ -100,55 +115,87 @@ def sample(names, per_kind):
         except DemangleFailure:
             refused += 1
             continue
-        by_kind[symbol.kind].append((name, symbol.text))
+        by_kind[symbol.kind].append((name, spelling))
+    return by_kind, refused
+
+
+def sample(by_kind, per_kind):
     rows = []
     for kind in sorted(by_kind):
         group = by_kind[kind]
         step = max(1, len(group) // per_kind)
         rows.extend(group[::step][:per_kind])
     rows.sort(key=lambda item: item[0])
-    return rows, by_kind, refused
+    return rows
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("inputs", nargs="+", type=Path, help="PE images and/or borland.yaml")
+    parser.add_argument("inputs", nargs="+", type=Path, help="borland.yaml and/or PE images")
     parser.add_argument("--per-kind", type=int, default=8)
-    parser.add_argument("--out", type=Path, default=ROOT / "tests" / "conformance" / "delphi-real-world.txt")
+    parser.add_argument("--out", type=Path, default=CONFORMANCE / "delphi-real-world.txt")
+    parser.add_argument("--whole", type=Path, default=CONFORMANCE / "delphi-tdump.txt")
     arguments = parser.parse_args()
 
-    names = []
+    pairs = []
     sources = []
+    unreferenced = 0
     for path in arguments.inputs:
         if not path.exists():
             sys.exit(f"{path} does not exist")
         if path.suffix.lower() in {".yaml", ".yml"}:
             found = load_tdump_yaml(path)
             sources.append(f"{path.name} ({len(found)} names)")
-            names.extend(found)
+            pairs.extend(found)
         else:
-            found = list(pe_export_names(path))
-            sources.append(f"{path.name} ({len(found)} exports)")
-            names.extend(found)
+            exports = [name for name in pe_export_names(path) if name.startswith("@")]
+            unreferenced += len(exports)
+            sources.append(f"{path.name} ({len(exports)} exports, no reference spelling: counted only)")
 
-    rows, by_kind, refused = sample(names, arguments.per_kind)
+    if not pairs:
+        sys.exit("no reference spellings to write: pass a TDUMP dump, not only PE images")
+
+    by_kind, refused = sort_by_kind(pairs)
+    readable = sum(len(group) for group in by_kind.values())
     counts = ", ".join(f"{kind} {len(group)}" for kind, group in sorted(by_kind.items()))
-    header = (
-        "# Borland/Embarcadero Delphi and C++Builder exports.\n"
+    provenance = (
+        "# Borland/Embarcadero Delphi and C++Builder exports, with the spelling\n"
+        "# Embarcadero's own unmangler prints for each.\n"
         "#\n"
-        "# Sampled by tools/generate_delphi_corpus.py from real PE export tables / a TDUMP\n"
-        "# dump of them. There is no Delphi compiler here; the expected column is this\n"
-        "# library's reading, and agreement with TDUMP over the whole dump is pinned in\n"
-        "# tests/test_conformance.py.\n"
+        "# Written by tools/generate_delphi_corpus.py from a TDUMP dump -- the real\n"
+        "# tdump.exe -q -um, run over the export tables of real BPLs and C++Builder DLLs.\n"
+        "# The expected column is that reference output, not this library's reading.\n"
         "#\n"
         f"# Sources: {'; '.join(sources)}.\n"
-        f"# Readable: {sum(len(g) for g in by_kind.values())}; refused: {refused}; "
-        f"kinds: {counts}.\n"
+        f"# Readable: {readable}; refused: {refused}; kinds: {counts}.\n"
     )
-    arguments.out.write_text(header + "".join(f"{m}\t{t}\n" for m, t in rows), encoding="utf-8")
+
+    whole = sorted(by_kind_rows(by_kind))
+    arguments.whole.write_text(
+        provenance + "#\n# Every readable entry in the dump.\n" + rows_to_text(whole), encoding="utf-8"
+    )
+    rows = sample(by_kind, arguments.per_kind)
+    arguments.out.write_text(
+        provenance
+        + f"#\n# A sample of {arguments.per_kind} per kind; the whole table is delphi-tdump.txt.\n"
+        + rows_to_text(rows),
+        encoding="utf-8",
+    )
+    print(f"wrote {len(whole)} rows to {arguments.whole}")
     print(f"wrote {len(rows)} rows to {arguments.out}")
     print("kinds:", counts)
     print("refused:", refused)
+    if unreferenced:
+        print(f"PE exports counted but not written (no reference spelling): {unreferenced}")
+
+
+def by_kind_rows(by_kind):
+    for group in by_kind.values():
+        yield from group
+
+
+def rows_to_text(rows):
+    return "".join(f"{name}\t{spelling}\n" for name, spelling in rows)
 
 
 if __name__ == "__main__":

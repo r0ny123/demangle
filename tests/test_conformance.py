@@ -63,13 +63,15 @@ SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 #: tests/conformance/objc-lossy.txt.
 OBJC_TOTAL, OBJC_EXACT = 2665, 2665
 
-#: Delphi/C++Builder. No compiler on this platform. The grammar is Embarcadero's
-#: `unmangle.c` (TDUMP). The checked-in corpus is a sample of each construct taken from
-#: real BPL and DLL export tables; the whole-table pin is `DELPHI_TABLE_*` -- 11,276
-#: names from that dump read exactly as TDUMP prints, and the 10 MSVC `@name@N`
-#: decorations sitting next to them are refused.
-DELPHI_TOTAL, DELPHI_EXACT = 79, 79
-DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT = 11276, 11276
+#: Delphi/C++Builder. No compiler on this platform, so the reference is a recorded one:
+#: `tests/conformance/delphi-tdump.txt` is a dump of the real `tdump.exe -q -um` over the
+#: export tables of real BPLs and C++Builder DLLs, and its expected column is what
+#: Embarcadero's own unmangler printed. Both files are replayed here -- the sample
+#: because it is the one a reader will open, the whole table because the sample is not
+#: the measurement. The 10 MSVC `@name@N` decorations sitting in the same tables are
+#: refused, and are pinned in `tests/conformance/delphi-refusals.txt`.
+DELPHI_TOTAL, DELPHI_EXACT = 68, 68
+DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT = 11363, 11363
 
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
@@ -216,9 +218,15 @@ def test_delphi_matches_embarcadero_unmangle():
     assert (total, exact) == (DELPHI_TOTAL, DELPHI_EXACT)
 
 
-def test_delphi_whole_export_tables_are_pinned():
-    """The sample is not the measurement. The measurement is the whole TDUMP dump."""
-    assert (DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT) == (11276, 11276)
+def test_delphi_whole_export_tables_match_the_dump():
+    """The sample is not the measurement. The measurement is the whole TDUMP dump.
+
+    This replays it. The assertion it replaced compared a constant to itself, so it
+    could not fail and never read the dump at all -- while the parser it was standing
+    for diverged from that reference on 692 of these names.
+    """
+    total, exact = _score("delphi-tdump.txt", "llvm")
+    assert (total, exact) == (DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT)
 
 
 def test_gnu_shortfalls_are_only_the_known_reference_divergences():
