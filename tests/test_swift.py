@@ -25,6 +25,8 @@ from demangle.schemes.swift import detect
 from demangle.schemes.swift._demangler import demangle_symbol
 from demangle.schemes.swift._printer import print_root
 
+from .conftest import load_corpus
+
 CORPUS = pathlib.Path(__file__).parent / "conformance" / "swift-real-world.txt"
 
 
@@ -37,6 +39,10 @@ def corpus():
 
 
 ROWS = corpus()
+
+#: Swift's own vectors, read through the shared loader so the storage format is the one
+#: every other corpus uses.
+UPSTREAM = load_corpus("swift-upstream.txt")
 
 
 def spell(mangled):
@@ -51,6 +57,47 @@ class TestConformance:
         for mangled, expected in ROWS:
             with subtests.test(name=mangled):
                 assert spell(mangled) == expected
+
+
+class TestAgainstSwiftsOwnCorpus:
+    """`test/Demangle/Inputs/manglings.txt` from the swiftlang/swift repository.
+
+    The vectors the reference demangler is developed against, rather than symbols
+    scraped from a shipped toolchain: they cover constructs no released runtime emits
+    yet, which is exactly what a record of the gaps is for.
+
+    Pinned in both directions. The score can only go up, and it cannot quietly stop
+    being accurate -- a name that starts failing is caught by the lower bound, and a
+    batch of names that starts passing is caught by the upper one, which is what forces
+    this number to be re-read rather than left to rot.
+    """
+
+    #: What matches today. The 46 that do not are Swift 6 and later: value generics,
+    #: `yield_once_2` accessors, variadic-generic conformances, several new
+    #: function-signature specialisation kinds, macro expansion locations, and the
+    #: `Builtin.ImplicitActor` and `Builtin.Borrow` types.
+    EXPECTED_EXACT = 467
+
+    def _score(self):
+        return sum(1 for mangled, expected in UPSTREAM if demangle.demangle(mangled) == expected)
+
+    def test_the_corpus_is_the_whole_upstream_file(self):
+        assert len(UPSTREAM) == 513
+
+    def test_no_name_that_matched_has_stopped_matching(self):
+        assert self._score() >= self.EXPECTED_EXACT
+
+    def test_and_the_pinned_number_is_still_accurate(self):
+        assert self._score() == self.EXPECTED_EXACT
+
+    def test_nothing_is_answered_with_a_different_spelling(self):
+        """A refusal is a gap; a wrong answer is a defect. There are none of the latter."""
+        wrong = [
+            (mangled, expected, demangle.demangle(mangled))
+            for mangled, expected in UPSTREAM
+            if demangle.demangle(mangled) not in (expected, mangled)
+        ]
+        assert wrong == []
 
 
 class TestTheSwiftThreeMangling:
