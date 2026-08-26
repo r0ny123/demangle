@@ -129,7 +129,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
-| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **295 / 300** † |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **298 / 300** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
@@ -199,16 +199,19 @@ re-escaping a decoded package path must reproduce the bytes the linker wrote, wh
 escaping is a transcription of Go's own `objabi.PathToPrefix`. It is verified over every
 symbol in the shipped toolchain binaries, not just the recorded sample.
 
-† The five shortfalls are not ours to fix: in each, the two reference implementations
-disagree with *each other*. Two are about what belongs in the substitution table — not
-about how to spell it — and matching both would mean two incompatible parses of the same
-bytes. The other three are GNU omitting the space it otherwise puts between two closing
-angle brackets when the last template argument is an empty pack, which is a bookkeeping
-slip rather than a rule: libiberty decides on a field it updates on every append and does
-not restore when it rewinds the separator in front of an argument that printed nothing,
-so the character it tests is that separator's space. The same output shows both spellings
-in one name. We follow LLVM, which spaces neither, and pin all five by name. It is 5,633
-of the 264,008 readable symbols in the shipped libLLVM, libclang-cpp and libstdc++.
+† The two shortfalls are not ours to fix: in each, the two reference implementations
+disagree with *each other* about what belongs in the substitution table — not about how
+to spell it — and matching both would mean two incompatible parses of the same bytes.
+Both are pinned by name.
+
+A third disagreement used to be here and is now reproduced instead. GNU omits the space
+it otherwise puts between two closing angle brackets when the last template argument is
+an empty pack, which is a bookkeeping slip rather than a rule: libiberty decides on a
+field it updates on every append and does not restore when it rewinds the separator in
+front of an argument that printed nothing, so the character it tests is that separator's
+space. The same output shows both spellings in one name — `f<A<B<C>>, JE>` comes out
+`void f<A<B<C> >>(A<B<C> >)`. The `gnu` style exists to reproduce `c++filt`, slip and
+all, so it now does; the default `llvm` style spaces neither, as `llvm-cxxfilt` does.
 
 ### Whole symbol tables
 

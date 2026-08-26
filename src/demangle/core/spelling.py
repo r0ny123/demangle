@@ -146,9 +146,9 @@ class SpellingBuilder(Builder):
     def qualified(self, parts):
         return Spelling("::".join([part.left + part.right for part in parts]))
 
-    def template(self, base, arguments):
+    def template(self, base, arguments, angle_space=True):
         rendered = ", ".join([argument.left + argument.right for argument in arguments])
-        if self.legacy_angle_spacing and rendered.endswith(">"):
+        if self.legacy_angle_spacing and angle_space and rendered.endswith(">"):
             rendered += " "
         name = f"{base.left}{base.right}"
         opening = " <" if self.legacy_angle_spacing and name.endswith("<") else "<"

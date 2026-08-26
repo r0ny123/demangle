@@ -60,6 +60,25 @@ class ItaniumOptions:
     asked the question.
     """
 
+    gnu_angle_spacing: bool = False
+    """Separate two consecutive closing angle brackets with a space.
+
+    C++03 needed it -- `A<B<int> >`, because `>>` was the shift operator -- and GNU
+    c++filt still writes it where llvm-cxxfilt does not. It belongs here as well as on
+    the style's spelling builder because a template argument list spelled into *text*,
+    inside an unresolved name or a vendor qualifier, never reaches the builder.
+    """
+
+    gnu_complex_spelling: bool = False
+    """Spell C99's `_Complex` and `_Imaginary` the way GNU c++filt does.
+
+    Both references write the qualifier *after* the type it qualifies -- `double complex*`
+    is a pointer to a complex double, not a complex pointer -- and differ only in the
+    word. False (the default) gives llvm-cxxfilt's `double complex` and
+    `double imaginary`; True gives GNU c++filt's `double _Complex` and
+    `double _Imaginary`, which are the keywords C99 actually spells.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -76,4 +95,6 @@ GNU_OPTIONS = ItaniumOptions(
     local_name_return_type=False,
     gnu_expression_spelling=True,
     symbolic_constraint_parameters=False,
+    gnu_complex_spelling=True,
+    gnu_angle_spacing=True,
 )
