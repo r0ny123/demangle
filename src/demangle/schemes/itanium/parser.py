@@ -212,6 +212,8 @@ class ItaniumParser:
         "_parameter_counts",
         "_pending_conversion",
         "_precedence",
+        "_productions",
+        "_rework",
         "_saw_empty_pack",
         "_saw_pack",
         "_scope_has_pack",
@@ -272,6 +274,19 @@ class ItaniumParser:
         # packs and module names are.
         self._objc_ids = []
         self._objc_id_ids = set()
+        # Types read so far, and how many this parse may read a *second* time.
+        #
+        # Two productions re-read a span they have already read -- a conversion
+        # operator's type, and a pack expansion's pattern -- and expansions nest, so the
+        # work is the product of the arities: at eight members a pattern seven
+        # expansions deep is read eight million times for sixty bytes of input. The
+        # charge is the work each re-reading actually does rather than the width of the
+        # span, because the width of an outer expansion says nothing about the
+        # expansions inside it. Charged as it is spent rather than measured afterwards,
+        # which is the whole point of a bound, and generous against `max_output` so that
+        # a name whose expansion is within that bound can still finish.
+        self._productions = 0
+        self._rework = 2 * limits.max_output + 4096
         # Set for exactly one encoding: the function enclosing a local name, whose
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
@@ -618,6 +633,12 @@ class ItaniumParser:
             return self.apply_template_args(base), (), "", True
         return base, (), "", False
 
+    def _spend_rework(self, characters):
+        """Charge a re-reading against the budget, or refuse the name."""
+        self._rework -= characters
+        if self._rework < 0:
+            raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
+
     def _expand_pattern(self, start, mark, arity):
         """Read a pack expansion's pattern once per member of the pack it ranges over.
 
@@ -632,10 +653,12 @@ class ItaniumParser:
         members = []
         try:
             for index in range(arity):
+                spent = self._productions
                 reader.pos = start
                 self.subs.restore_from(mark, [])
                 self._pack_index = index
                 members.append(self.type_())
+                self._spend_rework(self._productions - spent)
         finally:
             self._pack_index = outer_index
             reader.pos = resume
@@ -671,9 +694,11 @@ class ItaniumParser:
         self._scope_has_pack = any(id(argument) in self._pack_ids for argument in scope)
         self.subs.restore_from(mark, [])
         reader.pos = start
+        spent = self._productions
         try:
             return "operator " + self.builder.spell(self.type_())
         finally:
+            self._spend_rework(self._productions - spent)
             self._scope_has_pack = had_pack
             self._try_template_args = was_trying
             self._naming = was_naming
@@ -1451,6 +1476,7 @@ class ItaniumParser:
         return tuple(qualifier for qualifier in QUALIFIER_ORDER if qualifier in found)
 
     def type_(self):
+        self._productions += 1
         depth = self._depth = self._depth + 1
         if depth > self.limits.max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
