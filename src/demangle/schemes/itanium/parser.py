@@ -187,6 +187,8 @@ class ItaniumParser:
         "_drop_return",
         "_in_constraint",
         "_mangled",
+        "_module_names",
+        "_modules",
         "_naming",
         "_pack_arity",
         "_pack_ids",
@@ -244,6 +246,12 @@ class ItaniumParser:
         # a `basic_string<T_, T0_, T1_>` mentioned in a parameter list must resolve
         # against the enclosing function's arguments, not replace them.
         self._naming = True
+        # Module names by handle identity, and the strong references that keep those
+        # identities from being reused. A module name is a substitution candidate, so a
+        # `S<n>_` in a prefix may turn out to be one -- and it decorates the name that
+        # follows it rather than being a component of its own.
+        self._modules = []
+        self._module_names = {}
         # Set for exactly one encoding: the function enclosing a local name, whose
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
@@ -431,6 +439,11 @@ class ItaniumParser:
             reader.pos += 2
             return self.builder.special(SPECIAL_TYPE_NAMES[code], self.type_())
 
+        if code == "GI":
+            # <special-name> ::= GI <module-name>
+            reader.pos += 2
+            return self.builder.special("initializer for module ", self.builder.raw(self.module_name()))
+
         if code == "TA":
             # <special-name> ::= TA <template-arg>
             #
@@ -536,6 +549,9 @@ class ItaniumParser:
                 base = self.builder.qualified([self.builder.name("std"), inner])
             else:
                 base = self.substitution()
+                named = self._module_of(base)
+                if named is not None:
+                    base = self.unqualified_name(module=named)
             if reader.peek() == "I":
                 # An <unscoped-template-name> is a substitution candidate in its own
                 # right (5.1.10), recorded before the arguments that specialise it.
@@ -654,6 +670,7 @@ class ItaniumParser:
 
         parts = []
         is_template = False
+        module = ""
         outer_ctor_dtor = self._ctor_dtor
         self._ctor_dtor = False
         try:
@@ -668,7 +685,7 @@ class ItaniumParser:
                 if depth > self.limits.max_depth:
                     raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
                 try:
-                    is_template = self.prefix_component(parts, as_type)
+                    is_template, module = self.prefix_component(parts, as_type, module)
                 finally:
                     self._depth = depth - 1
 
@@ -684,11 +701,13 @@ class ItaniumParser:
         name = parts[0] if len(parts) == 1 else self.builder.qualified(parts)
         return name, quals, ref_qualifier, is_template
 
-    def prefix_component(self, parts, as_type=False):
+    def prefix_component(self, parts, as_type=False, module=""):
         """One component of a <prefix>, appended to `parts`.
 
-        Returns whether this component was a template specialisation; only the answer
-        for the final component reaches the caller, and this is where it is known.
+        Returns `(is-template-specialisation, module)`. Only the first answer for the
+        final component reaches the caller, and this is where it is known. The second is
+        a C++20 module name this component turned out to be rather than contain, which
+        decorates the component *after* it.
 
         Every <prefix> is a substitution candidate (5.1.10) *except* the last, which is
         an <unqualified-name> -- and function and operator names are explicitly excluded.
@@ -700,18 +719,23 @@ class ItaniumParser:
         char = reader.peek()
 
         if char == "S":
-            parts.append(self.substitution(expanded=self._abbreviation_scopes_a_structor()))
-            return False
+            component = self.substitution(expanded=self._abbreviation_scopes_a_structor())
+            named = self._module_of(component)
+            if named is not None:
+                # A module name, not a scope: it belongs to the component that follows.
+                return False, named
+            parts.append(component)
+            return False, module
 
         if char == "T":
             component = self.template_param()
             parts.append(component)
             self.subs.remember(component, "template-template-param")
-            return False
+            return False, module
 
         if char == "D" and reader.peek(1) in ("t", "T"):
             parts.append(self.decltype_())
-            return False
+            return False, module
 
         if char == "I":
             # <template-prefix> <template-args>: the arguments attach to the component
@@ -730,12 +754,12 @@ class ItaniumParser:
             # here too would enter it twice and shift every later index by one.
             if reader.peek() != "E":
                 self.subs.remember(combined, "prefix")
-            return True
+            return True, module
 
         if char == "M":
             # <closure-prefix> terminator; carries no spelling of its own.
             reader.take()
-            return False
+            return False, module
 
         if char == "Q":
             # A C++20 requires-clause, `Q <constraint-expression>`. It constrains the
@@ -750,14 +774,14 @@ class ItaniumParser:
                 self.expression()
             finally:
                 self._in_constraint = outer_constraint
-            return False
+            return False, module
 
-        component = self.unqualified_name(scope=parts)
+        component = self.unqualified_name(scope=parts, module=module)
         parts.append(component)
         if reader.peek() != "E":
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
             self.subs.remember(combined, "prefix")
-        return False
+        return False, ""
 
     def local_name(self, as_type=False):
         """<local-name> ::= Z <function encoding> E <entity name> [<discriminator>]
@@ -882,17 +906,25 @@ class ItaniumParser:
 
     # -- 5.1.2 unqualified names -----------------------------------------------
 
-    def unqualified_name(self, scope=None):
-        """<unqualified-name> ::= <operator-name> [<abi-tags>] | <ctor-dtor-name>
-        | <source-name> | <unnamed-type-name>
-        | DC <source-name>+ E
+    def unqualified_name(self, scope=None, module=""):
+        """<unqualified-name> ::= [<module-name>] <name body> [<abi-tags>]
+
+        ```
+        <name body> ::= <operator-name> | <ctor-dtor-name> | <source-name>
+                      | <unnamed-type-name> | DC <source-name>+ E
+        ```
+
+        `module` is a C++20 module name the caller already read -- a <prefix> can reach
+        one through a substitution -- and is spelled after the name: `Foo@MOD`.
         """
         reader = self.reader
         builder = self.builder
+        if reader.peek() == "W":
+            module = self.module_name(module)
         char = reader.peek()
 
         if char in DIGITS:
-            return builder.name(self.source_name())
+            return builder.name(self._in_module(self.plain_source_name(), module) + self.abi_tags())
 
         if char == "L":
             # An internal-linkage name. The marker carries no spelling, but it recurses,
@@ -902,19 +934,19 @@ class ItaniumParser:
             if depth > self.limits.max_depth:
                 raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
             try:
-                return self.unqualified_name(scope)
+                return self.unqualified_name(scope, module)
             finally:
                 self._depth = depth - 1
 
         if char == "C":
-            return self.constructor_name(scope)
+            return self.constructor_name(scope, module)
 
         if char == "D":
             following = reader.peek(1)
             if following in DESTRUCTOR_KINDS:
                 reader.pos += 2
                 self._ctor_dtor = True
-                return builder.name("~" + self.enclosing_class_name(scope))
+                return builder.name(self._in_module("~" + self.enclosing_class_name(scope), module))
             if following == "C":
                 # A structured binding declaration: DC <source-name>+ E
                 reader.pos += 2
@@ -923,12 +955,12 @@ class ItaniumParser:
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated structured binding")
                     names.append(self.source_name())
-                return builder.name("[" + ", ".join(names) + "]")
+                return builder.name(self._in_module("[" + ", ".join(names) + "]", module))
 
         if char == "U":
             return self.unnamed_type_name()
 
-        operator = builder.name(self.operator_name() + self.abi_tags())
+        operator = builder.name(self._in_module(self.operator_name(), module) + self.abi_tags())
         if reader.peek() != "I":
             # Nothing is going to bind a conversion operator's template parameters, so
             # there is nothing to read again. Cleared here rather than left to expire,
@@ -936,7 +968,7 @@ class ItaniumParser:
             self._pending_conversion = None
         return operator
 
-    def constructor_name(self, scope):
+    def constructor_name(self, scope, module=""):
         """A constructor name.
 
         ```
@@ -950,11 +982,11 @@ class ItaniumParser:
             # An inheriting constructor names the base it inherits from.
             reader.take()
             self.type_()
-            return self.builder.name(self.enclosing_class_name(scope))
+            return self.builder.name(self._in_module(self.enclosing_class_name(scope), module))
         marker = reader.take()
         if marker not in CONSTRUCTOR_KINDS:
             raise ParseError(self._mangled, reader.pos, f"unknown constructor variant {marker!r}")
-        return self.builder.name(self.enclosing_class_name(scope) + self.abi_tags())
+        return self.builder.name(self._in_module(self.enclosing_class_name(scope), module) + self.abi_tags())
 
     def enclosing_class_name(self, scope):
         """The bare class name that a constructor or destructor repeats.
@@ -983,6 +1015,14 @@ class ItaniumParser:
 
     def source_name(self):
         """<source-name> ::= <positive length number> <identifier>"""
+        return self.plain_source_name() + self.abi_tags()
+
+    def plain_source_name(self):
+        """A <source-name> without the ABI tags that may follow it.
+
+        Split out because a module name goes *between* the two: `3FooB3ABI` inside
+        module `MOD` is `Foo@MOD[abi:ABI]`, not `Foo[abi:ABI]@MOD`.
+        """
         reader = self.reader
         length = int(reader.digits())
         if length <= 0:
@@ -991,7 +1031,7 @@ class ItaniumParser:
         if text.startswith("_GLOBAL__N"):
             # The compiler's spelling for an anonymous namespace.
             return "(anonymous namespace)"
-        return text + self.abi_tags()
+        return text
 
     def _identifier(self):
         """The <source-name> of an ABI tag: a length and an identifier, and no more.
@@ -1006,6 +1046,44 @@ class ItaniumParser:
         if length <= 0:
             raise ParseError(self._mangled, reader.pos, "abi tag of non-positive length")
         return reader.take_exactly(length)
+
+    def module_name(self, module=""):
+        """A C++20 module name, as the text that goes after the `@`.
+
+        ```
+        <module-name>    ::= <module-subname>+ | <substitution>
+        <module-subname> ::= W <source-name> | W P <source-name>
+        ```
+
+        Submodules join with `.` and a partition with `:`, so `W3FooWP3BarW3Baz` is
+        `Foo:Bar.Baz`. Every prefix of the run is a substitution candidate in its own
+        right, which is how `S1_` comes to stand for `FOO.BAR` in a later parameter.
+
+        Newer than the grammar snapshot in docs/specs/.
+        """
+        reader = self.reader
+        while reader.peek() == "W":
+            reader.pos += 1
+            partition = reader.eat("P")
+            subname = self.plain_source_name()
+            if module or partition:
+                module += ":" if partition else "."
+            module += subname
+            handle = self.builder.raw(module)
+            # Strong reference and identity, the same arrangement packs use: an id-keyed
+            # map alone would report a reused address as a module it has never seen.
+            self._modules.append(handle)
+            self._module_names[id(handle)] = module
+            self.subs.remember(handle, "module-name")
+        return module
+
+    def _module_of(self, handle):
+        """The module name a substitution stands for, or None if it stands for a type."""
+        return self._module_names.get(id(handle))
+
+    @staticmethod
+    def _in_module(text, module):
+        return f"{text}@{module}" if module else text
 
     def abi_tags(self):
         """ABI tags, spelled `[abi:tag]`.
@@ -1382,6 +1460,12 @@ class ItaniumParser:
                 # abbreviation: the name that follows belongs to it.
                 return subs.remember(self.class_enum_type(), "type")
             component = self.substitution()
+            named = self._module_of(component)
+            if named is not None:
+                # `S1_ 1A` is `A@FOO.BAR`: the entry is the module, and the name that
+                # follows is the type. The pair is a <type> and so a candidate of its
+                # own -- the module entry alone is not one a later `S<n>_` can mean.
+                component = subs.remember(self.unqualified_name(module=named), "type")
             if reader.peek() == "I":
                 return subs.remember(builder.template(component, self.template_arguments()), "type")
             return component

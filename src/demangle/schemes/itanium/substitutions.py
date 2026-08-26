@@ -29,6 +29,7 @@ CANDIDATE_PRODUCTIONS = frozenset(
         "unscoped-template-name",
         "template-template-param",
         "unresolved-type",
+        "module-name",
     }
 )
 
