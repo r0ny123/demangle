@@ -38,11 +38,16 @@ it was written), struct and function-literal values, `extern(Pascal)`, the anony
 outright. Each was derived by running the reference over the input space rather than read
 from a specification that does not describe it.
 
-**Swift**, `test/Demangle/Inputs/manglings.txt`: 505 of 513, and *no* name in it
-answered with a different spelling — every failure is a refusal. The eight are new
-function-signature specialisation kinds, variadic-generic conformances, macro expansion
-source locations, and one opaque-return-type shape. `simplified-manglings.txt` is a
-whole output mode this does not have; see section 3.
+**Swift**, `test/Demangle/Inputs/manglings.txt`: 513 of 513, with no name answered by a
+different spelling at any point along the way. The last eight were features Swift added
+after this scheme was written -- function-signature specialisation kinds (an escaping
+closure, a closure the same as an earlier argument, propagated structs, and `p` becoming
+a run rather than one constant), arguments the optimiser dropped, `Tfr` representation
+changed, the `$e` Embedded Swift prefix, macro expansion source locations, pack protocol
+conformances and an opaque result type's conformance. Each was transcribed from
+swiftlang/swift's own `Demangler.cpp` and `NodePrinter.cpp` rather than fitted to the
+vectors, which is the only way the no-wrong-spellings property survives.
+`simplified-manglings.txt` is a whole output mode this does not have; see section 3.
 
 **Rust**, rustc-demangle's own `#[test]` vectors: 47 of 51. Three of the other four are
 its `{:#}` "no hash" mode rather than the `{}` this prints, and the fourth is a legacy

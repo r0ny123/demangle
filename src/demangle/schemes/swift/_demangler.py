@@ -41,9 +41,10 @@ _MAX_NUM_WORDS = 26
 _MAX_REPEAT_COUNT = 2048
 
 #: `getManglingPrefixLength`: the prefixes a Swift symbol may carry. `_T0` is the Swift 4
-#: mangling and still appears in shipped binaries; the leading `_` and `@__swiftmacro_`
-#: forms come from platforms whose linkers add one.
-MANGLING_PREFIXES = ("_T0", "$S", "_$S", "$s", "_$s", "@__swiftmacro_")
+#: mangling and still appears in shipped binaries; `$e` is Embedded Swift, whose names
+#: are read exactly as `$s` ones are; the leading `_` and `@__swiftmacro_` forms come
+#: from platforms whose linkers add one.
+MANGLING_PREFIXES = ("_T0", "$S", "_$S", "$s", "_$s", "$e", "_$e", "@__swiftmacro_")
 
 #: Types the standard library mangles as `S` and one letter, from the compiler's
 #: `StandardTypesMangling.def`. The kind matters: the printer spells a protocol
@@ -142,9 +143,11 @@ _BUILTIN_SIMPLE = {
 _ANY_PROTOCOL_CONFORMANCE_KINDS = frozenset(
     [
         "ConcreteProtocolConformance",
+        "PackProtocolConformance",
         "DependentProtocolConformanceRoot",
         "DependentProtocolConformanceInherited",
         "DependentProtocolConformanceAssociated",
+        "DependentProtocolConformanceOpaque",
     ]
 )
 
@@ -977,6 +980,16 @@ class Demangler:
     def pop_dependent_protocol_conformance(self):
         return self.pop(lambda kind: kind != "ConcreteProtocolConformance" and _is_any_protocol_conformance(kind))
 
+    def demangle_pack_protocol_conformance(self):
+        """`HX` -- one conformance per element of a parameter pack."""
+        return self.with_child("PackProtocolConformance", self.pop_any_protocol_conformance_list())
+
+    def demangle_dependent_protocol_conformance_opaque(self):
+        """`HO` -- the conformance an opaque result type carries."""
+        found = self.pop("Type")
+        conformance = self.pop_dependent_protocol_conformance()
+        return self.with_children("DependentProtocolConformanceOpaque", conformance, found)
+
     def demangle_dependent_protocol_conformance_root(self):
         index = self.demangle_dependent_conformance_index()
         protocol = self.pop_protocol()
@@ -1515,6 +1528,8 @@ class Demangler:
         specialization = _GENERIC_SPECIALIZATIONS.get(char)
         if specialization is not None:
             return self.demangle_generic_specialization(specialization)
+        if char == "t":
+            return self.demangle_generic_specialization_with_dropped_arguments()
 
         if char in ("Y", "Q"):
             kind = "AsyncAwaitResumePartialFunction" if char == "Q" else "AsyncSuspendResumePartialFunction"
@@ -1775,16 +1790,35 @@ class Demangler:
             found.append(char)
         return "".join(found)
 
-    def demangle_generic_specialization(self, kind):
+    def demangle_generic_specialization(self, kind, dropped=()):
         specialized = self.demangle_spec_attributes(kind)
         if specialized is None:
             return None
+        for argument in dropped:
+            specialized.add(argument)
         types = self.pop_type_list()
         if types is None:
             return None
         for found in types.children:
             specialized.add(self.with_child("GenericSpecializationParam", found))
         return specialized
+
+    def demangle_generic_specialization_with_dropped_arguments(self):
+        """`Tt<n>...` -- a specialisation the optimiser dropped some arguments from.
+
+        Each `t` is followed by the index of a dropped argument, and a `t` with no digits
+        after it means the first. The letter that follows the run says which sort of
+        specialisation it is.
+        """
+        self.pos -= 1
+        dropped = []
+        while self.next_if("t"):
+            index = self.natural()
+            dropped.append(Node("DroppedArgument", index=0 if index is None else index + 1))
+        kind = _DROPPED_ARGUMENT_SPECIALIZATIONS.get(self.next_char())
+        if kind is None:
+            return None
+        return self.demangle_generic_specialization(kind, dropped)
 
     def demangle_function_specialization(self):
         """`Tf` -- a copy of a function specialised for particular argument values.
@@ -1794,6 +1828,10 @@ class Demangler:
         backwards and fills each one in from what is left.
         """
         specialized = self.demangle_spec_attributes("FunctionSignatureSpecialization")
+        if specialized is not None and specialized.first.kind == "RepresentationChanged":
+            # Nothing about the arguments changed, only how the function is represented,
+            # so there are no parameters to read.
+            return specialized
         while specialized is not None and not self.next_if("_"):
             specialized = self.add_child(
                 specialized, self.demangle_func_spec_param("FunctionSignatureSpecializationParam")
@@ -1808,25 +1846,38 @@ class Demangler:
         for parameter in reversed(specialized.children):
             if parameter.kind != "FunctionSignatureSpecializationParam" or not parameter.children:
                 continue
-            kind = parameter.first.index
-            if kind not in _PARAM_KINDS_WITH_PAYLOAD:
-                continue
+            # A `p` parameter carries a *run* of kinds -- `pSSi3Si0` is a propagated
+            # struct, an integer and another struct, all of argument one -- so every kind
+            # child is served, innermost first, rather than only the first.
             fixed = len(parameter.children)
-            while True:
-                found = self.pop("Type")
-                if found is None:
-                    break
-                if kind not in (_PARAM_CLOSURE_PROP, _PARAM_CONSTANT_PROP_KEY_PATH):
-                    return None
-                parameter = self.add_child(parameter, found)
-            name = self.pop("Identifier")
-            if name is None:
+            filled = parameter
+            for child in reversed(parameter.children[:fixed]):
+                if child.kind != "FunctionSignatureSpecializationParamKind":
+                    continue
+                kind = child.index
+                if kind in _PARAM_KINDS_TAKING_TYPES:
+                    while True:
+                        found = self.pop("Type")
+                        if found is None:
+                            break
+                        filled = self.add_child(filled, found)
+                elif kind == _PARAM_CONSTANT_PROP_KEY_PATH:
+                    filled = self.add_child(filled, self.pop("Type"))
+                    filled = self.add_child(filled, self.pop("Type"))
+                elif kind == _PARAM_CONSTANT_PROP_STRUCT:
+                    # A type and *no* identifier: the struct's own name is the type, and
+                    # the value it was propagated from is the next kind's payload.
+                    filled = self.add_child(filled, self.pop("Type"))
+                    continue
+                elif kind not in _PARAM_KINDS_WITH_PAYLOAD:
+                    continue
+                # The identifier node itself, not its text in a payload: a payload is
+                # what the *mangling* wrote inline -- a string's encoding, an integer's
+                # digits -- and the printer tells the two apart by node kind when it
+                # walks a parameter that carries several kinds at once.
+                filled = self.add_child(filled, self.pop("Identifier"))
+            if filled is None:
                 return None
-            text = name.text
-            if kind == _PARAM_CONSTANT_PROP_STRING and text.startswith("_"):
-                # `_` escapes a string constant that would otherwise start with a digit.
-                text = text[1:]
-            self.add_child(parameter, Node("FunctionSignatureSpecializationParamPayload", text=text))
             parameter.children[fixed:] = reversed(parameter.children[fixed:])
         return specialized
 
@@ -1837,25 +1888,45 @@ class Demangler:
             return parameter
         if char == "c":
             return self.add_child(parameter, _param_kind(_PARAM_CLOSURE_PROP))
+        if char == "E":
+            # `c` for a closure that escapes.
+            return self.add_child(parameter, _param_kind(_PARAM_ESCAPING_CLOSURE_PROP))
+        if char == "C":
+            # The same closure as an earlier argument, named by its index.
+            self.add_child(parameter, _param_kind(_PARAM_CLOSURE_PROP_PREVIOUS_ARG))
+            previous = self.natural()
+            if previous is None:
+                return None
+            return self.add_child(parameter, Node("FunctionSignatureSpecializationParamPayload", index=previous))
         if char == "p":
-            inner = self.next_char()
-            if inner == "f":
-                return self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_FUNCTION))
-            if inner == "g":
-                return self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_GLOBAL))
-            if inner == "i":
-                return self.add_func_spec_param_number(parameter, _PARAM_CONSTANT_PROP_INTEGER)
-            if inner == "d":
-                return self.add_func_spec_param_number(parameter, _PARAM_CONSTANT_PROP_FLOAT)
-            if inner == "s":
-                encoding = {"b": "u8", "w": "u16", "c": "objc"}.get(self.next_char())
-                if encoding is None:
-                    return None
-                self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_STRING))
-                return self.add_child(parameter, Node("FunctionSignatureSpecializationParamPayload", text=encoding))
-            if inner == "k":
-                return self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_KEY_PATH))
-            return None
+            # A *run* of propagated constants, not one: `pSSi3Si0` is a struct, an
+            # integer and a struct, all describing the same argument. The run ends at the
+            # first letter that is not one of these, which is put back for the caller.
+            while True:
+                inner = self.next_char()
+                if inner == "S":
+                    self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_STRUCT))
+                elif inner == "f":
+                    self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_FUNCTION))
+                elif inner == "g":
+                    self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_GLOBAL))
+                elif inner == "i":
+                    if self.add_func_spec_param_number(parameter, _PARAM_CONSTANT_PROP_INTEGER) is None:
+                        return None
+                elif inner == "d":
+                    if self.add_func_spec_param_number(parameter, _PARAM_CONSTANT_PROP_FLOAT) is None:
+                        return None
+                elif inner == "s":
+                    encoding = {"b": "u8", "w": "u16", "c": "objc"}.get(self.next_char())
+                    if encoding is None:
+                        return None
+                    self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_STRING))
+                    self.add_child(parameter, Node("FunctionSignatureSpecializationParamPayload", text=encoding))
+                elif inner == "k":
+                    self.add_child(parameter, _param_kind(_PARAM_CONSTANT_PROP_KEY_PATH))
+                else:
+                    self.pos -= 1
+                    return parameter
         flags = _PARAM_FLAG_SETS.get(char)
         if flags is None:
             return None
@@ -1878,8 +1949,16 @@ class Demangler:
         )
 
     def demangle_spec_attributes(self, kind):
+        """The flags between a specialisation's letter and its pass number.
+
+        `m` is not in the reference any more; it is kept because the shipped runtime
+        still holds symbols carrying it -- `...Tgm5` -- and dropping it would misread
+        them rather than refuse them.
+        """
         metatype_params_removed = self.next_if("m")
         serialized = self.next_if("q")
+        async_removed = self.next_if("a")
+        representation_changed = self.next_if("r")
         pass_id = ord(self.next_char() or "\x00") - ord("0")
         if pass_id < 0 or pass_id > 9:
             return None
@@ -1888,6 +1967,10 @@ class Demangler:
             specialized.add(Node("MetatypeParamsRemoved"))
         if serialized:
             specialized.add(Node("IsSerialized"))
+        if async_removed:
+            specialized.add(Node("AsyncRemoved"))
+        if representation_changed:
+            specialized.add(Node("RepresentationChanged"))
         specialized.add(Node("SpecializationPassID", index=pass_id))
         return specialized
 
@@ -2339,7 +2422,21 @@ class Demangler:
         return self.add_child(witness, self.pop("Type"))
 
     def demangle_macro_expansion(self):
-        found = _MACRO_EXPANSIONS.get(self.next_char())
+        char = self.next_char()
+        if char == "X":
+            # `MX<line>_<column>_` -- where in the source the expansion came from, which
+            # is a context for the expansions that follow it rather than an entity of its
+            # own. Both numbers are indices, so each is one less than it reads.
+            line = self.index()
+            column = self.index()
+            if line is None or column is None:
+                return None
+            buffer = self.pop("Identifier")
+            module = self.pop("Identifier")
+            return self.with_children(
+                "MacroExpansionLoc", module, buffer, Node("Index", index=line), Node("Index", index=column)
+            )
+        found = _MACRO_EXPANSIONS.get(char)
         if found is None:
             return None
         kind, attached, freestanding = found
@@ -2551,6 +2648,14 @@ _GENERIC_SPECIALIZATIONS = {
     "i": "InlinedGenericFunction",
 }
 
+#: What may follow a run of dropped arguments. A narrower set than `T` accepts on its
+#: own: a partial or function specialisation cannot have dropped any.
+_DROPPED_ARGUMENT_SPECIALIZATIONS = {
+    "g": "GenericSpecialization",
+    "G": "GenericSpecializationNotReAbstracted",
+    "B": "GenericSpecializationInResilienceDomain",
+}
+
 _WITNESS_OF_CONFORMANCE = {
     "P": "ProtocolWitnessTable",
     "p": "ProtocolWitnessTablePattern",
@@ -2747,7 +2852,10 @@ _MACRO_EXPANSIONS = {
     "u": ("MacroExpansionUniqueName", False, False),
 }
 
-_MACRO_EXPANSION_KINDS = frozenset(kind for kind, _, _ in _MACRO_EXPANSIONS.values())
+#: What may stand as the context of a macro expansion. A source location is one of them:
+#: `isMacroExpansionNodeKind` counts it, so an expansion nests inside the place it came
+#: from rather than inside the enclosing declaration.
+_MACRO_EXPANSION_KINDS = frozenset(kind for kind, _, _ in _MACRO_EXPANSIONS.values()) | {"MacroExpansionLoc"}
 
 # Function-signature specialisation parameter kinds. The low values are alternatives; the
 # high ones are flags that combine, which is why they are numbers rather than names.
@@ -2761,12 +2869,18 @@ _PARAM_BOX_TO_VALUE = 6
 _PARAM_BOX_TO_STACK = 7
 _PARAM_IN_OUT_TO_OUT = 8
 _PARAM_CONSTANT_PROP_KEY_PATH = 9
+_PARAM_CONSTANT_PROP_STRUCT = 10
+_PARAM_CLOSURE_PROP_PREVIOUS_ARG = 11
+_PARAM_ESCAPING_CLOSURE_PROP = 12
 _PARAM_DEAD = 1 << 6
 _PARAM_OWNED_TO_GUARANTEED = 1 << 7
 _PARAM_SROA = 1 << 8
 _PARAM_GUARANTEED_TO_OWNED = 1 << 9
 _PARAM_EXISTENTIAL_TO_GENERIC = 1 << 10
 
+#: Kinds whose payload is an identifier waiting on the stack. `ConstantPropStruct` is
+#: not among them: it takes a *type* and then leaves the identifier for the kind mangled
+#: beside it, which is what lets one parameter carry several of them.
 _PARAM_KINDS_WITH_PAYLOAD = frozenset(
     [
         _PARAM_CONSTANT_PROP_FUNCTION,
@@ -2774,8 +2888,12 @@ _PARAM_KINDS_WITH_PAYLOAD = frozenset(
         _PARAM_CONSTANT_PROP_STRING,
         _PARAM_CONSTANT_PROP_KEY_PATH,
         _PARAM_CLOSURE_PROP,
+        _PARAM_ESCAPING_CLOSURE_PROP,
     ]
 )
+
+#: Kinds that take every `Type` left on the stack rather than a fixed number of them.
+_PARAM_KINDS_TAKING_TYPES = frozenset([_PARAM_CLOSURE_PROP, _PARAM_ESCAPING_CLOSURE_PROP])
 
 #: The letter that starts a flag-set parameter, its base value, and the flags that may
 #: follow it. The order the flags are tried in is the order they are mangled in.
@@ -2838,6 +2956,10 @@ def _demangle_h(demangler):
         return demangler.demangle_dependent_protocol_conformance_root()
     if char == "I":
         return demangler.demangle_dependent_protocol_conformance_inherited()
+    if char == "O":
+        return demangler.demangle_dependent_protocol_conformance_opaque()
+    if char == "X":
+        return demangler.demangle_pack_protocol_conformance()
     if char == "P":
         return demangler.with_child("ProtocolConformanceRefInTypeModule", demangler.pop_protocol())
     if char == "p":

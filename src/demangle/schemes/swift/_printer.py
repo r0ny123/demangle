@@ -132,6 +132,9 @@ _PARAM_BOX_TO_VALUE = 6
 _PARAM_BOX_TO_STACK = 7
 _PARAM_IN_OUT_TO_OUT = 8
 _PARAM_CONSTANT_PROP_KEY_PATH = 9
+_PARAM_CONSTANT_PROP_STRUCT = 10
+_PARAM_CLOSURE_PROP_PREVIOUS_ARG = 11
+_PARAM_ESCAPING_CLOSURE_PROP = 12
 
 
 class _Invalid(Exception):
@@ -565,10 +568,26 @@ class Printer:
     # -- specialisations -------------------------------------------------------
 
     def print_function_sig_specialization_params(self, node, depth):
+        """One parameter of a function-signature specialisation.
+
+        Two cursors, as the reference has: `at` walks the children looking for the next
+        *kind*, and reads the payload the mangling wrote inline beside it -- an integer's
+        digits, a string's encoding. `argument` walks the same children skipping every
+        kind and payload, and serves the operands that were popped off the stack: the
+        types, the identifiers.
+
+        One cursor would not do it, because a single parameter can carry several kinds --
+        `pSSi3Si0` is a propagated struct, an integer, a struct, an integer -- and their
+        two sorts of operand are interleaved differently from the kinds themselves.
+        """
         at = 0
+        argument = 0
         end = len(node.children)
         while at < end:
-            kind = node.child(at).index
+            child = node.child(at)
+            if child.index is None:
+                return
+            kind = child.index
             if kind in (_PARAM_BOX_TO_VALUE, _PARAM_BOX_TO_STACK, _PARAM_IN_OUT_TO_OUT):
                 self.print(node.child(at), depth + 1)
                 at += 1
@@ -577,13 +596,11 @@ class Printer:
                 self.print(node.child(at), depth + 1)
                 at += 1
                 self.write(" : ")
-                text = node.child(at).text
-                at += 1
-                # The payload is itself a mangled name; the reference demangles it and
-                # falls back to the raw text when it cannot.
-                self.write(print_root(_demangle_either(text)) or text)
+                argument = self.print_next_param_child(node, argument, kind, depth)
                 self.write("]")
             elif kind in (_PARAM_CONSTANT_PROP_INTEGER, _PARAM_CONSTANT_PROP_FLOAT):
+                if at + 2 > end:
+                    return
                 self.write("[")
                 self.print(node.child(at), depth + 1)
                 at += 1
@@ -592,6 +609,8 @@ class Printer:
                 at += 1
                 self.write("]")
             elif kind == _PARAM_CONSTANT_PROP_STRING:
+                if at + 2 > end:
+                    return
                 self.write("[")
                 self.print(node.child(at), depth + 1)
                 at += 1
@@ -599,24 +618,30 @@ class Printer:
                 self.print(node.child(at), depth + 1)
                 at += 1
                 self.write("'")
-                self.print(node.child(at), depth + 1)
-                at += 1
-                self.write("']")
+                argument = self.print_next_param_child(node, argument, kind, depth)
+                self.write("'")
+                self.write("]")
             elif kind == _PARAM_CONSTANT_PROP_KEY_PATH:
                 self.write("[")
                 self.print(node.child(at), depth + 1)
                 at += 1
                 self.write(" : ")
-                self.print(node.child(at), depth + 1)
-                at += 1
+                argument = self.print_next_param_child(node, argument, kind, depth)
                 self.write("<")
-                self.print(node.child(at), depth + 1)
-                at += 1
+                argument = self.print_next_param_child(node, argument, kind, depth)
                 self.write(",")
+                argument = self.print_next_param_child(node, argument, kind, depth)
+                self.write(">]")
+            elif kind == _PARAM_CONSTANT_PROP_STRUCT:
+                self.write("[")
                 self.print(node.child(at), depth + 1)
                 at += 1
-                self.write(">]")
-            elif kind == _PARAM_CLOSURE_PROP:
+                self.write(" : ")
+                argument = self.print_next_param_child(node, argument, kind, depth)
+                self.write("]")
+            elif kind in (_PARAM_CLOSURE_PROP, _PARAM_ESCAPING_CLOSURE_PROP):
+                if at + 2 > end:
+                    return
                 self.write("[")
                 self.print(node.child(at), depth + 1)
                 at += 1
@@ -625,26 +650,67 @@ class Printer:
                 at += 1
                 self.write(", Argument Types : [")
                 while at < end:
-                    child = node.child(at)
-                    if child.kind != "Type":
+                    following = node.child(at)
+                    if following.kind != "Type":
                         break
-                    self.print(child, depth + 1)
+                    self.print(following, depth + 1)
                     at += 1
                     if at < end and node.child(at).text is not None:
                         self.write(", ")
+                self.write("]")
+            elif kind == _PARAM_CLOSURE_PROP_PREVIOUS_ARG:
+                if at + 2 > end:
+                    return
+                self.write("[")
+                self.print(node.child(at), depth + 1)
+                at += 1
+                self.write(" ")
+                self.print(node.child(at), depth + 1)
+                at += 1
                 self.write("]")
             else:
                 # One of the flag combinations, printed by the node itself.
                 self.print(node.child(at), depth + 1)
                 at += 1
 
+    def print_next_param_child(self, node, argument, kind, depth):
+        """The next operand of a parameter: what was popped rather than written inline.
+
+        Returns where the operand cursor reached, so the caller can pass it back in --
+        several of the kinds take more than one.
+        """
+        end = len(node.children)
+        while argument < end:
+            child = node.child(argument)
+            argument += 1
+            if child.kind in (
+                "FunctionSignatureSpecializationParamKind",
+                "FunctionSignatureSpecializationParamPayload",
+            ):
+                continue
+            if kind in (_PARAM_CONSTANT_PROP_FUNCTION, _PARAM_CONSTANT_PROP_GLOBAL):
+                # The operand is itself a mangled name; the reference demangles it and
+                # falls back to the raw text when it cannot.
+                self.write(print_root(_demangle_either(child.text)) or child.text)
+            elif kind == _PARAM_CONSTANT_PROP_STRING and child.text and child.text.startswith("_"):
+                # `_` escapes a string constant that would otherwise start with a digit.
+                self.write(child.text[1:])
+            else:
+                self.print(child, depth + 1)
+            return argument
+        return argument
+
     def print_specialization_prefix(self, node, description, depth, param_prefix=""):
+        if node.first is not None and node.first.kind == "RepresentationChanged":
+            # Nothing about the arguments changed, so there is no argument list to print.
+            self.write("representation changed of ")
+            return
         self.write(description)
         self.write(" <")
         separator = ""
         argument = 0
         for child in node.children:
-            if child.kind in ("SpecializationPassID", "MetatypeParamsRemoved"):
+            if child.kind in ("SpecializationPassID", "MetatypeParamsRemoved", "DroppedArgument"):
                 continue
             if child.kind == "IsSerialized":
                 self.write(separator)
@@ -1143,7 +1209,7 @@ def _node_to_string(node):
 
 _simple("Global", lambda self, node, depth: self.print_children(node, depth))
 _simple("TypeList", lambda self, node, depth: self.print_children(node, depth))
-_simple("AnyProtocolConformanceList", lambda self, node, depth: self.print_children(node, depth))
+_simple("AnyProtocolConformanceList", lambda self, node, depth: _print_conformance_list(self, node, depth))
 _simple("ConstrainedExistentialRequirementList", lambda self, node, depth: self.print_children(node, depth, ", "))
 _simple("Module", lambda self, node, depth: self.write(node.text))
 _simple("Identifier", lambda self, node, depth: self.write(node.text))
@@ -1432,6 +1498,11 @@ def _print_generic_specialization_param(self, node, depth, as_prefix_context):
 
 @_handler("FunctionSignatureSpecializationParamPayload")
 def _print_param_payload(self, node, depth, as_prefix_context):
+    """What the mangling wrote inline: an integer's digits, a string's encoding, or the
+    index of the argument a closure was propagated from."""
+    if node.text is None:
+        self.write(str(node.index))
+        return None
     self.write(print_root(_demangle_either(node.text)) or node.text)
     return None
 
@@ -1473,6 +1544,9 @@ _PARAM_KIND_NAMES = {
     _PARAM_CONSTANT_PROP_STRING: "Constant Propagated String",
     _PARAM_CONSTANT_PROP_KEY_PATH: "Constant Propagated KeyPath",
     _PARAM_CLOSURE_PROP: "Closure Propagated",
+    _PARAM_CONSTANT_PROP_STRUCT: "Constant Propagated Struct",
+    _PARAM_CLOSURE_PROP_PREVIOUS_ARG: "Same As Argument",
+    _PARAM_ESCAPING_CLOSURE_PROP: "Escaping Closure Propagated",
 }
 
 
@@ -1489,6 +1563,42 @@ for _kind, _lead in (
         return None
 
     _HANDLERS[_kind] = _print_lazy_witness_table
+
+
+def _print_conformance_list(self, node, depth):
+    """A bracketed, comma-separated list -- and nothing at all when it is empty."""
+    if not node.children:
+        return
+    self.write("(")
+    self.print_children(node, depth, ", ")
+    self.write(")")
+
+
+@_handler("PackProtocolConformance")
+def _print_pack_protocol_conformance(self, node, depth, as_prefix_context):
+    self.write("pack protocol conformance ")
+    self.print_children(node, depth)
+    return None
+
+
+@_handler("DependentProtocolConformanceOpaque")
+def _print_dependent_protocol_conformance_opaque(self, node, depth, as_prefix_context):
+    self.write("opaque result conformance ")
+    self.print(node.first, depth + 1)
+    self.write(" of ")
+    self.print(node.child(1), depth + 1)
+    return None
+
+
+@_handler("MacroExpansionLoc")
+def _print_macro_expansion_loc(self, node, depth, as_prefix_context):
+    """Where in the source an expansion came from, as far as the name records it."""
+    for at, lead in enumerate(("module ", " file ", " line ", " column ")):
+        if at >= len(node.children):
+            break
+        self.write(lead)
+        self.print(node.child(at), depth + 1)
+    return None
 
 
 @_handler("VTableThunk")
@@ -2206,7 +2316,13 @@ def _print_concrete_protocol_conformance(self, node, depth, as_prefix_context):
     self.write("concrete protocol conformance ")
     if node.index is not None:
         self.write(f"#{node.index} ")
-    self.print_children(node, depth)
+    self.print(node.first, depth + 1)
+    self.write(" to ")
+    self.print(node.child(1), depth + 1)
+    conditional = node.child(2)
+    if conditional is not None and conditional.children:
+        self.write(" with conditional requirements: ")
+        self.print(conditional, depth + 1)
     return None
 
 

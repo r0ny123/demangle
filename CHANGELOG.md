@@ -237,9 +237,17 @@ All notable changes to this project are recorded here. The format follows
 - **Rust pattern types and splat arguments**, and rustc-demangle's own `#[test]` vectors
   as a corpus.
 
-- **Swift 6**: the lowered function type, value generics, coroutine accessors and coro
-  thunks, called-once functions, isolated deinit, suppressed conformances, the
-  no-value-witness outlined operations, and Swift's own `manglings.txt` as a corpus.
+- **Swift 6 and later**: the lowered function type, value generics, coroutine accessors
+  and coro thunks, called-once functions, isolated deinit, suppressed conformances, the
+  no-value-witness outlined operations, and Swift's own `manglings.txt` as a corpus --
+  every vector in it. The last eight needed four more function-signature specialisation
+  kinds (an escaping closure, a closure the same as an earlier argument, propagated
+  structs, and `p` becoming a *run* so one argument can carry several constants),
+  arguments the optimiser dropped, `Tfr` representation changed, the `$e` Embedded Swift
+  prefix, macro expansion source locations, pack protocol conformances, and an opaque
+  result type's conformance. Each was transcribed from swiftlang/swift's own
+  `Demangler.cpp` and `NodePrinter.cpp`; fitting a grammar to eight examples is how a
+  demangler with no wrong spellings starts having them.
 
 - **MSVC wide and multi-byte string literals**, and the truncated ones. `??_C@_1...` is
   `L"wide"`; a narrow literal's character width is not in the encoding, so the
@@ -423,8 +431,8 @@ Measured against the reference projects' *own* corpora, all pinned in both direc
 a number can only go up and cannot quietly stop being accurate.
 
 - **Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,728 to **29,910 of 29,928**.
-- **Swift**, `test/Demangle/Inputs/manglings.txt`: 457 to **505 of 513**, with no name
-  answered by a *different* spelling -- every remaining failure is a refusal.
+- **Swift**, `test/Demangle/Inputs/manglings.txt`: 457 to **513 of 513**, with no name
+  answered by a *different* spelling at any point along the way.
 - **Rust**, rustc-demangle's own vectors: 38 to **47 of 51**.
 - **D**, libiberty's `d-demangle-expected`: 293 to **366 of 366**.
 - **GNU style** against `c++filt` 2.42 over libLLVM's 44,049 C++ symbols: 1,419
