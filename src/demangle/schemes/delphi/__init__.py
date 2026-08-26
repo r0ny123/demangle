@@ -67,8 +67,9 @@ PLUGIN = LanguagePlugin(
     # `@name@N` with a decimal byte count; detection refuses that shape rather than
     # truncating at the first `@`.
     first_characters="@",
-    # Above Swift, which also lists `@` (for `@__swiftmacro_`) but whose detect is a
-    # prefix test that Delphi names fail. Below nothing that could honestly claim `@`.
+    # `priority` is ascending: *lower is offered first*. Before Swift, which also lists
+    # `@` (for `@__swiftmacro_`) but whose detect is a prefix test that Delphi names
+    # fail.
     priority=35,
 )
 

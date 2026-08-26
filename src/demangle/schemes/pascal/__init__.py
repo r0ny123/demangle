@@ -70,9 +70,12 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Free Pascal symbol mangling",
     aliases=("fpc", "freepascal"),
-    # Below the schemes with their own prefixes, above Nim: `$` is not legal in a C
-    # identifier on the targets Free Pascal emits these for, so the shape is distinctive,
-    # but it is still a shape rather than a marker.
+    # `priority` is ascending: *lower is offered first*. Offered after Go and Nim and
+    # before every scheme with a prefix of its own -- which matters: six Free Pascal
+    # symbols in the corpus (`_$SDL_MIXER$_Ld1` among them) are claimed by Swift's `_$S`
+    # prefix test as well, and this scheme wins them only by being asked first. `$` is
+    # not legal in a C identifier on the targets Free Pascal emits these for, so the
+    # shape is distinctive, but it is still a shape rather than a marker.
     priority=20,
 )
 

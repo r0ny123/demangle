@@ -182,3 +182,47 @@ class TestFirstCharacterScreen:
             if plugin.first_characters:
                 continue
             assert plugin in registry.candidates("anything at all")
+
+
+class TestDetectionOrderIsPinned:
+    """The order plugins are offered names in, asserted rather than reasoned about.
+
+    `priority` is ascending -- lower is offered first -- and the comments beside every
+    shape-test scheme used to say the opposite of what its number did: `go` was
+    documented as "last" and was in fact first. Nothing caught that, because nothing
+    stated the order anywhere a test could read it.
+
+    It is not cosmetic. Free Pascal and Swift both claim `_$SDL_MIXER$_Ld1`, and Free
+    Pascal is right about it only because it is asked first. Anyone "fixing" the
+    priorities to match the old comments would have broken those six names, and this is
+    the test that would have told them so.
+    """
+
+    EXPECTED = ("go", "nim", "pascal", "objc", "delphi", "d", "swift", "rust", "msvc", "itanium")
+
+    def test_the_built_in_order_is_what_it_is(self):
+        from demangle.core.registry import available
+
+        assert tuple(plugin.name for plugin in available()) == self.EXPECTED
+
+    def test_lower_priority_really_does_come_first(self):
+        from demangle.core.registry import available
+
+        priorities = [plugin.priority for plugin in available()]
+        assert priorities == sorted(priorities)
+
+    def test_rust_is_offered_before_itanium(self):
+        """A legacy Rust symbol *is* an Itanium symbol; only the order tells them apart."""
+        from demangle.core.registry import available
+
+        order = [plugin.name for plugin in available()]
+        assert order.index("rust") < order.index("itanium")
+
+    def test_free_pascal_is_offered_before_swift(self):
+        """Both claim `_$S...`; the corpus says Free Pascal is right about these."""
+        import demangle as package
+        from demangle.core.registry import available
+
+        order = [plugin.name for plugin in available()]
+        assert order.index("pascal") < order.index("swift")
+        assert package.detect("_$SDL_MIXER$_Ld1") == "pascal"

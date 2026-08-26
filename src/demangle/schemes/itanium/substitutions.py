@@ -113,14 +113,14 @@ class TemplateArgumentTable:
     output, so they do not share a type.
 
     Scopes nest: a lambda inside a template function has its own parameters while the
-    enclosing ones remain visible. `scope()` gives a context manager for that.
+    enclosing ones remain visible. `snapshot()` and `restore()` are how a caller saves
+    and puts back the enclosing scope across one of those.
     """
 
-    __slots__ = ("_arguments", "_saved")
+    __slots__ = ("_arguments",)
 
     def __init__(self):
         self._arguments = []
-        self._saved = []
 
     def add(self, handle):
         self._arguments.append(handle)

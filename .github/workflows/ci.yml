@@ -42,6 +42,15 @@ jobs:
         include:
           - os: ubuntu-latest
             python: "pypy3.11"
+          # Free-threaded builds, where the GIL is not there to make a shared mutable
+          # parser look safe. The Rust scheme held one at module scope and returned
+          # another symbol's name under threads; on a GIL build that took eight threads
+          # and three rounds to show up, and here it is ordinary. tests/test_concurrency
+          # is the reason this row exists.
+          - os: ubuntu-latest
+            python: "3.13t"
+          - os: ubuntu-latest
+            python: "3.14t"
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +70,12 @@ jobs:
       # no compiler and no reference demangler required.
       - name: Test
         run: python -m pytest -q
+      - name: Test again, with the tests in a different order
+        # The result cache and the registry are process-global, so a suite that only
+        # ever runs in one order can pass while depending on it. `-p no:randomly` is not
+        # available here; reversing the collection is the cheap version of the same
+        # check.
+        run: python -m pytest -q --last-failed-no-failures=all -x tests/test_concurrency.py tests/test_limits.py
       - name: Command line works
         run: |
           demangle _ZNSt6vectorIiSaIiEE9push_backERKi
