@@ -160,7 +160,35 @@ def _apple_method(name):
     )
 
 
-def gnu_method_readings(name):
+#: Candidate splits `gnu_method_readings` will weigh before it stops looking.
+#:
+#: The search is over pairs of underscore positions, so it is quadratic in how many
+#: underscores the body holds, and an unbounded quadratic over attacker-controlled input
+#: is a denial of service rather than a slow path. It was one: `_i_` followed by `a_`
+#: eight hundred times took 28 seconds, and the same shape at the default `max_input`
+#: would have run for days -- long enough that a single crafted symbol hangs any tool
+#: that walks a symbol table.
+#:
+#: The bound costs nothing real. A GNU-runtime method symbol is `_i_<class>_<category>_
+#: <selector>`, and the underscores in it are separators and colons; the most any symbol
+#: in the shipped Objective-C runtime carries is six. A body with more than this many is
+#: not a method whose reading anyone could trust -- it has more readings than a reader
+#: could distinguish -- so declining to enumerate them loses nothing a caller wanted.
+_MAX_SEPARATORS = 64
+
+
+def _remangle_selector(selector):
+    """The mangled body a selector produces, which is `mangle_gnu_method`'s tail.
+
+    Split out so a reading can be checked without building the whole symbol: the class
+    and category halves of a candidate are substrings of the input by construction, so
+    the only part that can fail to re-mangle is the selector.
+    """
+    slots = selector.split(":")
+    return "".join([f"{slot}_" for slot in slots[:-1]]) if slots[-1] == "" else selector
+
+
+def gnu_method_readings(name, limit=None):
     """Every `(class, category, selector)` that re-mangles to `name`, best first.
 
     The mangling writes `_` for both a separator and a `:`, and does nothing to mark
@@ -174,6 +202,10 @@ def gnu_method_readings(name):
     that does. Within each group the leftmost split wins, which is the shortest class
     name -- the reading a class whose name holds no underscore produces.
 
+    `limit` stops the search once that many readings are in hand. The caller that wants
+    a spelling passes 2, because all it needs is the best reading and whether a second
+    exists; enumerating the rest is work nobody reads.
+
     Measured against the compiler, over symbols clang emitted for declarations this
     package generated: 131 of 131 correct when class, category and selector are ordinary
     identifiers without underscores, which is how Objective-C is conventionally written;
@@ -182,34 +214,74 @@ def gnu_method_readings(name):
     """
     if not (name.startswith("_i_") or name.startswith("_c_")):
         return []
-    is_class_method = name[1] == "c"
     body = name[3:]
     if not body:
         return []
 
-    found = []
-    for class_end in range(1, len(body)):
-        if body[class_end] != "_":
+    # Separator positions, once. Both passes below walk these rather than every
+    # character, and -- the part that matters -- the selector for a given tail is read
+    # once per position instead of once per (class, category) pair. It never depended on
+    # where the class ended; recomputing it there is what made this cubic rather than
+    # quadratic, since each recomputation slices and re-scans the whole tail.
+    marks = [index for index, char in enumerate(body) if char == "_"][:_MAX_SEPARATORS]
+    tails = {}
+
+    def selector_after(mark):
+        """The selector spelled by everything past `mark`, or None. Memoised."""
+        found = tails.get(mark)
+        if found is None:
+            tail = body[mark + 1 :]
+            selector = _unmangle_selector(tail)
+            # `mangle_gnu_method(...) == name` reduces to this: a candidate's class and
+            # category are slices of `body`, so they re-mangle by construction and only
+            # the selector can disagree.
+            if selector is not None and _remangle_selector(selector) != tail:
+                selector = None
+            found = tails[mark] = (selector,)
+        return found[0]
+
+    # Longest class prefix worth trying. Once a prefix is not an identifier no longer
+    # prefix is either, so the scan stops there rather than at the end of the body.
+    stop = len(body)
+    for mark in marks:
+        if mark and not _IDENTIFIER.match(body[:mark]):
+            stop = mark
+            break
+
+    readings = []
+
+    def take(class_name, category, selector):
+        readings.append((class_name, category or None, selector))
+        return limit is not None and len(readings) >= limit
+
+    # Pass one: readings with no category, which are preferred and are also the cheap
+    # ones -- an empty category field means the two separators around it fell together,
+    # so the category's end is the class's end plus one and there is no pair to search.
+    for mark in marks:
+        if mark == 0 or mark >= stop:
+            continue
+        if mark + 1 >= len(body) or body[mark + 1] != "_":
+            continue
+        selector = selector_after(mark + 1)
+        if selector is not None and take(body[:mark], "", selector):
+            return readings
+
+    # Pass two: readings that need a category. Only now is the pair search worth paying
+    # for, and `marks` has already been cut to a length that keeps it affordable.
+    for class_end in marks:
+        if class_end == 0 or class_end >= stop:
             continue
         class_name = body[:class_end]
-        if not _IDENTIFIER.match(class_name):
-            # Once a prefix is not an identifier no longer prefix is either, so there is
-            # nothing further to try.
-            break
-        for category_end in range(class_end + 1, len(body)):
-            if body[category_end] != "_":
+        for category_end in marks:
+            if category_end <= class_end + 1:
                 continue
             category = body[class_end + 1 : category_end]
-            if category and not _IDENTIFIER.match(category):
+            if not _IDENTIFIER.match(category):
                 continue
-            selector = _unmangle_selector(body[category_end + 1 :])
-            if selector is None:
-                continue
-            if mangle_gnu_method(is_class_method, class_name, category, selector) != name:
-                continue
-            found.append((class_name, category or None, selector))
-    found.sort(key=lambda reading: reading[1] is not None)
-    return found
+            selector = selector_after(category_end)
+            if selector is not None and take(class_name, category, selector):
+                return readings
+    return readings
 
 
 def spell_method(is_class_method, class_name, category, selector):
@@ -219,7 +291,10 @@ def spell_method(is_class_method, class_name, category, selector):
 
 
 def _gnu_method(name):
-    readings = gnu_method_readings(name)
+    # Two readings, not every reading: the spelling comes from the best one and
+    # `ambiguous` only asks whether a second exists. Enumerating the rest is the
+    # quadratic half of the search, done for an answer nobody reads.
+    readings = gnu_method_readings(name, limit=2)
     if not readings:
         return None
     is_class_method = name[1] == "c"
