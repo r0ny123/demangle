@@ -44,7 +44,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
     try:
-        symbol = parse_delphi_symbol(mangled)
+        symbol = parse_delphi_symbol(mangled, limits)
     except DemangleFailure as error:
         raise NotMangledError(mangled, str(error)) from error
 

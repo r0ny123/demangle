@@ -3,6 +3,8 @@
 @func@4
 @name@12
 @TTabPage@$bctr
+@foo$q%
+@foo$q$
 _Z1fv
 ?f@@YAXH@Z
 @__swiftmacro_18macro_expand_peers1SV1f20addCompletionHandlerfMp_
