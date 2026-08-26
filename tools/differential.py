@@ -81,6 +81,12 @@ NOT_REPLAYED = frozenset(
         # here, where one number for the whole suite would say only that something
         # somewhere disagreed.
         "d-libiberty.txt",
+        # libcxxabi's own vectors, 29,928 of them, of which 200 do not match yet. Pinned
+        # by tests/test_conformance.py for the reason `d-libiberty.txt` is: this file
+        # records where the gaps are, and one number for the whole suite would say only
+        # that something somewhere disagreed. It is also stored gzipped, which this
+        # replay does not read.
+        "itanium-libcxxabi.txt",
     }
 )
 

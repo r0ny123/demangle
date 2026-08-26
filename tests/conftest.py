@@ -10,12 +10,23 @@ CONFORMANCE = Path(__file__).parent / "conformance"
 
 
 def load_corpus(name):
-    """Read (mangled, expected) pairs from a conformance file."""
+    """Read (mangled, expected) pairs from a conformance file.
+
+    A corpus may be stored gzipped. libcxxabi's is 5MB of text and 580KB compressed, and
+    a source repository is a bad place to keep four and a half megabytes that gzip would
+    have removed; nothing else about it changes.
+    """
     path = CONFORMANCE / name
-    if not path.exists():
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    elif path.with_suffix(path.suffix + ".gz").exists():
+        import gzip
+
+        text = gzip.decompress(path.with_suffix(path.suffix + ".gz").read_bytes()).decode("utf-8")
+    else:
         return []
     pairs = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         if not line or line.startswith("#") or "\t" not in line:
             continue
         mangled, expected = line.split("\t", 1)

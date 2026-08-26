@@ -225,7 +225,17 @@ class SpellingBuilder(Builder):
         if returns is None:
             result = Spelling("", tail, is_function=True)
         else:
-            result = Spelling(returns.left + " ", tail + returns.right, is_function=True)
+            # A space after the return type, unless the return type is one that wraps
+            # *around* the name -- a pointer to a function or to an array. Those spell
+            # `int (*f())()`, with the name hard against the `*`, where an ordinary
+            # pointer return spells `int* f()` with the space. The two are told apart by
+            # whether the type has a right half to close: a plain `int*` has none.
+            #
+            # Written as an unconditional `+ " "`, this produced `int (* f<int>())()` and
+            # was the largest group of wrong spellings against libcxxabi's corpus.
+            left = returns.left
+            joiner = "" if returns.right and left.endswith(("*", "&")) else " "
+            result = Spelling(left + joiner, tail + returns.right, is_function=True)
         if name is None:
             return result
         return Spelling(result.spell(str(name)))

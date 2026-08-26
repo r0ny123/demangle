@@ -311,3 +311,48 @@ def test_the_tree_spells_what_the_fast_path_spells(corpus):
         except demangle.DemanglingError:
             continue
         assert tree.spell() == demangle.demangle(mangled), mangled
+
+
+class TestAgainstLibcxxabisOwnCorpus:
+    """LLVM's own Itanium vectors -- the reference measuring itself.
+
+    `DemangleTestCases.inc` is what `libcxxabi`'s demangler is tested against, and that
+    demangler is the code behind `llvm-cxxfilt`. 29,928 pairs, an order of magnitude more
+    than anything this project had assembled, and the flagship scheme's real score
+    against it.
+
+    Checked in gzipped and pinned, so the number can only go up and cannot quietly stop
+    being accurate. What still fails is grouped in the ROADMAP rather than left as one
+    number.
+    """
+
+    #: Raised as gaps close; never lowered silently. A drop means a vector that used to
+    #: pass has stopped, which is a regression whatever the total.
+    EXPECTED_EXACT = 29728
+
+    def _score(self):
+        return sum(
+            1 for mangled, expected in load_corpus("itanium-libcxxabi.txt") if demangle.demangle(mangled) == expected
+        )
+
+    def test_the_score_has_not_gone_backwards(self):
+        total = len(load_corpus("itanium-libcxxabi.txt"))
+        assert total > 29000, "corpus did not load; this test would prove nothing"
+        assert self._score() >= self.EXPECTED_EXACT
+
+    def test_the_pinned_number_is_still_accurate(self):
+        assert self._score() == self.EXPECTED_EXACT
+
+    def test_nothing_in_it_is_answered_with_nothing(self):
+        """Whatever it cannot read, it hands back -- never a blank."""
+        for mangled, _ in load_corpus("itanium-libcxxabi.txt"):
+            assert demangle.demangle(mangled) != ""
+
+    def test_the_tree_agrees_with_the_text_throughout(self):
+        """29,928 names is the size at which declarator placement disagreements show up."""
+        for mangled, _ in load_corpus("itanium-libcxxabi.txt"):
+            try:
+                tree = demangle.parse(mangled)
+            except demangle.DemanglingError:
+                continue
+            assert tree.spell() == demangle.demangle(mangled), mangled
