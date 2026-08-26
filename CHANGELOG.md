@@ -169,6 +169,82 @@ All notable changes to this project are recorded here. The format follows
   `tools/differential.py --cross`: no name in the gnu corpus carried a `Dn`, so nothing
   had ever asked.
 
+
+- **Expressions are structure, not text.** `decltype(a + b)` reached the tree as one
+  opaque node, so a caller wanting the operands had to parse C++ back out of a string.
+  The parser now reports them through a new `Builder.expression(form, parts)` method:
+  `form` names the shape (`binary`, `conditional`, `call`, `sizeof`, `cast`, `new`, and
+  the rest) and `parts` interleaves the production's fixed text with its operands'
+  handles. `core.ast` gains an `Expression` node with an `operands` view. Brackets are
+  parts, so a parenthesised operand stays reachable instead of being glued into text.
+
+  One method rather than one per operator: the parser already owns operator spelling,
+  which comes from tables that exist to be checked against the ABI, so what is left for
+  a builder to decide is structure.
+
+- **Rust `parse()` returns a tree.** A Rust symbol was a single `raw` node, so `walk()`
+  and `find()` saw nothing below the root. It now comes back as a `symbol` holding a
+  `path` of `name` components, with `impl`, `namespace`, `template`, `type` and
+  `literal` nodes for what a path carries. An impl names its self-type and its trait as
+  fields, a closure carries its disambiguator, and the legacy scheme's hash is kept
+  although it is still not spelled.
+
+  The v0 printer now emits into a *sink* rather than concatenating a string: `TextSink`
+  joins the fragments, `TreeSink` remembers where each production began and ended. There
+  is one traversal, so a tree renders to exactly what `demangle()` returns by
+  construction rather than by agreement. Verified over all 5,738 Rust names in the
+  corpora: text byte-identical to before the change, every tree spelling identical to
+  its text, and no name left as a bare leaf.
+
+- **`signature()` and `Signature`: the parts of a name, in one shape, for every scheme.**
+  A disassembler labelling a call site wants the base name without its namespace; a
+  cross-reference wants the namespace without the base name; a signature matcher wants
+  the parameter types. Splitting the spelling gets all three wrong the same way, because
+  `::` and `.` and `,` occur inside template arguments and operator names as well as
+  between the parts a caller means.
+
+  The split is done on the tree. C++ builds a declaration and the fields are read off
+  it; Swift, D, Go, Nim, Free Pascal and Delphi build a node that *is* its own fragments
+  in output order, so `parts` says which `.` separates two components and which is
+  inside a name. `ops..` is the module `ops` and the operator `..`;
+  `Foundation.FileHandle.(_check in _2DF8)()` opens two brackets and only the second is
+  a call. Text is the last resort, and there it counts brackets and leaves a phrase --
+  `inout Swift.Int`, `operator new` -- whole rather than splitting it at a space.
+
+  `namespace` + the scheme's separator + `base_name` spells `qualified_name` exactly,
+  checked over every checked-in corpus under both styles: 74,875 names. What each scheme
+  records differs and the fields say so rather than guessing -- a Rust path carries no
+  signature, so its `parameters` is `None`, which is not `()`.
+
+- **`demangle -p`, `--base-name` and `--no-return-type`**, over `signature()`. `-p` is
+  `c++filt -p`, and over libstdc++ and the gnu corpus the two agree on 6132 of 6213. The
+  81 are deliberate: `c++filt` strips the parameter list from the outermost declaration
+  only, so a thunk keeps its target's, and it drops a `[clone .cold]` suffix while
+  keeping `@@GLIBCXX_3.4`. This strips throughout and keeps both, because a filter over a
+  symbol table should not quietly discard part of the symbol.
+
+- **`signatureb`**, joining `demangleb`, `demangleb_strict`, `parseb` and `detectb`. A
+  symbol table holds bytes and they are not reliably UTF-8; every entry point has a bytes
+  form so reading one does not mean guessing an encoding first.
+
+- **C++20 and C++23 Itanium productions**: module names (`W`, `WP`, `_ZGIW`),
+  requires-clauses and requires-expressions (`Q`, `rq`, `rQ`), fold expressions, vendor
+  expressions, explicit object parameters (`NH`), designated initialisers, subobject
+  references, pack indexing, constrained placeholders, declarator-placed parameter
+  names, `objcproto`, template parameter objects (`TA`), and `char` arrays spelled as
+  string literals.
+
+- **Rust pattern types and splat arguments**, and rustc-demangle's own `#[test]` vectors
+  as a corpus.
+
+- **Swift 6**: the lowered function type, value generics, coroutine accessors and coro
+  thunks, called-once functions, isolated deinit, suppressed conformances, the
+  no-value-witness outlined operations, and Swift's own `manglings.txt` as a corpus.
+
+- **MSVC wide and multi-byte string literals**, and the truncated ones. `??_C@_1...` is
+  `L"wide"`; a narrow literal's character width is not in the encoding, so the
+  reference's guess from the trailing and embedded nul bytes is transcribed here.
+
 ### Performance
 
 - **Detection screens on the first character.** A `LanguagePlugin` may declare the
@@ -237,6 +313,9 @@ All notable changes to this project are recorded here. The format follows
   names rather than 887. The old sample was dominated by cheap MSVC names and flattered
   the cold figure by roughly 3x.
 
+- **A parameter is asked its size, not its spelling.** `void`-only parameter lists were
+  detected by rendering each parameter and comparing the text, on every function.
+
 ### Fixed
 
 - **Delphi: a `%` (or `$`) where a type was expected hung the parser.** `copy_type`
@@ -297,33 +376,53 @@ All notable changes to this project are recorded here. The format follows
   resolved by the fix, and the corpus expectation that had recorded LLVM 18's answer is
   corrected.
 
-### Added
+- **Every scheme now enforces `Limits` the same way, and enforces it while building.**
+  Bounds that were checked after a string had been assembled cannot stop the assembly:
+  the Rust printer, the Swift image loaders and punycode decoder, the D printer and the
+  Delphi parser all bound their output as they write it now. A nested `Dp` pack expansion
+  in an Itanium name cost the product of the arities -- 61 bytes took 3.3 seconds, and
+  grew exponentially -- and is charged for the type productions it actually performs.
 
-- **Expressions are structure, not text.** `decltype(a + b)` reached the tree as one
-  opaque node, so a caller wanting the operands had to parse C++ back out of a string.
-  The parser now reports them through a new `Builder.expression(form, parts)` method:
-  `form` names the shape (`binary`, `conditional`, `call`, `sizeof`, `cast`, `new`, and
-  the rest) and `parts` interleaves the production's fixed text with its operands'
-  handles. `core.ast` gains an `Expression` node with an `operands` view. Brackets are
-  parts, so a parenthesised operand stays reachable instead of being glued into text.
+- **Three ways of answering with something the symbol does not say**, all removed: a
+  Rust name that demangled to the empty string, a Rust parse that consumed only a prefix
+  of the input and reported the rest as read, and the Itanium `on` operator inventing a
+  type it had not been given.
 
-  One method rather than one per operator: the parser already owns operator spelling,
-  which comes from tables that exist to be checked against the ABI, so what is left for
-  a builder to decide is structure.
+- **A thread-unsafe Rust parser and a cubic Objective-C search.** The Rust demangler kept
+  parser state on a module-level object; the Objective-C GNU-family reader enumerated its
+  readings in O(n^3).
 
-- **Rust `parse()` returns a tree.** A Rust symbol was a single `raw` node, so `walk()`
-  and `find()` saw nothing below the root. It now comes back as a `symbol` holding a
-  `path` of `name` components, with `impl`, `namespace`, `template`, `type` and
-  `literal` nodes for what a path carries. An impl names its self-type and its trait as
-  fields, a closure carries its disambiguator, and the legacy scheme's hash is kept
-  although it is still not spelled.
+- **The result cache is keyed on what changes the answer**, so a style registered after a
+  name was demangled cannot be served the older spelling.
 
-  The v0 printer now emits into a *sink* rather than concatenating a string: `TextSink`
-  joins the fragments, `TreeSink` remembers where each production began and ended. There
-  is one traversal, so a tree renders to exactly what `demangle()` returns by
-  construction rather than by agreement. Verified over all 5,738 Rust names in the
-  corpora: text byte-identical to before the change, every tree spelling identical to
-  its text, and no name left as a bare leaf.
+- **Running out of stack is reported as the bound it is** rather than as `RecursionError`,
+  which the documented contract says cannot escape.
+
+- **Itanium spelling**: exception specifications, cv-qualifier order, abi tags, bracket
+  placement, a lambda's own parameters, `auto`, conversion types and pack patterns read
+  where they belong, and only a declaration's own name suppressing its return type.
+
+- **GNU style now reproduces `c++filt`'s angle spacing** and its C99 complex spelling,
+  and brackets a callee only where `c++filt` does. Over the 44,049 C++ symbols in the
+  shipped libLLVM the two now differ on 31, and on every one of those this matches
+  `llvm-cxxfilt` exactly.
+
+- **D**: the constructs libiberty's own corpus exercises, and its output bounded while it
+  is built.
+
+### Conformance
+
+Measured against the reference projects' *own* corpora, all pinned in both directions so
+a number can only go up and cannot quietly stop being accurate.
+
+- **Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,728 to **29,910 of 29,928**.
+- **Swift**, `test/Demangle/Inputs/manglings.txt`: 457 to **505 of 513**, with no name
+  answered by a *different* spelling -- every remaining failure is a refusal.
+- **Rust**, rustc-demangle's own vectors: 38 to **47 of 51**.
+- **D**, libiberty's `d-demangle-expected`: **293 of 366**.
+- **GNU style** against `c++filt` 2.42 over libLLVM's 44,049 C++ symbols: 1,419
+  differences to **31**, every one of which matches `llvm-cxxfilt` instead. A further 97
+  names `c++filt` refuses outright and this reads.
 
 ### Changed
 
