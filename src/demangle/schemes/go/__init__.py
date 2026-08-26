@@ -96,8 +96,16 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Go symbol names (package paths, receivers, generic instantiations)",
     aliases=("golang",),
-    # Last. Detection here is a shape test rather than a prefix test, so every scheme
-    # that can say "this is definitely mine" gets to say it first.
+    # `priority` is ascending: *lower is offered first*. This scheme is offered first of
+    # all, and that is deliberate even though its detection is a shape test rather than
+    # a prefix test -- the shape it looks for (an import path with a `/`, a `(*T).method`
+    # receiver, a `go:`/`type:` prefix) is one no other scheme here produces, and a Go
+    # binary's symbols would otherwise be claimed by whichever prefix scheme they happen
+    # to resemble. `detect` is written to decline rather than guess; see its docstring.
+    #
+    # tests/test_core.py pins this order against every corpus, because reasoning about
+    # it from the numbers alone has gone wrong before: these comments used to say "last"
+    # and mean it, while the number said first.
     priority=10,
 )
 

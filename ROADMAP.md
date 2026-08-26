@@ -3,6 +3,16 @@
 What is not done yet, in the order it matters. Each entry says what would have to
 change, so anyone can pick one up.
 
+> **Being re-measured.** The paragraph below was written against the corpora checked
+> into this repository, and it holds against those. It does not hold against the
+> reference projects' *own* corpora, which are larger and which this project had not
+> adopted: measured since, D fails 149 of libiberty's 366 `d-demangle-expected` vectors,
+> Itanium fails 294 of libcxxabi's 29,930 `DemangleTestCases.inc` cases, Swift refuses
+> 56 of the 513 in `test/Demangle/Inputs/manglings.txt`, and freshly compiled C++20
+> turns up eight manglings `llvm-cxxfilt` reads and this does not. Those corpora are
+> being adopted; until they are, read "no gaps" as "no gaps against what is checked in
+> here", which is a weaker claim than it was meant to be.
+
 Conformance gaps are **not** listed here any more, because there are none of ours left:
 every checked-in corpus is exact against its reference, and so are whole symbol tables
 from libLLVM, libclang-cpp, the Rust toolchain, libstdc++, the Swift runtime, libgphobos,
@@ -107,10 +117,18 @@ survives.
   every allocation. It measured under 1%, and it would make `SpellingBuilder` — shared by
   every parse and documented as stateless — carry state, with a bound needed against
   `_Float<n>`, whose spelling the input chooses.
-- **Inlining the detection call into `demangle`** — *rejected*. Detection is now 10.4% of
-  an Itanium name; roughly 1.5% of that is the `_claims` frame itself. Recovering it
-  means duplicating the symbol-table-decoration fallback at the call site, and that rule
-  is one that has to stay in one place.
+- **Inlining the detection call into `demangle`** — *rejected*. Roughly 1.5% of the cost
+  is the `_claims` frame itself. Recovering it means duplicating the
+  symbol-table-decoration fallback at the call site, and that rule is one that has to
+  stay in one place.
+
+  The figure quoted here was 10.4%, and re-measuring it against libstdc++ symbols on a
+  later build gave 24% — 57.9µs a name detected against 43.7µs with `language="itanium"`
+  forced. The number moves with the corpus and with how many schemes are registered, so
+  it is recorded as a range rather than a constant: **detection is 10–25% of an Itanium
+  name**, and it is the largest single item left. What would actually recover it is a
+  wider screen than one character — eight of the ten schemes are offered every `_`, and
+  `go`, `nim` and `pascal` are offered every symbol whatever it starts with.
 
 Nothing is left under this heading. The next thing worth measuring is `parse()`, which
 has had the same attention only once.

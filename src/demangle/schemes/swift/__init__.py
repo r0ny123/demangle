@@ -94,7 +94,9 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Swift symbol mangling",
     aliases=(),
-    # Above D and Go: `$s` and `_T0` collide with nothing, and the check is a prefix test.
+    # `priority` is ascending: *lower is offered first*. After D, before Rust. `$s` and
+    # `_T0` collide with nothing; `_$S` collides with Free Pascal, which is offered
+    # earlier and wins those.
     # `$s`, `_$s`, `$S`, `_$S`, `_T0`, `_Tt` and `@__swiftmacro_`.
     first_characters="$_@",
     priority=45,

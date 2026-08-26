@@ -36,9 +36,20 @@ Out of scope:
 - `demangle()` never raises. Every failure returns the input unchanged.
 - Recursion depth, output length, substitution count and input length are all bounded,
   with defaults set well above anything a real compiler emits, and are configurable
-  per call through `Limits`.
+  per call through `Limits`. Every registered scheme is checked against the input bound
+  by `tests/test_limits.py`, so a scheme added later has to keep the promise rather than
+  quietly not be covered — this was written after MSVC and Rust were found not to be
+  consulting `max_input` at all.
+- Bounds are enforced *while* a name is read, not checked on the finished result. A
+  bound observed only afterwards is a report: a fourteen-character Rust name asking for
+  fourteen million bound lifetimes took fourteen seconds to build the string that the
+  output bound then rejected.
 - `KeyboardInterrupt`, `SystemExit` and `MemoryError` are never swallowed by the
   best-effort paths — they mean the process is in trouble, not that a name is malformed.
+- The library is safe to call from several threads. `tests/test_concurrency.py` asserts
+  the strong form — every thread agrees with the single-threaded answer character for
+  character — over every scheme's corpus, and CI runs it on free-threaded builds where
+  the GIL is not there to hide a shared mutable parser.
 - The package has no runtime dependencies, so it contributes no transitive supply chain.
   This is enforced by a test, not just stated.
 - The property-based suite runs the parsers against arbitrary text, mangling-alphabet

@@ -11,6 +11,7 @@ options to the mapping without changing this type, which is why the per-language
 is an opaque dict rather than a fixed set of fields.
 """
 
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -52,6 +53,12 @@ def _build_styles():
 
 _STYLES = None
 
+#: Guards the lazy build and every mutation of `_STYLES`. Two threads reaching
+#: `get_style` first would each have built a table, and whichever finished last would
+#: have discarded any style the other had registered into the first. The registry has
+#: taken the same care since it was written; this module had not.
+_lock = threading.RLock()
+
 #: Called when the set of styles changes. `api` puts its cache's `clear` here, because a
 #: style registered after a name was demangled must not be served the older spelling.
 #:
@@ -67,11 +74,25 @@ def notify_on_change(callback):
     _on_change.append(callback)
 
 
+def _registered_table():
+    """The built table, for `is_registered` and for tests. Builds it if it is not yet."""
+    return _table()
+
+
+def _table():
+    """The style table, built on first use."""
+    global _STYLES
+    if _STYLES is not None:
+        return _STYLES
+    with _lock:
+        if _STYLES is None:
+            _STYLES = _build_styles()
+        return _STYLES
+
+
 def get_style(name):
     """Look up a style by name. `None` gives the default."""
-    global _STYLES
-    if _STYLES is None:
-        _STYLES = _build_styles()
+    _STYLES = _table()
     if name is None:
         return _STYLES["llvm"]
     if isinstance(name, Style):
@@ -84,20 +105,16 @@ def get_style(name):
 
 def register_style(style):
     """Add a style, so a downstream project can define its own house spelling."""
-    global _STYLES
-    if _STYLES is None:
-        _STYLES = _build_styles()
-    _STYLES[style.name] = style
+    table = _table()
+    with _lock:
+        table[style.name] = style
     for callback in _on_change:
         callback()
     return style
 
 
 def available_styles():
-    global _STYLES
-    if _STYLES is None:
-        _STYLES = _build_styles()
-    return sorted(_STYLES)
+    return sorted(_table())
 
 
 #: The default style. LLVM's spelling: what modern debuggers and disassemblers show.

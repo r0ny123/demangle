@@ -66,9 +66,10 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Nim symbol mangling",
     aliases=(),
-    # Last of the built-ins. Every other scheme has a prefix or a shape that says what it
-    # is; this one has to parse the whole name to know, so it should only ever see what
-    # nothing else claimed.
+    # `priority` is ascending: *lower is offered first*. Offered early, alongside Go, and
+    # its `detect` carries the weight instead: this scheme has no prefix of its own and
+    # has to recognise a whole name, so the predicate is what keeps it off other
+    # schemes' symbols. tests/test_core.py pins the order against every corpus.
     priority=10,
 )
 

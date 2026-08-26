@@ -70,9 +70,8 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="D symbol mangling (dlang)",
     aliases=("dlang",),
-    # Above Go, whose detection is a shape test, and below the schemes with their own
-    # unambiguous prefixes. `_D` collides with nothing here.
-    # `_D` and nothing else.
+    # `priority` is ascending: *lower is offered first*. After the shape-test schemes and
+    # before Swift and Rust. `_D` collides with nothing here.
     first_characters="_",
     priority=40,
 )
