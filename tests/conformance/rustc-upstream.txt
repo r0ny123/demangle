@@ -1,0 +1,59 @@
+# rustc-demangle's own test vectors, from the `#[test]` blocks of `v0.rs`,
+# `legacy.rs` and `lib.rs` in the rust-lang/rustc-demangle repository.
+#
+# The expected column is what rustc-demangle's `{:#}` -- its "no hash" mode --
+# spells, because that is the form its tests assert. Three of these differ from
+# what this library prints by default, which is the `{}` form: it keeps the
+# trailing hash and the LLVM suffix rather than dropping them. See
+# tests/test_rust.py for the pinned score and what the differences are.
+_RNvC6_123foo3bar	123foo::bar
+_RC4f128	f128
+_RNqCs4fqI2P2rA04_11utf8_identsu30____7hkackfecea1cbdathfdh9hlq6y	utf8_idents::საჭმელად_გემრიელი_სადილი
+_RNCNCNgCs6DXkGYLi8lr_2cc5spawn00B5_	cc::spawn::{closure#0}::{closure#0}
+_RNCINkXs25_NgCsbmNqQUJIY6D_4core5sliceINyB9_4IterhENuNgNoBb_4iter8iterator8Iterator9rpositionNCNgNpB9_6memchr7memrchrs_0E0Bb_	<core::slice::Iter<u8> as core::iter::iterator::Iterator>::rposition::<core::slice::memchr::memrchr::{closure#1}>::{closure#0}
+_RINbNbCskIICzLVDPPb_5alloc5alloc8box_freeDINbNiB4_5boxed5FnBoxuEp6OutputuEL_ECs1iopQbuBiw2_3std	alloc::alloc::box_free::<dyn alloc::boxed::FnBox<(), Output = ()>>
+_RMC0DNtC5krate5Traitp1NKj0_EL_	<dyn krate::Trait<N = 0>>
+_RMC0WmRm1_m9_	<u32 is 1..=9>
+_RMC0WmORm1_m2_Rm5_m6_E	<u32 is 1..=2 | 5..=6>
+_RNvMNtCs5CcWRJzwAYz_4core6optionINtB2_6OptionFwTlEEuE6unwrapCsiksvdpJ6Jnj_14splat_mangling	<core::option::Option<fn(#[splat] (i32,))>>::unwrap
+_RMNvCsiksvdpJ6Jnj_14splat_mangling4mainINtB0_4TypeFwThmEEuE	<splat_mangling::main::Type<fn(#[splat] (u8, u32))>>
+_RMs0_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTThmEEEuE	<splat_mangling::main::Type<fn(#[splat] ((u8, u32),))>>
+_RMs2_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypePFwTmaEEuE	<splat_mangling::main::Type<*const fn(#[splat] (u32, i8))>>
+_RMs4_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTmaEdEuE	<splat_mangling::main::Type<fn(#[splat] (u32, i8), f64)>>
+_RMC0INtC8arrayvec8ArrayVechKj7b_E	<arrayvec::ArrayVec<u8, 123>>
+_RC3foo.llvm.9D1C9369	foo
+_RC3foo.llvm.9D1C9369@@16	foo
+_RNvC9backtrace3foo.llvm.A5310EB9	backtrace::foo
+_RNvNtNtNtNtCs92dm3009vxr_4rand4rngs7adapter9reseeding4fork23FORK_HANDLER_REGISTERED.0.0	rand::rngs::adapter::reseeding::fork::FORK_HANDLER_REGISTERED.0.0
+_RMC0TTTTTTpB8_EB7_EB6_EB5_EB4_EB3_E	<((((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _)))), ((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _))))), (((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _)))), ((((_, _), (_, _)), ((_, _), (_, _))), (((_, _), (_, _)), ((_, _), (_, _))))))>
+_ZN3fooE	foo
+_ZN3foo3barE	foo::bar
+_ZN3foo20h05af221e174051e9abcE	foo
+_ZN3foo5h05afE	foo
+_ZN17h05af221e174051e93fooE	h05af221e174051e9::foo
+_ZN3foo16ffaf221e174051e9E	foo::ffaf221e174051e9
+_ZN3foo17hg5af221e174051e9E	foo::hg5af221e174051e9
+_ZN3foo17h05af221e174051e9E	foo
+_ZN9backtrace3foo17hbb467fcdaea5d79bE.llvm.A5310EB9	backtrace::foo
+_ZN4core5slice77_$LT$impl$u20$core..ops..index..IndexMut$LT$I$GT$$u20$for$u20$$u5b$T$u5d$$GT$9index_mut17haf9727c2edfbc47bE.exit.i.i	core::slice::<impl core::ops::index::IndexMut<I> for [T]>::index_mut.exit.i.i
+_ZN4testE	test
+_ZN4test1a2bcE	test::a::bc
+_ZN4$RP$E	)
+_ZN8$RF$testE	&test
+_ZN8$BP$test4foobE	*test::foob
+_ZN9$u20$test4foobE	 test::foob
+_ZN35Bar$LT$$u5b$u32$u3b$$u20$4$u5d$$GT$E	Bar<[u32; 4]>
+_ZN13test$u20$test4foobE	test test::foob
+_ZN12test$BP$test4foobE	test*test::foob
+__ZN5alloc9allocator6Layout9for_value17h02a996811f781011E	alloc::allocator::Layout::for_value
+__ZN38_$LT$core..option..Option$LT$T$GT$$GT$6unwrap18_MSG_FILE_LINE_COL17haf7cb8d5824ee659E	<core::option::Option<T>>::unwrap::_MSG_FILE_LINE_COL
+__ZN4core5slice89_$LT$impl$u20$core..iter..traits..IntoIterator$u20$for$u20$$RF$$u27$a$u20$$u5b$T$u5d$$GT$9into_iter17h450e234d27262170E	core::slice::<impl core::iter::traits::IntoIterator for &'a [T]>::into_iter
+ZN4testE	test
+ZN13test$u20$test4foobE	test test::foob
+ZN12test$RF$test4foobE	test&test::foob
+_ZN13_$LT$test$GT$E	<test>
+_ZN28_$u7b$$u7b$closure$u7d$$u7d$E	{{closure}}
+_ZN15__STATIC_FMTSTRE	__STATIC_FMTSTR
+_ZN71_$LT$Test$u20$$u2b$$u20$$u27$static$u20$as$u20$foo..Bar$LT$Test$GT$$GT$3barE	<Test + 'static as foo::Bar<Test>>::bar
+_ZN151_$LT$alloc..boxed..Box$LT$alloc..boxed..FnBox$LT$A$C$$u20$Output$u3d$R$GT$$u20$$u2b$$u20$$u27$a$GT$$u20$as$u20$core..ops..function..FnOnce$LT$A$GT$$GT$9call_once17h69e8f44b3723e1caE	<alloc::boxed::Box<alloc::boxed::FnBox<A, Output=R> + 'a> as core::ops::function::FnOnce<A>>::call_once
+_ZN88_$LT$core..result..Result$LT$$u21$$C$$u20$E$GT$$u20$as$u20$std..process..Termination$GT$6report17hfc41d0da4a40b3e8E	<core::result::Result<!, E> as std::process::Termination>::report

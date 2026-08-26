@@ -91,6 +91,10 @@ NOT_REPLAYED = frozenset(
         # does not read yet. Pinned by tests/test_swift.py, for the reason the two
         # above are.
         "swift-upstream.txt",
+        # rustc-demangle's own vectors, whose expected column is its `{:#}` mode rather
+        # than the `{}` this library prints. Pinned by tests/test_rust.py, which records
+        # the four that differ by name.
+        "rustc-upstream.txt",
     }
 )
 

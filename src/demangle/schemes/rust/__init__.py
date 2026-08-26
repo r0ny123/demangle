@@ -64,6 +64,10 @@ def detect(name):
       no room for. `_ZN8$RF$testE` is `&test`; read as C++ it spelled `$RF$test`, which
       is not a name anything has.
 
+    The leading underscore is optional -- some symbol tables have already had it
+    stripped -- but only where there is evidence. A bare `ZN...E` with neither mark is
+    left alone, because `ZN` is a perfectly ordinary start to a C identifier.
+
     Deliberately narrower than rustc-demangle, which accepts any `_ZN` name and treats
     the hash as optional. It can afford to: it is only ever handed names a caller has
     already decided are Rust's. This plugin is offered every symbol in a binary, and the
@@ -76,7 +80,7 @@ def detect(name):
         return False
     if name.startswith(("_R", "__R")):
         return True
-    if not name.startswith(("_ZN", "__ZN")):
+    if not name.startswith(("_ZN", "__ZN", "ZN")):
         return False
     marker = name.rfind(_LEGACY_HASH_MARKER)
     if marker >= 0:
@@ -194,8 +198,8 @@ PLUGIN = LanguagePlugin(
     # drop a `.llvm.<hash>`, append anything else verbatim). This scheme implements that
     # itself.
     symbol_table_decorations=True,
-    # `_R`, `__R`, `_ZN` and `__ZN` are the only starts `detect` accepts.
-    first_characters="_",
+    # `_R`, `__R`, `_ZN`, `__ZN` and a bare `ZN` are the only starts `detect` accepts.
+    first_characters="_Z",
     priority=50,
 )
 

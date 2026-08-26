@@ -660,6 +660,9 @@ class Parser:
             self.depth = depth
 
     def _skip_type_inner(self):
+        # `w` marks a splat argument and decorates the type that follows rather than
+        # being one, so it is skipped like the marker it is.
+        self.eat("w")
         at = self.next_val
         if at >= self.end:
             raise UnableTov0Demangle(self.inn)
@@ -711,9 +714,35 @@ class Parser:
             self.integer_62()
         elif n == "B":
             self.backref()
+        elif n == "W":
+            self.skip_type()
+            self.skip_pattern()
         else:
             self.next_val -= 1
             self.skip_path()
+
+    def skip_pattern(self):
+        """Advance past one `<pattern>`, the value set a pattern type narrows to."""
+        depth = self.depth
+        if depth >= self.MAX_RECURSION_COUNT:
+            raise UnableTov0Demangle(self.inn)
+        self.depth = depth + 1
+        try:
+            at = self.next_val
+            if at >= self.end:
+                raise UnableTov0Demangle(self.inn)
+            n = self.inn[at]
+            self.next_val = at + 1
+            if n == "R":
+                self.skip_const()
+                self.skip_const()
+            elif n == "O":
+                while not self.eat("E"):
+                    self.skip_pattern()
+            elif n != "N":
+                raise UnableTov0Demangle(self.inn)
+        finally:
+            self.depth = depth
 
     def skip_const(self):
         """Advance past one `<const>` without rendering it.
@@ -1173,6 +1202,11 @@ class Printer:
         self.recursion = recursion + 1
         try:
             p = self.parser
+            # `w` marks the argument that follows as a splat: `fn(#[splat] (u8, u32))`.
+            # The feature is unstable and so is its mangling, which is why it takes a
+            # letter that could have been a type tag rather than one that could not.
+            if self.eat("w"):
+                self.emit("#[splat] ")
             at = p.next_val
             if at >= p.end:
                 raise UnableTov0Demangle(p.inn)
@@ -1255,11 +1289,54 @@ class Printer:
             if tag == "B":
                 return self.backref_printer().print_type()
 
+            if tag == "W":
+                # A pattern type: the values of the type this one narrows.
+                with self.node(lambda parts: nodes.Type(parts, "pattern")) as built:
+                    self.print_type()
+                    self.emit(" is ")
+                    self.print_pattern()
+                return built[0]
+
             p = self.parser
             p.next_val -= 1
             return self.print_path(False)
         finally:
             self.recursion -= 1
+
+    def print_pattern(self):
+        """The value pattern of a pattern type.
+
+        ```
+        <pattern> ::= R <const> <const>   # an inclusive range
+                    | O <pattern>+ E      # any of several
+                    | N                   # not null
+        ```
+        """
+        p = self.parser
+        at = p.next_val
+        if at >= p.end:
+            raise UnableTov0Demangle(p.inn)
+        tag = p.inn[at]
+        p.next_val = at + 1
+        if tag == "R":
+            self.print_const(False)
+            self.emit("..=")
+            self.print_const(False)
+            return
+        if tag == "O":
+            self.check_recursion_limit()
+            try:
+                self.print_pattern()
+                while not self.eat("E"):
+                    self.emit(" | ")
+                    self.print_pattern()
+            finally:
+                self.recursion -= 1
+            return
+        if tag == "N":
+            self.emit("!null")
+            return
+        raise UnableTov0Demangle(p.inn)
 
     def print_path_maybe_open_generics(self):
         self.check_recursion_limit()
