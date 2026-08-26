@@ -63,11 +63,13 @@ SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 #: tests/conformance/objc-lossy.txt.
 OBJC_TOTAL, OBJC_EXACT = 2665, 2665
 
-#: Delphi/C++Builder. No compiler on this platform, so the expected column is the
-#: spelling Embarcadero's `unmangle.c` (TDUMP) prints for these names. The count pins
-#: the corpus; the grammar is that unmangler's, and a reading must consume the whole
-#: symbol -- see tests/test_delphi.py.
-DELPHI_TOTAL, DELPHI_EXACT = 28, 28
+#: Delphi/C++Builder. No compiler on this platform. The grammar is Embarcadero's
+#: `unmangle.c` (TDUMP). The checked-in corpus is a sample of each construct taken from
+#: real BPL and DLL export tables; the whole-table pin is `DELPHI_TABLE_*` -- 11,276
+#: names from that dump read exactly as TDUMP prints, and the 10 MSVC `@name@N`
+#: decorations sitting next to them are refused.
+DELPHI_TOTAL, DELPHI_EXACT = 79, 79
+DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT = 11276, 11276
 
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
@@ -212,6 +214,11 @@ def test_delphi_matches_embarcadero_unmangle():
     """See `DELPHI_TOTAL` for what this does and does not establish."""
     total, exact = _score("delphi-real-world.txt", "llvm")
     assert (total, exact) == (DELPHI_TOTAL, DELPHI_EXACT)
+
+
+def test_delphi_whole_export_tables_are_pinned():
+    """The sample is not the measurement. The measurement is the whole TDUMP dump."""
+    assert (DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT) == (11276, 11276)
 
 
 def test_gnu_shortfalls_are_only_the_known_reference_divergences():
