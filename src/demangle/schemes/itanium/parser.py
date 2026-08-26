@@ -64,6 +64,37 @@ def detect(name):
     return name.startswith("_Z") or name.startswith("__Z") or name.startswith("_GLOBAL__")
 
 
+#: `void` is four characters, and `builder.size` is O(1) on both builders. Filtering on
+#: the width before spelling anything is what keeps `_is_all_void` from rendering a
+#: parameter list that was never going to be `(void)`.
+_VOID_WIDTH = 4
+
+
+def _drops_out(builder, handle):
+    """Whether a parsed parameter spells to nothing and so is not a parameter at all.
+
+    `Dp T_` over a pack bound to nothing expands to no parameters, and must not leave a
+    separator behind. Asked with `size` rather than by spelling the parameter: `size` is
+    O(1) by contract, where `spell` on the tree builder is a full recursive render of
+    the subtree -- run here once per parameter of every function in the symbol table,
+    for a question that is only ever "is it empty".
+    """
+    return builder.size(handle) == 0
+
+
+def _is_all_void(builder, parameters):
+    """Whether every parameter is `void`, which is how the scheme spells "none".
+
+    C++ writes `f()` where the mangling writes `f(void)`. The width test comes first so
+    that an ordinary signature is settled without spelling anything; only a list whose
+    parameters are all four characters wide can be the one this is looking for.
+    """
+    for parameter in parameters:
+        if builder.size(parameter) != _VOID_WIDTH:
+            return False
+    return all(builder.spell(parameter) == "void" for parameter in parameters)
+
+
 class ItaniumParser:
     """Parses one mangled name into one builder. Single use.
 
@@ -239,16 +270,12 @@ class ItaniumParser:
             reader = self.reader
             while not reader.eof and reader.peek() not in ("E", "."):
                 parameter = self.type_()
-                # `Dp T_` over a pack bound to nothing expands to no parameters at all,
-                # so it must not leave a separator behind.
-                if builder.spell(parameter):
+                if not _drops_out(builder, parameter):
                     parameters.append(parameter)
         finally:
             self._naming = was_naming
 
-        # `f(void)` is how the scheme spells "no parameters"; C++ writes `f()`. A list
-        # that is nothing but `void` means the same, however many there are.
-        if parameters and all(builder.spell(parameter) == "void" for parameter in parameters):
+        if parameters and _is_all_void(builder, parameters):
             parameters = []
 
         suffix = ""
@@ -1226,10 +1253,10 @@ class ItaniumParser:
                 suffix = " &&"
                 continue
             parameter = self.type_()
-            if builder.spell(parameter):
+            if not _drops_out(builder, parameter):
                 parameters.append(parameter)
 
-        if parameters and all(builder.spell(parameter) == "void" for parameter in parameters):
+        if parameters and _is_all_void(builder, parameters):
             parameters = []
         return builder.function(returns, parameters, suffix + exception_spec)
 
