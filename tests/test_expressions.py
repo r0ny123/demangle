@@ -117,3 +117,31 @@ class TestStillRefusesWhatItShould:
     @pytest.mark.parametrize("mangled", ["_Z1fIiEvDTplT_E", "_Z1fIiEvDTqu"])
     def test_and_demangle_still_never_raises(self, mangled):
         assert demangle.demangle(mangled) == mangled
+
+
+class TestOperatorNamesAsCallees:
+    """`on <operator-name>` -- a callee named by the operator it is.
+
+    This is how an unresolved `a + b` inside a `decltype` is written. The two letters
+    were falling through to the type productions, which read them as the builtin codes
+    they happen also to be: `o` is `unsigned __int128` and `n` is `__int128`. The result
+    was a signature naming two types that appear nowhere in the symbol, produced without
+    any error to say so -- the worst way for a demangler to be wrong.
+    """
+
+    def test_a_binary_operator_callee(self):
+        assert demangle.demangle("_Z1fI1AEDTclonplfp_fp_EET_") == "decltype(operator+(fp, fp)) f<A>(A)"
+
+    def test_the_gnu_spelling_of_the_same_name(self):
+        assert (
+            demangle.demangle("_Z1fI1AEDTclonplfp_fp_EET_", style="gnu")
+            == "decltype ((operator+)({parm#1}, {parm#1})) f<A>(A)"
+        )
+
+    def test_no_int128_appears_where_the_symbol_names_none(self):
+        """The property, stated without reference to the right answer."""
+        assert "__int128" not in demangle.demangle("_Z1fI1AEDTclonplfp_fp_EET_")
+
+    def test_the_tree_agrees(self):
+        name = "_Z1fI1AEDTclonplfp_fp_EET_"
+        assert demangle.parse(name).spell() == demangle.demangle(name)

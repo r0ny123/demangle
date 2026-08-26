@@ -1712,6 +1712,17 @@ class ItaniumParser:
                 rendered = ", ".join(builder.spell(argument) for argument in arguments)
                 return f"{text}<{rendered}>"
             return text
+        # `on <operator-name>` and `dn <destructor-name>`: a callee named by the operator
+        # it *is*, which is how an unresolved `a + b` inside a `decltype` is written.
+        #
+        # Without this the two letters fell through to `type_()`, which read them as the
+        # builtin codes they happen also to be -- `o` is `unsigned __int128` and `n` is
+        # `__int128` -- so `_Z1fI1AEDTclonplfp_fp_EET_` came back as
+        # `decltype(unsigned __int128(__int128, fp + fp)) f<A>(A)`: a signature naming
+        # two types that appear nowhere in the symbol, and no error to say so. Both
+        # references read it as `operator+(fp, fp)`.
+        if reader.peek2() in ("on", "dn"):
+            return self.base_unresolved_name()
         return builder.spell(self.type_())
 
     def initialiser(self):
@@ -1812,6 +1823,18 @@ class ItaniumParser:
             return builder.raw(self._spell_parameter(index))
 
         if pair == "sr":
+            return builder.raw(self.unresolved_name())
+        if pair in ("on", "dn"):
+            # `<expression> ::= <unresolved-name>`, and an `<unresolved-name>` may be
+            # `on <operator-name>` -- a callee named by the operator it is, which is how
+            # an unresolved `a + b` inside a `decltype` is written.
+            #
+            # Without this the two letters fell through to the type productions below,
+            # which read them as the builtin codes they happen also to be: `o` is
+            # `unsigned __int128` and `n` is `__int128`. `_Z1fI1AEDTclonplfp_fp_EET_`
+            # came back as `decltype(unsigned __int128(__int128, fp + fp)) f<A>(A)` -- a
+            # signature naming two types that appear nowhere in the symbol, with nothing
+            # to say it had gone wrong. Both references read it as `operator+(fp, fp)`.
             return builder.raw(self.unresolved_name())
         if pair == "sZ":
             reader.pos += 2

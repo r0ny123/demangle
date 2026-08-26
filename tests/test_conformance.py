@@ -14,7 +14,7 @@ import pytest
 import demangle
 from demangle.core.errors import DemanglingError
 
-from .conftest import load_corpus
+from .conftest import CONFORMANCE, load_corpus
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42 on the checked-in corpora.
 ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 280, 280
@@ -283,3 +283,31 @@ def test_llvm_undname_loses_a_vftable_base_path_and_we_do_not():
     # a base path element must change the answer, or the demangler is losing the element.
     family = ["??_7A@B@@6BC@D@@@", "??_7A@B@@6BC@D@@E@F@@@", "??_7A@B@@6BC@D@@E@F@@G@H@@@"]
     assert len({demangle.demangle(name) for name in family}) == len(family)
+
+
+def _every_corpus():
+    """Every conformance file, so a corpus added later is covered without an edit."""
+    return sorted(path.name for path in CONFORMANCE.glob("*.txt"))
+
+
+@pytest.mark.parametrize("corpus", _every_corpus())
+def test_the_tree_spells_what_the_fast_path_spells(corpus):
+    """The two builders must never disagree, over every name recorded here.
+
+    `tests/test_api.py` checks this on five hand-picked names, and five names cannot
+    find a disagreement that needs a particular shape to appear. One did: a declarator
+    applied to a pack with no members renders to nothing, and the tree builder measures
+    a subtree rather than rendering it -- so it reported a width for a parameter that
+    had dropped out, and the separator was left behind:
+
+        f(std::launch, std::function<void ()>&&, )
+
+    One name, in one corpus, out of 44,556. That is the size of corpus the property
+    needs; running it costs a few seconds.
+    """
+    for mangled, _ in load_corpus(corpus):
+        try:
+            tree = demangle.parse(mangled)
+        except demangle.DemanglingError:
+            continue
+        assert tree.spell() == demangle.demangle(mangled), mangled
