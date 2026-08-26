@@ -43,5 +43,6 @@ def reference_demangle(tool, name):
     return result.stdout.strip()
 
 
+requires_gnu_cxxfilt = pytest.mark.skipif(not reference_available("c++filt"), reason="GNU c++filt not installed")
 requires_llvm_cxxfilt = pytest.mark.skipif(not reference_available("llvm-cxxfilt"), reason="llvm-cxxfilt not installed")
 requires_llvm_undname = pytest.mark.skipif(not reference_available("llvm-undname"), reason="llvm-undname not installed")

@@ -35,6 +35,7 @@ import re
 import sys
 
 from . import __version__
+from ._signature import signature
 from .api import demangle, demangle_strict, detect, languages, parse, styles
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 
@@ -73,6 +74,21 @@ def build_parser():
     )
     parser.add_argument(
         "-m", "--only-demangled", action="store_true", help="print only what demangled, skipping the rest"
+    )
+    # One name, one part: asking for two of these would print one of them and drop the
+    # other, and a flag that is silently ignored is worse than an error.
+    parts = parser.add_mutually_exclusive_group()
+    parts.add_argument(
+        "-p",
+        "--no-params",
+        action="store_true",
+        help="print the name without its parameter list or return type, as `c++filt -p` does",
+    )
+    parts.add_argument(
+        "--base-name", action="store_true", help="print only the last component of the name, without its scope"
+    )
+    parts.add_argument(
+        "--no-return-type", action="store_true", help="print the whole declaration except the return type"
     )
     parser.add_argument("--relaxed", action="store_true", help="raise the resource bounds, for input you trust")
     parser.add_argument("--max-input", type=int, metavar="N", help="characters of input to consider")
@@ -204,9 +220,39 @@ def _expand(name, arguments, limits):
         return arguments.language or detect(name) or "-"
     if arguments.tree:
         return "\n".join(_dump(parse(name, language=arguments.language, style=arguments.style, limits=limits)))
+    if arguments.no_params or arguments.base_name or arguments.no_return_type:
+        return _part_of(name, arguments, limits)
     if arguments.strict:
         return demangle_strict(name, language=arguments.language, style=arguments.style, limits=limits)
     return demangle(name, language=arguments.language, style=arguments.style, limits=limits)
+
+
+def _part_of(name, arguments, limits):
+    """One piece of a name rather than the whole spelling.
+
+    A name that cannot be read has no pieces, so without `--strict` it comes back
+    unchanged -- the same bargain `demangle` makes, because a filter over a symbol table
+    meets far more names that are not mangled than names that are.
+    """
+    try:
+        parts = signature(name, language=arguments.language, style=arguments.style, limits=limits)
+    except Exception:
+        if arguments.strict:
+            raise
+        return name
+    if arguments.base_name:
+        return parts.base_name
+    if arguments.no_params:
+        # What `c++filt -p` prints: the name with its scope, and neither the signature
+        # around it nor the qualifiers after it. A `vtable for` still says so.
+        lead = f"{parts.special} " if parts.special else ""
+        return f"{lead}{parts.qualified_name}{parts.decoration}"
+    # `--no-return-type`: everything else, with the return type cut off the front. Cut
+    # by what it is rather than at the first space, so a return type with spaces in it
+    # goes whole.
+    spelling = parts.demangled
+    prefix = f"{parts.return_type} " if parts.return_type else ""
+    return spelling[len(prefix) :] if prefix and spelling.startswith(prefix) else spelling
 
 
 def _run_names(names, arguments):

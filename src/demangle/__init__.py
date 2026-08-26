@@ -13,9 +13,14 @@ No dependencies, no native code, no compiler required. Supports the Itanium C++ 
 Go, D, Nim, Free Pascal, and Delphi/C++Builder.
 
 `demangle()` never raises: a name it cannot read comes back unchanged. Use
-`demangle_strict()` or `parse()` when you need to know the difference.
+`demangle_strict()` or `parse()` when you need to know the difference, and
+`signature()` when you want the parts rather than the spelling:
+
+    >>> demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi").namespace
+    'std::vector<int, std::allocator<int>>'
 """
 
+from ._signature import Signature, signature, signatureb
 from .api import (
     cache_clear,
     cache_stats,
@@ -57,6 +62,7 @@ __all__ = [
     "Node",
     "NotMangledError",
     "ParseError",
+    "Signature",
     "Style",
     "TruncatedError",
     "__version__",
@@ -74,5 +80,7 @@ __all__ = [
     "parseb",
     "register_language",
     "register_style",
+    "signature",
+    "signatureb",
     "styles",
 ]
