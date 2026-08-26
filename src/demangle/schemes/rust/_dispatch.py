@@ -69,10 +69,13 @@ class RustDemangler:
             ManglingType: type of the string
 
         Note:
-            We intentionally exclude bare 'R' and 'ZN' prefixes as they are
-            too broad and could match non-Rust symbols.
+            A bare `R` is excluded: it is too broad and would match names that are not
+            Rust's. A bare `ZN` is accepted here because the plugin's `detect` has
+            already required evidence -- the trailing hash or a `$...$` escape -- before
+            anything reaches this point, and some symbol tables have had the leading
+            underscore stripped before the name got here.
         """
-        if inpstr.startswith(("_ZN", "__ZN")):
+        if inpstr.startswith(("_ZN", "__ZN", "ZN")):
             return ManglingType.LEGACY
         elif inpstr.startswith(("_R", "__R")):
             return ManglingType.V0

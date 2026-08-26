@@ -67,6 +67,9 @@ class LegacyDemangler:
             inpstr = inpstr[4:]
         elif inpstr.startswith("_ZN"):
             inpstr = inpstr[3:]
+        elif inpstr.startswith("ZN"):
+            # Some symbol tables have already had the leading underscore stripped.
+            inpstr = inpstr[2:]
         else:
             raise UnableToLegacyDemangle(original_inpstr)
         self.sanity_check(inpstr)
