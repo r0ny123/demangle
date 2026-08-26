@@ -72,7 +72,7 @@ def _run_threaded(work):
     def guarded(seed):
         try:
             work(seed)
-        except BaseException as error:  # noqa: BLE001 - re-raised below
+        except BaseException as error:
             escaped.append(error)
 
     for _ in range(ROUNDS):

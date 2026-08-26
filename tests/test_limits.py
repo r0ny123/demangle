@@ -1,0 +1,160 @@
+"""Resource bounds, and the cache that must not outlive what it was keyed on.
+
+`SECURITY.md` promises that recursion depth, output length, substitution count and
+input length are all bounded, and that a caller can tighten any of them per call. It was
+a promise about the package that only some of the package kept: MSVC read a
+hundred-thousand-character name under `max_input=32` and then rejected it on output
+length a fifth of a second later, and Rust read one under `max_input=32` and answered.
+A bound checked after the work it was meant to prevent is a report, not a bound.
+
+The tests here are written per *plugin* rather than per scheme name, so a scheme added
+later has to keep the promise too rather than quietly not being covered.
+"""
+
+import time
+
+import pytest
+
+import demangle
+from demangle.core.limits import Limits
+from demangle.core.registry import available
+from demangle.core.spelling import LEGACY_SPELLING_BUILDER, SPELLING_BUILDER
+from demangle.core.style import Style
+from demangle.schemes.itanium.options import GNU_OPTIONS
+
+from .conftest import load_corpus
+
+#: One real name per scheme, so the bound is tested against something the parser will
+#: actually get its teeth into rather than against a name it refuses immediately.
+CORPUS_FOR = {
+    "itanium": "itanium-real-world.txt",
+    "msvc": "msvc-llvm-corpus.txt",
+    "rust": "rust-real-world.txt",
+    "swift": "swift-real-world.txt",
+    "d": "d-real-world.txt",
+    "go": "go-real-world.txt",
+    "nim": "nim-real-world.txt",
+    "pascal": "pascal-real-world.txt",
+    "objc": "objc-real-world.txt",
+    "delphi": "delphi-real-world.txt",
+}
+
+
+def _longest(name):
+    """The longest name in a scheme's corpus, which is the one a tight bound will bite."""
+    corpus = load_corpus(CORPUS_FOR[name])
+    return max((mangled for mangled, _ in corpus), key=len, default="")
+
+
+@pytest.mark.parametrize("plugin", [p.name for p in available()])
+class TestEveryPluginHonoursTheInputBound:
+    def test_a_name_longer_than_max_input_is_refused(self, plugin):
+        """And refused as `LimitExceeded`, not as "this is not a name I can read"."""
+        longest = _longest(plugin)
+        assert longest, f"no corpus for {plugin}"
+        tight = Limits(max_input=len(longest) - 1)
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict(longest, language=plugin, limits=tight)
+
+    def test_the_same_name_is_read_when_the_bound_allows_it(self, plugin):
+        """The bound has to be the thing refusing it, not the name being unreadable."""
+        longest = _longest(plugin)
+        roomy = Limits(max_input=len(longest))
+        demangle.demangle_strict(longest, language=plugin, limits=roomy)
+
+
+class TestBoundsAreEnforcedWhileWorking:
+    """A bound has to stop the work, not describe it afterwards.
+
+    Each of these was a denial of service. The numbers are wide on purpose -- this is a
+    test of asymptotics, not of one machine's speed -- but every case took seconds to
+    days before the fix and milliseconds after.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "mangled"),
+        [
+            # A GNU-runtime Objective-C method: the reading search was over pairs of
+            # underscore positions, and re-mangled the whole symbol for each pair.
+            ("objc method readings", "_i_" + "a_" * 800),
+            # Rust v0 bound lifetimes: the count is a base-62 field, so each further
+            # character multiplies the printer's work sixty-two-fold.
+            ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
+            # MSVC: `max_input` was not consulted at all.
+            ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+            # Itanium substitution reuse, which can double the output every few bytes.
+            ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
+        ],
+    )
+    def test_a_hostile_name_is_answered_promptly(self, name, mangled):
+        started = time.perf_counter()
+        result = demangle.demangle(mangled)
+        elapsed = time.perf_counter() - started
+        assert elapsed < 2.0, f"{name} took {elapsed:.1f}s"
+        assert isinstance(result, str)
+
+    def test_a_deeply_nested_msvc_name_reports_the_bound_it_hit(self):
+        """It used to say the name was unreadable, which is a different claim."""
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict("?f@@YAX" + "PA" * 5000 + "H@Z")
+
+
+class TestNothingEverAnswersWithNothing:
+    """`demangle()` returns the spelling or the name. The empty string is neither.
+
+    `_RCCC` returned `""`, which would have a tool label a function with a blank.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["_RCCC", "_RCCCC", "_RC", "_RCC", "_R", "_Z", "?", "$s", "_D", "@", "-[", "_i_"],
+    )
+    def test_a_short_ill_formed_name_comes_back_whole(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+    def test_no_corpus_name_demangles_to_nothing(self):
+        for corpus in CORPUS_FOR.values():
+            for mangled, _ in load_corpus(corpus)[:500]:
+                if mangled:
+                    assert demangle.demangle(mangled) != ""
+
+
+class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
+    """A cache that serves one caller another caller's spelling is worse than none."""
+
+    NAME = "_ZNSt6vectorIiSaIiEE9push_backERKi"
+
+    def test_two_styles_with_the_same_name_do_not_collide(self):
+        """The key held `style.name`, and a caller may pass a `Style` object instead."""
+        llvm_ish = Style(name="house", spelling_builder=SPELLING_BUILDER)
+        gnu_ish = Style(
+            name="house",
+            spelling_builder=LEGACY_SPELLING_BUILDER,
+            language_options={"itanium": GNU_OPTIONS},
+        )
+        assert demangle.demangle(self.NAME, style=llvm_ish) != demangle.demangle(self.NAME, style=gnu_ish)
+
+    def test_registering_a_style_invalidates_what_was_cached_under_it(self):
+        """Replacing `llvm` left every name demangled beforehand answering the old way."""
+        before = demangle.demangle(self.NAME)
+        replacement = Style(
+            name="cache-probe",
+            spelling_builder=SPELLING_BUILDER,
+        )
+        demangle.register_style(replacement)
+        first = demangle.demangle(self.NAME, style="cache-probe")
+        demangle.register_style(
+            Style(
+                name="cache-probe",
+                spelling_builder=LEGACY_SPELLING_BUILDER,
+                language_options={"itanium": GNU_OPTIONS},
+            )
+        )
+        assert demangle.demangle(self.NAME, style="cache-probe") != first
+        assert demangle.demangle(self.NAME) == before
+
+    def test_limits_are_part_of_the_key(self):
+        """Tight limits from one caller must not poison the entry for the next."""
+        tight = Limits(max_output=8)
+        assert demangle.demangle(self.NAME, limits=tight) == self.NAME
+        assert demangle.demangle(self.NAME) != self.NAME
