@@ -1,35 +1,35 @@
 {
   "cold": {
     "names": 14041,
-    "seconds": 0.570184,
-    "per_second": 24625,
-    "microseconds_each": 40.609,
-    "normalised": 1226.249
+    "seconds": 0.798873,
+    "per_second": 17576,
+    "microseconds_each": 56.896,
+    "normalised": 1291.291
   },
   "warm": {
     "names": 42123,
-    "seconds": 0.018669,
-    "per_second": 2256353,
-    "microseconds_each": 0.443,
-    "normalised": 13.383
+    "seconds": 0.032555,
+    "per_second": 1293895,
+    "microseconds_each": 0.773,
+    "normalised": 17.541
   },
   "negative": {
     "names": 14041,
-    "seconds": 0.027402,
-    "per_second": 512411,
-    "microseconds_each": 1.952,
-    "normalised": 58.931
+    "seconds": 0.037994,
+    "per_second": 369562,
+    "microseconds_each": 2.706,
+    "normalised": 61.413
   },
   "structured": {
     "names": 560,
-    "seconds": 0.033862,
-    "per_second": 16538,
-    "microseconds_each": 60.467,
+    "seconds": 0.040745,
+    "per_second": 13744,
+    "microseconds_each": 72.759,
     "parsed": 560,
-    "normalised": 1825.94
+    "normalised": 1651.318
   },
   "calibration": {
-    "seconds": 0.033116,
+    "seconds": 0.044061,
     "rounds": 200000
   }
 }

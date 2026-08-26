@@ -84,6 +84,15 @@ class TestBoundsAreEnforcedWhileWorking:
             ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
             # Itanium substitution reuse, which can double the output every few bytes.
             ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
+            # A pack expansion's pattern is read once per member of the pack, so nested
+            # expansions cost the product of their arities: eight members and a pattern
+            # seven expansions deep is eight million readings of sixty bytes of input.
+            (
+                "itanium nested pack expansions",
+                "_Z1fIJ" + "i" * 8 + "EEv" + "Dp1AI" * 12 + "T_" + "E" * 12,
+            ),
+            # The same shape wide rather than deep.
+            ("itanium wide pack expansion", "_Z1fIJ" + "i" * 2000 + "EEvDp1AIDp1AIT_EE"),
         ],
     )
     def test_a_hostile_name_is_answered_promptly(self, name, mangled):
