@@ -175,9 +175,12 @@ class TestAgainstLibibertysOwnCorpus:
     `d-real-world.txt` is a corpus this project assembled, and the ROADMAP's claim of
     100% against `c++filt --format=dlang` is true of it. It is not true of libiberty's
     own `d-demangle-expected`, which is larger and which this project had not adopted:
-    149 of its 366 vectors do not match, in a handful of systematic groups (`__T`/`__U`
-    template instantiations, `B<n>` tuples spelled `Tuple!(...)`, `Nh` vector types,
-    `Nn` as `typeof(*null)`, `_Dmain`).
+    73 of its 366 vectors still do not match, in a handful of systematic groups: hex
+    float template values (`Vde0A8P6` for `0x0.A8p6`, and `NaN`, `Inf`, `-Inf`), array,
+    associative-array and struct literal values, the escapes libiberty writes for a
+    character or a non-ASCII byte (`'\x0a'` where this writes `'\n'`), `"abc"w` and
+    `"abc"d` wide string values, `extern(Pascal)` linkage, and where a qualifier goes on
+    a delegate.
 
     Checked in with the score pinned, so the number can only go down. A test that says
     "some of these fail" is worth more than a claim that none do.
