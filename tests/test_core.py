@@ -198,7 +198,7 @@ class TestDetectionOrderIsPinned:
     the test that would have told them so.
     """
 
-    EXPECTED = ("go", "nim", "pascal", "objc", "delphi", "d", "swift", "rust", "msvc", "itanium")
+    EXPECTED = ("go", "nim", "jni", "pascal", "objc", "delphi", "d", "swift", "rust", "msvc", "itanium")
 
     def test_the_built_in_order_is_what_it_is(self):
         from demangle.core.registry import available

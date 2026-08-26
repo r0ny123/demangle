@@ -223,6 +223,25 @@ All notable changes to this project are recorded here. The format follows
   keeping `@@GLIBCXX_3.4`. This strips throughout and keeps both, because a filter over a
   symbol table should not quietly discard part of the symbol.
 
+- **JNI native method names.** `Java_com_example_Foo_bar__Ljava_lang_String_2` is
+  `com.example.Foo.bar(java.lang.String)`. A `native` method is called through a C
+  function whose name encodes its class, its name and -- where it is overloaded -- its
+  parameter types; Android ships them by the thousand and nothing else reads them, so
+  the usual way is by eye. Neither binutils nor LLVM demangles these, and neither does
+  Ghidra or IDA.
+
+  It is the one scheme here whose encoding is written down *normatively* -- the JNI
+  specification's "Resolving Native Method Names" -- rather than having to be
+  transcribed from a reference implementation. What the encoding does not carry is the
+  boundary between package, class and method: all three are joined with `_`, and `/` is
+  also `_`. So the spelling puts the whole path in one run and the tree does not claim a
+  structure the name does not have.
+
+  The prefix is not treated as proof. A name must also decode -- a declaring class as
+  well as a method, and a valid JVM descriptor where a signature is present -- so
+  `Java_helper` is left alone. Over the 75,414 names in the checked-in corpora and
+  262,845 distinct symbols from 120 system libraries, it claims none.
+
 - **`signatureb`**, joining `demangleb`, `demangleb_strict`, `parseb` and `detectb`. A
   symbol table holds bytes and they are not reliably UTF-8; every entry point has a bytes
   form so reading one does not mean guessing an encoding first.

@@ -37,6 +37,7 @@ CORPUS_FOR = {
     "pascal": "pascal-real-world.txt",
     "objc": "objc-real-world.txt",
     "delphi": "delphi-real-world.txt",
+    "jni": "jni-real-world.txt",
 }
 
 

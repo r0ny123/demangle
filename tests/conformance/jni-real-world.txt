@@ -1,0 +1,59 @@
+# JNI native method names, from real `native` declarations in the JDK, the Android
+# runtime and the NDK, encoded by the rule in the JNI specification's "Resolving
+# Native Method Names".
+#
+# There is no reference demangler for these -- neither binutils, LLVM, Ghidra nor IDA
+# reads them -- so the expected column is this library's own reading, as it is for Go,
+# Nim and Free Pascal. What makes the count mean something is the property in
+# tests/test_jni.py: re-encoding what was read reproduces the symbol exactly.
+
+Java_java_lang_System_arraycopy__Ljava_lang_Object_2ILjava_lang_Object_2II	java.lang.System.arraycopy(java.lang.Object, int, java.lang.Object, int, int)
+Java_java_lang_System_identityHashCode__Ljava_lang_Object_2	java.lang.System.identityHashCode(java.lang.Object)
+Java_java_lang_System_nanoTime	java.lang.System.nanoTime
+Java_java_lang_System_currentTimeMillis	java.lang.System.currentTimeMillis
+Java_java_lang_Object_hashCode	java.lang.Object.hashCode
+Java_java_lang_Object_notifyAll	java.lang.Object.notifyAll
+Java_java_lang_Object_wait__J	java.lang.Object.wait(long)
+Java_java_lang_Object_clone	java.lang.Object.clone
+Java_java_lang_Class_getName	java.lang.Class.getName
+Java_java_lang_Class_isInstance__Ljava_lang_Object_2	java.lang.Class.isInstance(java.lang.Object)
+Java_java_lang_Class_getDeclaredFields__Z	java.lang.Class.getDeclaredFields(boolean)
+Java_java_lang_String_intern	java.lang.String.intern
+Java_java_lang_Thread_currentThread	java.lang.Thread.currentThread
+Java_java_lang_Thread_sleep__J	java.lang.Thread.sleep(long)
+Java_java_lang_Thread_isAlive	java.lang.Thread.isAlive
+Java_java_lang_Throwable_fillInStackTrace__I	java.lang.Throwable.fillInStackTrace(int)
+Java_java_lang_Runtime_availableProcessors	java.lang.Runtime.availableProcessors
+Java_java_lang_Math_sqrt__D	java.lang.Math.sqrt(double)
+Java_java_lang_Float_floatToRawIntBits__F	java.lang.Float.floatToRawIntBits(float)
+Java_java_lang_Double_doubleToRawLongBits__D	java.lang.Double.doubleToRawLongBits(double)
+Java_java_lang_StrictMath_IEEEremainder__DD	java.lang.StrictMath.IEEEremainder(double, double)
+Java_java_lang_ClassLoader_findLoadedClass0__Ljava_lang_String_2	java.lang.ClassLoader.findLoadedClass0(java.lang.String)
+Java_java_io_FileInputStream_read0	java.io.FileInputStream.read0
+Java_java_io_FileOutputStream_write__IZ	java.io.FileOutputStream.write(int, boolean)
+Java_java_io_FileDescriptor_sync	java.io.FileDescriptor.sync
+Java_java_io_UnixFileSystem_getBooleanAttributes0__Ljava_io_File_2	java.io.UnixFileSystem.getBooleanAttributes0(java.io.File)
+Java_java_net_Inet4AddressImpl_lookupAllHostAddr__Ljava_lang_String_2	java.net.Inet4AddressImpl.lookupAllHostAddr(java.lang.String)
+Java_java_net_SocketInputStream_socketRead0__Ljava_io_FileDescriptor_2_3BIII	java.net.SocketInputStream.socketRead0(java.io.FileDescriptor, byte[], int, int, int)
+Java_java_util_zip_Inflater_inflateBytes__J_3BII	java.util.zip.Inflater.inflateBytes(long, byte[], int, int)
+Java_java_util_zip_CRC32_updateBytes__I_3BII	java.util.zip.CRC32.updateBytes(int, byte[], int, int)
+Java_java_security_AccessController_getStackAccessControlContext	java.security.AccessController.getStackAccessControlContext
+Java_sun_misc_Unsafe_allocateMemory__J	sun.misc.Unsafe.allocateMemory(long)
+Java_sun_misc_Unsafe_compareAndSwapObject__Ljava_lang_Object_2JLjava_lang_Object_2Ljava_lang_Object_2	sun.misc.Unsafe.compareAndSwapObject(java.lang.Object, long, java.lang.Object, java.lang.Object)
+Java_sun_nio_ch_FileChannelImpl_map0__IJJ	sun.nio.ch.FileChannelImpl.map0(int, long, long)
+Java_android_os_Parcel_nativeWriteString__JLjava_lang_String_2	android.os.Parcel.nativeWriteString(long, java.lang.String)
+Java_android_os_Binder_getCallingUid	android.os.Binder.getCallingUid
+Java_android_graphics_Bitmap_nativeCreate___3IIIIIIZLandroid_graphics_ColorSpace_2	android.graphics.Bitmap.nativeCreate(int[], int, int, int, int, int, boolean, android.graphics.ColorSpace)
+Java_android_database_sqlite_SQLiteConnection_nativeOpen__Ljava_lang_String_2ILjava_lang_String_2ZZ	android.database.sqlite.SQLiteConnection.nativeOpen(java.lang.String, int, java.lang.String, boolean, boolean)
+Java_android_media_AudioTrack_native_1write_1byte___3BIIIZ	android.media.AudioTrack.native_write_byte(byte[], int, int, int, boolean)
+Java_com_example_app_NativeLib_stringFromJNI	com.example.app.NativeLib.stringFromJNI
+Java_com_example_app_NativeLib_process___3B_3_3BLjava_nio_ByteBuffer_2	com.example.app.NativeLib.process(byte[], byte[][], java.nio.ByteBuffer)
+Java_com_example_Outer_00024Inner_run	com.example.Outer$Inner.run
+Java_com_example_Foo_my_1method__I	com.example.Foo.my_method(int)
+Java_com_example_Foo_na_000efve	com.example.Foo.naïve
+Java_com_example_Foo__003c0__D	com.example.Foo.π(double)
+Java_com_example_Foo__003c0	com.example.Foo.π
+Java_p_C_m__BCDFIJSZ	p.C.m(byte, char, double, float, int, long, short, boolean)
+Java_p_C_m___3_3_3I	p.C.m(int[][][])
+Java_p_C_m___3Ljava_lang_String_2	p.C.m(java.lang.String[])
+Java_p_C_m__	p.C.m()

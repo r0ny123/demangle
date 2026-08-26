@@ -29,6 +29,12 @@ RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 #: corpora. The differences are deliberate and are enumerated in tests/test_signature.py.
 NO_PARAMS_TOTAL, NO_PARAMS_AGREE = 6213, 6132
 
+#: JNI, pinned like Go and Nim -- there is no reference demangler for these at all, so
+#: the expected column is this library's own reading and the count alone would be a
+#: record of agreeing with itself. What makes it mean something is the round-trip
+#: property in tests/test_jni.py: re-encoding a reading reproduces the symbol.
+JNI_TOTAL, JNI_EXACT = 50, 50
+
 #: Go is pinned like the rest, but what it is pinned *against* is different: there is no
 #: reference demangler for Go, so the expected column is this library's own decoding and
 #: the count alone would be a record of agreeing with itself. What makes it mean
@@ -129,6 +135,12 @@ def test_itanium_matches_llvm_cxxfilt():
 def test_itanium_matches_gnu_cxxfilt():
     total, exact = _score("itanium-real-world-gnu.txt", "gnu")
     assert (total, exact) == (ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT)
+
+
+def test_jni_corpus():
+    """See `JNI_TOTAL` for what this does and does not establish."""
+    total, exact = _score("jni-real-world.txt", "llvm", language="jni")
+    assert (total, exact) == (JNI_TOTAL, JNI_EXACT)
 
 
 def test_go_corpus():

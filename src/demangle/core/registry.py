@@ -26,6 +26,7 @@ _BUILTIN_MODULES = (
     ("delphi", "demangle.schemes.delphi"),
     ("nim", "demangle.schemes.nim"),
     ("objc", "demangle.schemes.objc"),
+    ("jni", "demangle.schemes.jni"),
 )
 
 #: The entry-point group third-party packages advertise plugins under.
