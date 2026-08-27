@@ -69,6 +69,7 @@ class Style:
 
 
 def _build_styles():
+    from ..schemes.codewarrior.options import DEFAULT_OPTIONS as CODEWARRIOR_OPTIONS
     from ..schemes.gnuv2.options import DEFAULT_OPTIONS as GNUV2_OPTIONS
     from ..schemes.itanium.options import DEFAULT_OPTIONS, GNU_OPTIONS
     from ..schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
@@ -86,6 +87,7 @@ def _build_styles():
             "msvc": MSVC_OPTIONS,
             "swift": SWIFT_OPTIONS,
             "gnuv2": GNUV2_OPTIONS,
+            "codewarrior": CODEWARRIOR_OPTIONS,
         },
     )
     gnu = Style(
@@ -96,6 +98,7 @@ def _build_styles():
             "msvc": MSVC_OPTIONS,
             "swift": SWIFT_OPTIONS,
             "gnuv2": GNUV2_OPTIONS,
+            "codewarrior": CODEWARRIOR_OPTIONS,
         },
     )
     return {"llvm": llvm, "gnu": gnu}

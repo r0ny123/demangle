@@ -162,6 +162,37 @@ which of the five compilers wrote it.
         - Type
         - build
 
+## CodeWarrior
+
+Metrowerks' C++ mangling, and the other pre-Itanium one: libiberty never read it, so the
+reference is `encounter/cwdemangle`. GameCube and Wii titles, Palm OS, BeOS and classic
+Mac OS were built with it.
+
+::: demangle.schemes.codewarrior
+
+### Options
+
+::: demangle.schemes.codewarrior.options
+
+### Parser
+
+::: demangle.schemes.codewarrior._parser
+    options:
+      members:
+        - CodeWarriorSymbol
+        - demangle_codewarrior
+
+### Nodes
+
+::: demangle.schemes.codewarrior.nodes
+    options:
+      members:
+        - Symbol
+        - CodeWarriorName
+        - Parameters
+        - Type
+        - build
+
 ## Delphi / C++Builder
 
 Borland and Embarcadero's scheme, shared by Delphi BPLs and C++Builder objects. A

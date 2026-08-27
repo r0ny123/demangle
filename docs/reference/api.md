@@ -75,6 +75,11 @@ demangle.demangle("?f@@YAXH@Z", style=demangle.style("llvm", msvc={"calling_conv
       members:
         - GnuV2Options
 
+::: demangle.schemes.codewarrior.options
+    options:
+      members:
+        - CodeWarriorOptions
+
 ## A file, not a name
 
 `nm` writes an address and a type letter before a name. The useful operation over a file

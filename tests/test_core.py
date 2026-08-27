@@ -211,6 +211,7 @@ class TestDetectionOrderIsPinned:
         "msvc",
         "itanium",
         "gnuv2",
+        "codewarrior",
     )
 
     def test_the_built_in_order_is_what_it_is(self):
@@ -224,12 +225,16 @@ class TestDetectionOrderIsPinned:
         priorities = [plugin.priority for plugin in available()]
         assert priorities == sorted(priorities)
 
-    def test_pre_itanium_cpp_is_offered_last_of_all(self):
-        """It is the one scheme with no marker: its names are C identifiers with a `__`."""
+    def test_the_two_pre_itanium_schemes_are_offered_last_of_all(self):
+        """Neither has a marker: their names are C identifiers with a `__` in them.
+
+        GNU v2 before CodeWarrior, because a name valid under both -- and there are many,
+        the two encodings being that close -- should go to the commoner mangling.
+        """
         from demangle.core.registry import available
 
         order = [plugin.name for plugin in available()]
-        assert order[-1] == "gnuv2"
+        assert order[-2:] == ["gnuv2", "codewarrior"]
 
     def test_rust_is_offered_before_itanium(self):
         """A legacy Rust symbol *is* an Itanium symbol; only the order tells them apart."""

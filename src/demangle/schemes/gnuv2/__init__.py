@@ -74,6 +74,10 @@ _SYMBOL_RE = re.compile(r"[A-Za-z0-9_$.<>#,*&]+")
 #: the output means what came out was not a name.
 _NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
+#: Names that mean the symbol was written by a compiler this style cannot read. See
+#: `_plausible`.
+_FOREIGN_MARKERS = frozenset({"__ct", "__dt", "__vt", "__RTTI"})
+
 #: The evidence that a *name* was decoded, rather than a run of type letters: a
 #: length-prefixed class, a `Q`-qualified name, or a template.
 _NAMED_SOMETHING = frozenset({"class", "qualified", "template"})
@@ -96,7 +100,39 @@ def _screen(name):
     """
     if "__" not in name and not (name[0] == "_" and ("$" in name or "." in name)):
         return False
+    if ("<" in name or ">" in name) and "#" not in name:
+        # None of these five compilers writes a template argument list into the symbol:
+        # a template is encoded, as `t8BDDHookV1ZPc`. The one exception is HP aCC's
+        # specialisation pseudo-arguments, `Spec<#1,#1.*>`, which carry a `#`. A bracket
+        # without one means CodeWarrior wrote the name, and reading it here would give a
+        # spelling with the argument list still mangled inside it.
+        return False
     return _SYMBOL_RE.fullmatch(name) is not None
+
+
+def _components(name):
+    """`name` split at the `::` between components, ignoring any inside brackets.
+
+    `rstl::map<int, rstl::less<int>>::iterator` is three components, not five: the two
+    `::` inside the template argument list separate nothing. Splitting on the string
+    itself gets that wrong, which is what this is for.
+    """
+    depth = 0
+    start = 0
+    at = 0
+    while at < len(name):
+        character = name[at]
+        if character in "<([":
+            depth += 1
+        elif character in ">)]":
+            depth -= 1
+        elif depth == 0 and character == ":" and name[at + 1 : at + 2] == ":":
+            yield name[start:at]
+            at += 2
+            start = at
+            continue
+        at += 1
+    yield name[start:]
 
 
 def _plausible(symbol):
@@ -121,13 +157,19 @@ def _plausible(symbol):
         if symbol.suffix and body.endswith(symbol.suffix):
             body = body[: -len(symbol.suffix)]
         return bool(body.strip())
+    if "::)" in symbol.text:
+        # A declarator with an empty pointer slot: `int (CGuiWidget::)(...)`. Nothing in
+        # C++ spells that. It is what this reads out of CodeWarrior's pointer-to-member,
+        # which writes `M<class>F` where these five write `PM<class>`, and a spelling
+        # that cannot be a declaration is not a reading.
+        return False
     if symbol.qualifiers and not (symbol.evidence & _NAMED_SOMETHING):
         # `static`, `const`, `volatile` and `__restrict` qualify a *member* function, and
         # a member function has a class. Where none was read, what was matched was a `S`
         # or a `C` sitting in someone else's encoding -- `_TtU__FQD__Si` is a Swift
         # symbol, not a static function taking an `int`.
         return False
-    for component in symbol.qualified_name.split("::"):
+    for component in _components(symbol.qualified_name):
         at = component.find("<")
         if at >= 0:
             component = component[:at]
@@ -136,6 +178,14 @@ def _plausible(symbol):
             continue
         if component.startswith("operator"):
             continue
+        if component in _FOREIGN_MARKERS:
+            # A marker another pre-Itanium compiler writes and the *gnu* style does not
+            # know: `__ct` and `__dt` are the ARM family's constructor and destructor,
+            # `__vt` and `__RTTI` CodeWarrior's. The reference reads them under
+            # `--format=arm` and reads them as an ordinary function name under
+            # `--format=gnu`, which is a wrong name rather than no name. A caller who
+            # names the style still gets them.
+            return False
         if not _NAME_CHARACTERS.issuperset(component) or component[0].isdigit():
             return False
     return True
@@ -170,9 +220,14 @@ def detect(name, style="gnu"):
     whether it parsed. Screened first, so that the great majority of symbols cost a
     substring search and nothing else.
     """
-    if not name or len(name) > _DETECT_MAX:
+    # The cheapest possible reject, inline and first. This is called on every symbol a
+    # caller offers the library, most of which are not mangled at all, and `not_a_symbol`
+    # should cost one C-level substring search and a character compare -- not a call into
+    # `_screen` to find that out. Both halves are the necessary condition `_screen`
+    # states; the rest of it only runs for a name that passed this.
+    if "__" not in name and not (name[:1] == "_" and ("$" in name or "." in name)):
         return False
-    if not _screen(name):
+    if len(name) > _DETECT_MAX or not _screen(name):
         return False
     symbol = _reads(name, style)
     return symbol is not None and _decoded(name, symbol) and _plausible(symbol)
@@ -228,12 +283,21 @@ PLUGIN = LanguagePlugin(
     options_type=GnuV2Options,
     aliases=("gnu-v2", "cfront", "cplus-dem"),
     symbol_table_decorations=True,
-    # `priority` is ascending: *lower is offered first*. This scheme is offered last of
-    # all -- after Itanium, which is 200 -- because its names have no marker and it can
-    # only be told from an ordinary C identifier by reading it. Everything that has a
-    # prefix of its own gets first refusal. tests/test_core.py pins the order against
-    # every corpus.
-    priority=300,
+    # `priority` is ascending: *lower is offered first*. Second-to-last -- after Itanium,
+    # which is 200 -- because these names have no marker and can only be told from an
+    # ordinary C identifier by reading one. Everything with a prefix of its own gets
+    # first refusal.
+    #
+    # Before `codewarrior` (300), and that is a real decision rather than an arbitrary
+    # one. `AtEnd__13ivRubberGroup` is a valid symbol under both manglings, both readings
+    # parse, and they differ only in spelling -- `ivRubberGroup::AtEnd(void)` here,
+    # `ivRubberGroup::AtEnd()` there. Nothing in the name settles it, so the commoner
+    # mangling wins the tie: any g++ before 3.0 wrote these, against CodeWarrior's
+    # console and embedded niche. What CodeWarrior writes and this cannot read -- a
+    # literal `<...>` argument list, `@LOCAL@`, `$localstatic`, a `__dt` under the
+    # default style -- is refused here and falls through to it.
+    # tests/test_core.py pins the order against every corpus.
+    priority=290,
 )
 
 register(PLUGIN)

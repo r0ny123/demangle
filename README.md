@@ -1,7 +1,7 @@
 # demangle
 
 Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **pre-Itanium C++**
-(g++ 2.x, cfront/ARM, Lucid, HP aCC), **Rust**, **Swift**, **Objective-C**, **Go**, **D**,
+(g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior), **Rust**, **Swift**, **Objective-C**, **Go**, **D**,
 **Nim**, **Free Pascal** and **Delphi** — in pure Python. No dependencies, no native
 code, no compiler required.
 
@@ -25,6 +25,8 @@ code, no compiler required.
 '__fastcall Unit::Class::Method()'
 >>> demangle.demangle("AddAlignment__9ivTSolverUiP12ivInteractorP7ivTGlue")
 'ivTSolver::AddAlignment(unsigned int, ivInteractor *, ivTGlue *)'
+>>> demangle.demangle("__dt__6CActorFv")
+'CActor::~CActor()'
 ```
 
 ## Why this exists
@@ -300,6 +302,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` | **217 / 217** |
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
 | Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
+| CodeWarrior — the reference's own vectors ✧ | `cwdemangle` 1.0 | **47 / 47** |
 
 †† The three are names where `llvm-undname --no-return-type` leaves an unclosed
 bracket — `int (__cdecl * (__cdecl B::*volatile memptrtofun7)(void)` is not a declaration
@@ -357,6 +360,20 @@ its detection reads the whole name rather than a prefix: over the 80,748 names i
 other scheme's corpus it claims none, and over 339,117 symbols from this machine's own
 shared libraries it claims one — `drm_intel_gem_bo_map__wc`, where `wc` is a valid
 argument list and `c++filt --format=gnu` reads it exactly the same way.
+
+✧ Metrowerks CodeWarrior is the other pre-Itanium C++ mangling, and the one libiberty
+never read: `cplus-dem.c` has no CodeWarrior flag and `demangle-expected` has no vectors
+for it, so the reference is `encounter/cwdemangle` — the tool decompilation projects for
+GameCube and Wii titles run, dedicated to the public domain — and the corpus is its own
+test module. Detection is held to the same bar as the pre-Itanium family above: **0**
+claims over the other schemes' 80,748 names and **0** over 339,117 real symbols.
+
+Where the two pre-Itanium schemes overlap — and they do, the encodings being that close —
+GNU v2 is offered first, because a name valid under both should go to the commoner
+mangling. `AtEnd__13ivRubberGroup` parses either way and they differ only in spelling.
+What is unambiguously CodeWarrior — a template argument list written literally into the
+symbol, `@LOCAL@`, `$localstatic`, a `__dt` the `gnu` style does not know — GNU v2 refuses
+and it falls through. `language="codewarrior"` gets the whole scheme regardless.
 
 ◊ Delphi and C++Builder share one mangling, `@Unit@Class@Method$qqrv`. There is no Delphi
 compiler on the platforms this is developed on, so the grammar is Embarcadero's own
