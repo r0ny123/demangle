@@ -128,6 +128,40 @@ alongside what the decoder does about them.
         - spell_routine_name
         - detect
 
+## Pre-Itanium C++
+
+Everything C++ before the Itanium ABI: g++ before 3.0, Lucid's `lcc`, the ARM/cfront
+encoding, HP aCC and EDG. Five manglings and one demangler, ported from libiberty's
+`cplus-dem.c` at GCC 8.3.0 -- the last release that carried it. The style is an option
+rather than something detection can work out, because nothing in one of these names says
+which of the five compilers wrote it.
+
+::: demangle.schemes.gnuv2
+
+### Options
+
+::: demangle.schemes.gnuv2.options
+
+### Parser
+
+::: demangle.schemes.gnuv2._parser
+    options:
+      members:
+        - GnuV2Symbol
+        - demangle_gnuv2
+        - detect
+
+### Nodes
+
+::: demangle.schemes.gnuv2.nodes
+    options:
+      members:
+        - Symbol
+        - GnuV2Name
+        - Parameters
+        - Type
+        - build
+
 ## Delphi / C++Builder
 
 Borland and Embarcadero's scheme, shared by Delphi BPLs and C++Builder objects. A

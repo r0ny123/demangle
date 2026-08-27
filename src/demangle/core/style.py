@@ -69,22 +69,34 @@ class Style:
 
 
 def _build_styles():
+    from ..schemes.gnuv2.options import DEFAULT_OPTIONS as GNUV2_OPTIONS
     from ..schemes.itanium.options import DEFAULT_OPTIONS, GNU_OPTIONS
     from ..schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
     from ..schemes.swift.options import DEFAULT_OPTIONS as SWIFT_OPTIONS
 
-    # MSVC's and Swift's options are the same in both styles, and deliberately: they say
-    # how much of a name to print, which is not something the two C++ references disagree
-    # about. They are here so `with_options(msvc=...)` has something to change.
+    # MSVC's, Swift's and pre-Itanium C++'s options are the same in both styles, and
+    # deliberately: they say how much of a name to print -- and, for pre-Itanium, which
+    # of the five compilers wrote it -- which is not something the two C++ references
+    # disagree about. They are here so `with_options(msvc=...)` has something to change.
     llvm = Style(
         name="llvm",
         spelling_builder=SPELLING_BUILDER,
-        language_options={"itanium": DEFAULT_OPTIONS, "msvc": MSVC_OPTIONS, "swift": SWIFT_OPTIONS},
+        language_options={
+            "itanium": DEFAULT_OPTIONS,
+            "msvc": MSVC_OPTIONS,
+            "swift": SWIFT_OPTIONS,
+            "gnuv2": GNUV2_OPTIONS,
+        },
     )
     gnu = Style(
         name="gnu",
         spelling_builder=LEGACY_SPELLING_BUILDER,
-        language_options={"itanium": GNU_OPTIONS, "msvc": MSVC_OPTIONS, "swift": SWIFT_OPTIONS},
+        language_options={
+            "itanium": GNU_OPTIONS,
+            "msvc": MSVC_OPTIONS,
+            "swift": SWIFT_OPTIONS,
+            "gnuv2": GNUV2_OPTIONS,
+        },
     )
     return {"llvm": llvm, "gnu": gnu}
 

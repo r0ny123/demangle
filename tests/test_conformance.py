@@ -115,6 +115,13 @@ DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT = 11363, 11363
 #: file so it cannot be mistaken for the row above. See the file's header.
 DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT = 53, 53
 
+#: Pre-Itanium C++, against libiberty's own `demangle-expected` at GCC 8.3.0: the 662
+#: cases it marks `--format=gnu`, `--format=lucid`, `--format=arm` or `--format=hp`,
+#: scored under both settings of `DMGL_PARAMS`. The style is a *column* in that corpus
+#: rather than something detection can work out, so it is replayed by tests/test_gnuv2.py
+#: rather than here or by tools/differential.py.
+GNUV2_TOTAL, GNUV2_EXACT = 1324, 1324
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the

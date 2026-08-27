@@ -95,6 +95,15 @@ saying which scheme it belongs to, so it can only ever be read on request.
 Rust's legacy mangling *is* Itanium mangling, so `rust` has priority 50 and `itanium`
 200. If your scheme overlaps with an existing one, say so in the pull request.
 
+A scheme whose names have **no marker at all** goes last, and owes a number rather than
+an argument. `gnuv2` -- pre-Itanium C++ -- is priority 300 for that reason: its names are
+ordinary C identifiers with a `__` somewhere in them, so `detect` parses the whole name
+instead of testing a prefix, and what makes it safe to register is a measurement. Before
+it landed, it was scored over every checked-in corpus and over 339,117 symbols from real
+shared libraries, and both counts are asserted in `tests/test_gnuv2.py`. If your scheme
+is in that position, do the same: a claim that "false positives are unlikely" is not a
+test, and the corpora are already there to run against.
+
 ## What a scheme must guarantee
 
 - `detect` is total: it returns a bool for any string, including `""` and binary junk.

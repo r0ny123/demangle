@@ -1,0 +1,671 @@
+# GNU libiberty's own pre-Itanium C++ vectors, transcribed from
+# libiberty/testsuite/demangle-expected: every case marked --format=gnu, --format=lucid,
+# --format=arm or --format=hp. Four columns: mangled name, style, what the reference
+# prints with DMGL_PARAMS, and what it prints without it. The mangled name comes first
+# so that the checks that run over every corpus find it where they expect it.
+#
+# Source: https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-8.3.0/libiberty/testsuite/demangle-expected
+# GCC 8.3.0 is the last release carrying the pre-v3 demangler; it was removed in GCC 9.
+# Expected output is that file's own, which is what `c++filt --format=<style>` printed.
+AddAlignment__9ivTSolverUiP12ivInteractorP7ivTGlue	gnu	ivTSolver::AddAlignment(unsigned int, ivInteractor *, ivTGlue *)	ivTSolver::AddAlignment
+ArrowheadIntersects__9ArrowLineP9ArrowheadR6BoxObjP7Graphic	gnu	ArrowLine::ArrowheadIntersects(Arrowhead *, BoxObj &, Graphic *)	ArrowLine::ArrowheadIntersects
+ArrowheadIntersects__9ArrowLineP9ArrowheadO6BoxObjP7Graphic	gnu	ArrowLine::ArrowheadIntersects(Arrowhead *, BoxObj &&, Graphic *)	ArrowLine::ArrowheadIntersects
+AtEnd__13ivRubberGroup	gnu	ivRubberGroup::AtEnd(void)	ivRubberGroup::AtEnd
+BgFilter__9ivTSolverP12ivInteractor	gnu	ivTSolver::BgFilter(ivInteractor *)	ivTSolver::BgFilter
+Check__6UArrayi	gnu	UArray::Check(int)	UArray::Check
+CoreConstDecls__8TextCodeR7ostream	gnu	TextCode::CoreConstDecls(ostream &)	TextCode::CoreConstDecls
+CoreConstDecls__8TextCodeO7ostream	gnu	TextCode::CoreConstDecls(ostream &&)	TextCode::CoreConstDecls
+Detach__8StateVarP12StateVarView	gnu	StateVar::Detach(StateVarView *)	StateVar::Detach
+Done__9ComponentG8Iterator	gnu	Component::Done(Iterator)	Component::Done
+Effect__11RelateManipR7ivEvent	gnu	RelateManip::Effect(ivEvent &)	RelateManip::Effect
+Effect__11RelateManipO7ivEvent	gnu	RelateManip::Effect(ivEvent &&)	RelateManip::Effect
+FindFixed__FRP4CNetP4CNet	gnu	FindFixed(CNet *&, CNet *)	FindFixed
+FindFixed__FOP4CNetP4CNet	gnu	FindFixed(CNet *&&, CNet *)	FindFixed
+Fix48_abort__FR8twolongs	gnu	Fix48_abort(twolongs &)	Fix48_abort
+Fix48_abort__FO8twolongs	gnu	Fix48_abort(twolongs &&)	Fix48_abort
+GetBarInfo__15iv2_6_VScrollerP13ivPerspectiveRiT2	gnu	iv2_6_VScroller::GetBarInfo(ivPerspective *, int &, int &)	iv2_6_VScroller::GetBarInfo
+GetBarInfo__15iv2_6_VScrollerP13ivPerspectiveOiT2	gnu	iv2_6_VScroller::GetBarInfo(ivPerspective *, int &&, int &&)	iv2_6_VScroller::GetBarInfo
+GetBgColor__C9ivPainter	gnu	ivPainter::GetBgColor(void) const	ivPainter::GetBgColor
+InsertBody__15H_PullrightMenuii	gnu	H_PullrightMenu::InsertBody(int, int)	H_PullrightMenu::InsertBody
+InsertCharacter__9TextManipc	gnu	TextManip::InsertCharacter(char)	TextManip::InsertCharacter
+InsertToplevel__7ivWorldP12ivInteractorT1	gnu	ivWorld::InsertToplevel(ivInteractor *, ivInteractor *)	ivWorld::InsertToplevel
+InsertToplevel__7ivWorldP12ivInteractorT1iiUi	gnu	ivWorld::InsertToplevel(ivInteractor *, ivInteractor *, int, int, unsigned int)	ivWorld::InsertToplevel
+IsAGroup__FP11GraphicViewP11GraphicComp	gnu	IsAGroup(GraphicView *, GraphicComp *)	IsAGroup
+IsA__10ButtonCodeUl	gnu	ButtonCode::IsA(unsigned long)	ButtonCode::IsA
+ReadName__FR7istreamPc	gnu	ReadName(istream &, char *)	ReadName
+Redraw__13StringBrowseriiii	gnu	StringBrowser::Redraw(int, int, int, int)	StringBrowser::Redraw
+Rotate__13ivTransformerf	gnu	ivTransformer::Rotate(float)	ivTransformer::Rotate
+Rotated__C13ivTransformerf	gnu	ivTransformer::Rotated(float) const	ivTransformer::Rotated
+Round__Ff	gnu	Round(float)	Round
+SetExport__16MemberSharedNameUi	gnu	MemberSharedName::SetExport(unsigned int)	MemberSharedName::SetExport
+Set__14ivControlState13ControlStatusUi	gnu	ivControlState::Set(ControlStatus, unsigned int)	ivControlState::Set
+Set__5DFacePcii	gnu	DFace::Set(char *, int, int)	DFace::Set
+VConvert__9ivTSolverP12ivInteractorRP8TElementT2	gnu	ivTSolver::VConvert(ivInteractor *, TElement *&, TElement *&)	ivTSolver::VConvert
+VConvert__9ivTSolverP7ivTGlueRP8TElement	gnu	ivTSolver::VConvert(ivTGlue *, TElement *&)	ivTSolver::VConvert
+VOrder__9ivTSolverUiRP12ivInteractorT2	gnu	ivTSolver::VOrder(unsigned int, ivInteractor *&, ivInteractor *&)	ivTSolver::VOrder
+_10PageButton$__both	gnu	PageButton::__both	PageButton::__both
+_3RNG$singleMantissa	gnu	RNG::singleMantissa	RNG::singleMantissa
+_5IComp$_release	gnu	IComp::_release	IComp::_release
+_$_10BitmapComp	gnu	BitmapComp::~BitmapComp(void)	BitmapComp::~BitmapComp
+_$_9__io_defs	gnu	__io_defs::~__io_defs(void)	__io_defs::~__io_defs
+_$_Q23foo3bar	gnu	foo::bar::~bar(void)	foo::bar::~bar
+_$_Q33foo3bar4bell	gnu	foo::bar::bell::~bell(void)	foo::bar::bell::~bell
+__10ivTelltaleiP7ivGlyph	gnu	ivTelltale::ivTelltale(int, ivGlyph *)	ivTelltale::ivTelltale
+__10ivViewportiP12ivInteractorUi	gnu	ivViewport::ivViewport(int, ivInteractor *, unsigned int)	ivViewport::ivViewport
+__10ostrstream	gnu	ostrstream::ostrstream(void)	ostrstream::ostrstream
+__10ostrstreamPcii	gnu	ostrstream::ostrstream(char *, int, int)	ostrstream::ostrstream
+__11BitmapTablei	gnu	BitmapTable::BitmapTable(int)	BitmapTable::BitmapTable
+__12ViewportCodeP12ViewportComp	gnu	ViewportCode::ViewportCode(ViewportComp *)	ViewportCode::ViewportCode
+__12iv2_6_Borderii	gnu	iv2_6_Border::iv2_6_Border(int, int)	iv2_6_Border::iv2_6_Border
+__12ivBreak_Listl	gnu	ivBreak_List::ivBreak_List(long)	ivBreak_List::ivBreak_List
+__14iv2_6_MenuItemiP12ivInteractor	gnu	iv2_6_MenuItem::iv2_6_MenuItem(int, ivInteractor *)	iv2_6_MenuItem::iv2_6_MenuItem
+__20DisplayList_IteratorR11DisplayList	gnu	DisplayList_Iterator::DisplayList_Iterator(DisplayList &)	DisplayList_Iterator::DisplayList_Iterator
+__3fooRT0	gnu	foo::foo(foo &)	foo::foo
+__3fooiN31	gnu	foo::foo(int, int, int, int)	foo::foo
+__3fooiRT0iT2iT2	gnu	foo::foo(int, foo &, int, foo &, int, foo &)	foo::foo
+__6KeyMapPT0	gnu	KeyMap::KeyMap(KeyMap *)	KeyMap::KeyMap
+__8ArrowCmdP6EditorUiUi	gnu	ArrowCmd::ArrowCmd(Editor *, unsigned int, unsigned int)	ArrowCmd::ArrowCmd
+__9F_EllipseiiiiP7Graphic	gnu	F_Ellipse::F_Ellipse(int, int, int, int, Graphic *)	F_Ellipse::F_Ellipse
+__9FrameDataP9FrameCompi	gnu	FrameData::FrameData(FrameComp *, int)	FrameData::FrameData
+__9HVGraphicP9CanvasVarP7Graphic	gnu	HVGraphic::HVGraphic(CanvasVar *, Graphic *)	HVGraphic::HVGraphic
+__Q23foo3bar	gnu	foo::bar::bar(void)	foo::bar::bar
+__Q33foo3bar4bell	gnu	foo::bar::bell::bell(void)	foo::bar::bell::bell
+__aa__3fooRT0	gnu	foo::operator&&(foo &)	foo::operator&&
+__aad__3fooRT0	gnu	foo::operator&=(foo &)	foo::operator&=
+__ad__3fooRT0	gnu	foo::operator&(foo &)	foo::operator&
+__adv__3fooRT0	gnu	foo::operator/=(foo &)	foo::operator/=
+__aer__3fooRT0	gnu	foo::operator^=(foo &)	foo::operator^=
+__als__3fooRT0	gnu	foo::operator<<=(foo &)	foo::operator<<=
+__amd__3fooRT0	gnu	foo::operator%=(foo &)	foo::operator%=
+__ami__3fooRT0	gnu	foo::operator-=(foo &)	foo::operator-=
+__aml__3FixRT0	gnu	Fix::operator*=(Fix &)	Fix::operator*=
+__aml__5Fix16i	gnu	Fix16::operator*=(int)	Fix16::operator*=
+__aml__5Fix32RT0	gnu	Fix32::operator*=(Fix32 &)	Fix32::operator*=
+__aor__3fooRT0	gnu	foo::operator|=(foo &)	foo::operator|=
+__apl__3fooRT0	gnu	foo::operator+=(foo &)	foo::operator+=
+__ars__3fooRT0	gnu	foo::operator>>=(foo &)	foo::operator>>=
+__as__3fooRT0	gnu	foo::operator=(foo &)	foo::operator=
+__cl__3fooRT0	gnu	foo::operator()(foo &)	foo::operator()
+__cl__6Normal	gnu	Normal::operator()(void)	Normal::operator()
+__cl__6Stringii	gnu	String::operator()(int, int)	String::operator()
+__cm__3fooRT0	gnu	foo::operator, (foo &)	foo::operator, 
+__co__3foo	gnu	foo::operator~(void)	foo::operator~
+__dl__3fooPv	gnu	foo::operator delete(void *)	foo::operator delete
+__dv__3fooRT0	gnu	foo::operator/(foo &)	foo::operator/
+__eq__3fooRT0	gnu	foo::operator==(foo &)	foo::operator==
+__er__3fooRT0	gnu	foo::operator^(foo &)	foo::operator^
+__ge__3fooRT0	gnu	foo::operator>=(foo &)	foo::operator>=
+__gt__3fooRT0	gnu	foo::operator>(foo &)	foo::operator>
+__le__3fooRT0	gnu	foo::operator<=(foo &)	foo::operator<=
+__ls__3fooRT0	gnu	foo::operator<<(foo &)	foo::operator<<
+__ls__FR7ostreamPFR3ios_R3ios	gnu	operator<<(ostream &, ios &(*)(ios &))	operator<<
+__ls__FR7ostreamR3Fix	gnu	operator<<(ostream &, Fix &)	operator<<
+__lt__3fooRT0	gnu	foo::operator<(foo &)	foo::operator<
+__md__3fooRT0	gnu	foo::operator%(foo &)	foo::operator%
+__mi__3fooRT0	gnu	foo::operator-(foo &)	foo::operator-
+__ml__3fooRT0	gnu	foo::operator*(foo &)	foo::operator*
+__mm__3fooi	gnu	foo::operator--(int)	foo::operator--
+__ne__3fooRT0	gnu	foo::operator!=(foo &)	foo::operator!=
+__nt__3foo	gnu	foo::operator!(void)	foo::operator!
+__nw__3fooi	gnu	foo::operator new(int)	foo::operator new
+__oo__3fooRT0	gnu	foo::operator||(foo &)	foo::operator||
+__opPc__3foo	gnu	foo::operator char *(void)	foo::operator char *
+__opi__3foo	gnu	foo::operator int(void)	foo::operator int
+__or__3fooRT0	gnu	foo::operator|(foo &)	foo::operator|
+__pl__3fooRT0	gnu	foo::operator+(foo &)	foo::operator+
+__pp__3fooi	gnu	foo::operator++(int)	foo::operator++
+__rf__3foo	gnu	foo::operator->(void)	foo::operator->
+__rm__3fooRT0	gnu	foo::operator->*(foo &)	foo::operator->*
+__rs__3fooRT0	gnu	foo::operator>>(foo &)	foo::operator>>
+_new_Fix__FUs	gnu	_new_Fix(unsigned short)	_new_Fix
+_vt.foo	gnu	foo virtual table	foo virtual table
+_vt.foo.bar	gnu	foo::bar virtual table	foo::bar virtual table
+_vt$foo	gnu	foo virtual table	foo virtual table
+_vt$foo$bar	gnu	foo::bar virtual table	foo::bar virtual table
+append__7ivGlyphPT0	gnu	ivGlyph::append(ivGlyph *)	ivGlyph::append
+clearok__FP7_win_sti	gnu	clearok(_win_st *, int)	clearok
+complexfunc2__FPFPc_i	gnu	complexfunc2(int (*)(char *))	complexfunc2
+complexfunc3__FPFPFPl_s_i	gnu	complexfunc3(int (*)(short (*)(long *)))	complexfunc3
+complexfunc4__FPFPFPc_s_i	gnu	complexfunc4(int (*)(short (*)(char *)))	complexfunc4
+complexfunc5__FPFPc_PFl_i	gnu	complexfunc5(int (*(*)(char *))(long))	complexfunc5
+complexfunc6__FPFPi_PFl_i	gnu	complexfunc6(int (*(*)(int *))(long))	complexfunc6
+complexfunc7__FPFPFPc_i_PFl_i	gnu	complexfunc7(int (*(*)(int (*)(char *)))(long))	complexfunc7
+foo__FiN30	gnu	foo(int, int, int, int)	foo
+foo__FiR3fooiT1iT1	gnu	foo(int, foo &, int, foo &, int, foo &)	foo
+foo___3barl	gnu	bar::foo_(long)	bar::foo_
+insert__15ivClippingStacklRP8_XRegion	gnu	ivClippingStack::insert(long, _XRegion *&)	ivClippingStack::insert
+insert__16ChooserInfo_ListlR11ChooserInfo	gnu	ChooserInfo_List::insert(long, ChooserInfo &)	ChooserInfo_List::insert
+insert__17FontFamilyRepListlRP15ivFontFamilyRep	gnu	FontFamilyRepList::insert(long, ivFontFamilyRep *&)	FontFamilyRepList::insert
+leaveok__FP7_win_stc	gnu	leaveok(_win_st *, char)	leaveok
+left_mover__C7ivMFKitP12ivAdjustableP7ivStyle	gnu	ivMFKit::left_mover(ivAdjustable *, ivStyle *) const	ivMFKit::left_mover
+overload1arg__FSc	gnu	overload1arg(signed char)	overload1arg
+overload1arg__FUc	gnu	overload1arg(unsigned char)	overload1arg
+overload1arg__FUi	gnu	overload1arg(unsigned int)	overload1arg
+overload1arg__FUl	gnu	overload1arg(unsigned long)	overload1arg
+overload1arg__FUs	gnu	overload1arg(unsigned short)	overload1arg
+overload1arg__Fc	gnu	overload1arg(char)	overload1arg
+overload1arg__Fd	gnu	overload1arg(double)	overload1arg
+overload1arg__Ff	gnu	overload1arg(float)	overload1arg
+overload1arg__Fi	gnu	overload1arg(int)	overload1arg
+overload1arg__Fl	gnu	overload1arg(long)	overload1arg
+overload1arg__Fs	gnu	overload1arg(short)	overload1arg
+overload1arg__Fv	gnu	overload1arg(void)	overload1arg
+overloadargs__Fi	gnu	overloadargs(int)	overloadargs
+overloadargs__Fii	gnu	overloadargs(int, int)	overloadargs
+overloadargs__Fiii	gnu	overloadargs(int, int, int)	overloadargs
+overloadargs__Fiiii	gnu	overloadargs(int, int, int, int)	overloadargs
+overloadargs__Fiiiii	gnu	overloadargs(int, int, int, int, int)	overloadargs
+overloadargs__Fiiiiii	gnu	overloadargs(int, int, int, int, int, int)	overloadargs
+overloadargs__Fiiiiiii	gnu	overloadargs(int, int, int, int, int, int, int)	overloadargs
+overloadargs__Fiiiiiiii	gnu	overloadargs(int, int, int, int, int, int, int, int)	overloadargs
+overloadargs__Fiiiiiiiii	gnu	overloadargs(int, int, int, int, int, int, int, int, int)	overloadargs
+overloadargs__Fiiiiiiiiii	gnu	overloadargs(int, int, int, int, int, int, int, int, int, int)	overloadargs
+overloadargs__Fiiiiiiiiiii	gnu	overloadargs(int, int, int, int, int, int, int, int, int, int, int)	overloadargs
+poke__8ivRasterUlUlffff	gnu	ivRaster::poke(unsigned long, unsigned long, float, float, float, float)	ivRaster::poke
+polar__Fdd	gnu	polar(double, double)	polar
+scale__13ivTransformerff	gnu	ivTransformer::scale(float, float)	ivTransformer::scale
+sgetn__7filebufPci	gnu	filebuf::sgetn(char *, int)	filebuf::sgetn
+shift__FP5_FrepiT0	gnu	shift(_Frep *, int, _Frep *)	shift
+test__C6BitSeti	gnu	BitSet::test(int) const	BitSet::test
+test__C6BitSetii	gnu	BitSet::test(int, int) const	BitSet::test
+text_source__8Documentl	gnu	Document::text_source(long)	Document::text_source
+variance__6Erlangd	gnu	Erlang::variance(double)	Erlang::variance
+view__14DocumentViewerP8ItemViewP11TabularItem	gnu	DocumentViewer::view(ItemView *, TabularItem *)	DocumentViewer::view
+xy_extents__11ivExtensionffff	gnu	ivExtension::xy_extents(float, float, float, float)	ivExtension::xy_extents
+zero__8osMemoryPvUi	gnu	osMemory::zero(void *, unsigned int)	osMemory::zero
+_2T4$N	gnu	T4::N	T4::N
+_Q22T42t1$N	gnu	T4::t1::N	T4::t1::N
+get__2T1	gnu	T1::get(void)	T1::get
+get__Q22T11a	gnu	T1::a::get(void)	T1::a::get
+get__Q32T11a1b	gnu	T1::a::b::get(void)	T1::a::b::get
+get__Q42T11a1b1c	gnu	T1::a::b::c::get(void)	T1::a::b::c::get
+get__Q52T11a1b1c1d	gnu	T1::a::b::c::d::get(void)	T1::a::b::c::d::get
+put__2T1i	gnu	T1::put(int)	T1::put
+put__Q22T11ai	gnu	T1::a::put(int)	T1::a::put
+put__Q32T11a1bi	gnu	T1::a::b::put(int)	T1::a::b::put
+put__Q42T11a1b1ci	gnu	T1::a::b::c::put(int)	T1::a::b::c::put
+put__Q52T11a1b1c1di	gnu	T1::a::b::c::d::put(int)	T1::a::b::c::d::put
+bar__3fooPv	gnu	foo::bar(void *)	foo::bar
+bar__C3fooPv	gnu	foo::bar(void *) const	foo::bar
+__eq__3fooRT0	gnu	foo::operator==(foo &)	foo::operator==
+__eq__C3fooR3foo	gnu	foo::operator==(foo &) const	foo::operator==
+elem__t6vector1Zdi	gnu	vector<double>::elem(int)	vector<double>::elem
+elem__t6vector1Zii	gnu	vector<int>::elem(int)	vector<int>::elem
+__t6vector1Zdi	gnu	vector<double>::vector(int)	vector<double>::vector
+__t6vector1Zii	gnu	vector<int>::vector(int)	vector<int>::vector
+_$_t6vector1Zdi	gnu	vector<double>::~vector(int)	vector<double>::~vector
+_$_t6vector1Zii	gnu	vector<int>::~vector(int)	vector<int>::~vector
+__nw__t2T11ZcUi	gnu	T1<char>::operator new(unsigned int)	T1<char>::operator new
+__nw__t2T11Z1tUi	gnu	T1<t>::operator new(unsigned int)	T1<t>::operator new
+__dl__t2T11ZcPv	gnu	T1<char>::operator delete(void *)	T1<char>::operator delete
+__dl__t2T11Z1tPv	gnu	T1<t>::operator delete(void *)	T1<t>::operator delete
+__t2T11Zci	gnu	T1<char>::T1(int)	T1<char>::T1
+__t2T11Zc	gnu	T1<char>::T1(void)	T1<char>::T1
+__t2T11Z1ti	gnu	T1<t>::T1(int)	T1<t>::T1
+__t2T11Z1t	gnu	T1<t>::T1(void)	T1<t>::T1
+__Q2t4List1Z10VHDLEntity3Pix	gnu	List<VHDLEntity>::Pix::Pix(void)	List<VHDLEntity>::Pix::Pix
+__Q2t4List1Z10VHDLEntity3PixPQ2t4List1Z10VHDLEntity7element	gnu	List<VHDLEntity>::Pix::Pix(List<VHDLEntity>::element *)	List<VHDLEntity>::Pix::Pix
+__Q2t4List1Z10VHDLEntity3PixRCQ2t4List1Z10VHDLEntity3Pix	gnu	List<VHDLEntity>::Pix::Pix(List<VHDLEntity>::Pix const &)	List<VHDLEntity>::Pix::Pix
+__Q2t4List1Z10VHDLEntity3PixOCQ2t4List1Z10VHDLEntity3Pix	gnu	List<VHDLEntity>::Pix::Pix(List<VHDLEntity>::Pix const &&)	List<VHDLEntity>::Pix::Pix
+__Q2t4List1Z10VHDLEntity7elementRC10VHDLEntityPT0	gnu	List<VHDLEntity>::element::element(VHDLEntity const &, List<VHDLEntity>::element *)	List<VHDLEntity>::element::element
+__Q2t4List1Z10VHDLEntity7elementOC10VHDLEntityPT0	gnu	List<VHDLEntity>::element::element(VHDLEntity const &&, List<VHDLEntity>::element *)	List<VHDLEntity>::element::element
+__Q2t4List1Z10VHDLEntity7elementRCQ2t4List1Z10VHDLEntity7element	gnu	List<VHDLEntity>::element::element(List<VHDLEntity>::element const &)	List<VHDLEntity>::element::element
+__cl__C11VHDLLibraryGt4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntity	gnu	VHDLLibrary::operator()(PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >) const	VHDLLibrary::operator()
+__cl__Ct4List1Z10VHDLEntityRCQ2t4List1Z10VHDLEntity3Pix	gnu	List<VHDLEntity>::operator()(List<VHDLEntity>::Pix const &) const	List<VHDLEntity>::operator()
+__ne__FPvRCQ2t4List1Z10VHDLEntity3Pix	gnu	operator!=(void *, List<VHDLEntity>::Pix const &)	operator!=
+__ne__FPvRCt4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntity	gnu	operator!=(void *, PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> > const &)	operator!=
+__t4List1Z10VHDLEntityRCt4List1Z10VHDLEntity	gnu	List<VHDLEntity>::List(List<VHDLEntity> const &)	List<VHDLEntity>::List
+__t4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntity	gnu	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX(void)	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX
+__t4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntityP14VHDLLibraryRepGQ2t4List1Z10VHDLEntity3Pix	gnu	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX(VHDLLibraryRep *, List<VHDLEntity>::Pix)	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX
+__t4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntityRCt4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntity	gnu	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX(PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> > const &)	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX
+__t4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntityOCt4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntity	gnu	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX(PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> > const &&)	PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> >::PixX
+nextE__C11VHDLLibraryRt4PixX3Z11VHDLLibraryZ14VHDLLibraryRepZt4List1Z10VHDLEntity	gnu	VHDLLibrary::nextE(PixX<VHDLLibrary, VHDLLibraryRep, List<VHDLEntity> > &) const	VHDLLibrary::nextE
+next__Ct4List1Z10VHDLEntityRQ2t4List1Z10VHDLEntity3Pix	gnu	List<VHDLEntity>::next(List<VHDLEntity>::Pix &) const	List<VHDLEntity>::next
+_GLOBAL_$D$set	gnu	global destructors keyed to set	global destructors keyed to set
+_GLOBAL_$I$set	gnu	global constructors keyed to set	global constructors keyed to set
+__as__t5ListS1ZUiRCt5ListS1ZUi	gnu	ListS<unsigned int>::operator=(ListS<unsigned int> const &)	ListS<unsigned int>::operator=
+__cl__Ct5ListS1ZUiRCQ2t5ListS1ZUi3Vix	gnu	ListS<unsigned int>::operator()(ListS<unsigned int>::Vix const &) const	ListS<unsigned int>::operator()
+__cl__Ct5SetLS1ZUiRCQ2t5SetLS1ZUi3Vix	gnu	SetLS<unsigned int>::operator()(SetLS<unsigned int>::Vix const &) const	SetLS<unsigned int>::operator()
+__t10ListS_link1ZUiRCUiPT0	gnu	ListS_link<unsigned int>::ListS_link(unsigned int const &, ListS_link<unsigned int> *)	ListS_link<unsigned int>::ListS_link
+__t10ListS_link1ZUiRCt10ListS_link1ZUi	gnu	ListS_link<unsigned int>::ListS_link(ListS_link<unsigned int> const &)	ListS_link<unsigned int>::ListS_link
+__t5ListS1ZUiRCt5ListS1ZUi	gnu	ListS<unsigned int>::ListS(ListS<unsigned int> const &)	ListS<unsigned int>::ListS
+next__Ct5ListS1ZUiRQ2t5ListS1ZUi3Vix	gnu	ListS<unsigned int>::next(ListS<unsigned int>::Vix &) const	ListS<unsigned int>::next
+__ne__FPvRCQ2t5SetLS1ZUi3Vix	gnu	operator!=(void *, SetLS<unsigned int>::Vix const &)	operator!=
+__t8ListElem1Z5LabelRt4List1Z5Label	gnu	ListElem<Label>::ListElem(List<Label> &)	ListElem<Label>::ListElem
+__t8BDDHookV1ZPcRCPc	gnu	BDDHookV<char *>::BDDHookV(char *const &)	BDDHookV<char *>::BDDHookV
+_vt$t8BDDHookV1ZPc	gnu	BDDHookV<char *> virtual table	BDDHookV<char *> virtual table
+__ne__FPvRCQ211BDDFunction4VixB	gnu	operator!=(void *, BDDFunction::VixB const &)	operator!=
+__eq__FPvRCQ211BDDFunction4VixB	gnu	operator==(void *, BDDFunction::VixB const &)	operator==
+relativeId__CQ36T_phi210T_preserve8FPC_nextRCQ26T_phi210T_preserveRC10Parameters	gnu	T_phi2::T_preserve::FPC_next::relativeId(T_phi2::T_preserve const &, Parameters const &) const	T_phi2::T_preserve::FPC_next::relativeId
+WS__FR7istream	lucid	WS(istream &)	WS
+__aa__3fooFR3foo	lucid	foo::operator&&(foo &)	foo::operator&&
+__aad__3fooFR3foo	lucid	foo::operator&=(foo &)	foo::operator&=
+__ad__3fooFR3foo	lucid	foo::operator&(foo &)	foo::operator&
+__adv__3fooFR3foo	lucid	foo::operator/=(foo &)	foo::operator/=
+__adv__7complexF7complex	lucid	complex::operator/=(complex)	complex::operator/=
+__aer__3fooFR3foo	lucid	foo::operator^=(foo &)	foo::operator^=
+__als__3fooFR3foo	lucid	foo::operator<<=(foo &)	foo::operator<<=
+__amd__3fooFR3foo	lucid	foo::operator%=(foo &)	foo::operator%=
+__ami__3fooFR3foo	lucid	foo::operator-=(foo &)	foo::operator-=
+__amu__3fooFR3foo	lucid	foo::operator*=(foo &)	foo::operator*=
+__amu__7complexF7complex	lucid	complex::operator*=(complex)	complex::operator*=
+__aor__3fooFR3foo	lucid	foo::operator|=(foo &)	foo::operator|=
+__apl__3fooFR3foo	lucid	foo::operator+=(foo &)	foo::operator+=
+__ars__3fooFR3foo	lucid	foo::operator>>=(foo &)	foo::operator>>=
+__as__18istream_withassignFP9streambuf	lucid	istream_withassign::operator=(streambuf *)	istream_withassign::operator=
+__as__18istream_withassignFR7istream	lucid	istream_withassign::operator=(istream &)	istream_withassign::operator=
+__as__3fooFR3foo	lucid	foo::operator=(foo &)	foo::operator=
+__as__3iosFR3ios	lucid	ios::operator=(ios &)	ios::operator=
+__cl__3fooFR3foo	lucid	foo::operator()(foo &)	foo::operator()
+__cm__3fooFR3foo	lucid	foo::operator, (foo &)	foo::operator, 
+__co__3fooFv	lucid	foo::operator~(void)	foo::operator~
+__ct__10istrstreamFPc	lucid	istrstream::istrstream(char *)	istrstream::istrstream
+__ct__10istrstreamFPci	lucid	istrstream::istrstream(char *, int)	istrstream::istrstream
+__ct__10ostrstreamFPciT2	lucid	ostrstream::ostrstream(char *, int, int)	ostrstream::ostrstream
+__ct__10ostrstreamFv	lucid	ostrstream::ostrstream(void)	ostrstream::ostrstream
+__ct__10smanip_intFPFR3iosi_R3iosi	lucid	smanip_int::smanip_int(ios &(*)(ios &, int), int)	smanip_int::smanip_int
+__ct__10smanip_intFPFO3iosi_O3iosi	lucid	smanip_int::smanip_int(ios &&(*)(ios &&, int), int)	smanip_int::smanip_int
+__ct__11fstreambaseFi	lucid	fstreambase::fstreambase(int)	fstreambase::fstreambase
+__ct__11fstreambaseFiPcT1	lucid	fstreambase::fstreambase(int, char *, int)	fstreambase::fstreambase
+__ct__11fstreambaseFv	lucid	fstreambase::fstreambase(void)	fstreambase::fstreambase
+__ct__11smanip_longFPFR3iosl_R3iosl	lucid	smanip_long::smanip_long(ios &(*)(ios &, long), long)	smanip_long::smanip_long
+__ct__11smanip_longFPFO3iosl_O3iosl	lucid	smanip_long::smanip_long(ios &&(*)(ios &&, long), long)	smanip_long::smanip_long
+__ct__11stdiostreamFP4FILE	lucid	stdiostream::stdiostream(FILE *)	stdiostream::stdiostream
+__ct__12strstreambufFPFl_PvPFPv_v	lucid	strstreambuf::strstreambuf(void *(*)(long), void (*)(void *))	strstreambuf::strstreambuf
+__ct__12strstreambufFPUciT1	lucid	strstreambuf::strstreambuf(unsigned char *, int, unsigned char *)	strstreambuf::strstreambuf
+__ct__12strstreambufFPciT1	lucid	strstreambuf::strstreambuf(char *, int, char *)	strstreambuf::strstreambuf
+__ct__12strstreambufFi	lucid	strstreambuf::strstreambuf(int)	strstreambuf::strstreambuf
+__ct__12strstreambufFv	lucid	strstreambuf::strstreambuf(void)	strstreambuf::strstreambuf
+__ct__13strstreambaseFPciT1	lucid	strstreambase::strstreambase(char *, int, char *)	strstreambase::strstreambase
+__ct__3fooFR3foo	lucid	foo::foo(foo &)	foo::foo
+__ct__3fooFO3foo	lucid	foo::foo(foo &&)	foo::foo
+__ct__3fooFi	lucid	foo::foo(int)	foo::foo
+__ct__3fooFiN31	lucid	foo::foo(int, int, int, int)	foo::foo
+__ct__3fooFiR3fooT1T2T1T2	lucid	foo::foo(int, foo &, int, foo &, int, foo &)	foo::foo
+__ct__3fooFiO3fooT1T2T1T2	lucid	foo::foo(int, foo &&, int, foo &&, int, foo &&)	foo::foo
+__ct__3iosFP9streambuf	lucid	ios::ios(streambuf *)	ios::ios
+__ct__7filebufFiPcT1	lucid	filebuf::filebuf(int, char *, int)	filebuf::filebuf
+__ct__7fstreamFiPcT1	lucid	fstream::fstream(int, char *, int)	fstream::fstream
+__ct__7istreamFP9streambuf	lucid	istream::istream(streambuf *)	istream::istream
+__ct__7istreamFP9streambufiP7ostream	lucid	istream::istream(streambuf *, int, ostream *)	istream::istream
+__ct__7istreamFiPcT1	lucid	istream::istream(int, char *, int)	istream::istream
+__ct__7istreamFiT1P7ostream	lucid	istream::istream(int, int, ostream *)	istream::istream
+__ct__7ostreamFP9streambuf	lucid	ostream::ostream(streambuf *)	ostream::ostream
+__ct__7ostreamFiPc	lucid	ostream::ostream(int, char *)	ostream::ostream
+__ct__8ifstreamFiPcT1	lucid	ifstream::ifstream(int, char *, int)	ifstream::ifstream
+__ct__Q23foo3barFv	lucid	foo::bar::bar(void)	foo::bar::bar
+__ct__Q33foo3bar4bellFv	lucid	foo::bar::bell::bell(void)	foo::bar::bell::bell
+__dl__3fooSFPv	lucid	foo::operator delete(void *) static	foo::operator delete
+__dl__FPv	lucid	operator delete(void *)	operator delete
+__dt__10istrstreamFv	lucid	istrstream::~istrstream(void)	istrstream::~istrstream
+__dt__Q23foo3barFv	lucid	foo::bar::~bar(void)	foo::bar::~bar
+__dt__Q33foo3bar4bellFv	lucid	foo::bar::bell::~bell(void)	foo::bar::bell::~bell
+__dv__3fooFR3foo	lucid	foo::operator/(foo &)	foo::operator/
+__dv__F7complexT1	lucid	operator/(complex, complex)	operator/
+__eq__3fooFR3foo	lucid	foo::operator==(foo &)	foo::operator==
+__er__3fooFR3foo	lucid	foo::operator^(foo &)	foo::operator^
+__ge__3fooFR3foo	lucid	foo::operator>=(foo &)	foo::operator>=
+__gt__3fooFR3foo	lucid	foo::operator>(foo &)	foo::operator>
+__le__3fooFR3foo	lucid	foo::operator<=(foo &)	foo::operator<=
+__ls__3fooFR3foo	lucid	foo::operator<<(foo &)	foo::operator<<
+__ls__7ostreamFP9streambuf	lucid	ostream::operator<<(streambuf *)	ostream::operator<<
+__ls__7ostreamFPFR3ios_R3ios	lucid	ostream::operator<<(ios &(*)(ios &))	ostream::operator<<
+__ls__7ostreamFPv	lucid	ostream::operator<<(void *)	ostream::operator<<
+__ls__7ostreamFUi	lucid	ostream::operator<<(unsigned int)	ostream::operator<<
+__ls__7ostreamFUl	lucid	ostream::operator<<(unsigned long)	ostream::operator<<
+__ls__7ostreamFd	lucid	ostream::operator<<(double)	ostream::operator<<
+__ls__7ostreamFf	lucid	ostream::operator<<(float)	ostream::operator<<
+__ls__7ostreamFi	lucid	ostream::operator<<(int)	ostream::operator<<
+__ls__7ostreamFl	lucid	ostream::operator<<(long)	ostream::operator<<
+__ls__FR7ostream7complex	lucid	operator<<(ostream &, complex)	operator<<
+__lt__3fooFR3foo	lucid	foo::operator<(foo &)	foo::operator<
+__md__3fooFR3foo	lucid	foo::operator%(foo &)	foo::operator%
+__mi__3fooFR3foo	lucid	foo::operator-(foo &)	foo::operator-
+__ml__3fooFR3foo	lucid	foo::operator*(foo &)	foo::operator*
+__ml__F7complexT1	lucid	operator*(complex, complex)	operator*
+__mm__3fooFi	lucid	foo::operator--(int)	foo::operator--
+__ne__3fooFR3foo	lucid	foo::operator!=(foo &)	foo::operator!=
+__nt__3fooFv	lucid	foo::operator!(void)	foo::operator!
+__nw__3fooSFi	lucid	foo::operator new(int) static	foo::operator new
+__nw__FUi	lucid	operator new(unsigned int)	operator new
+__nw__FUiPv	lucid	operator new(unsigned int, void *)	operator new
+__oo__3fooFR3foo	lucid	foo::operator||(foo &)	foo::operator||
+__opPc__3fooFv	lucid	foo::operator char *(void)	foo::operator char *
+__opi__3fooFv	lucid	foo::operator int(void)	foo::operator int
+__or__3fooFR3foo	lucid	foo::operator|(foo &)	foo::operator|
+__pl__3fooFR3foo	lucid	foo::operator+(foo &)	foo::operator+
+__pp__3fooFi	lucid	foo::operator++(int)	foo::operator++
+__pt__3fooFv	lucid	foo::operator->(void)	foo::operator->
+__rm__3fooFR3foo	lucid	foo::operator->*(foo &)	foo::operator->*
+__rs__3fooFR3foo	lucid	foo::operator>>(foo &)	foo::operator>>
+__rs__7istreamFP9streambuf	lucid	istream::operator>>(streambuf *)	istream::operator>>
+__rs__7istreamFPFR3ios_R3ios	lucid	istream::operator>>(ios &(*)(ios &))	istream::operator>>
+__rs__7istreamFPFR7istream_R7istream	lucid	istream::operator>>(istream &(*)(istream &))	istream::operator>>
+__rs__7istreamFPUc	lucid	istream::operator>>(unsigned char *)	istream::operator>>
+__rs__7istreamFPc	lucid	istream::operator>>(char *)	istream::operator>>
+__rs__7istreamFRUi	lucid	istream::operator>>(unsigned int &)	istream::operator>>
+__rs__7istreamFRUl	lucid	istream::operator>>(unsigned long &)	istream::operator>>
+__rs__7istreamFRUs	lucid	istream::operator>>(unsigned short &)	istream::operator>>
+__rs__7istreamFRd	lucid	istream::operator>>(double &)	istream::operator>>
+__rs__7istreamFRf	lucid	istream::operator>>(float &)	istream::operator>>
+__rs__7istreamFRi	lucid	istream::operator>>(int &)	istream::operator>>
+__rs__7istreamFRl	lucid	istream::operator>>(long &)	istream::operator>>
+__rs__7istreamFRs	lucid	istream::operator>>(short &)	istream::operator>>
+__rs__FR7istreamR7complex	lucid	operator>>(istream &, complex &)	operator>>
+__vtbl__10istrstream	lucid	istrstream virtual table	istrstream virtual table
+__vtbl__17ostream__iostream__19iostream_withassign	lucid	iostream_withassign::ostream__iostream virtual table	iostream_withassign::ostream__iostream virtual table
+__vtbl__3ios	lucid	ios virtual table	ios virtual table
+__vtbl__3ios__13strstreambase	lucid	strstreambase::ios virtual table	strstreambase::ios virtual table
+abs__F7complex	lucid	abs(complex)	abs
+allocate__9streambufFv	lucid	streambuf::allocate(void)	streambuf::allocate
+attach__11fstreambaseFi	lucid	fstreambase::attach(int)	fstreambase::attach
+bitalloc__3iosSFv	lucid	ios::bitalloc(void) static	ios::bitalloc
+chr__FiT1	lucid	chr(int, int)	chr
+complex_error__FR11c_exception	lucid	complex_error(c_exception &)	complex_error
+complexfunc2__FPFPc_i	lucid	complexfunc2(int (*)(char *))	complexfunc2
+complexfunc3__FPFPFPl_s_i	lucid	complexfunc3(int (*)(short (*)(long *)))	complexfunc3
+complexfunc4__FPFPFPc_s_i	lucid	complexfunc4(int (*)(short (*)(char *)))	complexfunc4
+complexfunc5__FPFPc_PFl_i	lucid	complexfunc5(int (*(*)(char *))(long))	complexfunc5
+complexfunc6__FPFPi_PFl_i	lucid	complexfunc6(int (*(*)(int *))(long))	complexfunc6
+complexfunc7__FPFPFPc_i_PFl_i	lucid	complexfunc7(int (*(*)(int (*)(char *)))(long))	complexfunc7
+complicated_put__7ostreamFc	lucid	ostream::complicated_put(char)	ostream::complicated_put
+conv10__FlPc	lucid	conv10(long, char *)	conv10
+conv16__FUlPc	lucid	conv16(unsigned long, char *)	conv16
+dec__FR3ios	lucid	dec(ios &)	dec
+dec__Fli	lucid	dec(long, int)	dec
+dofield__FP7ostreamPciT2T3	lucid	dofield(ostream *, char *, int, char *, int)	dofield
+flags__3iosFl	lucid	ios::flags(long)	ios::flags
+flags__3iosFv	lucid	ios::flags(void)	ios::flags
+foo__FiN31	lucid	foo(int, int, int, int)	foo
+foo__FiR3fooT1T2T1T2	lucid	foo(int, foo &, int, foo &, int, foo &)	foo
+foo__FiO3fooT1T2T1T2	lucid	foo(int, foo &&, int, foo &&, int, foo &&)	foo
+foo___3barFl	lucid	bar::foo_(long)	bar::foo_
+get__7istreamFPcic	lucid	istream::get(char *, int, char)	istream::get
+get__7istreamFR9streambufc	lucid	istream::get(streambuf &, char)	istream::get
+get_complicated__7istreamFRUc	lucid	istream::get_complicated(unsigned char &)	istream::get_complicated
+get_complicated__7istreamFRc	lucid	istream::get_complicated(char &)	istream::get_complicated
+getline__7istreamFPUcic	lucid	istream::getline(unsigned char *, int, char)	istream::getline
+getline__7istreamFPcic	lucid	istream::getline(char *, int, char)	istream::getline
+ignore__7istreamFiT1	lucid	istream::ignore(int, int)	istream::ignore
+init__12strstreambufFPciT1	lucid	strstreambuf::init(char *, int, char *)	strstreambuf::init
+init__3iosFP9streambuf	lucid	ios::init(streambuf *)	ios::init
+initcount__13Iostream_init	lucid	Iostream_init::initcount	Iostream_init::initcount
+ipfx__7istreamFi	lucid	istream::ipfx(int)	istream::ipfx
+ls_complicated__7ostreamFUc	lucid	ostream::ls_complicated(unsigned char)	ostream::ls_complicated
+ls_complicated__7ostreamFc	lucid	ostream::ls_complicated(char)	ostream::ls_complicated
+overload1arg__FSc	lucid	overload1arg(signed char)	overload1arg
+overload1arg__FUc	lucid	overload1arg(unsigned char)	overload1arg
+overload1arg__FUi	lucid	overload1arg(unsigned int)	overload1arg
+overload1arg__FUl	lucid	overload1arg(unsigned long)	overload1arg
+overload1arg__FUs	lucid	overload1arg(unsigned short)	overload1arg
+overload1arg__Fc	lucid	overload1arg(char)	overload1arg
+overload1arg__Fd	lucid	overload1arg(double)	overload1arg
+overload1arg__Ff	lucid	overload1arg(float)	overload1arg
+overload1arg__Fi	lucid	overload1arg(int)	overload1arg
+overload1arg__Fl	lucid	overload1arg(long)	overload1arg
+overload1arg__Fs	lucid	overload1arg(short)	overload1arg
+overload1arg__Fv	lucid	overload1arg(void)	overload1arg
+overloadargs__FiN21	lucid	overloadargs(int, int, int)	overloadargs
+overloadargs__FiN31	lucid	overloadargs(int, int, int, int)	overloadargs
+overloadargs__FiN41	lucid	overloadargs(int, int, int, int, int)	overloadargs
+overloadargs__FiN51	lucid	overloadargs(int, int, int, int, int, int)	overloadargs
+overloadargs__FiN61	lucid	overloadargs(int, int, int, int, int, int, int)	overloadargs
+overloadargs__FiN71	lucid	overloadargs(int, int, int, int, int, int, int, int)	overloadargs
+overloadargs__FiN81	lucid	overloadargs(int, int, int, int, int, int, int, int, int)	overloadargs
+overloadargs__FiN91	lucid	overloadargs(int, int, int, int, int, int, int, int, int, int)	overloadargs
+overloadargs__FiN91N11	lucid	overloadargs(int, int, int, int, int, int, int, int, int, int, int)	overloadargs
+overloadargs__FiT1	lucid	overloadargs(int, int)	overloadargs
+polar__FdT1	lucid	polar(double, double)	polar
+pow__F7complexT1	lucid	pow(complex, complex)	pow
+pow__F7complexd	lucid	pow(complex, double)	pow
+pow__F7complexi	lucid	pow(complex, int)	pow
+pow__Fd7complex	lucid	pow(double, complex)	pow
+pstart__FPciT2	lucid	pstart(char *, int, int)	pstart
+put__7ostreamFc	lucid	ostream::put(char)	ostream::put
+read__7istreamFPci	lucid	istream::read(char *, int)	istream::read
+resetiosflags__FR3iosl	lucid	resetiosflags(ios &, long)	resetiosflags
+restore_errno__FRi	lucid	restore_errno(int &)	restore_errno
+rs_complicated__7istreamFRUc	lucid	istream::rs_complicated(unsigned char &)	istream::rs_complicated
+rs_complicated__7istreamFRc	lucid	istream::rs_complicated(char &)	istream::rs_complicated
+seekg__7istreamFl8seek_dir	lucid	istream::seekg(long, seek_dir)	istream::seekg
+seekoff__12strstreambufFl8seek_diri	lucid	strstreambuf::seekoff(long, seek_dir, int)	strstreambuf::seekoff
+seekoff__9streambufFlQ2_3ios12ios_seek_diri	lucid	streambuf::seekoff(long, ios::ios_seek_dir, int)	streambuf::seekoff
+seekpos__9streambufFli	lucid	streambuf::seekpos(long, int)	streambuf::seekpos
+set_new_handler__FPFv_v	lucid	set_new_handler(void (*)(void))	set_new_handler
+setb__9streambufFPcT1i	lucid	streambuf::setb(char *, char *, int)	streambuf::setb
+setb__FR3iosi	lucid	setb(ios &, int)	setb
+setbuf__11fstreambaseFPci	lucid	fstreambase::setbuf(char *, int)	fstreambase::setbuf
+setbuf__9streambufFPUci	lucid	streambuf::setbuf(unsigned char *, int)	streambuf::setbuf
+setbuf__9streambufFPciT2	lucid	streambuf::setbuf(char *, int, int)	streambuf::setbuf
+setf__3iosFlT1	lucid	ios::setf(long, long)	ios::setf
+setfill__FR3iosi	lucid	setfill(ios &, int)	setfill
+setg__9streambufFPcN21	lucid	streambuf::setg(char *, char *, char *)	streambuf::setg
+setp__9streambufFPcT1	lucid	streambuf::setp(char *, char *)	streambuf::setp
+tie__3iosFP7ostream	lucid	ios::tie(ostream *)	ios::tie
+uconv10__FUlPc	lucid	uconv10(unsigned long, char *)	uconv10
+xget__7istreamFPc	lucid	istream::xget(char *)	istream::xget
+xsgetn__9streambufFPci	lucid	streambuf::xsgetn(char *, int)	streambuf::xsgetn
+__dt__21T5__pt__11_PFiPPdPv_iFv	arm	T5<int (*)(int, double **, void *)>::~T5(void)	T5<int (*)(int, double **, void *)>::~T5
+__ct__1cFi	arm	c::c(int)	c::c
+__dt__11T5__pt__2_iFv	arm	T5<int>::~T5(void)	T5<int>::~T5
+__dt__11T5__pt__2_cFv	arm	T5<char>::~T5(void)	T5<char>::~T5
+__ct__2T2Fi	arm	T2::T2(int)	T2::T2
+__dt__2T1Fv	arm	T1::~T1(void)	T1::~T1
+__dt__12T5__pt__3_1xFv	arm	T5<x>::~T5(void)	T5<x>::~T5
+__dt__17T5__pt__8_PFcPv_iFv	arm	T5<int (*)(char, void *)>::~T5(void)	T5<int (*)(char, void *)>::~T5
+__ct__21T5__pt__11_PFiPPdPv_iFi	arm	T5<int (*)(int, double **, void *)>::T5(int)	T5<int (*)(int, double **, void *)>::T5
+__amd__FR2T2i	arm	operator%=(T2 &, int)	operator%=
+__adv__FR2T2i	arm	operator/=(T2 &, int)	operator/=
+__amu__FR2T2i	arm	operator*=(T2 &, int)	operator*=
+__ami__FR2T2i	arm	operator-=(T2 &, int)	operator-=
+__apl__FR2T2i	arm	operator+=(T2 &, int)	operator+=
+__nw__2T1SFUi	arm	T1::operator new(unsigned int) static	T1::operator new
+__dl__2T1SFPv	arm	T1::operator delete(void *) static	T1::operator delete
+put__2T7SFi	arm	T7::put(int) static	T7::put
+__dl__12T5__pt__3_1xSFPv	arm	T5<x>::operator delete(void *) static	T5<x>::operator delete
+h__FUc	arm	h(unsigned char)	h
+f__Fic	arm	f(int, char)	f
+h__FUi	arm	h(unsigned int)	h
+h__Fci	arm	h(char, int)	h
+h__FUl	arm	h(unsigned long)	h
+h__Fcl	arm	h(char, long)	h
+h__FUs	arm	h(unsigned short)	h
+h__Fcs	arm	h(char, short)	h
+X__12T5__pt__3_1x	arm	T5<x>::X	T5<x>::X
+__ct__11T5__pt__2_iFi	arm	T5<int>::T5(int)	T5<int>::T5
+__ct__11T5__pt__2_cFi	arm	T5<char>::T5(int)	T5<char>::T5
+h__FcT1	arm	h(char, char)	h
+f__Ficd	arm	f(int, char, double)	f
+__dl__17T5__pt__8_PFcPv_iSFPv	arm	T5<int (*)(char, void *)>::operator delete(void *) static	T5<int (*)(char, void *)>::operator delete
+X__17T5__pt__8_PFcPv_i	arm	T5<int (*)(char, void *)>::X	T5<int (*)(char, void *)>::X
+__ct__12T5__pt__3_1xFi	arm	T5<x>::T5(int)	T5<x>::T5
+__dl__21T5__pt__11_PFiPPdPv_iSFPv	arm	T5<int (*)(int, double **, void *)>::operator delete(void *) static	T5<int (*)(int, double **, void *)>::operator delete
+__std__foo	arm	global destructors keyed to foo	global destructors keyed to foo
+__sti__bar	arm	global constructors keyed to bar	global constructors keyed to bar
+f__FicdPcPFci_v	arm	f(int, char, double, char *, void (*)(char, int))	f
+f__FicdPcPFic_v	arm	f(int, char, double, char *, void (*)(int, char))	f
+get__2T7SFv	arm	T7::get(void) static	T7::get
+X__21T5__pt__11_PFiPPdPv_i	arm	T5<int (*)(int, double **, void *)>::X	T5<int (*)(int, double **, void *)>::X
+__dl__11T5__pt__2_iSFPv	arm	T5<int>::operator delete(void *) static	T5<int>::operator delete
+__dl__11T5__pt__2_cSFPv	arm	T5<char>::operator delete(void *) static	T5<char>::operator delete
+h__Fc	arm	h(char)	h
+h__Fd	arm	h(double)	h
+h__Ff	arm	h(float)	h
+h__Fi	arm	h(int)	h
+f__Fi	arm	f(int)	f
+h__Fl	arm	h(long)	h
+h__Fs	arm	h(short)	h
+X__11T5__pt__2_c	arm	T5<char>::X	T5<char>::X
+X__11T5__pt__2_i	arm	T5<int>::X	T5<int>::X
+__ct__17T5__pt__8_PFcPv_iFi	arm	T5<int (*)(char, void *)>::T5(int)	T5<int (*)(char, void *)>::T5
+f__FicdPc	arm	f(int, char, double, char *)	f
+__nw__FUi	arm	operator new(unsigned int)	operator new
+__ct__Q3_2T11a1bSFi	arm	T1::a::b::b(int) static	T1::a::b::b
+__dt__Q3_2T11a1bSFi	arm	T1::a::b::~b(int) static	T1::a::b::~b
+put__Q3_2T11a1bSFi	arm	T1::a::b::put(int) static	T1::a::b::put
+get__Q2_2T11aSFv	arm	T1::a::get(void) static	T1::a::get
+put__2T1SFi	arm	T1::put(int) static	T1::put
+put__Q5_2T11a1b1c1dSFi	arm	T1::a::b::c::d::put(int) static	T1::a::b::c::d::put
+get__Q4_2T11a1b1cSFv	arm	T1::a::b::c::get(void) static	T1::a::b::c::get
+put__Q2_2T11aSFi	arm	T1::a::put(int) static	T1::a::put
+put__Q4_2T11a1b1cSFi	arm	T1::a::b::c::put(int) static	T1::a::b::c::put
+get__Q3_2T11a1bSFv	arm	T1::a::b::get(void) static	T1::a::b::get
+get__2T1SFv	arm	T1::get(void) static	T1::get
+get__Q5_2T11a1b1c1dSFv	arm	T1::a::b::c::d::get(void) static	T1::a::b::c::d::get
+__dt__11T1__pt__2_cFv	arm	T1<char>::~T1(void)	T1<char>::~T1
+__dt__12T1__pt__3_1tFv	arm	T1<t>::~T1(void)	T1<t>::~T1
+__dl__12T1__pt__3_1tSFPv	arm	T1<t>::operator delete(void *) static	T1<t>::operator delete
+__ct__11T1__pt__2_cFi	arm	T1<char>::T1(int)	T1<char>::T1
+__ct__11T1__pt__2_cFv	arm	T1<char>::T1(void)	T1<char>::T1
+__ct__12T1__pt__3_1tFi	arm	T1<t>::T1(int)	T1<t>::T1
+__ct__12T1__pt__3_1tFv	arm	T1<t>::T1(void)	T1<t>::T1
+__dl__11T1__pt__2_cSFPv	arm	T1<char>::operator delete(void *) static	T1<char>::operator delete
+bar__3fooFPv	arm	foo::bar(void *)	foo::bar
+bar__3fooCFPv	arm	foo::bar(void *) const	foo::bar
+__eq__3fooFR3foo	arm	foo::operator==(foo &)	foo::operator==
+__eq__3fooCFR3foo	arm	foo::operator==(foo &) const	foo::operator==
+elem__15vector__pt__2_dFi	arm	vector<double>::elem(int)	vector<double>::elem
+elem__15vector__pt__2_iFi	arm	vector<int>::elem(int)	vector<int>::elem
+__ct__15vector__pt__2_dFi	arm	vector<double>::vector(int)	vector<double>::vector
+__ct__15vector__pt__2_iFi	arm	vector<int>::vector(int)	vector<int>::vector
+__ct__25DListNode__pt__9_R6RLabelFR6RLabelP25DListNode__pt__9_R6RLabelT2	arm	DListNode<RLabel &>::DListNode(RLabel &, DListNode<RLabel &> *, DListNode<RLabel &> *)	DListNode<RLabel &>::DListNode
+__ct__25DListNode__pt__9_O6RLabelFO6RLabelP25DListNode__pt__9_O6RLabelT2	arm	DListNode<RLabel &&>::DListNode(RLabel &&, DListNode<RLabel &&> *, DListNode<RLabel &&> *)	DListNode<RLabel &&>::DListNode
+bar__3fooFiT16FooBar	arm	foo::bar(int, int, FooBar)	foo::bar
+bar__3fooFPiN51PdN37PcN211T1iN215	arm	foo::bar(int *, int *, int *, int *, int *, int *, double *, double *, double *, double *, char *, char *, char *, int *, int, int, int)	foo::bar
+__amd__FR2T2i	hp	operator%=(T2 &, int)	operator%=
+__adv__FR2T2i	hp	operator/=(T2 &, int)	operator/=
+__amu__FR2T2i	hp	operator*=(T2 &, int)	operator*=
+__ami__FR2T2i	hp	operator-=(T2 &, int)	operator-=
+__apl__FR2T2i	hp	operator+=(T2 &, int)	operator+=
+__nw__2T1SFUi	hp	T1::operator new(unsigned int) static	T1::operator new
+__dl__2T1SFPv	hp	T1::operator delete(void *) static	T1::operator delete
+put__2T7SFi	hp	T7::put(int) static	T7::put
+h__FUc	hp	h(unsigned char)	h
+f__Fic	hp	f(int, char)	f
+h__FUi	hp	h(unsigned int)	h
+h__Fci	hp	h(char, int)	h
+h__FUl	hp	h(unsigned long)	h
+h__Fcl	hp	h(char, long)	h
+h__FUs	hp	h(unsigned short)	h
+h__Fcs	hp	h(char, short)	h
+h__FcT1	hp	h(char, char)	h
+f__Ficd	hp	f(int, char, double)	f
+f__FicdPcPFci_v	hp	f(int, char, double, char *, void (*)(char, int))	f
+f__FicdPcPFic_v	hp	f(int, char, double, char *, void (*)(int, char))	f
+get__2T7SFv	hp	T7::get(void) static	T7::get
+h__Fc	hp	h(char)	h
+h__Fd	hp	h(double)	h
+h__Ff	hp	h(float)	h
+h__Fi	hp	h(int)	h
+f__Fi	hp	f(int)	f
+h__Fl	hp	h(long)	h
+h__Fs	hp	h(short)	h
+f__FicdPc	hp	f(int, char, double, char *)	f
+__nw__FUi	hp	operator new(unsigned int)	operator new
+__ct__Q3_2T11a1bSFi	hp	T1::a::b::b(int) static	T1::a::b::b
+__dt__Q3_2T11a1bSFi	hp	T1::a::b::~b(int) static	T1::a::b::~b
+put__Q3_2T11a1bSFi	hp	T1::a::b::put(int) static	T1::a::b::put
+get__Q2_2T11aSFv	hp	T1::a::get(void) static	T1::a::get
+put__2T1SFi	hp	T1::put(int) static	T1::put
+put__Q5_2T11a1b1c1dSFi	hp	T1::a::b::c::d::put(int) static	T1::a::b::c::d::put
+get__Q4_2T11a1b1cSFv	hp	T1::a::b::c::get(void) static	T1::a::b::c::get
+put__Q2_2T11aSFi	hp	T1::a::put(int) static	T1::a::put
+put__Q4_2T11a1b1cSFi	hp	T1::a::b::c::put(int) static	T1::a::b::c::put
+get__Q3_2T11a1bSFv	hp	T1::a::b::get(void) static	T1::a::b::get
+get__2T1SFv	hp	T1::get(void) static	T1::get
+get__Q5_2T11a1b1c1dSFv	hp	T1::a::b::c::d::get(void) static	T1::a::b::c::d::get
+bar__3fooFPv	hp	foo::bar(void *)	foo::bar
+bar__3fooCFPv	hp	foo::bar(void *) const	foo::bar
+__eq__3fooFR3foo	hp	foo::operator==(foo &)	foo::operator==
+__eq__3fooCFR3foo	hp	foo::operator==(foo &) const	foo::operator==
+bar__3fooFiT16FooBar	hp	foo::bar(int, int, FooBar)	foo::bar
+bar__3fooFPiN51PdN37PcN211T1iN215	hp	foo::bar(int *, int *, int *, int *, int *, int *, double *, double *, double *, double *, char *, char *, char *, int *, int, int, int)	foo::bar
+__dt__2T5XTPFiPPdPv_i__Fv	hp	T5<int (*)(int, double **, void *)>::~T5(void)	T5<int (*)(int, double **, void *)>::~T5
+__ct__1cFi	hp	c::c(int)	c::c
+__dt__2T5XTi__Fv	hp	T5<int>::~T5(void)	T5<int>::~T5
+__dt__2T5XTc__Fv	hp	T5<char>::~T5(void)	T5<char>::~T5
+__ct__2T2Fi	hp	T2::T2(int)	T2::T2
+__dt__2T1Fv	hp	T1::~T1(void)	T1::~T1
+__dt__2T5XT1x__Fv	hp	T5<x>::~T5(void)	T5<x>::~T5
+__dt__2T5XTPFcPv_i__Fv	hp	T5<int (*)(char, void *)>::~T5(void)	T5<int (*)(char, void *)>::~T5
+__ct__2T5XTPFiPPdPv_i__Fi	hp	T5<int (*)(int, double **, void *)>::T5(int)	T5<int (*)(int, double **, void *)>::T5
+__dl__2T5XT1x__SFPv	hp	T5<x>::operator delete(void *) static	T5<x>::operator delete
+X__2T5XT1x	hp	T5<x>::X	T5<x>::X
+__ct__2T5XTi__Fi	hp	T5<int>::T5(int)	T5<int>::T5
+__ct__2T5XTc__Fi	hp	T5<char>::T5(int)	T5<char>::T5
+__dl__2T5XTPFcPv_i__SFPv	hp	T5<int (*)(char, void *)>::operator delete(void *) static	T5<int (*)(char, void *)>::operator delete
+X__2T5XTPFcPv_i	hp	T5<int (*)(char, void *)>::X	T5<int (*)(char, void *)>::X
+__ct__2T5XT1x__Fi	hp	T5<x>::T5(int)	T5<x>::T5
+__dl__2T5XTPFiPPdPv_i__SFPv	hp	T5<int (*)(int, double **, void *)>::operator delete(void *) static	T5<int (*)(int, double **, void *)>::operator delete
+X__2T5XTPFiPPdPv_i	hp	T5<int (*)(int, double **, void *)>::X	T5<int (*)(int, double **, void *)>::X
+__dl__2T5XTi__SFPv	hp	T5<int>::operator delete(void *) static	T5<int>::operator delete
+__dl__2T5XTc__SFPv	hp	T5<char>::operator delete(void *) static	T5<char>::operator delete
+X__2T5XTc	hp	T5<char>::X	T5<char>::X
+X__2T5XTi	hp	T5<int>::X	T5<int>::X
+__ct__2T5XTPFcPv_i__Fi	hp	T5<int (*)(char, void *)>::T5(int)	T5<int (*)(char, void *)>::T5
+__dt__2T1XTc__Fv	hp	T1<char>::~T1(void)	T1<char>::~T1
+__dt__2T1XT1t__Fv	hp	T1<t>::~T1(void)	T1<t>::~T1
+__dl__2T1XT1t__SFPv	hp	T1<t>::operator delete(void *) static	T1<t>::operator delete
+__ct__2T1XTc__Fi	hp	T1<char>::T1(int)	T1<char>::T1
+__ct__2T1XTc__Fv	hp	T1<char>::T1(void)	T1<char>::T1
+__ct__2T1XT1t__Fi	hp	T1<t>::T1(int)	T1<t>::T1
+__ct__2T1XT1t__Fv	hp	T1<t>::T1(void)	T1<t>::T1
+__dl__2T1XTc__SFPv	hp	T1<char>::operator delete(void *) static	T1<char>::operator delete
+elem__6vectorXTd__Fi	hp	vector<double>::elem(int)	vector<double>::elem
+elem__6vectorXTi__Fi	hp	vector<int>::elem(int)	vector<int>::elem
+__ct__6vectorXTd__Fi	hp	vector<double>::vector(int)	vector<double>::vector
+__ct__6vectorXTi__Fi	hp	vector<int>::vector(int)	vector<int>::vector
+__ct__9DListNodeXTR6RLabel__FR6RLabelP9DListNodeXTR6RLabel_T2	hp	DListNode<RLabel &>::DListNode(RLabel &, DListNode<RLabel &> *, DListNode<RLabel &> *)	DListNode<RLabel &>::DListNode
+__ct__9DListNodeXTO6RLabel__FO6RLabelP9DListNodeXTO6RLabel_T2	hp	DListNode<RLabel &&>::DListNode(RLabel &&, DListNode<RLabel &&> *, DListNode<RLabel &&> *)	DListNode<RLabel &&>::DListNode
+elem__6vectorXTiUP34__Fi	hp	vector<int,34U>::elem(int)	vector<int,34U>::elem
+elem__6vectorXUP2701Td__Fi	hp	vector<2701U,double>::elem(int)	vector<2701U,double>::elem
+elem__6vectorXTiSP334__Fi	hp	vector<int,334>::elem(int)	vector<int,334>::elem
+elem__6vectorXTiSN67__Fi	hp	vector<int,-67>::elem(int)	vector<int,-67>::elem
+elem__6vectorXTiSM__SCFPPd	hp	vector<int,-2147483648>::elem(double **) static const	vector<int,-2147483648>::elem
+elem__6vectorXTiSN67UP4000TRs__Fi	hp	vector<int,-67,4000U,short &>::elem(int)	vector<int,-67,4000U,short &>::elem
+elem__6vectorXTiSN67UP4000TOs__Fi	hp	vector<int,-67,4000U,short &&>::elem(int)	vector<int,-67,4000U,short &&>::elem
+elem__6vectorXTiSN67TRdTFPv_i__Fi	hp	vector<int,-67,double &,int (void *)>::elem(int)	vector<int,-67,double &,int (void *)>::elem
+elem__6vectorXTiSN67TOdTFPv_i__Fi	hp	vector<int,-67,double &&,int (void *)>::elem(int)	vector<int,-67,double &&,int (void *)>::elem
+X__6vectorXTiSN67TdTPvUP5TRs	hp	vector<int,-67,double,void *,5U,short &>::X	vector<int,-67,double,void *,5U,short &>::X
+X__6vectorXTiSN67TdTPvUP5TOs	hp	vector<int,-67,double,void *,5U,short &&>::X	vector<int,-67,double,void *,5U,short &&>::X
+elem__6vectorXTiA3foo__Fi	hp	vector<int,&foo>::elem(int)	vector<int,&foo>::elem
+elem__6vectorXTiA3fooTPvA5Label__FiPPvT2	hp	vector<int,&foo,void *,&Label>::elem(int, void **, void **)	vector<int,&foo,void *,&Label>::elem
+elem__6vectorXTiSN42A3foo__Fi	hp	vector<int,-42,&foo>::elem(int)	vector<int,-42,&foo>::elem
+__ct__2T5XTPFcPv_i__Fi_2	hp	T5<int (*)(char, void *)>::T5(int)	T5<int (*)(char, void *)>::T5
+__ct__2T5XTPFcPv_i__Fi_19	hp	T5<int (*)(char, void *)>::T5(int)	T5<int (*)(char, void *)>::T5
+f__FicdPcPFci_v_34	hp	f(int, char, double, char *, void (*)(char, int))	f
+spec__13Spec<#1,#1.*>XTiTPi_FPi	hp	Spec<int,int *>::spec(int *)	Spec<int,int *>::spec
+spec__16Spec<#1,#1.&,#1>XTiTRiTi_FPi	hp	Spec<int,int &,int>::spec(int *)	Spec<int,int &,int>::spec
+spec__17Spec<#1,#1.&&,#1>XTiTOiTi_FPi	hp	Spec<int,int &&,int>::spec(int *)	Spec<int,int &&,int>::spec
+add__XTc_FcT1	hp	add<char>(char, char)	add<char>
+add__XTcSP9A5label_FcPPlT1	hp	add<char,9,&label>(char, long **, char)	add<char,9,&label>
+add__XTPfTFPd_f_FcT1	hp	add<float *,float (double *)>(char, char)	add<float *,float (double *)>
+unLink__12basic_stringXTcT18string_char_traitsXTc_T9allocator_Fv	hp	basic_string<char,string_char_traits<char>,allocator>::unLink(void)	basic_string<char,string_char_traits<char>,allocator>::unLink
+call__H1Z4Test_RX01_t1C2ZX01PMX01FPX01i_vQ2X016output	gnu	C<Test, Test::output> call<Test>(Test &)	C<Test, Test::output> call<Test>
+call__H1Z4Test_OX01_t1C2ZX01PMX01FPX01i_vQ2X016output	gnu	C<Test, Test::output> call<Test>(Test &&)	C<Test, Test::output> call<Test>
+fn__FPQ21n1cPMQ21n1cFPQ21n1c_i	gnu	fn(n::c *, int (n::c::*)(n::c *))	fn
+f__FGt3Bar1i2G1i	gnu	f(Bar<2>, i)	f
+f__FGt3Bar1i21i	gnu	f(Bar<21>, int)	f
+f__FGt3Bar1i2G4XY_t	gnu	f(Bar<2>, XY_t)	f
+foo__H1Zt2TA2ZRCiZt2NA1Ui9_X01_i	gnu	int foo<TA<int const &, NA<9> > >(TA<int const &, NA<9> >)	int foo<TA<int const &, NA<9> > >
+foo__H1Zt2TA2ZOCiZt2NA1Ui9_X01_i	gnu	int foo<TA<int const &&, NA<9> > >(TA<int const &&, NA<9> >)	int foo<TA<int const &&, NA<9> > >
+foo__H1Zt2TA2ZcZt2NA1Ui20_X01_i	gnu	int foo<TA<char, NA<20> > >(TA<char, NA<20> >)	int foo<TA<char, NA<20> > >
+foo__H1Zt2TA2ZiZt8N___A___1Ui99_X01_i	gnu	int foo<TA<int, N___A___<99> > >(TA<int, N___A___<99> >)	int foo<TA<int, N___A___<99> > >
+foo__H1Zt2TA2ZRCiZt2NA1im1_X01_i	gnu	int foo<TA<int const &, NA<-1> > >(TA<int const &, NA<-1> >)	int foo<TA<int const &, NA<-1> > >
+foo__H1Zt2TA2ZRCiZt2NA1im9_X01_i	gnu	int foo<TA<int const &, NA<-9> > >(TA<int const &, NA<-9> >)	int foo<TA<int const &, NA<-9> > >
+foo__H1Zt2TA2ZcZt2NA1i_m20__X01_i	gnu	int foo<TA<char, NA<-20> > >(TA<char, NA<-20> >)	int foo<TA<char, NA<-20> > >
+foo__H1Zt2TA2ZcZt2NA1im1_X01_i	gnu	int foo<TA<char, NA<-1> > >(TA<char, NA<-1> >)	int foo<TA<char, NA<-1> > >
+foo__H1Zt2TA2ZiZt4N__A1im9_X01_i	gnu	int foo<TA<int, N__A<-9> > >(TA<int, N__A<-9> >)	int foo<TA<int, N__A<-9> > >
+foo__H1Zt2TA2ZiZt4N__A1i_m99__X01_i	gnu	int foo<TA<int, N__A<-99> > >(TA<int, N__A<-99> >)	int foo<TA<int, N__A<-99> > >
+__opi__t2TA2ZiZt4N__A1i9	gnu	TA<int, N__A<9> >::operator int(void)	TA<int, N__A<9> >::operator int
+__opi__t2TA2ZiZt8N___A___1i_m99_	gnu	TA<int, N___A___<-99> >::operator int(void)	TA<int, N___A___<-99> >::operator int
+foo___bar__baz_____H1Zt2TA2ZiZt8N___A___1i99_X01_i	gnu	int foo___bar__baz___<TA<int, N___A___<99> > >(TA<int, N___A___<99> >)	int foo___bar__baz___<TA<int, N___A___<99> > >
+foo__bar___foobar_____t2TA2ZiZt8N___A___1i_m99_	gnu	TA<int, N___A___<-99> >::foo__bar___foobar___(void)	TA<int, N___A___<-99> >::foo__bar___foobar___
+foo__bar___foobar_____t2TA2ZiZt4N__A1i9	gnu	TA<int, N__A<9> >::foo__bar___foobar___(void)	TA<int, N__A<9> >::foo__bar___foobar___
+__tfP8sockaddr	gnu	sockaddr * type_info function	sockaddr * type_info function
+__tfPQ25libcwt16option_event_tct1Z12burst_app_ct	gnu	libcw::option_event_tct<burst_app_ct> * type_info function	libcw::option_event_tct<burst_app_ct> * type_info function
+__tiP8sockaddr	gnu	sockaddr * type_info node	sockaddr * type_info node
+__tiPQ25libcwt16option_event_tct1Z12burst_app_ct	gnu	libcw::option_event_tct<burst_app_ct> * type_info node	libcw::option_event_tct<burst_app_ct> * type_info node
+_27_GLOBAL_.N.__12burst_app_ct.app_instance	gnu	{anonymous}::app_instance	{anonymous}::app_instance
+_26_GLOBAL_$N$_tmp_n.iilg4Gya$app_instance	gnu	{anonymous}::app_instance	{anonymous}::app_instance
+_Utf58_0_1__1_2147483647__2147483648	hp	_Utf58_0_1__1_2147483647__2147483648	_Utf58_0_1__1_2147483647__2147483648

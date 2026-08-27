@@ -27,6 +27,7 @@ _BUILTIN_MODULES = (
     ("nim", "demangle.schemes.nim"),
     ("objc", "demangle.schemes.objc"),
     ("jni", "demangle.schemes.jni"),
+    ("gnuv2", "demangle.schemes.gnuv2"),
 )
 
 #: The entry-point group third-party packages advertise plugins under.

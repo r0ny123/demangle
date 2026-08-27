@@ -70,6 +70,11 @@ demangle.demangle("?f@@YAXH@Z", style=demangle.style("llvm", msvc={"calling_conv
       members:
         - SwiftOptions
 
+::: demangle.schemes.gnuv2.options
+    options:
+      members:
+        - GnuV2Options
+
 ## A file, not a name
 
 `nm` writes an address and a type letter before a name. The useful operation over a file
