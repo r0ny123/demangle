@@ -339,7 +339,7 @@ class TestAgainstLibcxxabisOwnCorpus:
 
     #: Raised as gaps close; never lowered silently. A drop means a vector that used to
     #: pass has stopped, which is a regression whatever the total.
-    EXPECTED_EXACT = 29918
+    EXPECTED_EXACT = 29923
 
     def _score(self):
         return sum(
@@ -353,6 +353,37 @@ class TestAgainstLibcxxabisOwnCorpus:
 
     def test_the_pinned_number_is_still_accurate(self):
         assert self._score() == self.EXPECTED_EXACT
+
+    def test_the_shortfall_is_five_names_and_this_says_which(self):
+        """Five left, and four of them are not shortfalls at all.
+
+        `i`, `PKFvRiE`, `PVFvRmOE` and `PFvRmOE` are bare `<type>` manglings with no
+        `_Z`. They are refused *as symbols* on purpose, as `llvm-cxxfilt` refuses them,
+        because a demangler offered every symbol in a binary and willing to read `i` as
+        `int` will rename half a C library. `demangle_type()` reads all four; see
+        `tests/test_types.py`.
+
+        The fifth is a conversion operator whose type refers to the argument list that
+        contains it -- `operator B<T_&><B<T_&>>`, a cycle. The reference guards against
+        printing one by printing *nothing* for the second visit, so it answers
+        `operator B<><>`; this reads the type a second time once the arguments are bound
+        and answers `operator B<auto&><auto&>`. Neither is the declaration, because
+        there is no declaration: the mangling is self-referential and no compiler emits
+        one.
+        """
+        missed = [
+            mangled
+            for mangled, expected in load_corpus("itanium-libcxxabi.txt")
+            if demangle.demangle(mangled) != expected
+        ]
+        assert sorted(missed) == sorted(["_Zcv1BIRT_EIS1_E", "i", "PKFvRiE", "PVFvRmOE", "PFvRmOE"])
+
+    def test_the_four_bare_types_are_read_when_they_are_asked_for_as_types(self):
+        """Refused as symbols, read as types. The corpus scores the symbol entry point."""
+        for mangled, expected in load_corpus("itanium-libcxxabi.txt"):
+            if demangle.demangle(mangled) == expected or not mangled.startswith(("i", "P")):
+                continue
+            assert demangle.demangle_type(mangled, language="itanium") == expected
 
     def test_nothing_in_it_is_answered_with_nothing(self):
         """Whatever it cannot read, it hands back -- never a blank."""
