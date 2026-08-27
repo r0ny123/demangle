@@ -7,12 +7,17 @@ announces its scheme -- `_Z`, `?`, `$s` -- and a type encoding announces nothing
 `i` is a valid Itanium type, a valid Swift type and an ordinary C identifier, so there
 is no evidence to detect on and `language` has to be given.
 
-The Itanium expectations here are `c++filt -t` (binutils 2.42) verbatim, recorded in
-`conformance/itanium-types.txt`. LLVM ships no type-only *tool* -- `llvm-cxxfilt` has no
-`-t`, and llvm-undname 18.1.3 has no `--types` -- so for the LLVM style and for MSVC the
+The Itanium expectations are both references verbatim, over the same 1,076 encodings:
+`c++filt -t` (binutils 2.42) in `conformance/itanium-types.txt` and `llvm-cxxfilt
+--types` (18.1.3) in `conformance/itanium-types-llvm.txt`. The pair is what pins the
+style split -- the same encoding, two spellings, one file each.
+
+MSVC has no type-only tool here (llvm-undname 18.1.3 has no `--types`), so there the
 standing-in property is agreement with the symbol path: whatever `f(T)` spells between
 its brackets is what `demangle_type` must spell for `T` alone.
 """
+
+from typing import ClassVar
 
 import pytest
 
@@ -20,24 +25,36 @@ import demangle
 from demangle.core.errors import DemanglingError, NotMangledError, ParseError
 
 from .conftest import load_corpus
+from .test_conformance import TYPES_GNU_EXACT, TYPES_LLVM_EXACT, TYPES_TOTAL
 
 
 class TestTheItaniumTypeGrammar:
-    #: Raised as gaps close, never lowered silently.
-    EXPECTED_EXACT = 1073
+    #: Raised as gaps close, never lowered silently. `gnu` falls three short of `llvm`
+    #: for the doubled-qualifier reason below, on input no compiler emits.
+    EXPECTED_EXACT: ClassVar = {"gnu": TYPES_GNU_EXACT, "llvm": TYPES_LLVM_EXACT}
 
-    def _score(self):
+    CORPUS: ClassVar = {"gnu": "itanium-types.txt", "llvm": "itanium-types-llvm.txt"}
+
+    def _score(self, style):
         return sum(
-            1 for enc, expected in load_corpus("itanium-types.txt") if _spelled(enc, "itanium", "gnu") == expected
+            1 for enc, expected in load_corpus(self.CORPUS[style]) if _spelled(enc, "itanium", style) == expected
         )
 
-    def test_the_score_has_not_gone_backwards(self):
-        total = len(load_corpus("itanium-types.txt"))
-        assert total > 1000, "corpus did not load; this test would prove nothing"
-        assert self._score() >= self.EXPECTED_EXACT
+    @pytest.mark.parametrize("style", ["llvm", "gnu"])
+    def test_the_score_has_not_gone_backwards(self, style):
+        total = len(load_corpus(self.CORPUS[style]))
+        assert total == TYPES_TOTAL, "corpus did not load; this test would prove nothing"
+        assert self._score(style) >= self.EXPECTED_EXACT[style]
 
-    def test_the_pinned_number_is_still_accurate(self):
-        assert self._score() == self.EXPECTED_EXACT
+    @pytest.mark.parametrize("style", ["llvm", "gnu"])
+    def test_the_pinned_number_is_still_accurate(self, style):
+        assert self._score(style) == self.EXPECTED_EXACT[style]
+
+    def test_both_corpora_hold_the_same_encodings(self):
+        """One input set, two references. A row in one and not the other is a mistake."""
+        assert [enc for enc, _ in load_corpus("itanium-types.txt")] == [
+            enc for enc, _ in load_corpus("itanium-types-llvm.txt")
+        ]
 
     def test_the_shortfall_is_only_the_known_divergence(self):
         """The three misses are `KK`, a doubled cv-qualifier, and are all of them.
@@ -51,6 +68,11 @@ class TestTheItaniumTypeGrammar:
             enc for enc, expected in load_corpus("itanium-types.txt") if _spelled(enc, "itanium", "gnu") != expected
         ]
         assert missed == ["KKDv4_i", "PKKDv4_i", "RKKDv4_i"]
+        assert [
+            enc
+            for enc, expected in load_corpus("itanium-types-llvm.txt")
+            if _spelled(enc, "itanium", "llvm") != expected
+        ] == []
 
     @pytest.mark.parametrize("style", ["llvm", "gnu"])
     def test_a_type_spells_what_the_same_type_spells_inside_a_symbol(self, style):
@@ -65,10 +87,11 @@ class TestTheItaniumTypeGrammar:
                 continue
             assert _spelled(enc, "itanium", style) == whole[len("f(") : -1], enc
 
-    def test_the_tree_spells_what_the_text_spells(self):
+    @pytest.mark.parametrize("style", ["llvm", "gnu"])
+    def test_the_tree_spells_what_the_text_spells(self, style):
         for enc, _ in load_corpus("itanium-types.txt"):
-            tree = demangle.parse_type(enc, language="itanium")
-            assert tree.spell() == demangle.demangle_type(enc, language="itanium"), enc
+            tree = demangle.parse_type(enc, language="itanium", style=style)
+            assert tree.spell(style=style) == demangle.demangle_type(enc, language="itanium", style=style), enc
 
 
 def _spelled(encoding, language, style):

@@ -77,6 +77,24 @@ def pack_of(members):
     return Spelling(", ".join([member.left + member.right for member in flattened]), members=flattened)
 
 
+def _respace_bound(left, right):
+    """Space an array's bound off whatever now precedes it, or take the space away.
+
+    The reference decides this from the last character it has printed: a bound follows a
+    space unless what came before already ends in a bracket. So `int [3]` and
+    `int (*) [3]` and `int vector[4] const [3]`, but `int vector[4][3]` and
+    `int [5][4]`.
+
+    "What came before" moves as declarators nest -- a `const` or a `*` goes in between
+    the two halves -- so the decision cannot be made once when the array is built. It is
+    re-made by every constructor that changes `left`, which is what this is for.
+    """
+    bound = right.lstrip(" ")
+    if not bound.startswith("["):
+        return right
+    return bound if left.endswith("]") else " " + bound
+
+
 def _wrap(inner, token, ref_kind=""):
     """Apply a declarator token, parenthesising where precedence demands it.
 
@@ -93,7 +111,10 @@ def _wrap(inner, token, ref_kind=""):
         # A function's left half already ends in the space after its return type; an
         # array's ends in an identifier character and needs one added.
         spacer = "" if not left or left.endswith((" ", "(")) else " "
-        return Spelling(left + spacer + "(" + token, ")" + inner.right, ref_kind=ref_kind)
+        # The bound now follows the `)` this closes with, not the element type, so its
+        # spacing is decided against that: `int vector[4] (*) [3]`, not `(*)[3]`.
+        right = ")" + _respace_bound(")", inner.right) if inner.is_array else ")" + inner.right
+        return Spelling(left + spacer + "(" + token, right, ref_kind=ref_kind)
     return Spelling(inner.left + token, inner.right, ref_kind=ref_kind)
 
 
@@ -166,7 +187,9 @@ class SpellingBuilder(Builder):
             return Spelling(inner.left, inner.right + " " + text, is_function=True)
         # Both `int const` and `int* const` are "const applied to the thing on the
         # left", and C++ spells both postfix. The reference demanglers agree.
-        return Spelling(inner.left + " " + text, inner.right, is_array=inner.is_array)
+        left = inner.left + " " + text
+        right = _respace_bound(left, inner.right) if inner.is_array else inner.right
+        return Spelling(left, right, is_array=inner.is_array)
 
     # -- declarators -----------------------------------------------------------
 
@@ -214,16 +237,10 @@ class SpellingBuilder(Builder):
         right = inner.right
         # Only the first bracket of a multi-dimensional array is spaced off the type:
         # `Libcall const (&) [5][4]`, not `[5] [4]`. Dimensions are built inside out, so
-        # the space the inner one added is the one to drop.
-        if inner.is_array and right.startswith(" ["):
-            right = right[1:]
-        # ...and no space either where the element type itself already ends in a
-        # bracket, which is what a vector spells: `int vector[4][3]`, not
-        # `int vector[4] [3]`. The reference tests the last character it printed, and
-        # the bound goes in ahead of `right`, so that character is the end of `left`.
-        if not inner.left.endswith("]"):
-            bound = " " + bound
-        return Spelling(inner.left, bound + right, is_array=True)
+        # the space the inner one took is the one this takes over.
+        if inner.is_array:
+            right = right.lstrip(" ")
+        return Spelling(inner.left, _respace_bound(inner.left, bound + right), is_array=True)
 
     def function(self, returns, parameters, suffix="", name=None):
         rendered = ", ".join([parameter.left + parameter.right for parameter in parameters])

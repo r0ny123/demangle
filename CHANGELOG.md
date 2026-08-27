@@ -28,10 +28,12 @@ All notable changes to this project are recorded here. The format follows
   out of a binary as often as a symbol is -- an Itanium `typeinfo` name sits in
   `.rodata` and an MSVC type descriptor's name in `.rdata`.
 
-  Scored at **1,073 of 1,076** against `c++filt -t` (binutils 2.42), pinned in both
-  directions in `tests/conformance/itanium-types.txt`. The three misses are a doubled
-  `KK` cv-qualifier, which GNU folds away and LLVM keeps; no compiler emits one, since
-  the ABI writes a single `<CV-qualifiers>` group per type.
+  Scored over 1,076 encodings against **both** references, one corpus each because the
+  two spell the same types differently: **1,076 of 1,076** against `llvm-cxxfilt
+  --types` (18.1.3) and **1,073 of 1,076** against `c++filt -t` (binutils 2.42), pinned
+  in both directions. The three misses are a doubled `KK` cv-qualifier, which GNU folds
+  away and LLVM keeps; no compiler emits one, since the ABI writes a single
+  `<CV-qualifiers>` group per type.
 
 - **Itanium `tr` and `tw`, the throw expressions.** `decltype(throw)` and
   `decltype(throw 1)` were refused outright. Both references read them and spell the
@@ -421,7 +423,10 @@ All notable changes to this project are recorded here. The format follows
 - **An array bound was always spaced off its element type.** `A3_Dv4_i` came out
   `int vector[4] [3]` where `llvm-cxxfilt` prints `int vector[4][3]`: the reference omits
   the space whenever what it last printed already ended in a bracket, and only the
-  multi-dimensional case of that rule was implemented.
+  multi-dimensional case of that rule was implemented. What comes before the bound moves
+  as declarators nest -- a `const` or a `*` goes in between -- so the decision is re-made
+  by every constructor that changes the left half, which is what gets
+  `int vector[4] const [3]` and `int vector[4] (*) [3]` right as well.
 
 - **`demangle_type` no longer invents `auto` for a template parameter.** In a whole
   symbol an unresolved `T_` is spelled `auto`, which is what both references do and what

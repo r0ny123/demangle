@@ -98,8 +98,10 @@ NOT_REPLAYED = frozenset(
         # Bare `<type>` encodings rather than symbols -- `Pi`, `PKFvRiE`. They are read by
         # `demangle_type(..., language="itanium")`, and `demangle()` refuses every one of
         # them on purpose, so replaying them here would report 1,076 failures for the
-        # feature working as designed. Pinned by tests/test_types.py against `c++filt -t`.
+        # feature working as designed. Pinned by tests/test_types.py against both
+        # references: `c++filt -t` for the gnu style, `llvm-cxxfilt --types` for llvm.
         "itanium-types.txt",
+        "itanium-types-llvm.txt",
     }
 )
 

@@ -228,11 +228,12 @@ which is whether to spell something *differently*.
   `?` or `$s`, and a type encoding announces nothing at all, so `Si` is `std::istream` to
   the Itanium reader and `Swift.Int` to the Swift one and there is no evidence that
   decides between them. The reference tools put it behind a flag for the same reason —
-  `c++filt -t` (libiberty's `DMGL_TYPES`), `UnDecorateSymbolName`'s
-  `UNDNAME_TYPE_ONLY`, Swift's `demangleTypeAsString`. Scored at 1,073 of 1,076 against
-  `c++filt -t` in
-  `conformance/itanium-types.txt`; the three misses are a doubled `KK` cv-qualifier that
-  GNU folds away and LLVM keeps, on input no compiler emits.
+  `c++filt -t` and `llvm-cxxfilt --types`, libiberty's `DMGL_TYPES`,
+  `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`, Swift's `demangleTypeAsString`. Scored
+  over 1,076 encodings against *both* references, one corpus each because they spell the
+  same types differently: **1,076 of 1,076** against `llvm-cxxfilt --types` and 1,073
+  against `c++filt -t`, the three being a doubled `KK` cv-qualifier that GNU folds away
+  and LLVM keeps, on input no compiler emits.
 
 One is left, and it is Swift's:
 
