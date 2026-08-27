@@ -30,8 +30,8 @@ traceback, which is what happened wherever the interpreter's error handler was `
 
 import argparse
 import contextlib
+import json
 import os
-import re
 import sys
 
 from . import __version__
@@ -39,20 +39,13 @@ from ._signature import signature
 from .api import demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
 from .core.errors import DemanglingError
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
+from .filter import TOKEN, TOKEN_MUST_HOLD
 
-#: A candidate symbol in a stream of mixed text. Deliberately wider than any one scheme:
-#: offering a word that turns out not to be mangled costs one failed prefix test, and
-#: not offering one loses a symbol silently.
-#:
-#: `?` and `@` are here for MSVC, `$` for Swift and Free Pascal, `.` for clone suffixes
-#: and Go package paths, `-`, `+`, `[` and `]` for Objective-C method names, `/` for Go
-#: import paths.
-_TOKEN = re.compile(r"[A-Za-z0-9_$@?.\-+\[\]/:]+")
-
-#: A word is worth offering only if it holds one of these. Without it every ordinary
-#: word in a disassembly listing walks the whole detection chain, and `demumble`'s
-#: warning applies -- `I like Pi` should not become `I like int*`.
-_TOKEN_MUST_HOLD = re.compile(r"[_$?@\[]")
+#: The token scan, shared with `demangle.filter` so there is one of it rather than
+#: two. That module is the library form of this command's default behaviour; see its
+#: docstring for what the two patterns are for and why the second one is needed.
+_TOKEN = TOKEN
+_TOKEN_MUST_HOLD = TOKEN_MUST_HOLD
 
 
 def build_parser():
@@ -69,6 +62,7 @@ def build_parser():
     parser.add_argument("-s", "--style", default="llvm", help="output style (default: llvm)")
     parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
     parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
+    parser.add_argument("--json", action="store_true", help="print the parse tree as JSON")
     parser.add_argument(
         "--types",
         action="store_true",
@@ -223,6 +217,8 @@ def main(argv=None):
         except KeyError:
             known = ", ".join(sorted(set(languages()) | set(aliases())))
             parser.error(f"unknown language {arguments.language!r}; choose from {known}")
+    if arguments.json and arguments.tree:
+        parser.error("--tree and --json are two spellings of the same answer; choose one")
     if arguments.types:
         if not arguments.language:
             parser.error("--types needs --language: a type encoding carries no marker to detect on")
@@ -286,10 +282,12 @@ def _expand(name, arguments, limits):
     if arguments.detect:
         return arguments.language or detect(name) or "-"
     if arguments.types:
-        if arguments.tree:
+        if arguments.json or arguments.tree:
             node = parse_type(name, language=arguments.language, style=arguments.style, limits=limits)
-            return "\n".join(_dump(node))
+            return json.dumps(node.to_dict()) if arguments.json else "\n".join(_dump(node))
         return demangle_type(name, language=arguments.language, style=arguments.style, limits=limits)
+    if arguments.json:
+        return json.dumps(parse(name, language=arguments.language, style=arguments.style, limits=limits).to_dict())
     if arguments.tree:
         return "\n".join(_dump(parse(name, language=arguments.language, style=arguments.style, limits=limits)))
     if arguments.no_params or arguments.base_name or arguments.no_return_type:

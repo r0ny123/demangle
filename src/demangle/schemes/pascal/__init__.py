@@ -66,6 +66,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
 
 PLUGIN = LanguagePlugin(
     name="pascal",
+    node_kinds=("name", "parameters", "path", "symbol"),
     detect=detect,
     parse=parse,
     description="Free Pascal symbol mangling",

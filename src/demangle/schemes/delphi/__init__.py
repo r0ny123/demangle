@@ -59,6 +59,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
 
 PLUGIN = LanguagePlugin(
     name="delphi",
+    node_kinds=("name", "parameters", "symbol"),
     detect=detect,
     parse=parse,
     description="Borland/Embarcadero Delphi and C++Builder symbol mangling",

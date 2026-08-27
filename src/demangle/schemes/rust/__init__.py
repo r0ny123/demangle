@@ -185,6 +185,17 @@ def _check_length(mangled, length, limits):
 
 PLUGIN = LanguagePlugin(
     name="rust",
+    node_kinds=(
+        "decorated",
+        "impl",
+        "literal",
+        "name",
+        "namespace",
+        "path",
+        "symbol",
+        "template",
+        "type",
+    ),
     detect=detect,
     parse=parse,
     description="Rust legacy (_ZN) and v0 (_R) symbol mangling",

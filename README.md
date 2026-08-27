@@ -132,6 +132,24 @@ Swift's `demangleTypeAsString`. On the command line it is
 than filtering symbols out of mixed text — `Pi` is an ordinary word, and `I like Pi`
 should stay as it is.
 
+### A file, not a name
+
+`nm` writes an address and a type letter before a name; a crash log writes a frame
+number. So the useful operation over a file is "substitute every symbol-shaped word and
+copy the rest through", which is what the command does with no arguments — and now what
+the library does too:
+
+```python
+>>> demangle.demangle_text("0000000000001139 T _ZN3foo3barEv")
+'0000000000001139 T foo::bar()'
+>>> demangle.demangle_stream(sys.stdin, sys.stdout)     # a line at a time, for pipes
+>>> [f.mangled for f in demangle.find_symbols("a _ZN3foo3barEv b")]
+['_ZN3foo3barEv']
+```
+
+`find_symbols` gives the span as well as the spelling, for a caller that needs to know
+*where* in a line a symbol was.
+
 ### Detection and batches
 
 ```python
@@ -155,6 +173,32 @@ b'foo::bar()'
 `parseb_type` go with it. Undecodable bytes
 survive the round trip: `demangleb` hands back exactly what it was given, byte for byte,
 rather than raising.
+
+### The tree as data
+
+`parse()` returns a walkable tree; `to_dict()` turns it into plain data, `--json` prints
+it, and `node_kinds()` is the vocabulary to switch on rather than something to read out
+of our source:
+
+```python
+>>> demangle.parse("_Z1fPi").to_dict()
+{'kind': 'function', 'name': {'kind': 'name', 'text': 'f'}, 'parameters': [{'kind': 'pointer', 'inner': {'kind': 'builtin', 'spelling': 'int'}}], 'returns': None, 'suffix': ''}
+>>> demangle.node_kinds("d")
+('name', 'path', 'symbol')
+```
+
+The nodes carry `__match_args__`, so structural pattern matching works:
+
+```python
+>>> from demangle.core.ast import Builtin, Pointer
+>>> match demangle.parse("_Z1fPi").parameters[0]:
+...     case Pointer(Builtin(name)): print("pointer to", name)
+pointer to int
+```
+
+A node reached more than once — an Itanium substitution, a Rust node named both by
+position and by role — is written once with an `id` and afterwards as `{"$ref": id}`. The
+structure is a graph, and expanding it in full does not always terminate in useful time.
 
 ### Styles
 
@@ -211,6 +255,7 @@ $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `voi
 $ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t`
 $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
 $ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
+$ demangle --json _Z1fPi                           # the parse tree as JSON
 ```
 
 `-p` is `c++filt -p`: over the shipped libstdc++ and the GNU-style corpus the two agree

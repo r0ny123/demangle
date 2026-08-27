@@ -49,6 +49,16 @@ class LanguagePlugin:
     Free Pascal and JNI names carry types only as text they already spell.
     """
 
+    node_kinds: tuple = ()
+    """Every `kind` string a tree from this scheme can hold.
+
+    The published vocabulary. `parse()` returns a walkable tree, and without this a
+    caller building on it has to read the source to learn what to switch on -- which is
+    what `swift-demangle`'s `kind=` dumps and libiberty's hundred `DEMANGLE_COMPONENT_*`
+    enumerators exist to avoid. `demangle.node_kinds()` is the whole of it, and
+    `tests/test_core.py` checks it against every corpus so it cannot drift.
+    """
+
     description: str = ""
     """One line, shown by `demangle --list-languages`."""
 

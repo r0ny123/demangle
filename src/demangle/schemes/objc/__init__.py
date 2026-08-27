@@ -85,6 +85,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
 
 PLUGIN = LanguagePlugin(
     name="objc",
+    node_kinds=("name", "path", "symbol"),
     detect=detect,
     parse=parse,
     description="Objective-C method, class and runtime symbol names",

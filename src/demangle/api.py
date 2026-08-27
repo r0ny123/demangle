@@ -55,6 +55,7 @@ __all__ = [
     "detect",
     "detectb",
     "languages",
+    "node_kinds",
     "parse",
     "parse_type",
     "parseb",
@@ -362,6 +363,31 @@ def style(base: str | Style | None = DEFAULT_STYLE, /, **languages: Any) -> Styl
         ValueError: `base` is not a known style, or a language named has no options.
     """
     return get_style(base).with_options(**languages)
+
+
+def node_kinds(language: str | None = None) -> tuple[str, ...]:
+    """Every `kind` a `parse()` tree can hold, sorted. One scheme's, or all of them.
+
+    The vocabulary to switch on, published rather than left to be read out of the source:
+
+        >>> import demangle
+        >>> demangle.node_kinds("d")
+        ('name', 'path', 'symbol')
+
+    What each kind *means* differs with what the language has to say. A C++ tree carries
+    declarator shape -- `pointer`, `array`, `function` -- because a C++ type wraps the
+    name it declares. Rust has no declarator syntax, so its trees carry path structure
+    instead: `symbol`, `path`, `impl`, `namespace`. `name`, `template` and `literal` mean
+    the same thing wherever they appear.
+
+    Raises:
+        ValueError: `language` is not a known scheme.
+    """
+    if language is not None:
+        return tuple(sorted(_resolve(language).node_kinds))
+    from .core.registry import available
+
+    return tuple(sorted({kind for plugin in available() for kind in plugin.node_kinds}))
 
 
 def _type_languages():

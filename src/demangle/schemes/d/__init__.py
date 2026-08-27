@@ -88,6 +88,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
 
 PLUGIN = LanguagePlugin(
     name="d",
+    node_kinds=("name", "path", "symbol"),
     detect=detect,
     parse=parse,
     description="D symbol mangling (dlang)",

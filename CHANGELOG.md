@@ -8,6 +8,34 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **The stream filter and the tree, as library API rather than as CLI internals.** Three
+  shapes a Python caller expects and did not find, each of which already had a working
+  implementation inside the command or behind a private helper.
+
+  `demangle_text()` and `demangle_stream()` substitute every symbol-shaped word in mixed
+  text and copy the rest through -- what `nm ... | demangle` does, without shelling out
+  to our own command. rustc-demangle ships `demangle_stream` as a crate function rather
+  than only inside `rustfilt`; the precedent is clear. `find_symbols()` is the same scan
+  without the substitution, giving the *span* of each symbol -- the question
+  `microsoftDemangle`'s `n_read` out-parameter and `llvm-undname --warn-trailing` answer
+  in C, here for every scheme at once. The command and the library share one tokenizer,
+  because two would drift and the drift would be silent.
+
+  `Node.to_dict()` turns a tree into plain data, `demangle --json` prints it, and every
+  node carries `__match_args__`, so `match Pointer(Builtin(name))` works -- which is what
+  "returns a walkable tree" means to a Python caller now. `node_kinds()` publishes the
+  vocabulary to switch on, per scheme or as a whole: `swift-demangle` prints `kind=`
+  dumps and libiberty publishes a hundred `DEMANGLE_COMPONENT_*` enumerators for the same
+  reason, and a test checks the list against every corpus so it cannot drift.
+
+  A node reached more than once is written out once, with an `id`, and afterwards as
+  `{"$ref": id}`. That is not a size optimisation: the structure is a *graph*. Itanium's
+  substitutions make one component reachable from several places, and a Rust node names
+  its children twice over -- `parts` orders them, `base` and `arguments` say what they
+  are -- so writing every occurrence in full doubles per level. One real symbol from the
+  Rust toolchain cost 4.7 seconds and 363MB that way before this; it is under a second
+  and 32MB now, and bounded by the graph rather than by its expansion.
+
 - **Swift's simplified spelling, exact against the compiler's own 217 vectors.** What
   `swift-demangle --simplified` prints, and what Xcode and LLDB show in a stack trace:
   `Either` for `Monads.Either`, `(_:)` for `(Swift.Int) -> Swift.UInt`,

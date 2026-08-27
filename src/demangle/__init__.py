@@ -34,6 +34,7 @@ from .api import (
     detect,
     detectb,
     languages,
+    node_kinds,
     parse,
     parse_type,
     parseb,
@@ -53,6 +54,7 @@ from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 from .core.plugin import LanguagePlugin
 from .core.registry import register as register_language
 from .core.style import Style, register_style
+from .filter import Found, demangle_stream, demangle_text, find_symbols
 
 __version__ = "0.1.0"
 
@@ -61,6 +63,7 @@ __all__ = [
     "RELAXED_LIMITS",
     "Decorated",
     "DemanglingError",
+    "Found",
     "LanguagePlugin",
     "LimitExceeded",
     "Limits",
@@ -75,14 +78,18 @@ __all__ = [
     "cache_stats",
     "demangle",
     "demangle_all",
+    "demangle_stream",
     "demangle_strict",
+    "demangle_text",
     "demangle_type",
     "demangleb",
     "demangleb_strict",
     "demangleb_type",
     "detect",
     "detectb",
+    "find_symbols",
     "languages",
+    "node_kinds",
     "parse",
     "parse_type",
     "parseb",
