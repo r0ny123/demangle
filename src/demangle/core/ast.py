@@ -13,6 +13,7 @@ and a tree can never disagree with the fast path. It also means a new output for
 JSON, HTML, a token stream -- is a builder, not a second traversal to keep in sync.
 """
 
+import inspect
 import sys
 
 from .builder import Builder
@@ -75,6 +76,17 @@ class Node:
     __slots__ = ("size",)
     kind = "node"
 
+    #: The fields a positional `match` sees, in constructor order. `match Pointer(inner)`
+    #: is what "returns a walkable tree" means to a Python caller now.
+    #:
+    #: Written out on every class in this module rather than computed, so that a type
+    #: checker reading a caller's `match` statement can see it -- one derived in
+    #: `__init_subclass__` is invisible to every static tool. A scheme's own nodes get the
+    #: derived one, which is why `__init_subclass__` is still here; and
+    #: `tests/test_api_surface.py` checks each declaration against the constructor it has
+    #: to agree with, so neither can drift from the other.
+    __match_args__ = ()
+
     #: Upper bound on the rendered length of this subtree, filled in by `AstBuilder` as
     #: it constructs. An over-estimate is fine and deliberate -- it is used to enforce a
     #: resource bound, where erring high is the safe direction.
@@ -82,9 +94,36 @@ class Node:
     #: the tree is a DAG with shared subtrees, and walking it to measure would be
     #: exponential in exactly the cases the bound exists to stop.
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__match_args__" not in cls.__dict__:
+            cls.__match_args__ = _match_args(cls)
+
     def children(self):
         """Direct children, in source order. Leaves return an empty tuple."""
         return ()
+
+    def to_dict(self):
+        """This subtree as plain data -- dicts, lists and strings -- for `json.dumps`.
+
+        Every node becomes a dict with a `kind` and the fields that node kind has, so the
+        *role* of each child survives: a `function` has `returns`, `parameters` and
+        `name`, not three anonymous children. A field holding a node becomes a nested
+        dict and one holding a sequence of them becomes a list; anything else -- a
+        spelling, a qualifier list, a flag -- is carried as it is.
+
+        `kind` is the vocabulary to switch on, and `demangle.node_kinds()` is all of it.
+
+        A node reached more than once is written out once, with an `id`, and afterwards
+        as `{"$ref": id}`. This is not a size optimisation, it is the difference between
+        terminating and not: the structure is a *graph*, not a tree. Itanium's
+        substitutions make a component reachable from several places, and a Rust node
+        names its own children twice over -- `parts` orders them and `base` and
+        `arguments` say what they are -- so writing each occurrence out in full doubles
+        per level. One real symbol from the Rust toolchain took 4.7 seconds and 363MB
+        that way, and there is no bound on how much worse it can get.
+        """
+        return rendered(lambda: _emit(self, _shared_nodes(self), {}))
 
     def build(self, builder):
         """Re-emit this subtree into `builder`, returning its handle."""
@@ -127,12 +166,15 @@ class Node:
     def _fields(self):
         """Every declared slot in the class hierarchy, outermost base first.
 
+        Takes a class as readily as an instance -- `Node._fields(SomeClass)` -- because
+        `__match_args__` is computed before any instance of that class exists.
+
         `self.__slots__` alone gives only the most-derived class's, which is empty for
         `Pointer`, `Reference` and every other node whose state lives on a shared base --
         so comparing on it made all of them equal to each other regardless of content.
         """
         names = []
-        for klass in reversed(type(self).__mro__):
+        for klass in reversed((self if isinstance(self, type) else type(self)).__mro__):
             for slot in getattr(klass, "__slots__", ()):
                 if slot != "size" and slot not in names:
                     names.append(slot)
@@ -155,6 +197,83 @@ def _hashable(value):
     return tuple(value) if isinstance(value, list) else value
 
 
+def _nodes_in(value):
+    """Every node a field's value holds, directly or inside a sequence."""
+    if isinstance(value, Node):
+        return (value,)
+    if isinstance(value, (list, tuple)):
+        return tuple(node for item in value for node in _nodes_in(item))
+    return ()
+
+
+def _shared_nodes(root):
+    """The nodes `to_dict` will reach more than once, by identity.
+
+    Visits each distinct node's fields once, so this is linear in the graph however
+    badly the expansion of it would blow up.
+    """
+    counts = {}
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        key = id(node)
+        counts[key] = counts.get(key, 0) + 1
+        if counts[key] > 1:
+            continue
+        for field in node._fields():
+            stack.extend(_nodes_in(getattr(node, field, None)))
+    return {key for key, count in counts.items() if count > 1}
+
+
+def _emit(node, shared, ids):
+    """One node as plain data, writing a repeat as a reference to its first appearance."""
+    key = id(node)
+    if key in ids:
+        return {"$ref": ids[key]}
+    out = {"kind": node.kind}
+    if key in shared:
+        # Registered before the fields are walked, so a node that somehow reaches itself
+        # writes a reference rather than recurring for ever.
+        ids[key] = len(ids)
+        out["id"] = ids[key]
+    for field in node._fields():
+        out[field] = _plain(getattr(node, field, None), shared, ids)
+    return out
+
+
+def _plain(value, shared, ids):
+    """A field value as plain data, converting nodes and sequences of them."""
+    if isinstance(value, Node):
+        return _emit(value, shared, ids)
+    if isinstance(value, (list, tuple)):
+        return [_plain(item, shared, ids) for item in value]
+    return value
+
+
+def _match_args(cls):
+    """A subclass's constructor parameters, as attribute names, for `__match_args__`.
+
+    Taken from the constructor rather than from `__slots__` because positional matching
+    is positional *in the constructor* -- `Array(inner, dimension)` matches in that
+    order, and the slots happen to be alphabetical. A parameter that does not become an
+    attribute of the same name would make every position after it mean the wrong thing,
+    so a class with one gets no positional matching at all rather than a misleading
+    tuple; `Literal`'s `type_` is the one such parameter here, and loses its underscore.
+    """
+    try:
+        parameters = list(inspect.signature(cls.__init__).parameters)[1:]
+    except (TypeError, ValueError):  # pragma: no cover - a builtin or C-level __init__
+        return ()
+    fields = set(Node._fields(cls))
+    names = []
+    for parameter in parameters:
+        name = parameter.rstrip("_")
+        if name not in fields:
+            return ()
+        names.append(name)
+    return tuple(names)
+
+
 # -- leaves -------------------------------------------------------------------
 
 
@@ -163,6 +282,7 @@ class Builtin(Node):
 
     __slots__ = ("spelling",)
     kind = "builtin"
+    __match_args__ = ("spelling",)
 
     def __init__(self, spelling):
         self.spelling = spelling
@@ -176,6 +296,7 @@ class Name(Node):
 
     __slots__ = ("text",)
     kind = "name"
+    __match_args__ = ("text",)
 
     def __init__(self, text):
         self.text = text
@@ -189,6 +310,7 @@ class Raw(Node):
 
     __slots__ = ("text",)
     kind = "raw"
+    __match_args__ = ("text",)
 
     def __init__(self, text):
         self.text = text
@@ -202,6 +324,7 @@ class Literal(Node):
 
     __slots__ = ("type", "value")
     kind = "literal"
+    __match_args__ = ("type", "value")
 
     def __init__(self, type_, value):
         self.type = type_
@@ -232,6 +355,7 @@ class Expression(Node):
 
     __slots__ = ("form", "parts")
     kind = "expression"
+    __match_args__ = ("form", "parts")
 
     def __init__(self, form, parts):
         self.form = form
@@ -254,6 +378,7 @@ class Qualified(Node):
 
     __slots__ = ("parts",)
     kind = "qualified"
+    __match_args__ = ("parts",)
 
     def __init__(self, parts):
         self.parts = tuple(parts)
@@ -270,6 +395,7 @@ class Template(Node):
 
     __slots__ = ("angle_space", "arguments", "base")
     kind = "template"
+    __match_args__ = ("base", "arguments", "angle_space")
 
     def __init__(self, base, arguments, angle_space=True):
         self.base = base
@@ -292,6 +418,7 @@ class Qualify(Node):
 
     __slots__ = ("inner", "qualifiers")
     kind = "qualify"
+    __match_args__ = ("inner", "qualifiers")
 
     def __init__(self, inner, qualifiers):
         self.inner = inner
@@ -309,6 +436,7 @@ class Qualify(Node):
 
 class _Unary(Node):
     __slots__ = ("inner",)
+    __match_args__ = ("inner",)
 
     def __init__(self, inner):
         self.inner = inner
@@ -320,6 +448,7 @@ class _Unary(Node):
 class Pointer(_Unary):
     __slots__ = ()
     kind = "pointer"
+    __match_args__ = ("inner",)
 
     def build(self, builder):
         return builder.pointer(self.inner.build(builder))
@@ -328,6 +457,7 @@ class Pointer(_Unary):
 class Reference(_Unary):
     __slots__ = ()
     kind = "reference"
+    __match_args__ = ("inner",)
 
     def build(self, builder):
         return builder.reference(self.inner.build(builder))
@@ -336,6 +466,7 @@ class Reference(_Unary):
 class RValueReference(_Unary):
     __slots__ = ()
     kind = "rvalue_reference"
+    __match_args__ = ("inner",)
 
     def build(self, builder):
         return builder.rvalue_reference(self.inner.build(builder))
@@ -346,6 +477,7 @@ class Pack(_Unary):
 
     __slots__ = ()
     kind = "pack"
+    __match_args__ = ("inner",)
 
     def build(self, builder):
         return builder.pack(self.inner.build(builder))
@@ -356,6 +488,7 @@ class ParameterPack(Node):
 
     __slots__ = ("members",)
     kind = "parameter_pack"
+    __match_args__ = ("members",)
 
     def __init__(self, members):
         self.members = tuple(members)
@@ -372,6 +505,7 @@ class MemberPointer(Node):
 
     __slots__ = ("inner", "owner")
     kind = "member_pointer"
+    __match_args__ = ("owner", "inner")
 
     def __init__(self, owner, inner):
         self.owner = owner
@@ -389,6 +523,7 @@ class Array(Node):
 
     __slots__ = ("dimension", "inner")
     kind = "array"
+    __match_args__ = ("inner", "dimension")
 
     def __init__(self, inner, dimension):
         self.inner = inner
@@ -406,6 +541,7 @@ class VendorQualify(Node):
 
     __slots__ = ("inner", "qualifier")
     kind = "vendor_qualify"
+    __match_args__ = ("inner", "qualifier")
 
     def __init__(self, inner, qualifier):
         self.inner = inner
@@ -423,6 +559,7 @@ class Function(Node):
 
     __slots__ = ("name", "parameters", "returns", "suffix")
     kind = "function"
+    __match_args__ = ("returns", "parameters", "suffix", "name")
 
     def __init__(self, returns, parameters, suffix="", name=None):
         self.returns = returns
@@ -454,6 +591,7 @@ class Decorated(Node):
 
     __slots__ = ("decoration", "inner")
     kind = "decorated"
+    __match_args__ = ("inner", "decoration")
 
     def __init__(self, inner, decoration):
         self.inner = inner
@@ -471,6 +609,7 @@ class Special(Node):
 
     __slots__ = ("inner", "label")
     kind = "special"
+    __match_args__ = ("label", "inner")
 
     def __init__(self, label, inner):
         self.label = label

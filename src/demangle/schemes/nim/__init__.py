@@ -62,6 +62,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
 
 PLUGIN = LanguagePlugin(
     name="nim",
+    node_kinds=("name", "path", "symbol"),
     detect=detect,
     parse=parse,
     description="Nim symbol mangling",

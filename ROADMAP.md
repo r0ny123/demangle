@@ -239,6 +239,13 @@ which is whether to spell something *differently*.
   against `c++filt -t`, the three being a doubled `KK` cv-qualifier that GNU folds away
   and LLVM keeps, on input no compiler emits.
 
+- ~~**The stream filter and the tree as library API**~~ — *landed*. `demangle_text()`,
+  `demangle_stream()` and `find_symbols()` are the word-scanning filter the command has
+  always run, now callable; `Node.to_dict()`, `demangle --json`, `__match_args__` and
+  `node_kinds()` make the tree data rather than something to read our source for. The
+  serialisation shares repeated nodes, because the structure is a graph and expanding it
+  in full does not always terminate in useful time.
+
 - ~~**A per-call options object**~~ — *landed*. `style()` composes a style from a named
   one and per-language changes, at the call site:
   `demangle(name, style=demangle.style("llvm", msvc={"calling_convention": False}))`. A

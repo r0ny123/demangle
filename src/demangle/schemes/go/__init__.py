@@ -92,6 +92,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
 
 PLUGIN = LanguagePlugin(
     name="go",
+    node_kinds=("name", "path", "receiver", "symbol", "template"),
     detect=detect,
     parse=parse,
     description="Go symbol names (package paths, receivers, generic instantiations)",

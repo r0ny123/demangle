@@ -122,6 +122,17 @@ def _finish(mangled, root, builder, limits, options=DEFAULT_OPTIONS):
 
 PLUGIN = LanguagePlugin(
     name="swift",
+    node_kinds=(
+        "extension",
+        "function",
+        "generics",
+        "module",
+        "name",
+        "symbol",
+        "template",
+        "type",
+        "variable",
+    ),
     detect=detect,
     parse=parse,
     parse_type=parse_type,

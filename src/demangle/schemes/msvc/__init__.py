@@ -172,6 +172,7 @@ def _check_length(mangled, length, limits):
 
 PLUGIN = LanguagePlugin(
     name="msvc",
+    node_kinds=("array", "declaration", "function", "indirection", "name", "raw"),
     detect=detect,
     parse=parse,
     parse_type=parse_type,

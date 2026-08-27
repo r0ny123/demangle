@@ -70,6 +70,20 @@ demangle.demangle("?f@@YAXH@Z", style=demangle.style("llvm", msvc={"calling_conv
       members:
         - SwiftOptions
 
+## A file, not a name
+
+`nm` writes an address and a type letter before a name. The useful operation over a file
+is to substitute every symbol-shaped word and copy the rest through, which is what the
+command does with no arguments and what these do from Python.
+
+::: demangle.filter
+    options:
+      members:
+        - demangle_text
+        - demangle_stream
+        - find_symbols
+        - Found
+
 ## The parts of a name
 
 `demangle()` answers what a name says; `signature()` answers what its pieces are. The
@@ -103,6 +117,22 @@ survive the round trip rather than raising.
         - parseb
         - parseb_type
         - detectb
+
+## The tree
+
+`parse()` returns nodes to walk; `to_dict()` turns one into plain data, and
+`node_kinds()` is the vocabulary to switch on. The nodes carry `__match_args__`, so
+structural pattern matching works over them.
+
+::: demangle.api
+    options:
+      members:
+        - node_kinds
+
+::: demangle.core.ast
+    options:
+      members:
+        - Node
 
 ## Errors
 

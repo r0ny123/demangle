@@ -376,3 +376,25 @@ class TestSimplifiedFlag:
     def test_without_it_the_full_spelling_stands(self, capsys):
         _, out, _ = run(capsys, ["_TtO6Monads6Either"])
         assert out == "Monads.Either\n"
+
+
+class TestJsonFlag:
+    def test_the_tree_as_json(self, capsys):
+        import json
+
+        _, out, _ = run(capsys, ["--json", "_Z1fPi"])
+        assert json.loads(out)["parameters"][0]["kind"] == "pointer"
+
+    def test_it_works_for_a_bare_type_too(self, capsys):
+        import json
+
+        _, out, _ = run(capsys, ["--json", "--types", "-l", "itanium", "Pi"])
+        assert json.loads(out) == {"kind": "pointer", "inner": {"kind": "builtin", "spelling": "int"}}
+
+    def test_it_is_one_line_per_name(self, capsys):
+        _, out, _ = run(capsys, ["--json", "_Z1fv", "?f@@YAXH@Z"])
+        assert len(out.splitlines()) == 2
+
+    def test_asking_for_both_spellings_of_the_tree_is_refused(self, capsys):
+        with pytest.raises(SystemExit):
+            run(capsys, ["--json", "--tree", "_Z1fv"])
