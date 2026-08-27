@@ -65,6 +65,11 @@ demangle.demangle("?f@@YAXH@Z", style=demangle.style("llvm", msvc={"calling_conv
       members:
         - MsvcOptions
 
+::: demangle.schemes.swift.options
+    options:
+      members:
+        - SwiftOptions
+
 ## The parts of a name
 
 `demangle()` answers what a name says; `signature()` answers what its pieces are. The

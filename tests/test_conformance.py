@@ -33,6 +33,11 @@ TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1073
 #: `msvc-llvm-corpus.txt`. Only the names a flag actually changes are recorded, so this
 #: counts *differences* the reference makes and not names. Replayed by tests/test_msvc.py.
 MSVC_SUPPRESSIONS_TOTAL, MSVC_SUPPRESSIONS_EXACT = 1253, 1250
+
+#: Swift's own `simplified-manglings.txt`, scored under `SwiftOptions.simplified()`.
+#: What `swift-demangle --simplified` prints, which is what Xcode and LLDB show a user.
+#: Replayed by tests/test_swift_simplified.py.
+SWIFT_SIMPLIFIED_TOTAL, SWIFT_SIMPLIFIED_EXACT = 217, 217
 RUST_TOTAL, RUST_EXACT = 5316, 5316
 RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 
