@@ -516,6 +516,34 @@ All notable changes to this project are recorded here. The format follows
 
 ### Performance
 
+- **Nim's detection is 3x cheaper on a name that is not a symbol.** This scheme declares
+  no first character -- a Nim symbol is an ordinary C identifier -- so it is offered
+  *every* symbol a caller has, and it was half the cost of detection across all six
+  schemes that see a lower-case name.
+
+  Its screen is two necessary conditions, `"__" in name` and a `_u?[0-9]+$` regular
+  expression, and both must hold. The regex ran first, so every name with no `__` at all
+  paid for a `search` whose `$` anchor does not stop it trying each position on the way.
+  Swapping them changes no verdict -- checked on every name of both corpora below -- and
+  the membership test is one C-level scan:
+
+      synthetic non-symbols   0.484us -> 0.161us   (3.0x)
+      real libstdc++ symbols  0.501us -> 0.342us   (1.5x)
+
+  It wins on real symbols too, despite 39% of them carrying a `__`, because the other 61%
+  now stop at the membership test. Detection over the six schemes goes from 1.029us to
+  0.783us a name, and the whole negative path -- names that are not mangled, the majority
+  in any real symbol table -- is about 7% faster.
+
+  A wider change was measured and rejected: a declarative substring screen on
+  `LanguagePlugin`, letting the registry skip a plugin without calling into it. Pure call
+  overhead is 35% of detection cost, so the ceiling is real, but the three schemes that
+  could use one are worth ~0.1-0.15us between them, which is under 4% of a call and below
+  the benchmark's own 8% noise floor. A permanent public field is too much to pay for
+  that, and gnuv2 needs a richer predicate than a substring anyway: 17 of its vectors
+  carry no `__`, being the `_3RNG$singleMantissa` and `_$_10BitmapComp` marker forms.
+
+
 - **Detection screens on the first character.** A `LanguagePlugin` may declare the
   characters its names can begin with, and the registry then never offers it a name that
   starts otherwise. With eight schemes registered, labelling names that are not mangled

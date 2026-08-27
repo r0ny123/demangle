@@ -424,6 +424,22 @@ def detect(name):
     a fifth of the shipped libstdc++ -- and neither does a trailing digit, which 95% of
     those symbols also have. The tail does: none of them survives it.
 
+    Both halves of that screen are necessary, so the order between them is free to be
+    chosen on cost -- and it matters more than it looks. `"__" in name` is one C-level
+    scan; `_ROUTINE_TAIL.search` is a regular expression whose `$` anchor does not stop
+    `search` trying every position first. Testing the regex first spent it on every name
+    that has no `__` at all, which is most of them: 61% of the shipped libstdc++, and
+    every ordinary C identifier. Measured, with the verdict identical on every name of
+    both corpora:
+
+        synthetic non-symbols   0.484us -> 0.161us   (3.0x)
+        real libstdc++ symbols  0.501us -> 0.342us   (1.5x)
+
+    It wins on the real symbols too, despite 39% of them carrying a `__`, because the
+    other 61% now stop at the membership test. This scheme declares no first character,
+    so it is offered *every* symbol in a binary and was half the cost of detection across
+    all six schemes that see a lower-case name.
+
     `_FOREIGN_PREFIXES` is the other half, and it is a refusal rather than a screen: the
     shape this scheme reads is one another compiler also produces, and where a name
     carries that compiler's marker the marker wins. See the note there.
@@ -432,7 +448,7 @@ def detect(name):
         return False
     if name.startswith(_FOREIGN_PREFIXES):
         return False
-    if not name.startswith(_COMPILER_PREFIXES) and not (_ROUTINE_TAIL.search(name) and "__" in name):
+    if not name.startswith(_COMPILER_PREFIXES) and not ("__" in name and _ROUTINE_TAIL.search(name)):
         return False
     try:
         parse_nim_symbol(name)
