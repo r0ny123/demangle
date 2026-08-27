@@ -375,6 +375,44 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Template parameters are tracked per level, as the reference tracks them.**
+  `TL<k>_<n>_` names a parameter of an *enclosing* template, and the table behind it is
+  a stack: level 0 is the innermost `<template-args>`, and each generic lambda and each
+  template template parameter declaration opens a level of its own. Held flat, the
+  levels overwrote each other and such a reference came out as the numbering it carried
+  -- `T`, `T1` -- which names nothing at all. A lambda that *is* the entity being named
+  starts from an empty stack; one written inside a type or an expression stacks on what
+  is already in scope, which is what lets `T_` and `TL0__` mean different things in one
+  signature.
+
+  A level that is not in scope at all is now refused rather than named, as
+  `llvm-cxxfilt` refuses it. Inside a `<constraint-expression>` it is still spelled by
+  its own mangled text -- `C<T> && C<TL0_>` -- which is what the reference does there
+  and for the reason it gives: not every enclosing template is tracked well enough
+  inside a constraint to substitute reliably.
+
+- **An expansion over an empty pack now disappears inside an expression too.** `Dp`
+  already dropped the argument in a type list; `sp` kept it, so
+  `getT<$_5>()()(std::forward<>(fp))` was printed where the reference prints
+  `getT<$_5>()()()`. Fixed where the reference fixes it: a member of a comma-separated
+  list that prints nothing takes its comma with it, which is one rule covering calls,
+  braced lists, placement arguments and a `requires` parameter list alike. Tested by
+  size rather than by rendering each member -- rendering made the structured benchmark
+  1.4x slower on its own.
+
+- **`sr` accepts template arguments after its type, and no qualifier levels after
+  those.** `srN <unresolved-type> <template-args> E <base-unresolved-name>`, which
+  Clang emits and the ABI's own grammar does not admit: it writes the arguments inside
+  `<unresolved-type>` and requires at least one qualifier level. The arguments also sit
+  *outside* the substitution entry the type records, so an `S_` written after one names
+  the bare parameter -- recording the templated form instead left later references
+  short.
+
+  With these three, libcxxabi's own corpus goes from **29,918 to 29,923 of 29,928**.
+  Four of the five left are bare `<type>` manglings refused as symbols on purpose and
+  read by `demangle_type()`; the fifth is a self-referential conversion operator that
+  neither demangler can spell as a declaration.
+
 - **A vector type was spelled LLVM's way under the GNU style.** `Dv4_i` came out
   `int vector[4]` for both styles; `c++filt` writes `int __vector(4)`, which is how GCC's
   own diagnostics spell it. SIMD code mangles `Dv` constantly, so this was not an obscure

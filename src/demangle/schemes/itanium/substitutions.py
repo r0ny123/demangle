@@ -124,50 +124,93 @@ class SubstitutionTable:
 
 
 class TemplateArgumentTable:
-    """The `T_` dictionary: the template arguments currently in scope.
+    """The `T_` dictionary: a *stack* of the parameter lists currently in scope.
 
     Separate from `SubstitutionTable` because it is a separate mechanism with separate
     numbering -- `T_` indexes the enclosing template's argument list, `S_` indexes every
     substitutable component seen so far. Conflating them is a classic source of wrong
     output, so they do not share a type.
 
-    Scopes nest: a lambda inside a template function has its own parameters while the
-    enclosing ones remain visible. `snapshot()` and `restore()` are how a caller saves
-    and puts back the enclosing scope across one of those.
+    A stack rather than one list, because `<template-param>` names a *level* as well as
+    an index. `T_` and `T<n>_` mean level 0, the innermost enclosing `<template-args>`.
+    `TL<k>_<n>_` means level `k + 1`, which is a list a generic lambda or a template
+    template parameter declared -- and those nest, so a name can reach past one to the
+    one outside it:
+
+        []<typename $T, template<typename $T0, $T $N> typename $TT>(...)
+
+    Here `$T` is level 0 index 0 and `$T0` is level 1 index 0, and the `$N` declaration
+    reaches both. Held flat, the two levels overwrote each other and the parameter came
+    out spelled `T`, which names nothing.
+
+    A level with nothing in it is still a level: a generic lambda that declared no
+    parameters occupies one, because its `auto` parameters are numbered against it and a
+    `TL` reference from inside it counts through it.
+
+    Scopes nest in the other direction too -- a local entity has parameters of its own
+    while the enclosing ones stay out of reach -- so `snapshot()` and `restore()` save
+    and put back the whole stack.
     """
 
-    __slots__ = ("_arguments",)
+    __slots__ = ("_levels",)
+
+    _levels: list[list]
 
     def __init__(self):
-        self._arguments = []
+        self._levels = []
+
+    # -- level 0: the innermost <template-args> --------------------------------------
+
+    def install(self):
+        """Begin a fresh level 0. These arguments replace every level in scope."""
+        self._levels = [[]]
 
     def add(self, handle):
-        self._arguments.append(handle)
+        """Bind the next argument of level 0, as an argument list is read."""
+        if not self._levels:
+            self._levels = [[]]
+        self._levels[0].append(handle)
         return handle
 
-    def extend(self, handles):
-        self._arguments.extend(handles)
+    def outer(self):
+        """Level 0's bindings, for a caller that has to look at all of them at once."""
+        return self._levels[0] if self._levels else ()
 
-    def lookup(self, index):
-        """Resolve `T<index>_`, or None when the binding is not in scope.
+    # -- levels 1..n: what a lambda or a template template parameter declared ---------
 
-        Returning None rather than raising is deliberate. A return type is encoded
-        before the argument list that binds its parameters, so a name can legitimately
-        reference `T_` at a point where we do not yet know it; the parser spells that as
-        `auto`, which is what the reference demanglers do.
+    def push(self, declared):
+        """Enter a nested level, which fills up as its declarations are read."""
+        self._levels.append(declared)
+
+    def pop(self):
+        self._levels.pop()
+
+    def depth(self):
+        return len(self._levels)
+
+    def clear(self):
+        """Drop every level. A lambda that *is* the entity being named starts fresh."""
+        self._levels = []
+
+    def lookup(self, index, level=0):
+        """Resolve `TL<level>_<index>_`, or None when the binding is not in scope.
+
+        Returning None rather than raising is deliberate. A generic lambda's `auto`
+        parameter is mangled as a reference to a parameter it never declared (ABI
+        5.1.8), so a miss is a normal reading and the parser decides what it means.
         """
-        if 0 <= index < len(self._arguments):
-            return self._arguments[index]
-        return None
+        if not 0 <= level < len(self._levels):
+            return None
+        params = self._levels[level]
+        if not 0 <= index < len(params):
+            return None
+        return params[index]
 
     def snapshot(self):
-        return tuple(self._arguments)
+        return tuple(tuple(level) for level in self._levels)
 
     def restore(self, snapshot):
-        self._arguments = list(snapshot)
-
-    def __len__(self):
-        return len(self._arguments)
+        self._levels = [list(level) for level in snapshot]
 
     def __repr__(self):  # pragma: no cover - debugging aid
-        return f"TemplateArgumentTable({len(self._arguments)} in scope)"
+        return f"TemplateArgumentTable({[len(level) for level in self._levels]})"

@@ -11,8 +11,8 @@ symbolic reference in the Swift metadata — well over half a million real symbo
 follows is what the upstream corpora still find, all of it pinned in both directions by
 the test suite so it can only go up and cannot quietly stop being accurate.
 
-**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,918 of 29,928 exact. Five
-refusals and five wrong spellings, in three groups.
+**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,923 of 29,928 exact. Five left,
+and four of them are not shortfalls.
 
 - Four are `<type>` manglings with no `_Z` prefix at all — `i` for `int`,
   `PKFvRiE` for `void (*)(int&) const`. They are refused *as symbols*, deliberately and
@@ -22,21 +22,30 @@ refusals and five wrong spellings, in three groups.
   is `c++filt -t` and `__cxa_demangle`'s type mode. So these four stay counted against
   the corpus, because the corpus scores the symbol entry point, and none of them is
   unreadable.
-- **Five need per-level template parameter tracking**, and they are all of what is
-  left that answers *wrongly* rather than declining. The reference keeps a stack of
-  parameter lists, one per template level, and resolves `T_` against the innermost and
-  `TL<level>_<index>_` against the level named; each entry is either the argument bound
-  to that parameter or, for a parameter a generic lambda declared, the parameter itself
-  — which is why the reference prints `$T0` where this prints `T`, and why
-  `[]<typename $T, template<typename $T0, $T0 $N> typename $TT>(auto, float, $T){...}`
-  comes out with its three parameters in the wrong order.
-
-  This tracks one level: `TemplateArgumentTable` is a single list that a lambda saves
-  and restores across. Closing it means making that a stack, which is the mechanism
-  every one of the 29,918 depends on, so it wants its own pass rather than being
-  tacked onto another.
-- One is a `sr` inside a template argument, where the qualified name is written against
-  an argument list the parser has not finished reading.
+- ~~**Per-level template parameter tracking**~~ — *done*. `TemplateArgumentTable` is a
+  stack: level 0 is the innermost `<template-args>`, and each generic lambda and each
+  template template parameter declaration opens a level of its own, so `TL<k>_<n>_`
+  reaches past one to the list outside it. Held flat, the levels overwrote each other
+  and such a reference came out as the numbering it carried — `T`, `T1` — which names
+  nothing. A level that is not in scope at all is now refused rather than named, as the
+  reference refuses it; inside a `<constraint-expression>` it is still spelled by its own
+  mangled text, which is also what the reference does and for the reason it gives.
+- ~~**An expansion over an empty pack, inside an expression**~~ — *done*. `Dp` already
+  dropped the argument in a type list; `sp` did not, so `getT<$_5>()()(std::forward<>(fp))`
+  was printed where the reference prints `getT<$_5>()()()`. Handled where the reference
+  handles it: any member of a comma-separated list that prints nothing takes its comma
+  with it.
+- ~~**A `sr` whose type carries template arguments**~~ — *done*. `srN <unresolved-type>
+  <template-args> E <base-unresolved-name>` — arguments after the type in the `N` form,
+  and *zero* qualifier levels after them, neither of which the ABI's own grammar admits
+  and both of which Clang emits. The arguments also sit outside the substitution entry
+  the type records, so an `S_` written after one names the bare parameter.
+- **The last one is a self-referential conversion operator**, `_Zcv1BIRT_EIS1_E`, whose
+  type is the argument list that contains it. The reference guards against printing a
+  cycle by printing *nothing* the second time round, so it answers `operator B<><>`;
+  this reads the type again once the arguments are bound and answers
+  `operator B<auto&><auto&>`. Neither is the declaration, because there is no
+  declaration — no compiler emits this, and it comes from LLVM's fuzz corpus.
 
 **D**, libiberty's `d-demangle-expected`: 366 of 366. What the last of them needed was
 not in the D ABI at all -- the five characters the reference names inside a string, the

@@ -769,7 +769,7 @@ class ItaniumParser:
         self._try_template_args = False
         # The arguments now in scope are the operator's own, so whether an expansion in
         # the type has a pack to expand is decided by them.
-        self._scope_has_pack = any(id(argument) in self._pack_ids for argument in scope)
+        self._scope_has_pack = any(id(argument) in self._pack_ids for argument in self.targs.outer())
         self.subs.restore_from(mark, [])
         reader.pos = start
         spent = self._productions
@@ -1311,13 +1311,21 @@ class ItaniumParser:
             saved_counts = self._parameter_counts
             saved_scope = self.targs.snapshot()
             self._parameter_counts = {}
-            self.targs.restore(())
+            if self._naming:
+                # A lambda that *is* the entity being named starts from nothing: its own
+                # parameters are level 0 and no enclosing list is reachable. One written
+                # inside a type or an expression keeps the levels around it, and its own
+                # list goes on top -- which is how `TL0__` in a lambda inside a template
+                # function's parameter reaches the lambda while `T_` reaches the
+                # function's arguments.
+                self.targs.clear()
+            declared = []
+            self.targs.push(declared)
             constraint = ""
             try:
                 while reader.peek2() in _PARAMETER_DECLARATIONS:
-                    binding, declaration = self.template_param_decl()
+                    _, declaration = self.template_param_decl(params=declared)
                     declarations.append(declaration)
-                    self.targs.add(self.builder.raw(binding))
                 if reader.eat("Q"):
                     constraint = f" requires {self.builder.spell(self.constraint_expression())} "
                 parameters = []
@@ -1498,18 +1506,17 @@ class ItaniumParser:
         begin = reader.pos
         reader.expect("T")
 
+        # `TL <level-1> _` names the level; a bare `T` is level 0, the innermost
+        # enclosing <template-args>. The levels above that are the lists a generic
+        # lambda and a template template parameter declare, in nesting order.
+        level = 0
         if reader.eat("L"):
-            reader.digits()
+            level = int(reader.digits()) + 1
             reader.expect("_")
-            level_index = reader.integer(allow_negative=False) + 1 if reader.peek() != "_" else 0
-            reader.expect("_")
-            if self._in_constraint and self.options.symbolic_constraint_parameters:
-                return self.builder.raw(reader.text[begin : reader.pos - 1])
-            return self._symbolic_parameter(level_index)
-
-        # Tp/Ts mark a pack expansion of the parameter; the pack was recorded as one
-        # argument, so the marker only needs consuming.
-        reader.eat("p") or reader.eat("s")
+        else:
+            # Tp/Ts mark a pack expansion of the parameter; the pack was recorded as one
+            # argument, so the marker only needs consuming.
+            reader.eat("p") or reader.eat("s")
         index = 0 if reader.peek() == "_" else reader.integer(allow_negative=False) + 1
         reader.expect("_")
 
@@ -1519,7 +1526,7 @@ class ItaniumParser:
             # the argument bound to it, because not every enclosing template's
             # parameters are tracked well enough to substitute reliably.
             return self.builder.raw(reader.text[begin : reader.pos - 1])
-        bound = self.targs.lookup(index)
+        bound = self.targs.lookup(index, level)
         if bound is not None:
             if id(bound) in self._pack_ids:
                 self._saw_pack = True
@@ -1540,9 +1547,19 @@ class ItaniumParser:
             # not in it.
             raise ParseError(self._mangled, reader.pos, "template parameter with nothing to bind it")
 
-        # A return type is encoded before the arguments that bind its parameters, so a
-        # name may legitimately reference one we do not know yet. The reference
-        # demanglers spell that `auto`.
+        if level and level >= self.targs.depth():
+            # A level that is not in scope at all -- `TL8_1_` where nothing is eight
+            # templates deep. There is no parameter for this to be, so the reference
+            # refuses the name rather than naming one, and so does this. Inside a
+            # requires-clause it is spelled by its own mangled text instead, which is
+            # the branch above.
+            raise ParseError(self._mangled, reader.pos, f"no template parameter level {level} in scope")
+
+        # Level 0, or a level in scope whose parameter is not. A generic lambda's `auto`
+        # parameter is mangled as a reference to a parameter it never declared (ABI
+        # 5.1.8), and a conversion operator's type is written *before* the arguments
+        # that bind it -- `cv PT_ I c E` reads `T_` with nothing in scope at all, and is
+        # then read again once there is. The reference demanglers spell both `auto`.
         return self.builder.raw("auto")
 
     def _symbolic_parameter(self, index):
@@ -2090,17 +2107,17 @@ class ItaniumParser:
 
     # -- 5.1.5.10 template arguments -------------------------------------------
 
-    def template_param_decl(self, ellipsis=""):
+    def template_param_decl(self, ellipsis="", params=None):
         """Guarded wrapper: `Tp` and `Tt` both recurse into this production."""
         depth = self._depth = self._depth + 1
         if depth > self.limits.max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
         try:
-            return self._template_param_decl(ellipsis)
+            return self._template_param_decl(ellipsis, params)
         finally:
             self._depth = depth - 1
 
-    def _template_param_decl(self, ellipsis=""):
+    def _template_param_decl(self, ellipsis="", params=None):
         """A declared template parameter.
 
         ```
@@ -2117,13 +2134,18 @@ class ItaniumParser:
         both are used: the lambda is spelled `'lambda'<typename $T>($T)`, so the
         declaration is printed and `$T` is what `T_` resolves to inside it. The names
         are numbered per kind, first unsuffixed: `$T`, `$T0`, `$T1`.
+
+        `params` is the level these declarations bind into, or None where they bind into
+        nothing -- an ordinary argument list, where a declaration is read for the input
+        it consumes and nothing refers back to it. A `Tt` always opens a level of its
+        own whatever `params` is, because its inner declarations refer to each other.
         """
         reader = self.reader
         pair = reader.peek2()
         reader.pos += 2
 
         if pair == "Ty":
-            binding = self._parameter_name("T")
+            binding = self._declare("T", params)
             return binding, f"typename {ellipsis}{binding}"
         if pair == "Tk":
             # A constrained parameter: the concept it must satisfy, then the parameter.
@@ -2135,34 +2157,51 @@ class ItaniumParser:
                 concept = self.builder.spell(self.name()[0])
             finally:
                 self._in_constraint = outer
-            binding = self._parameter_name("T")
+            binding = self._declare("T", params)
             return binding, f"{concept} {ellipsis}{binding}"
         if pair == "Tn":
             # The name goes where a declarator goes, so a parameter of array-of-pointer
             # type is `$T0 (*$N) [3]` and not `$T0 (*) [3] $N`.
             kind = self.type_()
-            binding = self._parameter_name("N")
+            binding = self._declare("N", params)
             return binding, self.builder.spell(kind, f"{ellipsis}{binding}")
         if pair == "Tp":
             # A pack. The ellipsis goes immediately before the name, wherever the name
-            # ends up: `$T0 (*...$N0) [3]`.
-            return self.template_param_decl("...")
+            # ends up: `$T0 (*...$N0) [3]`. It binds into the same level its inner
+            # declaration would have.
+            return self.template_param_decl("...", params)
         if pair == "Tt":
+            # The name is invented *before* the inner list is read, so it belongs to the
+            # level outside it -- `template<typename $T0, ...> typename $TT` has `$TT`
+            # beside its siblings and `$T0` a level down. Reading the inner list first
+            # numbered them the other way round.
+            binding = self._declare("TT", params)
             inner = []
-            while not reader.eat("E"):
-                if reader.eof:
-                    raise ParseError(self._mangled, reader.pos, "unterminated template parameter list")
-                if reader.eat("Q"):
-                    # A constraint on the template template parameter. The reference
-                    # keeps it out of the spelling; it is read for the substitution
-                    # entries its operands contribute.
-                    self.constraint_expression()
-                    reader.expect("E")
-                    break
-                inner.append(self.template_param_decl()[1])
-            binding = self._parameter_name("TT")
+            declared = []
+            self.targs.push(declared)
+            try:
+                while not reader.eat("E"):
+                    if reader.eof:
+                        raise ParseError(self._mangled, reader.pos, "unterminated template parameter list")
+                    if reader.eat("Q"):
+                        # A constraint on the template template parameter. The reference
+                        # keeps it out of the spelling; it is read for the substitution
+                        # entries its operands contribute.
+                        self.constraint_expression()
+                        reader.expect("E")
+                        break
+                    inner.append(self.template_param_decl(params=declared)[1])
+            finally:
+                self.targs.pop()
             return binding, f"template<{', '.join(inner)}> typename {ellipsis}{binding}"
         raise ParseError(self._mangled, reader.pos, f"unknown template parameter declaration {pair!r}")
+
+    def _declare(self, kind, params):
+        """Invent a name for a declared parameter, and bind it into `params`."""
+        binding = self._parameter_name(kind)
+        if params is not None:
+            params.append(self.builder.raw(binding))
+        return binding
 
     def _parameter_name(self, kind):
         """The synthetic name for a declared parameter.
@@ -2206,7 +2245,7 @@ class ItaniumParser:
         outer_has_pack = self._scope_has_pack
         self._scope_has_pack = False
         if install_scope:
-            self.targs.restore(())
+            self.targs.install()
         # Whatever these arguments contain, it is a type mentioned in passing, not the
         # entity being declared -- so a nested argument list inside one of them must not
         # install a scope of its own. Without this, the arguments of the
@@ -2444,9 +2483,9 @@ class ItaniumParser:
 
         ```
         <unresolved-name> ::= [gs] <base-unresolved-name>
-                            | sr <unresolved-type> <base-unresolved-name>
-                            | srN <unresolved-type> <unresolved-qualifier-level>+ E
-                                  <base-unresolved-name>
+                            | sr <unresolved-type> [<template-args>] <base-unresolved-name>
+                            | srN <unresolved-type> [<template-args>]
+                                  <unresolved-qualifier-level>* E <base-unresolved-name>
                             | [gs] sr <unresolved-qualifier-level>+ E <base-unresolved-name>
         ```
 
@@ -2467,7 +2506,10 @@ class ItaniumParser:
 
         levels = []
         if reader.eat("N"):
-            levels.append(self.unresolved_type())
+            levels.append(self._unresolved_head())
+            # `*` and not `+`: the ABI writes one or more levels here, but Clang emits
+            # `srN <type> <template-args> E` with none of them -- the arguments are the
+            # whole qualification -- and the reference accepts it.
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
@@ -2478,25 +2520,37 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
                 levels.append(self.simple_id())
         else:
-            levels.append(self.unresolved_type())
+            levels.append(self._unresolved_head())
 
         levels.append(self.base_unresolved_name())
         return prefix + "::".join(levels)
+
+    def _unresolved_head(self):
+        """`<unresolved-type> [<template-args>]`, which both `sr` forms open with.
+
+        The arguments sit *outside* the production and outside the substitution entry:
+        the reference records the bare parameter or decltype and then wraps the
+        arguments round it, so an `S_` written after one names the head alone. Reading
+        them inside `unresolved_type` recorded the templated form instead, and left the
+        `srN` form unable to read them at all -- `srN S6_ I S3_ E E 5value E` was
+        refused for wanting a qualifier level where the arguments were.
+        """
+        text = self.unresolved_type()
+        if self.reader.peek() == "I":
+            text += self.spelled_template_arguments()
+        return text
 
     def unresolved_type(self):
         """A dependent type at the head of an unresolved name.
 
         ```
-        <unresolved-type> ::= <template-param> [<template-args>] | <decltype> | <substitution>
+        <unresolved-type> ::= <template-param> | <decltype> | <substitution>
         ```
         """
         reader = self.reader
         builder = self.builder
         if reader.peek() == "T":
-            component = self.template_param()
-            if reader.peek() == "I":
-                component = builder.template(component, self.template_arguments())
-            return builder.spell(self.subs.remember(component, "unresolved-type"))
+            return builder.spell(self.subs.remember(self.template_param(), "unresolved-type"))
         if reader.peek() == "D":
             return builder.spell(self.subs.remember(self.decltype_(), "unresolved-type"))
         return builder.spell(self.substitution())
@@ -2603,7 +2657,7 @@ class ItaniumParser:
             if reader.eof:
                 raise ParseError(self._mangled, reader.pos, "unterminated initialiser")
             arguments.append(self._element())
-        return self.builder.expression("initialiser", ["(", *_separated(arguments), ")"])
+        return self.builder.expression("initialiser", ["(", *self._commas(arguments), ")"])
 
     def expression(self):
         """A constant expression appearing in a type or template argument.
@@ -2701,7 +2755,7 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated requires parameters")
                 parameters.append(self.type_())
-            parts += [" (", *_separated(parameters), ")"]
+            parts += [" (", *self._commas(parameters), ")"]
         else:
             reader.pos += 2
         parts.append(" {")
@@ -2743,6 +2797,35 @@ class ItaniumParser:
         if builder.members(expanded) is not None:
             return builder.expression("paren", ["(", expanded, ")"])
         return builder.expression("paren", ["(", expanded, "...)"])
+
+    def _commas(self, items, separator=", "):
+        """`items` interleaved with `separator`, dropping any that spell nothing.
+
+        An expansion over a pack with no members spells nothing, and the comma that
+        would have preceded it must not print either: `f(a, xs...)` over an empty `xs`
+        is `f(a)`, not `f(a, )`. The reference applies that to every comma-separated
+        list as it prints, rather than at each production that builds one, and the
+        productions here are the same set -- calls, braced lists, placement arguments,
+        a `requires` parameter list.
+        """
+        builder = self.builder
+        parts = []
+        for item in items:
+            # `size` is O(1) and `spell` is not, and this runs over every argument list
+            # in every expression: rendering each one to ask whether it is empty made
+            # the structured benchmark 1.4x slower on its own. Size zero settles it for
+            # a pack with no members, which is what an expansion over an empty pack
+            # gives; only a *pack* can be non-zero in size and still spell nothing --
+            # one holding another empty pack -- and asking whether a handle is a pack is
+            # itself O(1).
+            if builder.size(item) == 0:
+                continue
+            if builder.members(item) is not None and not builder.spell(item):
+                continue
+            if parts:
+                parts.append(separator)
+            parts.append(item)
+        return parts
 
     def _element(self):
         """One member of a comma-separated list, bracketed if it is a comma expression.
@@ -2837,7 +2920,7 @@ class ItaniumParser:
                     members.append(argument)
             # `sZ` writes `sizeof...(`; `sP`, over a captured pack, writes it with a
             # space. Both references agree, and it is the only thing separating them.
-            return builder.expression("sizeof_pack", ["sizeof... (", *_separated(members), ")"])
+            return builder.expression("sizeof_pack", ["sizeof... (", *self._commas(members), ")"])
         if pair == "st":
             reader.pos += 2
             return builder.expression("sizeof", ["sizeof (", self.type_(), ")"])
@@ -2890,7 +2973,7 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated call expression")
                 arguments.append(self._element())
-            return builder.expression("call", [target, "(", *_separated(arguments), ")"])
+            return builder.expression("call", [target, "(", *self._commas(arguments), ")"])
 
         if pair == "cv":
             reader.pos += 2
@@ -2901,7 +2984,7 @@ class ItaniumParser:
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated conversion")
                     arguments.append(self._element())
-                cast = builder.expression("cast", ["(", kind, ")(", *_separated(arguments), ")"])
+                cast = builder.expression("cast", ["(", kind, ")(", *self._commas(arguments), ")"])
             else:
                 cast = builder.expression("cast", ["(", kind, ")(", self._element(), ")"])
             # A cast binds *looser* than a postfix operator, so it needs brackets when it
@@ -2933,7 +3016,7 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated braced initialiser")
                 members.append(self._element())
-            return builder.expression("braced", [kind, "{", *_separated(members), "}"])
+            return builder.expression("braced", [kind, "{", *self._commas(members), "}"])
 
         if pair == "il":
             reader.pos += 2
@@ -2942,7 +3025,7 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated initialiser list")
                 members.append(self._element())
-            return builder.expression("initialiser_list", ["{", *_separated(members), "}"])
+            return builder.expression("initialiser_list", ["{", *self._commas(members), "}"])
 
         if pair == "qu":
             reader.pos += 2
@@ -2988,12 +3071,23 @@ class ItaniumParser:
             # A pack expansion inside an expression, under the same rule as `Dp`.
             reader.pos += 2
             outer_pack = self._saw_pack
+            outer_empty = self._saw_empty_pack
             self._saw_pack = False
+            self._saw_empty_pack = False
             try:
                 expanded = self.expression()
                 over_pack = self._saw_pack
+                over_empty = self._saw_empty_pack
             finally:
                 self._saw_pack = outer_pack or self._saw_pack
+                self._saw_empty_pack = outer_empty
+            if over_empty:
+                # The pattern ranges over a pack with no members, so it expands to no
+                # arguments at all -- not to one argument with an empty list inside it.
+                # `f(xs...)` over an empty `xs` is `f()`, and this is what makes the
+                # comma before it disappear too; `Dp` does the same in a type list.
+                self._precedence = PRIMARY_PRECEDENCE
+                return builder.parameter_pack([])
             if over_pack or self._scope_has_pack:
                 return expanded
             return builder.expression("pack_expansion", [expanded, "..."])
@@ -3008,7 +3102,7 @@ class ItaniumParser:
             kind = self.type_()
             keyword = "new" if pair == "nw" else "new[]"
             gap = " " if self.options.gnu_expression_spelling else ""
-            placement = [gap, "(", *_separated(arguments), ")"] if arguments else []
+            placement = [gap, "(", *self._commas(arguments), ")"] if arguments else []
             self._precedence = UNARY_PRECEDENCE
             parts = [keyword, *placement, " ", kind]
             if not reader.eat("E"):
@@ -3178,7 +3272,7 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "unterminated call expression")
                 arguments.append(self._element())
             self._precedence = POSTFIX_PRECEDENCE
-            return builder.expression("call", ["(", target, ")(", *_separated(arguments), ")"])
+            return builder.expression("call", ["(", target, ")(", *self._commas(arguments), ")"])
 
         if reader.peek() == "u":
             # <expression> ::= u <source-name> <template-arg>* E
@@ -3203,7 +3297,7 @@ class ItaniumParser:
                     if argument is not None:
                         arguments.append(argument)
             self._precedence = POSTFIX_PRECEDENCE
-            return builder.expression("call", [builder.raw(name), "(", *_separated(arguments), ")"])
+            return builder.expression("call", [builder.raw(name), "(", *self._commas(arguments), ")"])
 
         # A bare name here is an <unresolved-name>: the grammar says so, and it matters
         # because a name in an expression creates no substitution entry while a <type>
@@ -3218,16 +3312,6 @@ class ItaniumParser:
             return self.type_()
 
         raise ParseError(self._mangled, reader.pos, "unrecognised expression")
-
-
-def _separated(items, separator=", "):
-    """Interleave `items` with `separator`, as parts for `Builder.expression`."""
-    parts = []
-    for position, item in enumerate(items):
-        if position:
-            parts.append(separator)
-        parts.append(item)
-    return parts
 
 
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):

@@ -208,3 +208,112 @@ class TestProductionsTakenFromLibcxxabi:
     def test_an_unnamed_type_is_not_a_value(self):
         """Only `Ul` is a lambda expression; `Ut` names a type and cannot be one."""
         assert demangle.demangle("_ZN1S1fILb1EEEv1XILUt_EE") == "_ZN1S1fILb1EEEv1XILUt_EE"
+
+
+class TestTemplateParameterLevels:
+    """`TL<level>_<index>_` names a parameter of an *enclosing* template, not the innermost.
+
+    The table behind `T_` is a stack: level 0 is the innermost `<template-args>`, and
+    each generic lambda and each template template parameter declaration opens a level
+    of its own. Held flat, the levels overwrote each other and a `TL` reference came out
+    as the numbering it carried -- `T`, `T1` -- which names nothing at all.
+
+    All three vectors are libcxxabi's, and the expectations are `llvm-cxxfilt`'s.
+    """
+
+    def test_a_template_template_parameter_reaches_the_level_outside_it(self):
+        """`$T` is the lambda's, `$T0` is the inner list's, and one declaration uses both."""
+        assert demangle.demangle("_ZNK1xMUlTyTtTyTnT_TpTnPA3_TL0__ETpTyvE_clIi1XJfEEEDav") == (
+            "auto x::'lambda'<typename $T, template<typename $T0, $T $N, $T0 (*...$N0) [3]> "
+            "typename $TT, typename ...$T1>()::operator()<int, X, float>() const"
+        )
+
+    def test_a_lambda_in_a_type_keeps_the_enclosing_arguments_reachable(self):
+        """`T_` is the function's `float`; `TL0__` is the lambda's own `$T`.
+
+        A lambda that *is* the entity being named starts from nothing -- its parameters
+        are level 0. One written inside a type or an expression stacks on top of what is
+        already in scope, which is what lets these two references mean different things
+        in the same signature.
+        """
+        assert demangle.demangle("_ZN1AIiE1fIfEEvDTLUlTyTtTyTnTL1__ETL0_1_T_TL0__E_EE") == (
+            "void A<int>::f<float>(decltype([]<typename $T, "
+            "template<typename $T0, $T0 $N> typename $TT>(auto, float, $T){...}))"
+        )
+
+    def test_a_lambda_that_declared_nothing_still_occupies_a_level(self):
+        """`T_` is the function's `int` and `TL0__` is the lambda's `auto` (ABI 5.1.8)."""
+        assert demangle.demangle("_ZN1C1fIiEEvDTtlNS_UlT_TL0__E_EEE") == (
+            "void C::f<int>(decltype(C::'lambda'(int, auto){}))"
+        )
+
+    @pytest.mark.parametrize("mangled", ["_Z1fIiEvDTsrTL8_1_1xE", "_Z1fIiEvDTTL8_1_E"])
+    def test_a_level_that_is_not_in_scope_is_refused(self, mangled):
+        """Nothing is eight templates deep, so there is no parameter for this to be.
+
+        `llvm-cxxfilt` refuses both of these. Naming one anyway -- the numbering used to
+        be printed as `T1` -- is a type that appears nowhere in the symbol, which is the
+        one thing worse than declining.
+        """
+        assert demangle.demangle(mangled) == mangled
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled)
+
+    def test_a_requires_clause_spells_such_a_reference_instead_of_refusing_it(self):
+        """Inside a constraint a reference is spelled by its own mangled text.
+
+        `C<T> && C<TL0_>` -- not `C<int> && C<$T>`. The reference does the same and says
+        why: not every enclosing template's parameters are tracked well enough to
+        substitute reliably inside a `<constraint-expression>`, so it prints the
+        numbering rather than a guess. That branch is taken before the level is looked
+        up, so a level out of scope is spelled here rather than refused.
+        """
+        mangled = "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E_clIiiEEDaS3_Q1CIDtfp_EE"
+        assert demangle.demangle(mangled) == (
+            "auto void test7::f<int>()::'lambda'<typename $T> requires C<T> && C<TL0_> (auto)"
+            "::operator()<int, int>(auto) const requires C<decltype(fp)>"
+        )
+
+
+class TestAnExpansionOverAnEmptyPack:
+    """`sp` over a pack with no members produces no argument, not an empty one.
+
+    `Dp` already did this in a type list. In an expression the argument stayed, so
+    `getT<$_5>()()(std::forward<>(fp))` was printed where the reference prints
+    `getT<$_5>()()()` -- and the comma that would have preceded it has to go too.
+    """
+
+    def test_the_argument_and_its_comma_both_disappear(self):
+        mangled = (
+            "_ZNK3Ncr6Silver7Utility6detail12CallOnThreadIZ53-[DeploymentSetupController "
+            "handleManualServerEntry:]E3$_5EclIJEEEDTclclL_ZNS2_4getTIS4_EERT_vEEspclsr3stdE"
+            "7forwardIT_Efp_EEEDpOSA_"
+        )
+        assert demangle.demangle(mangled).startswith(
+            "decltype(-[DeploymentSetupController handleManualServerEntry:]::$_5& "
+            "Ncr::Silver::Utility::detail::getT<-[DeploymentSetupController "
+            "handleManualServerEntry:]::$_5>()()())"
+        )
+
+    def test_an_expansion_over_a_pack_that_has_members_still_prints(self):
+        assert demangle.demangle("_Z1fIJiiEEvDpT_") == "void f<int, int>(int, int)"
+
+
+class TestTheQualifiedFormOfAnUnresolvedName:
+    """`srN <unresolved-type> [<template-args>] <level>* E <base-unresolved-name>`.
+
+    Two things the ABI's own grammar does not say and the reference does: the argument
+    list is allowed after the type in the `N` form, and the qualifier levels after it
+    may be *zero*, because the arguments are the whole qualification.
+    """
+
+    def test_template_arguments_may_follow_the_type_with_no_levels_after_them(self):
+        mangled = "_ZN5test71XIiEC1IdEEPT_PNS_5int_cIXplL_ZNS_4metaIiE5valueEEsrNS6_IS3_EE5valueEE4typeE"
+        assert demangle.demangle(mangled) == (
+            "test7::X<int>::X<double>(double*, "
+            "test7::int_c<test7::meta<int>::value + test7::meta<double>::value>::type*)"
+        )
+
+    def test_the_arguments_are_not_part_of_the_substitution_the_type_records(self):
+        """The reference records the bare parameter, so a later `S_` names it alone."""
+        assert demangle.demangle("_Z1fIiEvDTsrT_1xES0_") == "void f<int>(decltype(int::x), int)"
