@@ -167,13 +167,23 @@ each is measured against differs, and the difference is the interesting part:
   argument list, `@LOCAL@`, `$localstatic`, a `__dt` — GNU v2 now refuses rather than
   mis-reads.
 
-One scheme is left worth weighing:
+- **Ada/GNAT** — *landed*, **34 of 34** against the cases `demangle-expected` marks
+  `--format=gnat`. The last of the pre-Itanium formats libiberty still carries: when the
+  GNU v2, lucid, ARM and HP styles were dropped from the default, `--format=gnat` stayed.
+  The reference is `ada_demangle` in `cplus-dem.c`, with GCC's own `exp_dbug.ads`
+  documenting the encoding normatively. Narrow but concentrated: avionics, rail, defence.
 
-- **Ada/GNAT** — `pkg__proc$2`, still carried by libiberty as `--format=gnat` when the
-  others were dropped, and documented normatively in GCC's own `exp_dbug.ads`. Narrow
-  but concentrated: avionics, rail, defence.
+  There are no types in it. An Ada symbol names an entity and stops, which makes the
+  grammar small and the *detection* the whole problem: `yz__qrs` is a package and a
+  subprogram, and equally it is what any C program writes. Parsing and claiming whatever
+  parses reads 797 names from the other corpora here and **6,764 real symbols** from this
+  machine's libraries as Ada. So a name is claimed only when it carries an encoding GNAT
+  writes and a C compiler does not, *and* the whole name is accounted for — **0** claims
+  over the other schemes' 81,457 names, **0** over 339,117 real symbols. The 4 vectors
+  with no such encoding are read under `language="ada"` and not by guess.
 
-Everything else surveyed is either not a mangling scheme at all (Zig, Erlang, Julia, V,
+With that, nothing on this list is open. Everything else surveyed is either not a
+mangling scheme at all (Zig, Erlang, Julia, V,
 Odin and Kotlin/Native emit readable or unencoded names), already covered here
 (Borland C++Builder *is* this project's Delphi scheme; Objective-C++ is Itanium with
 Objective-C types), or extinct enough not to be worth the transcription (Watcom,

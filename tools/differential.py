@@ -95,6 +95,13 @@ NOT_REPLAYED = frozenset(
         # than the `{}` this library prints. Pinned by tests/test_rust.py, which records
         # the four that differ by name.
         "rustc-upstream.txt",
+        # GNAT's vectors. Four of the 34 carry no GNAT-specific encoding at all -- they
+        # are lower-case identifiers joined by `__` -- so detection declines them on
+        # purpose and `demangle()` returns them unchanged; a fifth is a name the
+        # reference itself declines. Replaying them here would report five failures for
+        # five deliberate answers. Pinned by tests/test_ada.py, which asserts both the
+        # by-language score and the auto-detected count.
+        "ada-libiberty.txt",
         # Bare `<type>` encodings rather than symbols -- `Pi`, `PKFvRiE`. They are read by
         # `demangle_type(..., language="itanium")`, and `demangle()` refuses every one of
         # them on purpose, so replaying them here would report 1,076 failures for the

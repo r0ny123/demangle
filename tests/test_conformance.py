@@ -128,6 +128,21 @@ GNUV2_TOTAL, GNUV2_EXACT = 1324, 1324
 #: replayed by tests/test_codewarrior.py rather than here or by tools/differential.py.
 CODEWARRIOR_TOTAL, CODEWARRIOR_EXACT = 47, 47
 
+#: Ada, against libiberty's own `demangle-expected` at GCC 8.3.0: the 34 cases it marks
+#: `--format=gnat`. One is a name the reference declines -- it prints `<x_E>` -- and is
+#: recorded as the name unchanged, which is what `demangle()` answers for one it will not
+#: claim. Read by language rather than by detection, because the *point* of this scheme's
+#: detection is that it declines a name carrying no GNAT-specific encoding; the count that
+#: do auto-detect is pinned separately below. Replayed by tests/test_ada.py.
+ADA_TOTAL, ADA_EXACT = 34, 34
+
+#: How many of the 33 readable vectors detection claims on its own. The 4 it does not are
+#: `yz__qrs`, `x__m1`, `x__m3` and `x__y__j`: lower-case identifiers joined by `__` and
+#: nothing else, which is to say names indistinguishable from ordinary C ones. Claiming
+#: those would mean claiming 6,764 real symbols from this machine's libraries -- measured,
+#: see tests/test_ada.py -- so they are read on request and not by guess.
+ADA_AUTODETECTED = 29
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the

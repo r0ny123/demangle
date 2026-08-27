@@ -8,6 +8,37 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Ada, as GNAT encodes it.** The last of the pre-Itanium formats libiberty still
+  carries: when the GNU v2, lucid, ARM and HP styles were dropped from the default,
+  `--format=gnat` stayed. The reference is `ada_demangle` in `libiberty/cplus-dem.c`,
+  with GCC's own `exp_dbug.ads` documenting the encoding normatively. Narrow but
+  concentrated -- avionics, rail, defence.
+
+  **34 of 34** against the cases `demangle-expected` marks `--format=gnat`. One of them
+  is a name the reference declines, printing `<x_E>`; that is recorded as the name
+  unchanged, which is how `demangle()` says the same thing.
+
+  There are no types in it -- an Ada symbol names an entity and stops -- so the grammar
+  is small and the detection is the whole problem. `yz__qrs` is a package and a
+  subprogram, and it is equally what any C program writes. Parsing the name and claiming
+  whatever parses reads 797 names from the other corpora here and **6,764 real symbols**
+  from this machine's own libraries as Ada, which is not detection but a coin toss with
+  a confident voice.
+
+  So a name is claimed only when it carries something GNAT wrote and a C compiler would
+  not -- `_ada_`, an `O`-operator, a `TK` task suffix, a `P`/`N` protected subprogram, a
+  stream `S[RWIO]`, a controlled `D[FA]`, an `X` body-nested marker, a `___elabb`-style
+  special name, a `_B`/`_E` entry body, an overload number -- *and* the whole name is
+  accounted for. That second half exists because several of the reference's suffixes stop
+  reading and abandon the rest: `rDF16_`, the Itanium encoding of `_Float16 restrict`,
+  really does parse as `r.Finalize` with `16_` to spare. Measured under the whole rule:
+  **0** claims over the other schemes' 81,457 names and **0** over 339,117 real symbols.
+
+  The cost is that 4 of the 34 vectors are not auto-detected, being lower-case
+  identifiers joined by `__` and nothing else. They read under `language="ada"`. Not
+  claiming a name returns it unchanged, which is what an unreadable name does anyway;
+  claiming someone else's rewrites it into a plausible lie.
+
 - **Metrowerks CodeWarrior C++.** The other pre-Itanium mangling, and the one libiberty
   never read: `cplus-dem.c` has no CodeWarrior flag, `demangle-expected` has no vectors
   for it, and binutils has never demangled one. GameCube and Wii titles, Palm OS, BeOS
