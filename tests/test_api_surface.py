@@ -100,6 +100,75 @@ class TestFindingWhereASymbolWas:
         assert "".join(pieces) == demangle.demangle_text(text)
 
 
+class TestTokenisingANameWithASpaceInIt:
+    """An Objective-C method is one name, not two words.
+
+    `+[Alpha copy_it:]` is a class and a selector with a space between them, and the
+    token pattern is otherwise a run of word characters -- so it was offered as `+[Alpha`
+    and `copy_it:]`, which is the wrong reading of one name rather than the right reading
+    of two. What a symbol *table* holds is the mangled form, which has no space and has
+    always been found; this is about a listing that already carries readable ones.
+    """
+
+    def test_a_method_name_is_one_token(self):
+        from demangle.filter import TOKEN
+
+        text = "call +[Alpha copy_it:] here"
+        assert [m.group() for m in TOKEN.finditer(text)] == ["call", "+[Alpha copy_it:]", "here"]
+
+    def test_a_readable_method_name_is_left_alone_whole(self):
+        # It spells itself, so it is not a symbol `find_symbols` reports -- but it must be
+        # declined as one name, and `demangle_text` must copy it through unchanged.
+        text = "call +[A_B209(Store247) andThen:do:] here"
+        assert list(demangle.find_symbols(text)) == []
+        assert demangle.demangle_text(text) == text
+
+    def test_the_mangled_form_is_still_what_gets_found(self):
+        text = "see -[Foo bar:] and _i_Alpha319_copy_it_ ok"
+        found = list(demangle.find_symbols(text))
+        assert [item.mangled for item in found] == ["_i_Alpha319_copy_it_"]
+        assert found[0].demangled == "-[Alpha319(copy) it:]"
+
+    def test_prose_is_not_swallowed_by_the_bracket_form(self):
+        # The alternative needs `+[` or `-[` with nothing between, so arithmetic and
+        # ordinary indexing do not form one.
+        for text in ("a[i] - b[j]", "x = y - [1]", "count += [n]"):
+            assert demangle.demangle_text(text) == text
+
+
+class TestAStyleComposedForOneCall:
+    """`parse()` must accept the style objects `demangle()` accepts.
+
+    The tree builder was held by style *name*. A style composed with
+    `demangle.style(...)` keeps the name it was based on, so it was silently served the
+    registered style's builder; and a style whose name is not registered at all made
+    `parse()` raise `unknown style` from inside the parser, for an object `demangle()`
+    was perfectly happy with.
+    """
+
+    def test_a_style_whose_name_is_not_registered_still_parses(self):
+        from demangle.core.style import SPELLING_BUILDER, Style
+
+        # `_ZNK1AcviEv` is a conversion operator: the parser flattens the type it names
+        # to text while building the tree, which is what reaches for the style.
+        unregistered = Style(name="not-registered-anywhere", spelling_builder=SPELLING_BUILDER)
+        tree = demangle.parse("_ZNK1AcviEv", style=unregistered)
+        assert tree.spell(style=unregistered) == "A::operator int() const"
+        assert demangle.demangle("_ZNK1AcviEv", style=unregistered) == "A::operator int() const"
+
+    def test_a_composed_style_is_not_served_the_registered_one_s_builder(self):
+        narrow = demangle.style("llvm", msvc={"calling_convention": False})
+        assert narrow.name == "llvm"  # the composition keeps the base's name
+        assert demangle.parse("?f@@YAXH@Z", style=narrow).spell(style=narrow) == "void f(int)"
+        assert demangle.parse("?f@@YAXH@Z").spell() == "void __cdecl f(int)"
+
+    def test_the_common_path_still_shares_one_builder(self):
+        from demangle.core.ast import builder_for
+
+        assert builder_for("llvm") is builder_for("llvm")
+        assert builder_for(None) is builder_for(None)
+
+
 class TestTheTreeAsData:
     def test_to_dict_names_the_role_of_every_child(self):
         assert demangle.parse("_Z1fPKc").to_dict() == {
