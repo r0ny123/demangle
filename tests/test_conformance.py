@@ -34,6 +34,11 @@ TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1073
 #: counts *differences* the reference makes and not names. Replayed by tests/test_msvc.py.
 MSVC_SUPPRESSIONS_TOTAL, MSVC_SUPPRESSIONS_EXACT = 1253, 1250
 
+#: RTTI type descriptor *names* -- a `.` and a bare type encoding, which is how the linker
+#: spells the string a `type_info` points at -- and the descriptor objects beside them.
+#: Both against `llvm-undname`. Replayed by tests/test_msvc_descriptors.py.
+MSVC_DESCRIPTORS_TOTAL, MSVC_DESCRIPTORS_EXACT = 106, 106
+
 #: Swift's own `simplified-manglings.txt`, scored under `SwiftOptions.simplified()`.
 #: What `swift-demangle --simplified` prints, which is what Xcode and LLDB show a user.
 #: Replayed by tests/test_swift_simplified.py.

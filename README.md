@@ -280,6 +280,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Real shipped libstdc++ | `llvm-cxxfilt` 18.1.3 | **5913 / 5913** |
 | Rust, both schemes | `rustfilt` (rustc-demangle 0.1.28) | **5316 / 5316** |
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
+| MSVC RTTI type descriptors, both forms | `llvm-undname` 18.1.3 | **106 / 106** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **298 / 300** † |

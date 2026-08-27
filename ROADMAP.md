@@ -239,6 +239,19 @@ which is whether to spell something *differently*.
   against `c++filt -t`, the three being a doubled `KK` cv-qualifier that GNU folds away
   and LLVM keeps, on input no compiler emits.
 
+- ~~**MSVC RTTI type descriptor names**~~ — *landed*. A `type_info` points at a string,
+  and the linker spells it as a `.` and a bare type encoding: `.PEAX`, `.?AVFoo@@`. Not a
+  decorated name — no `?`, nothing declared — so every one of them was refused and a PE
+  symbol dump full of them said nothing. **106 of 106** against `llvm-undname`, counting
+  the descriptor *objects* (`??_R0<type>@8`) beside the names.
+
+  Claiming a leading `.` in a table full of `.text`, `.L1234` and `.constprop.0` is the
+  risk, and it is answered by measurement: what follows the dot must parse as a *whole*
+  type, and none of the 731 dot-prefixed names in the checked-in corpora nor any of 51
+  section and label names is claimed. Doing it also found the marker was in the wrong
+  place in the descriptor object this already read: it goes where a *declarator* goes, so
+  a pointer to an array of two is `int (*`RTTI Type Descriptor')[2]`.
+
 - ~~**The stream filter and the tree as library API**~~ — *landed*. `demangle_text()`,
   `demangle_stream()` and `find_symbols()` are the word-scanning filter the command has
   always run, now callable; `Node.to_dict()`, `demangle --json`, `__match_args__` and

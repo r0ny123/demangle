@@ -58,9 +58,27 @@ def _md5_name(mangled):
     return base
 
 
+#: An RTTI *type descriptor name*: a `.` and a bare type encoding, which is how the
+#: linker spells the string a `type_info` points at. Nothing else in this scheme opens
+#: with a `.`, and nothing in any other scheme here does either.
+_TYPE_DESCRIPTOR_NAME = "."
+
+#: What the reference writes after the type. Its sibling `??_R0...@8` -- the descriptor
+#: *object* rather than the name in it -- writes the same words without `Name`.
+_TYPE_DESCRIPTOR_SUFFIX = "`RTTI Type Descriptor Name'"
+
+
 def detect(name):
-    """Every decorated name the scheme produces opens with `?`."""
-    return bool(name) and name[0] == "?"
+    """A decorated name opens with `?`; a type descriptor's name opens with `.`.
+
+    The `.` form is claimed although a symbol table is full of `.text`, `.rodata`,
+    `.L1234` and `.constprop.0`: claiming is not reading, and what follows the dot has to
+    parse as a *whole* type before anything is said about it, which none of those do.
+    Measured over every dot-prefixed name in the checked-in corpora and over the section
+    and label names a real object file carries: none is claimed. See
+    `tests/test_msvc.py`.
+    """
+    return bool(name) and name[0] in "?."
 
 
 #: What each builder class answered to `_wants_structure`. Asked once per class rather
@@ -104,6 +122,19 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     # copied into the output, where it would travel on into a caller's report.
     if any(char < " " or char == "\x7f" for char in mangled):
         raise ParseError(mangled, None, "decorated name contains a control character")
+    if mangled.startswith(_TYPE_DESCRIPTOR_NAME):
+        # `.PEAX` is the string a `type_info` points at: a bare type encoding with a `.`
+        # in front of it. It is not a declaration, so it has no tree of its own beyond
+        # the type -- the reference spells the type and appends what it is.
+        tree = parse_msvc_type(mangled, limits)
+        if tree is None:
+            raise ParseError(mangled, None, "not a type descriptor name this demangler can read")
+        # The marker goes where a *declarator* goes. For anything that wraps its name
+        # that is not the same place as after the type: a pointer to an array of two
+        # reads `int (*`RTTI Type Descriptor Name')[2]`.
+        spelled = _render(tree, _TYPE_DESCRIPTOR_SUFFIX, options=options)
+        _check_length(mangled, len(spelled), limits)
+        return builder.raw(spelled)
     if mangled.startswith(_MD5_PREFIX):
         # A hashed name carries no recoverable spelling, so it is its own expansion.
         # This is a successful parse, not a failure: there is nothing more to say about
@@ -179,8 +210,8 @@ PLUGIN = LanguagePlugin(
     description="Microsoft Visual C++ decorated names (MSVC, clang-cl)",
     options_type=MsvcOptions,
     aliases=("microsoft", "ms", "vc"),
-    # Every decorated name opens with `?`.
-    first_characters="?",
+    # A decorated name opens with `?`; an RTTI type descriptor name opens with `.`.
+    first_characters="?.",
     priority=100,
 )
 
