@@ -257,7 +257,11 @@ class TestPartFlags:
         [
             (VECTOR, VECTOR_SPELLED),
             ("_ZSt4sortIPiEvT_S1_", "std::sort<int*>(int*, int*)"),
-            ("?f@Foo@@AEBAXH@Z", "private: void __cdecl Foo::f(int) const"),
+            # MSVC goes through the scheme's own option rather than the render-time cut:
+            # a return type there wraps *around* the declarator, and `private: ` comes
+            # before it, so there is no prefix to strip. This is `llvm-undname
+            # --no-return-type`.
+            ("?f@Foo@@AEBAXH@Z", "private: __cdecl Foo::f(int) const"),
         ],
     )
     def test_no_return_type(self, capsys, name, expected):

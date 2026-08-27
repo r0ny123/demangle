@@ -304,7 +304,11 @@ def _parts_of(reading, tree):
     if kind == "declaration":
         # MSVC: the declarator is the name, and the type stands beside it.
         _name_from(reading, found, tree.declarator)
-        found["qualifiers"] = _leading(tree.prefix) + _trailing(tree.suffix)
+        # `access` and `member_type` hold what `prefix` used to hold as one string, so
+        # that each can be suppressed on its own; the qualifiers a caller asks for are
+        # still all of them.
+        lead = tree.prefix + getattr(tree, "access", "") + getattr(tree, "member_type", "")
+        found["qualifiers"] = _leading(lead) + _trailing(tree.suffix)
         declared = tree.type
         # A *pointer* to a function is data; only a declared function type is a
         # function, so this looks through nothing.

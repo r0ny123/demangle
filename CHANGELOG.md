@@ -8,6 +8,35 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **A per-call options object: `style()`, and MSVC's five suppression flags.** The two
+  named styles say how to *spell* a name; what a caller usually wants to vary is how much
+  of it to spell, and every peer tool composes that at the call site --
+  `llvm-undname --no-calling-convention`, `UnDecorateSymbolName`'s mask, `c++filt -p`.
+  Doing it here meant building a `Style` and registering it globally, which is a process-
+  wide change for one question.
+
+      demangle(name, style=demangle.style("llvm", msvc={"calling_convention": False}))
+
+  `Style.with_options` is the composition and `style()` the front door. A composed style
+  is an object rather than a registered name, and `demangle()` deliberately does not cache
+  a call that passes one, so one caller's narrower spelling is never served to another.
+
+  The MSVC scheme grew the five options `llvm-undname` has, spelled and meaning the same:
+  `calling_convention`, `access_specifier`, `member_type`, `return_type`, `variable_type`,
+  with `--no-...` flags on the command line. `--no-return-type` now goes through the
+  option for MSVC rather than through the render-time cut, and that is a fix: a return
+  type there wraps *around* the declarator, so `?fn@@YAP6AHH@ZXZ` had no prefix to strip
+  and came back unchanged.
+
+  Scored at **1,250 of 1,253** against `llvm-undname` over the differences the flags make
+  on LLVM's own 609-name corpus, pinned in `tests/conformance/msvc-suppressions.txt`. The
+  three are names where the reference's own `--no-return-type` leaves an unclosed
+  bracket. Three rules were derived from the reference rather than guessed, and each
+  reads as a bug until you watch it happen: a function reached as a *pointer's* pointee
+  keeps its calling convention, because the pointer prints it rather than the signature;
+  a symbol naming a *scope* keeps its full spelling; and `extern "C" ` groups with
+  `static` and `virtual` rather than with the access specifier.
+
 - **Bare type encodings: `demangle_type()`, `parse_type()`, and `demangle --types`.**
   A `typeinfo` name, an MSVC RTTI type descriptor and a Swift metadata typeref carry a
   *type* rather than a symbol, and nothing in this package could read one. Itanium, MSVC

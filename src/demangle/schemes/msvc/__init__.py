@@ -26,6 +26,7 @@ from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from ._parser import _LimitHit, parse_msvc_symbol_strict, parse_msvc_type
 from ._parser import render as _render
+from .options import DEFAULT_OPTIONS, MsvcOptions
 
 #: MSVC replaces a decorated name too long for the linker with an MD5 hash of it,
 #: written `??@<hash>@`. Nothing can be recovered -- the original spelling is simply not
@@ -87,8 +88,9 @@ def _wants_structure(builder):
     return answer
 
 
-def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
+def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """Parse an MSVC decorated name into `builder`."""
+    options = options or DEFAULT_OPTIONS
     if not detect(mangled):
         raise NotMangledError(mangled, "not an MSVC decorated name")
     # The input bound, which this scheme did not enforce at all. A caller asking for
@@ -112,7 +114,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         return builder.raw(hashed)
     try:
         if _wants_structure(builder):
-            tree = parse_msvc_symbol_strict(mangled, limits)
+            tree = parse_msvc_symbol_strict(mangled, limits, options)
             if tree is None:
                 raise ParseError(mangled, None, "not a decorated name this demangler can read")
             # No length check here, and that is not an omission. The parser bounds its
@@ -122,10 +124,10 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
             # Checking again meant calling `tree.spell()` and throwing the string away:
             # the expensive half of `parse()` run for a number that was already settled.
             return tree
-        tree = parse_msvc_symbol_strict(mangled, limits)
+        tree = parse_msvc_symbol_strict(mangled, limits, options)
         if tree is None:
             raise ParseError(mangled, None, "not a decorated name this demangler can read")
-        expanded = _render(tree)
+        expanded = _render(tree, options=options)
         _check_length(mangled, len(expanded), limits)
         return builder.raw(expanded)
     except _LimitHit as hit:
@@ -135,7 +137,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise LimitExceeded(mangled, str(hit), getattr(limits, f"max_{str(hit).split()[-1]}", 0)) from hit
 
 
-def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=None):
+def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """Parse a bare *type* encoding -- `PEAX`, `PEAVFoo@@` -- rather than a whole symbol.
 
     What an RTTI type descriptor carries, and what `UnDecorateSymbolName`'s
@@ -174,6 +176,7 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     parse_type=parse_type,
     description="Microsoft Visual C++ decorated names (MSVC, clang-cl)",
+    options_type=MsvcOptions,
     aliases=("microsoft", "ms", "vc"),
     # Every decorated name opens with `?`.
     first_characters="?",
@@ -182,4 +185,4 @@ PLUGIN = LanguagePlugin(
 
 register(PLUGIN)
 
-__all__ = ["PLUGIN", "detect", "parse", "parse_type"]
+__all__ = ["DEFAULT_OPTIONS", "PLUGIN", "MsvcOptions", "detect", "parse", "parse_type"]

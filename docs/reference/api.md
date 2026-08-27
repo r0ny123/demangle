@@ -42,6 +42,29 @@ demangle.demangle_type("PKFvRiE", language="itanium")
         - demangle_type
         - parse_type
 
+## Printing less of a name
+
+The two named styles say how to spell a name; what a caller usually wants to vary is how
+*much* of it to spell. `style()` composes that for one call, without registering
+anything: the result is an object, and `demangle()` does not cache a call that passes
+one, so a narrower spelling asked for here is never served to a caller asking for the
+default.
+
+```python
+demangle.demangle("?f@@YAXH@Z", style=demangle.style("llvm", msvc={"calling_convention": False}))
+# 'void f(int)'
+```
+
+::: demangle.api
+    options:
+      members:
+        - style
+
+::: demangle.schemes.msvc.options
+    options:
+      members:
+        - MsvcOptions
+
 ## The parts of a name
 
 `demangle()` answers what a name says; `signature()` answers what its pieces are. The

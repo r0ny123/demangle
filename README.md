@@ -168,6 +168,25 @@ available, and neither is wrong:
 'std::vector<int, std::allocator<int> >::push_back(int const&)'
 ```
 
+### Printing less of a name
+
+A decorated name expands to a great deal more than the name. `style()` composes what to
+leave out, at the call site rather than by registering anything globally:
+
+```python
+>>> demangle.demangle("?g@C@@UEAAXXZ")
+'public: virtual void __cdecl C::g(void)'
+>>> narrow = demangle.style("llvm", msvc={"calling_convention": False, "access_specifier": False})
+>>> demangle.demangle("?g@C@@UEAAXXZ", style=narrow)
+'virtual void C::g(void)'
+```
+
+The five MSVC options are `llvm-undname`'s five flags and mean the same:
+`calling_convention`, `access_specifier`, `member_type`, `return_type`, `variable_type`.
+On the command line they are `--no-calling-convention` and its siblings. Over LLVM's own
+609-name corpus this agrees with the reference on **1250 / 1253** of the differences the
+flags make ††.
+
 ### Command line
 
 ```console
@@ -179,6 +198,7 @@ $ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the sign
 $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
 $ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t`
+$ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
 ```
 
 `-p` is `c++filt -p`: over the shipped libstdc++ and the GNU-style corpus the two agree
@@ -216,6 +236,11 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
+
+†† The three are names where `llvm-undname --no-return-type` leaves an unclosed
+bracket — `int (__cdecl * (__cdecl B::*volatile memptrtofun7)(void)` is not a declaration
+of anything. This keeps the balanced spelling, which is what the reference itself prints
+with no flag.
 
 ‡‡ The same 1,076 encodings under both references, which spell them differently. The
 three are a doubled `KK` cv-qualifier: `c++filt` folds the repeat away and `llvm-cxxfilt`
