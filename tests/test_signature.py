@@ -328,7 +328,6 @@ class TestTheObject:
         assert parts.demangled.startswith(parts.namespace)
 
 
-@requires_gnu_cxxfilt
 class TestTheSchemeIsResolvedBeforeItIsUsed:
     """A caller writes whatever name they like; the fields must not depend on which.
 
@@ -377,6 +376,7 @@ class TestEverySchemeHasASeparator:
         assert parts.namespace + "::" + parts.base_name == parts.qualified_name
 
 
+@requires_gnu_cxxfilt
 class TestAgainstCxxfiltMinusP:
     """What `-p` prints, measured against the tool it is named after.
 
