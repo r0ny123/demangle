@@ -587,6 +587,48 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC reported a bound the parse never had.** The parser narrows both of its bounds
+  with ceilings of its own -- `min(limits.max_depth, MAX_DEPTH)` with `MAX_DEPTH` 64, and
+  `min(limits.max_output, 8 * len(mangled) + 256)` -- and that is deliberate: a level
+  there costs several interpreter frames, so capping it low is what stops CPython's own
+  recursion limit from ever being the thing that ends a parse. A caller may tighten,
+  never widen.
+
+  The *report* read the caller's figure back out of `limits`, so a parse that stopped at
+  64 announced `exceeded recursion depth limit of 200000` -- a number never in force,
+  naming a limit already far above the ceiling that would change nothing if raised.
+  Exactly the confusion the internal `_LimitHit` exists to prevent: a tool deciding
+  whether to widen its `Limits` was told to widen something that is not the constraint.
+  The bound that fired is now the bound reported.
+
+- **`signature()` did not canonicalise the language.** The scheme was whatever the caller
+  wrote, so a documented alias missed the separator table and skipped the scheme-specific
+  extraction: `signature("+[A_B andThen:do:]", language="objective-c")` reported the whole
+  spelling as `base_name` with `is_function` False, where `language="objc"` reported
+  `andThen:do:` in `A_B`. Resolved through the registry now, as `parse()` already did.
+
+- **JNI had no separator.** Its spelling joins with `.`, `jni` was absent from the table,
+  and the `::` fallback made `com.example.Foo.bar` one base name with an empty namespace
+  -- nothing said, for a scheme that is a path and nothing else.
+
+- **A `Style` object was reduced to its name for the tree builder.** A style composed with
+  `style(...)` keeps the base's name, so it was silently served the registered style's
+  builder; and one whose name is not registered made `parse()` raise `unknown style` from
+  inside the parser, for an object `demangle()` accepted. The builder is held by name only
+  when the name really is that style's; otherwise it holds the object. The common path --
+  `parse(name)`, whose style is the string `"llvm"` -- is unchanged.
+
+- **An Objective-C method name was two tokens.** `+[Alpha copy_it:]` is a class and a
+  selector with a space between them, and the stream filter's token pattern is a run of
+  word characters, so it came apart into `+[Alpha` and `copy_it:]`. The bracketed form has
+  an alternative of its own now.
+
+  This fixes the tokenising, not the finding: a method reaches `find_symbols` from a
+  symbol table in its *mangled* form -- `_i_Alpha319_copy_it_`, which holds no space, no
+  bracket and no `+`/`-` -- and that has always been found. The bracketed form is what the
+  mangled one demangles *to*, so it spells itself and is declined either way. What was
+  wrong was one name being read as two.
+
 - **Template parameters are tracked per level, as the reference tracks them.**
   `TL<k>_<n>_` names a parameter of an *enclosing* template, and the table behind it is
   a stack: level 0 is the innermost `<template-args>`, and each generic lambda and each

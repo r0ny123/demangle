@@ -1,7 +1,14 @@
 # Roadmap
 
-What is not done yet, in the order it matters. Each entry says what would have to
-change, so anyone can pick one up.
+What is not done yet, and -- for the schemes -- what was done and why, so the reasoning
+survives the commit that carried it. Each open entry says what would have to change, so
+anyone can pick one up.
+
+**No scheme is outstanding.** Section 1 is now a record rather than a queue: every
+mangling this project set out to read, it reads, and the survey below says why nothing
+else on the list is worth transcribing. What remains open is the measured shortfall
+against the upstream corpora, immediately below, and every item of it is documented
+rather than merely counted.
 
 Conformance is measured against the reference projects' *own* corpora as well as the
 ones checked in here. Every checked-in corpus is exact against its reference, and so are
@@ -97,8 +104,12 @@ by name in `tests/conformance/nim-lossy.txt`.
 
 ## 1. More schemes
 
-The plugin interface exists so these need no core changes. Go landed this way, without
-touching `core` at all.
+*Nothing here is outstanding.* Kept as a record of what each scheme is measured against,
+because that differs per scheme and is the part worth knowing before trusting a number.
+
+The plugin interface exists so a scheme needs no core changes. Go landed that way,
+without touching `core` at all, and so did the thirteen that followed -- fourteen schemes
+in total, the last three of them (pre-Itanium C++, CodeWarrior, Ada/GNAT) in this branch.
 
 D, Swift, Nim, Free Pascal, Objective-C and Delphi have all landed the same way. What
 each is measured against differs, and the difference is the interesting part:
@@ -183,8 +194,8 @@ each is measured against differs, and the difference is the interesting part:
   with no such encoding are read under `language="ada"` and not by guess.
 
 With that, nothing on this list is open. Everything else surveyed is either not a
-mangling scheme at all (Zig, Erlang, Julia, V,
-Odin and Kotlin/Native emit readable or unencoded names), already covered here
+mangling scheme at all (Zig, Erlang, Julia, V, Odin and Kotlin/Native emit readable or
+unencoded names), already covered here
 (Borland C++Builder *is* this project's Delphi scheme; Objective-C++ is Itanium with
 Objective-C types), or extinct enough not to be worth the transcription (Watcom,
 Sun Studio's undocumented `libdemangle`, gcj's `DMGL_JAVA`).
