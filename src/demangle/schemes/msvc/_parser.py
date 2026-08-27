@@ -664,7 +664,7 @@ class _Demangler:
             if code == "R" and self.peek() == "0":
                 # a type descriptor names the type it describes rather than a function
                 self.take()
-                described = self.rendered(self.returnType())
+                described = self.returnType()
                 self.expect("@")
                 self.expect("8")
                 if not self.nested and not self.eof():
@@ -674,9 +674,10 @@ class _Demangler:
                     # out leaves the marker alone. The vtable and vbtable names are not
                     # variables and keep theirs.
                     return "`RTTI Type Descriptor'", "descriptor"
-                # the marker abuts a type that already ends in a sigil, as a declarator does
-                separator = "" if described.endswith(("*", "&")) else " "
-                return f"{described}{separator}`RTTI Type Descriptor'", "descriptor"
+                # The marker goes where a *declarator* goes rather than after the type,
+                # which for anything wrapping its name is not the same place:
+                # `int (*`RTTI Type Descriptor')[2]`, not `int (*)[2] `RTTI ...''.
+                return self.rendered(described, "`RTTI Type Descriptor'"), "descriptor"
             name = _EXTENDED_OPERATORS.get(code)
             if name is None:
                 raise _Bail
@@ -1459,11 +1460,11 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTION
 
 
 def parse_msvc_type(name, limits=DEFAULT_LIMITS):
-    """The tree behind a bare *type* encoding -- `PEAX`, `.PEAX` -- or None.
+    """The tree behind a bare *type* encoding -- `PEAX`, `?AVFoo@@`, `.PEAX` -- or None.
 
-    What an RTTI descriptor and a vtable entry carry, and what `llvm-undname` reads for
-    its `--types` question. A leading `.` is accepted and dropped: the linker writes one
-    on a type descriptor's symbol, and the encoding after it is the type itself.
+    What an RTTI descriptor and a vtable entry carry, and what `UnDecorateSymbolName`'s
+    `UNDNAME_TYPE_ONLY` asks for. A leading `.` is accepted and dropped: the linker writes
+    one on a type descriptor's symbol, and the encoding after it is the type itself.
     """
     if not name:
         return None
@@ -1475,7 +1476,11 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS):
         return None
     try:
         demangler = _Demangler(name, limits)
-        tree = demangler.type()
+        # `returnType` rather than `type`: this position is the one that may carry a
+        # qualifier group of its own, and `?A` -- the unqualified case, not an absent one
+        # -- is how every class type is written here. `??_R0?AVFoo@@@8` reads its type the
+        # same way.
+        tree = demangler.returnType()
     except (_Bail, RecursionError):
         return None
     if demangler.pos != len(demangler.text):

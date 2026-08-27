@@ -8,6 +8,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **MSVC RTTI type descriptor names, `.PEAX` and `.?AVFoo@@`.** A `type_info` points at
+  a string and the linker spells it as a `.` followed by a bare type encoding. It is not
+  a decorated name -- no `?`, nothing declared -- so every one was refused, and a PE
+  symbol dump full of them said nothing. **106 of 106** against `llvm-undname`, counting
+  the descriptor *objects* (`??_R0<type>@8`) beside the names.
+
+  Claiming a leading `.` where a symbol table is full of `.text`, `.L1234` and
+  `.constprop.0` is the risk, and the answer is measurement rather than argument: what
+  follows the dot has to parse as a *whole* type before anything is said about it, and
+  none of the 731 dot-prefixed names in the checked-in corpora, nor any of 51 section and
+  label names, is claimed. The Objective-C scheme still wins `._OBJC_CLASS_...`, which is
+  what priority is for.
+
+- **The marker in an RTTI descriptor goes where a declarator goes.** `??_R0PEAY01H@8` was
+  `int (*)[2] \`RTTI Type Descriptor'` and the reference prints
+  `int (*\`RTTI Type Descriptor')[2]`: it is spelled as the name being declared, not
+  appended after the type. Only visible on a type that wraps its name, which is why the
+  one such vector in the corpus did not catch it.
+
 - **The stream filter and the tree, as library API rather than as CLI internals.** Three
   shapes a Python caller expects and did not find, each of which already had a working
   implementation inside the command or behind a private helper.
