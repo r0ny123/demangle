@@ -188,15 +188,26 @@ class TestDepthExhaustionIsReportedAsABound:
     One used to arrive as `LimitExceeded` and the other as
     `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
     the parser rather than a bound doing its job.
+
+    The nesting below is deeper than the *limit in force*, and that matters rather than
+    being belt and braces. These names were 400 deep, which is under `RELAXED_LIMITS`'
+    `max_depth` of 2048, so on CPython the only thing stopping them was the interpreter's
+    stack -- and on PyPy, whose stack is far deeper, nothing stopped them at all and the
+    names parsed. Deriving the count from `max_depth` tests the bound this asserts the
+    existence of, on any interpreter, and cannot drift if the limit is retuned.
     """
+
+    #: Each of these repeats costs more than one level, so repeating a production
+    #: `max_depth` times is comfortably past the ceiling on every scheme here.
+    DEEPER_THAN_THE_LIMIT = demangle.RELAXED_LIMITS.max_depth
 
     @pytest.mark.parametrize(
         "mangled",
         [
-            "_Z1f" + "1XI" * 400 + "i" + "E" * 400,
-            "_Z1f" + "DT" * 400 + "fp_" + "E" * 400,
-            "_Z1f" + "PF" * 400 + "i" + "E" * 400,
-            "?f@@YAX" + "PA" * 400 + "H@Z",
+            "_Z1f" + "1XI" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
+            "_Z1f" + "DT" * DEEPER_THAN_THE_LIMIT + "fp_" + "E" * DEEPER_THAN_THE_LIMIT,
+            "_Z1f" + "PF" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
+            "?f@@YAX" + "PA" * DEEPER_THAN_THE_LIMIT + "H@Z",
         ],
     )
     def test_a_name_too_deep_to_follow_says_so(self, mangled):
@@ -204,5 +215,9 @@ class TestDepthExhaustionIsReportedAsABound:
             demangle.demangle_strict(mangled, limits=demangle.RELAXED_LIMITS)
 
     def test_and_demangle_still_answers(self):
+        # 400 rather than the count above, and correctly: this one runs under the
+        # *default* limits, whose `max_depth` of 256 the counter reaches well before
+        # here. What it asserts is that the bound comes back as the name unchanged
+        # rather than as an exception, which is `demangle()`'s promise.
         deep = "_Z1f" + "1XI" * 400 + "i" + "E" * 400
         assert demangle.demangle(deep) == deep

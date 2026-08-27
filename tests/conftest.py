@@ -43,6 +43,25 @@ def reference_demangle(tool, name):
     return result.stdout.strip()
 
 
-requires_gnu_cxxfilt = pytest.mark.skipif(not reference_available("c++filt"), reason="GNU c++filt not installed")
+def gnu_cxxfilt_available():
+    """Whether the `c++filt` on PATH is *GNU's*, rather than something else of that name.
+
+    A name on PATH is not an identity. macOS ships LLVM's demangler as `c++filt`, and it
+    is a different reference: it closes `>>` up where GNU writes `> >`, so scoring the
+    gnu style against it compares two spelling conventions and reports thousands of
+    differences that are not disagreements about anything. The version banner is the
+    only thing that tells them apart -- GNU's opens `GNU c++filt`, LLVM's names LLVM --
+    so this asks.
+    """
+    if not reference_available("c++filt"):
+        return False
+    try:
+        banner = subprocess.run(["c++filt", "--version"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "GNU c++filt" in f"{banner.stdout}{banner.stderr}"
+
+
+requires_gnu_cxxfilt = pytest.mark.skipif(not gnu_cxxfilt_available(), reason="GNU c++filt not installed")
 requires_llvm_cxxfilt = pytest.mark.skipif(not reference_available("llvm-cxxfilt"), reason="llvm-cxxfilt not installed")
 requires_llvm_undname = pytest.mark.skipif(not reference_available("llvm-undname"), reason="llvm-undname not installed")
