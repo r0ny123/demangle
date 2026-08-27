@@ -67,10 +67,14 @@ swiftlang/swift's own `Demangler.cpp` and `NodePrinter.cpp` rather than fitted t
 vectors, which is the only way the no-wrong-spellings property survives.
 `simplified-manglings.txt` is a whole output mode this does not have; see section 3.
 
-**Rust**, rustc-demangle's own `#[test]` vectors: 47 of 51. Three of the other four are
-its `{:#}` "no hash" mode rather than the `{}` this prints, and the fourth is a legacy
-name with no leading underscore, no hash and no `$...$` escape, which this declines
-because `ZN` is a perfectly ordinary start to a C identifier.
+**Rust**, rustc-demangle's own `#[test]` vectors: 47 of 51. Two of the other four are
+not differences from the *tool*: `rustfilt` prints `foo@@16` and echoes `ZN4testE` back
+unread, exactly as this does, and the vectors record the library's own `Display` instead.
+The remaining two are detection rather than spelling — `_ZN3foo5h05afE` carries a hash
+that is not rustc's `17h` and sixteen hex digits, so this reads it as the C++ `foo::h05af`
+it could equally be. rustc-demangle can afford the wider rule because it is only ever
+handed names a caller has already decided are Rust's; this plugin is offered every symbol
+in a binary.
 
 **GNU style**, against `c++filt` 2.42 over the 44,049 C++ symbols in the shipped
 libLLVM: 31 differ, and on every one of those this matches `llvm-cxxfilt` exactly — they
