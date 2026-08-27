@@ -42,13 +42,18 @@ jobs:
         include:
           - os: ubuntu-latest
             python: "pypy3.11"
-          # Free-threaded builds, where the GIL is not there to make a shared mutable
+          # A free-threaded build, where the GIL is not there to make a shared mutable
           # parser look safe. The Rust scheme held one at module scope and returned
           # another symbol's name under threads; on a GIL build that took eight threads
           # and three rounds to show up, and here it is ordinary. tests/test_concurrency
           # is the reason this row exists.
-          - os: ubuntu-latest
-            python: "3.13t"
+          #
+          # 3.14t rather than 3.13t, and that is forced rather than chosen: `hypothesis`
+          # ships a Rust extension built with PyO3, PyO3 refuses free-threaded CPython
+          # below 3.14, and there is no cp313t wheel on PyPI for it to fall back to --
+          # only cp314t and cp315 abi3t. So the test group cannot be installed on 3.13t
+          # at all, and no change here makes it. The coverage this row exists for is the
+          # same on either.
           - os: ubuntu-latest
             python: "3.14t"
     steps:

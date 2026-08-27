@@ -36,7 +36,20 @@ __all__ = ["Found", "demangle_stream", "demangle_text", "find_symbols"]
 #: `?` and `@` are here for MSVC, `$` for Swift and Free Pascal, `.` for clone suffixes
 #: and Go package paths, `-`, `+`, `[` and `]` for Objective-C method names, `/` for Go
 #: import paths.
-TOKEN = re.compile(r"[A-Za-z0-9_$@?.\-+\[\]/:]+")
+#:
+#: An Objective-C *method* is the one name here with a space inside it -- `+[Alpha
+#: copy_it:]` is a class and a selector -- so it cannot be a run of word characters and
+#: gets an alternative of its own, tried first. It is anchored on both sides: a `+` or
+#: `-` immediately followed by `[`, then everything up to the first `]` on that line.
+#: That cannot swallow prose, because ordinary text does not open with `+[`.
+#:
+#: What this fixes is the tokenising, not the finding. A method reaches `find_symbols`
+#: from a symbol table in its *mangled* form -- `_i_Alpha319_copy_it_`, which holds none
+#: of these characters -- and that has always been found. The bracketed form is what the
+#: mangled one demangles *to*, so it spells itself and is declined either way; before
+#: this it was declined as the two fragments `+[Alpha` and `copy_it:]`, which is the
+#: wrong reading of one name rather than the right reading of two.
+TOKEN = re.compile(r"[+-]\[[^\[\]\r\n]*\]|[A-Za-z0-9_$@?.\-+\[\]/:]+")
 
 #: A word is worth offering only if it holds one of these. Without it every ordinary word
 #: in a disassembly listing walks the whole detection chain, and `demumble`'s warning

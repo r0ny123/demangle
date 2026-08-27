@@ -329,6 +329,54 @@ class TestTheObject:
 
 
 @requires_gnu_cxxfilt
+class TestTheSchemeIsResolvedBeforeItIsUsed:
+    """A caller writes whatever name they like; the fields must not depend on which.
+
+    Every alias in `languages()` is documented, so `language="objective-c"` has to read
+    the same as `language="objc"`. Keyed by the alias, `_SEPARATORS` found nothing, the
+    scheme-specific extraction never ran, and the whole spelling came back as the base
+    name with `is_function` False.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "canonical", "aliases"),
+        [
+            ("+[A_B andThen:do:]", "objc", ("objective-c", "objectivec")),
+            ("_ZNSt6vectorIiSaIiEE9push_backERKi", "itanium", ("gnu", "gcc", "clang", "c++")),
+            ("?f@@YAXH@Z", "msvc", ("microsoft", "ms", "vc")),
+        ],
+    )
+    def test_an_alias_reads_the_same_as_the_name_it_stands_for(self, mangled, canonical, aliases):
+        expected = signature(mangled, language=canonical)
+        for alias in aliases:
+            assert signature(mangled, language=alias) == expected, alias
+
+    def test_the_language_field_is_the_scheme_rather_than_what_the_caller_typed(self):
+        assert signature("+[A_B andThen:do:]", language="objective-c").language == "objc"
+
+
+class TestEverySchemeHasASeparator:
+    """A scheme whose spelling joins components with something other than `::`.
+
+    `jni` was absent and fell back to `::`, so `com.example.Foo.bar` came back whole as
+    the base name with an empty namespace -- the structured fields saying nothing for a
+    scheme whose whole shape is a path.
+    """
+
+    def test_a_jni_name_splits_at_its_own_separator(self):
+        parts = signature("Java_com_example_Foo_bar__I")
+        assert parts.base_name == "bar"
+        assert parts.namespace == "com.example.Foo"
+        assert parts.namespace + "." + parts.base_name == parts.qualified_name
+
+    @pytest.mark.parametrize("mangled", ["AtEnd__13ivRubberGroup", "BuildLight__9CGuiLightCFv"])
+    def test_the_pre_itanium_schemes_take_the_cpp_default(self, mangled):
+        # Absent from the table on purpose: both spell C++, so `::` is right for them.
+        parts = signature(mangled)
+        assert parts.namespace and parts.base_name
+        assert parts.namespace + "::" + parts.base_name == parts.qualified_name
+
+
 class TestAgainstCxxfiltMinusP:
     """What `-p` prints, measured against the tool it is named after.
 

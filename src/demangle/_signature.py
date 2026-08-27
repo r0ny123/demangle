@@ -40,7 +40,7 @@ The `None`s are the point. A field that guesses is worse than a field that decli
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from .api import _decode
+from .api import _decode, _resolve
 from .api import detect as _detect
 from .api import parse as _parse
 from .core.limits import DEFAULT_LIMITS, Limits
@@ -63,6 +63,9 @@ _SEPARATORS = {
     "nim": ".",
     "pascal": ".",
     "objc": " ",
+    "jni": ".",
+    # `gnuv2` and `codewarrior` are absent on purpose rather than by oversight: both
+    # spell C++, so both take the `::` default above.
 }
 
 #: Words that trail a declaration and qualify it rather than being part of its type.
@@ -180,7 +183,11 @@ def signature(
     all empty.
     """
     tree = _parse(mangled, language=language, style=style, limits=limits)
-    scheme = language or _detect(mangled) or ""
+    # Through the registry, because `language` is whatever the caller wrote and the
+    # aliases are documented: `signature(..., language="objective-c")` must read the same
+    # as `language="objc"`, and keyed by the alias it found no separator and reported the
+    # whole spelling as the base name.
+    scheme = _resolve(language).name if language is not None else (_detect(mangled) or "")
     return _extract(_Reading(scheme, _SEPARATORS.get(scheme, "::"), style), tree)
 
 

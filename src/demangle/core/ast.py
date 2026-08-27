@@ -18,7 +18,7 @@ import sys
 
 from .builder import Builder
 from .errors import LimitExceeded
-from .style import get_style
+from .style import Style, get_style
 
 __all__ = [
     "AST_BUILDER",
@@ -693,8 +693,9 @@ class AstBuilder(Builder):
 
     def __init__(self, style=None):
         self._leaves = {}
-        # The style's *name*, not the style: one registered again under a name it
-        # already had must be picked up rather than remembered.
+        # The style's *name* where it has a registered one, so re-registering under that
+        # name is picked up rather than remembered; the style object itself where it was
+        # composed for one call and no name would find it. See `builder_for`.
         self._style = style
 
     def _leaf(self, cls, text):
@@ -809,12 +810,31 @@ _BUILDERS = {None: AST_BUILDER}
 def builder_for(style):
     """The tree builder for `style`.
 
+    A *registered* style is held by name, so one registered again under a name it already
+    had is picked up rather than remembered, and the common path -- `parse(name)`, whose
+    style is the string `"llvm"` -- is a dictionary lookup.
+
+    A style *object* that is not the registered one under its name gets its own builder,
+    holding the object. Keyed by name it would be wrong in both directions: a composed
+    style like `demangle.style("llvm", msvc={...})` keeps the name `"llvm"` and would
+    silently be served the registered style's builder, and a style whose name is not
+    registered at all made `parse()` raise `unknown style` from inside the parser --
+    while `demangle()` accepted the very same object. Building one per call matches the
+    bargain `demangle()` already makes for a style object: it is not cached either.
+
     `setdefault` rather than a lock: two threads arriving together each build one and
     the loser's is discarded, which costs an allocation and cannot produce two builders
     in use for one style.
     """
-    name = getattr(style, "name", style)
-    found = _BUILDERS.get(name)
+    if isinstance(style, Style):
+        try:
+            registered = get_style(style.name)
+        except ValueError:
+            registered = None
+        if registered is not style:
+            return AstBuilder(style)
+        style = style.name
+    found = _BUILDERS.get(style)
     if found is None:
-        found = _BUILDERS.setdefault(name, AstBuilder(name))
+        found = _BUILDERS.setdefault(style, AstBuilder(style))
     return found
