@@ -18,6 +18,7 @@ from .nodes import (
     qualify_declared,
     render,
 )
+from .options import DEFAULT_OPTIONS
 
 _BASIC_TYPES = {
     "X": "void",
@@ -269,6 +270,14 @@ _DATA_ACCESS = {
     "3": "",
     "4": "",
 }
+#: The same, split into the two pieces `MsvcOptions` can drop separately.
+_DATA_ACCESS_PARTS = {
+    "0": ("private: ", "static "),
+    "1": ("protected: ", "static "),
+    "2": ("public: ", "static "),
+    "3": ("", ""),
+    "4": ("", ""),
+}
 _POINTER_KINDS = {"P": (), "Q": ("const",), "R": ("volatile",), "S": ("const", "volatile")}
 # what stands where a pointee's cv would, when the pointer points into a class instead
 _MEMBER_DATA_QUALS = {"Q": (), "R": ("const",), "S": ("volatile",), "T": ("const", "volatile")}
@@ -329,8 +338,13 @@ class _Demangler:
 
     MAX_DEPTH = 64
 
-    def __init__(self, mangled, limits=DEFAULT_LIMITS):
+    def __init__(self, mangled, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         self.text = mangled
+        #: Which parts of a declaration to print. Held by the *parser* and not only by
+        #: the renderer, because this scheme resolves a back-reference against rendered
+        #: text: a template argument and a nested symbol are spelled as they are read, so
+        #: an option that changes their spelling has to be in force by then.
+        self.options = options
         self.pos = 0
         self.name_backrefs = []
         self.arg_backrefs = []
@@ -515,7 +529,12 @@ class _Demangler:
         # the scope spelled zero
         spelled = "0" if self.eat("@") else self.templateInteger()
         self.expect("?")
-        return f"`{self.nestedSymbol()}'::`{spelled}'"
+        # A scope is spelled in full whatever this run is leaving out. The reference
+        # applies its flags to the symbol being named, not to the ones naming where it
+        # lives: `--no-calling-convention` gives
+        # `public: `int __cdecl define_lambda(void)'::`1'::<lambda_1>::operator()(void)`,
+        # dropping the convention of the operator and keeping the scope's.
+        return f"`{self.nestedSymbol(options=DEFAULT_OPTIONS)}'::`{spelled}'"
 
     def namesADataSymbol(self):
         """Whether what follows is a data symbol rather than a function, without reading it.
@@ -532,7 +551,7 @@ class _Demangler:
             return False
         return not probe.eof() and probe.peek() in _DATA_ACCESS
 
-    def nestedSymbol(self, leading_question=True):
+    def nestedSymbol(self, leading_question=True, options=None):
         """A complete decorated name written inside another one.
 
         It continues this name's back-reference table rather than opening its own, so
@@ -541,19 +560,20 @@ class _Demangler:
         symbol, so its own leading template is not recorded either, and it ends where it
         ends rather than at the end of the text.
         """
+        options = self.options if options is None else options
         if leading_question:
-            inner = _Demangler(self.text)
+            inner = _Demangler(self.text, options=options)
             inner.pos = self.pos
         else:
             # the "?" this name would open with was spent on the code that introduced it,
             # so it is read over a copy that has one
-            inner = _Demangler("?" + self.text[self.pos :])
+            inner = _Demangler("?" + self.text[self.pos :], options=options)
         inner.nested = True
         inner.name_backrefs = self.name_backrefs
         inner.arg_backrefs = self.arg_backrefs
         inner.at_symbol_name = True
         inner.depth = self.depth
-        rendered = render(inner.parse())
+        rendered = render(inner.parse(), options=options)
         self.pos = inner.pos if leading_question else self.pos + inner.pos - 1
         return rendered
 
@@ -649,6 +669,11 @@ class _Demangler:
                 self.expect("8")
                 if not self.nested and not self.eof():
                     raise _Bail
+                if not self.options.variable_type:
+                    # The type is the whole of what a type descriptor says, so leaving it
+                    # out leaves the marker alone. The vtable and vbtable names are not
+                    # variables and keep theirs.
+                    return "`RTTI Type Descriptor'", "descriptor"
                 # the marker abuts a type that already ends in a sigil, as a declarator does
                 separator = "" if described.endswith(("*", "&")) else " "
                 return f"{described}{separator}`RTTI Type Descriptor'", "descriptor"
@@ -784,7 +809,7 @@ class _Demangler:
         raise _Bail
 
     def rendered(self, node, declarator=""):
-        text = render(node, declarator)
+        text = render(node, declarator, options=self.options)
         if len(text) > self.max_render:
             raise _LimitHit("output length")
         return text
@@ -1201,7 +1226,8 @@ class _Demangler:
             # rendering the declaration here is what refuses one grown past the output
             # bound; the tree it is built from is what the caller is handed
             self.rendered(declared, name)
-            return Declaration(_DATA_ACCESS[char], Name(name), declared)
+            access, storage = _DATA_ACCESS_PARTS[char]
+            return Declaration("", Name(name), declared, "", access, storage)
         return prefixed(extern_c, self.function(name, has_no_return_type, special_form == "vcall"))
 
     def stringLiteral(self):
@@ -1296,7 +1322,10 @@ class _Demangler:
             self.expect("A")
             if not self.nested and not self.eof():
                 raise _Bail
-            return Raw(f"[thunk]: __cdecl {name}{{{slot}, {{flat}}}}")
+            # The convention is fixed rather than read, but it is still a convention and
+            # `--no-calling-convention` drops it: `[thunk]: Base::`vcall'{8, {flat}}`.
+            convention = "__cdecl " if self.options.calling_convention else ""
+            return Raw(f"[thunk]: {convention}{name}{{{slot}, {{flat}}}}")
         if code == "R":
             access = _VTORDISP_ACCESS.get(self.take())
             if access is None:
@@ -1328,7 +1357,7 @@ class _Demangler:
             # the bound is enforced where a spelling is completed; the form that writes no
             # return type has nothing wrapped around its parameters to grow one
             self.rendered(signature, spelled)
-        return Declaration(f"[thunk]: {access}: virtual ", Name(spelled), signature, self.member_cv)
+        return Declaration("[thunk]: ", Name(spelled), signature, self.member_cv, f"{access}: ", "virtual ")
 
     def function(self, name, has_no_return_type, is_vcall=False):
         access_char = self.take()
@@ -1367,16 +1396,18 @@ class _Demangler:
         self.expect("Z")
         if not self.nested and not self.eof():
             raise _Bail
-        pieces = []
+        lead = ""
+        access_text = ""
+        storage = ""
         if thunk:
-            pieces.append("[thunk]: ")
+            lead = "[thunk]: "
             name = f"{name}{thunk}"
         if access:
-            pieces.append(f"{access}: ")
+            access_text = f"{access}: "
             if is_static:
-                pieces.append("static ")
+                storage = "static "
             if is_virtual:
-                pieces.append("virtual ")
+                storage = "virtual "
         if "\0conversion\0" in name:
             if returns is None:
                 raise _Bail
@@ -1386,7 +1417,7 @@ class _Demangler:
             # as in thunkBody: completing the spelling is what refuses one past the bound
             self.rendered(signature, name)
         trailing = self.member_cv if access and not is_static else ""
-        return Declaration("".join(pieces), Name(name), signature, trailing)
+        return Declaration(lead, Name(name), signature, trailing, access_text, storage)
 
 
 def parse_msvc_symbol(name, limits=DEFAULT_LIMITS):
@@ -1410,7 +1441,7 @@ def parse_msvc_symbol(name, limits=DEFAULT_LIMITS):
         return None
 
 
-def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS):
+def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """As `parse_msvc_symbol`, but raises `_LimitHit` when a bound stopped the parse.
 
     The plugin uses this one, so that `demangle_strict()` can report `LimitExceeded`
@@ -1422,7 +1453,7 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS):
     if any(char < " " or char == "\x7f" for char in name):
         return None
     try:
-        return _Demangler(name, limits).parse()
+        return _Demangler(name, limits, options).parse()
     except (_Bail, RecursionError):
         return None
 

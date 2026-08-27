@@ -9,11 +9,19 @@ A `Style` bundles those choices so a caller picks one name -- `"llvm"`, `"gnu"` 
 instead of threading half a dozen flags through every call. New languages add their own
 options to the mapping without changing this type, which is why the per-language policy
 is an opaque dict rather than a fixed set of fields.
+
+Not every choice is a disagreement between references, though, and the second kind is
+what `with_options` is for: *how much of a name to print*. Every peer tool lets a caller
+compose those at the call site -- `llvm-undname --no-calling-convention`,
+`UnDecorateSymbolName`'s mask, `c++filt -p` -- because "the same names, with less around
+them" is what makes a symbol table greppable. A style is immutable, so composing one
+returns a new style rather than changing the shared default, and a style object handed to
+`demangle()` is deliberately not cached: it is one call's policy, not the process's.
 """
 
 import threading
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .spelling import LEGACY_SPELLING_BUILDER, SPELLING_BUILDER
@@ -34,19 +42,48 @@ class Style:
         """The option object this style specifies for `language`, or None."""
         return self.language_options.get(language)
 
+    def with_options(self, **languages) -> "Style":
+        """This style with some language's options changed, as a new style.
+
+        Each keyword is a language name and each value is either that language's whole
+        options object or a mapping of the fields to change in the one already in force:
+
+            demangle(name, style=styles.get("llvm").with_options(msvc={"calling_convention": False}))
+
+        The result is a `Style` object rather than a registered name, which is what keeps
+        it a *per-call* policy: `demangle()` does not cache a call that passes one, so one
+        caller's narrower spelling cannot be served to another asking for the default.
+        """
+        changed = dict(self.language_options)
+        for language, value in languages.items():
+            if isinstance(value, Mapping):
+                current = changed.get(language)
+                if current is None:
+                    raise ValueError(
+                        f"style {self.name!r} carries no options for {language!r} to change; "
+                        f"pass that language's options object instead of a mapping"
+                    )
+                value = replace(current, **value)
+            changed[language] = value
+        return replace(self, language_options=changed)
+
 
 def _build_styles():
     from ..schemes.itanium.options import DEFAULT_OPTIONS, GNU_OPTIONS
+    from ..schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
 
+    # MSVC's options are the same in both styles, and deliberately: they say how much of
+    # a name to print, which is not something the two C++ references disagree about.
+    # They are here so `with_options(msvc=...)` has something to change.
     llvm = Style(
         name="llvm",
         spelling_builder=SPELLING_BUILDER,
-        language_options={"itanium": DEFAULT_OPTIONS},
+        language_options={"itanium": DEFAULT_OPTIONS, "msvc": MSVC_OPTIONS},
     )
     gnu = Style(
         name="gnu",
         spelling_builder=LEGACY_SPELLING_BUILDER,
-        language_options={"itanium": GNU_OPTIONS},
+        language_options={"itanium": GNU_OPTIONS, "msvc": MSVC_OPTIONS},
     )
     return {"llvm": llvm, "gnu": gnu}
 

@@ -235,6 +235,26 @@ which is whether to spell something *differently*.
   against `c++filt -t`, the three being a doubled `KK` cv-qualifier that GNU folds away
   and LLVM keeps, on input no compiler emits.
 
+- ~~**A per-call options object**~~ — *landed*. `style()` composes a style from a named
+  one and per-language changes, at the call site:
+  `demangle(name, style=demangle.style("llvm", msvc={"calling_convention": False}))`. A
+  composed style is an object rather than a registered name, and `demangle()` does not
+  cache a call that passes one, so one caller's narrower spelling cannot be served to
+  another. The MSVC scheme grew the five options `llvm-undname` has —
+  `calling_convention`, `access_specifier`, `member_type`, `return_type`,
+  `variable_type` — scored at **1,250 of 1,253** against the reference over the
+  differences those flags make on LLVM's own 609-name corpus. The three are names where
+  the reference's own `--no-return-type` leaves an unclosed bracket.
+
+  What the flags apply to is worth writing down, because each looks like a bug until you
+  watch the reference do it: a function reached as a *pointer's* pointee keeps its
+  calling convention, because the pointer prints it rather than the signature; a symbol
+  naming a *scope* keeps its full spelling; and `extern "C" ` goes with `static` and
+  `virtual` rather than with the access specifier.
+
+  Still to come from the same list: the Itanium and Rust knobs — `--strip-underscore`,
+  `DMGL_RET_POSTFIX`, Rust hash retention — and Swift's simplified bundle below.
+
 One is left, and it is Swift's:
 
 - **Swift's simplified manglings** — `test/Demangle/Inputs/simplified-manglings.txt` is

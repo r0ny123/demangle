@@ -28,6 +28,11 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 31, 31
 #: scored against *both* references, one corpus each, because the two spell the same
 #: types differently. Replayed and asserted by tests/test_types.py.
 TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1073
+
+#: What each of `llvm-undname`'s five suppression flags changes, over the 609 names of
+#: `msvc-llvm-corpus.txt`. Only the names a flag actually changes are recorded, so this
+#: counts *differences* the reference makes and not names. Replayed by tests/test_msvc.py.
+MSVC_SUPPRESSIONS_TOTAL, MSVC_SUPPRESSIONS_EXACT = 1253, 1250
 RUST_TOTAL, RUST_EXACT = 5316, 5316
 RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 

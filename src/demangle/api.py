@@ -59,6 +59,7 @@ __all__ = [
     "parse_type",
     "parseb",
     "parseb_type",
+    "style",
     "styles",
 ]
 
@@ -332,6 +333,35 @@ def _parse_type_handle(mangled, builder, language, style, limits):
         # and nothing else, so a defect in a plugin is wrapped rather than let out as an
         # `AttributeError` no caller can reasonably catch. The original is chained.
         raise ParseError(mangled, None, f"{plugin.name} type parser failed: {exc!r}") from exc
+
+
+def style(base: str | Style | None = DEFAULT_STYLE, /, **languages: Any) -> Style:
+    """Compose a style for one call: a named one, with some per-language changes.
+
+    The two named styles say how to spell a name; what a caller usually wants to vary is
+    how *much* of it to spell. Every peer tool composes that at the call site --
+    `llvm-undname --no-calling-convention`, `UnDecorateSymbolName`'s mask -- and this is
+    the same thing without a global registration:
+
+        >>> import demangle
+        >>> narrow = demangle.style("llvm", msvc={"calling_convention": False})
+        >>> demangle.demangle("?f@@YAXH@Z", style=narrow)
+        'void f(int)'
+        >>> demangle.demangle("?f@@YAXH@Z")
+        'void __cdecl f(int)'
+
+    Each keyword is a language name; each value is that language's options object or a
+    mapping of the fields to change. `languages()` lists the names, and each scheme's
+    `options` module documents what it accepts.
+
+    The result is an object rather than a registered name, and that is what keeps it to
+    one call: `demangle()` does not cache a call that passes a style object, so a
+    narrower spelling asked for here is never served to a caller asking for the default.
+
+    Raises:
+        ValueError: `base` is not a known style, or a language named has no options.
+    """
+    return get_style(base).with_options(**languages)
 
 
 def _type_languages():

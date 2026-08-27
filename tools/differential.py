@@ -102,6 +102,10 @@ NOT_REPLAYED = frozenset(
         # references: `c++filt -t` for the gnu style, `llvm-cxxfilt --types` for llvm.
         "itanium-types.txt",
         "itanium-types-llvm.txt",
+        # Three columns -- name, flag, spelling -- because what it records is what each
+        # of `llvm-undname`'s suppression flags *changes*, not what a name demangles to.
+        # Replayed by tests/test_msvc.py, which knows what the middle column means.
+        "msvc-suppressions.txt",
     }
 )
 

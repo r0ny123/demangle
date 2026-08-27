@@ -38,6 +38,7 @@ from .api import (
     parse_type,
     parseb,
     parseb_type,
+    style,
     styles,
 )
 from .core.ast import Decorated, Node
@@ -90,5 +91,6 @@ __all__ = [
     "register_style",
     "signature",
     "signatureb",
+    "style",
     "styles",
 ]

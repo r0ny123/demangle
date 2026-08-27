@@ -54,6 +54,7 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.REGRESSIONS_EXACT, pins.REGRESSIONS_TOTAL),
         (pins.TYPES_LLVM_EXACT, pins.TYPES_TOTAL),
         (pins.TYPES_GNU_EXACT, pins.TYPES_TOTAL),
+        (pins.MSVC_SUPPRESSIONS_EXACT, pins.MSVC_SUPPRESSIONS_TOTAL),
         (pins.GO_EXACT, pins.GO_TOTAL),
         (pins.D_EXACT, pins.D_TOTAL),
         (pins.SWIFT_EXACT, pins.SWIFT_TOTAL),

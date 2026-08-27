@@ -36,7 +36,7 @@ import sys
 
 from . import __version__
 from ._signature import signature
-from .api import demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, styles
+from .api import demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
 from .core.errors import DemanglingError
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 
@@ -96,6 +96,16 @@ def build_parser():
     parts.add_argument(
         "--no-return-type", action="store_true", help="print the whole declaration except the return type"
     )
+    less = parser.add_argument_group(
+        "printing less of a name",
+        "MSVC decorated names expand to a great deal more than the name. These are "
+        "`llvm-undname`'s flags, and mean the same. `--no-return-type` is shared with "
+        "the selection above and applies to every scheme.",
+    )
+    less.add_argument("--no-calling-convention", action="store_true", help="omit `__cdecl` and its siblings")
+    less.add_argument("--no-access-specifier", action="store_true", help="omit `public: `, `private: `")
+    less.add_argument("--no-member-type", action="store_true", help="omit `static ` and `virtual `")
+    less.add_argument("--no-variable-type", action="store_true", help="print a data symbol as its name alone")
     parser.add_argument("--relaxed", action="store_true", help="raise the resource bounds, for input you trust")
     parser.add_argument("--max-input", type=int, metavar="N", help="characters of input to consider")
     parser.add_argument("--max-output", type=int, metavar="N", help="characters of output to allow")
@@ -104,6 +114,27 @@ def build_parser():
     parser.add_argument("--list-styles", action="store_true", help="list output styles and exit")
     parser.add_argument("--version", action="version", version=f"demangle {__version__}")
     return parser
+
+
+#: `--flag` to the MSVC option it turns off. `--no-return-type` is shared with the
+#: selection flags: for every other scheme it is a render-time cut of the spelling, and
+#: for MSVC it has to be an option, because a return type there wraps *around* the
+#: declarator -- `int (__cdecl * __cdecl fn(void))(int)` has no prefix to strip.
+_MSVC_SUPPRESSIONS = {
+    "no_calling_convention": "calling_convention",
+    "no_access_specifier": "access_specifier",
+    "no_member_type": "member_type",
+    "no_variable_type": "variable_type",
+    "no_return_type": "return_type",
+}
+
+
+def _style_from(arguments):
+    """The style this run spells with: the named one, plus whatever it is to leave out."""
+    off = {option: False for flag, option in _MSVC_SUPPRESSIONS.items() if getattr(arguments, flag)}
+    if not off:
+        return arguments.style
+    return style(arguments.style, msvc=off)
 
 
 def _limits_from(arguments):
@@ -200,6 +231,8 @@ def main(argv=None):
         value = getattr(arguments, flag)
         if value is not None and value < 1:
             parser.error(f"--{flag.replace('_', '-')} must be positive")
+
+    arguments.style = _style_from(arguments)
 
     _reconfigure(sys.stdin, errors="surrogateescape")
     _reconfigure(sys.stdout, errors="surrogateescape")

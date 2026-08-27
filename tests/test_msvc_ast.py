@@ -49,8 +49,11 @@ class TestShape:
         parsed = tree("?f@S@@QBEHH@Z")
         assert parsed.spell() == "public: int __thiscall S::f(int) const"
         # access opens the spelling and the qualifier closes it; neither is part of the
-        # type, and a caller filtering by access should not have to find it in the text
-        assert parsed.prefix == "public: "
+        # type, and a caller filtering by access should not have to find it in the text.
+        # Access and storage are separate fields because each can be suppressed alone.
+        assert parsed.access == "public: "
+        assert parsed.member_type == ""
+        assert parsed.prefix == ""
         assert parsed.suffix == " const"
         assert parsed.declarator.text == "S::f"
         assert parsed.type.convention == "__thiscall"
@@ -75,7 +78,8 @@ class TestShape:
 
     def test_a_data_symbol_declares_a_type_rather_than_a_signature(self):
         parsed = tree("?d@foo@@0FB")
-        assert parsed.prefix == "private: static "
+        assert (parsed.access, parsed.member_type) == ("private: ", "static ")
+        assert not parsed.declares_a_function
         assert parsed.declarator.text == "foo::d"
         assert parsed.type.kind == "raw"
         assert next(parsed.find("function"), None) is None
