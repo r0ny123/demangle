@@ -59,10 +59,18 @@ class TestTheItaniumTypeGrammar:
     def test_the_shortfall_is_only_the_known_divergence(self):
         """The three misses are `KK`, a doubled cv-qualifier, and are all of them.
 
-        GNU folds a repeated qualifier away and prints `int const`; LLVM keeps both and
-        prints `int const const`, which is what this follows everywhere else. No
-        compiler emits `KK` -- the ABI writes one `<CV-qualifiers>` group per type -- so
-        the two references disagree only about input neither of them will ever be given.
+        Not a spelling preference but a different printing model. libiberty holds the
+        modifiers on a stack and walks it, skipping a cv-qualifier it finds already
+        pending -- so `KVKi` comes out `int volatile const` and `VKVi` comes out
+        `int const volatile`, one of each and in an order that depends on the sequence
+        rather than on a canon. LLVM applies each modifier as it reads it and prints what
+        it applied, which is the model here: `int const volatile const`.
+
+        Matching would mean porting the modifier stack, and what it would buy is agreement
+        on input neither reference will ever be given: the ABI writes one
+        `<CV-qualifiers>` group per type, so no compiler emits `KK` at all. Left as a
+        recorded divergence rather than chased. `tests/test_expressions.py` has the same
+        three under the symbol entry point.
         """
         missed = [
             enc for enc, expected in load_corpus("itanium-types.txt") if _spelled(enc, "itanium", "gnu") != expected

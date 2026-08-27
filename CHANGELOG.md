@@ -8,6 +8,24 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **ARM64EC hybrid names.** A function built for the hybrid ABI carries `$$h` after its
+  qualified name, and this refused every one of them. So does everything else:
+  `llvm-undname` 18.1.3 refuses `?func@@$$hYAXXZ`, and current upstream has no `$$h` in
+  `MicrosoftDemangle.cpp` -- there is no reference *spelling* to copy, and inventing one
+  is how a demangler starts inventing.
+
+  There is a normative *rule*, though. LLVM's `getArm64ECDemangledFunctionName` says what
+  an ARM64EC name is the hybrid form of, and it is what the compiler emits an `EXPORTAS`
+  directive against -- so its answer is the name the linker resolves. An MD5 name loses a
+  trailing `$$h@`; any other loses the first `$$h` wherever it stands. This reads the name
+  that leaves, as a *fallback*, so a name that already parses is never rewritten.
+
+  That makes the conformance check exact without a reference binary: **606 of 606** names
+  from LLVM's own corpus, with the marker inserted where LLVM's *mangler* puts it,
+  demangling to what the name without it demangles to. The `#name` form is recognised and
+  deliberately not read -- it would mean claiming every string opening with a `#` to strip
+  one character.
+
 - **MSVC RTTI type descriptor names, `.PEAX` and `.?AVFoo@@`.** A `type_info` points at
   a string and the linker spells it as a `.` followed by a bare type encoding. It is not
   a decorated name -- no `?`, nothing declared -- so every one was refused, and a PE

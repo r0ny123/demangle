@@ -281,6 +281,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Rust, both schemes | `rustfilt` (rustc-demangle 0.1.28) | **5316 / 5316** |
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
 | MSVC RTTI type descriptors, both forms | `llvm-undname` 18.1.3 | **106 / 106** |
+| MSVC ARM64EC hybrid names | LLVM's own mangling rule ✦ | **606 / 606** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **298 / 300** † |
@@ -305,6 +306,14 @@ with no flag.
 three are a doubled `KK` cv-qualifier: `c++filt` folds the repeat away and `llvm-cxxfilt`
 keeps it, and this follows LLVM. The ABI writes one `<CV-qualifiers>` group per type, so
 no compiler emits `KK` and the two references disagree only about input neither is given.
+
+✦ Nothing demangles ARM64EC's `$$h` marker — `llvm-undname` refuses these and so does
+current upstream — so there is no reference spelling to copy. There is a normative
+*rule*: LLVM's `getArm64ECDemangledFunctionName` says what an ARM64EC name is the hybrid
+form of, and it is what the compiler emits an `EXPORTAS` directive against, so its answer
+is the name the linker resolves. Every name in LLVM's own corpus with the marker inserted
+where LLVM's *mangler* puts it must demangle to what the name without it demangles to —
+and that column came from `llvm-undname`.
 
 § Free Pascal ships no demangler either. The property is re-assembly — the parts this
 splits out, rejoined with the compiler's own separators, must reproduce the symbol — and
