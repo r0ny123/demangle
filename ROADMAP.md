@@ -83,6 +83,15 @@ resolve to different entries and a `const` applied to a type that already carrie
 A further 97 `c++filt` refuses outright and this reads. Two names in the purpose-built
 gnu corpus are pinned for the same reason.
 
+**Doubled cv-qualifiers**, `KKi`, are the one place the two C++ references disagree that
+this does not follow either into: libiberty holds modifiers on a stack and skips a
+qualifier already pending, so `KVKi` prints `int volatile const` and `VKVi` prints
+`int const volatile` — one of each, in an order that depends on the sequence rather than
+on a canon. LLVM applies each as it reads it, which is the model here. Matching would mean
+porting the modifier stack to buy agreement on input neither reference will ever be given:
+the ABI writes one `<CV-qualifiers>` group per type, so no compiler emits `KK`. Three rows
+of `conformance/itanium-types.txt` record it.
+
 **Nim**: seven shortfalls, that language's own mangling discarding an underscore, listed
 by name in `tests/conformance/nim-lossy.txt`.
 
@@ -238,6 +247,21 @@ which is whether to spell something *differently*.
   same types differently: **1,076 of 1,076** against `llvm-cxxfilt --types` and 1,073
   against `c++filt -t`, the three being a doubled `KK` cv-qualifier that GNU folds away
   and LLVM keeps, on input no compiler emits.
+
+- ~~**ARM64EC hybrid names**~~ — *landed*, **606 of 606**. A function built for the
+  hybrid ABI carries `$$h` after its qualified name, and nothing reads it: `llvm-undname`
+  18.1.3 refuses `?func@@$$hYAXXZ` and current upstream has no `$$h` in
+  `MicrosoftDemangle.cpp` either. So there is no reference *spelling* — but there is a
+  normative *rule*, `getArm64ECDemangledFunctionName` in LLVM's `Mangler.cpp`, which is
+  what the compiler emits an `EXPORTAS` directive against and so answers with the name
+  the linker resolves. This reads that name, which makes the check exact without a
+  reference binary: the marker inserted where LLVM's mangler puts it must not change what
+  the name says.
+
+  The `#name` form — the same marker for a symbol that is not a C++ name — is recognised
+  and deliberately not read: it would mean claiming every string opening with a `#` to
+  strip one character, and this is offered every symbol in a binary where LLVM applies
+  its rule only to objects already known to be ARM64EC.
 
 - ~~**MSVC RTTI type descriptor names**~~ — *landed*. A `type_info` points at a string,
   and the linker spells it as a `.` and a bare type encoding: `.PEAX`, `.?AVFoo@@`. Not a

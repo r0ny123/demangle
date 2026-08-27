@@ -39,6 +39,12 @@ MSVC_SUPPRESSIONS_TOTAL, MSVC_SUPPRESSIONS_EXACT = 1253, 1250
 #: Both against `llvm-undname`. Replayed by tests/test_msvc_descriptors.py.
 MSVC_DESCRIPTORS_TOTAL, MSVC_DESCRIPTORS_EXACT = 106, 106
 
+#: ARM64EC hybrid names: the 609 of `msvc-llvm-corpus.txt` with the `$$h` marker inserted
+#: where LLVM's mangler puts it, expecting what the name without it demangles to. Three
+#: are absent because LLVM's mangler tags functions and those three are not functions.
+#: Replayed by tests/test_msvc_arm64ec.py.
+MSVC_ARM64EC_TOTAL, MSVC_ARM64EC_EXACT = 606, 606
+
 #: Swift's own `simplified-manglings.txt`, scored under `SwiftOptions.simplified()`.
 #: What `swift-demangle --simplified` prints, which is what Xcode and LLDB show a user.
 #: Replayed by tests/test_swift_simplified.py.

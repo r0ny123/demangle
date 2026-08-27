@@ -68,6 +68,35 @@ _TYPE_DESCRIPTOR_NAME = "."
 _TYPE_DESCRIPTOR_SUFFIX = "`RTTI Type Descriptor Name'"
 
 
+#: The ARM64EC marker. A function compiled for the hybrid ABI carries `$$h` in its
+#: decorated name, inserted immediately after the fully qualified name and before the
+#: type encoding, and an MD5-hashed one carries `$$h@` before its closing `@`. Both from
+#: LLVM's `getArm64ECMangledFunctionName`, which is where the mangling side of this
+#: lives; nothing reads it, `llvm-undname` included.
+_HYBRID_MARKER = "$$h"
+
+
+def _without_hybrid_marker(name):
+    """The ordinary decorated name an ARM64EC one is the hybrid form of, or None.
+
+    LLVM's `getArm64ECDemangledFunctionName`, which is normative here -- it is what the
+    compiler emits an `EXPORTAS` directive against, so the answer is the name the linker
+    resolves. Its rule is the whole of this: an MD5 name loses a trailing `$$h@`, and any
+    other loses the *first* `$$h` wherever it stands.
+
+    Not implemented: the `#name` form, which is the same marker for a symbol that is not
+    a C++ name at all. Reading it means claiming every string that opens with a `#` in
+    order to strip one character, and `demangle()` is offered every symbol in a binary.
+    LLVM applies its rule only to objects it has already established are ARM64EC.
+    """
+    if not name.startswith("?") or _HYBRID_MARKER not in name:
+        return None
+    if name.startswith(_MD5_PREFIX) and name.endswith("@$$h@"):
+        return name[:-4]
+    head, _, tail = name.partition(_HYBRID_MARKER)
+    return head + tail
+
+
 def detect(name):
     """A decorated name opens with `?`; a type descriptor's name opens with `.`.
 
@@ -135,6 +164,12 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         spelled = _render(tree, _TYPE_DESCRIPTOR_SUFFIX, options=options)
         _check_length(mangled, len(spelled), limits)
         return builder.raw(spelled)
+    hybrid = _without_hybrid_marker(mangled)
+    if hybrid is not None:
+        # ARM64EC. Read as the name it is the hybrid form *of*, which is what LLVM's own
+        # `getArm64ECDemangledFunctionName` answers -- and it has to be a fallback rather
+        # than a first step, because a name that already reads is not one to rewrite.
+        return parse(hybrid, builder, limits, options)
     if mangled.startswith(_MD5_PREFIX):
         # A hashed name carries no recoverable spelling, so it is its own expansion.
         # This is a successful parse, not a failure: there is nothing more to say about
