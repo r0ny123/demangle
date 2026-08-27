@@ -111,6 +111,13 @@ NOT_REPLAYED = frozenset(
         # so replaying it here would report 173 failures for a feature working as
         # designed. Pinned by tests/test_swift_simplified.py.
         "swift-simplified.txt",
+        # Four columns -- name, style, and the spelling with and without `DMGL_PARAMS` --
+        # because one of these names has no single reading: the five pre-Itanium styles
+        # read the same bytes differently and the name does not say which wrote it. The
+        # style is an option, so replaying the file here would score every ARM, Lucid and
+        # HP vector against GNU's reading of it. Pinned by tests/test_gnuv2.py, which
+        # knows what the second column means and scores both settings of the third.
+        "gnuv2-libiberty.txt",
     }
 )
 

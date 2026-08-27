@@ -8,6 +8,42 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Pre-Itanium C++: g++ 2.x, cfront/ARM, Lucid, HP aCC and EDG.** Everything C++ before
+  the Itanium ABI, which is what a binary from before 2000 -- and anything HP's or
+  Lucid's compilers built after it -- holds. Five manglings, and one demangler, because
+  that is how libiberty implements them: `cplus-dem.c` reads all five under five style
+  flags, and this is a transcription of it at GCC 8.3.0, the last release that carried
+  it before GCC 9 deleted it.
+
+  **1324 of 1324** against that same tree's own `demangle-expected`: every case it marks
+  `--format=gnu`, `--format=lucid`, `--format=arm` or `--format=hp` -- 662 names -- scored
+  under both settings of `DMGL_PARAMS`, because the file records both spellings and they
+  reach the parser differently.
+
+  The style is an option rather than something detection works out, and deliberately:
+  `__ct__1cFi` is `c::c(int)` to a cfront compiler and `c::__ct(int)` to g++, both
+  readings parse, and nothing in the name says which is right. `gnu` is the default;
+  `demangle.style("llvm", gnuv2={"style": "arm"})` picks another, and `params` and `ansi`
+  are there beside it as the reference's other two flags.
+
+  Detection is the whole risk. A name in this family is an ordinary C identifier with a
+  `__` somewhere in it -- `AtEnd__13ivRubberGroup` is something a C compiler would have
+  accepted -- so there is no prefix to key on, and a scheme that guessed would rewrite
+  other people's symbols into plausible lies. Three things instead: the scheme is offered
+  *last*, after Itanium, so it only sees what nothing else claimed; `detect` runs the
+  whole parse rather than a shape test; and a reading has to have decoded something a C++
+  name has -- a name whose components are not identifiers, a `static` with no class to be
+  static in, a label with nothing keyed to it, a parameter with no type in it -- or it is
+  refused. Measured, not argued: over the 80,748 names in every other scheme's corpus it
+  claims **none**, and over **339,117** symbols from this machine's own shared libraries
+  it claims **one** -- `drm_intel_gem_bo_map__wc`, where `wc` is a valid argument list and
+  `c++filt --format=gnu` reads it identically.
+
+  Two places are stricter than the reference, both where the reference reads something
+  that is not a type: a class name of length zero, and a type that spells no base type at
+  all. Neither appears in its own vectors, and the second is what
+  `drm_intel_gem_bo_map__cpu` looked like.
+
 - **ARM64EC hybrid names.** A function built for the hybrid ABI carries `$$h` after its
   qualified name, and this refused every one of them. So does everything else:
   `llvm-undname` 18.1.3 refuses `?func@@$$hYAXXZ`, and current upstream has no `$$h` in

@@ -1,7 +1,8 @@
 # demangle
 
-Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **Rust**, **Swift**,
-**Objective-C**, **Go**, **D**, **Nim**, **Free Pascal** and **Delphi** — in pure Python. No dependencies, no native
+Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **pre-Itanium C++**
+(g++ 2.x, cfront/ARM, Lucid, HP aCC), **Rust**, **Swift**, **Objective-C**, **Go**, **D**,
+**Nim**, **Free Pascal** and **Delphi** — in pure Python. No dependencies, no native
 code, no compiler required.
 
 ```python
@@ -22,6 +23,8 @@ code, no compiler required.
 'MYUNIT.TWIDGET.AREA: LONGINT'
 >>> demangle.demangle("@Unit@Class@Method$qqrv")
 '__fastcall Unit::Class::Method()'
+>>> demangle.demangle("AddAlignment__9ivTSolverUiP12ivInteractorP7ivTGlue")
+'ivTSolver::AddAlignment(unsigned int, ivInteractor *, ivTGlue *)'
 ```
 
 ## Why this exists
@@ -296,6 +299,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
 | Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` | **217 / 217** |
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
+| Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
 
 †† The three are names where `llvm-undname --no-return-type` leaves an unclosed
 bracket — `int (__cdecl * (__cdecl B::*volatile memptrtofun7)(void)` is not a declaration
@@ -339,6 +343,20 @@ GNU-family method mangling is not injective, and clang says so where it writes i
 `_i_A_B_c` is `-[A(B) c]` and `-[A_B c]` alike. Every reading that re-mangles is found and
 the preferred one is flagged `ambiguous`; the 26 names where the preference differs from
 the declaration are listed in `tests/conformance/objc-lossy.txt` rather than rounded off.
+
+★ Pre-Itanium C++ is five manglings that share one demangler: g++ before 3.0, Lucid's
+`lcc`, the ARM/cfront encoding, HP aCC and EDG. The reference is libiberty's
+`cplus-dem.c` at GCC 8.3.0, the last release that carried it, and the corpus is the 662
+cases that tree's own `demangle-expected` marks `--format=gnu`, `--format=lucid`,
+`--format=arm` or `--format=hp` — scored under both settings of `DMGL_PARAMS`, which is
+what makes it 1,324. Nothing in one of these names says which of the five compilers
+wrote it, so the style is an option and the default is `gnu`; a caller who knows the
+binary passes `demangle.style("llvm", gnuv2={"style": "arm"})`. Because a name in this
+family is an ordinary C identifier with a `__` in it, this scheme is offered *last* and
+its detection reads the whole name rather than a prefix: over the 80,748 names in every
+other scheme's corpus it claims none, and over 339,117 symbols from this machine's own
+shared libraries it claims one — `drm_intel_gem_bo_map__wc`, where `wc` is a valid
+argument list and `c++filt --format=gnu` reads it exactly the same way.
 
 ◊ Delphi and C++Builder share one mangling, `@Unit@Class@Method$qqrv`. There is no Delphi
 compiler on the platforms this is developed on, so the grammar is Embarcadero's own

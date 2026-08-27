@@ -198,7 +198,20 @@ class TestDetectionOrderIsPinned:
     the test that would have told them so.
     """
 
-    EXPECTED = ("go", "nim", "jni", "pascal", "objc", "delphi", "d", "swift", "rust", "msvc", "itanium")
+    EXPECTED = (
+        "go",
+        "nim",
+        "jni",
+        "pascal",
+        "objc",
+        "delphi",
+        "d",
+        "swift",
+        "rust",
+        "msvc",
+        "itanium",
+        "gnuv2",
+    )
 
     def test_the_built_in_order_is_what_it_is(self):
         from demangle.core.registry import available
@@ -210,6 +223,13 @@ class TestDetectionOrderIsPinned:
 
         priorities = [plugin.priority for plugin in available()]
         assert priorities == sorted(priorities)
+
+    def test_pre_itanium_cpp_is_offered_last_of_all(self):
+        """It is the one scheme with no marker: its names are C identifiers with a `__`."""
+        from demangle.core.registry import available
+
+        order = [plugin.name for plugin in available()]
+        assert order[-1] == "gnuv2"
 
     def test_rust_is_offered_before_itanium(self):
         """A legacy Rust symbol *is* an Itanium symbol; only the order tells them apart."""

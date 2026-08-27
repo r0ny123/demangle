@@ -38,11 +38,16 @@ CORPUS_FOR = {
     "objc": "objc-real-world.txt",
     "delphi": "delphi-real-world.txt",
     "jni": "jni-real-world.txt",
+    "gnuv2": "gnuv2-libiberty.txt",
 }
 
 
 def _longest(name):
-    """The longest name in a scheme's corpus, which is the one a tight bound will bite."""
+    """The longest name in a scheme's corpus, which is the one a tight bound will bite.
+
+    Read by the first column alone, which is the mangled name in every corpus here --
+    the pre-Itanium one carries its style and two spellings in the columns after it.
+    """
     corpus = load_corpus(CORPUS_FOR[name])
     return max((mangled for mangled, _ in corpus), key=len, default="")
 

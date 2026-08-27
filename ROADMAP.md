@@ -124,37 +124,42 @@ each is measured against differs, and the difference is the interesting part:
   the package/class boundary, which the encoding genuinely does not carry, so the
   spelling puts the whole path in one run rather than inventing a structure.
 
-Two schemes are worth weighing, and a survey of what the reverse-engineering tools
-actually ship says so:
+- **Pre-Itanium C++: the GNU v2 / cfront / ARM family** — *landed*. `__ls__7ostreamPCc`,
+  `BuildLight__9CGuiLightCFv`. binutils *deleted* these styles in 2019 and Ghidra ships a
+  second, older copy of libiberty specifically to keep reading them, which was the
+  loudest available signal that analysts still meet them — console and embedded
+  decompilation lives on this. It was the largest single gap and the only item left that
+  was a whole scheme.
 
-- **Pre-Itanium C++: the GNU v2 / cfront / ARM family**, and Metrowerks CodeWarrior's
-  variant. `__ls__7ostreamPCc`, `BuildLight__9CGuiLightCFv`. binutils *deleted* these
-  styles in 2019 and Ghidra ships a second, older copy of libiberty specifically to keep
-  reading them, which is the loudest available signal that analysts still meet them —
-  console and embedded decompilation lives on this. The largest single gap, and the only
-  item left that is a whole scheme.
+  Five manglings, one demangler: g++ before 3.0, Lucid's `lcc`, the ARM/cfront encoding,
+  HP aCC and EDG are the same code in `libiberty/cplus-dem.c` under five style flags, and
+  the port is a transcription of it at `releases/gcc-8.3.0`, the last release that
+  carried it. Scored against that tree's own `demangle-expected`: the 662 cases marked
+  `--format=gnu`, `--format=lucid`, `--format=arm` or `--format=hp`, under both settings
+  of `DMGL_PARAMS` — **1324 of 1324**.
 
-  Both halves of what it needs are obtainable, which is more than was known when this
-  was first written. The reference is `libiberty/cplus-dem.c`, still in the GCC tree at
-  `releases/gcc-8.3.0`: 5,032 lines, of which about 2,500 are the pre-v3 demangler
-  proper. The corpus is `libiberty/testsuite/demangle-expected` from the same tree, in
-  the mangled/expected shape every scheme here is scored in — **gnu 257, lucid 208,
-  hp 110, arm 87**, and one port covers all four, since they are the same code under
-  four flags.
+  The two things that made it a pass of its own were the ones named here before it
+  started. The demangler is *stateful* in a way none of the other schemes are —
+  constructor and destructor counters the signature code decrements, a type vector for
+  back references plus separate B and K squangling vectors, and an
+  `iterate_demangle_function` that saves and restores the whole state to retry a
+  different `__` split when the first guess fails. And detection was the shipping risk
+  rather than the reading: a GNU v2 name is an ordinary C identifier with `__` in it, so
+  the whole name is parsed before anything is claimed, the scheme is offered *last* of
+  all, and the false-positive rate was measured before it landed — **0** claims over the
+  80,748 names in every other scheme's corpus, and **1** over 339,117 real symbols, on a
+  name `c++filt --format=gnu` reads the same way.
 
-  Two things make it a pass of its own rather than an afternoon. The demangler is
-  *stateful* in a way none of these schemes are — constructor and destructor counters
-  the signature code decrements, a type vector for back references plus separate B and K
-  squangling vectors, and an `iterate_demangle_function` that saves and restores the
-  whole state to retry a different `__` split when the first guess fails. And detection
-  is the shipping risk rather than the reading: a GNU v2 name is an ordinary C identifier
-  with `__` in it, so the whole name must parse before it is claimed, the scheme must be
-  offered late, and the false-positive rate has to be measured over the checked-in
-  corpora and a real symbol table before it lands — the bar the `.`-prefixed MSVC
-  descriptor names were held to.
+  Which of the five wrote a name is not recoverable from the name, so the style is an
+  option rather than a guess: `demangle.style("llvm", gnuv2={"style": "arm"})`, with
+  `gnu` the default.
 
-  CodeWarrior is separate: `encounter/cwdemangle` is the reference, `demangle-expected`
-  has no vectors for it, and it needs its own measurable property first.
+One scheme is left worth weighing, plus a variant of the one just landed:
+
+- **Metrowerks CodeWarrior**, the remaining pre-Itanium variant.
+  `encounter/cwdemangle` is the reference, `demangle-expected` has no vectors for it,
+  and it needs its own measurable property first — which is why it did not land beside
+  the four above rather than because the reading is hard.
 - **Ada/GNAT** — `pkg__proc$2`, still carried by libiberty as `--format=gnat` when the
   others were dropped, and documented normatively in GCC's own `exp_dbug.ads`. Narrow
   but concentrated: avionics, rail, defence.
