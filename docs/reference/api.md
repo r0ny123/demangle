@@ -55,6 +55,13 @@ demangle.demangle("?f@@YAXH@Z", style=demangle.style("llvm", msvc={"calling_conv
 # 'void f(int)'
 ```
 
+MSVC's nine options come from two references, and which one names a field decides how far
+that field reaches. The five `llvm-undname` flags are declaration-level: they apply to the
+declaration and to the types written inside it, and stop at the edge of the symbol. The
+four `UnDecorateSymbolName` mask bits are lexical, and reach every occurrence of what they
+name — including the ones inside a template argument and inside the enclosing symbol a
+local name is scoped by. `MsvcOptions` below says which is which.
+
 ::: demangle.api
     options:
       members:

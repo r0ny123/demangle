@@ -1,0 +1,498 @@
+# What `UnDecorateSymbolName` prints under `UNDNAME_NAME_ONLY`, over the names of
+# msvc-llvm-corpus.txt that this library and the reference already spell alike.
+# Two columns: decorated name, what the reference printed.
+#
+# reference: dbghelp.dll 10.0.26100.8328 (UnDecorateSymbolName)
+#
+# This is a comparison, not an expectation. `MsvcOptions` has no field for this bit,
+# because the bit is not a suppression that composes with the others -- it is a whole
+# reduced spelling, which also rewrites every symbol *nested* inside the name: a local
+# name's enclosing function, and a template argument that points at one, come back as
+# names too. `signature().qualified_name` reads the qualified name off the tree and
+# leaves what is nested inside it alone, so the two agree on most names and part
+# company on the ones with a symbol inside them. tests/test_msvc_options.py pins how
+# many of each, so the difference is measured rather than assumed.
+#
+# Restricted to the names the two references spell alike unflagged, so that what this
+# shows is the mode differing rather than the two houses' typography.
+#
+# Regenerate with tools/generate_msvc_dbghelp_corpus.py, on Windows.
+#
+?foo@@YAXI@Z	foo
+?foo@@YAXN@Z	foo
+?foo_pad@@YAXPAD@Z	foo_pad
+?foo_pad@@YAXPEAD@Z	foo_pad
+?foo_pbd@@YAXPBD@Z	foo_pbd
+?foo_pbd@@YAXPEBD@Z	foo_pbd
+?foo_pcd@@YAXPCD@Z	foo_pcd
+?foo_pcd@@YAXPECD@Z	foo_pcd
+?foo_qad@@YAXQAD@Z	foo_qad
+?foo_qad@@YAXQEAD@Z	foo_qad
+?foo_rad@@YAXRAD@Z	foo_rad
+?foo_rad@@YAXREAD@Z	foo_rad
+?foo_sad@@YAXSAD@Z	foo_sad
+?foo_sad@@YAXSEAD@Z	foo_sad
+?foo_piad@@YAXPIAD@Z	foo_piad
+?foo_piad@@YAXPEIAD@Z	foo_piad
+?foo_papad@@YAXPAPAD@Z	foo_papad
+?foo_papad@@YAXPEAPEAD@Z	foo_papad
+?foo_papbd@@YAXPAPBD@Z	foo_papbd
+?foo_papbd@@YAXPEAPEBD@Z	foo_papbd
+?foo_papcd@@YAXPAPCD@Z	foo_papcd
+?foo_papcd@@YAXPEAPECD@Z	foo_papcd
+?foo_pbqad@@YAXPBQAD@Z	foo_pbqad
+?foo_pbqad@@YAXPEBQEAD@Z	foo_pbqad
+?foo_pcrad@@YAXPCRAD@Z	foo_pcrad
+?foo_pcrad@@YAXPECREAD@Z	foo_pcrad
+?foo_qapad@@YAXQAPAD@Z	foo_qapad
+?foo_qapad@@YAXQEAPEAD@Z	foo_qapad
+?foo_rapad@@YAXRAPAD@Z	foo_rapad
+?foo_rapad@@YAXREAPEAD@Z	foo_rapad
+?foo_pbqbd@@YAXPBQBD@Z	foo_pbqbd
+?foo_pbqbd@@YAXPEBQEBD@Z	foo_pbqbd
+?foo_pbqcd@@YAXPBQCD@Z	foo_pbqcd
+?foo_pbqcd@@YAXPEBQECD@Z	foo_pbqcd
+?foo_pcrbd@@YAXPCRBD@Z	foo_pcrbd
+?foo_pcrbd@@YAXPECREBD@Z	foo_pcrbd
+?foo_pcrcd@@YAXPCRCD@Z	foo_pcrcd
+?foo_pcrcd@@YAXPECRECD@Z	foo_pcrcd
+?foo_aad@@YAXAAD@Z	foo_aad
+?foo_aad@@YAXAEAD@Z	foo_aad
+?foo_abd@@YAXABD@Z	foo_abd
+?foo_abd@@YAXAEBD@Z	foo_abd
+?foo_aapad@@YAXAAPAD@Z	foo_aapad
+?foo_aapad@@YAXAEAPEAD@Z	foo_aapad
+?foo_aapbd@@YAXAAPBD@Z	foo_aapbd
+?foo_aapbd@@YAXAEAPEBD@Z	foo_aapbd
+?foo_abqad@@YAXABQAD@Z	foo_abqad
+?foo_abqad@@YAXAEBQEAD@Z	foo_abqad
+?foo_abqbd@@YAXABQBD@Z	foo_abqbd
+?foo_abqbd@@YAXAEBQEBD@Z	foo_abqbd
+?foo_aay144h@@YAXAAY144H@Z	foo_aay144h
+?foo_aay144h@@YAXAEAY144H@Z	foo_aay144h
+?foo_aay144cbh@@YAXAAY144$$CBH@Z	foo_aay144cbh
+?foo_aay144cbh@@YAXAEAY144$$CBH@Z	foo_aay144cbh
+?foo_qay144h@@YAX$$QAY144H@Z	foo_qay144h
+?foo_qay144h@@YAX$$QEAY144H@Z	foo_qay144h
+?foo_qay144cbh@@YAX$$QAY144$$CBH@Z	foo_qay144cbh
+?foo_qay144cbh@@YAX$$QEAY144$$CBH@Z	foo_qay144cbh
+?foo_p6ahxz@@YAXP6AHXZ@Z	foo_p6ahxz
+?foo_a6ahxz@@YAXA6AHXZ@Z	foo_a6ahxz
+?foo_q6ahxz@@YAX$$Q6AHXZ@Z	foo_q6ahxz
+?foo_qay04h@@YAXQAY04H@Z	foo_qay04h
+?foo_qay04h@@YAXQEAY04H@Z	foo_qay04h
+?foo_qay04cbh@@YAXQAY04$$CBH@Z	foo_qay04cbh
+?foo_qay04cbh@@YAXQEAY04$$CBH@Z	foo_qay04cbh
+?foo@@YAXPAY02N@Z	foo
+?foo@@YAXPEAY02N@Z	foo
+?foo@@YAXQAN@Z	foo
+?foo@@YAXQEAN@Z	foo
+?foo_const@@YAXQBN@Z	foo_const
+?foo_const@@YAXQEBN@Z	foo_const
+?foo_volatile@@YAXQCN@Z	foo_volatile
+?foo_volatile@@YAXQECN@Z	foo_volatile
+?foo@@YAXPAY02NQBNN@Z	foo
+?foo@@YAXPEAY02NQEBNN@Z	foo
+?foo_fnptrconst@@YAXP6AXQAH@Z@Z	foo_fnptrconst
+?foo_fnptrconst@@YAXP6AXQEAH@Z@Z	foo_fnptrconst
+?foo_fnptrarray@@YAXP6AXQAH@Z@Z	foo_fnptrarray
+?foo_fnptrarray@@YAXP6AXQEAH@Z@Z	foo_fnptrarray
+?foo_fnptrbackref1@@YAXP6AXQAH@Z1@Z	foo_fnptrbackref1
+?foo_fnptrbackref1@@YAXP6AXQEAH@Z1@Z	foo_fnptrbackref1
+?foo_fnptrbackref2@@YAXP6AXQAH@Z1@Z	foo_fnptrbackref2
+?foo_fnptrbackref2@@YAXP6AXQEAH@Z1@Z	foo_fnptrbackref2
+?foo_fnptrbackref3@@YAXP6AXQAH@Z1@Z	foo_fnptrbackref3
+?foo_fnptrbackref3@@YAXP6AXQEAH@Z1@Z	foo_fnptrbackref3
+?foo_fnptrbackref4@@YAXP6AXPAH@Z1@Z	foo_fnptrbackref4
+?foo_fnptrbackref4@@YAXP6AXPEAH@Z1@Z	foo_fnptrbackref4
+?ret_fnptrarray@@YAP6AXQAH@ZXZ	ret_fnptrarray
+?ret_fnptrarray@@YAP6AXQEAH@ZXZ	ret_fnptrarray
+?mangle_no_backref0@@YAXQAHPAH@Z	mangle_no_backref0
+?mangle_no_backref0@@YAXQEAHPEAH@Z	mangle_no_backref0
+?mangle_no_backref1@@YAXQAHQAH@Z	mangle_no_backref1
+?mangle_no_backref1@@YAXQEAHQEAH@Z	mangle_no_backref1
+?mangle_no_backref2@@YAXP6AXXZP6AXXZ@Z	mangle_no_backref2
+?mangle_yes_backref0@@YAXQAH0@Z	mangle_yes_backref0
+?mangle_yes_backref0@@YAXQEAH0@Z	mangle_yes_backref0
+?mangle_yes_backref1@@YAXQAH0@Z	mangle_yes_backref1
+?mangle_yes_backref1@@YAXQEAH0@Z	mangle_yes_backref1
+?mangle_yes_backref2@@YAXQBQ6AXXZ0@Z	mangle_yes_backref2
+?mangle_yes_backref2@@YAXQEBQ6AXXZ0@Z	mangle_yes_backref2
+?mangle_yes_backref3@@YAXQAP6AXXZ0@Z	mangle_yes_backref3
+?mangle_yes_backref3@@YAXQEAP6AXXZ0@Z	mangle_yes_backref3
+?pr23325@@YAXQBUS@@0@Z	pr23325
+?pr23325@@YAXQEBUS@@0@Z	pr23325
+?f1@@YAXPBD0@Z	f1
+?f2@@YAXPBDPAD@Z	f2
+?f3@@YAXHPBD0@Z	f3
+?f4@@YAPBDPBD0@Z	f4
+?f5@@YAXPBDIDPBX0I@Z	f5
+?f6@@YAX_N0@Z	f6
+?f7@@YAXHPAHH0_N1PA_N@Z	f7
+?g1@@YAXUS@@@Z	g1
+?g2@@YAXUS@@0@Z	g2
+?g3@@YAXUS@@0PAU1@1@Z	g3
+?g4@@YAXPBDPAUS@@01@Z	g4
+?mbb@S@@QAEX_N0@Z	S::mbb
+?h1@@YAXPBD0P6AXXZ1@Z	h1
+?h2@@YAXP6AXPAX@Z0@Z	h2
+?h3@@YAP6APAHPAH0@ZP6APAH00@Z10@Z	h3
+?foo@0@YAXXZ	foo::foo
+??$?HH@S@@QEAAAEAU0@H@Z	S::operator+<int>
+?foo_bt@@YAX_NV?$B@$$A6A_N_N@Z@@@Z	foo_bt
+?z_foo@@YA?AVZ@N@@V12@@Z	z_foo
+?b_foo@@YA?AV?$B@D@N@@V12@@Z	b_foo
+?d_foo@@YA?AV?$D@DD@N@@V12@@Z	d_foo
+?foo11@@YAXV?$Y@VX@NA@@@NA@@V1NB@@@Z	foo11
+?foo112@@YAXV?$Y@VX@NA@@@NA@@V?$Y@VX@NB@@@NB@@@Z	foo112
+?foo@L@PR13207@@QAEXV?$I@VA@PR13207@@@2@@Z	PR13207::L::foo
+?foo@PR13207@@YAXV?$I@VA@PR13207@@@1@@Z	PR13207::foo
+?foo2@PR13207@@YAXV?$I@VA@PR13207@@@1@0@Z	PR13207::foo2
+?bar@PR13207@@YAXV?$J@VA@PR13207@@VB@2@@1@@Z	PR13207::bar
+?spam@PR13207@@YAXV?$K@VA@PR13207@@VB@2@VC@2@@1@@Z	PR13207::spam
+?foo@NA@PR13207@@YAXV?$Y@VX@NA@PR13207@@@12@@Z	PR13207::NA::foo
+?foo@NB@PR13207@@YAXV?$Y@VX@NA@PR13207@@@12@@Z	PR13207::NB::foo
+?bar@NB@PR13207@@YAXV?$Y@VX@NB@PR13207@@@NA@2@@Z	PR13207::NB::bar
+?spam@NB@PR13207@@YAXV?$Y@VX@NA@PR13207@@@NA@2@@Z	PR13207::NB::spam
+?foo@NC@PR13207@@YAXV?$Y@VX@NB@PR13207@@@12@@Z	PR13207::NC::foo
+?fun_normal@fn_space@@YA?AURetVal@1@H@Z	fn_space::fun_normal
+??$fun_tmpl@H@fn_space@@YA?AURetVal@0@ABH@Z	fn_space::fun_tmpl<int>
+??$fun_tmpl_recurse@H$1??$fun_tmpl_recurse@H$1?ident@fn_space@@YA?AURetVal@2@H@Z@fn_space@@YA?AURetVal@1@H@Z@fn_space@@YA?AURetVal@0@H@Z	fn_space::fun_tmpl_recurse<int, &fn_space::fun_tmpl_recurse<int, &fn_space::ident> >
+??$fun_tmpl_recurse@H$1?ident@fn_space@@YA?AURetVal@2@H@Z@fn_space@@YA?AURetVal@0@H@Z	fn_space::fun_tmpl_recurse<int, &fn_space::ident>
+?AddEmitPasses@EmitAssemblyHelper@?A0x43583946@@AEAA_NAEAVPassManager@legacy@llvm@@W4BackendAction@clang@@AEAVraw_pwrite_stream@5@PEAV85@@Z	`anonymous namespace'::EmitAssemblyHelper::AddEmitPasses
+??$forward@P8?$DecoderStream@$01@media@@AEXXZ@std@@YA$$QAP8?$DecoderStream@$01@media@@AEXXZAAP812@AEXXZ@Z	std::forward<void (__thiscall media::DecoderStream<2>::*)(void)>
+?c@FTypeWithQuals@@3U?$S@$$A8@@IAAHXZ@1@A	FTypeWithQuals::c
+?j@FTypeWithQuals@@3U?$S@$$A6AHXZ@1@A	FTypeWithQuals::j
+?Char16Var@@3_SA	Char16Var
+?Char32Var@@3_UA	Char32Var
+?LRef@@YAXAAH@Z	LRef
+?RRef@@YAH$$QAH@Z	RRef
+?Null@@YAX$$T@Z	Null
+?fun@PR18022@@YA?AU<unnamed-type-a>@1@U21@0@Z	PR18022::fun
+?lambda@?1??define_lambda@@YAHXZ@4V<lambda_1>@?0??1@YAHXZ@A	`define_lambda'::`2'::lambda
+??R<lambda_1>@?0??define_lambda@@YAHXZ@QBE@XZ	`define_lambda'::`1'::<lambda_1>::operator()
+??$templ_fun_with_pack@$S@@YAXXZ	templ_fun_with_pack<>
+??$func@H$$ZH@@YAHAEBU?$Foo@H@@0@Z	func<int, int>
+??$templ_fun_with_ty_pack@$$$V@@YAXXZ	templ_fun_with_ty_pack<>
+??$templ_fun_with_ty_pack@$$V@@YAXXZ	templ_fun_with_ty_pack<>
+??$f@$$YAliasA@PR20047@@@PR20047@@YAXXZ	PR20047::f<PR20047::AliasA>
+?f@UnnamedType@@YAXAAU<unnamed-type-TD>@A@1@@Z	UnnamedType::f
+?f@UnnamedType@@YAXPAW4<unnamed-type-e>@?$B@H@1@@Z	UnnamedType::f
+??R<lambda_0>@?0??PR26105@@YAHXZ@QBE@H@Z	`PR26105'::`1'::<lambda_0>::operator()
+?unaligned_foo1@@YAPFAHXZ	unaligned_foo1
+?unaligned_foo3@@YAHXZ	unaligned_foo3
+?unaligned_foo4@@YAXPFAH@Z	unaligned_foo4
+?unaligned_foo5@@YAXPIFAH@Z	unaligned_foo5
+??$unaligned_foo6@PAH@@YAPAHPAH@Z	unaligned_foo6<int *>
+??$unaligned_foo6@PFAH@@YAPFAHPFAH@Z	unaligned_foo6<int __unaligned *>
+?unaligned_foo8@unaligned_foo8_S@@QFCEXXZ	unaligned_foo8_S::unaligned_foo8
+??R<lambda_1>@x@A@PR31197@@QBE@XZ	PR31197::A::x::<lambda_1>::operator()
+?f@@YAXW4<unnamed-enum-enumerator>@@@Z	f
+?a@@3HA	a
+?b@N@@3HA	N::b
+?anonymous@?A@N@@3HA	N::`anonymous namespace'::anonymous
+?_c@@YAHXZ	_c
+?d@foo@@0FB	foo::d
+?e@foo@@1JC	foo::e
+?f@foo@@2DD	foo::f
+??0foo@@QAE@XZ	foo::foo
+??0foo@@QEAA@XZ	foo::foo
+??1foo@@QAE@XZ	foo::~foo
+??1foo@@QEAA@XZ	foo::~foo
+??0foo@@QAE@H@Z	foo::foo
+??0foo@@QEAA@H@Z	foo::foo
+??0foo@@QAE@PAD@Z	foo::foo
+??0foo@@QEAA@PEAD@Z	foo::foo
+?bar@@YA?AVfoo@@XZ	bar
+??Hfoo@@QAEHH@Z	foo::operator+
+??Hfoo@@QEAAHH@Z	foo::operator+
+??$?HH@S@@QEAAAEANH@Z	S::operator+<int>
+?static_method@foo@@SAPAV1@XZ	foo::static_method
+?static_method@foo@@SAPEAV1@XZ	foo::static_method
+?g@bar@@2HA	bar::g
+?h2@@3QBHB	h2
+?funptr@@YAP6AHXZXZ	funptr
+?g_cInt@@3HB	g_cInt
+?g_vInt@@3HC	g_vInt
+?g_cvInt@@3HD	g_cvInt
+?beta@@YI_N_J_W@Z	beta
+?beta@@YA_N_J_W@Z	beta
+?alpha@@YGXMN@Z	alpha
+?alpha@@YAXMN@Z	alpha
+?gamma@@YAXVfoo@@Ubar@@Tbaz@@W4quux@@@Z	gamma
+?delta@@YAXQAHABJ@Z	delta
+?delta@@YAXQEAHAEBJ@Z	delta
+?epsilon@@YAXQAY19BE@H@Z	epsilon
+?epsilon@@YAXQEAY19BE@H@Z	epsilon
+?zeta@@YAXP6AHHH@Z@Z	zeta
+??2@YAPAXI@Z	operator new
+??3@YAXPAX@Z	operator delete
+??_U@YAPAXI@Z	operator new[]
+??_V@YAXPAX@Z	operator delete[]
+?color2@@3QBNB	color2
+?memptr1@@3RESB@@HES1@	memptr1
+?funmemptr1@@3RESB@@R6AHXZES1@	funmemptr1
+?fooE@@YA?AW4E@@XZ	fooE
+?fooX@@YA?AVX@@XZ	fooX
+?s2@PR13182@@3QBDB	PR13182::s2
+?s3@PR13182@@3QBDB	PR13182::s3
+?s4@PR13182@@3RCDC	PR13182::s4
+?s5@PR13182@@3SDDD	PR13182::s5
+?v@?1??f@@YAHXZ@4U<unnamed-type-v>@?1??1@YAHXZ@A	`f'::`2'::v
+?v@?1???$f@H@@YAHXZ@4U<unnamed-type-v>@?1???$f@H@@YAHXZ@A	`f<int>'::`2'::v
+??2OverloadedNewDelete@@SAPAXI@Z	OverloadedNewDelete::operator new
+??_UOverloadedNewDelete@@SAPAXI@Z	OverloadedNewDelete::operator new[]
+??3OverloadedNewDelete@@SAXPAX@Z	OverloadedNewDelete::operator delete
+??_VOverloadedNewDelete@@SAXPAX@Z	OverloadedNewDelete::operator delete[]
+??HOverloadedNewDelete@@QAEHH@Z	OverloadedNewDelete::operator+
+??2OverloadedNewDelete@@SAPEAX_K@Z	OverloadedNewDelete::operator new
+??_UOverloadedNewDelete@@SAPEAX_K@Z	OverloadedNewDelete::operator new[]
+??3OverloadedNewDelete@@SAXPEAX@Z	OverloadedNewDelete::operator delete
+??_VOverloadedNewDelete@@SAXPEAX@Z	OverloadedNewDelete::operator delete[]
+??HOverloadedNewDelete@@QEAAHH@Z	OverloadedNewDelete::operator+
+??2TypedefNewDelete@@SAPAXI@Z	TypedefNewDelete::operator new
+??_UTypedefNewDelete@@SAPAXI@Z	TypedefNewDelete::operator new[]
+??3TypedefNewDelete@@SAXPAX@Z	TypedefNewDelete::operator delete
+??_VTypedefNewDelete@@SAXPAX@Z	TypedefNewDelete::operator delete[]
+?vector_func@@YQXXZ	vector_func
+??$fn_tmpl@$1?extern_c_func@@YAXXZ@@YAXXZ	fn_tmpl<&extern_c_func>
+?overloaded_fn@@$$J0YAXXZ	overloaded_fn
+?f@UnnamedType@@YAXQAPAU<unnamed-type-T1>@S@1@@Z	UnnamedType::f
+?f@UnnamedType@@YAXUT2@S@1@@Z	UnnamedType::f
+?f@UnnamedType@@YAXPAUT4@S@1@@Z	UnnamedType::f
+?f@UnnamedType@@YAXUT4@S@1@@Z	UnnamedType::f
+?f@UnnamedType@@YAXUT5@S@1@@Z	UnnamedType::f
+?f@Atomic@@YAXU?$_Atomic@H@__clang@@@Z	Atomic::f
+?f@Complex@@YAXU?$_Complex@H@__clang@@@Z	Complex::f
+?f@Float16@@YAXU_Float16@__clang@@@Z	Float16::f
+??0?$L@H@NS@@QEAA@XZ	NS::L<int>::L<int>
+??0Bar@Foo@@QEAA@XZ	Foo::Bar::Bar
+?pub_foo@S@@QAEXXZ	S::pub_foo
+?pub_stat_foo@S@@SAXXZ	S::pub_stat_foo
+?pub_virt_foo@S@@UAEXXZ	S::pub_virt_foo
+?prot_foo@S@@IAEXXZ	S::prot_foo
+?prot_stat_foo@S@@KAXXZ	S::prot_stat_foo
+?prot_virt_foo@S@@MAEXXZ	S::prot_virt_foo
+?priv_foo@S@@AAEXXZ	S::priv_foo
+?priv_stat_foo@S@@CAXXZ	S::priv_stat_foo
+?priv_virt_foo@S@@EAEXXZ	S::priv_virt_foo
+?M@?@??L@@YAHXZ@4HA	`L'::`0'::M
+?M@?0??L@@YAHXZ@4HA	`L'::`1'::M
+?M@?1??L@@YAHXZ@4HA	`L'::`2'::M
+?M@?2??L@@YAHXZ@4HA	`L'::`3'::M
+?M@?3??L@@YAHXZ@4HA	`L'::`4'::M
+?M@?4??L@@YAHXZ@4HA	`L'::`5'::M
+?M@?5??L@@YAHXZ@4HA	`L'::`6'::M
+?M@?6??L@@YAHXZ@4HA	`L'::`7'::M
+?M@?7??L@@YAHXZ@4HA	`L'::`8'::M
+?M@?8??L@@YAHXZ@4HA	`L'::`9'::M
+?M@?9??L@@YAHXZ@4HA	`L'::`10'::M
+?M@?L@??L@@YAHXZ@4HA	`L'::`11'::M
+?M@?M@??L@@YAHXZ@4HA	`L'::`12'::M
+?M@?N@??L@@YAHXZ@4HA	`L'::`13'::M
+?M@?O@??L@@YAHXZ@4HA	`L'::`14'::M
+?M@?P@??L@@YAHXZ@4HA	`L'::`15'::M
+?M@?BA@??L@@YAHXZ@4HA	`L'::`16'::M
+?M@?BB@??L@@YAHXZ@4HA	`L'::`17'::M
+?j@?1??L@@YAHXZ@4UJ@@A	`L'::`2'::j
+?NN@0XX@@3HA	XX::NN::NN
+?MM@0NN@XX@@3HA	XX::NN::MM::MM
+?NN@MM@0XX@@3HA	XX::NN::MM::NN
+?OO@0NN@01XX@@3HA	XX::NN::OO::NN::OO::OO
+?NN@OO@010XX@@3HA	XX::NN::OO::NN::OO::NN
+?M@?1??0@YAHXZ@4HA	`M'::`2'::M
+?L@?2??M@0?2??0@YAHXZ@QEAAHXZ@4HA	``L'::`3'::L::M'::`3'::L
+?M@?2??0L@?2??1@YAHXZ@QEAAHXZ@4HA	``L'::`3'::L::M'::`3'::M
+?M@?1???$L@H@@YAHXZ@4HA	`L<int>'::`2'::M
+?SN@?$NS@H@NS@@QEAAHXZ	NS::NS<int>::SN
+?NS@?1??SN@?$NS@H@0@QEAAHXZ@4HA	`NS::NS<int>::SN'::`2'::NS
+?SN@?1??0?$NS@H@NS@@QEAAHXZ@4HA	`NS::NS<int>::SN'::`2'::SN
+?NS@?1??SN@?$NS@H@10@QEAAHXZ@4HA	`NS::SN::NS<int>::SN'::`2'::NS
+?SN@?1??0?$NS@H@0NS@@QEAAHXZ@4HA	`NS::SN::NS<int>::SN'::`2'::SN
+?X@?$C@H@C@0@2HB	X::C::C<int>::X
+?X@?$C@H@C@1@2HB	C<int>::C::C<int>::X
+?X@?$C@H@C@2@2HB	C::C::C<int>::X
+?C@?1??B@?$C@H@0101A@@QEAAHXZ@4U201013@A	`A::B::C::B::C::C<int>::B'::`2'::C
+?B@?1??0?$C@H@C@020A@@QEAAHXZ@4HA	`A::B::C::B::C::C<int>::B'::`2'::B
+?A@?1??B@?$C@H@C@1310@QEAAHXZ@4HA	`A::B::C::B::C::C<int>::B'::`2'::A
+?a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@a@@3HA	a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a::a
+??0Base@@QEAA@XZ	Base::Base
+??1Base@@UEAA@XZ	Base::~Base
+??2@YAPEAX_K@Z	operator new
+??3@YAXPEAX_K@Z	operator delete
+??4Base@@QEAAHH@Z	Base::operator=
+??6Base@@QEAAHH@Z	Base::operator<<
+??5Base@@QEAAHH@Z	Base::operator>>
+??7Base@@QEAAHXZ	Base::operator!
+??8Base@@QEAAHH@Z	Base::operator==
+??9Base@@QEAAHH@Z	Base::operator!=
+??ABase@@QEAAHH@Z	Base::operator[]
+??CBase@@QEAAHXZ	Base::operator->
+??DBase@@QEAAHXZ	Base::operator*
+??EBase@@QEAAHXZ	Base::operator++
+??EBase@@QEAAHH@Z	Base::operator++
+??FBase@@QEAAHXZ	Base::operator--
+??FBase@@QEAAHH@Z	Base::operator--
+??GBase@@QEAAHH@Z	Base::operator-
+??HBase@@QEAAHH@Z	Base::operator+
+??IBase@@QEAAHH@Z	Base::operator&
+??JBase@@QEAAHH@Z	Base::operator->*
+??KBase@@QEAAHH@Z	Base::operator/
+??LBase@@QEAAHH@Z	Base::operator%
+??MBase@@QEAAHH@Z	Base::operator<
+??NBase@@QEAAHH@Z	Base::operator<=
+??OBase@@QEAAHH@Z	Base::operator>
+??PBase@@QEAAHH@Z	Base::operator>=
+??RBase@@QEAAHXZ	Base::operator()
+??SBase@@QEAAHXZ	Base::operator~
+??TBase@@QEAAHH@Z	Base::operator^
+??UBase@@QEAAHH@Z	Base::operator|
+??VBase@@QEAAHH@Z	Base::operator&&
+??WBase@@QEAAHH@Z	Base::operator||
+??XBase@@QEAAHH@Z	Base::operator*=
+??YBase@@QEAAHH@Z	Base::operator+=
+??ZBase@@QEAAHH@Z	Base::operator-=
+??_0Base@@QEAAHH@Z	Base::operator/=
+??_1Base@@QEAAHH@Z	Base::operator%=
+??_2Base@@QEAAHH@Z	Base::operator>>=
+??_3Base@@QEAAHH@Z	Base::operator<<=
+??_4Base@@QEAAHH@Z	Base::operator&=
+??_5Base@@QEAAHH@Z	Base::operator|=
+??_6Base@@QEAAHH@Z	Base::operator^=
+??_7Base@@6B@	Base::`vftable'
+??_7A@B@@6BC@D@@@	B::A::`vftable'
+??_7A@B@@6BC@D@@E@F@@@	B::A::`vftable'
+??_7A@B@@6BC@D@@E@F@@G@H@@@	B::A::`vftable'
+??_8Middle2@@7B@	Middle2::`vbtable'
+??_7A@@6BB@@@	A::`vftable'
+??_7A@@6BB@@C@@@	A::`vftable'
+??_7A@@6BB@@C@@D@@@	A::`vftable'
+??_KBase@@UEAAPEAXI@Z	Base::`virtual displacement map'
+??_SBase@@6B@	Base::`local vftable'
+??_U@YAPEAX_KAEAVklass@@@Z	operator new[]
+??_V@YAXPEAXAEAVklass@@@Z	operator delete[]
+??_R0?AUBase@@@8	Base `RTTI Type Descriptor'
+??_R1A@?0A@EA@Base@@8	Base::`RTTI Base Class Descriptor at (0, -1, 0, 64)'
+??_R2Base@@8	Base::`RTTI Base Class Array'
+??_R3Base@@8	Base::`RTTI Class Hierarchy Descriptor'
+??_R4Base@@6B@	Base::`RTTI Complete Object Locator'
+??__EFoo@@YAXXZ	`dynamic initializer for 'Foo''
+??__FFoo@@YAXXZ	`dynamic atexit destructor for 'Foo''
+?a1@@YAXXZ	a1
+?a2@@YAHXZ	a2
+?a3@@YA?BHXZ	a3
+?a4@@YA?CHXZ	a4
+?a5@@YA?DHXZ	a5
+?a6@@YAMXZ	a6
+?b1@@YAPAHXZ	b1
+?b2@@YAPBDXZ	b2
+?b3@@YAPAMXZ	b3
+?b4@@YAPBMXZ	b4
+?b5@@YAPCMXZ	b5
+?b6@@YAPDMXZ	b6
+?b7@@YAAAMXZ	b7
+?b8@@YAABMXZ	b8
+?b9@@YAACMXZ	b9
+?b10@@YAADMXZ	b10
+?b11@@YAPAPBDXZ	b11
+?c1@@YA?AVA@@XZ	c1
+?c2@@YA?BVA@@XZ	c2
+?c3@@YA?CVA@@XZ	c3
+?c4@@YA?DVA@@XZ	c4
+?c5@@YAPBVA@@XZ	c5
+?c6@@YAPCVA@@XZ	c6
+?c7@@YAPDVA@@XZ	c7
+?c8@@YAAAVA@@XZ	c8
+?c9@@YAABVA@@XZ	c9
+?c10@@YAACVA@@XZ	c10
+?c11@@YAADVA@@XZ	c11
+?d1@@YA?AV?$B@H@@XZ	d1
+?d2@@YA?AV?$B@PBD@@XZ	d2
+?d3@@YA?AV?$B@VA@@@@XZ	d3
+?d4@@YAPAV?$B@VA@@@@XZ	d4
+?d5@@YAPBV?$B@VA@@@@XZ	d5
+?d6@@YAPCV?$B@VA@@@@XZ	d6
+?d7@@YAPDV?$B@VA@@@@XZ	d7
+?d8@@YAAAV?$B@VA@@@@XZ	d8
+?d9@@YAABV?$B@VA@@@@XZ	d9
+?d10@@YAACV?$B@VA@@@@XZ	d10
+?d11@@YAADV?$B@VA@@@@XZ	d11
+?e1@@YA?AW4Enum@@XZ	e1
+?e2@@YA?BW4Enum@@XZ	e2
+?e3@@YAPAW4Enum@@XZ	e3
+?e4@@YAAAW4Enum@@XZ	e4
+?f1@@YA?AUS@@XZ	f1
+?f2@@YA?BUS@@XZ	f2
+?f3@@YAPAUS@@XZ	f3
+?f4@@YAPBUS@@XZ	f4
+?f5@@YAPDUS@@XZ	f5
+?f6@@YAAAUS@@XZ	f6
+?f8@@YAPQS@@HXZ	f8
+?f10@@YAPIQS@@HXZ	f10
+?g1@@YAP6AHH@ZXZ	g1
+?g3@@YAPAP6AHH@ZXZ	g3
+?g4@@YAPBQ6AHH@ZXZ	g4
+?h1@@YAAIAHXZ	h1
+?f@@3V?$C@H@@A	f
+??0?$Class@VTypename@@@@QAE@XZ	Class<Typename>::Class<Typename>
+??0?$Class@VTypename@@@@QEAA@XZ	Class<Typename>::Class<Typename>
+??0?$Class@QAH@@QAE@XZ	Class<int *const>::Class<int *const>
+??0?$Class@QEAH@@QEAA@XZ	Class<int *const>::Class<int *const>
+??0?$Class@$$A6AHXZ@@QAE@XZ	Class<int __cdecl(void)>::Class<int __cdecl(void)>
+??0?$Class@$$A6AHXZ@@QEAA@XZ	Class<int __cdecl(void)>::Class<int __cdecl(void)>
+??0?$BoolTemplate@$0A@@@QAE@XZ	BoolTemplate<0>::BoolTemplate<0>
+??0?$BoolTemplate@$0A@@@QEAA@XZ	BoolTemplate<0>::BoolTemplate<0>
+??0?$BoolTemplate@$00@@QAE@XZ	BoolTemplate<1>::BoolTemplate<1>
+??0?$BoolTemplate@$00@@QEAA@XZ	BoolTemplate<1>::BoolTemplate<1>
+??$Foo@H@?$BoolTemplate@$00@@QAEXH@Z	BoolTemplate<1>::Foo<int>
+??$Foo@H@?$BoolTemplate@$00@@QEAAXH@Z	BoolTemplate<1>::Foo<int>
+??0?$IntTemplate@$0A@@@QAE@XZ	IntTemplate<0>::IntTemplate<0>
+??0?$IntTemplate@$0A@@@QEAA@XZ	IntTemplate<0>::IntTemplate<0>
+??0?$IntTemplate@$04@@QAE@XZ	IntTemplate<5>::IntTemplate<5>
+??0?$IntTemplate@$04@@QEAA@XZ	IntTemplate<5>::IntTemplate<5>
+??0?$IntTemplate@$0L@@@QAE@XZ	IntTemplate<11>::IntTemplate<11>
+??0?$IntTemplate@$0L@@@QEAA@XZ	IntTemplate<11>::IntTemplate<11>
+??0?$IntTemplate@$0BAA@@@QAE@XZ	IntTemplate<256>::IntTemplate<256>
+??0?$IntTemplate@$0BAA@@@QEAA@XZ	IntTemplate<256>::IntTemplate<256>
+??0?$IntTemplate@$0CAB@@@QAE@XZ	IntTemplate<513>::IntTemplate<513>
+??0?$IntTemplate@$0CAB@@@QEAA@XZ	IntTemplate<513>::IntTemplate<513>
+??0?$IntTemplate@$0EAC@@@QAE@XZ	IntTemplate<1026>::IntTemplate<1026>
+??0?$IntTemplate@$0EAC@@@QEAA@XZ	IntTemplate<1026>::IntTemplate<1026>
+??0?$IntTemplate@$0PPPP@@@QAE@XZ	IntTemplate<65535>::IntTemplate<65535>
+??0?$IntTemplate@$0PPPP@@@QEAA@XZ	IntTemplate<65535>::IntTemplate<65535>
+??0?$IntTemplate@$0?0@@QAE@XZ	IntTemplate<-1>::IntTemplate<-1>
+??0?$IntTemplate@$0?0@@QEAA@XZ	IntTemplate<-1>::IntTemplate<-1>
+??0?$IntTemplate@$0?8@@QAE@XZ	IntTemplate<-9>::IntTemplate<-9>
+??0?$IntTemplate@$0?8@@QEAA@XZ	IntTemplate<-9>::IntTemplate<-9>
+??0?$IntTemplate@$0?9@@QAE@XZ	IntTemplate<-10>::IntTemplate<-10>
+??0?$IntTemplate@$0?9@@QEAA@XZ	IntTemplate<-10>::IntTemplate<-10>
+??0?$IntTemplate@$0?L@@@QAE@XZ	IntTemplate<-11>::IntTemplate<-11>
+??0?$IntTemplate@$0?L@@@QEAA@XZ	IntTemplate<-11>::IntTemplate<-11>
+??0?$UnsignedIntTemplate@$0PPPPPPPP@@@QAE@XZ	UnsignedIntTemplate<4294967295>::UnsignedIntTemplate<4294967295>
+??0?$UnsignedIntTemplate@$0PPPPPPPP@@@QEAA@XZ	UnsignedIntTemplate<4294967295>::UnsignedIntTemplate<4294967295>
+??0?$LongLongTemplate@$0?IAAAAAAAAAAAAAAA@@@QAE@XZ	LongLongTemplate<-9223372036854775808>::LongLongTemplate<-9223372036854775808>
+??0?$LongLongTemplate@$0?IAAAAAAAAAAAAAAA@@@QEAA@XZ	LongLongTemplate<-9223372036854775808>::LongLongTemplate<-9223372036854775808>
+??0?$LongLongTemplate@$0HPPPPPPPPPPPPPPP@@@QAE@XZ	LongLongTemplate<9223372036854775807>::LongLongTemplate<9223372036854775807>
+??0?$LongLongTemplate@$0HPPPPPPPPPPPPPPP@@@QEAA@XZ	LongLongTemplate<9223372036854775807>::LongLongTemplate<9223372036854775807>
+??0?$UnsignedLongLongTemplate@$0?0@@QAE@XZ	UnsignedLongLongTemplate<-1>::UnsignedLongLongTemplate<-1>
+??0?$UnsignedLongLongTemplate@$0?0@@QEAA@XZ	UnsignedLongLongTemplate<-1>::UnsignedLongLongTemplate<-1>
+??$foo@H@space@@YAABHABH@Z	space::foo<int>
+??$foo@H@space@@YAAEBHAEBH@Z	space::foo<int>
+??$FunctionPointerTemplate@$1?spam@@YAXXZ@@YAXXZ	FunctionPointerTemplate<&spam>
+??$variadic_fn_template@HHHH@@YAXABH000@Z	variadic_fn_template<int, int, int, int>
+??0?$VariadicClass@HD_N@@QAE@XZ	VariadicClass<int, char, bool>::VariadicClass<int, char, bool>
+??0?$VariadicClass@_NDH@@QAE@XZ	VariadicClass<bool, char, int>::VariadicClass<bool, char, int>
+?template_template_fun@@YAXU?$Type@U?$Thing@USecond@@$00@@USecond@@@@@Z	template_template_fun
+??$template_template_specialization@$$A6AXU?$Type@U?$Thing@USecond@@$00@@USecond@@@@@Z@@YAXXZ	template_template_specialization<void __cdecl(Type<Thing<Second, 1>, Second>)>
+?f@@YAXU?$S1@$0A@@@@Z	f
+?recref@@YAXU?$type1@$E?inst@@3Urecord@@B@@@Z	recref
+?fun@@YAXU?$UUIDType1@Uuuid@@$1?_GUID_12345678_1234_1234_1234_1234567890ab@@3U__s_GUID@@B@@@Z	fun
+?fun@@YAXU?$UUIDType2@Uuuid@@$E?_GUID_12345678_1234_1234_1234_1234567890ab@@3U__s_GUID@@B@@@Z	fun
+?FunctionDefinedWithInjectedName@@YAXU?$TypeWithFriendDefinition@H@@@Z	FunctionDefinedWithInjectedName
+?bar@?$UUIDType4@$1?_GUID_12345678_1234_1234_1234_1234567890ab@@3U__s_GUID@@B@@QAEXXZ	UUIDType4<&_GUID_12345678_1234_1234_1234_1234567890ab>::bar
+??$f@US@@$1?g@1@QEAAXXZ@@YAXXZ	f<S, &S::g>
+??$?0N@?$Foo@H@@QEAA@N@Z	Foo<int>::Foo<int><double>
+?bar@Foo@@SGXXZ	Foo::bar
+?bar@Foo@@QAGXXZ	Foo::bar
+?f2@@YIXXZ	f2
+?f1@@YGXXZ	f1

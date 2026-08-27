@@ -72,6 +72,34 @@ class TestEveryPluginHonoursTheInputBound:
         demangle.demangle_strict(longest, language=plugin, limits=roomy)
 
 
+#: A hostile name and a label for it. Hoisted out of the `parametrize` below so the label
+#: can be the test id: pytest builds an id from the parameters, and `PYTEST_CURRENT_TEST`
+#: carries it in the environment, where Windows refuses anything past 32,767 characters.
+#: One of these names is sixty thousand characters long, so the whole class failed to
+#: *collect* there -- on the platform whose demangler two of the cases are about.
+HOSTILE_NAMES = [
+    # A GNU-runtime Objective-C method: the reading search was over pairs of
+    # underscore positions, and re-mangled the whole symbol for each pair.
+    ("objc method readings", "_i_" + "a_" * 800),
+    # Rust v0 bound lifetimes: the count is a base-62 field, so each further
+    # character multiplies the printer's work sixty-two-fold.
+    ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
+    # MSVC: `max_input` was not consulted at all.
+    ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # Itanium substitution reuse, which can double the output every few bytes.
+    ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
+    # A pack expansion's pattern is read once per member of the pack, so nested
+    # expansions cost the product of their arities: eight members and a pattern
+    # seven expansions deep is eight million readings of sixty bytes of input.
+    (
+        "itanium nested pack expansions",
+        "_Z1fIJ" + "i" * 8 + "EEv" + "Dp1AI" * 12 + "T_" + "E" * 12,
+    ),
+    # The same shape wide rather than deep.
+    ("itanium wide pack expansion", "_Z1fIJ" + "i" * 2000 + "EEvDp1AIDp1AIT_EE"),
+]
+
+
 class TestBoundsAreEnforcedWhileWorking:
     """A bound has to stop the work, not describe it afterwards.
 
@@ -80,30 +108,7 @@ class TestBoundsAreEnforcedWhileWorking:
     days before the fix and milliseconds after.
     """
 
-    @pytest.mark.parametrize(
-        ("name", "mangled"),
-        [
-            # A GNU-runtime Objective-C method: the reading search was over pairs of
-            # underscore positions, and re-mangled the whole symbol for each pair.
-            ("objc method readings", "_i_" + "a_" * 800),
-            # Rust v0 bound lifetimes: the count is a base-62 field, so each further
-            # character multiplies the printer's work sixty-two-fold.
-            ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
-            # MSVC: `max_input` was not consulted at all.
-            ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
-            # Itanium substitution reuse, which can double the output every few bytes.
-            ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
-            # A pack expansion's pattern is read once per member of the pack, so nested
-            # expansions cost the product of their arities: eight members and a pattern
-            # seven expansions deep is eight million readings of sixty bytes of input.
-            (
-                "itanium nested pack expansions",
-                "_Z1fIJ" + "i" * 8 + "EEv" + "Dp1AI" * 12 + "T_" + "E" * 12,
-            ),
-            # The same shape wide rather than deep.
-            ("itanium wide pack expansion", "_Z1fIJ" + "i" * 2000 + "EEvDp1AIDp1AIT_EE"),
-        ],
-    )
+    @pytest.mark.parametrize(("name", "mangled"), HOSTILE_NAMES, ids=[label for label, _ in HOSTILE_NAMES])
     def test_a_hostile_name_is_answered_promptly(self, name, mangled):
         started = time.perf_counter()
         result = demangle.demangle(mangled)

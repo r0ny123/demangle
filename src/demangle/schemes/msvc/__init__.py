@@ -237,12 +237,12 @@ def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS)
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
     try:
-        tree = parse_msvc_type(mangled, limits)
+        tree = parse_msvc_type(mangled, limits, options)
         if tree is None:
             raise ParseError(mangled, None, "not a type this demangler can read")
         if _wants_structure(builder):
             return tree
-        expanded = _render(tree)
+        expanded = _render(tree, options=options)
     except _LimitHit as hit:
         raise LimitExceeded(mangled, hit.what, hit.limit) from hit
     _check_length(mangled, len(expanded), limits)

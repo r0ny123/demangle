@@ -63,6 +63,24 @@ TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1076
 #: counts *differences* the reference makes and not names. Replayed by tests/test_msvc.py.
 MSVC_SUPPRESSIONS_TOTAL, MSVC_SUPPRESSIONS_EXACT = 1253, 1250
 
+#: The same, for the four `UnDecorateSymbolName` mask bits `llvm-undname` has no flag for,
+#: against `dbghelp.dll` 10.0.26100.8328. Recorded over the 478 of those 609 names the two
+#: references already spell alike, because `dbghelp` prints `__ptr64` and spaces a
+#: declaration differently and a corpus cannot ask for both houses at once; the rest are
+#: left out rather than guessed at. Replayed by tests/test_msvc_options.py.
+MSVC_DBGHELP_TOTAL, MSVC_DBGHELP_EXACT = 1064, 1064
+
+#: How `signature().qualified_name` compares with `UNDNAME_NAME_ONLY` over those same 478
+#: names, in four groups: agreeing outright, agreeing once the elaborated type specifiers
+#: go, differing because the reference discards a vftable's `const` and its base path, and
+#: differing because it reduces a symbol *nested* in the name that this spells in full.
+#: There is no `MsvcOptions` field for that bit; tests/test_msvc_options.py says why.
+MSVC_NAME_ONLY_TOTAL = 478
+MSVC_NAME_ONLY_AGREE = 423
+MSVC_NAME_ONLY_WITHOUT_TAGS = 4
+MSVC_NAME_ONLY_LOSES_THE_BASE_PATH = 10
+MSVC_NAME_ONLY_REDUCES_A_NESTED_SYMBOL = 41
+
 #: RTTI type descriptor *names* -- a `.` and a bare type encoding, which is how the linker
 #: spells the string a `type_info` points at -- and the descriptor objects beside them.
 #: Both against `llvm-undname`. Replayed by tests/test_msvc_descriptors.py.
@@ -188,6 +206,53 @@ UNDNAME_DIVERGENCES = [
     "??_7A@@6BB@@C@@@",
     "??_7A@@6BB@@C@@D@@@",
 ]
+
+#: Where the two MSVC references disagree about a *flag* both of them have.
+#:
+#: `tools/generate_msvc_dbghelp_corpus.py --report` asks `dbghelp.dll` for the mask bit
+#: that means what each `llvm-undname` flag means and compares it with what
+#: `msvc-suppressions.txt` recorded, over the 473 names the two spell alike unflagged.
+#: Neither is wrong; they answer a question the flags do not settle, which is *how far a
+#: flag reaches*. Measured against dbghelp.dll 10.0.26100.8328, and named here because a
+#: number alone would let one of these be traded for a new defect.
+#:
+#: One example each. This library follows `llvm-undname` throughout, which is what
+#: `msvc-suppressions.txt` scores it against; `tests/test_msvc_options.py` asserts the
+#: behaviour these names show.
+UNDNAME_REACH_DIVERGENCES = {
+    # `--no-calling-convention` and `--no-return-type` reach *inward*, into a function
+    # type written as a template argument; `UNDNAME_NO_ALLOCATION_LANGUAGE` and
+    # `UNDNAME_NO_FUNCTION_RETURNS` stop at the declaration. 41 names each.
+    "?j@FTypeWithQuals@@3U?$S@$$A6AHXZ@1@A": "llvm reaches into a template argument, dbghelp does not",
+    # `UNDNAME_NO_ACCESS_SPECIFIERS` reaches *outward*, into the symbol a local name is
+    # scoped by; `--no-access-specifier` leaves the scope's spelling alone. 9 names.
+    "?NS@?1??SN@?$NS@H@0@QEAAHXZ@4HA": "dbghelp reaches into the enclosing symbol, llvm does not",
+    # `--no-member-type` groups `extern "C" ` with `static` and `virtual` and drops all
+    # three; `UNDNAME_NO_MEMBER_TYPE` keeps it. 1 name.
+    "?overloaded_fn@@$$J0YAXXZ": 'llvm drops `extern "C" ` with the member type, dbghelp keeps it',
+}
+
+#: The mask bits that changed nothing anywhere in `msvc-llvm-corpus.txt`, so no field was
+#: added for them: there was nothing to score one against. Recorded rather than omitted,
+#: because "not implemented" and "the reference does nothing with it" are different
+#: claims and only the second one is true here. Re-derive with the tool's `--report`.
+#:
+#: `UNDNAME_NO_MS_THISTYPE` and `UNDNAME_NO_CV_THISTYPE` are the halves of
+#: `UNDNAME_NO_THISTYPE`, and this `dbghelp` honours only the pair -- neither half alone
+#: changes a spelling. `UNDNAME_NO_ARGUMENTS` is worse than inert: it refuses 600 of the
+#: 605 names it is given and answers the other five with text that is not a declaration
+#: of anything, so there is nothing there to follow.
+UNDNAME_INERT_BITS = {
+    "UNDNAME_NO_ALLOCATION_MODEL": 0x00008,
+    "UNDNAME_NO_MS_THISTYPE": 0x00020,
+    "UNDNAME_NO_CV_THISTYPE": 0x00040,
+    "UNDNAME_NO_THROW_SIGNATURES": 0x00100,
+    "UNDNAME_NO_RETURN_UDT_MODEL": 0x00400,
+    "UNDNAME_32_BIT_DECODE": 0x00800,
+    "UNDNAME_NO_SPECIAL_SYMS": 0x04000,
+    "UNDNAME_NO_IDENT_CHAR_CHECK": 0x10000,
+    "UNDNAME_NO_PTR64": 0x20000,
+}
 
 GNU_DIVERGENCES = [
     # Inside a requires-clause, llvm records the template parameter symbolically (`T`)
@@ -507,11 +572,16 @@ def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
 #: the piece plus the text after it still spells the whole name.
 #:
 #: Pinned because the number was 172 before `?` stopped being a character a Delphi
-#: identifier may hold, and 2,983 before `%` and `#` became characters a token may.
+#: identifier may hold, and 2,983 before `%` and `#` became characters a token may. The
+#: corpora that score one name per flag list the same name more than once, which is why
+#: `msvc-dbghelp.txt` counts three: they are three rows of
+#: `??R<lambda_1>@x@A@PR31197@@QBE@XZ`, the name `msvc-llvm-corpus.txt` already carries.
 FILTER_REPORTS_PIECES = {
     "codewarrior-cwdemangle.txt": 2,
     "go-real-world.txt": 2,
+    "msvc-dbghelp.txt": 3,
     "msvc-llvm-corpus.txt": 2,
+    "msvc-name-only.txt": 1,
     "msvc-suppressions.txt": 4,
 }
 

@@ -115,6 +115,15 @@ NOT_REPLAYED = frozenset(
         # of `llvm-undname`'s suppression flags *changes*, not what a name demangles to.
         # Replayed by tests/test_msvc.py, which knows what the middle column means.
         "msvc-suppressions.txt",
+        # The same three columns, for the `UnDecorateSymbolName` mask bits `llvm-undname`
+        # has no flag for. Recorded from `dbghelp.dll` rather than from `llvm-undname`;
+        # regenerate with tools/generate_msvc_dbghelp_corpus.py, on Windows. Replayed by
+        # tests/test_msvc_options.py.
+        "msvc-dbghelp.txt",
+        # What `UNDNAME_NAME_ONLY` prints. Two columns, but the second is not a
+        # demangling: no `MsvcOptions` field claims to reproduce it, and
+        # tests/test_msvc_options.py measures the gap rather than asserting there is none.
+        "msvc-name-only.txt",
         # Swift's `simplified-manglings.txt`: the expected column is what
         # `swift-demangle --simplified` prints, not what `demangle()` prints by default,
         # so replaying it here would report 173 failures for a feature working as

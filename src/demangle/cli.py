@@ -92,14 +92,25 @@ def build_parser():
     )
     less = parser.add_argument_group(
         "printing less of a name",
-        "MSVC decorated names expand to a great deal more than the name. These are "
-        "`llvm-undname`'s flags, and mean the same. `--no-return-type` is shared with "
-        "the selection above and applies to every scheme.",
+        "MSVC decorated names expand to a great deal more than the name. "
+        "`--no-calling-convention`, `--no-access-specifier`, `--no-member-type` and "
+        "`--no-variable-type` are `llvm-undname`'s flags and mean the same, and apply to "
+        "the declaration. `--no-ms-keywords`, `--no-leading-underscores`, "
+        "`--no-this-type` and `--no-tag-kind` are `UnDecorateSymbolName` mask bits it has "
+        "no flag for, and reach every occurrence of what they name -- inside a template "
+        "argument, and inside the symbol a local name is scoped by. `--no-return-type` is "
+        "shared with the selection above and applies to every scheme.",
     )
     less.add_argument("--no-calling-convention", action="store_true", help="omit `__cdecl` and its siblings")
     less.add_argument("--no-access-specifier", action="store_true", help="omit `public: `, `private: `")
     less.add_argument("--no-member-type", action="store_true", help="omit `static ` and `virtual `")
     less.add_argument("--no-variable-type", action="store_true", help="print a data symbol as its name alone")
+    less.add_argument("--no-ms-keywords", action="store_true", help="omit every Microsoft keyword, wherever it stands")
+    less.add_argument(
+        "--no-leading-underscores", action="store_true", help="spell those keywords as `cdecl`, `restrict`"
+    )
+    less.add_argument("--no-this-type", action="store_true", help="omit what a member function writes after `()`")
+    less.add_argument("--no-tag-kind", action="store_true", help="omit `class`, `struct`, `union`, `enum`")
     less.add_argument(
         "--simplified",
         action="store_true",
@@ -125,6 +136,10 @@ _MSVC_SUPPRESSIONS = {
     "no_member_type": "member_type",
     "no_variable_type": "variable_type",
     "no_return_type": "return_type",
+    "no_ms_keywords": "ms_keywords",
+    "no_leading_underscores": "leading_underscores",
+    "no_this_type": "this_type",
+    "no_tag_kind": "tag_kind",
 }
 
 

@@ -196,12 +196,7 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
         return node.text + ("" if abuts else " ") + declarator
     if kind == "indirection":
         token = node.sigil + " ".join(ordered_qualifiers(node.qualifiers))
-        # a nested *function* declarator is separated from the sigil - "int * (__cdecl *)()"
-        # - while a parenthesised pointer declarator abuts it: "int (*(*a)[20])()"
-        nested_function = declarator_is_function and not declarator.startswith(("*", "&", "(*", "(&"))
-        separator = (
-            " " if declarator and not declarator.startswith("[") and (node.qualifiers or nested_function) else ""
-        )
+        separator = " " if _spaced_off_the_sigil(node, declarator, declarator_is_function, options) else ""
         return render(node.inner, token + separator + declarator, options=options)
     if kind == "array":
         if declarator.startswith(("*", "&")):
@@ -255,14 +250,50 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
     # a member-pointer declarator is "Owner::*", possibly qualified; the test is anchored so
     # that a nested type's own "::*" - which a rendered parameter may hold - does not count
     if as_pointee:
-        # an attribute-spelled convention carries a space of its own here, so a pointer to a
-        # __swiftcall function reads "int (__attribute__((__swiftcall__))  *j)(int)"
+        # An attribute-spelled convention carries a space of its own here, so a pointer to a
+        # __swiftcall function reads "int (__attribute__((__swiftcall__))  *j)(int)".
+        #
+        # A convention *spelled with nothing* still leaves the space it would have filled:
+        # "int ( *)()", which is what the reference prints. One that was suppressed takes
+        # its space with it -- `dbghelp` under UNDNAME_NO_MS_KEYWORDS gives "int (*)(void)"
+        # -- and the two are told apart by the option, because a run dropping every
+        # Microsoft keyword has nothing left in this position either way.
         gap = "  " if convention.startswith("__attribute__") else " "
+        if not convention and not options.ms_keywords:
+            gap = ""
         declarator = f"({convention}{gap}{declarator})"
     else:
         declarator = f"{convention} {declarator}" if declarator else convention
     inner = f"{declarator}({params}){member_cv}"
     return inner if suppressed else render(node.returns, inner, True, options)
+
+
+def _spaced_off_the_sigil(node, declarator, declarator_is_function, options):
+    """Whether a pointer's sigil is separated from the declarator it binds to.
+
+    Two shapes take the space and everything else abuts. The pointer's own qualifiers take
+    one, or `char *const p` would read `char *constp`. A nested *function* declarator takes
+    one, because the declaration's own calling convention is written there:
+    `int * (__cdecl * __cdecl fn(void))(int)`.
+
+    Where that leaves a run that is dropping every Microsoft keyword depends on what the
+    pointer points at, and the reference is not being inconsistent about it. A pointer *to
+    a function* writes both conventions in one bracket, so with neither of them left there
+    is nothing to separate and the sigil closes up: `int * (*fn(void))(int)`. A pointer to
+    anything else was only ever holding its sigil off the name -- `char const * __cdecl
+    f4(...)` is a pointer return type, not a function pointer -- so the space stays:
+    `char const * f4(...)`.
+    """
+    if not declarator or declarator.startswith("["):
+        return False
+    if node.qualifiers:
+        return True
+    # Anything that is not a function declarator abuts, which is how a parenthesised
+    # *pointer* declarator gets `int (*(*a)[20])()`: only a return type is ever rendered
+    # around a function declarator, so nothing else arrives here claiming to be one.
+    if not declarator_is_function or declarator.startswith(("*", "&")):
+        return False
+    return options.ms_keywords or node.inner.kind != "function"
 
 
 def spelled_after(convention, text):
@@ -303,9 +334,27 @@ def merge_qualifiers(left, right):
 _QUALIFIER_ORDER = ("const", "volatile", "__restrict", "__unaligned")
 
 
+#: The same order, keyed on the word without its leading underscores. A run with
+#: `leading_underscores` off spells `__restrict` as `restrict`, and a table of literal
+#: spellings does not recognise that -- so it dropped the qualifier rather than ordering
+#: it, and `?foo_piad@@YAXPIAD@Z` came out `void cdecl foo_piad(char *)` where the
+#: reference writes `char *restrict`. Eight of `msvc-dbghelp.txt`'s rows are that.
+_QUALIFIER_RANK = {qual.lstrip("_"): rank for rank, qual in enumerate(_QUALIFIER_ORDER)}
+
+
 def ordered_qualifiers(quals):
-    """`quals` in `_QUALIFIER_ORDER`, deduplicated."""
-    return tuple(qual for qual in _QUALIFIER_ORDER if qual in quals)
+    """`quals` in `_QUALIFIER_ORDER`, deduplicated, in whatever spelling they arrived in.
+
+    Ranked by the word without its underscores, so a run that is dropping them orders
+    the same qualifiers the same way. The spelling kept is the one that was passed in:
+    this decides an order, not a wording.
+    """
+    ranked = {}
+    for qual in quals:
+        rank = _QUALIFIER_RANK.get(qual.lstrip("_"))
+        if rank is not None:
+            ranked.setdefault(rank, qual)
+    return tuple(ranked[rank] for rank in sorted(ranked))
 
 
 def apply_qualifiers(node, quals):
@@ -324,9 +373,9 @@ def apply_qualifiers(node, quals):
         return node
     words = node.text.split(" ")
     trailing = []
-    while words and words[-1] in _QUALIFIER_ORDER:
+    while words and words[-1].lstrip("_") in _QUALIFIER_RANK:
         trailing.insert(0, words.pop())
-    ordered = [qual for qual in _QUALIFIER_ORDER if qual in trailing or qual in quals]
+    ordered = ordered_qualifiers((*trailing, *quals))
     return Raw(" ".join([*words, *ordered]))
 
 

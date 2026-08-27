@@ -398,3 +398,46 @@ class TestJsonFlag:
     def test_asking_for_both_spellings_of_the_tree_is_refused(self, capsys):
         with pytest.raises(SystemExit):
             run(capsys, ["--json", "--tree", "_Z1fv"])
+
+
+class TestMsvcSuppressionFlags:
+    """`--no-calling-convention` and its eight siblings, from the command line.
+
+    Five are `llvm-undname`'s flags and four are `UnDecorateSymbolName` mask bits it has
+    no flag for; `tests/test_msvc_options.py` scores each set against its own reference.
+    What is checked here is that the command reaches them at all, and that they compose.
+    """
+
+    MEMBER = "?bar@Foo@@QEBAHXZ"
+    TAGGED = "?f@@YAXPEAU?$C@H@@@Z"
+
+    @pytest.mark.parametrize(
+        "flag,name,expected",
+        [
+            ("--no-calling-convention", MEMBER, "public: int Foo::bar(void) const"),
+            ("--no-access-specifier", MEMBER, "int __cdecl Foo::bar(void) const"),
+            ("--no-member-type", "?g@C@@UEAAXXZ", "public: void __cdecl C::g(void)"),
+            ("--no-variable-type", "?x@@3HA", "x"),
+            ("--no-ms-keywords", MEMBER, "public: int Foo::bar(void) const"),
+            ("--no-leading-underscores", MEMBER, "public: int cdecl Foo::bar(void) const"),
+            ("--no-this-type", MEMBER, "public: int __cdecl Foo::bar(void)"),
+            ("--no-tag-kind", TAGGED, "void __cdecl f(C<int> *)"),
+        ],
+    )
+    def test_each_flag_reaches_the_scheme(self, capsys, flag, name, expected):
+        _, out, _ = run(capsys, [flag, name])
+        assert out.strip() == expected
+
+    def test_they_compose(self, capsys):
+        _, out, _ = run(capsys, ["--no-tag-kind", "--no-calling-convention", "--no-access-specifier", self.TAGGED])
+        assert out.strip() == "void f(C<int> *)"
+
+    def test_none_of_them_disturbs_another_scheme(self, capsys):
+        """They are MSVC's, and a run with one set still spells an Itanium name in full."""
+        _, out, _ = run(capsys, ["--no-ms-keywords", "--no-tag-kind", VECTOR])
+        assert out.strip() == VECTOR_SPELLED
+
+    def test_they_apply_in_the_stream_filter_too(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.stdin", io.StringIO(f"0000000000001139 T {self.TAGGED}\n"))
+        main(["--no-tag-kind"])
+        assert capsys.readouterr().out == "0000000000001139 T void __cdecl f(C<int> *)\n"

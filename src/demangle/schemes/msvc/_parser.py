@@ -300,6 +300,15 @@ _ELLIPSIS = Raw("...")
 _VOID_PARAMETERS = (Raw("void"),)
 
 
+def _spaced(word):
+    """A trailing qualifier with the space that precedes it, or nothing if it is not printed.
+
+    A suppressed keyword has to take its space with it: `f(void) const __restrict` losing
+    the `__restrict` is `f(void) const`, not `f(void) const `.
+    """
+    return f" {word}" if word else ""
+
+
 class _Conversion:
     """A conversion operator, whose name is the type it converts to.
 
@@ -555,7 +564,7 @@ class _Demangler:
         # lives: `--no-calling-convention` gives
         # `public: `int __cdecl define_lambda(void)'::`1'::<lambda_1>::operator()(void)`,
         # dropping the convention of the operator and keeping the scope's.
-        return f"`{self.nestedSymbol(options=DEFAULT_OPTIONS)}'::`{spelled}'"
+        return f"`{self.nestedSymbol(options=self.options.for_a_scope())}'::`{spelled}'"
 
     def namesADataSymbol(self):
         """Whether what follows is a data symbol rather than a function, without reading it.
@@ -834,7 +843,10 @@ class _Demangler:
             if special_form is not None:
                 raise _Bail
             self.simple = False
-            return apply_qualifiers(Raw(f"{kind} {name}"), quals)
+            # `tag_kind` leaves the name and drops the word in front of it, which is what
+            # the source said: `S const *`, not `struct S const *`
+            spelled = f"{kind} {name}" if self.options.tag_kind else name
+            return apply_qualifiers(Raw(spelled), quals)
         if char == "Y":
             return self.arrayType(quals)
         if char in _POINTER_KINDS:
@@ -1017,12 +1029,19 @@ class _Demangler:
     def indirection(self, own_quals, token):
         """A pointer or reference: `token` plus its own quals, over a qualified pointee."""
         has_ptr64 = self.eat("E")
-        if self.eat("I"):
-            own_quals = (*own_quals, "__restrict")
+        # Both keywords are read whatever is going to be printed, and `modified` is what
+        # they were rather than what they spell: "PE8B@@" is not a name, and a run that is
+        # leaving `__ptr64` out must not turn it into one.
+        has_restrict = self.eat("I")
+        has_unaligned = self.eat("F")
+        modified = has_ptr64 or has_restrict or has_unaligned
+        restrict = self.options.keyword("__restrict") if has_restrict else ""
+        if restrict:
+            own_quals = (*own_quals, restrict)
         # "__unaligned" qualifies what the pointer points at, and is spelled after the
         # pointee's own const and volatile: "int const __unaligned *"
-        unaligned = ("__unaligned",) if self.eat("F") else ()
-        modified = has_ptr64 or unaligned or "__restrict" in own_quals
+        spelled_unaligned = self.options.keyword("__unaligned") if has_unaligned else ""
+        unaligned = (spelled_unaligned,) if spelled_unaligned else ()
         if self.peek() == "8":
             if token != "*":
                 # Only a pointer points into a class. C++ has no reference to member, so
@@ -1043,9 +1062,7 @@ class _Demangler:
         if self.eat("6"):
             if modified:
                 raise _Bail
-            convention = _CALLING_CONVENTIONS.get(self.take())
-            if convention is None:
-                raise _Bail
+            convention = self.callingConvention()
             returns = self.returnType()
             # a parameter of this function type is a whole-argument position again, so a
             # back-reference is legal there even when the function type is itself a pointee
@@ -1098,9 +1115,7 @@ class _Demangler:
         """
         owner = self.qualifiedName()[0]
         member_cv = self.memberQualifiers()
-        convention = _CALLING_CONVENTIONS.get(self.take())
-        if convention is None:
-            raise _Bail
+        convention = self.callingConvention()
         returns = self.returnType()
         saved_pointee_depth = self.pointee_depth
         self.pointee_depth = 0
@@ -1127,9 +1142,7 @@ class _Demangler:
             member_cv = self.memberQualifiers()
         else:
             self.expect("6")
-        convention = _CALLING_CONVENTIONS.get(self.take())
-        if convention is None:
-            raise _Bail
+        convention = self.callingConvention()
         returns = self.returnType()
         params = self.parameters()
         member_cv += self.throwSpecification()
@@ -1150,11 +1163,28 @@ class _Demangler:
         self.expect("Z")
         return ""
 
+    def callingConvention(self):
+        """The convention code at the cursor, spelled the way `options` asks for.
+
+        The code is validated whatever is going to be printed: a letter that names no
+        convention is not a name, and stays not a name when the convention is being left
+        out. Some letters name a convention the reference spells with nothing at all, and
+        those arrive here as the empty string rather than as an absence.
+        """
+        convention = _CALLING_CONVENTIONS.get(self.take())
+        if convention is None:
+            raise _Bail
+        return self.options.keyword(convention)
+
     def memberQualifiers(self):
         """What a member function may carry after its parameters: cv, __restrict, a ref.
 
         They are written modifier-first and spelled the other way round, so "GB" is
         " const &" and "IA" is " __restrict".
+
+        All of it describes the implicit `this`, so `this_type` drops the whole group
+        rather than a word of it -- and the reading is done first either way, because a
+        group written in the wrong order is not a name whether or not it is printed.
         """
         restrict = ""
         reference = ""
@@ -1169,14 +1199,16 @@ class _Demangler:
                 raise _Bail
             written = rank[char]
             if char == "I":
-                restrict = " __restrict"
+                restrict = _spaced(self.options.keyword("__restrict"))
             elif char == "F":
-                unaligned = " __unaligned"
+                unaligned = _spaced(self.options.keyword("__unaligned"))
             elif char in ("G", "H"):
                 reference = " &" if char == "G" else " &&"
         qualifier = _CV.get(self.take())
         if qualifier is None:
             raise _Bail
+        if not self.options.this_type:
+            return ""
         return f"{qualifier}{restrict}{unaligned}{reference}"
 
     def parameters(self):
@@ -1300,10 +1332,18 @@ class _Demangler:
             # They stand in front of the qualifier, and only where something is pointed
             # at: "?s@@3PEAHEA" is a name and "?s@@3HEA" is not.
             ptr64 = self.eat("E")
-            restrict = ("__restrict",) if self.eat("I") else ()
-            unaligned = ("__unaligned",) if self.eat("F") else ()
-            if (ptr64 or restrict or unaligned) and declared.kind != "indirection":
+            has_restrict = self.eat("I")
+            has_unaligned = self.eat("F")
+            if (ptr64 or has_restrict or has_unaligned) and declared.kind != "indirection":
                 raise _Bail
+            # Spelled the way this run spells the keywords, so the check below compares
+            # them against what is actually in the pointer's qualifiers. What was *read*
+            # is what the bail above turns on: a run dropping every Microsoft keyword
+            # still refuses the encodings a run keeping them refuses.
+            spelled_restrict = self.options.keyword("__restrict") if has_restrict else ""
+            restrict = (spelled_restrict,) if spelled_restrict else ()
+            spelled_unaligned = self.options.keyword("__unaligned") if has_unaligned else ""
+            unaligned = (spelled_unaligned,) if spelled_unaligned else ()
             trailing = self.take()
             if trailing in _MEMBER_DATA_QUALS:
                 # a pointer to data member repeats the member's qualifier here and names its
@@ -1322,15 +1362,16 @@ class _Demangler:
                 # of a pointee's own cv: `?h3@@3QEIAHFA` is `int __unaligned *const
                 # __restrict h3`.
                 declared = qualify_declared(declared, unaligned)
-            if restrict and "__restrict" not in declared.qualifiers:
+            if restrict and restrict[0] not in declared.qualifiers:
                 # it qualifies the pointer, not what is pointed at, and is written once
                 # however many times it is spelled: "?h3@@3QIAHIA" is "int *const __restrict"
                 declared = Indirection(declared.sigil, declared.qualifiers + restrict, declared.inner)
             if member_quals and is_member_function_pointer(declared):
                 # a member function keeps its qualifier after the parameters, not on what
-                # the pointer points at, so this one joins the function rather than the type
+                # the pointer points at, so this one joins the function rather than the
+                # type -- and lands in the group `this_type` drops whole
                 function = declared.inner
-                trailing_cv = "".join(f" {qual}" for qual in member_quals)
+                trailing_cv = "" if not self.options.this_type else "".join(f" {qual}" for qual in member_quals)
                 declared = Indirection(
                     declared.sigil,
                     declared.qualifiers,
@@ -1450,9 +1491,11 @@ class _Demangler:
             self.expect("A")
             if not self.nested and not self.eof():
                 raise _Bail
-            # The convention is fixed rather than read, but it is still a convention and
-            # `--no-calling-convention` drops it: `[thunk]: Base::`vcall'{8, {flat}}`.
-            convention = "__cdecl " if self.options.calling_convention else ""
+            # The convention is fixed rather than read, but it is still a convention, so
+            # both the flag for one and the flag for every Microsoft keyword drop it:
+            # `[thunk]: Base::`vcall'{8, {flat}}`.
+            convention = self.options.keyword("__cdecl") if self.options.calling_convention else ""
+            convention = f"{convention} " if convention else ""
             return Raw(f"[thunk]: {convention}{name}{{{slot}, {{flat}}}}")
         if code == "R":
             access = _VTORDISP_ACCESS.get(self.take())
@@ -1470,9 +1513,7 @@ class _Demangler:
     def thunkBody(self, name, access, kind, displacements):
         """The signature a vtordisp or vtordispex thunk carries, once its numbers are read."""
         self.member_cv = self.memberQualifiers()
-        convention = _CALLING_CONVENTIONS.get(self.take())
-        if convention is None:
-            raise _Bail
+        convention = self.callingConvention()
         returns = None if self.peek() == "@" and self.take() else self.returnType()
         params = self.parameters()
         self.member_cv += self.throwSpecification()
@@ -1510,9 +1551,7 @@ class _Demangler:
                 self.member_cv = self.memberQualifiers()
             else:
                 self.member_cv = ""
-        convention = _CALLING_CONVENTIONS.get(self.take())
-        if convention is None:
-            raise _Bail
+        convention = self.callingConvention()
         if has_no_return_type or self.peek() == "@":
             # an operator may leave the return slot empty, the way a constructor does; a
             # conversion operator may not, since its return is the type it converts to
@@ -1586,7 +1625,7 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTION
         return None
 
 
-def parse_msvc_type(name, limits=DEFAULT_LIMITS):
+def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """The tree behind a bare *type* encoding -- `PEAX`, `?AVFoo@@`, `.PEAX` -- or None.
 
     What an RTTI descriptor and a vtable entry carry, and what `UnDecorateSymbolName`'s
@@ -1602,7 +1641,7 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS):
     if not name:
         return None
     try:
-        demangler = _Demangler(name, limits)
+        demangler = _Demangler(name, limits, options)
         # `returnType` rather than `type`: this position is the one that may carry a
         # qualifier group of its own, and `?A` -- the unqualified case, not an absent one
         # -- is how every class type is written here. `??_R0?AVFoo@@@8` reads its type the

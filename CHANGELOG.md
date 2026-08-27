@@ -89,6 +89,50 @@ All notable changes to this project are recorded here. The format follows
   identifiers joined by `__` and nothing else. They read under `language="ada"`. Not
   claiming a name returns it unchanged, which is what an unreadable name does anyway;
   claiming someone else's rewrites it into a plausible lie.
+- **MSVC: the `UnDecorateSymbolName` mask bits `llvm-undname` has no flag for.** Four new
+  `MsvcOptions` fields -- `ms_keywords`, `leading_underscores`, `this_type` and `tag_kind`
+  -- with `--no-ms-keywords`, `--no-leading-underscores`, `--no-this-type` and
+  `--no-tag-kind` beside them on the command line. `tag_kind` is the one an analyst
+  reaches for: MSVC mangles an elaborated type specifier onto every user-defined type, so
+  a signature reads `struct S const *` where the source said `S const *`.
+
+  **1064 of 1064** against Microsoft's own `dbghelp.dll` 10.0.26100.8328, driven over the
+  same 609 names as the corpus next door by `tools/generate_msvc_dbghelp_corpus.py`. That
+  reference runs on Windows and nothing else, which is why these had been left out; the
+  corpus it writes is checked in, so the test suite still needs neither Windows nor a
+  reference binary.
+
+  The two references do not spell a name alike, so `dbghelp`'s answer could not simply be
+  copied down: it prints `__ptr64`, writes `char * const` and `int (__cdecl*)(void)`, and
+  puts no space after a comma. Its answer goes through eight spacing rewrites first, and
+  each one is *proved* on every name it is used for -- a name is in the corpus only if
+  rewriting the reference's unflagged answer reproduces the spelling
+  `msvc-llvm-corpus.txt` already pins against `llvm-undname`. 478 of the 609 qualified.
+  The reference declines four; the other 127 are names where the two disagree about
+  spelling rather than about spacing -- `char *const __restrict` against
+  `char *__restrict const` -- and reconciling those would mean inventing a spelling.
+
+  These four do not reach the way the five next door reach, and that is the reference's
+  doing rather than a convenience. `llvm-undname`'s flags are declaration-level and stop
+  at the edge of the symbol; Microsoft's are lexical and reach every occurrence of what
+  they name -- inside a template argument, inside a parameter of function-pointer type,
+  and inside the enclosing symbol a local name is scoped by. So `--no-calling-convention`
+  over `int (__cdecl * __cdecl fn(void))(int)` drops one of the two conventions and
+  `--no-ms-keywords` drops both.
+
+  The rest of the mask has no field, and `tests/test_msvc_options.py` says why for each
+  rather than leaving the omission unexplained. Nine bits change no spelling at all over
+  the corpus, including `UNDNAME_NO_PTR64` and `UNDNAME_32_BIT_DECODE`, and
+  `UNDNAME_NO_MS_THISTYPE` and `UNDNAME_NO_CV_THISTYPE`, which this `dbghelp` honours only
+  as the pair `UNDNAME_NO_THISTYPE`. `UNDNAME_NO_ARGUMENTS` is worse than inert: it
+  refuses 600 of the 605 names it is given and answers the other five with text that is
+  not a declaration of anything. And `UNDNAME_NAME_ONLY` -- which the issue asking for
+  these flags took to be `signature().qualified_name` already -- is a whole reduced
+  spelling rather than a suppression that composes: it discards a vftable's base path,
+  answering three different vtables with `B::A::`vftable'`, which is the same loss
+  `UNDNAME_DIVERGENCES` records `llvm-undname` making and is refused here for the same
+  reason. Measured rather than asserted: the two agree on 423 of 478 names, and
+  `tests/conformance/msvc-name-only.txt` holds the reference's answers.
 
 - **Metrowerks CodeWarrior C++.** The other pre-Itanium mangling, and the one libiberty
   never read: `cplus-dem.c` has no CodeWarrior flag, `demangle-expected` has no vectors
@@ -1617,6 +1661,36 @@ All notable changes to this project are recorded here. The format follows
   bracket and no `+`/`-` -- and that has always been found. The bracketed form is what the
   mangled one demangles *to*, so it spells itself and is declined either way. What was
   wrong was one name being read as two.
+- **A test suite that could not be collected on Windows.** Which is the platform this
+  release's MSVC work needed a machine of, so it had to go.
+  `TestBoundsAreEnforcedWhileWorking` built its pytest ids out of the hostile names
+  themselves, one of which is sixty thousand characters: pytest puts the id in
+  `PYTEST_CURRENT_TEST`, Windows refuses an environment variable past 32,767 characters,
+  and the whole class errored at collection -- including the two cases about MSVC. The
+  names now carry short labels as their ids, which they already had as a parameter. With
+  that and the `requires_gnu_cxxfilt` guard put back in `d751c4d`, the suite is green on
+  Windows.
+
+- **MSVC: `demangle_type()` took a style and ignored it.** Every `MsvcOptions` field was
+  inert on the bare-type entry point -- the one `UnDecorateSymbolName`'s
+  `UNDNAME_TYPE_ONLY` corresponds to -- however the caller composed the style, because
+  `parse_type` accepted an options object and passed neither the parser nor the renderer a
+  copy of it. `demangle_type("PEAUS@@", language="msvc")` under `tag_kind=False` now spells
+  `S *` rather than `struct S *`. Both had to be threaded, not just the renderer: this
+  scheme resolves a back-reference against rendered text, so a template argument is spelled
+  as it is read.
+
+- **MSVC: three findings from asking `dbghelp` about the flags `llvm-undname` also has.**
+  Recorded rather than resolved, because neither reference is wrong -- they answer a
+  question the flags themselves do not settle, which is how far a flag reaches.
+  `--no-calling-convention` and `--no-return-type` reach into a function type written as a
+  template argument and `UnDecorateSymbolName` does not (41 names each);
+  `UNDNAME_NO_ACCESS_SPECIFIERS` reaches into the symbol a local name is scoped by and
+  `--no-access-specifier` does not (9 names); and `--no-member-type` groups `extern "C" `
+  with `static` and `virtual` while `UNDNAME_NO_MEMBER_TYPE` keeps it (1 name). This
+  library follows `llvm-undname` throughout, which is what those five are scored against.
+  `UNDNAME_REACH_DIVERGENCES` in `tests/test_conformance.py` names one of each, so a
+  future change to any of them is a deliberate edit.
 
 - **Template parameters are tracked per level, as the reference tracks them.**
   `TL<k>_<n>_` names a parameter of an *enclosing* template, and the table behind it is
@@ -1801,6 +1875,13 @@ a number can only go up and cannot quietly stop being accurate.
   further 97 names it refuses outright and this reads.
 
 ### Changed
+
+- **MSVC: a suppressed calling convention now takes its space with it.** `int ( *)()` is
+  a convention the mangling spells with nothing, and the reference keeps the space it
+  would have filled; `int (*)(void)` is one that was suppressed. The two were spelled
+  alike before, because until now nothing could suppress a convention in that position.
+  Reachable only with `ms_keywords=False`, so no spelling anything already asked for
+  changes.
 
 - `demangle()` output is unchanged for every symbol. This was checked against a snapshot
   taken before the work started, not asserted.

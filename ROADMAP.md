@@ -516,6 +516,15 @@ which is whether to spell something *differently*.
   naming a *scope* keeps its full spelling; and `extern "C" ` goes with `static` and
   `virtual` rather than with the access specifier.
 
+  Since extended by the four `UnDecorateSymbolName` mask bits `llvm-undname` has no flag
+  for — `ms_keywords`, `leading_underscores`, `this_type` and `tag_kind` — scored at
+  **1,064 of 1,064** against Microsoft's own `dbghelp.dll`, which meant doing the work on
+  a Windows machine. They reach further than the five above, and that is the reference's
+  doing rather than a convenience: `llvm-undname`'s flags stop at the edge of the symbol
+  and Microsoft's reach every occurrence of what they name. Asking both references about
+  the four flags they *share* turned up three disagreements about exactly that, which
+  `UNDNAME_REACH_DIVERGENCES` records rather than resolves.
+
   Still to come from the same list: the Itanium and Rust knobs — `--strip-underscore`,
   `DMGL_RET_POSTFIX`, Rust hash retention — and Swift's simplified bundle below.
 

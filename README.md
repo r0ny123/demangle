@@ -230,11 +230,33 @@ leave out, at the call site rather than by registering anything globally:
 'virtual void C::g(void)'
 ```
 
-The five MSVC options are `llvm-undname`'s five flags and mean the same:
+Five of the MSVC options are `llvm-undname`'s five flags and mean the same:
 `calling_convention`, `access_specifier`, `member_type`, `return_type`, `variable_type`.
 On the command line they are `--no-calling-convention` and its siblings. Over LLVM's own
 609-name corpus this agrees with the reference on **1250 / 1253** of the differences the
 flags make ††.
+
+Four more are `UnDecorateSymbolName` mask bits that `llvm-undname` has no flag for, so
+the reference for them is Microsoft's own `dbghelp.dll`: `ms_keywords`
+(`UNDNAME_NO_MS_KEYWORDS`), `leading_underscores`, `this_type` and `tag_kind`
+(`UNDNAME_NO_ECSU`). They reach further than the first five, which is the reference's
+doing and not a convenience: `llvm-undname`'s flags apply to the declaration and stop at
+the edge of the symbol, while Microsoft's reach every occurrence of what they name —
+inside a template argument, inside a function-pointer parameter, and inside the enclosing
+symbol a local name is scoped by.
+
+```python
+>>> demangle.demangle("?f@@YAXPEAU?$C@H@@@Z")
+'void __cdecl f(struct C<int> *)'
+>>> plain = demangle.style("llvm", msvc={"tag_kind": False, "ms_keywords": False})
+>>> demangle.demangle("?f@@YAXPEAU?$C@H@@@Z", style=plain)
+'void f(C<int> *)'
+```
+
+Scored at **1064 / 1064** against `dbghelp.dll` 10.0.26100.8328 ※. The remaining mask bits
+have no field, and `tests/test_msvc_options.py` says why for each: nine of them change no
+spelling in the corpus at all, and `UNDNAME_NAME_ONLY` discards a vftable's base path,
+which would spell three different vtables the same way.
 
 Swift has the bundle Xcode and LLDB show instead of the full spelling — `Either` for
 `Monads.Either`, `(_:)` for `(Swift.Int) -> Swift.UInt`, `specialized f()` for a page of
@@ -259,6 +281,7 @@ $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
 $ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t`
 $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
+$ demangle --no-tag-kind '?g3@@YAXVV@@@Z'          # `void __cdecl g3(V)`
 $ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
 $ demangle --json _Z1fPi                           # the parse tree as JSON
 ```
@@ -287,6 +310,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
 | MSVC RTTI type descriptors, both forms | `llvm-undname` 18.1.3 | **106 / 106** |
 | MSVC ARM64EC hybrid names | LLVM's own mangling rule ✦ | **606 / 606** |
+| MSVC — the mask bits `llvm-undname` has no flag for ※ | `dbghelp.dll` 10.0.26100.8328 | **1064 / 1064** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **310 / 311** † |
@@ -305,6 +329,20 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
 | CodeWarrior — the reference's own vectors ✧ | `cwdemangle` 1.0 | **47 / 47** |
 | Ada/GNAT — libiberty's own vectors ✦ | GNU `c++filt --format=gnat` | **34 / 34** |
+
+※ `UnDecorateSymbolName` with the mask set, driven over the same 609 names by
+`tools/generate_msvc_dbghelp_corpus.py`. The two references do not spell a name alike —
+`dbghelp` prints `__ptr64`, writes `char * const`, and puts no space after a comma — so
+its answer goes through eight spacing rewrites before it is recorded, and each rewrite is
+proved on every name it is used for: a name is in the corpus only if rewriting the
+reference's *unflagged* answer reproduces the row `msvc-llvm-corpus.txt` already pins
+against `llvm-undname`. 478 of the 609 qualified; the reference declines four, and the
+other 127 are names where the two disagree about spelling rather than spacing —
+`char *const __restrict` against `char *__restrict const` is an ordering, not a gap —
+and inventing a rule to reconcile those would be inventing a spelling. Cross-checking the
+four bits that *do* mean what an `llvm-undname` flag means found the two references
+disagreeing about how far a flag reaches; `UNDNAME_REACH_DIVERGENCES` in
+`tests/test_conformance.py` names one of each.
 
 †† The three are names where `llvm-undname --no-return-type` leaves an unclosed
 bracket — `int (__cdecl * (__cdecl B::*volatile memptrtofun7)(void)` is not a declaration

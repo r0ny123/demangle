@@ -380,6 +380,13 @@ class TestEverySchemeHasASeparator:
 class TestAgainstCxxfiltMinusP:
     """What `-p` prints, measured against the tool it is named after.
 
+    Skipped where GNU `c++filt` is not installed, which is every Windows runner and most
+    macOS ones -- there LLVM's demangler is named `c++filt` and answers differently, so
+    the guard asks the banner rather than the name. The decorator belongs to *this* class
+    and has drifted off it once already, onto whichever class a later edit inserted above
+    it; without it these two shell out unconditionally and fail on the missing binary
+    rather than saying what is missing.
+
     The differences are deliberate and are described in the README. `c++filt` strips the
     parameter list from the outermost declaration only, so a thunk keeps its target's;
     and it drops a `[clone .cold]` suffix while keeping an `@@GLIBCXX_3.4` one. This
