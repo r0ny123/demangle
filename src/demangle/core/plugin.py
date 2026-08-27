@@ -36,6 +36,19 @@ class LanguagePlugin:
     Raises `NotMangledError` or `ParseError` on failure; never returns a partial result.
     """
 
+    parse_type: Any = None
+    """`parse_type(mangled, builder, limits=..., options=...) -> handle`, or None.
+
+    A *type* encoding rather than a whole symbol -- `Pi` for `int*`, an MSVC `.PEAX`, a
+    Swift type string. This is what `typeinfo` names, RTTI descriptors and vtable
+    entries carry, and it is a separate entry point because a type encoding carries no
+    marker saying which scheme it belongs to: `i` is a valid Itanium type and a valid
+    anything-else, so it can only be read when a caller says which scheme to read it as.
+
+    None for a scheme with no type grammar of its own, which is most of them: Go, Nim,
+    Free Pascal and JNI names carry types only as text they already spell.
+    """
+
     description: str = ""
     """One line, shown by `demangle --list-languages`."""
 

@@ -210,13 +210,19 @@ class SpellingBuilder(Builder):
         return Spelling(left + joiner + token, inner.right)
 
     def array(self, inner, dimension):
-        bound = f" [{dimension}]" if dimension else " []"
+        bound = f"[{dimension}]" if dimension else "[]"
         right = inner.right
         # Only the first bracket of a multi-dimensional array is spaced off the type:
         # `Libcall const (&) [5][4]`, not `[5] [4]`. Dimensions are built inside out, so
         # the space the inner one added is the one to drop.
         if inner.is_array and right.startswith(" ["):
             right = right[1:]
+        # ...and no space either where the element type itself already ends in a
+        # bracket, which is what a vector spells: `int vector[4][3]`, not
+        # `int vector[4] [3]`. The reference tests the last character it printed, and
+        # the bound goes in ahead of `right`, so that character is the end of `left`.
+        if not inner.left.endswith("]"):
+            bound = " " + bound
         return Spelling(inner.left, bound + right, is_array=True)
 
     def function(self, returns, parameters, suffix="", name=None):

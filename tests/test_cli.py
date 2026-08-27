@@ -294,3 +294,61 @@ class TestPartFlags:
     def test_the_style_reaches_them(self, capsys):
         _, out, _ = run(capsys, ["-p", "--style", "gnu", VECTOR])
         assert out.strip() == "std::vector<int, std::allocator<int> >::push_back"
+
+
+class TestTypeFlag:
+    """`--types`: read a bare type encoding, the way `c++filt -t` does."""
+
+    def test_a_type_on_the_command_line(self, capsys):
+        _, out, _ = run(capsys, ["--types", "-l", "itanium", "Pi", "PKFvRiE"])
+        assert out == "int*\nvoid (*)(int&) const\n"
+
+    def test_a_type_per_line_of_stdin(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["--types", "-l", "msvc"], stdin="PEAX\n.PEAX\n", monkeypatch=monkeypatch)
+        assert out == "void *\nvoid *\n"
+
+    def test_it_is_not_the_stream_filter(self, capsys, monkeypatch):
+        """`I like Pi` stays `I like Pi`, because each line is one encoding or nothing.
+
+        The default path picks symbol-shaped words out of mixed text. A type encoding is
+        not symbol-shaped -- `Pi` is an ordinary word -- so `--types` reads whole inputs
+        instead of scanning them, and a line that is not an encoding comes back whole.
+        """
+        _, out, _ = run(capsys, ["--types", "-l", "itanium"], stdin="I like Pi\n", monkeypatch=monkeypatch)
+        assert out == "I like Pi\n"
+
+    def test_an_unreadable_encoding_comes_back_unchanged(self, capsys):
+        status, out, _ = run(capsys, ["--types", "-l", "itanium", "ZZZ"])
+        assert status == 0
+        assert out == "ZZZ\n"
+
+    def test_strict_reports_it_instead(self, capsys):
+        status, out, err = run(capsys, ["--types", "-l", "itanium", "--strict", "ZZZ"])
+        assert status == 1
+        assert out == ""
+        assert "ZZZ" in err
+
+    def test_the_tree_form(self, capsys):
+        _, out, _ = run(capsys, ["--types", "-l", "itanium", "--tree", "Pi"])
+        assert out.splitlines() == ["pointer", "  builtin 'int'"]
+
+    def test_the_style_is_honoured(self, capsys):
+        _, out, _ = run(capsys, ["--types", "-l", "itanium", "-s", "gnu", "Dv4_i"])
+        assert out == "int __vector(4)\n"
+
+    def test_it_needs_a_language(self, capsys):
+        with pytest.raises(SystemExit):
+            run(capsys, ["--types", "Pi"])
+
+    def test_it_refuses_the_questions_it_cannot_answer(self, capsys):
+        for extra in (["--detect"], ["--base-name"], ["-p"], ["--no-return-type"]):
+            with pytest.raises(SystemExit):
+                run(capsys, ["--types", "-l", "itanium", *extra, "Pi"])
+
+    def test_it_refuses_a_scheme_with_no_type_grammar_once_rather_than_per_name(self, capsys):
+        with pytest.raises(SystemExit):
+            run(capsys, ["--types", "-l", "rust", "Pi", "Pc", "i"])
+
+    def test_crlf_input_reads_the_same_as_lf(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["--types", "-l", "msvc"], stdin="PEAX\r\n", monkeypatch=monkeypatch)
+        assert out == "void *\n"

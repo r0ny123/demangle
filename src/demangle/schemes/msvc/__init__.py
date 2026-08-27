@@ -24,7 +24,7 @@ from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
-from ._parser import _LimitHit, parse_msvc_symbol_strict
+from ._parser import _LimitHit, parse_msvc_symbol_strict, parse_msvc_type
 from ._parser import render as _render
 
 #: MSVC replaces a decorated name too long for the linker with an MD5 hash of it,
@@ -135,6 +135,34 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise LimitExceeded(mangled, str(hit), getattr(limits, f"max_{str(hit).split()[-1]}", 0)) from hit
 
 
+def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=None):
+    """Parse a bare *type* encoding -- `PEAX`, `PEAVFoo@@` -- rather than a whole symbol.
+
+    What an RTTI type descriptor carries, and what `UnDecorateSymbolName`'s
+    `UNDNAME_TYPE_ONLY` asks for. A leading `.` is accepted and dropped, because that is
+    how the descriptor's own symbol spells it.
+
+    None of this is reachable from `parse`, and deliberately: a type encoding opens with
+    no `?`, so `detect` cannot see one coming and a demangler that guessed would read
+    plain C symbols as types. It is readable only because the caller named the scheme.
+    """
+    if not mangled:
+        raise NotMangledError(mangled, "empty type")
+    if len(mangled) > limits.max_input:
+        raise LimitExceeded(mangled, "input length", limits.max_input)
+    try:
+        tree = parse_msvc_type(mangled, limits)
+        if tree is None:
+            raise ParseError(mangled, None, "not a type this demangler can read")
+        if _wants_structure(builder):
+            return tree
+        expanded = _render(tree)
+    except _LimitHit as hit:
+        raise LimitExceeded(mangled, str(hit), getattr(limits, f"max_{str(hit).split()[-1]}", 0)) from hit
+    _check_length(mangled, len(expanded), limits)
+    return builder.raw(expanded)
+
+
 def _check_length(mangled, length, limits):
     if length > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)
@@ -144,6 +172,7 @@ PLUGIN = LanguagePlugin(
     name="msvc",
     detect=detect,
     parse=parse,
+    parse_type=parse_type,
     description="Microsoft Visual C++ decorated names (MSVC, clang-cl)",
     aliases=("microsoft", "ms", "vc"),
     # Every decorated name opens with `?`.
@@ -153,4 +182,4 @@ PLUGIN = LanguagePlugin(
 
 register(PLUGIN)
 
-__all__ = ["PLUGIN", "detect", "parse"]
+__all__ = ["PLUGIN", "detect", "parse", "parse_type"]

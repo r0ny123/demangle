@@ -79,6 +79,15 @@ class ItaniumOptions:
     `double _Imaginary`, which are the keywords C99 actually spells.
     """
 
+    gnu_vector_spelling: bool = False
+    """Spell a `Dv` vector type the way GNU c++filt does.
+
+    False (the default) gives llvm-cxxfilt's `int vector[4]`; True gives GNU c++filt's
+    `int __vector(4)`, which is how GCC's own `__attribute__((vector_size))` diagnostics
+    write it. The distinction matters more than most: SIMD code mangles `Dv` constantly,
+    so this is not an obscure corner of the grammar.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -97,4 +106,5 @@ GNU_OPTIONS = ItaniumOptions(
     symbolic_constraint_parameters=False,
     gnu_complex_spelling=True,
     gnu_angle_spacing=True,
+    gnu_vector_spelling=True,
 )

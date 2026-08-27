@@ -8,6 +8,36 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Bare type encodings: `demangle_type()`, `parse_type()`, and `demangle --types`.**
+  A `typeinfo` name, an MSVC RTTI type descriptor and a Swift metadata typeref carry a
+  *type* rather than a symbol, and nothing in this package could read one. Itanium, MSVC
+  and Swift now each expose a `parse_type` on their plugin, and the two public entry
+  points dispatch to it; the schemes with no type grammar of their own say so by name in
+  the error rather than failing obscurely.
+
+  `language` is required, and is the whole design of the interface. A symbol announces
+  its scheme -- `_Z`, `?`, `$s` -- and a type encoding announces nothing at all: `Si` is
+  `std::istream` read as Itanium and `Swift.Int` read as Swift, and no evidence in the
+  string decides between them. Detection is not merely unimplemented here, it is
+  impossible, which is why every reference puts this behind a flag of its own --
+  `c++filt -t`, libiberty's `DMGL_TYPES`, `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`. On the command line `--types` reads one encoding per argument or per
+  line rather than filtering symbols out of mixed text, because a type encoding is an
+  ordinary word and `I like Pi` must not become `I like int*`.
+
+  `demangleb_type()` and `parseb_type()` go with them, because a type encoding is read
+  out of a binary as often as a symbol is -- an Itanium `typeinfo` name sits in
+  `.rodata` and an MSVC type descriptor's name in `.rdata`.
+
+  Scored at **1,073 of 1,076** against `c++filt -t` (binutils 2.42), pinned in both
+  directions in `tests/conformance/itanium-types.txt`. The three misses are a doubled
+  `KK` cv-qualifier, which GNU folds away and LLVM keeps; no compiler emits one, since
+  the ABI writes a single `<CV-qualifiers>` group per type.
+
+- **Itanium `tr` and `tw`, the throw expressions.** `decltype(throw)` and
+  `decltype(throw 1)` were refused outright. Both references read them and spell the
+  operand differently -- GNU brackets it, LLVM writes it after a space -- so the
+  existing `gnu_expression_spelling` option carries the difference.
+
 - **Swift symbolic references**, and an API that takes the binary too. A mangled name in
   Swift *metadata* is not always self-contained: where it would have to spell a type the
   image already describes, the compiler writes a one-byte marker and a four-byte signed
@@ -344,6 +374,23 @@ All notable changes to this project are recorded here. The format follows
   detected by rendering each parameter and comparing the text, on every function.
 
 ### Fixed
+
+- **A vector type was spelled LLVM's way under the GNU style.** `Dv4_i` came out
+  `int vector[4]` for both styles; `c++filt` writes `int __vector(4)`, which is how GCC's
+  own diagnostics spell it. SIMD code mangles `Dv` constantly, so this was not an obscure
+  corner. Carried by a new `gnu_vector_spelling` option, as the other divergences are.
+
+- **An array bound was always spaced off its element type.** `A3_Dv4_i` came out
+  `int vector[4] [3]` where `llvm-cxxfilt` prints `int vector[4][3]`: the reference omits
+  the space whenever what it last printed already ended in a bracket, and only the
+  multi-dimensional case of that rule was implemented.
+
+- **`demangle_type` no longer invents `auto` for a template parameter.** In a whole
+  symbol an unresolved `T_` is spelled `auto`, which is what both references do and what
+  generic lambdas depend on -- a return type is encoded ahead of the arguments that bind
+  it. A bare type has no enclosing template and can never acquire one, so there `auto`
+  would name a type that is not in the encoding; `c++filt -t` refuses these and this now
+  does too.
 
 - **Delphi: a `%` (or `$`) where a type was expected hung the parser.** `copy_type`
   treated those terminator letters as a no-op and did not advance, so `copy_args` called

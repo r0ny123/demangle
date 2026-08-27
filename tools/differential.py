@@ -95,6 +95,11 @@ NOT_REPLAYED = frozenset(
         # than the `{}` this library prints. Pinned by tests/test_rust.py, which records
         # the four that differ by name.
         "rustc-upstream.txt",
+        # Bare `<type>` encodings rather than symbols -- `Pi`, `PKFvRiE`. They are read by
+        # `demangle_type(..., language="itanium")`, and `demangle()` refuses every one of
+        # them on purpose, so replaying them here would report 1,076 failures for the
+        # feature working as designed. Pinned by tests/test_types.py against `c++filt -t`.
+        "itanium-types.txt",
     }
 )
 
@@ -343,7 +348,9 @@ def main():
 
     if arguments.cross:
         paths = arguments.corpus or sorted(
-            (Path(__file__).resolve().parent.parent / "tests" / "conformance").glob("itanium-*.txt")
+            path
+            for path in (Path(__file__).resolve().parent.parent / "tests" / "conformance").glob("itanium-*.txt")
+            if path.name not in NOT_REPLAYED
         )
         names = [mangled for path in paths for mangled, _ in load_corpus(path)]
         return cross(names, arguments.cross, arguments.style, arguments.language, arguments.show)

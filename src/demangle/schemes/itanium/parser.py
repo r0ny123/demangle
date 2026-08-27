@@ -28,6 +28,7 @@ from .tables import (
     DESTRUCTOR_KINDS,
     EXTENDED_BUILTIN_TYPES,
     INFIX_OPERATORS,
+    LOOSEST_PRECEDENCE,
     OPERATORS,
     POSTFIX_OPERATORS,
     POSTFIX_PRECEDENCE,
@@ -46,7 +47,7 @@ from .tables import (
     UNARY_PRECEDENCE,
 )
 
-__all__ = ["ItaniumParser", "detect", "parse"]
+__all__ = ["ItaniumParser", "detect", "parse", "parse_type"]
 
 #: Characters that can open a <type>. Used only to decide whether an ambiguous
 #: expression position holds a type, so it errs towards inclusion.
@@ -239,6 +240,7 @@ class ItaniumParser:
         "_pending_conversion",
         "_precedence",
         "_productions",
+        "_reject_unbound_parameters",
         "_rework",
         "_saw_empty_pack",
         "_saw_pack",
@@ -314,6 +316,11 @@ class ItaniumParser:
         # a name whose expansion is within that bound can still finish.
         self._productions = 0
         self._rework = 2 * limits.max_output + 4096
+        # Set by `parse_type`, and only there. See the `auto` fallback in
+        # `template_param`: in a whole symbol an unbound `T_` may still be bound later,
+        # so it is spelled rather than refused. A bare `<type>` has no enclosing
+        # template at all and never will, so there `auto` would be an invented answer.
+        self._reject_unbound_parameters = False
         # Set for exactly one encoding: the function enclosing a local name, whose
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
@@ -1526,6 +1533,13 @@ class ItaniumParser:
                         return members[self._pack_index]
             return bound
 
+        if self._reject_unbound_parameters:
+            # A bare `<type>` carries no template arguments and cannot acquire any, so
+            # nothing will ever bind this parameter. Both `c++filt -t` and
+            # `__cxa_demangle` refuse such an encoding rather than name a type that is
+            # not in it.
+            raise ParseError(self._mangled, reader.pos, "template parameter with nothing to bind it")
+
         # A return type is encoded before the arguments that bind its parameters, so a
         # name may legitimately reference one we do not know yet. The reference
         # demanglers spell that `auto`.
@@ -1881,7 +1895,10 @@ class ItaniumParser:
         size = self.expression_text() if reader.eat("_") else reader.digits()
         reader.expect("_")
         inner = self.type_()
-        return self.builder.raw(f"{self.builder.spell(inner)} vector[{size}]")
+        spelled = self.builder.spell(inner)
+        if self.options.gnu_vector_spelling:
+            return self.builder.raw(f"{spelled} __vector({size})")
+        return self.builder.raw(f"{spelled} vector[{size}]")
 
     def class_enum_type(self):
         """<class-enum-type> ::= <name> | Ts <name> | Tu <name> | Te <name>
@@ -2843,6 +2860,22 @@ class ItaniumParser:
             reader.pos += 2
             return builder.expression("noexcept", ["noexcept (", self.expression(), ")"])
 
+        if pair == "tr":
+            # `tr` is a rethrow -- `throw;` with no operand. A leaf, so it needs no
+            # brackets anywhere.
+            reader.pos += 2
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("throw", ["throw"])
+        if pair == "tw":
+            # `tw <expression>`, a throw with an operand. GNU brackets the operand and
+            # LLVM writes it after a space; both spell the keyword the same way.
+            reader.pos += 2
+            operand = self.expression()
+            self._precedence = LOOSEST_PRECEDENCE
+            if self.options.gnu_expression_spelling:
+                return builder.expression("throw", ["throw (", operand, ")"])
+            return builder.expression("throw", ["throw ", operand])
+
         if pair == "cl":
             reader.pos += 2
             target = self.expression()
@@ -3200,3 +3233,24 @@ def _separated(items, separator=", "):
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """Parse an Itanium mangled name into `builder`, returning its handle."""
     return ItaniumParser(mangled, builder, limits, options).parse()
+
+
+def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
+    """Parse a bare `<type>` -- `Pi`, `PKFvRiE` -- rather than a whole symbol.
+
+    What `__cxa_demangle` reads and `llvm-cxxfilt` refuses, and what a `typeinfo` name
+    or an RTTI descriptor carries. It is a separate entry point rather than a fallback
+    inside `parse` for the reason `llvm-cxxfilt` refuses it there: a demangler offered
+    every symbol in a binary and willing to read `i` as `int` will rename half a C
+    library. Asked for deliberately, it is exactly what the caller wants.
+    """
+    if not mangled:
+        raise NotMangledError(mangled, "empty type")
+    parser = ItaniumParser(mangled, builder, limits, options)
+    parser._reject_unbound_parameters = True
+    handle = parser.type_()
+    if not parser.reader.eof:
+        raise ParseError(mangled, parser.reader.pos, f"unconsumed input {parser.reader.remaining!r}")
+    if builder.size(handle) > limits.max_output:
+        raise LimitExceeded(mangled, "output length", limits.max_output)
+    return handle

@@ -1,13 +1,19 @@
 """The public API.
 
-Deliberately small. Five functions cover what callers actually do, and every one of
-them is stable ground that later versions can build on without breaking:
+Deliberately small. A handful of functions cover what callers actually do, and every
+one of them is stable ground that later versions can build on without breaking:
 
     demangle(name)          the readable spelling, or the name unchanged   -- never raises
     demangle_strict(name)   the readable spelling                          -- raises
     parse(name)             a tree to inspect                              -- raises
     detect(name)            which scheme, if any
     demangle_all(names)     the batch form, cached
+
+    demangle_type(enc, language=...)  a bare type encoding, spelled       -- raises
+    parse_type(enc, language=...)     a bare type encoding, as a tree     -- raises
+
+Each of those has a `...b` form taking and returning bytes, because a symbol table holds
+bytes rather than text.
 
 The split between `demangle` and `demangle_strict` is the important one. A tool
 labelling every symbol in a binary meets far more non-mangled names than mangled ones,
@@ -42,13 +48,17 @@ __all__ = [
     "demangle",
     "demangle_all",
     "demangle_strict",
+    "demangle_type",
     "demangleb",
     "demangleb_strict",
+    "demangleb_type",
     "detect",
     "detectb",
     "languages",
     "parse",
+    "parse_type",
     "parseb",
+    "parseb_type",
     "styles",
 ]
 
@@ -242,6 +252,93 @@ def parse(
     return _parse_handle(mangled, builder_for(resolved), language, resolved, limits)
 
 
+def demangle_type(
+    mangled: str,
+    *,
+    language: str,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> str:
+    """Return the readable spelling of a bare *type* encoding.
+
+    `Pi` is `int*`, `PEAX` is `void *`, `SaySiG` is `[Swift.Int]`. This is what a
+    `typeinfo` name, an RTTI type descriptor and a Swift metadata typeref carry: a type
+    on its own, with none of the surrounding symbol a name has.
+
+    `language` is required, and cannot be made optional. A whole symbol says which
+    scheme it belongs to -- `_Z`, `?`, `$s` -- but a type encoding says nothing at all:
+    `i` is a valid Itanium type, a valid Swift type, and a valid C identifier, so there
+    is no evidence to detect on. Guessing would mean reading plain C symbols as types,
+    which is why every reference puts this behind a flag of its own -- `c++filt -t`,
+    libiberty's `DMGL_TYPES`, `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`.
+
+    Raises rather than passing the name through, unlike `demangle()`. A caller who named
+    the scheme is asking a question about one encoding they already believe is one, not
+    labelling a table of symbols, and wants to be told when it is not.
+
+    Args:
+        mangled: the type encoding.
+        language: which scheme to read it as -- required. See `languages()`.
+        style: output spelling policy -- `"llvm"` (default) or `"gnu"`.
+        limits: resource bounds for the parse.
+
+    Raises:
+        ValueError: `language` is unknown, or names a scheme with no type grammar.
+        NotMangledError: the encoding is empty.
+        ParseError: the encoding does not follow the scheme's type grammar.
+        LimitExceeded: a resource bound was hit.
+    """
+    resolved = get_style(style)
+    builder = resolved.spelling_builder
+    return builder.spell(_parse_type_handle(mangled, builder, language, resolved, limits))
+
+
+def parse_type(
+    mangled: str,
+    *,
+    language: str,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> Node:
+    """Parse a bare *type* encoding into a tree.
+
+    `demangle_type()` is to `demangle_strict()` as this is to `parse()`: same input,
+    same required `language`, same errors -- a `core.ast.Node` instead of a string.
+    """
+    resolved = get_style(style)
+    return _parse_type_handle(mangled, builder_for(resolved), language, resolved, limits)
+
+
+def _parse_type_handle(mangled, builder, language, style, limits):
+    if not isinstance(mangled, str):
+        _refuse_non_string(mangled)
+    plugin = _resolve(language)
+    if plugin is None:
+        raise ValueError("demangle_type needs a language; a type encoding carries no marker to detect on")
+    if plugin.parse_type is None:
+        raise ValueError(f"{plugin.name} has no type grammar of its own; {_type_languages()} do")
+    options = style.options_for(plugin.name)
+    try:
+        if options is None:
+            return plugin.parse_type(mangled, builder, limits)
+        return plugin.parse_type(mangled, builder, limits, options)
+    except RecursionError as exc:
+        raise _depth_exceeded(mangled, limits) from exc
+    except DemanglingError:
+        raise
+    except Exception as exc:
+        reraise_if_operational(exc)
+        # Same contract as `_parse_handle`: these entry points raise `DemanglingError`
+        # and nothing else, so a defect in a plugin is wrapped rather than let out as an
+        # `AttributeError` no caller can reasonably catch. The original is chained.
+        raise ParseError(mangled, None, f"{plugin.name} type parser failed: {exc!r}") from exc
+
+
+def _type_languages():
+    """The schemes that read a bare type, for the error that says one does not."""
+    return ", ".join(sorted(name for name in names() if get(name).parse_type is not None))
+
+
 def _parse_handle(mangled, builder, language, style, limits):
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
@@ -429,6 +526,36 @@ def parseb(
 ) -> Node:
     """`parse()` over bytes. The tree it returns spells `str`, as every tree does."""
     return parse(_decode(mangled), language=language, style=style, limits=limits)
+
+
+def demangleb_type(
+    mangled: bytes,
+    *,
+    language: str,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> bytes:
+    """`demangle_type()` over bytes, returning bytes.
+
+    A type encoding is read out of a binary as often as a symbol is -- an Itanium
+    `typeinfo` name sits in `.rodata` and an MSVC type descriptor's name in `.rdata` --
+    so it gets the same bytes form the rest of the package has. Raises what
+    `demangle_type()` raises.
+    """
+    return demangle_type(_decode(mangled), language=language, style=style, limits=limits).encode(
+        _BYTES_ENCODING, _BYTES_ERRORS
+    )
+
+
+def parseb_type(
+    mangled: bytes,
+    *,
+    language: str,
+    style: str | Style | None = DEFAULT_STYLE,
+    limits: Limits = DEFAULT_LIMITS,
+) -> Node:
+    """`parse_type()` over bytes. The tree it returns spells `str`, as every tree does."""
+    return parse_type(_decode(mangled), language=language, style=style, limits=limits)
 
 
 def detectb(mangled: bytes) -> str | None:

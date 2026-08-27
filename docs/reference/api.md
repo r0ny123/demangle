@@ -1,6 +1,6 @@
 # Public API
 
-Six functions cover what callers actually do. Everything else on this page is either an
+A handful of functions cover what callers actually do. Everything else on this page is either an
 error type you may want to catch or an extension point you may want to use.
 
 ```python
@@ -22,6 +22,25 @@ demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi")
         - styles
         - cache_clear
         - cache_stats
+
+## A type on its own
+
+A `typeinfo` name, an MSVC RTTI type descriptor and a Swift metadata typeref carry a
+*type* rather than a symbol. `language` is required for these two and cannot be made
+optional: a symbol announces its scheme -- `_Z`, `?`, `$s` -- and a type encoding
+announces nothing at all, so `Si` is `std::istream` read as Itanium and `Swift.Int` read
+as Swift.
+
+```python
+demangle.demangle_type("PKFvRiE", language="itanium")
+# 'void (*)(int&) const'
+```
+
+::: demangle.api
+    options:
+      members:
+        - demangle_type
+        - parse_type
 
 ## The parts of a name
 
@@ -52,7 +71,9 @@ survive the round trip rather than raising.
       members:
         - demangleb
         - demangleb_strict
+        - demangleb_type
         - parseb
+        - parseb_type
         - detectb
 
 ## Errors
