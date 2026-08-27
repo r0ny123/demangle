@@ -106,6 +106,11 @@ NOT_REPLAYED = frozenset(
         # of `llvm-undname`'s suppression flags *changes*, not what a name demangles to.
         # Replayed by tests/test_msvc.py, which knows what the middle column means.
         "msvc-suppressions.txt",
+        # Swift's `simplified-manglings.txt`: the expected column is what
+        # `swift-demangle --simplified` prints, not what `demangle()` prints by default,
+        # so replaying it here would report 173 failures for a feature working as
+        # designed. Pinned by tests/test_swift_simplified.py.
+        "swift-simplified.txt",
     }
 )
 

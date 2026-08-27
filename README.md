@@ -187,6 +187,17 @@ On the command line they are `--no-calling-convention` and its siblings. Over LL
 609-name corpus this agrees with the reference on **1250 / 1253** of the differences the
 flags make ††.
 
+Swift has the bundle Xcode and LLDB show instead of the full spelling — `Either` for
+`Monads.Either`, `(_:)` for `(Swift.Int) -> Swift.UInt`, `specialized f()` for a page of
+specialisation arguments. It is `--simplified` on the command line, and exact against
+Swift's own 217 vectors:
+
+```python
+>>> from demangle.schemes.swift import SIMPLIFIED_OPTIONS
+>>> demangle.demangle("_TtFSiSu", style=demangle.style("llvm", swift=SIMPLIFIED_OPTIONS))
+'(_:)'
+```
+
 ### Command line
 
 ```console
@@ -199,6 +210,7 @@ $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
 $ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t`
 $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
+$ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
 ```
 
 `-p` is `c++filt -p`: over the shipped libstdc++ and the GNU-style corpus the two agree
@@ -235,6 +247,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
+| Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` | **217 / 217** |
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
 
 †† The three are names where `llvm-undname --no-return-type` leaves an unclosed

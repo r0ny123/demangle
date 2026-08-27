@@ -356,3 +356,23 @@ class TestTypeFlag:
     def test_crlf_input_reads_the_same_as_lf(self, capsys, monkeypatch):
         _, out, _ = run(capsys, ["--types", "-l", "msvc"], stdin="PEAX\r\n", monkeypatch=monkeypatch)
         assert out == "void *\n"
+
+
+class TestSimplifiedFlag:
+    """`--simplified`: Swift names the way Xcode shows them."""
+
+    def test_a_module_qualification_goes(self, capsys):
+        _, out, _ = run(capsys, ["--simplified", "_TtO6Monads6Either"])
+        assert out == "Either\n"
+
+    def test_a_signature_becomes_its_labels(self, capsys):
+        _, out, _ = run(capsys, ["--simplified", "_TtFSiSu"])
+        assert out == "(_:)\n"
+
+    def test_it_leaves_every_other_scheme_alone(self, capsys):
+        _, out, _ = run(capsys, ["--simplified", VECTOR, "?f@@YAXH@Z"])
+        assert out.splitlines() == [VECTOR_SPELLED, "void __cdecl f(int)"]
+
+    def test_without_it_the_full_spelling_stands(self, capsys):
+        _, out, _ = run(capsys, ["_TtO6Monads6Either"])
+        assert out == "Monads.Either\n"

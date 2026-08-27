@@ -259,13 +259,15 @@ which is whether to spell something *differently*.
   Still to come from the same list: the Itanium and Rust knobs — `--strip-underscore`,
   `DMGL_RET_POSTFIX`, Rust hash retention — and Swift's simplified bundle below.
 
-One is left, and it is Swift's:
+- ~~**Swift's simplified manglings**~~ — *landed*, **217 of 217** against
+  `test/Demangle/Inputs/simplified-manglings.txt`. What `swift-demangle --simplified`
+  prints and what an IDE shows in a stack trace: `Either` for `Monads.Either`, `(_:)` for
+  `(Swift.Int) -> Swift.UInt`, `specialized f()` for a page of specialisation arguments.
+  Built where the reference builds it — as options the printer consults, not as a pass
+  over the text, because dropping a module qualification needs to know which run of
+  characters *was* the module and after printing nothing does.
 
-- **Swift's simplified manglings** — `test/Demangle/Inputs/simplified-manglings.txt` is
-  the same names printed with module qualifications, generic signatures and the argument
-  labels dropped: `Foundation.FileHandle.readToEnd() throws -> Foundation.Data?` becomes
-  `FileHandle.readToEnd()`. It is what `swift-demangle --simplified` prints, and what an
-  IDE shows in a stack trace. This has no such mode. It belongs in the Swift printer as
-  an option object the way the Itanium scheme carries `GNU_OPTIONS`, not as a pass over
-  the text: dropping a module qualification needs to know which run of characters *was*
-  the module, and after printing nothing does.
+  `SwiftOptions` carries the twelve flags the bundle actually changes here; the rest of
+  upstream's fourteen either match this printer already or change nothing over the 217,
+  and a flag no vector exercises is a flag with no reference behind it. Reached as
+  `demangle --simplified`, or `style("llvm", swift=SIMPLIFIED_OPTIONS)`.

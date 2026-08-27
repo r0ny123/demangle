@@ -8,6 +8,23 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Swift's simplified spelling, exact against the compiler's own 217 vectors.** What
+  `swift-demangle --simplified` prints, and what Xcode and LLDB show in a stack trace:
+  `Either` for `Monads.Either`, `(_:)` for `(Swift.Int) -> Swift.UInt`,
+  `specialized f()` for a page of specialisation arguments, `destroy for T` for
+  `destroy value witness for T`.
+
+  Built as options the printer consults rather than as a pass over the text, which is
+  where the reference builds it and for the reason it has to be: dropping a module
+  qualification means knowing which run of characters *was* the module, and after
+  printing nothing does. `SwiftOptions` carries the twelve flags upstream's
+  `SimplifiedUIDemangleOptions()` bundle actually changes here -- the rest of its
+  fourteen either match this printer already or change nothing over the 217 vectors, and
+  a flag no vector exercises is a flag with no reference behind it.
+
+  `demangle --simplified` on the command line, `style("llvm", swift=SIMPLIFIED_OPTIONS)`
+  from the library. Scored **217 of 217** and pinned, corpus checked in.
+
 - **A per-call options object: `style()`, and MSVC's five suppression flags.** The two
   named styles say how to *spell* a name; what a caller usually wants to vary is how much
   of it to spell, and every peer tool composes that at the call site --

@@ -106,6 +106,11 @@ def build_parser():
     less.add_argument("--no-access-specifier", action="store_true", help="omit `public: `, `private: `")
     less.add_argument("--no-member-type", action="store_true", help="omit `static ` and `virtual `")
     less.add_argument("--no-variable-type", action="store_true", help="print a data symbol as its name alone")
+    less.add_argument(
+        "--simplified",
+        action="store_true",
+        help="Swift names the way Xcode shows them, as `swift-demangle --simplified`",
+    )
     parser.add_argument("--relaxed", action="store_true", help="raise the resource bounds, for input you trust")
     parser.add_argument("--max-input", type=int, metavar="N", help="characters of input to consider")
     parser.add_argument("--max-output", type=int, metavar="N", help="characters of output to allow")
@@ -131,10 +136,17 @@ _MSVC_SUPPRESSIONS = {
 
 def _style_from(arguments):
     """The style this run spells with: the named one, plus whatever it is to leave out."""
+    changes = {}
     off = {option: False for flag, option in _MSVC_SUPPRESSIONS.items() if getattr(arguments, flag)}
-    if not off:
+    if off:
+        changes["msvc"] = off
+    if arguments.simplified:
+        from .schemes.swift.options import SIMPLIFIED_OPTIONS
+
+        changes["swift"] = SIMPLIFIED_OPTIONS
+    if not changes:
         return arguments.style
-    return style(arguments.style, msvc=off)
+    return style(arguments.style, **changes)
 
 
 def _limits_from(arguments):

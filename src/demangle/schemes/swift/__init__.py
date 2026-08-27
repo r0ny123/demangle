@@ -32,6 +32,7 @@ from . import nodes
 from ._demangler import MANGLING_PREFIXES, demangle_symbol, demangle_type
 from ._old_demangler import demangle_old_symbol
 from ._printer import print_root
+from .options import DEFAULT_OPTIONS, SIMPLIFIED_OPTIONS, SwiftOptions
 from .resolve import ContextResolver, Image, elf_image, macho_image
 from .symbolic import SymbolicReference, end_of_name, scan
 
@@ -56,7 +57,7 @@ def _wants_structure(builder):
     return answer
 
 
-def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
+def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """Parse a Swift mangled name into `builder`."""
     if not mangled:
         raise NotMangledError(mangled, "empty name")
@@ -69,10 +70,10 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         root = demangle_symbol(mangled)
     except RecursionError as error:
         raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
-    return _finish(mangled, root, builder, limits)
+    return _finish(mangled, root, builder, limits, options)
 
 
-def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=None):
+def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """Parse a Swift *type* mangling -- `Si`, `SaySiG` -- rather than a whole symbol.
 
     `Demangler::demangleType` rather than `demangleSymbol`, and what a metadata typeref
@@ -94,23 +95,24 @@ def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
     if root is not None and root.kind == "Suffix":
         raise ParseError(mangled, None, "not a type this reads")
-    return _finish(mangled, root, builder, limits)
+    return _finish(mangled, root, builder, limits, options)
 
 
-def _finish(mangled, root, builder, limits):
+def _finish(mangled, root, builder, limits, options=DEFAULT_OPTIONS):
     """Turn a reference-demangler root into what `builder` collects, or refuse it."""
     if root is None:
         raise ParseError(mangled, None, "not a name this reads")
+    options = options or DEFAULT_OPTIONS
 
     if _wants_structure(builder):
-        tree = nodes.build(root)
+        tree = nodes.build(root, options)
         if tree is None:
             raise ParseError(mangled, None, "not a name this reads")
         if tree.size > limits.max_output:
             raise LimitExceeded(mangled, "output length", limits.max_output)
         return tree
 
-    text = print_root(root)
+    text = print_root(root, options)
     if not text:
         raise ParseError(mangled, None, "not a name this reads")
     if len(text) > limits.max_output:
@@ -124,6 +126,7 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     parse_type=parse_type,
     description="Swift symbol mangling",
+    options_type=SwiftOptions,
     aliases=(),
     # `priority` is ascending: *lower is offered first*. After D, before Rust. `$s` and
     # `_T0` collide with nothing; `_$S` collides with Free Pascal, which is offered
@@ -189,9 +192,12 @@ def typerefs(blob):
 
 
 __all__ = [
+    "DEFAULT_OPTIONS",
     "PLUGIN",
+    "SIMPLIFIED_OPTIONS",
     "ContextResolver",
     "Image",
+    "SwiftOptions",
     "SymbolicReference",
     "demangle_old_symbol",
     "demangle_symbol",

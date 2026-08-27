@@ -23,6 +23,7 @@ toolchain's is not useful, and every one of them changes the answer.
 
 from ._demangler import _VALUE_WITNESS_NAMES, STDLIB_NAME, demangle_symbol
 from ._old_demangler import demangle_old_symbol
+from .options import DEFAULT_OPTIONS
 
 __all__ = ["print_root"]
 
@@ -218,9 +219,14 @@ def _child_of_kind(node, kind):
 
 
 class Printer:
-    """The reference's `NodePrinter`, with its options fixed at the toolchain defaults."""
+    """The reference's `NodePrinter`, and the options it consults."""
 
-    def __init__(self):
+    def __init__(self, options=DEFAULT_OPTIONS):
+        self.options = options
+        #: Whether `specialized ` has already been written, for the short form of a
+        #: specialisation prefix. The reference latches it on the printer for the same
+        #: reason: the layers nest and the word belongs to the outermost.
+        self._said_specialized = False
         self.out = []
         #: Characters written so far. `print_entity` decides whether to write a `.` by
         #: whether the last call produced anything, and the reference measures that in
@@ -345,12 +351,23 @@ class Printer:
 
     # -- functions -------------------------------------------------------------
 
-    def print_function_parameters(self, labels, parameters, depth):
+    def print_function_parameters(self, labels, parameters, depth, show_types=True):
+        """The parameter list, with or without the types in it.
+
+        Without them the list keeps its shape and its labels and nothing else, so
+        `(Swift.Int) -> Swift.UInt` is `(_:)` and a labelled two-parameter function is
+        `(from:to:)` -- which is how a Swift programmer refers to it. A parameter that
+        carried no label at all is written `_:`, and there are no separators, because
+        `(_:_:)` is one token in that spelling rather than a list.
+        """
         if parameters.kind != "ArgumentTuple":
             raise _Invalid
         found = parameters.first.first
         if found.kind != "Tuple":
             # One unnamed parameter, which is not written as a tuple.
+            if not show_types:
+                self.write("(_:)")
+                return
             self.write("(")
             self.print(found, depth + 1)
             self.write(")")
@@ -359,13 +376,19 @@ class Printer:
         has_labels = labels is not None and labels.children
         self.write("(")
         for at, parameter in enumerate(found.children):
-            if at:
+            if at and show_types:
                 self.write(", ")
             if has_labels:
                 label = labels.child(at)
                 self.write(label.text if label.kind == "Identifier" else "_")
-                self.write(": ")
-            self.print(parameter, depth + 1)
+                self.write(":")
+                if show_types:
+                    self.write(" ")
+            elif not show_types:
+                name = _child_of_kind(parameter, "TupleElementName")
+                self.write(f"{name.text}:" if name is not None else "_:")
+            if show_types:
+                self.print(parameter, depth + 1)
         self.write(")")
 
     def print_function_type(self, labels, node, depth):
@@ -437,7 +460,13 @@ class Printer:
         if sendable:
             self.write("@Sendable ")
 
-        self.print_function_parameters(labels, node.child(arguments_at), depth)
+        show_types = self.options.show_function_argument_types
+        self.print_function_parameters(labels, node.child(arguments_at), depth, show_types)
+        if not show_types:
+            # Everything after the parameter list belongs to the *type* -- `async`, the
+            # thrown error, the result -- and this spelling is not one. The reference
+            # returns here.
+            return
         if asynchronous:
             self.write(" async")
         if thrown is not None:
@@ -557,7 +586,7 @@ class Printer:
                     self.write("each ")
                 self.write(generic_parameter_name(at_depth, index))
 
-        if first_requirement != count:
+        if first_requirement != count and self.options.display_where_clauses:
             self.write(" where ")
             for at in range(first_requirement, count):
                 if at > first_requirement:
@@ -701,6 +730,14 @@ class Printer:
         return argument
 
     def print_specialization_prefix(self, node, description, depth, param_prefix=""):
+        if not self.options.display_generic_specializations:
+            # `specialized f()`, once, however many specialisation layers wrap the
+            # symbol: the reference latches the word so that a generic specialisation of
+            # a function-signature specialisation does not say it twice.
+            if not self._said_specialized:
+                self.write("specialized ")
+                self._said_specialized = True
+            return
         if node.first is not None and node.first.kind == "RepresentationChanged":
             # Nothing about the arguments changed, so there is no argument list to print.
             self.write("representation changed of ")
@@ -757,6 +794,10 @@ class Printer:
 
         literal = _JUST_TEXT.get(kind)
         if literal is not None:
+            if kind in _THUNK_LEADS and not self.options.shorten_thunk:
+                # The short form of these is nothing at all: what they lead is the
+                # symbol they wrap, and the words say only which wrapper it is.
+                return None
             self.write(literal)
             return None
 
@@ -880,8 +921,9 @@ class Printer:
                 ):
                     style = "colon"
             if style == "colon":
-                self.write(" : ")
-                self.print_entity_type(entity, found, generic_arguments, depth)
+                if self.options.display_entity_types:
+                    self.write(" : ")
+                    self.print_entity_type(entity, found, generic_arguments, depth)
             else:
                 if multi_word or _needs_space_before_type(found):
                     self.write(" ")
@@ -1070,6 +1112,22 @@ _JUST_TEXT = {
     "OpaqueReturnTypeParent": "",
 }
 
+#: The `_JUST_TEXT` kinds the reference writes only `if (!Options.ShortenThunk)`.
+#: `BackDeploymentFallback` is not among them: it names what a symbol *is* rather than
+#: what wraps it.
+_THUNK_LEADS = frozenset(
+    {
+        "MergedFunction",
+        "DistributedThunk",
+        "DistributedAccessor",
+        "AccessibleFunctionRecord",
+        "DynamicallyReplaceableFunctionKey",
+        "DynamicallyReplaceableFunctionImpl",
+        "DynamicallyReplaceableFunctionVar",
+        "BackDeploymentThunk",
+    }
+)
+
 #: How each declaration kind is spelled: type style, whether it has a name of its own, an
 #: extra name to append, and a name to use instead of the node's.
 _ENTITY_KINDS = {
@@ -1211,7 +1269,13 @@ _simple("Global", lambda self, node, depth: self.print_children(node, depth))
 _simple("TypeList", lambda self, node, depth: self.print_children(node, depth))
 _simple("AnyProtocolConformanceList", lambda self, node, depth: _print_conformance_list(self, node, depth))
 _simple("ConstrainedExistentialRequirementList", lambda self, node, depth: self.print_children(node, depth, ", "))
-_simple("Module", lambda self, node, depth: self.write(node.text))
+# `DisplayModuleNames` off writes nothing at all for the module -- not even an empty
+# string -- because the `.` after a context is written only where the context produced
+# output. That is what turns `Monads.Either` into `Either` without leaving a leading dot.
+_simple(
+    "Module",
+    lambda self, node, depth: self.write(node.text) if self.options.display_module_names else None,
+)
 _simple("Identifier", lambda self, node, depth: self.write(node.text))
 _simple("ClangType", lambda self, node, depth: self.write(node.text))
 _simple("BuiltinTypeName", lambda self, node, depth: self.write(node.text))
@@ -1252,12 +1316,15 @@ _simple(
 
 @_handler("Suffix")
 def _print_suffix(self, node, depth, as_prefix_context):
-    self.write(" with unmangled suffix " + _quoted(node.text))
+    if self.options.display_unmangled_suffix:
+        self.write(" with unmangled suffix " + _quoted(node.text))
     return None
 
 
 @_handler("AnonymousContext")
 def _print_anonymous_context(self, node, depth, as_prefix_context):
+    if not self.options.display_extension_contexts:
+        return None
     self.print(node.child(1), depth + 1)
     self.write(".(unknown context at ")
     self.print(node.first, depth + 1)
@@ -1271,9 +1338,10 @@ def _print_anonymous_context(self, node, depth, as_prefix_context):
 
 @_handler("Extension")
 def _print_extension(self, node, depth, as_prefix_context):
-    self.write("(extension in ")
-    self.print(node.first, depth + 1, True)
-    self.write("):")
+    if self.options.display_extension_contexts:
+        self.write("(extension in ")
+        self.print(node.first, depth + 1, True)
+        self.write("):")
     self.print(node.child(1), depth + 1)
     if len(node.children) == 3:
         self.print(node.child(2), depth + 1)
@@ -1306,13 +1374,17 @@ def _print_macro_unique_name(self, node, depth, as_prefix_context):
 
 @_handler("ExplicitClosure")
 def _print_explicit_closure(self, node, depth, as_prefix_context):
-    return self.print_entity(node, depth, as_prefix_context, "function", False, "closure #", node.child(1).index + 1)
+    # A closure's signature is its type, so the flag that hides a function's parameters
+    # hides this too -- `closure #1 in f()` rather than `closure #1 () in f()`.
+    style = "function" if self.options.show_function_argument_types else "none"
+    return self.print_entity(node, depth, as_prefix_context, style, False, "closure #", node.child(1).index + 1)
 
 
 @_handler("ImplicitClosure")
 def _print_implicit_closure(self, node, depth, as_prefix_context):
+    style = "function" if self.options.show_function_argument_types else "none"
     return self.print_entity(
-        node, depth, as_prefix_context, "function", False, "implicit closure #", node.child(1).index + 1
+        node, depth, as_prefix_context, style, False, "implicit closure #", node.child(1).index + 1
     )
 
 
@@ -1363,11 +1435,14 @@ def _print_local_decl_name(self, node, depth, as_prefix_context):
 
 @_handler("PrivateDeclName")
 def _print_private_decl_name(self, node, depth, as_prefix_context):
+    show = self.options.show_private_discriminators
     if len(node.children) > 1:
-        self.write("(")
+        if show:
+            self.write("(")
         self.print(node.child(1), depth + 1)
-        self.write(f" in {node.first.text})")
-    else:
+        if show:
+            self.write(f" in {node.first.text})")
+    elif show:
         self.write(f"(in {node.first.text})")
     return None
 
@@ -1406,7 +1481,12 @@ for _kind in (
 for _kind in ("DependentGenericSignature", "DependentPseudogenericSignature"):
     _simple(_kind, lambda self, node, depth: self.print_generic_signature(node, depth))
 
-_simple("ArgumentTuple", lambda self, node, depth: self.print_function_parameters(None, node, depth))
+_simple(
+    "ArgumentTuple",
+    lambda self, node, depth: self.print_function_parameters(
+        None, node, depth, self.options.show_function_argument_types
+    ),
+)
 _simple("ImplFunctionType", lambda self, node, depth: self.print_impl_function_type(node, depth))
 _simple("TupleElementName", lambda self, node, depth: self.write(f"{node.text}: "))
 _simple("AssocTypePath", lambda self, node, depth: self.print_children(node, depth, "."))
@@ -1625,7 +1705,7 @@ for _kind, _lead in (
 ):
 
     def _print_partial_apply(self, node, depth, as_prefix_context, _l=_lead):
-        self.write(_l)
+        self.write(_l if self.options.shorten_partial_apply else "partial apply")
         if node.children:
             self.write(" for ")
             self.print_children(node, depth)
@@ -1692,6 +1772,10 @@ def _print_enum_case(self, node, depth, as_prefix_context):
 for _kind, _helper in (("ReabstractionThunk", False), ("ReabstractionThunkHelper", True)):
 
     def _print_reabstraction_thunk(self, node, depth, as_prefix_context, _h=_helper):
+        if not self.options.shorten_thunk:
+            self.write("thunk for ")
+            self.print(node.last, depth + 1)
+            return None
         self.write("reabstraction thunk ")
         if _h:
             self.write("helper ")
@@ -1928,7 +2012,7 @@ def _print_base_witness_table_accessor(self, node, depth, as_prefix_context):
 @_handler("ValueWitness")
 def _print_value_witness(self, node, depth, as_prefix_context):
     self.write(_VALUE_WITNESS_SPELLINGS[node.first.index])
-    self.write(" value witness for ")
+    self.write(" value witness for " if self.options.shorten_value_witness else " for ")
     self.print(node.child(1), depth + 1)
     return None
 
@@ -2026,10 +2110,11 @@ def _print_protocol_conformance(self, node, depth, as_prefix_context):
         self.print(node.child(1), depth + 1)
     else:
         self.print(node.first, depth + 1)
-        self.write(" : ")
-        self.print(node.child(1), depth + 1)
-        self.write(" in ")
-        self.print(node.child(2), depth + 1)
+        if self.options.display_protocol_conformances:
+            self.write(" : ")
+            self.print(node.child(1), depth + 1)
+            self.write(" in ")
+            self.print(node.child(2), depth + 1)
     return None
 
 
@@ -2467,6 +2552,8 @@ for _kind, _lead in (
 ):
 
     def _print_async_resume(self, node, depth, as_prefix_context, _l=_lead):
+        if not self.options.show_async_resume_partial:
+            return None
         self.write("(")
         self.print(node.first, depth + 1)
         self.write(")")
@@ -2502,11 +2589,11 @@ def _print_symbolic_existential(self, node, depth, as_prefix_context):
     return None
 
 
-def print_root(root):
+def print_root(root, options=DEFAULT_OPTIONS):
     """Spell a whole tree, or return `""` if it is one the printer cannot spell."""
     if root is None:
         return ""
-    printer = Printer()
+    printer = Printer(options)
     try:
         printer.print(root, 0)
     except (_Invalid, IndexError, AttributeError, KeyError, RecursionError):
