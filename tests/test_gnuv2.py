@@ -25,9 +25,11 @@ from .test_conformance import GNUV2_EXACT as LIBIBERTY_EXACT
 from .test_conformance import GNUV2_TOTAL as LIBIBERTY_TOTAL
 
 #: How many of the 662 the *default* style claims. The rest are shapes only ARM, Lucid or
-#: HP write, and GNU's reading refuses them rather than guessing -- which is the correct
-#: answer, since a caller who knows the compiler passes `GnuV2Options(style=...)`.
-DETECTED_UNDER_GNU = 568
+#: HP write -- an ARM `__ct` marker, an HP template specialisation -- and GNU's reading
+#: refuses them rather than guessing, which is the correct answer: a caller who knows the
+#: compiler passes `GnuV2Options(style=...)`, and many of them are read correctly by the
+#: CodeWarrior scheme next door, which shares the ARM family's `__ct`/`__dt` convention.
+DETECTED_UNDER_GNU = 507
 
 #: How many of the 662 come back as a structured tree -- a name and a parameter list --
 #: rather than as one flat `name` part. The rest are the shapes with no argument list to
@@ -116,7 +118,9 @@ class TestTheStyles:
 
     def test_the_style_reaches_the_parser_through_the_style_object(self):
         mangled = "__dt__Q23foo3barFv"
-        assert demangle.demangle(mangled) == mangled
+        # The default `gnu` style does not know `__dt`, so this scheme declines it; the
+        # CodeWarrior scheme, which shares the ARM family's convention, reads it instead.
+        assert demangle.demangle(mangled) == "foo::bar::~bar()"
         as_lucid = demangle.style("llvm", gnuv2={"style": "lucid"})
         assert demangle.demangle(mangled, language="gnuv2", style=as_lucid) == "foo::bar::~bar(void)"
 
@@ -156,14 +160,16 @@ class TestWhatItRefusesToClaim:
         assert not gnuv2.detect("_GLOBAL_$I$")
 
     def test_no_name_from_any_other_scheme_s_corpus_is_read_as_this_one(self):
-        """Over every checked-in corpus but this scheme's own: 80,748 names, none taken.
+        """Over every checked-in corpus but the two pre-Itanium ones: none taken.
 
         End to end rather than through `detect` alone, because a name another scheme
-        claims but fails to parse falls through to the rest, and this one is offered last.
+        claims but fails to parse falls through to the rest. CodeWarrior's corpus is left
+        out because that overlap is real rather than a defect -- the two manglings share
+        shapes, and `tests/test_codewarrior.py` pins how they are divided.
         """
         claimed = []
         for path in sorted(CONFORMANCE.glob("*.txt")):
-            if path.name.startswith("gnuv2-"):
+            if path.name.startswith(("gnuv2-", "codewarrior-")):
                 continue
             for line in path.read_text(encoding="utf-8").splitlines():
                 if not line or line.startswith("#"):

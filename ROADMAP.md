@@ -154,12 +154,21 @@ each is measured against differs, and the difference is the interesting part:
   option rather than a guess: `demangle.style("llvm", gnuv2={"style": "arm"})`, with
   `gnu` the default.
 
-One scheme is left worth weighing, plus a variant of the one just landed:
+- **Metrowerks CodeWarrior** — *landed*, beside the four above. The other pre-Itanium
+  mangling, and a scheme of its own rather than a sixth style, because libiberty never
+  read it: `cplus-dem.c` has no CodeWarrior flag and `demangle-expected` has no vectors
+  for it. The reference is `encounter/cwdemangle`, the tool decompilation projects for
+  GameCube and Wii titles run, and its own test module is the corpus — **47 of 47**,
+  under all three of its option settings. Detection to the same bar as its neighbour:
+  **0** claims over the other schemes' 80,748 names and **0** over 339,117 real symbols.
 
-- **Metrowerks CodeWarrior**, the remaining pre-Itanium variant.
-  `encounter/cwdemangle` is the reference, `demangle-expected` has no vectors for it,
-  and it needs its own measurable property first — which is why it did not land beside
-  the four above rather than because the reading is hard.
+  Where the two overlap, GNU v2 is offered first: a name valid under both should go to
+  the commoner mangling, and what is unambiguously CodeWarrior — a literal `<...>`
+  argument list, `@LOCAL@`, `$localstatic`, a `__dt` — GNU v2 now refuses rather than
+  mis-reads.
+
+One scheme is left worth weighing:
+
 - **Ada/GNAT** — `pkg__proc$2`, still carried by libiberty as `--format=gnat` when the
   others were dropped, and documented normatively in GCC's own `exp_dbug.ads`. Narrow
   but concentrated: avionics, rail, defence.

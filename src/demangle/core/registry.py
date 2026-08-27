@@ -27,6 +27,7 @@ _BUILTIN_MODULES = (
     ("nim", "demangle.schemes.nim"),
     ("objc", "demangle.schemes.objc"),
     ("jni", "demangle.schemes.jni"),
+    ("codewarrior", "demangle.schemes.codewarrior"),
     ("gnuv2", "demangle.schemes.gnuv2"),
 )
 

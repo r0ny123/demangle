@@ -829,8 +829,15 @@ def detect(name):
     exports of that shape are a single identifier (`@@InitExe`). `@@bug@@x` is not, and
     is left unclaimed so a broken plugin's fixture is not rewritten. A qualified data
     name such as `@System@Var` has no `$` and is still claimed.
+
+    `@LOCAL@` and `@GUARD@` are left for the CodeWarrior scheme, which is where they come
+    from: Wii CodeWarrior spells a function-local static `@LOCAL@<function>@<variable>`
+    and its guard `@GUARD@...`. Both parse here as a unit called `LOCAL` or `GUARD`,
+    which is a name Borland never wrote.
     """
     if not name or name[0] != "@" or name.startswith("@__swift") or _MSVC_FASTCALL.match(name):
+        return False
+    if name.startswith(("@LOCAL@", "@GUARD@")):
         return False
     if name.startswith("@@") and "$" not in name and not _LINKPROC_BARE.match(name):
         return False

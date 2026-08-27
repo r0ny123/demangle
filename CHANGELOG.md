@@ -8,6 +8,38 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Metrowerks CodeWarrior C++.** The other pre-Itanium mangling, and the one libiberty
+  never read: `cplus-dem.c` has no CodeWarrior flag, `demangle-expected` has no vectors
+  for it, and binutils has never demangled one. GameCube and Wii titles, Palm OS, BeOS
+  and classic Mac OS were built with it, which is why the reference is a decompilation
+  project's tool -- `encounter/cwdemangle`, public domain under CC0-1.0 -- rather than a
+  compiler vendor's.
+
+  **47 of 47** against that tool's own test module, under all three of its option
+  settings.
+
+  It looks like the ARM encoding and is not. A template argument list is written out
+  *literally* in the symbol, `single_ptr<10CModelData>`, so finding where the name ends
+  means counting brackets before looking for the `__`. A pointer-to-member is
+  `M<class>F` followed by two hidden parameters whose spelling says whether the member
+  function is `const`. A function-local static is `@LOCAL@f@v` on Wii and
+  `v$localstatic1$f` on GameCube. And the type spelling is the reference's own:
+  `const char*`, not `char const *`.
+
+  The two pre-Itanium schemes overlap, and the split between them is a decision rather
+  than a fallout. `AtEnd__13ivRubberGroup` is valid under both, both readings parse, and
+  they differ only in spelling -- so GNU v2 is offered first and the commoner mangling
+  wins the tie. What is unambiguously CodeWarrior, GNU v2 now refuses rather than
+  mis-reads: a literal `<...>` argument list (no GNU v2 compiler writes one), a `__ct`
+  or `__dt` marker the `gnu` style does not know and would spell as an ordinary function
+  name, and a declarator with an empty pointer slot -- `int (CGuiWidget::)(...)` -- which
+  is what GNU v2's reading of a CodeWarrior pointer-to-member produces and is not
+  something C++ spells. `@LOCAL@` and `@GUARD@` are left by the Delphi scheme, which
+  otherwise claims every leading `@`.
+
+  Detection is held to the same bar: **0** claims over the 80,748 names in the other
+  schemes' corpora, and **0** over 339,117 symbols from real shared libraries.
+
 - **Pre-Itanium C++: g++ 2.x, cfront/ARM, Lucid, HP aCC and EDG.** Everything C++ before
   the Itanium ABI, which is what a binary from before 2000 -- and anything HP's or
   Lucid's compilers built after it -- holds. Five manglings, and one demangler, because

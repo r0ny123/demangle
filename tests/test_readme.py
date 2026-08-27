@@ -37,6 +37,7 @@ def readme():
         (pins.REGRESSIONS_EXACT, pins.REGRESSIONS_TOTAL),
         (pins.NO_PARAMS_AGREE, pins.NO_PARAMS_TOTAL),
         (pins.GNUV2_EXACT, pins.GNUV2_TOTAL),
+        (pins.CODEWARRIOR_EXACT, pins.CODEWARRIOR_TOTAL),
     ],
 )
 def test_every_pinned_count_appears_in_the_readme(readme, exact, total):
@@ -70,6 +71,7 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.DELPHI_CONSTRUCT_EXACT, pins.DELPHI_CONSTRUCT_TOTAL),
         (pins.NO_PARAMS_AGREE, pins.NO_PARAMS_TOTAL),
         (pins.GNUV2_EXACT, pins.GNUV2_TOTAL),
+        (pins.CODEWARRIOR_EXACT, pins.CODEWARRIOR_TOTAL),
     }
     stated = {(int(a), int(b)) for a, b in re.findall(r"\*\*(\d+) / (\d+)\*\*", readme)}
     assert stated <= pinned, f"README states counts that are not pinned anywhere: {sorted(stated - pinned)}"

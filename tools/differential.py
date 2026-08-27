@@ -118,6 +118,11 @@ NOT_REPLAYED = frozenset(
         # HP vector against GNU's reading of it. Pinned by tests/test_gnuv2.py, which
         # knows what the second column means and scores both settings of the third.
         "gnuv2-libiberty.txt",
+        # Three columns -- name, options, spelling -- and a name valid under both
+        # pre-Itanium manglings goes to `gnuv2`, which is offered first and spells it its
+        # own way. Replaying it here would score CodeWarrior's vectors against GNU v2's
+        # reading of them. Pinned by tests/test_codewarrior.py, which names the language.
+        "codewarrior-cwdemangle.txt",
     }
 )
 

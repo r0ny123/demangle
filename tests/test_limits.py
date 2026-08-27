@@ -39,6 +39,7 @@ CORPUS_FOR = {
     "delphi": "delphi-real-world.txt",
     "jni": "jni-real-world.txt",
     "gnuv2": "gnuv2-libiberty.txt",
+    "codewarrior": "codewarrior-cwdemangle.txt",
 }
 
 

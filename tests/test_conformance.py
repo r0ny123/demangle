@@ -122,6 +122,12 @@ DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT = 53, 53
 #: rather than here or by tools/differential.py.
 GNUV2_TOTAL, GNUV2_EXACT = 1324, 1324
 
+#: Metrowerks CodeWarrior, against `encounter/cwdemangle`'s own test module. libiberty
+#: never read this mangling, so that tool -- the one decompilation projects for GameCube
+#: and Wii titles run -- is the reference there is. The options are a column, so it is
+#: replayed by tests/test_codewarrior.py rather than here or by tools/differential.py.
+CODEWARRIOR_TOTAL, CODEWARRIOR_EXACT = 47, 47
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the
