@@ -59,13 +59,30 @@ jobs:
           # where any later step -- or any dependency's build hook -- could read it.
           persist-credentials: false
       - name: Set up Python
+        id: python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
       - name: Install uv
         run: python -m pip install --upgrade pip uv
       - name: Install
+        # Named rather than discovered. `uv pip install --system` picks an interpreter by
+        # searching, and on the free-threaded rows it found the runner's own
+        # `/usr/bin/python3.12` instead of the `3.13t` this job had just installed --
+        # which then refused the install as externally managed, and would have been worse
+        # if it had succeeded: the suite would have run on an interpreter the package was
+        # never installed into. `python-path` is the absolute path setup-python reports,
+        # so the package goes where the test steps below will look for it.
         run: uv pip install --system -e . --group test
+        env:
+          UV_PYTHON: ${{ steps.python.outputs.python-path }}
+      - name: The tests run on the interpreter the package was installed into
+        # The invariant the step above exists to hold, checked rather than assumed. An
+        # import is the check that means it: comparing interpreter paths would go red on
+        # a symlink or a drive-letter case difference, while this fails exactly when uv
+        # has installed somewhere `python` cannot see. Printing the version puts
+        # "free-threaded build" in the log, where a row claiming to be one should say so.
+        run: python -c "import sys, demangle; print(sys.version); print(demangle.__file__)"
       # The conformance corpora carry their expected output, so these run everywhere:
       # no compiler and no reference demangler required.
       - name: Test
