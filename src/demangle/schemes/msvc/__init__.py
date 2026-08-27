@@ -199,8 +199,10 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     except _LimitHit as hit:
         # A bound stopped the parse. Reported as a `ParseError` this said the name could
         # not be read, which is a different claim: the name may be well formed and
-        # merely larger than this caller allowed.
-        raise LimitExceeded(mangled, str(hit), getattr(limits, f"max_{str(hit).split()[-1]}", 0)) from hit
+        # merely larger than this caller allowed. `hit.limit` rather than the caller's
+        # figure, because this scheme narrows both bounds with one of its own and the
+        # caller's is not the one that stopped the parse -- see `_LimitHit`.
+        raise LimitExceeded(mangled, hit.what, hit.limit) from hit
 
 
 def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
@@ -226,7 +228,7 @@ def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS)
             return tree
         expanded = _render(tree)
     except _LimitHit as hit:
-        raise LimitExceeded(mangled, str(hit), getattr(limits, f"max_{str(hit).split()[-1]}", 0)) from hit
+        raise LimitExceeded(mangled, hit.what, hit.limit) from hit
     _check_length(mangled, len(expanded), limits)
     return builder.raw(expanded)
 
