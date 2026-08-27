@@ -207,6 +207,8 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **298 / 300** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
+| Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
+| Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1073 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
 | Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
@@ -214,6 +216,11 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
+
+‡‡ The same 1,076 encodings under both references, which spell them differently. The
+three are a doubled `KK` cv-qualifier: `c++filt` folds the repeat away and `llvm-cxxfilt`
+keeps it, and this follows LLVM. The ABI writes one `<CV-qualifiers>` group per type, so
+no compiler emits `KK` and the two references disagree only about input neither is given.
 
 § Free Pascal ships no demangler either. The property is re-assembly — the parts this
 splits out, rejoined with the compiler's own separators, must reproduce the symbol — and

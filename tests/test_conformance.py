@@ -22,6 +22,12 @@ ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 300, 298
 MSVC_TOTAL, MSVC_EXACT = 609, 609
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 31, 31
+
+#: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
+#: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are
+#: scored against *both* references, one corpus each, because the two spell the same
+#: types differently. Replayed and asserted by tests/test_types.py.
+TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1073
 RUST_TOTAL, RUST_EXACT = 5316, 5316
 RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 
