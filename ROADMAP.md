@@ -131,9 +131,30 @@ actually ship says so:
   variant. `__ls__7ostreamPCc`, `BuildLight__9CGuiLightCFv`. binutils *deleted* these
   styles in 2019 and Ghidra ships a second, older copy of libiberty specifically to keep
   reading them, which is the loudest available signal that analysts still meet them —
-  console and embedded decompilation lives on this. There is no normative document (the
-  ARM is the origin), so it would be transcribed from
-  `Decompollaborate/gnuv2_demangle` and `encounter/cwdemangle`. The largest single gap.
+  console and embedded decompilation lives on this. The largest single gap, and the only
+  item left that is a whole scheme.
+
+  Both halves of what it needs are obtainable, which is more than was known when this
+  was first written. The reference is `libiberty/cplus-dem.c`, still in the GCC tree at
+  `releases/gcc-8.3.0`: 5,032 lines, of which about 2,500 are the pre-v3 demangler
+  proper. The corpus is `libiberty/testsuite/demangle-expected` from the same tree, in
+  the mangled/expected shape every scheme here is scored in — **gnu 257, lucid 208,
+  hp 110, arm 87**, and one port covers all four, since they are the same code under
+  four flags.
+
+  Two things make it a pass of its own rather than an afternoon. The demangler is
+  *stateful* in a way none of these schemes are — constructor and destructor counters
+  the signature code decrements, a type vector for back references plus separate B and K
+  squangling vectors, and an `iterate_demangle_function` that saves and restores the
+  whole state to retry a different `__` split when the first guess fails. And detection
+  is the shipping risk rather than the reading: a GNU v2 name is an ordinary C identifier
+  with `__` in it, so the whole name must parse before it is claimed, the scheme must be
+  offered late, and the false-positive rate has to be measured over the checked-in
+  corpora and a real symbol table before it lands — the bar the `.`-prefixed MSVC
+  descriptor names were held to.
+
+  CodeWarrior is separate: `encounter/cwdemangle` is the reference, `demangle-expected`
+  has no vectors for it, and it needs its own measurable property first.
 - **Ada/GNAT** — `pkg__proc$2`, still carried by libiberty as `--format=gnat` when the
   others were dropped, and documented normatively in GCC's own `exp_dbug.ads`. Narrow
   but concentrated: avionics, rail, defence.
