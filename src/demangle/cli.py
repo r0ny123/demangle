@@ -36,7 +36,8 @@ import sys
 
 from . import __version__
 from ._signature import signature
-from .api import demangle, demangle_strict, detect, languages, parse, styles
+from .api import demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, styles
+from .core.errors import DemanglingError
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 
 #: A candidate symbol in a stream of mixed text. Deliberately wider than any one scheme:
@@ -68,6 +69,11 @@ def build_parser():
     parser.add_argument("-s", "--style", default="llvm", help="output style (default: llvm)")
     parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
     parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
+    parser.add_argument(
+        "--types",
+        action="store_true",
+        help="read each NAME as a bare type encoding, not a symbol (needs --language)",
+    )
     parser.add_argument("--strict", action="store_true", help="report failures instead of echoing the input")
     parser.add_argument(
         "-b", "--both", action="store_true", help="print the mangled name and its expansion, as `mangled ==> demangled`"
@@ -174,6 +180,20 @@ def main(argv=None):
         except KeyError:
             known = ", ".join(sorted(set(languages()) | set(aliases())))
             parser.error(f"unknown language {arguments.language!r}; choose from {known}")
+    if arguments.types:
+        if not arguments.language:
+            parser.error("--types needs --language: a type encoding carries no marker to detect on")
+        # Checked here rather than per name: a scheme with no type grammar fails on every
+        # line, and one message about the run beats one message per symbol.
+        from .core.registry import get as _get_plugin
+
+        if _get_plugin(arguments.language).parse_type is None:
+            readable = ", ".join(sorted(name for name in languages() if _get_plugin(name).parse_type is not None))
+            parser.error(f"{arguments.language} has no type grammar of its own; {readable} do")
+        if arguments.detect:
+            parser.error("--types and --detect ask different questions; --types already names the scheme")
+        if arguments.no_params or arguments.base_name or arguments.no_return_type:
+            parser.error("--types reads a type, which has no name, parameters or return type to select")
     if arguments.style not in styles():
         parser.error(f"unknown style {arguments.style!r}; choose from {', '.join(styles())}")
     for flag in ("max_input", "max_output", "max_depth"):
@@ -185,6 +205,8 @@ def main(argv=None):
     _reconfigure(sys.stdout, errors="surrogateescape")
 
     try:
+        if arguments.types:
+            return _run_types(arguments.names or sys.stdin, arguments)
         if arguments.names:
             return _run_names(arguments.names, arguments)
         return _run_stream(sys.stdin, arguments)
@@ -218,6 +240,11 @@ def _expand(name, arguments, limits):
     """What this run has to say about one name."""
     if arguments.detect:
         return arguments.language or detect(name) or "-"
+    if arguments.types:
+        if arguments.tree:
+            node = parse_type(name, language=arguments.language, style=arguments.style, limits=limits)
+            return "\n".join(_dump(node))
+        return demangle_type(name, language=arguments.language, style=arguments.style, limits=limits)
     if arguments.tree:
         return "\n".join(_dump(parse(name, language=arguments.language, style=arguments.style, limits=limits)))
     if arguments.no_params or arguments.base_name or arguments.no_return_type:
@@ -272,6 +299,48 @@ def _run_names(names, arguments):
             expanded = _expand(name, arguments, limits)
         except BrokenPipeError:
             raise
+        except Exception as exc:
+            print(f"{name}: {exc}", file=sys.stderr)
+            status = 1
+            continue
+        if arguments.only_demangled and expanded == name:
+            continue
+        out.write(f"{name} ==> {expanded}\n" if arguments.both else f"{expanded}\n")
+    return status
+
+
+def _run_types(names, arguments):
+    """`--types`: one *type* encoding per argument, or per line of standard input.
+
+    Not the filter the default path is, and it cannot be. A type encoding is not
+    symbol-shaped -- `Pi`, `H`, `Si` are ordinary words -- so picking them out of mixed
+    text would mean turning `I like Pi` into `I like int*`, which is the very thing
+    `_TOKEN_MUST_HOLD` exists to prevent. Each input is one encoding, whole.
+
+    An encoding that does not parse comes back unchanged, the bargain `demangle()`
+    makes, unless `--strict` asks to hear about it instead.
+    """
+    limits = _limits_from(arguments)
+    status = 0
+    out = sys.stdout
+    for raw in names:
+        # A line off stdin carries its newline, and an argument does not. No type
+        # encoding in any of these grammars holds a `\r` either, so a file with CRLF
+        # endings reads the same as one without.
+        name = raw.rstrip("\r\n")
+        if not name:
+            out.write("\n")
+            continue
+        try:
+            expanded = _expand(name, arguments, limits)
+        except BrokenPipeError:
+            raise
+        except DemanglingError as exc:
+            if arguments.strict:
+                print(f"{name}: {exc}", file=sys.stderr)
+                status = 1
+                continue
+            expanded = name
         except Exception as exc:
             print(f"{name}: {exc}", file=sys.stderr)
             status = 1

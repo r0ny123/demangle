@@ -232,6 +232,13 @@ RIGHT_ASSOCIATIVE = frozenset({"aS", "pL", "mI", "mL", "dV", "rM", "aN", "oR", "
 UNARY_PRECEDENCE = 15
 PRIMARY_PRECEDENCE = 17
 
+#: Looser than anything in `PRECEDENCE`, so an operand of this kind is always bracketed
+#: under an operator. `throw x` is the only expression that binds this loosely -- it is
+#: the whole of an assignment-expression and cannot be an operand of anything else
+#: without brackets -- and the reference gives it `Precedence::Default`, which sits
+#: below `Comma` for the same reason.
+LOOSEST_PRECEDENCE = 0
+
 # -- 5.1.10 Abbreviations -----------------------------------------------------
 
 #: The `Sx` catalogue. These are pre-defined substitutions: referring to one does *not*

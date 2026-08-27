@@ -15,9 +15,13 @@ the test suite so it can only go up and cannot quietly stop being accurate.
 refusals and five wrong spellings, in three groups.
 
 - Four are `<type>` manglings with no `_Z` prefix at all — `i` for `int`,
-  `PKFvRiE` for `void (*)(int&) const`. `__cxa_demangle` reads them; `llvm-cxxfilt`
-  refuses them and so does this, deliberately: a demangler offered every symbol in a
-  binary and willing to read `i` as `int` will rename half a C library.
+  `PKFvRiE` for `void (*)(int&) const`. They are refused *as symbols*, deliberately and
+  as `llvm-cxxfilt` refuses them: a demangler offered every symbol in a binary and
+  willing to read `i` as `int` will rename half a C library. Asked for deliberately they
+  are read — `demangle_type(enc, language=...)`, or `demangle --types -l itanium`, which
+  is `c++filt -t` and `__cxa_demangle`'s type mode. So these four stay counted against
+  the corpus, because the corpus scores the symbol entry point, and none of them is
+  unreadable.
 - **Five need per-level template parameter tracking**, and they are all of what is
   left that answers *wrongly* rather than declining. The reference keeps a stack of
   parameter lists, one per template level, and resolves `T_` against the innermost and
@@ -207,6 +211,19 @@ namespace, base name, parameter types, return type, and what the name does *not*
 and the CLI's `-p`, `--base-name` and `--no-return-type` print one of them. Those are
 render-time selections over what the parse already found; a mode is a different question,
 which is whether to spell something *differently*.
+
+- ~~**Bare type encodings**~~ — *landed*. `demangle_type()` and `parse_type()` read a
+  `<type>` on its own — `Pi`, an MSVC `PEAX`, a Swift `SaySiG` — which is what a
+  `typeinfo` name, an RTTI type descriptor and a Swift metadata typeref carry. `language`
+  is required and cannot be made optional: a whole symbol announces its scheme with `_Z`,
+  `?` or `$s`, and a type encoding announces nothing at all, so `Si` is `std::istream` to
+  the Itanium reader and `Swift.Int` to the Swift one and there is no evidence that
+  decides between them. The reference tools put it behind a flag for the same reason —
+  `c++filt -t` (libiberty's `DMGL_TYPES`), `UnDecorateSymbolName`'s
+  `UNDNAME_TYPE_ONLY`, Swift's `demangleTypeAsString`. Scored at 1,073 of 1,076 against
+  `c++filt -t` in
+  `conformance/itanium-types.txt`; the three misses are a doubled `KK` cv-qualifier that
+  GNU folds away and LLVM keeps, on input no compiler emits.
 
 One is left, and it is Swift's:
 

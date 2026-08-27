@@ -69,6 +69,36 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         root = demangle_symbol(mangled)
     except RecursionError as error:
         raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
+    return _finish(mangled, root, builder, limits)
+
+
+def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=None):
+    """Parse a Swift *type* mangling -- `Si`, `SaySiG` -- rather than a whole symbol.
+
+    `Demangler::demangleType` rather than `demangleSymbol`, and what a metadata typeref
+    holds: a type mangling carries none of the `$s` a symbol opens with, so nothing about
+    it says it is Swift, and it is only readable because the caller said so.
+
+    A type mangling that reads as nothing is refused rather than spelled. The reference
+    hands back the whole input wrapped in a `Suffix` node when nothing at all parsed,
+    which prints as `with unmangled suffix "..."` -- true, but not a demangling of
+    anything, so it comes back here as the `ParseError` it is.
+    """
+    if not mangled:
+        raise NotMangledError(mangled, "empty type")
+    if len(mangled) > limits.max_input:
+        raise LimitExceeded(mangled, "input length", limits.max_input)
+    try:
+        root = demangle_type(mangled)
+    except RecursionError as error:
+        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
+    if root is not None and root.kind == "Suffix":
+        raise ParseError(mangled, None, "not a type this reads")
+    return _finish(mangled, root, builder, limits)
+
+
+def _finish(mangled, root, builder, limits):
+    """Turn a reference-demangler root into what `builder` collects, or refuse it."""
     if root is None:
         raise ParseError(mangled, None, "not a name this reads")
 
@@ -92,6 +122,7 @@ PLUGIN = LanguagePlugin(
     name="swift",
     detect=detect,
     parse=parse,
+    parse_type=parse_type,
     description="Swift symbol mangling",
     aliases=(),
     # `priority` is ascending: *lower is offered first*. After D, before Rust. `$s` and
@@ -171,6 +202,7 @@ __all__ = [
     "end_of_name",
     "macho_image",
     "parse",
+    "parse_type",
     "print_root",
     "scan",
     "typerefs",

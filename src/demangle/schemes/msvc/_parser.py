@@ -1427,6 +1427,31 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS):
         return None
 
 
+def parse_msvc_type(name, limits=DEFAULT_LIMITS):
+    """The tree behind a bare *type* encoding -- `PEAX`, `.PEAX` -- or None.
+
+    What an RTTI descriptor and a vtable entry carry, and what `llvm-undname` reads for
+    its `--types` question. A leading `.` is accepted and dropped: the linker writes one
+    on a type descriptor's symbol, and the encoding after it is the type itself.
+    """
+    if not name:
+        return None
+    if any(char < " " or char == "\x7f" for char in name):
+        return None
+    if name.startswith("."):
+        name = name[1:]
+    if not name:
+        return None
+    try:
+        demangler = _Demangler(name, limits)
+        tree = demangler.type()
+    except (_Bail, RecursionError):
+        return None
+    if demangler.pos != len(demangler.text):
+        return None
+    return tree
+
+
 @lru_cache(maxsize=4096)
 def demangle_msvc_symbol(name, limits=DEFAULT_LIMITS):
     """Return a readable C++ name, or the original when it is not fully understood.

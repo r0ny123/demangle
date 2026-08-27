@@ -81,6 +81,14 @@ Declarator placement — `int (*)(char)`, `int (*) [10]` — is already handled 
 `core/spelling.py`. If your scheme spells C-like declarations, you get it by calling
 `pointer()`, `array()` and `function()` rather than reimplementing it.
 
+## Types, if your scheme has them
+
+`parse_type` is optional and most schemes leave it None. Supply it only if your grammar
+has a *type* production that stands alone -- what a `typeinfo` name or an RTTI descriptor
+carries -- and it becomes `demangle_type(enc, language="yours")`. It is a separate entry
+point rather than a fallback inside `parse` because a type encoding carries no marker
+saying which scheme it belongs to, so it can only ever be read on request.
+
 ## Priority
 
 `priority` decides detection order, and only matters where two schemes share a prefix.

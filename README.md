@@ -107,6 +107,31 @@ What each scheme records differs, and the fields say so rather than guessing. A 
 Swift name carries a signature; a Rust or Go path does not, and its `parameters` is
 `None` — which is not `()`. `is_function` is `False` where the name does not say.
 
+### A type on its own, not a whole symbol
+
+A `typeinfo` name, an RTTI type descriptor and a Swift metadata typeref all carry a
+*type* rather than a symbol. `demangle_type()` reads one, and `parse_type()` gives its
+tree:
+
+```python
+>>> demangle.demangle_type("PKFvRiE", language="itanium")
+'void (*)(int&) const'
+>>> demangle.demangle_type(".PEAX", language="msvc")     # a type descriptor's own symbol
+'void *'
+>>> demangle.demangle_type("SaySiG", language="swift")
+'[Swift.Int]'
+```
+
+`language` is required, and that is not an oversight. A whole symbol announces its
+scheme — `_Z`, `?`, `$s` — and a type encoding announces nothing at all, so `Si` is
+`std::istream` to the Itanium reader and `Swift.Int` to the Swift one with no evidence
+to decide between them. Every reference tool puts this behind a flag for the same reason:
+`c++filt -t`, libiberty's `DMGL_TYPES`, `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`,
+Swift's `demangleTypeAsString`. On the command line it is
+`demangle --types -l itanium`, which reads one encoding per argument or per line rather
+than filtering symbols out of mixed text — `Pi` is an ordinary word, and `I like Pi`
+should stay as it is.
+
 ### Detection and batches
 
 ```python
@@ -126,7 +151,8 @@ not mean guessing an encoding first:
 b'foo::bar()'
 ```
 
-`demangleb_strict`, `detectb`, `parseb` and `signatureb` go with it. Undecodable bytes
+`demangleb_strict`, `detectb`, `parseb`, `signatureb`, `demangleb_type` and
+`parseb_type` go with it. Undecodable bytes
 survive the round trip: `demangleb` hands back exactly what it was given, byte for byte,
 rather than raising.
 
@@ -152,6 +178,7 @@ $ demangle --detect _RNvC6_123foo3bar
 $ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the signature
 $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
+$ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t`
 ```
 
 `-p` is `c++filt -p`: over the shipped libstdc++ and the GNU-style corpus the two agree

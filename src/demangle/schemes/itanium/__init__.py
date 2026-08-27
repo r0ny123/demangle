@@ -9,12 +9,13 @@ Reference: https://itanium-cxx-abi.github.io/cxx-abi/abi.html section 5.1.
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from .options import DEFAULT_OPTIONS, GNU_OPTIONS, ItaniumOptions
-from .parser import ItaniumParser, detect, parse
+from .parser import ItaniumParser, detect, parse, parse_type
 
 PLUGIN = LanguagePlugin(
     name="itanium",
     detect=detect,
     parse=parse,
+    parse_type=parse_type,
     description="Itanium C++ ABI (GCC, Clang, and compatible toolchains)",
     aliases=("gnu", "gcc", "clang", "cxx", "c++"),
     options_type=ItaniumOptions,
@@ -28,4 +29,13 @@ PLUGIN = LanguagePlugin(
 
 register(PLUGIN)
 
-__all__ = ["DEFAULT_OPTIONS", "GNU_OPTIONS", "PLUGIN", "ItaniumOptions", "ItaniumParser", "detect", "parse"]
+__all__ = [
+    "DEFAULT_OPTIONS",
+    "GNU_OPTIONS",
+    "PLUGIN",
+    "ItaniumOptions",
+    "ItaniumParser",
+    "detect",
+    "parse",
+    "parse_type",
+]
