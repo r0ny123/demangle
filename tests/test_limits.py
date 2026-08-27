@@ -41,6 +41,7 @@ CORPUS_FOR = {
     "jni": "jni-real-world.txt",
     "gnuv2": "gnuv2-libiberty.txt",
     "codewarrior": "codewarrior-cwdemangle.txt",
+    "ada": "ada-libiberty.txt",
 }
 
 

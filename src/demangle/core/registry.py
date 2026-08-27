@@ -29,6 +29,7 @@ _BUILTIN_MODULES = (
     ("jni", "demangle.schemes.jni"),
     ("codewarrior", "demangle.schemes.codewarrior"),
     ("gnuv2", "demangle.schemes.gnuv2"),
+    ("ada", "demangle.schemes.ada"),
 )
 
 #: The entry-point group third-party packages advertise plugins under.

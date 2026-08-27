@@ -1,8 +1,8 @@
 # demangle
 
 Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **pre-Itanium C++**
-(g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior), **Rust**, **Swift**, **Objective-C**, **Go**, **D**,
-**Nim**, **Free Pascal** and **Delphi** — in pure Python. No dependencies, no native
+(g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior), **Ada/GNAT**, **Rust**, **Swift**,
+**Objective-C**, **Go**, **D**, **Nim**, **Free Pascal** and **Delphi** — in pure Python. No dependencies, no native
 code, no compiler required.
 
 ```python
@@ -303,6 +303,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
 | Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
 | CodeWarrior — the reference's own vectors ✧ | `cwdemangle` 1.0 | **47 / 47** |
+| Ada/GNAT — libiberty's own vectors ✦ | GNU `c++filt --format=gnat` | **34 / 34** |
 
 †† The three are names where `llvm-undname --no-return-type` leaves an unclosed
 bracket — `int (__cdecl * (__cdecl B::*volatile memptrtofun7)(void)` is not a declaration
@@ -374,6 +375,30 @@ mangling. `AtEnd__13ivRubberGroup` parses either way and they differ only in spe
 What is unambiguously CodeWarrior — a template argument list written literally into the
 symbol, `@LOCAL@`, `$localstatic`, a `__dt` the `gnu` style does not know — GNU v2 refuses
 and it falls through. `language="codewarrior"` gets the whole scheme regardless.
+
+✦ Ada, as GNAT encodes it, is the last of the pre-Itanium formats libiberty still
+carries — when the GNU v2, lucid, ARM and HP styles were dropped from the default,
+`--format=gnat` stayed. The reference is `ada_demangle` in `cplus-dem.c`, with GCC's own
+`exp_dbug.ads` documenting the encoding normatively, and the corpus is the 34 cases
+`demangle-expected` marks `--format=gnat`. One of them is a name the reference declines,
+printing `<x_E>`; that is recorded as the name unchanged, which is how this says the same
+thing.
+
+Detection is the whole difficulty, because an Ada symbol carries no types and no marker:
+`yz__qrs` is a package and a subprogram, and it is also exactly what a C program writes.
+Parsing the name and claiming whatever parses reads **6,764** real symbols from this
+machine's own libraries as Ada. So a name is claimed only when it carries something GNAT
+wrote and a C compiler would not — `_ada_`, an `O`-operator, a `TK` task suffix, a `P`/`N`
+protected subprogram, a stream `S[RWIO]`, a controlled `D[FA]`, an `X` body-nested marker,
+a `___elabb`-style special name, a `_B`/`_E` entry body, an overload number — *and* the
+whole name is accounted for. Measured under that rule: **0** claims over the other
+schemes' 81,457 names and **0** over 339,117 real symbols.
+
+The cost is that 4 of the 34 vectors — `yz__qrs`, `x__m1`, `x__m3`, `x__y__j`, lower-case
+identifiers joined by `__` and nothing else — are not auto-detected. They demangle under
+`language="ada"`. That is the same bargain the Go scheme makes: not claiming a name
+returns it unchanged, which is what an unreadable name does anyway, while claiming
+someone else's rewrites it into a plausible lie.
 
 ◊ Delphi and C++Builder share one mangling, `@Unit@Class@Method$qqrv`. There is no Delphi
 compiler on the platforms this is developed on, so the grammar is Embarcadero's own

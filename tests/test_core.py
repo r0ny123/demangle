@@ -210,6 +210,10 @@ class TestDetectionOrderIsPinned:
         "rust",
         "msvc",
         "itanium",
+        # The three that read a name with no marker of its own, offered last and in
+        # order of how strong their evidence test is. Ada asks for an encoding GNAT
+        # writes and C does not; the two C++ ones parse the whole name.
+        "ada",
         "gnuv2",
         "codewarrior",
     )
