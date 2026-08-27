@@ -37,6 +37,31 @@ CONFORMANCE = ROOT / "tests" / "conformance"
 #: difference between two machines.
 TOLERANCE = 1.25
 
+#: The phase every other phase is measured against, and the reason the gate is worth
+#: trusting. Dividing by `calibrate()` -- a tight dictionary loop -- was supposed to
+#: cancel machine speed, and does not: measured over six runs on an idle machine, the
+#: calibration loop's *own* spread is 28.1% (22.1ms to 29.9ms), which makes it the
+#: noisiest single component of the measurement. Dividing by it therefore injects noise
+#: rather than removing it, and the normalised figures come out *less* stable than the
+#: raw seconds they were derived from:
+#:
+#:     phase        /calibration   /warm    raw seconds
+#:     cold             26.6%       7.1%       23.1%
+#:     negative         25.7%       7.2%       25.6%
+#:     structured       42.5%      24.2%       23.5%
+#:
+#: `warm` cancels what calibration cannot because it is the same *kind* of work in the
+#: same process -- `demangle()` over cached names -- so CPU boost state, allocator state
+#: and heap layout move both numbers together. A tight dictionary loop benefits from boost
+#: more than an allocating parser does, which is precisely the failure the docstring on
+#: `calibrate` already described without drawing the conclusion.
+#:
+#: `warm` itself is still judged against calibration; there is no third workload to judge
+#: it by, and a regression confined to the cached path alone would have to be read off the
+#: raw microseconds. That is the one blind spot, and it is a smaller one than gating four
+#: phases on a reference 28% noisier than the thing it normalises.
+PIVOT = "warm"
+
 #: Iterations of the calibration loop. Enough to take a few milliseconds on any machine
 #: that can run the test suite, small enough not to lengthen the benchmark noticeably.
 CALIBRATION_ROUNDS = 200_000
@@ -216,18 +241,34 @@ def run():
         results["structured"]["parsed"] = parsed[-1] if parsed else 0
     for data in results.values():
         data["normalised"] = round(data["seconds"] / data["names"] / reference * 1e6, 3)
+
+    # And again against `warm`, which is what the gate actually reads. See `PIVOT`.
+    pivot = results.get(PIVOT)
+    if pivot:
+        per_name = pivot["seconds"] / pivot["names"]
+        for name, data in results.items():
+            if name == PIVOT:
+                continue
+            data["relative_to_pivot"] = round(data["seconds"] / data["names"] / per_name, 4)
+
     results["calibration"] = {"seconds": round(reference, 6), "rounds": CALIBRATION_ROUNDS}
     return results
 
 
 def report(results):
-    print(f"{'benchmark':12} {'names':>8} {'sec':>9} {'names/sec':>12} {'us each':>10} {'relative':>10}")
+    print(
+        f"{'benchmark':12} {'names':>8} {'sec':>9} {'names/sec':>12} "
+        f"{'us each':>10} {'relative':>10} {'vs ' + PIVOT:>10}"
+    )
     for name, data in results.items():
         if name == "calibration":
             continue
+        pivoted = data.get("relative_to_pivot")
+        shown = f"{pivoted:>10.3f}" if pivoted is not None else f"{'--':>10}"
         print(
             f"{name:12} {data['names']:>8} {data['seconds']:>9.4f} "
-            f"{data['per_second']:>12,} {data['microseconds_each']:>10.2f} {data['normalised']:>10.2f}"
+            f"{data['per_second']:>12,} {data['microseconds_each']:>10.2f} "
+            f"{data['normalised']:>10.2f} {shown}"
         )
     print(f"\ncalibration: {results['calibration']['seconds'] * 1e3:.2f}ms for {CALIBRATION_ROUNDS:,} rounds")
 
@@ -261,8 +302,25 @@ def main():
             print("\nbaseline predates machine calibration; re-record it with --save")
             return 1
 
+        def figure(data, name):
+            """The number this phase is judged on, and the one it is judged against.
+
+            `relative_to_pivot` where there is one -- every phase but the pivot itself.
+            `normalised` otherwise, which is what the pivot and any older baseline use.
+            """
+            if name != PIVOT and "relative_to_pivot" in data.get(name, {}):
+                return "relative_to_pivot"
+            return "normalised"
+
         def over_tolerance(measured, name):
-            return name in baseline and measured[name]["normalised"] > baseline[name]["normalised"] * TOLERANCE
+            if name not in baseline:
+                return False
+            key = figure(measured, name)
+            if key not in baseline[name]:
+                # An older baseline carries only `normalised`. Fall back to it rather
+                # than skipping the phase, so a stale file still gates something.
+                key = "normalised"
+            return measured[name][key] > baseline[name][key] * TOLERANCE
 
         suspects = [name for name in results if name != "calibration" and over_tolerance(results, name)]
         if suspects:
@@ -276,8 +334,11 @@ def main():
             second = run()
             regressions = []
             for name in suspects:
-                before = baseline[name]["normalised"]
-                after = second[name]["normalised"]
+                key = figure(second, name)
+                if key not in baseline[name]:
+                    key = "normalised"
+                before = baseline[name][key]
+                after = second[name][key]
                 if after > before * TOLERANCE:
                     ratio = after / before
                     regressions.append(f"  {name}: {before:.2f} -> {after:.2f} ({ratio:.2f}x, machine-relative)")
