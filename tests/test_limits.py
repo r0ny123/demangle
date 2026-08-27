@@ -12,6 +12,7 @@ later has to keep the promise too rather than quietly not being covered.
 """
 
 import time
+from dataclasses import replace
 
 import pytest
 
@@ -174,6 +175,56 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
         tight = Limits(max_output=8)
         assert demangle.demangle(self.NAME, limits=tight) == self.NAME
         assert demangle.demangle(self.NAME) != self.NAME
+
+
+class TestTheBoundReportedIsTheBoundInForce:
+    """A scheme may narrow the caller's limit; the report has to name what stopped it.
+
+    MSVC's parser holds a ceiling of its own -- `min(limits.max_depth, MAX_DEPTH)`, with
+    `MAX_DEPTH` 64 -- so that a level costing several interpreter frames can never make
+    the answer depend on how deep the caller's own stack already was. The error read the
+    *caller's* figure back out of `limits`, so a parse that stopped at 64 announced
+    "exceeded recursion depth limit of 200000": a number never in force, pointing at a
+    limit already far above the ceiling that would change nothing if raised.
+    """
+
+    NAME = "?f@@YAX" + "PA" * 100 + "H@Z"
+
+    def _bound_reported(self, asked):
+        limits = replace(demangle.RELAXED_LIMITS, max_depth=asked)
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(self.NAME, limits=limits)
+        return caught.value.limit_value
+
+    @pytest.mark.parametrize("asked", [8, 16, 64])
+    def test_a_caller_tightening_below_the_ceiling_is_told_its_own_figure(self, asked):
+        assert self._bound_reported(asked) == asked
+
+    @pytest.mark.parametrize("asked", [2048, 200_000])
+    def test_a_caller_asking_past_the_ceiling_is_told_the_ceiling(self, asked):
+        from demangle.schemes.msvc._parser import _Demangler
+
+        assert self._bound_reported(asked) == _Demangler.MAX_DEPTH
+
+    def test_the_depth_counter_is_what_stops_it_rather_than_the_interpreter(self):
+        # The point of the ceiling: with a stack far deeper than CPython's default, the
+        # bound still fires at the same place, so the answer does not depend on the
+        # caller's stack. A converted RecursionError could not hold this.
+        import sys
+        import threading
+
+        seen = []
+
+        def run():
+            sys.setrecursionlimit(200_000)
+            seen.append(self._bound_reported(200_000))
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join()
+        from demangle.schemes.msvc._parser import _Demangler
+
+        assert seen == [_Demangler.MAX_DEPTH]
 
 
 class TestDepthExhaustionIsReportedAsABound:

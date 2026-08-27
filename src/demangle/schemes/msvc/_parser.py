@@ -319,7 +319,20 @@ class _LimitHit(Exception):
     a decorated name this demangler can read" it was actively misleading: the name may
     be perfectly well formed and simply larger than the caller allowed, and a tool
     deciding whether to widen its `Limits` cannot tell the two apart from that message.
+
+    Carries the bound that *actually* stopped the parse. Both of this scheme's bounds are
+    the caller's narrowed by one of its own -- `min(limits.max_depth, MAX_DEPTH)` and
+    `min(limits.max_output, 8 * len(mangled) + 256)` -- so reading the caller's figure
+    back out of `limits` names a number that was never in force. It said "exceeded
+    recursion depth limit of 200000" for a parse that stopped at 64, which points a
+    caller at a limit that is already far above the ceiling and would change nothing if
+    raised.
     """
+
+    def __init__(self, what, limit):
+        super().__init__(what)
+        self.what = what
+        self.limit = limit
 
 
 class _Bail(Exception):
@@ -749,7 +762,7 @@ class _Demangler:
     def type(self, quals=()):
         self.depth += 1
         if self.depth > self.max_depth:
-            raise _LimitHit("recursion depth")
+            raise _LimitHit("recursion depth", self.max_depth)
         at_argument, self.at_argument = self.at_argument, False
         try:
             return self.typeBody(quals, at_argument)
@@ -812,7 +825,7 @@ class _Demangler:
     def rendered(self, node, declarator=""):
         text = render(node, declarator, options=self.options)
         if len(text) > self.max_render:
-            raise _LimitHit("output length")
+            raise _LimitHit("output length", self.max_render)
         return text
 
     def dimension(self):
