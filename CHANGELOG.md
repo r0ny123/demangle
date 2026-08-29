@@ -8,6 +8,43 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **The five spellings that stood between the `gnu` style and `c++filt`.** Over the
+  217,730 distinct Itanium symbols in every shared library a stock Ubuntu 24.04 ships,
+  the gnu style differed from `c++filt` 2.42 on 80 of the 217,057 it reads. It differs
+  on 3, and all three are the `std::once_flag::_Prepare_execution` shape where
+  libstdc++'s own header settles it against GNU -- so what is left is a shortfall of the
+  reference. In `libLLVM.so.18.1` alone it now reads all 44,093 names `c++filt` reads
+  and spells every one of them byte for byte as it does.
+
+  Each was read off `c++filt` with probes rather than guessed, and each is an option
+  that is off under `llvm`:
+
+  - `&entity` in a template argument, 60 names, all of them LLVM's `sandboxir`. GNU
+    prints `&A::f` where llvm-cxxfilt prints the whole declaration `&A::f(int)`, and
+    brackets it -- `&(A::f() const)`, `&(void A::f<int>())`, `&(f())` -- for every shape
+    that is not a bare *qualified* function name.
+  - Operand bracketing, 11 names and every expression the corpus does not cover. GNU
+    brackets by *kind* rather than by precedence: a name, a qualified name, a braced
+    initialiser list and a function parameter go bare and everything else is wrapped, so
+    it writes `(1)+(2)` and `!(x<int>)` but `std::x+(2)` and `{parm#1}+(2)`. Arguments
+    on a *qualifier* do not make a name a template-id -- `!is_array<T>::value` is
+    unbracketed -- so the last component decides. Also `sizeof {parm#1}` against
+    `sizeof (1)`, `noexcept({parm#1})`, and `(1)?(2) : (3)`.
+  - A doubled cv-qualifier, 3 names. `const` applied to a type that already carries it
+    adds nothing, so `c++filt` folds the repeat and `llvm-cxxfilt` keeps it; the outer
+    one wins, which is why `K V K i` and `K K V i` both print `volatile const`. Verified
+    over all 39 sequences of one to three qualifiers, and its boundaries: an array
+    passes qualifiers through to its elements, every other declarator stops them.
+  - The `{default arg#1}` scope of an entity declared in a default argument, 2 names,
+    which llvm-cxxfilt drops -- giving one name to two different lambdas when a function
+    has one in its body too.
+  - A generic lambda's `auto:1`. `[](auto a, auto b)` is mangled as references to
+    parameters the closure never declared, and GNU numbers them by *index*, so
+    `Ul T0_ T_ E` is `{lambda(auto:2, auto:1)#1}`. The number is the only thing that
+    tells two of them apart. This closes the last open item under ROADMAP heading 0 for
+    that style.
+
+
 - **The five `<special-name>` productions GNU reads and LLVM does not**, and GNU's
   wording for the two both read but word differently. `TF <type>` (`typeinfo fn for`),
   `TJ <type>` (`java Class for`) and `GA <encoding>` (`hidden alias for`) are GNU
@@ -530,6 +567,45 @@ All notable changes to this project are recorded here. The format follows
 
 ### Performance
 
+- **The Itanium reader is 7.4% faster on the project's own corpus and 10.2% on 217,730
+  real symbols, with byte-identical output.** Six changes, each measured by alternating
+  two worktrees and taking the median of nine timed rounds per process -- the machine's
+  run-to-run spread is wider than several of them individually, and two trees measured
+  in turn cancel it. Identical trees measured that way come out at 0.993 and 1.005.
+
+  `Reader.peek()` takes no argument. It is called around fifty times per name, more than
+  anything else in the package, and CPython charges for a default it then has to bind;
+  the offset form is now `ahead(n)`. Worth 3.3% alone. `Reader.length_prefixed()` reads a
+  `<source-name>`'s length and the characters it counts in one frame instead of three.
+  `_type`'s dispatch chain is ordered by how often each arm is taken, measured over those
+  217,730 symbols: a nested name is a third of every type read and a substitution a
+  fifth, and both had to fall through fifteen character comparisons. `prefix_component`
+  gets the same treatment through one membership test, since three components in four
+  are a length-prefixed name. `cv_qualifiers` asks one lookahead before consuming
+  anything and returns a precomputed tuple. The bounds every production checks are read
+  from `limits` once at construction.
+
+- **The detection path, which most symbols in a real binary never get past, is 10.9%
+  cheaper.** `split_decorations` is called once per name rather than once per candidate
+  scheme: its answer depends on nothing but the name, and for a name carrying no ELF
+  version suffix -- almost all of them -- there is nothing for any plugin to ask again.
+  Over a table of ordinary C identifiers that is 3.4 interpreter frames per name down to
+  one. `get_style` writes out `_table()`'s own fast path, `_keep` is inlined, and
+  `_resolve` is not called when no language was named.
+
+- **Rust's v0 reader dispatches a path and a type by what the corpus actually holds.**
+  Both the printer and the skipper reached a `<type>` that is a path by falling off the
+  end of their tag chains, and `I` and `N` are 58% of the types in the Rust corpus; one
+  membership test settles them. The path chains are reordered by the same measurement.
+  Between 1% and 5% depending on the run, which is not cleanly separable from the
+  machine's own spread -- kept because it is a strict reduction in work and provably
+  output-identical.
+
+- **The benchmark checks the corpus it timed against the corpus the baseline timed, for
+  every phase.** It asked that of `structured` alone, and the cold corpus -- the one the
+  headline figure comes from -- quietly lost four names without anything noticing.
+
+
 - **Nim's detection is 3x cheaper on a name that is not a symbol.** This scheme declares
   no first character -- a Nim symbol is an ordinary C identifier -- so it is offered
   *every* symbol a caller has, and it was half the cost of detection across all six
@@ -628,6 +704,48 @@ All notable changes to this project are recorded here. The format follows
   detected by rendering each parameter and comparing the text, on every function.
 
 ### Fixed
+
+- **A Swift name ending in the middle of a specialisation could take the process out.**
+  `Demangler.next_char` returned `""` past the end of input without moving, so
+  `push_back` -- meant to be its exact inverse -- moved the cursor onto the *last
+  character of the name* and the caller read it again. In a loop that is a loop that
+  never advances: `demangle_func_spec_param` reads a run of propagated constants and
+  puts back the letter that ends the run, so `_T03foo4_123ABTf3psbp` grew one
+  specialisation parameter per iteration until the process ran out of memory. Nine
+  seconds and 1.5 GB before the OS stepped in; 0.06 seconds and a refusal now.
+  `demangle()` is documented never to raise for a string, and what it did instead was
+  take the process with it.
+
+  Fixed in `next_char`, so `push_back` is the inverse everywhere it appears rather than
+  at the sites someone happened to check: eleven others follow a `next_char` that can
+  reach the end. Found by mutation fuzz over every checked-in corpus, run under an
+  address-space cap so a runaway allocation reports the name that caused it.
+
+- **The tree could spell a name differently from `demangle()`, in three ways.** The two
+  builders read one parser precisely so that they cannot, and each of these was a place
+  where one of them knew something the other did not.
+
+  A pack whose one member is an empty pack was empty to `SpellingBuilder` and a pack of
+  one to `AstBuilder`, so `_Z1fIJEJT_EiEviT0_N2nn2UpE` printed `f(int, , nn::Up)` through
+  the tree and `f(int, nn::Up)` through the text. A pack's *arity* is what an expansion
+  ranges across, so the two also disagreed about how many parameters a signature has.
+
+  `array`, `member_pointer` and `vendor_qualify` never learned to distribute over a pack
+  -- `_wrap` does it for pointers, references and cv-qualifiers, and those three do not
+  go through `_wrap`. Over an empty pack that printed a declarator on nothing: ` [3]`,
+  ` enable_if`, ` ::*` for a parameter that is not there.
+
+  Free Pascal's `build` finds everything the spelling puts in front of the qualified
+  name by looking for that name in the finished text. A program's unit carries a `P$`
+  that the spelling drops, so the search found nothing and the whole lead went with it:
+  `U_$P$XLIB_$$_PX_OPEN_F` rendered `XLIB.PX_OPEN_F` where the text path says `program
+  variable XLIB.PX_OPEN_F`.
+
+  All three were found by fuzzing, and the test that would have caught any of them is
+  now in `tests/test_architecture.py`: the invariant every scheme shares, checked over
+  every corpus at once in both styles rather than each scheme over its own. 81,496
+  names, zero disagreements.
+
 
 - **Go: a package path that did not decode to text came back as a string that cannot be
   written out.** `unescape_path` is a faithful port of `objabi.PrefixToPath`, which works
@@ -946,8 +1064,9 @@ a number can only go up and cannot quietly stop being accurate.
   not; and a lambda written as a template argument, `X<[](){...}>`.
 
 - **GNU style** against `c++filt` 2.42 over libLLVM's 44,049 C++ symbols: 1,419
-  differences to **31**, every one of which matches `llvm-cxxfilt` instead. A further 97
-  names `c++filt` refuses outright and this reads.
+  differences to **31**, and from there -- see Added, above -- to **none**: every name
+  `c++filt` reads in that library now comes back byte for byte as it spells it. A
+  further 97 names it refuses outright and this reads.
 
 ### Changed
 

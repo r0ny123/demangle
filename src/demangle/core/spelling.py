@@ -272,7 +272,6 @@ class SpellingBuilder(Builder):
     def member_pointer(self, owner, inner):
         # `int Foo::*` needs the separating space that `int (Foo::*)()` does not: in the
         # function and array cases `_wrap` supplies an opening parenthesis instead.
-        token = f"{owner}::*"
         if owner.members is not None:
             # The owner is the one operand in this file that is not the type a
             # declarator is being applied to, and it packs the same way: a pointer to a
@@ -283,6 +282,7 @@ class SpellingBuilder(Builder):
             # always done this; the branch below is the one that reaches a pack, and
             # skipping it left ` ::*` printed for a pack with no members at all.
             return pack_of(self.member_pointer(owner, member) for member in inner.members)
+        token = f"{owner}::*"
         if inner.is_function or inner.is_array:
             return _wrap(inner, token)
         # Always spaced, unlike a bare `*`. `int* A::*` needs the gap even though `int*`
@@ -292,6 +292,10 @@ class SpellingBuilder(Builder):
         return Spelling(left + joiner + token, inner.right)
 
     def array(self, inner, dimension):
+        if inner.members is not None:
+            # An array of a pack is one array per member, and of an empty pack is no
+            # arrays: ` [3]` for a parameter that is not there was what this printed.
+            return pack_of(self.array(member, dimension) for member in inner.members)
         if inner.cv:
             # An array carries its element type's qualifiers out with it: cv on an array
             # is cv on the elements, so `K A3_ K i` has one `const` and not two.
@@ -304,10 +308,6 @@ class SpellingBuilder(Builder):
                 cv=inner.cv,
                 stem=inner.stem,
             )
-        if inner.members is not None:
-            # An array of a pack is one array per member, and of an empty pack is no
-            # arrays: ` [3]` for a parameter that is not there was what this printed.
-            return pack_of(self.array(member, dimension) for member in inner.members)
         bound = f"[{dimension}]" if dimension else "[]"
         right = inner.right
         # Only the first bracket of a multi-dimensional array is spaced off the type:
