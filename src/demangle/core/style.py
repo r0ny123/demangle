@@ -145,15 +145,20 @@ def _table():
 
 def get_style(name):
     """Look up a style by name. `None` gives the default."""
-    _STYLES = _table()
+    # `_table()`'s own fast path, written out: every call into this package resolves a
+    # style first, so reaching an already-built table through a second interpreter frame
+    # is a frame per name demangled. The build, and the lock around it, stay there.
+    styles = _STYLES
+    if styles is None:
+        styles = _table()
     if name is None:
-        return _STYLES["llvm"]
+        return styles["llvm"]
     if isinstance(name, Style):
         return name
     try:
-        return _STYLES[name]
+        return styles[name]
     except KeyError:
-        raise ValueError(f"unknown style {name!r}; known styles are {sorted(_STYLES)}") from None
+        raise ValueError(f"unknown style {name!r}; known styles are {sorted(styles)}") from None
 
 
 def register_style(style):

@@ -103,11 +103,6 @@ def _refuse_non_string(mangled):
     raise TypeError(f"expected str, got {type(mangled).__name__}")
 
 
-def _keep(key, value):
-    """Record `value` under `key`, unless this was a call that must not be cached."""
-    return value if key is None else _CACHE.put(key, value)
-
-
 def _resolve(language):
     """Pick the plugin for `language`, or None to mean "detect"."""
     if language is None:
@@ -189,12 +184,15 @@ def demangle(
             return cached
 
     builder = resolved_style.spelling_builder
-    plugin = _resolve(language)
-    tried = (plugin,) if plugin is not None else candidates(mangled)
+    plugin = None if language is None else _resolve(language)
+    if plugin is not None:
+        tried, base = (plugin,), None
+    else:
+        tried, base = candidates(mangled), _undecorated(mangled)
 
     for candidate in tried:
         try:
-            if plugin is None and not _claims(candidate, mangled):
+            if plugin is None and not _claims(candidate, mangled, base):
                 continue
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
         except Exception as exc:
@@ -204,9 +202,12 @@ def demangle(
             # already takes care not to let a broken plugin bring the library down, and
             # keeping the `detect` call inside this `try` is what stops it doing so here.
             continue
-        return _keep(key, builder.spell(handle))
+        # Recorded here rather than through a helper: `demangle` is the hot entry
+        # point, and this is a conditional and a call either way.
+        result = builder.spell(handle)
+        return result if key is None else _CACHE.put(key, result)
 
-    return _keep(key, mangled)
+    return mangled if key is None else _CACHE.put(key, mangled)
 
 
 def demangle_strict(
@@ -408,9 +409,10 @@ def _parse_handle(mangled, builder, language, style, limits):
             raise _depth_exceeded(mangled, limits) from exc
 
     first_error = None
+    base = _undecorated(mangled)
     for candidate in candidates(mangled):
         try:
-            if not _claims(candidate, mangled):
+            if not _claims(candidate, mangled, base):
                 continue
             return _parse_with(candidate, mangled, builder, limits, style)
         except RecursionError as exc:
@@ -462,13 +464,25 @@ def _depth_exceeded(mangled, limits):
     return LimitExceeded(mangled, "recursion depth", limits.max_depth)
 
 
-def _claims(plugin, mangled):
+def _undecorated(mangled):
+    """The name with any ELF version suffix taken off, or None if it carries none.
+
+    Asked once per name rather than once per candidate. The split depends on nothing but
+    the name, and a symbol table is mostly names that carry no decoration at all -- so
+    the answer for the first plugin that asks is the answer for all of them, and it is
+    almost always "there is nothing to take off".
+    """
+    base, decoration = split_decorations(mangled)
+    return base if decoration else None
+
+
+def _claims(plugin, mangled, base):
     """Whether `plugin` recognises `mangled`, ignoring any symbol-table decoration.
 
     The raw name is tried first because this runs on every symbol a caller offers, and
     in a real binary most of them are not mangled at all. A decoration is a *suffix*, so
-    a prefix test sees straight through it and the split is only worth paying for when
-    the cheap test has already failed.
+    a prefix test sees straight through it and `base` -- what `_undecorated` made of the
+    name, or None -- is only consulted when the cheap test has already failed.
 
     Never raises. `detect` belongs to a plugin that may be a third party's, and the
     registry already declines to let a broken one take the library down; this is the
@@ -478,10 +492,7 @@ def _claims(plugin, mangled):
     try:
         if plugin.detect(mangled):
             return True
-        if not plugin.symbol_table_decorations:
-            return False
-        base, decoration = split_decorations(mangled)
-        return bool(decoration) and plugin.detect(base)
+        return base is not None and plugin.symbol_table_decorations and plugin.detect(base)
     except Exception as exc:
         reraise_if_operational(exc)
         return False
@@ -500,8 +511,9 @@ def detect(mangled: str) -> str | None:
         return None
     if not mangled:
         return None
+    base = _undecorated(mangled)
     for plugin in candidates(mangled):
-        if _claims(plugin, mangled):
+        if _claims(plugin, mangled, base):
             return plugin.name
     return None
 

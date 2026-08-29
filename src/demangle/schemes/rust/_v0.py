@@ -502,8 +502,10 @@ class Parser:
         self.next_val = at + 1
         return self.integer_62() + 1
 
-    def disambiguator(self) -> int:
-        return self.opt_integer_62("s")
+    # `disambiguator` was here, a one-line delegation to `opt_integer_62("s")`. It ran
+    # 82,000 times over the Rust corpus for an interpreter frame around a call, so the
+    # nine sites that wanted it call `opt_integer_62("s")` themselves. The production is
+    # `<disambiguator> ::= "s" <base-62-number>` and that is what they read.
 
     def namespace(self) -> Optional[str]:
         at = self.next_val
@@ -607,21 +609,21 @@ class Parser:
         val = self.inn[at]
         self.next_val = at + 1
         if val == "C":
-            self.disambiguator()
+            self.opt_integer_62("s")
             self.ident()
         elif val == "N":
             self.namespace()
             self.skip_path()
-            self.disambiguator()
+            self.opt_integer_62("s")
             self.ident()
 
         elif val == "M":
-            self.disambiguator()
+            self.opt_integer_62("s")
             self.skip_path()
             self.skip_type()
 
         elif val == "X":
-            self.disambiguator()
+            self.opt_integer_62("s")
             self.skip_path()
             self.skip_type()
             self.skip_path()
@@ -791,7 +793,7 @@ class Parser:
                     self.skip_const()
             elif variant == "S":
                 while not self.eat("E"):
-                    self.disambiguator()
+                    self.opt_integer_62("s")
                     self.ident()
                     self.skip_const()
             elif variant != "U":
@@ -1095,7 +1097,7 @@ class Printer:
             tag = p.inn[at]
             p.next_val = at + 1
             if tag == "C":
-                p.disambiguator()
+                p.opt_integer_62("s")
                 name = p.ident()
                 name.display()
                 with self.node(nodes.RustName) as built:
@@ -1106,7 +1108,7 @@ class Printer:
                 ns = p.namespace()
                 with self.node(nodes.Path) as built:
                     self.print_path(in_value)
-                    dis = p.disambiguator()
+                    dis = p.opt_integer_62("s")
                     name = p.ident()
                     if ns:
                         with self.node(lambda parts: nodes.Namespace(parts, ns, dis)):
@@ -1134,7 +1136,7 @@ class Printer:
 
             if tag in ("M", "X", "Y"):
                 if tag != "Y":
-                    p.disambiguator()
+                    p.opt_integer_62("s")
                     p.skip_path()
 
                 # An inherent impl (`M`) names only the type; a trait impl (`X`, `Y`)
@@ -1506,7 +1508,7 @@ class Printer:
         name, so it carries nothing the reader needs.
         """
         parser = self.parser
-        parser.disambiguator()
+        parser.opt_integer_62("s")
         name = parser.ident()
         name.display()
         self.emit(name.disp)
