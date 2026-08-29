@@ -43,6 +43,7 @@ from .tables import (
     QUALIFIER_LETTERS,
     QUALIFIER_ORDER,
     RIGHT_ASSOCIATIVE,
+    SIMPLE_PRECEDENCE,
     SPECIAL_ENCODING_NAMES,
     SPECIAL_ENCODING_NAMES_GNU,
     SPECIAL_TYPE_NAMES,
@@ -108,6 +109,23 @@ _COMPLEX_WORDS = (
     {"C": "complex", "G": "imaginary"},
     {"C": "_Complex", "G": "_Imaginary"},
 )
+
+#: The operators that measure or interrogate a type, as `(expression form, opening
+#: text)`. One branch rather than seven: they differ only in the word and in whether the
+#: operand is a type or an expression.
+_MEASURING_OPERATORS = {
+    "st": ("sizeof", "sizeof"),
+    "sz": ("sizeof", "sizeof"),
+    "at": ("alignof", "alignof"),
+    "az": ("alignof", "alignof"),
+    "ti": ("typeid", "typeid"),
+    "te": ("typeid", "typeid"),
+    "nx": ("noexcept", "noexcept"),
+}
+
+#: The three of those whose operand is a `<type>` rather than an `<expression>`. Both
+#: references bracket a type here and neither brackets it twice.
+_MEASURING_A_TYPE = frozenset({"st", "at", "ti"})
 
 #: A callee GNU c++filt leaves unbracketed: a plain identifier, a `::`-qualified path of
 #: them, or a function parameter. Anything else -- a template-id, an operator name, a
@@ -231,6 +249,8 @@ class ItaniumParser:
         "_deferred",
         "_depth",
         "_drop_return",
+        "_entity_local",
+        "_entity_shape",
         "_explicit_object",
         "_in_constraint",
         "_mangled",
@@ -253,6 +273,7 @@ class ItaniumParser:
         "_saw_empty_pack",
         "_saw_pack",
         "_scope_has_pack",
+        "_simple_name",
         "_trailing_empty_pack",
         "_try_template_args",
         "builder",
@@ -269,6 +290,9 @@ class ItaniumParser:
         self._mangled = mangled
         self.options = options
         expanded = STD_ABBREVIATIONS_EXPANDED_GNU if options.expand_std_abbreviations else STD_ABBREVIATIONS_EXPANDED
+        self._entity_shape = None
+        self._simple_name = False
+        self._entity_local = False
         self._abbrev_expanded = expanded
         self._abbrev = expanded if options.expand_std_abbreviations else STD_ABBREVIATIONS
         self.reader = Reader(mangled)
@@ -505,9 +529,16 @@ class ItaniumParser:
         return result
 
     def encoding(self):
-        """<encoding> ::= <function name> <bare-function-type> | <data name> | <special-name>"""
+        """<encoding> ::= <function name> <bare-function-type> | <data name> | <special-name>
+
+        Every path out of here records what the entity *was* in `_entity_shape`, for
+        `_entity_operand` to read back. An encoding nested inside this one -- a
+        `L _Z... E` in the template arguments -- writes it first and this overwrites it,
+        which is the order that leaves the outermost answer standing.
+        """
         special = self.special_name()
         if special is not None:
+            self._entity_shape = ("special", None)
             return special
 
         name, quals, ref_qualifier, is_template = self.name()
@@ -518,6 +549,7 @@ class ItaniumParser:
             # conversion operator's name to have suppressed.
             self._drop_return = False
             self._explicit_object = False
+            self._entity_shape = ("data", name)
             return name
         return self.bare_function_type(name, quals, ref_qualifier, is_template)
 
@@ -576,6 +608,10 @@ class ItaniumParser:
         if reader.eat("Q"):
             # The requires-clause closes the declaration, after the qualifiers.
             suffix += " requires " + builder.spell(self.constraint_expression())
+        # A function whose declaration is nothing but a name and a parameter list is the
+        # one shape GNU prints as `&Name`; everything a `suffix` or a return type adds is
+        # something it would have to drop. See `gnu_entity_operand_spelling`.
+        self._entity_shape = ("function", name if returns is None and not suffix else None)
         return builder.function(returns, parameters, suffix, name)
 
     # -- 5.1.4 special names ---------------------------------------------------
@@ -1004,13 +1040,20 @@ class ItaniumParser:
             self._explicit_object = outer_explicit_object
 
         if reader.eat("Ed"):
+            # `d [<number>] _` says the entity lives in a default argument rather than
+            # in the function body. The number is a compact one -- absent is zero -- and
+            # names which default argument, so GNU's `{default arg#1}` is it plus one.
+            argument = 0
             if reader.peek() != "_":
-                reader.number(allow_negative=False)
+                argument = int(reader.number(allow_negative=False)) + 1
             reader.expect("_")
             try:
                 entity_is_type = as_type or reader.peek() == "U"
                 inner, quals, ref_qualifier, is_template = self.name()
-                combined = builder.qualified([outer, inner])
+                parts = [outer, inner]
+                if self.options.gnu_default_argument_scope:
+                    parts.insert(1, builder.raw(f"{{default arg#{argument + 1}}}"))
+                combined = builder.qualified(parts)
                 if not entity_is_type and not reader.eof and reader.peek() not in ("E", "_"):
                     combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             finally:
@@ -2508,6 +2551,10 @@ class ItaniumParser:
             # fresh table makes every one of those unresolvable.
             reader.eat("_")
             reader.expect("Z")
+            # `Z <encoding> E <entity>` -- a local name. Read here rather than off the
+            # parsed shape because an encoding nested inside this one gets to `name()`
+            # first, and this is the only point where the question is about *this* one.
+            local = reader.peek() == "Z"
             was_naming = self._naming
             outer_scope = self.targs.snapshot()
             self._naming = True
@@ -2521,6 +2568,7 @@ class ItaniumParser:
                 self._naming = was_naming
                 self.targs.restore(outer_scope)
             reader.expect("E")
+            self._entity_local = local
             return builder.spell(handle)
 
         if reader.peek2() == "Ul":
@@ -2552,6 +2600,34 @@ class ItaniumParser:
             reader.take()
         value = reader.text[start : reader.pos - 1]
         return self.spell_literal(spelling, value)
+
+    def _entity_operand(self, operator):
+        """GNU's spelling of an embedded `<mangled-name>` under a unary operator.
+
+        See `gnu_entity_operand_spelling` for the rule and the vectors it was read off.
+        Two things decide it, and both come back from `expr_primary`: what kind of
+        entity the encoding named, and whether it was a local name.
+
+        A qualified data name is the only operand c++filt prints bare -- it is a name,
+        and a name needs no brackets to be one operand. `&` of a plain qualified
+        function is the case this exists for: the name alone, with the parameter list
+        the mangling carries dropped, because `&A::f` is what the source wrote.
+        """
+        self._entity_shape = None
+        self._entity_local = False
+        text = self.expr_primary()
+        kind, name = self._entity_shape or ("literal", None)
+        local = self._entity_local
+
+        if kind == "literal" or (kind == "data" and not local):
+            return text
+        if operator == "&" and kind == "function" and name is not None and not local:
+            spelled = self.builder.spell(name)
+            # Qualified, which is what tells a member or namespace-scope function from
+            # `&(f())`: c++filt prints the name only when it has a scope to print.
+            if "::" in spelled:
+                return spelled
+        return "(" + text + ")"
 
     @staticmethod
     def spell_literal(kind, value):
@@ -2612,7 +2688,10 @@ class ItaniumParser:
         prefix = "::" if reader.eat("gs") else ""
 
         if not reader.eat("sr"):
-            return prefix + self.base_unresolved_name()
+            text = prefix + self.base_unresolved_name()
+            if prefix:
+                self._simple_name = False
+            return text
 
         levels = []
         if reader.eat("N"):
@@ -2633,6 +2712,9 @@ class ItaniumParser:
             levels.append(self._unresolved_head())
 
         levels.append(self.base_unresolved_name())
+        if prefix:
+            # `::x` is rooted at global scope, which c++filt brackets as an operand.
+            self._simple_name = False
         return prefix + "::".join(levels)
 
     def _unresolved_head(self):
@@ -2675,6 +2757,11 @@ class ItaniumParser:
         text = self.source_name()
         if self.reader.peek() == "I":
             text += self.spelled_template_arguments()
+            # Set after the arguments are read, not before: they are expressions and may
+            # contain names of their own, whose reading would otherwise stand.
+            self._simple_name = False
+            return text
+        self._simple_name = True
         return text
 
     def spelled_template_arguments(self):
@@ -2702,13 +2789,22 @@ class ItaniumParser:
         if reader.peek() in DIGITS:
             return self.simple_id()
         if reader.eat("dn"):
-            return "~" + self.destructor_name()
+            # `_simple_name` says whether the *whole* name prints as a plain identifier
+            # path, which is the one thing GNU c++filt spells without brackets when it is
+            # an operand. A destructor and an operator name are not that, and neither is
+            # a name carrying template arguments -- but arguments on a *qualifier* do not
+            # count, which is why this is decided by the last component and not by the
+            # spelling of the whole.
+            text = "~" + self.destructor_name()
+            self._simple_name = False
+            return text
         # The `on` marker is optional: `srT_pl` names `T::operator+` with nothing to say
         # so, and the reference reads the operator code either way.
         reader.eat("on")
         text = self.operator_name()
         if reader.peek() == "I":
             text += self.spelled_template_arguments()
+        self._simple_name = False
         return text
 
     def destructor_name(self):
@@ -2947,17 +3043,53 @@ class ItaniumParser:
         """
         return self._operand(_COMMA_BINDING + 1)
 
-    def _operand(self, binding):
+    def _operand(self, binding, subexpression=False):
         """One operand, bracketed only when it binds more loosely than its operator.
 
         The brackets are reported as parts of a `paren` expression rather than glued on,
         so a consumer reading the tree sees the operand it wrapped instead of having to
         strip punctuation back off a string.
+
+        `subexpression` marks the positions GNU c++filt runs through `d_print_subexpr`
+        -- the operands of a unary, binary or ternary operator, and a call's callee --
+        where it brackets by *kind* rather than by precedence: everything but a name, a
+        braced initialiser list and a function parameter. See `SIMPLE_PRECEDENCE`. The
+        other callers of this are list elements and the object of a member access, which
+        it prints without asking.
         """
         operand = self.expression()
-        if self._precedence < binding:
+        if subexpression and self.options.gnu_expression_spelling:
+            needed = self._precedence < SIMPLE_PRECEDENCE
+        else:
+            needed = self._precedence < binding
+        if needed:
             return self.builder.expression("paren", ["(", operand, ")"])
         return operand
+
+    def _callee(self):
+        """The thing being called, bracketed on the same rule as any other operand.
+
+        `(std::declval<int>)()` and `(::foo)()` and `(operator+)(...)`, but `foo(int)`,
+        `std::foo(int)`, `{parm#1}(int)` and `{1}(2)` -- all four confirmed against
+        c++filt. Bracketing every callee that was not a plain identifier path was eight
+        of the differences from it over libLLVM.
+        """
+        target = self.expression()
+        if self.options.gnu_expression_spelling and self._precedence < SIMPLE_PRECEDENCE:
+            return self.builder.expression("paren", ["(", target, ")"])
+        return target
+
+    def _named_operand(self, text, simple):
+        """A leaf whose spelling is a name, marked as one if GNU would agree it is.
+
+        A qualified path of identifiers and nothing else -- not a template-id, not an
+        operator name, not a destructor, not a name rooted at global scope. c++filt
+        brackets all of those as operands and prints `std::x+(2)` for this. Arguments on
+        an inner qualifier are not template arguments *on the name*: it reads
+        `!is_array<T>::value` without brackets, and the last component is what decides.
+        """
+        self._precedence = SIMPLE_PRECEDENCE if simple else PRIMARY_PRECEDENCE
+        return self.builder.raw(text)
 
     def _expression(self):
         reader = self.reader
@@ -2969,8 +3101,18 @@ class ItaniumParser:
         # the grammar -- and measurably so, since a template parameter appears in nearly
         # every generic name.
         if reader.peek() == "L":
-            return builder.raw(self.expr_primary())
+            # A literal is not a name and GNU brackets it as an operand; a `L _Z... E`
+            # naming a data symbol is one, and it does not. A local or special name is
+            # spelled with the entity it belongs to and is not a name either.
+            self._entity_shape = None
+            self._entity_local = False
+            text = self.expr_primary()
+            kind = (self._entity_shape or ("literal", None))[0]
+            return self._named_operand(text, kind == "data" and not self._entity_local)
         if reader.peek() == "T":
+            # Whatever the parameter is bound to, GNU brackets it as an operand: its
+            # `d_print_subexpr` treats a template parameter as a kind of its own.
+            self._precedence = PRIMARY_PRECEDENCE
             return self.template_param()
 
         pair = reader.peek2()
@@ -2982,11 +3124,12 @@ class ItaniumParser:
                 # reference spells it `this`. Read as `fp` with a `T` to skip, the `1`
                 # of a following `1b` became its index and the `b` became `bool`.
                 reader.pos += 3
-                self._precedence = PRIMARY_PRECEDENCE
+                self._precedence = SIMPLE_PRECEDENCE
                 return builder.raw("this")
             reader.pos += 2
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
+            self._precedence = SIMPLE_PRECEDENCE
             return builder.raw(self._spell_parameter(index))
         if pair == "fL" and reader.peek(2) in DIGITS:
             # `fL <number> p ...` is a parameter of an enclosing function; `fL` followed
@@ -2996,10 +3139,12 @@ class ItaniumParser:
             reader.eat("p")
             index = reader.digits() if reader.peek() in DIGITS else ""
             reader.eat("_")
+            self._precedence = SIMPLE_PRECEDENCE
             return builder.raw(self._spell_parameter(index))
 
         if pair == "sr":
-            return builder.raw(self.unresolved_name())
+            text = self.unresolved_name()
+            return self._named_operand(text, self._simple_name)
         if pair in ("on", "dn"):
             # `<expression> ::= <unresolved-name>`, and an `<unresolved-name>` may be
             # `on <operator-name>` -- a callee named by the operator it is, which is how
@@ -3011,16 +3156,18 @@ class ItaniumParser:
             # came back as `decltype(unsigned __int128(__int128, fp + fp)) f<A>(A)` -- a
             # signature naming two types that appear nowhere in the symbol, with nothing
             # to say it had gone wrong. Both references read it as `operator+(fp, fp)`.
-            return builder.raw(self.unresolved_name())
+            text = self.unresolved_name()
+            return self._named_operand(text, self._simple_name)
         if pair == "sZ":
             reader.pos += 2
             outer_index = self._pack_index
             self._pack_index = None
             try:
-                return builder.expression("sizeof_pack", ["sizeof...(", self.template_param(), ")"])
+                inner = self.template_param()
             finally:
                 self._pack_index = outer_index
-            return builder.expression("sizeof_pack", ["sizeof...(", self.template_param(), ")"])
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("sizeof_pack", ["sizeof...(", inner, ")"])
         if pair == "sP":
             reader.pos += 2
             members = []
@@ -3032,28 +3179,30 @@ class ItaniumParser:
                     members.append(argument)
             # `sZ` writes `sizeof...(`; `sP`, over a captured pack, writes it with a
             # space. Both references agree, and it is the only thing separating them.
+            self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("sizeof_pack", ["sizeof... (", *self._commas(members), ")"])
-        if pair == "st":
+        if pair in ("st", "sz", "at", "az", "ti", "te", "nx"):
+            # `sizeof (int)`, `alignof (x)`, `typeid (T)`, `noexcept (x)`. Each closes
+            # with a bracket, so neither reference ever brackets one again -- but GNU
+            # does when it is an operand, because none of them is a name.
             reader.pos += 2
-            return builder.expression("sizeof", ["sizeof (", self.type_(), ")"])
-        if pair == "sz":
-            reader.pos += 2
-            return builder.expression("sizeof", ["sizeof (", self.expression(), ")"])
-        if pair == "at":
-            reader.pos += 2
-            return builder.expression("alignof", ["alignof (", self.type_(), ")"])
-        if pair == "az":
-            reader.pos += 2
-            return builder.expression("alignof", ["alignof (", self.expression(), ")"])
-        if pair == "ti":
-            reader.pos += 2
-            return builder.expression("typeid", ["typeid (", self.type_(), ")"])
-        if pair == "te":
-            reader.pos += 2
-            return builder.expression("typeid", ["typeid (", self.expression(), ")"])
-        if pair == "nx":
-            reader.pos += 2
-            return builder.expression("noexcept", ["noexcept (", self.expression(), ")"])
+            form, keyword = _MEASURING_OPERATORS[pair]
+            gnu = self.options.gnu_expression_spelling
+            if pair in _MEASURING_A_TYPE:
+                parts = [keyword + " (", self.type_(), ")"]
+            elif gnu and pair == "nx":
+                # The one c++filt writes with no space and always with brackets:
+                # `noexcept({parm#1})`, where it writes `sizeof {parm#1}`.
+                parts = [keyword + "(", self.expression(), ")"]
+            elif gnu and pair in ("sz", "az"):
+                # A keyword and then an operand like any other, so the brackets are the
+                # operand's: `sizeof (1)` and `sizeof ({parm#1}())`, but `sizeof
+                # {parm#1}` and `sizeof std::x`.
+                parts = [keyword + " ", self._operand(PRIMARY_PRECEDENCE, subexpression=True)]
+            else:
+                parts = [keyword + " (", self.expression(), ")"]
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression(form, parts)
 
         if pair == "tr":
             # `tr` is a rethrow -- `throw;` with no operand. A leaf, so it needs no
@@ -3073,18 +3222,16 @@ class ItaniumParser:
 
         if pair == "cl":
             reader.pos += 2
-            target = self.expression()
-            if self.options.gnu_expression_spelling and not _PLAIN_CALLEE.match(builder.spell(target)):
-                # GNU brackets a callee that is anything but a plain identifier path:
-                # `(std::declval<int>)()`, `(operator+)(...)`, `(::foo)()`, but
-                # `foo(int)`, `std::foo(int)` and `{parm#1}(int)`. Bracketing every one
-                # of them was eight of the differences from `c++filt` over libLLVM.
-                target = builder.expression("paren", ["(", target, ")"])
+            target = self._callee()
             arguments = []
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated call expression")
                 arguments.append(self._element())
+            # A call closes with a bracket, so llvm-cxxfilt never brackets one again --
+            # `*std::begin(x)`, not `*(std::begin(x))`. GNU does when it is an operand,
+            # because a call is not a name.
+            self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("call", [target, "(", *self._commas(arguments), ")"])
 
         if pair == "cv":
@@ -3128,6 +3275,7 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated braced initialiser")
                 members.append(self._element())
+            self._precedence = SIMPLE_PRECEDENCE
             return builder.expression("braced", [kind, "{", *self._commas(members), "}"])
 
         if pair == "il":
@@ -3137,16 +3285,21 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated initialiser list")
                 members.append(self._element())
+            self._precedence = SIMPLE_PRECEDENCE
             return builder.expression("initialiser_list", ["{", *self._commas(members), "}"])
 
         if pair == "qu":
             reader.pos += 2
             binding = PRECEDENCE["qu"]
-            condition = self._operand(binding + 1)
-            when_true = self._operand(binding)
-            when_false = self._operand(binding)
+            condition = self._operand(binding + 1, subexpression=True)
+            when_true = self._operand(binding, subexpression=True)
+            when_false = self._operand(binding, subexpression=True)
             self._precedence = binding
-            return builder.expression("conditional", [condition, " ? ", when_true, " : ", when_false])
+            # c++filt writes the `?` hard against its operands and the `:` spaced off
+            # them -- `{parm#1}?std::x : std::y` -- which is the same asymmetry its
+            # binary operators have.
+            mark = "?" if self.options.gnu_expression_spelling else " ? "
+            return builder.expression("conditional", [condition, mark, when_true, " : ", when_false])
 
         if pair in ("dt", "pt"):
             # <expression> ::= dt <expression> <unresolved-name>  (and `pt` for `->`)
@@ -3201,7 +3354,10 @@ class ItaniumParser:
                 self._precedence = PRIMARY_PRECEDENCE
                 return builder.parameter_pack([])
             if over_pack or self._scope_has_pack:
+                # The expansion *is* its members, so it binds however they do.
                 return expanded
+            # An unexpanded one is `x...`, which GNU brackets as an operand.
+            self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("pack_expansion", [expanded, "..."])
 
         if pair == "nw" or pair == "na":
@@ -3224,31 +3380,40 @@ class ItaniumParser:
         if pair in ("dl", "da"):
             reader.pos += 2
             keyword = "delete" if pair == "dl" else "delete[]"
-            return builder.expression("delete", [keyword, " ", self.expression()])
+            operand = self.expression()
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("delete", [keyword, " ", operand])
 
         if pair in ("dc", "sc", "cc", "rc"):
             reader.pos += 2
             casts = {"dc": "dynamic_cast", "sc": "static_cast", "cc": "const_cast", "rc": "reinterpret_cast"}
-            return builder.expression("named_cast", [casts[pair], "<", self.type_(), ">(", self.expression(), ")"])
+            kind, inner = self.type_(), self.expression()
+            self._precedence = PRIMARY_PRECEDENCE
+            return builder.expression("named_cast", [casts[pair], "<", kind, ">(", inner, ")"])
 
         if pair in POSTFIX_OPERATORS:
             # 5.1.6: `pp`/`mm` are postfix; `pp_`/`mm_` are the prefix forms.
             reader.pos += 2
             if reader.eat("_"):
-                operand = self._operand(PRIMARY_PRECEDENCE)
+                operand = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
                 self._precedence = UNARY_PRECEDENCE
                 return builder.expression("unary", [POSTFIX_OPERATORS[pair], operand])
-            operand = self._operand(POSTFIX_PRECEDENCE)
+            operand = self._operand(POSTFIX_PRECEDENCE, subexpression=True)
             self._precedence = POSTFIX_PRECEDENCE
             return builder.expression("postfix", [operand, POSTFIX_OPERATORS[pair]])
 
         if pair in PREFIX_OPERATORS:
             reader.pos += 2
-            # A prefix operator brackets anything that is not already primary, including
-            # another prefix operator: the references print `!(!true)`, not `!!true`.
-            operand = self._operand(PRIMARY_PRECEDENCE)
+            operator = PREFIX_OPERATORS[pair]
+            if self.options.gnu_entity_operand_spelling and (reader.startswith("L_Z") or reader.startswith("LZ")):
+                operand = builder.raw(self._entity_operand(operator))
+            else:
+                # A prefix operator brackets anything that is not already primary,
+                # including another prefix operator: the references print `!(!true)`,
+                # not `!!true`.
+                operand = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
             self._precedence = UNARY_PRECEDENCE
-            return builder.expression("unary", [PREFIX_OPERATORS[pair], operand])
+            return builder.expression("unary", [operator, operand])
 
         if pair[:1] == "f" and pair[1:] in ("l", "r", "L", "R"):
             # <expression> ::= fL <binary-operator> <expression> <expression>  # left, init
@@ -3295,8 +3460,8 @@ class ItaniumParser:
             # The side that does *not* absorb an equal-precedence neighbour needs the
             # brackets: for a left-grouping operator that is the right operand.
             right_associative = pair in RIGHT_ASSOCIATIVE
-            left = self._operand(binding + 1 if right_associative else binding)
-            right = self._operand(binding if right_associative else binding + 1)
+            left = self._operand(binding + 1 if right_associative else binding, subexpression=True)
+            right = self._operand(binding if right_associative else binding + 1, subexpression=True)
             spelling = INFIX_OPERATORS[pair]
             if pair == "cm":
                 # Bracketed only where it sits in a comma-separated list -- a call's
@@ -3309,6 +3474,7 @@ class ItaniumParser:
             return builder.expression("binary", [left, gap, spelling, gap, right])
 
         if pair in ("rq", "rQ"):
+            # `requires_expression` sets it to PRIMARY itself.
             return self.requires_expression()
 
         if pair in ("di", "dx", "dX"):
@@ -3416,11 +3582,13 @@ class ItaniumParser:
         # does. A constraint like `Q 5Sized I T_ E` must contribute the `T` its argument
         # list mentions and nothing for `Sized` itself.
         if reader.peek() in DIGITS:
-            return builder.raw(self.unresolved_name())
+            text = self.unresolved_name()
+            return self._named_operand(text, self._simple_name)
 
         # What remains that could open a type, is one: array bounds and non-type
         # template arguments both arrive here.
         if reader.peek() in _TYPE_STARTERS:
+            self._precedence = PRIMARY_PRECEDENCE
             return self.type_()
 
         raise ParseError(self._mangled, reader.pos, "unrecognised expression")

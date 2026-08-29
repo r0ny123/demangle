@@ -232,6 +232,15 @@ RIGHT_ASSOCIATIVE = frozenset({"aS", "pL", "mI", "mL", "dV", "rM", "aN", "oR", "
 UNARY_PRECEDENCE = 15
 PRIMARY_PRECEDENCE = 17
 
+#: Tighter than `PRIMARY_PRECEDENCE`, and only GNU c++filt can tell the two apart. Its
+#: `d_print_subexpr` brackets *every* operand of a unary, binary or ternary operator
+#: except four kinds -- a name, a qualified name, a braced initialiser list and a
+#: function parameter -- so it writes `(1)+(2)` and `!(x<int>)` where LLVM writes `1 + 2`
+#: and `!x<int>`, but leaves `std::x+(2)`, `{1}+(2)` and `{parm#1}+(2)` alone. Under
+#: llvm-style spelling this behaves exactly as `PRIMARY_PRECEDENCE`, because no operator
+#: binds tighter than either.
+SIMPLE_PRECEDENCE = 18
+
 #: Looser than anything in `PRECEDENCE`, so an operand of this kind is always bracketed
 #: under an operator. `throw x` is the only expression that binds this loosely -- it is
 #: the whole of an assignment-expression and cannot be an operand of anything else

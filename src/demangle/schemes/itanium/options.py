@@ -97,6 +97,34 @@ class ItaniumOptions:
     every other special name is spelled identically by both references.
     """
 
+    gnu_entity_operand_spelling: bool = False
+    """Spell an embedded `<mangled-name>` under a unary operator the way GNU does.
+
+    `X ad L _Z... E E` -- the address of a function, passed as a template argument -- is
+    where nearly all of these appear. llvm-cxxfilt prints the whole declaration after
+    the `&`: `&llvm::sandboxir::SwitchInst::setCondition(llvm::sandboxir::Value*)`. GNU
+    c++filt prints `&llvm::sandboxir::SwitchInst::setCondition`, which is what the
+    source wrote, and falls back to bracketing the declaration -- `&(A::f() const)` --
+    for every shape that is not a bare qualified function name.
+
+    The rule, read off c++filt rather than guessed: the name alone for `&` of a
+    function whose name is qualified and which carries no return type, no cv- or
+    ref-qualifier and no requires-clause; brackets around anything else that is not a
+    plain data name. So `&A::f` and `&std::f` and `&A::~A`, but `&(f())` for an
+    unqualified one, `&(void A::f<int>())` for a template, `&(f()::x)` for a local
+    entity and `&(vtable for A)` for a special name.
+    """
+
+    gnu_default_argument_scope: bool = False
+    """Name the default argument a local entity was declared in.
+
+    `Z <encoding> Ed [<number>] _ <entity>` says the entity -- usually a lambda -- was
+    written in a default argument rather than in the function body. GNU c++filt spells
+    that scope, `f(int, double)::{default arg#1}::x`; llvm-cxxfilt drops it and prints
+    `f(int, double)::x`, which is the same name for two different entities if a function
+    has one lambda in its body and another in a default argument.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -117,4 +145,6 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_angle_spacing=True,
     gnu_vector_spelling=True,
     gnu_special_name_spelling=True,
+    gnu_entity_operand_spelling=True,
+    gnu_default_argument_scope=True,
 )
