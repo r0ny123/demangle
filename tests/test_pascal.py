@@ -307,3 +307,20 @@ class TestTree:
         tree = demangle.parse("MYUNIT_$$_ADD$LONGINT$LONGINT$$LONGINT")
         parameters = next(tree.find("parameters"))
         assert [node.text for node in parameters.children()] == ["LONGINT", "LONGINT"]
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # A program's unit carries a `P$` that the spelling drops. The tree looked
+            # for the unit under its *raw* name to find everything the spelling puts in
+            # front of it, found nothing, and dropped the lead entirely: this rendered
+            # `XLIB.PX_OPEN_F`. Found by mutating the corpora.
+            ("U_$P$XLIB_$$_PX_OPEN_F", "program variable XLIB.PX_OPEN_F"),
+            ("TC_$P$PROG_$$_C1", "program typed constant PROG.C1"),
+            ("U_$XLIB_$$_PX_OPEN_F", "variable XLIB.PX_OPEN_F"),
+            ("P$PROG_$$_MAIN", "program PROG.MAIN"),
+        ],
+    )
+    def test_a_programs_lead_survives_into_the_tree(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+        assert demangle.parse(mangled).spell() == expected

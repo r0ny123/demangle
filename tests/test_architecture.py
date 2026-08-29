@@ -14,6 +14,7 @@ import pytest
 
 import demangle
 from demangle.core.builder import Builder
+from demangle.core.errors import DemanglingError
 from demangle.core.registry import available
 
 SOURCE = Path(demangle.__file__).parent
@@ -51,6 +52,23 @@ def imports_of(path):
             else:
                 found.append(node.module or "")
     return found
+
+
+def corpus_names():
+    """Every mangled name in every conformance corpus, whatever scheme wrote it."""
+    import gzip
+
+    conformance = Path(demangle.__file__).parent.parent.parent / "tests" / "conformance"
+    names = []
+    for path in sorted(conformance.iterdir()):
+        if path.suffix == ".gz":
+            text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
+        elif path.suffix == ".txt":
+            text = path.read_text(encoding="utf-8", errors="surrogateescape")
+        else:
+            continue
+        names.extend(line.split("\t")[0] for line in text.splitlines() if line and not line.startswith("#"))
+    return names
 
 
 def python_files(subdirectory):
@@ -211,6 +229,38 @@ class TestBuilders:
         from demangle.core.spelling import SPELLING_BUILDER
 
         assert isinstance(SPELLING_BUILDER, Builder)
+
+
+class TestTheTreeSpellsWhatTheTextPathSpells:
+    """The one invariant every scheme in the package shares, checked over all of them.
+
+    Two builders read one parser, which is the whole reason the builder protocol exists:
+    the parts a parser reports are the spelling, in order, so a tree cannot render a name
+    differently from `demangle()`. Each scheme's own module checks this on its own
+    corpus; this checks it on *every* corpus at once, in both styles, because the ways
+    the two drift apart are cross-cutting -- a builder that forgets to distribute over a
+    pack, a tree assembled from parsed fields rather than from the fragments.
+
+    It has caught three: a pack holding an empty pack (`core/ast.py`), a declarator over
+    an empty pack (`core/spelling.py`), and a Free Pascal program's `program variable `
+    lead, which the tree looked for under the unit's raw name and a program's unit is
+    spelled without its `P$`.
+    """
+
+    def test_every_corpus_name_in_both_styles(self, subtests):
+        names = corpus_names()
+        assert len(names) > 50_000, "corpora did not load; this test would prove nothing"
+        for style in ("llvm", "gnu"):
+            with subtests.test(style=style):
+                differ = []
+                for name in names:
+                    try:
+                        text = demangle.demangle_strict(name, style=style)
+                    except DemanglingError:
+                        continue
+                    if demangle.parse(name, style=style).spell(style=style) != text:
+                        differ.append(name)
+                assert differ == []
 
 
 class TestTheToolsAndTheSuiteAgree:

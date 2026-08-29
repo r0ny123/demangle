@@ -96,9 +96,16 @@ def build(symbol):
             parts.append(" (indirect reference)")
         return Symbol(parts, symbol.kind)
 
-    lead = symbol.text[: symbol.text.find(symbol.unit)] if symbol.unit in symbol.text else ""
+    # Everything the spelling puts in front of the unit -- `vmt for `, the kind word,
+    # `program ` -- found by looking for the unit *as spelled*. A program's unit carries
+    # a `P$` that the spelling drops, so searching for the raw one found nothing and the
+    # whole lead was silently lost: `U_$P$XLIB_$$_PX_OPEN_F` rendered `XLIB.PX_OPEN_F`
+    # where the text path says `program variable XLIB.PX_OPEN_F`.
+    spelled_unit = symbol.unit[2:] if symbol.unit.startswith("P$") else symbol.unit
+    at = symbol.text.find(spelled_unit) if spelled_unit else -1
+    lead = symbol.text[:at] if at > 0 else ""
     parts = [lead] if lead else []
-    parts.append(Unit([symbol.unit[2:] if symbol.unit.startswith("P$") else symbol.unit]))
+    parts.append(Unit([spelled_unit]))
     for piece in symbol.scope:
         parts.extend((".", PascalName([piece])))
     if symbol.name:
