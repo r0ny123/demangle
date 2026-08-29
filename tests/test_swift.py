@@ -16,13 +16,15 @@ lines of C++ whose behaviour is not all obvious from reading it, and each of the
 wrong on a first pass.
 """
 
+import contextlib
 import pathlib
 
 import pytest
 
 import demangle
+from demangle.core.errors import DemanglingError
 from demangle.schemes.swift import detect
-from demangle.schemes.swift._demangler import demangle_symbol
+from demangle.schemes.swift._demangler import Demangler, demangle_symbol
 from demangle.schemes.swift._printer import print_root
 
 from .conftest import load_corpus
@@ -326,6 +328,57 @@ class TestRefusesRatherThanGuesses:
         for mangled in REFUSALS:
             with subtests.test(name=mangled):
                 assert demangle.demangle(mangled) == mangled
+
+
+class TestTheCursorNeverGoesBackwardsOverACharacterItDidNotRead:
+    """`push_back` has to be the exact inverse of `next_char`, including at the end.
+
+    It was not. `next_char` returned `""` past the end *without* moving, so a caller
+    that reached the end, got nothing, and put it back moved the cursor onto the last
+    character of the name -- and read it again. In a loop that is a loop that never
+    advances: `demangle_func_spec_param` reads a run of propagated constants and puts
+    back the letter that ends the run, so a name ending in `p` grew one specialisation
+    parameter per iteration until the process ran out of memory.
+
+    Found by mutating the checked-in corpora. It is the failure mode this package is
+    least able to absorb -- `demangle()` is documented never to raise for a string, and
+    what it did instead was take the process with it.
+    """
+
+    def test_reading_past_the_end_and_putting_it_back_stays_at_the_end(self):
+        reader = Demangler("$s2ab")
+        reader.pos = reader.end
+        assert reader.next_char() == ""
+        reader.push_back()
+        assert reader.pos == reader.end
+        # And the ordinary case is unchanged: what was read is what comes back.
+        reader.pos = reader.end - 1
+        assert reader.next_char() == "b"
+        reader.push_back()
+        assert reader.pos == reader.end - 1
+        assert reader.next_char() == "b"
+
+    def test_a_specialisation_that_ends_where_a_constant_run_begins(self):
+        """The name that found it, and the shapes either side of it."""
+        for mangled in ("_T03foo4_123ABTf3psbp", "_T03foo4_123ABTf3psb", "_T03foo4_123ABTf3psbpi"):
+            assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        "full",
+        [
+            "_T0SS3fooySSSgFTf3npk_n",
+            "_T03foo4_123ABTf3psbpSSi3Si0",
+            "_T03fooABTf4g_n",
+            "$s3foo3barSSyFTf4x_n",
+        ],
+    )
+    def test_every_prefix_of_a_specialisation_is_answered(self, full):
+        """Cut short at every offset. A specialisation is the production that loops."""
+        for cut in range(len(full) + 1):
+            name = full[:cut]
+            assert isinstance(demangle.demangle(name), str)
+            with contextlib.suppress(DemanglingError):
+                demangle.demangle_strict(name)
 
 
 class TestTree:

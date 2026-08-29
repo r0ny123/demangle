@@ -19,7 +19,7 @@ from demangle.core.ast import rendered
 from demangle.core.errors import DemanglingError, LimitExceeded
 from demangle.core.limits import Limits
 
-from .conftest import load_corpus
+from .conftest import CONFORMANCE, load_corpus
 
 hypothesis = pytest.importorskip("hypothesis")
 from hypothesis import HealthCheck, given, settings  # noqa: E402
@@ -28,6 +28,21 @@ from hypothesis import strategies as st  # noqa: E402
 MANGLING_ALPHABET = "_ZNSKPRIEJLTUvbcahstijlmxynofdeg0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ?@$."
 
 deadline = settings(max_examples=400, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+
+
+def corpus_sample(step):
+    """Every `step`-th name from every conformance corpus, all schemes together.
+
+    Sampled rather than exhaustive because the whole set is 81,000 names and the tests
+    that use this run a pass per *prefix* of each one.
+    """
+    sampled = []
+    for path in sorted(CONFORMANCE.iterdir()):
+        if path.suffix not in (".txt", ".gz"):
+            continue
+        names = [name for name, _ in load_corpus(path.name.removesuffix(".gz"))]
+        sampled.extend(names[::step])
+    return sampled
 
 
 def answered(value):
@@ -319,6 +334,23 @@ class TestResourceBounds:
         assert demangle.demangle(name) == name
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(name)
+
+    def test_truncation_at_every_offset_of_every_corpus_is_answered(self, subtests):
+        """Every scheme, on real names, cut short at every offset.
+
+        Sampled rather than exhaustive -- one name in every 150 across all the
+        conformance corpora, which is a few hundred names and some tens of thousands of
+        prefixes. A truncated name is the shape that found the one non-advancing loop
+        this package has had (`Demangler.next_char`, see `tests/test_swift.py`): it ends
+        in the middle of a production, which is exactly where a parser is most likely to
+        put a character back that it never took.
+        """
+        sampled = corpus_sample(150)
+        assert len(sampled) > 200, "corpora did not load; this test would prove nothing"
+        for full in sampled:
+            with subtests.test(name=full):
+                for cut in range(len(full)):
+                    assert answered(full[:cut])
 
     def test_truncation_at_every_offset_is_answered(self):
         """Symbol tables really do hold names cut short by fixed-width fields."""
