@@ -292,11 +292,23 @@ def main():
             print("\nno baseline recorded; run with --save first")
             return 0
         baseline = json.loads(BASELINE.read_text())
-        expected = baseline.get("structured", {}).get("parsed")
-        measured = results.get("structured", {}).get("parsed")
-        if expected is not None and measured != expected:
-            print(f"\nstructured benchmark parsed {measured} names, baseline parsed {expected}")
+        structured = results.get("structured", {})
+        # Two guards, and the first is the one that matters. `parsed` must equal the
+        # number of names the pass was given: a change that made `parse()` raise
+        # immediately would time at a fraction of the baseline and be reported as an
+        # enormous improvement, and this catches that within the run rather than against
+        # a record that goes stale every time the corpus is edited.
+        if structured.get("parsed") != structured.get("names"):
+            print(f"\nstructured benchmark parsed {structured.get('parsed')} of {structured.get('names')} names")
             print("a timing that improved because the work stopped happening is not an improvement")
+            return 1
+        # The second catches the corpus itself shrinking, which would do the same thing
+        # more quietly. A deliberate change to it is a deliberate edit to the baseline.
+        expected = baseline.get("structured", {}).get("names")
+        measured = structured.get("names")
+        if expected is not None and measured != expected:
+            print(f"\nstructured benchmark ran over {measured} names, baseline recorded {expected}")
+            print("if the corpus changed on purpose, re-record the baseline and say why")
             return 1
         if "normalised" not in baseline.get("cold", {}):
             print("\nbaseline predates machine calibration; re-record it with --save")

@@ -267,11 +267,19 @@ class TestTemplateParameterLevels:
         substitute reliably inside a `<constraint-expression>`, so it prints the
         numbering rather than a guess. That branch is taken before the level is looked
         up, so a level out of scope is spelled here rather than refused.
+
+        The parameter of `operator()` is `int`, not `auto`: `S3_` names the entry the
+        closure's own `T0_` contributed, and under `operator()<int, int>` that is the
+        second argument. llvm-cxxfilt prints `auto` because it freezes the entry where it
+        was made; GNU c++filt refuses this name, but on the same construct without the
+        constraint -- `_ZZN5test71fIiEEvvENKUlTyT0_E_clIiiEEDaS1_` -- it prints `(int)`.
+        Only the constraint spelling is this test's subject; the parameter is here so
+        that a change to it has to be deliberate.
         """
         mangled = "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E_clIiiEEDaS3_Q1CIDtfp_EE"
         assert demangle.demangle(mangled) == (
             "auto void test7::f<int>()::'lambda'<typename $T> requires C<T> && C<TL0_> (auto)"
-            "::operator()<int, int>(auto) const requires C<decltype(fp)>"
+            "::operator()<int, int>(int) const requires C<decltype(fp)>"
         )
 
 

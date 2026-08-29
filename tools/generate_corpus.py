@@ -23,6 +23,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SOURCES = HERE / "corpus_sources"
 
+#: Names on which the reference demangler is *wrong*, so recording its output here would
+#: bake in a defect. Their expected column is derived from the declaration instead and
+#: lives in this file, which is maintained by hand. Read rather than hard-coded, so
+#: adding an entry there is enough -- a name in two corpora with two answers is exactly
+#: the drift this excludes.
+REFERENCE_DEFECTS = ROOT / "tests" / "conformance" / "itanium-reference-defects.txt"
+
 COMPILERS = ("clang++", "g++")
 STANDARDS = ("c++11", "c++14", "c++17", "c++20")
 OPTIMISATIONS = ("-O0", "-O2")
@@ -76,6 +83,17 @@ def reference_output(tool, names):
     return {}
 
 
+def reference_defects():
+    """The mangled names whose expected spelling is not a reference's to give."""
+    if not REFERENCE_DEFECTS.exists():  # pragma: no cover - only in a partial checkout
+        return frozenset()
+    return frozenset(
+        line.split("\t", 1)[0]
+        for line in REFERENCE_DEFECTS.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#") and "\t" in line
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "tests" / "conformance")
@@ -105,6 +123,12 @@ def main():
                         continue
                     mangled |= {s for s in symbols_of(obj) if s.startswith(("_Z", "__Z"))}
 
+    excluded = reference_defects()
+    known_defects = mangled & excluded
+    if known_defects:
+        print(f"excluding {len(known_defects)} name(s) the reference reads wrongly; see {REFERENCE_DEFECTS.name}")
+    mangled -= excluded
+
     print(f"collected {len(mangled)} distinct mangled symbols")
     ordered = sorted(mangled)
     expected = reference_output(arguments.tool, ordered)
@@ -119,6 +143,8 @@ def main():
         handle.write("# Conformance corpus: real compiler output.\n#\n")
         handle.write("# Each line is a mangled name, a tab, and the spelling the reference\n")
         handle.write("# demangler produces for it. Regenerate with tools/generate_corpus.py.\n#\n")
+        handle.write("# Names the reference reads wrongly are excluded; their expected spelling comes\n")
+        handle.write(f"# from the declaration instead, in {REFERENCE_DEFECTS.name}.\n#\n")
         handle.write(f"# reference: {tool_version}\n")
         for line in provenance:
             handle.write(f"# compiled by: {line}\n")

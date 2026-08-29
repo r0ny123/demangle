@@ -10,6 +10,8 @@ import pkgutil
 import sys
 from pathlib import Path
 
+import pytest
+
 import demangle
 from demangle.core.builder import Builder
 from demangle.core.registry import available
@@ -209,6 +211,63 @@ class TestBuilders:
         from demangle.core.spelling import SPELLING_BUILDER
 
         assert isinstance(SPELLING_BUILDER, Builder)
+
+
+class TestTheToolsAndTheSuiteAgree:
+    """Two lists of excused names have to say the same thing.
+
+    `tools/differential.py` excuses a name from its corpus replay; `test_conformance.py`
+    pins the same set for the suite. They are edited in different files for different
+    reasons, and a name excused in one and not the other means one of the two has stopped
+    watching it -- which is how a deliberate shortfall came to be reported as a clean
+    100% by the tool while the suite was failing on it.
+    """
+
+    @staticmethod
+    def module(name):
+        import importlib.util
+
+        root = Path(__file__).resolve().parent.parent
+        spec = importlib.util.spec_from_file_location(f"_{name}", root / "tools" / f"{name}.py")
+        if spec is None or spec.loader is None:  # pragma: no cover - wheel-only checkout
+            pytest.skip(f"tools/{name}.py is not part of this distribution")
+        loaded = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(loaded)
+        return loaded
+
+    def test_the_same_names_are_excused_on_both_sides(self):
+        from . import test_conformance as pins
+
+        tool = self.module("differential")
+        suite = set(pins.GNU_DIVERGENCES) | {
+            # The one entry the tool carries that the suite does not: it is excused
+            # against an *older* reference version rather than against a corpus, so the
+            # suite has nothing to pin it to. Named here so the difference is one item
+            # rather than an unchecked gap.
+            "_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_",
+        }
+        assert suite == tool.KNOWN_DIVERGENCES
+
+    def test_no_excused_name_is_also_a_reference_defect(self):
+        """A name cannot both be an open disagreement and have a settled answer.
+
+        `itanium-reference-defects.txt` says what a name must spell, established from the
+        declaration. Excusing the same name in the tool would mean the corpus asserts an
+        answer the tool has agreed not to look at.
+        """
+        from .conftest import load_corpus
+
+        tool = self.module("differential")
+        settled = {mangled for mangled, _ in load_corpus("itanium-reference-defects.txt")}
+        assert not (settled & tool.KNOWN_DIVERGENCES)
+
+    def test_the_generator_excludes_every_settled_name(self):
+        """Regenerating a corpus must not re-record a reference's wrong answer."""
+        from .conftest import load_corpus
+
+        settled = {mangled for mangled, _ in load_corpus("itanium-reference-defects.txt")}
+        assert settled
+        assert settled <= self.module("generate_corpus").reference_defects()
 
 
 class TestPackaging:

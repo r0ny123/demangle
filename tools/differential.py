@@ -151,6 +151,11 @@ REFERENCE_LOSES_INFORMATION = {
     "??_7A@@6BB@@C@@D@@@",
 }
 
+#: Kept in step with `GNU_DIVERGENCES` in tests/test_conformance.py: the same set, for
+#: the tool rather than for the suite, plus the one name excused against an *older*
+#: reference version rather than against a corpus. Both are checked against each other by
+#: `tests/test_architecture.py`, because a name excused here and not there -- or the
+#: other way round -- means one of the two stops seeing a regression on it.
 KNOWN_DIVERGENCES = {
     # llvm-cxxfilt 18 and earlier do not record a template template parameter as a
     # substitution candidate in its own right, so they read this name one entry short.
@@ -160,10 +165,9 @@ KNOWN_DIVERGENCES = {
     # comparison against an older llvm-cxxfilt reports a known divergence rather than a
     # failure; when the oldest reference in CI is 20 or newer this can go.
     "_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_",
-    # The two below are the pinned GNU divergences: the references disagree with each
-    # other about substitution table contents, not about spelling.
+    # The pinned GNU divergence: inside a requires-clause the references disagree with
+    # each other about substitution table contents, not about spelling.
     "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
-    "_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_",
 }
 
 

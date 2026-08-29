@@ -17,11 +17,19 @@ from demangle.core.errors import DemanglingError
 from .conftest import CONFORMANCE, load_corpus
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42 on the checked-in corpora.
-ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 280, 280
-ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 300, 298
+ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 279, 279
+ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 300, 299
 MSVC_TOTAL, MSVC_EXACT = 609, 609
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
-REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 31, 31
+REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 28, 28
+
+#: Names on which a reference demangler is *wrong*, so the expected column is derived
+#: from the declaration rather than recorded from a demangler. See the file's header, and
+#: `tools/corpus_sources/reference_defects/` for the sources. Four of these came out of
+#: corpora recorded from llvm-cxxfilt, whose answer turned out to be the defect rather
+#: than the reference; `tools/generate_corpus.py` reads this file and excludes them, so a
+#: regeneration cannot quietly record the wrong answer again.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 9, 9
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are
@@ -164,10 +172,14 @@ GNU_DIVERGENCES = [
     # Inside a requires-clause, llvm records the template parameter symbolically (`T`)
     # and GNU records the argument bound to it.
     "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
-    # A generic lambda's `operator()`: llvm resolves the back-reference to the lambda's
-    # declared parameter, GNU to the argument `operator()` was instantiated with.
-    "_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_",
 ]
+
+# One name left this list rather than being traded away:
+# `_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_`, a generic lambda's `operator()`.
+# It was read as GNU reads it once a recorded `<template-param>` stopped being frozen to
+# the argument bound to it where the entry was made. What the declaration says -- g++
+# emits the same shape for `[](auto x){}` called with an `int` -- is pinned in
+# `tests/conformance/itanium-reference-defects.txt`.
 
 
 def _score(corpus, style, language=None):
@@ -245,6 +257,16 @@ def test_regression_corpus():
     """Names that each exposed a distinct defect. Every one must stay fixed."""
     total, exact = _score("itanium-regressions.txt", "llvm")
     assert (total, exact) == (REGRESSIONS_TOTAL, REGRESSIONS_EXACT)
+
+
+def test_reference_defect_corpus():
+    """Names where following a reference would mean printing a type the source disproves.
+
+    The one corpus here whose expected column is not a reference demangler's output. See
+    `REFERENCE_DEFECTS_TOTAL` and the file's own header.
+    """
+    total, exact = _score("itanium-reference-defects.txt", "llvm")
+    assert (total, exact) == (REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT)
 
 
 def test_rust_matches_rustc_demangle():
@@ -394,7 +416,15 @@ class TestAgainstLibcxxabisOwnCorpus:
 
     #: Raised as gaps close; never lowered silently. A drop means a vector that used to
     #: pass has stopped, which is a regression whatever the total.
-    EXPECTED_EXACT = 29923
+    #:
+    #: It was lowered once, from 29923, and the reason is in
+    #: `test_the_shortfall_is_fourteen_names_and_this_says_which`: nine vectors record
+    #: llvm-cxxfilt's own reading of a `<template-param>` recorded as a substitution
+    #: candidate, which `tests/conformance/itanium-reference-defects.txt` establishes
+    #: against four compilers' output is wrong. This corpus *is* that demangler's test
+    #: file, so where it and the declaration disagree it is the corpus that is the
+    #: record of a defect.
+    EXPECTED_EXACT = 29914
 
     def _score(self):
         return sum(
@@ -409,29 +439,65 @@ class TestAgainstLibcxxabisOwnCorpus:
     def test_the_pinned_number_is_still_accurate(self):
         assert self._score() == self.EXPECTED_EXACT
 
-    def test_the_shortfall_is_five_names_and_this_says_which(self):
-        """Five left, and four of them are not shortfalls at all.
+    def test_the_shortfall_is_fourteen_names_and_this_says_which(self):
+        """Fourteen left, in three groups, and none of them is a name read wrongly.
 
-        `i`, `PKFvRiE`, `PVFvRmOE` and `PFvRmOE` are bare `<type>` manglings with no
-        `_Z`. They are refused *as symbols* on purpose, as `llvm-cxxfilt` refuses them,
-        because a demangler offered every symbol in a binary and willing to read `i` as
-        `int` will rename half a C library. `demangle_type()` reads all four; see
-        `tests/test_types.py`.
+        **Four bare types.** `i`, `PKFvRiE`, `PVFvRmOE` and `PFvRmOE` are `<type>`
+        manglings with no `_Z`. They are refused *as symbols* on purpose, as
+        `llvm-cxxfilt` refuses them, because a demangler offered every symbol in a binary
+        and willing to read `i` as `int` will rename half a C library. `demangle_type()`
+        reads all four; see `tests/test_types.py`.
 
-        The fifth is a conversion operator whose type refers to the argument list that
-        contains it -- `operator B<T_&><B<T_&>>`, a cycle. The reference guards against
-        printing one by printing *nothing* for the second visit, so it answers
-        `operator B<><>`; this reads the type a second time once the arguments are bound
-        and answers `operator B<auto&><auto&>`. Neither is the declaration, because
-        there is no declaration: the mangling is self-referential and no compiler emits
-        one.
+        **One self-referential conversion operator.** `_Zcv1BIRT_EIS1_E` is
+        `operator B<T_&><B<T_&>>`, a cycle. The reference guards against printing one by
+        printing *nothing* for the second visit, so it answers `operator B<><>`; this
+        reads the type a second time once the arguments are bound and answers
+        `operator B<auto&><auto&>`. Neither is the declaration, because there is no
+        declaration: the mangling is self-referential and no compiler emits one.
+
+        **Nine where this corpus records llvm-cxxfilt's own defect.** A
+        `<template-param>` recorded as a substitution candidate -- or a component built
+        over one -- is the parameter, not the argument bound to it where the entry was
+        made, and a generic lambda's `operator()<int>` therefore takes `int` and not
+        `auto`. Established against g++ 13.3.0 and clang++ 18.1.3 over sources in
+        `tools/corpus_sources/reference_defects/`, and pinned in
+        `tests/conformance/itanium-reference-defects.txt`. GNU c++filt 2.42 agrees with
+        the corrected reading on the six of the nine it can read, except where its own
+        reference-collapsing rewrite freezes the same entry -- which is
+        `_Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE`, the same shape as
+        `std::once_flag::_Prepare_execution` in the shipped libstdc++, where that
+        library's own header settles it against both references.
+
+        This corpus is llvm-cxxfilt's test file, so it cannot be corrected in place: its
+        value is that it is the reference measuring itself. The nine are named here
+        instead, so that one of them starting to pass is as visible as one of them
+        starting to fail.
         """
         missed = [
             mangled
             for mangled, expected in load_corpus("itanium-libcxxabi.txt")
             if demangle.demangle(mangled) != expected
         ]
-        assert sorted(missed) == sorted(["_Zcv1BIRT_EIS1_E", "i", "PKFvRiE", "PVFvRmOE", "PFvRmOE"])
+        assert sorted(missed) == [
+            # bare types, refused as symbols
+            "PFvRmOE",
+            "PKFvRiE",
+            "PVFvRmOE",
+            # the reference's model of a recorded <template-param>
+            "_Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE",
+            "_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_",
+            "_ZZ11inline_funcvENKUlTyTyT_T0_E_clIiiEEDaS_S0_",
+            "_ZZ11inline_funcvENKUlTyTyT_T1_T0_E_clIiiiEEDaS_S0_S1_",
+            "_ZZ18test_assign_throwsI20small_throws_on_copyLb0EEvvENKUlRNSt3__13anyEOT_E_clIRS0_EEDaS3_S5_",
+            "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E0_clIiiEEDaS3_Qaa1CIDtfp_EELb1E",
+            "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E1_clIiiEEDaS3_Q1CIDtfp_EE",
+            "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E_clIiiEEDaS3_Q1CIDtfp_EE",
+            "_ZZN5test71fIiEEvvENKUlTyT0_E_clIiiEEDaS1_",
+            # a self-referential conversion operator
+            "_Zcv1BIRT_EIS1_E",
+            # a bare type again
+            "i",
+        ]
 
     def test_the_four_bare_types_are_read_when_they_are_asked_for_as_types(self):
         """Refused as symbols, read as types. The corpus scores the symbol entry point."""

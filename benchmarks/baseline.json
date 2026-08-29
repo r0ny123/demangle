@@ -23,11 +23,11 @@
     "relative_to_pivot": 5.4112
   },
   "structured": {
-    "names": 560,
+    "names": 558,
     "seconds": 0.033603,
     "per_second": 16665,
     "microseconds_each": 60.006,
-    "parsed": 560,
+    "parsed": 558,
     "normalised": 2073.432,
     "relative_to_pivot": 131.8659
   },

@@ -21,7 +21,12 @@ from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.reader import DIGITS, Reader
 from .options import DEFAULT_OPTIONS
-from .substitutions import SubstitutionTable, TemplateArgumentTable
+from .substitutions import (
+    DeferredProduction,
+    ParameterReference,
+    SubstitutionTable,
+    TemplateArgumentTable,
+)
 from .tables import (
     BUILTIN_TYPES,
     CONSTRUCTOR_KINDS,
@@ -222,6 +227,7 @@ class ItaniumParser:
         "_abbrev",
         "_abbrev_expanded",
         "_ctor_dtor",
+        "_deferred",
         "_depth",
         "_drop_return",
         "_explicit_object",
@@ -237,6 +243,7 @@ class ItaniumParser:
         "_pack_index",
         "_packs",
         "_parameter_counts",
+        "_parameter_uses",
         "_pending_conversion",
         "_precedence",
         "_productions",
@@ -268,6 +275,21 @@ class ItaniumParser:
         self.limits = limits
         self.subs = SubstitutionTable(mangled, limits.max_substitutions)
         self.targs = TemplateArgumentTable()
+        # How many times a template parameter has been resolved. A production that
+        # advanced this depended on the scope it ran under, so the entry it contributed
+        # is kept as its input span rather than as the handle it built -- see
+        # `DeferredProduction`.
+        self._parameter_uses = 0
+        # Re-read spans, keyed by (entry index, scope generation). Without it a chain of
+        # entries each built over the one before -- `T_`, `P S0_`, `P S1_`, ... -- costs
+        # one walk of the whole chain per back-reference, which is quadratic in the name.
+        # With it each entry is read at most once per scope, and the scope only changes
+        # where the grammar installs one: over the 217,730 distinct Itanium symbols in
+        # the shared libraries of a stock Ubuntu 24.04 the highest any name reached was
+        # 15 scopes, 784 names re-read anything at all, and the largest re-read 303
+        # characters of its own 362. `tests/test_substitution_parameters.py` pins that a
+        # chain of 400 stays flat, which is what fails if this memo is ever mis-keyed.
+        self._deferred = {}
         self._depth = 0
         # Precedence of the expression just parsed, read by a containing operator to
         # decide whether it needs brackets. Primary by default: most expressions are
@@ -890,9 +912,9 @@ class ItaniumParser:
             return False, module
 
         if char == "T":
-            component = self.template_param()
+            component, reference = self.template_param_binding()
             parts.append(component)
-            self.subs.remember(component, "template-template-param")
+            self.subs.remember(reference if reference is not None else component, "template-template-param")
             return False, module
 
         if char == "D" and reader.peek(1) in ("t", "T"):
@@ -1469,7 +1491,20 @@ class ItaniumParser:
                 # had to enter it either -- so only the tagged form is remembered.
                 return self.subs.remember(self.builder.raw(table[code] + tags), "type")
             return self.builder.raw(table[code])
-        return self._pack_aware(self.subs.lookup(reader.seq_id()))
+        index = reader.seq_id()
+        entry = self.subs.lookup(index)
+        kind = type(entry)
+        if kind is ParameterReference:
+            # The entry is the parameter, not what it was bound to where it was
+            # recorded; those differ whenever the back-reference is read under a
+            # different template scope. `bind_template_param` does the pack handling
+            # `_pack_aware` would, so it is not applied twice. See `ParameterReference`.
+            return self.bind_template_param(entry.index, entry.level)
+        if kind is DeferredProduction:
+            # The same, for a component built *over* a parameter. See
+            # `DeferredProduction`.
+            return self._pack_aware(self._reread(index, entry))
+        return self._pack_aware(entry)
 
     def _pack_aware(self, handle):
         """Report a pack, and stand in for one of its members while one is being read.
@@ -1491,7 +1526,11 @@ class ItaniumParser:
         return handle
 
     def template_param(self):
-        """A reference to a template parameter.
+        """A reference to a template parameter, resolved against the scope in force."""
+        return self.template_param_binding()[0]
+
+    def template_param_binding(self):
+        """A <template-param>, as both what it resolves to and the reference itself.
 
         ```
         <template-param> ::= T_ | T <parameter-2 non-negative number> _
@@ -1501,6 +1540,12 @@ class ItaniumParser:
         The `TL` form names a parameter of an enclosing template by level as well as by
         index, which Clang emits inside the constraints of a nested template. It is
         newer than the grammar snapshot in docs/specs/.
+
+        Returns `(handle, reference)`. The reference is what a caller recording this
+        parameter as a substitution candidate must store -- see `ParameterReference` for
+        why the resolved handle is the wrong thing to keep. It is `None` inside a
+        constraint, where the parameter is spelled by its own mangled text and so cannot
+        mean anything different when the entry is read again.
         """
         reader = self.reader
         begin = reader.pos
@@ -1525,7 +1570,13 @@ class ItaniumParser:
             # mangled name -- `T_` is `T`, `TL0__` is `TL0_` -- rather than substituting
             # the argument bound to it, because not every enclosing template's
             # parameters are tracked well enough to substitute reliably.
-            return self.builder.raw(reader.text[begin : reader.pos - 1])
+            return self.builder.raw(reader.text[begin : reader.pos - 1]), None
+        return self.bind_template_param(index, level), ParameterReference(index, level)
+
+    def bind_template_param(self, index, level=0):
+        """What `TL<level>_<index>_` names under the arguments currently in scope."""
+        reader = self.reader
+        self._parameter_uses += 1
         bound = self.targs.lookup(index, level)
         if bound is not None:
             if id(bound) in self._pack_ids:
@@ -1606,6 +1657,9 @@ class ItaniumParser:
         depth = self._depth = self._depth + 1
         if depth > self.limits.max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+        subs = self.subs
+        start = self.reader.pos
+        uses, entries = self._parameter_uses, len(subs)
         try:
             result = self._type()
             # Checked here, on every type, rather than once on the finished name. The
@@ -1615,9 +1669,54 @@ class ItaniumParser:
             # building the very thing the bound exists to prevent; `size()` is O(1).
             if self.builder.size(result) > self.limits.max_output:
                 raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
+            # A template parameter was resolved while this production ran, so what it
+            # spells depends on the scope -- and the entry it just contributed must be
+            # re-read under the scope a later back-reference is written in, not frozen to
+            # this one. `_type` records the whole production last, after anything nested
+            # in it, so the entry to replace is the final one. See `DeferredProduction`.
+            if (
+                subs.recording
+                and self._parameter_uses != uses
+                and len(subs) > entries
+                and type(subs.last) is not ParameterReference
+            ):
+                subs.defer_last(start, self.reader.pos)
             return result
         finally:
             self._depth = depth - 1
+
+    def _reread(self, index, span):
+        """Read a `DeferredProduction` again, under the scope now in force.
+
+        Recording is off: those bytes contributed their entries the first time round, and
+        adding them again would renumber the table under the very back-reference being
+        resolved. `_naming` is off for the same reason it is off inside any type -- a
+        nested argument list must not replace the enclosing entity's `T_` scope.
+        """
+        # Not memoised inside a pack expansion. `Dp` reads its pattern once per member
+        # with `_pack_index` set, and the scope does not change between those readings --
+        # so a memo keyed on the scope would hand every member the first one's answer.
+        # The bound the memo exists for still holds there: a pack expansion is already
+        # linear in the members it has, and the members come out of the input.
+        key = None if self._pack_index is not None else (index, self.targs.generation)
+        if key is not None:
+            found = self._deferred.get(key)
+            if found is not None:
+                return found
+        reader, subs = self.reader, self.subs
+        saved_pos, saved_naming, saved_recording = reader.pos, self._naming, subs.recording
+        reader.pos = span.start
+        self._naming = False
+        subs.recording = False
+        try:
+            result = self.type_()
+        finally:
+            reader.pos = saved_pos
+            self._naming = saved_naming
+            subs.recording = saved_recording
+        if key is not None:
+            self._deferred[key] = result
+        return result
 
     def _type(self):
         reader = self.reader
@@ -1692,7 +1791,8 @@ class ItaniumParser:
             return subs.remember(builder.raw(f"{keyword} {builder.spell(self.class_enum_type())}"), "type")
 
         if char == "T":
-            component = self.template_param()
+            component, reference = self.template_param_binding()
+            recorded = reference if reference is not None else component
             if reader.peek() == "I" and self._try_template_args:
                 # <template-template-param> <template-args>. The parameter is recorded in
                 # its own right *and* the application is, so this contributes two entries
@@ -1707,13 +1807,14 @@ class ItaniumParser:
                 # its own. Recording one entry made that name unreadable and shifted
                 # every later back-reference in any name that applies a template
                 # template parameter.
-                subs.remember(component, "template-template-param")
+                subs.remember(recorded, "template-template-param")
                 arguments = self.template_arguments()
                 return subs.remember(builder.template(component, arguments, not self._trailing_empty_pack), "type")
             # A <template-param> reached through <type> is a <type>, and <type> is a
             # candidate. Confirmed by `_ZSt4sortIPiEvT_S1_`, where `S1_` resolves to
             # `int*` -- the entry the `T_` parameter itself contributed.
-            return subs.remember(component, "type")
+            subs.remember(recorded, "type")
+            return component
 
         if char == "S":
             if reader.peek(1) == "t":
@@ -2550,7 +2651,9 @@ class ItaniumParser:
         reader = self.reader
         builder = self.builder
         if reader.peek() == "T":
-            return builder.spell(self.subs.remember(self.template_param(), "unresolved-type"))
+            component, reference = self.template_param_binding()
+            self.subs.remember(reference if reference is not None else component, "unresolved-type")
+            return builder.spell(component)
         if reader.peek() == "D":
             return builder.spell(self.subs.remember(self.decltype_(), "unresolved-type"))
         return builder.spell(self.substitution())

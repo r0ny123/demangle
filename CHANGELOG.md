@@ -631,6 +631,57 @@ All notable changes to this project are recorded here. The format follows
   encode. Found by offering 60,000 random ASCII strings to the whole registry and looking
   at what came back changed.
 
+- **A `<template-param>` recorded as a substitution candidate was frozen to the wrong
+  argument**, and so was anything built over one. ABI 5.1.10 makes a `<template-param>` a
+  candidate in its own right, and the entry it contributes is *the parameter* -- `T_`,
+  `T0_` -- not whatever argument was bound to it at the point the entry was made. The two
+  differ whenever the back-reference is read under a different template scope, which is
+  routine: a name mentioning a local entity writes the enclosing function's signature
+  against *that* function's parameters, so a `T_` inside it enters the table, and a later
+  `S<n>_` naming that entry belongs to the outer template. The mangler does this because
+  it canonicalises a template type parameter by level and index, so `T_` of one template
+  and `T_` of another are one node to it and the entry is reused.
+
+  Freezing it produced a type the source disproves, spelled plausibly enough to pass for
+  the real one: `std::__insertion_sort<llvm::cfg::Update<llvm::BasicBlock*>*, C>` came out
+  taking `llvm::BasicBlock*`, and a generic lambda's `operator()<int>` came out taking
+  `auto`. A recorded parameter is now a `ParameterReference`, resolved where the
+  back-reference is read; a component built over one is a `DeferredProduction`, kept as
+  its input span and read again under the scope in force, because a handle is
+  already-built output and there is nothing in it to re-resolve. Re-reading is memoised on
+  the entry and the scope -- but not inside a pack expansion, which reads its pattern once
+  per member without the scope changing, and where a scope-keyed memo handed every member
+  the first one's answer.
+
+  Settled against the manglers, because the two references disagree and one of them is
+  wrong. Over the 217,730 distinct Itanium symbols in every shared library a stock Ubuntu
+  24.04 ships this changes the answer for **315** names. `llvm-cxxfilt` 18.1.3 differs
+  from the corrected answer on 322 of them. GNU `c++filt` 2.42 refuses 227 and reads 95,
+  agreeing with the corrected answer on 91; of the four left, three are the
+  `std::once_flag::_Prepare_execution` constructor shape, where libstdc++'s own header
+  settles it against *both* references, and one is a generic lambda whose own parameter
+  reaches it through a substitution, where GNU is right and this is not -- one shipped
+  symbol, described under heading 0 of ROADMAP.md.
+
+  Five reduced sources are checked in under `tools/corpus_sources/reference_defects/`,
+  compiled with g++ 13.3.0 and clang++ 18.1.3, and the names they emit are pinned
+  alongside four shipped symbols in `tests/conformance/itanium-reference-defects.txt` --
+  the one corpus here whose expected column comes from the declaration rather than from a
+  demangler. `tools/generate_corpus.py` reads that file and excludes those names, so a
+  regeneration cannot quietly record a reference's wrong answer again, and
+  `tests/test_architecture.py` checks that the excused-name lists in the tool and in the
+  suite still say the same thing.
+
+  Consequences for the recorded numbers, all in the direction the evidence points. Four
+  names left corpora recorded from llvm-cxxfilt for the new one -- three from the
+  regression corpus, taking it to **28 / 28**, and one from the purpose-built llvm-style
+  corpus, taking it to **279 / 279**. The gnu-style corpus rises to **299 / 300**, because
+  one of the two pinned GNU divergences turned out to be ours rather than a disagreement
+  between references. libcxxabi's own corpus goes *down*, 29,923 to **29,914 / 29,928**:
+  it is llvm-cxxfilt's test file, so the nine vectors that record its model of this are a
+  register of the defect rather than of ours, and they are named one by one in
+  `tests/test_conformance.py`.
+
 - **MSVC reported a bound the parse never had.** The parser narrows both of its bounds
   with ceilings of its own -- `min(limits.max_depth, MAX_DEPTH)` with `MAX_DEPTH` 64, and
   `min(limits.max_output, 8 * len(mangled) + 256)` -- and that is deliberate: a level

@@ -39,11 +39,91 @@ CANDIDATE_PRODUCTIONS = frozenset(
 EXCLUDED_PRODUCTIONS = frozenset({"builtin-type", "function-name", "operator-name"})
 
 
+class ParameterReference:
+    """A recorded `<template-param>`, kept as the reference it is rather than resolved.
+
+    A `<template-param>` is a substitution candidate in its own right (5.1.10), and the
+    entry it contributes is *the parameter*, not the argument bound to it at the moment
+    it was written. The two differ whenever the back-reference is read under a different
+    template scope, which happens in any name that mentions a local entity: the
+    signature of the enclosing function is written against that function's parameters,
+    so a `T_` inside it enters the table, and a later `S<n>_` naming that entry belongs
+    to the *outer* template.
+
+    Settled against the mangler rather than a demangler. For
+
+        template <class T> void legalize(Update<T>*);
+        template <class I, class C> void insort(I, I, C);
+
+    with `insort<Update<BB*>*, Wrap<lambda-in-legalize>>` instantiated from inside
+    `legalize<BB*>`, g++ 13.3 emits `...EEvS8_S8_T0_`, where `S8_` is the entry the `T_`
+    inside `legalize`'s signature contributed. The parameters of `insort` are of type
+    `I` -- `nn::Update<nn::BB*>*` -- and GNU c++filt prints exactly that. Resolving the
+    entry to what `T_` meant where it was recorded gives `nn::BB*` instead: a different
+    type, spelled plausibly, which is the failure this package exists to avoid.
+    llvm-cxxfilt 18 has that bug on 312 of the 217,730 distinct Itanium symbols in the
+    shared libraries of a stock Ubuntu 24.04.
+
+    The level is carried as well as the index, because `TL<k>_<n>_` names a parameter of
+    an enclosing template and the entry stands for that parameter, not for level 0's.
+
+    Held opaque by the table -- it is the parser that owns the template scope, so it is
+    the parser that turns one of these back into a handle.
+    """
+
+    __slots__ = ("index", "level")
+
+    def __init__(self, index, level=0):
+        self.index = index
+        self.level = level
+
+    def __repr__(self):  # pragma: no cover - debugging aid
+        name = "T" + ("" if self.index == 0 else str(self.index - 1))
+        return f"ParameterReference({name}_, level {self.level})"
+
+
+class DeferredProduction:
+    """A recorded component built *over* a `<template-param>`, kept as its input span.
+
+    `ParameterReference` covers the bare parameter. This covers everything wrapped
+    around one -- `R T_`, `P N S1_ I T_ E E`, a template applied to it -- which is
+    scope-dependent for exactly the same reason and which the mangler reuses across
+    scopes for exactly the same reason: it canonicalises a template type parameter by
+    level and index, so the composite over one canonicalises the same way.
+
+    From `insort(Update<I>*, Update<I>*, C)` instantiated inside `legalize<T>`, g++ 13.3
+    emits parameters written `SA_`, the entry `P N S1_ I T_ E E` contributed inside
+    `legalize`'s own signature. Under `insort` that is `nn::Update<nn::Update<nn::BB*>*>*`,
+    which is what the declaration says and what GNU c++filt prints; frozen where it was
+    recorded it is `nn::Update<nn::BB*>*`, which is a different type.
+
+    There is nothing to freeze *or* to defer in the handle itself, because a handle is
+    already-built output. What is kept instead is where the production was written, so
+    the parser can read it again under the scope now in force. The span is a complete
+    `<type>`, and a `<type>` can only back-reference entries recorded before it, so
+    re-reading one terminates: each step moves strictly earlier in the table.
+    """
+
+    __slots__ = ("end", "start")
+
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+
+    def __repr__(self):  # pragma: no cover - debugging aid
+        return f"DeferredProduction({self.start}:{self.end})"
+
+
 class SubstitutionTable:
     """The `S_` dictionary for one mangled name.
 
-    One instance per parse. Entries hold builder handles, so what is stored depends on
-    which builder is driving -- the table itself is deliberately ignorant of that.
+    One instance per parse. Most entries hold builder handles, so what is stored depends
+    on which builder is driving -- the table itself is deliberately ignorant of that. Two
+    kinds of entry are not handles at all: `ParameterReference` and
+    `DeferredProduction`, which stand for a component whose spelling depends on the
+    template scope it is *read* under rather than the one it was written under. The table
+    holds them opaquely; it is the parser that owns the scope, so it is the parser that
+    turns one back into a handle.
 
     On not deduplicating
     --------------------
@@ -63,12 +143,16 @@ class SubstitutionTable:
     every subsequent index.
     """
 
-    __slots__ = ("_entries", "_limit", "_mangled")
+    __slots__ = ("_entries", "_limit", "_mangled", "recording")
 
     def __init__(self, mangled, limit=8192):
         self._entries = []
         self._limit = limit
         self._mangled = mangled
+        #: False while the parser is re-reading a `DeferredProduction`. Those bytes have
+        #: already contributed their entries; adding them again would renumber the table
+        #: under the very back-reference being resolved.
+        self.recording = True
 
     def remember(self, handle, production="type"):
         """Record a substitutable component and return it unchanged.
@@ -82,10 +166,27 @@ class SubstitutionTable:
                 f"{production!r} is not a substitution candidate under ABI 5.1.10; "
                 f"candidates are {sorted(CANDIDATE_PRODUCTIONS)}"
             )
+        if not self.recording:
+            return handle
         if len(self._entries) >= self._limit:
             raise LimitExceeded(self._mangled, "substitution", self._limit)
         self._entries.append(handle)
         return handle
+
+    def defer_last(self, start, end):
+        """Replace the entry just recorded with the span it was written at.
+
+        Called by the production itself, once it knows a template parameter was resolved
+        while it ran. Nothing is added or removed, so numbering is untouched -- only what
+        the entry *is* changes.
+        """
+        if self._entries:
+            self._entries[-1] = DeferredProduction(start, end)
+
+    @property
+    def last(self):
+        """The entry most recently recorded, or None."""
+        return self._entries[-1] if self._entries else None
 
     def mark(self):
         """How many entries there are, for `rewind`."""
@@ -152,24 +253,31 @@ class TemplateArgumentTable:
     and put back the whole stack.
     """
 
-    __slots__ = ("_levels",)
+    __slots__ = ("_levels", "generation")
 
     _levels: list[list]
 
     def __init__(self):
         self._levels = []
+        #: Bumped on every change. Two different scopes never share a value, which is
+        #: what lets the parser memoise a `DeferredProduction` per scope rather than
+        #: re-reading its span once per back-reference -- a chain of entries each built
+        #: over the one before is otherwise quadratic in the length of the name.
+        self.generation = 0
 
     # -- level 0: the innermost <template-args> --------------------------------------
 
     def install(self):
         """Begin a fresh level 0. These arguments replace every level in scope."""
         self._levels = [[]]
+        self.generation += 1
 
     def add(self, handle):
         """Bind the next argument of level 0, as an argument list is read."""
         if not self._levels:
             self._levels = [[]]
         self._levels[0].append(handle)
+        self.generation += 1
         return handle
 
     def outer(self):
@@ -181,9 +289,11 @@ class TemplateArgumentTable:
     def push(self, declared):
         """Enter a nested level, which fills up as its declarations are read."""
         self._levels.append(declared)
+        self.generation += 1
 
     def pop(self):
         self._levels.pop()
+        self.generation += 1
 
     def depth(self):
         return len(self._levels)
@@ -191,6 +301,7 @@ class TemplateArgumentTable:
     def clear(self):
         """Drop every level. A lambda that *is* the entity being named starts fresh."""
         self._levels = []
+        self.generation += 1
 
     def lookup(self, index, level=0):
         """Resolve `TL<level>_<index>_`, or None when the binding is not in scope.
@@ -211,6 +322,7 @@ class TemplateArgumentTable:
 
     def restore(self, snapshot):
         self._levels = [list(level) for level in snapshot]
+        self.generation += 1
 
     def __repr__(self):  # pragma: no cover - debugging aid
         return f"TemplateArgumentTable({[len(level) for level in self._levels]})"

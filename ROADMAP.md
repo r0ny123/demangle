@@ -18,8 +18,11 @@ symbolic reference in the Swift metadata — well over half a million real symbo
 follows is what the upstream corpora still find, all of it pinned in both directions by
 the test suite so it can only go up and cannot quietly stop being accurate.
 
-**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,923 of 29,928 exact. Five left,
-and four of them are not shortfalls.
+**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,914 of 29,928 exact. Fourteen left,
+and thirteen of them are not shortfalls: four are bare types refused on purpose, and nine
+record llvm-cxxfilt's own reading of a recorded `<template-param>`, which heading 0 below
+settles against four compilers' output. The number went *down* from 29,923 for that
+reason, and `tests/test_conformance.py` says so where it pins it.
 
 - Four are `<type>` manglings with no `_Z` prefix at all — `i` for `int`,
   `PKFvRiE` for `void (*)(int&) const`. They are refused *as symbols*, deliberately and
@@ -101,6 +104,55 @@ of `conformance/itanium-types.txt` record it.
 
 **Nim**: seven shortfalls, that language's own mangling discarding an underscore, listed
 by name in `tests/conformance/nim-lossy.txt`.
+
+## 0. Where a reference is wrong
+
+Agreeing with a reference is not the same as being right, and this is the heading for the
+places where that has been established rather than assumed. The vectors live in
+`tests/conformance/itanium-reference-defects.txt` — the one corpus here whose expected
+column comes from the declaration rather than from a demangler — with reduced sources in
+`tools/corpus_sources/reference_defects/` and the compiler named on each entry.
+
+- ~~**A recorded `<template-param>` resolved where it was written, not where it is
+  read**~~ — *fixed*, for the parameter and for anything built over one. The entry a
+  `<template-param>` contributes to the substitution table is the parameter, not the
+  argument bound to it at that point, because the mangler canonicalises a template type
+  parameter by level and index and so reuses one entry across two different templates.
+  Over the 217,730 distinct Itanium symbols in every shared library a stock Ubuntu 24.04
+  ships, this changed the answer for 315; llvm-cxxfilt 18.1.3 differs from the corrected
+  answer on 322, and GNU c++filt 2.42 refuses 227 of those and agrees with us on 91 of
+  the 95 it reads.
+
+- **A generic lambda's own parameter, reached through a substitution** — open, one
+  shipped symbol. For
+
+      template <class T> void run(T &a) { take([](auto &x) { return x; }); }
+
+  both g++ 13.3 and clang++ 18.1.3 write the closure's parameter as `S3_`, the `R T_`
+  entry from `run`'s own signature. Read under the closure, `T_` is the closure's
+  implicit `auto`, which GNU c++filt spells `auto:1&`; read under `run` it is
+  `NoopAnalysis&`, which is what this spells. Closing it means modelling the implicit
+  template parameter list a generic lambda has even when the mangling does not declare
+  one with `Ty`, and numbering it the way GNU numbers `auto:N`. GNU tracks it; LLVM does
+  not, and is wrong on the rest of that name besides. The shipped instance is
+  `_ZSt9transform...runDataflowAnalysis...` in libclang-cpp-18 and the reduced case is
+  `_Z4takeIZ3runI12NoopAnalysisEvRT_EUlS3_E_EvS2_`. Worth doing when there is a second
+  such name to check the numbering against; on one symbol in 217,730 it is not worth
+  guessing from.
+
+- **The remaining gnu-style spelling gaps** — open, 80 of the 217,057 names GNU c++filt
+  reads out of those 217,730. None changes what a name *means*; all are spelling policy,
+  in three groups. About three quarters are `&f` inside a template argument, where GNU
+  brackets a const member function — `&(A::get() const)` — and omits a non-const one's
+  parameter list. The rest are how a callee is bracketed inside a call expression, where
+  GNU brackets a template-id and not a plain name; how a binary operator's operands are
+  bracketed; and a `const` applied to a type that already carries one, where the ABI
+  really does nest two `K`s and GNU folds them. Each is mechanical and reproducible.
+
+- **`gnuv2` claims ordinary C symbols** — open, and tracked as issue #6. The pre-Itanium
+  scheme rewrites `g_cclosure_marshal_VOID__INT` and `PyInit__csv`; two of the three
+  causes are plain grammar defects and the third is that v2 auto-detection is ambiguous
+  with C naming by construction, which is why binutils dropped `gnu-v2` from `--format`.
 
 ## 1. More schemes
 

@@ -1,0 +1,92 @@
+# Conformance corpus: names a reference demangler reads wrongly.
+#
+# Every other corpus here records what a reference demangler printed. These cannot, so
+# the expected column is derived from the *declaration* instead. Five of the entries have
+# a source in tools/corpus_sources/reference_defects/: it is compiled with the compiler
+# named on the entry, the symbol is read out of the object file with `nm`, and the
+# spelling is what that source says the symbol's type is. The other four are symbols out
+# of shipped libraries, where the declaration is the library's own header or its
+# published signature and the reading is spelled out in the entry's comment. That is the
+# only ground truth a demangler has, and it is what settles a split between references.
+#
+# All of these are one defect. A <template-param> is a substitution candidate in its own
+# right (ABI 5.1.10), and the entry it contributes is *the parameter*, not the argument
+# bound to it at the point the entry was made -- nor, for a component built over one, the
+# composite that argument produced. The two differ whenever the back-reference is read
+# under a different template scope, which is what happens in any name mentioning a local
+# entity: the enclosing function's signature is written against that function's
+# parameters, a `T_` inside it enters the table, and a later `S<n>_` naming that entry
+# belongs to the *outer* template. The mangler does this because it canonicalises a
+# template type parameter by level and index, so `T_` of one template and `T_` of another
+# are one node to it.
+#
+# What each reference does, measured over the 217,730 distinct Itanium symbols in the
+# shared libraries shipped on Ubuntu 24.04 (libLLVM 17/18/20, libclang-cpp, liblldb,
+# libstdc++, libgphobos and the rest). Fixing this changed the output for 315 of them:
+#
+#   llvm-cxxfilt 18.1.3  differs from the corrected answer on 312 of the 315.
+#   GNU c++filt 2.42     refuses 227 of the 315. Of the 88 it reads, it agrees with the
+#                        corrected answer on 84. Of the 4 left, 3 are the
+#                        `_Prepare_execution` constructor shape, where libstdc++'s own
+#                        header settles it against both references; 1 is a generic
+#                        lambda whose own parameter reaches it through a substitution,
+#                        where GNU is right and this is not -- see ROADMAP.md heading 0.
+#
+# style: llvm
+#
+# pairs: 9
+#
+# tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
+# `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,
+# `nn::Update<nn::BB*>*`. `S8_` is the `T_` entry `legalize`'s signature contributed.
+# llvm-cxxfilt 18 prints `nn::BB*`; GNU c++filt 2.42 agrees with the declaration.
+_ZN2nn6insortIPNS_6UpdateIPNS_2BBEEENS_4WrapIZNS_8legalizeIS3_EEvPNS1_IT_EEEUlRKS4_SC_E_EEEEvS8_S8_T0_	void nn::insort<nn::Update<nn::BB*>*, nn::Wrap<void nn::legalize<nn::BB*>(nn::Update<nn::BB*>*)::'lambda'(nn::Update<nn::BB*> const&, nn::Update<nn::BB*> const&)>>(nn::Update<nn::BB*>*, nn::Update<nn::BB*>*, nn::Wrap<void nn::legalize<nn::BB*>(nn::Update<nn::BB*>*)::'lambda'(nn::Update<nn::BB*> const&, nn::Update<nn::BB*> const&)>)
+#
+# tools/corpus_sources/reference_defects/insort_composite.cpp, g++ 13.3.0.
+# The same defect one declarator deeper: `insort(Update<I>*, Update<I>*, C)`, so the
+# first two parameters are `nn::Update<nn::Update<nn::BB*>*>*`. `SA_` is the entry
+# `P N S1_ I T_ E E` contributed inside `legalize`'s signature -- a composite built
+# *over* the parameter rather than the parameter itself, which the mangler reuses
+# across scopes for the same reason. llvm-cxxfilt 18 prints `nn::Update<nn::BB*>*`;
+# GNU c++filt 2.42 agrees with the declaration.
+_ZN2nn6insortIPNS_6UpdateIPNS_2BBEEENS_4WrapIZNS_8legalizeIS3_EEvPNS1_IT_EEEUlRKS4_SC_E_EEEEvSA_SA_T0_	void nn::insort<nn::Update<nn::BB*>*, nn::Wrap<void nn::legalize<nn::BB*>(nn::Update<nn::BB*>*)::'lambda'(nn::Update<nn::BB*> const&, nn::Update<nn::BB*> const&)>>(nn::Update<nn::Update<nn::BB*>*>*, nn::Update<nn::Update<nn::BB*>*>*, nn::Wrap<void nn::legalize<nn::BB*>(nn::Update<nn::BB*>*)::'lambda'(nn::Update<nn::BB*> const&, nn::Update<nn::BB*> const&)>)
+#
+# tools/corpus_sources/reference_defects/generic_lambda.cpp, g++ 13.3.0.
+# `operator()<int>` of a generic lambda takes `int`. llvm-cxxfilt 18 prints `auto`; GNU
+# c++filt 2.42 agrees with the declaration.
+_ZZN6modern13genericLambdaEvENKUlT_E_clIiEEDaS0_	auto modern::genericLambda()::'lambda'(auto)::operator()<int>(int) const
+#
+# The `Ty` form of the entry above, from tools/corpus_sources/modern.cpp compiled by
+# clang++ 18.1.3: the lambda declares its parameter and `S0_` names it. It left
+# `itanium-real-world.txt`, whose expected column is llvm-cxxfilt's and which read `$T`
+# here -- the parameter, not the `int` `operator()` was instantiated with.
+_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_	auto modern::genericLambda()::'lambda'<typename $T>($T)::operator()<int>(int) const
+#
+# tools/corpus_sources/reference_defects/prepare_execution.cpp, g++ 13.3.0.
+# `Prep(Callable&)`, and `Callable` is the closure declared in `callit`, so the parameter
+# is that closure type. Both llvm-cxxfilt 18 and GNU c++filt 2.42 print `void (&)()` --
+# `callit`'s own `F`, which is what `T_` meant where the entry was made. The same shape
+# appears in the shipped libstdc++ as `std::once_flag::_Prepare_execution`.
+_ZZN5Outer4PrepC4IZ6callitIRFvvEEvOT_EUlvE_EERS5_ENUlvE_4_FUNEv	Outer::Prep::Prep<void callit<void (&)()>(void (&)())::'lambda'()>(void callit<void (&)()>(void (&)())::'lambda'()&)::'lambda'()::_FUN()
+#
+# tools/corpus_sources/reference_defects/auto_marshall.cpp, clang++ 18.1.3.
+# A non-type template parameter whose type mentions the earlier type parameters -- which
+# is what puts `T_` in the table -- and whose value is a function specialisation whose
+# signature back-references it. llvm-cxxfilt 18 doubles the wrapper, reading
+# `am::Bindable<am::Bindable<am::TemplateName>>`; GNU c++filt 2.42 refuses the name.
+_ZN2am23makeMatcherAutoMarshallINS_8BindableINS_12TemplateNameEEENS_7MatcherIS2_EETnPFT_N5llvmx8ArrayRefIPKT0_EEEXadL_ZNS_18makeAllOfCompositeIS2_EENS1_IS6_EENS8_IPKNS4_IS6_EEEEEEEEii	int am::makeMatcherAutoMarshall<am::Bindable<am::TemplateName>, am::Matcher<am::TemplateName>, &am::Bindable<am::TemplateName> am::makeAllOfComposite<am::TemplateName>(llvmx::ArrayRef<am::Matcher<am::TemplateName> const*>)>(int)
+#
+# libLLVM-17. `find_singleton_nested(NodeTy&&, PredTy, bool)`, so the first parameter is
+# the second template argument. llvm-cxxfilt 18 reads it as `llvm::Loop&&`, taken from the
+# nested `getExitBlockHelper`; GNU c++filt 2.42 agrees with us byte for byte.
+_ZN4llvm21find_singleton_nestedINS_10BasicBlockENS_14iterator_rangeINS_12SuccIteratorINS_11InstructionES1_EEEEZNS_18getExitBlockHelperIS1_NS_4LoopEEESt4pairIPT_bEPKNS_8LoopBaseISA_T0_EEbEUlPS1_bE_EESC_OSE_T1_b	std::pair<llvm::BasicBlock*, bool> llvm::find_singleton_nested<llvm::BasicBlock, llvm::iterator_range<llvm::SuccIterator<llvm::Instruction, llvm::BasicBlock>>, std::pair<llvm::BasicBlock*, bool> llvm::getExitBlockHelper<llvm::BasicBlock, llvm::Loop>(llvm::LoopBase<llvm::BasicBlock, llvm::Loop> const*, bool)::'lambda'(llvm::BasicBlock*, bool)>(llvm::iterator_range<llvm::SuccIterator<llvm::Instruction, llvm::BasicBlock>>&&, std::pair<llvm::BasicBlock*, bool> llvm::getExitBlockHelper<llvm::BasicBlock, llvm::Loop>(llvm::LoopBase<llvm::BasicBlock, llvm::Loop> const*, bool)::'lambda'(llvm::BasicBlock*, bool), bool)
+#
+# libclang-cpp-18. One of 227 instantiations of the shape above; GNU c++filt refuses
+# every one of them, so the reduced clang case is what carries the evidence.
+_ZN5clang12ast_matchers7dynamic8internal23makeMatcherAutoMarshallINS0_8internal15BindableMatcherINS_12TemplateNameEEENS4_7MatcherIS6_EETnPFT_N4llvm8ArrayRefIPKT0_EEEXadL_ZNS4_18makeAllOfCompositeIS6_EENS5_ISA_EENSC_IPKNS8_ISA_EEEEEEEESt10unique_ptrINS2_17MatcherDescriptorESt14default_deleteISQ_EENS4_16VariadicFunctionISA_SD_XT1_EEENSB_9StringRefE	std::unique_ptr<clang::ast_matchers::dynamic::internal::MatcherDescriptor, std::default_delete<clang::ast_matchers::dynamic::internal::MatcherDescriptor>> clang::ast_matchers::dynamic::internal::makeMatcherAutoMarshall<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>, clang::ast_matchers::internal::Matcher<clang::TemplateName>, &clang::ast_matchers::internal::BindableMatcher<clang::TemplateName> clang::ast_matchers::internal::makeAllOfComposite<clang::TemplateName>(llvm::ArrayRef<clang::ast_matchers::internal::Matcher<clang::TemplateName> const*>)>(clang::ast_matchers::internal::VariadicFunction<clang::ast_matchers::internal::BindableMatcher<clang::TemplateName>, clang::ast_matchers::internal::Matcher<clang::TemplateName>, &clang::ast_matchers::internal::BindableMatcher<clang::TemplateName> clang::ast_matchers::internal::makeAllOfComposite<clang::TemplateName>(llvm::ArrayRef<clang::ast_matchers::internal::Matcher<clang::TemplateName> const*>)>, llvm::StringRef)
+#
+# libLLVM-20. `std::__find_if(_Iterator, _Iterator, _Predicate, random_access_iterator_tag)`,
+# so the third parameter is the predicate. llvm-cxxfilt 18 reads it as
+# `llvm::InstructionCost`, the return type of the enclosing `processBuildVector`; GNU
+# c++filt 2.42 agrees with us byte for byte.
+_ZSt9__find_ifIPKPN4llvm5ValueEN9__gnu_cxx5__ops12_Iter_negateIZNS0_13slpvectorizer7BoUpSLP18processBuildVectorINS9_20ShuffleCostEstimatorENS0_15InstructionCostEJNS0_19TargetTransformInfoENS0_8ArrayRefIS2_EES9_NS0_15SmallPtrSetImplIS2_EEEEET0_PKNS9_9TreeEntryEDpRT1_EUlS2_E_EEET_SR_SR_SI_St26random_access_iterator_tag	llvm::Value* const* std::__find_if<llvm::Value* const*, __gnu_cxx::__ops::_Iter_negate<llvm::InstructionCost llvm::slpvectorizer::BoUpSLP::processBuildVector<llvm::slpvectorizer::BoUpSLP::ShuffleCostEstimator, llvm::InstructionCost, llvm::TargetTransformInfo, llvm::ArrayRef<llvm::Value*>, llvm::slpvectorizer::BoUpSLP, llvm::SmallPtrSetImpl<llvm::Value*>>(llvm::slpvectorizer::BoUpSLP::TreeEntry const*, llvm::TargetTransformInfo&, llvm::ArrayRef<llvm::Value*>&, llvm::slpvectorizer::BoUpSLP&, llvm::SmallPtrSetImpl<llvm::Value*>&)::'lambda'(llvm::Value*)>>(llvm::Value* const*, llvm::Value* const*, __gnu_cxx::__ops::_Iter_negate<llvm::InstructionCost llvm::slpvectorizer::BoUpSLP::processBuildVector<llvm::slpvectorizer::BoUpSLP::ShuffleCostEstimator, llvm::InstructionCost, llvm::TargetTransformInfo, llvm::ArrayRef<llvm::Value*>, llvm::slpvectorizer::BoUpSLP, llvm::SmallPtrSetImpl<llvm::Value*>>(llvm::slpvectorizer::BoUpSLP::TreeEntry const*, llvm::TargetTransformInfo&, llvm::ArrayRef<llvm::Value*>&, llvm::slpvectorizer::BoUpSLP&, llvm::SmallPtrSetImpl<llvm::Value*>&)::'lambda'(llvm::Value*)>, std::random_access_iterator_tag)

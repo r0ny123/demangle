@@ -264,7 +264,6 @@ _ZZN5outer5inner10makeLambdaEvENKUliE_clEi	outer::inner::makeLambda()::'lambda'(
 _ZZN5outer5inner11withStaticsEvE5local	outer::inner::withStatics()::local
 _ZZN5outer5inner11withStaticsEvE5localB5cxx11	outer::inner::withStatics()::local[abi:cxx11]
 _ZZN5outer5inner11withStaticsEvE7counter	outer::inner::withStatics()::counter
-_ZZN6modern13genericLambdaEvENKUlTyT_E_clIiEEDaS0_	auto modern::genericLambda()::'lambda'<typename $T>($T)::operator()<int>($T) const
 _ZZN6modern13nestedLambdasEvENK3$_0clEi	modern::nestedLambdas()::$_0::operator()(int) const
 _ZZN6modern13nestedLambdasEvENKUliE_clEi	modern::nestedLambdas()::'lambda'(int)::operator()(int) const
 _ZZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPKcEEvT_S8_St20forward_iterator_tagEN6_GuardC1EPS4_	void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::_M_construct<char const*>(char const*, char const*, std::forward_iterator_tag)::_Guard::_Guard(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>*)

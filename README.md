@@ -288,9 +288,10 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | MSVC RTTI type descriptors, both forms | `llvm-undname` 18.1.3 | **106 / 106** |
 | MSVC ARM64EC hybrid names | LLVM's own mangling rule ✦ | **606 / 606** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
-| Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **280 / 280** |
-| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **298 / 300** † |
-| Regression corpus | `llvm-cxxfilt` 18.1.3 | **31 / 31** |
+| Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **279 / 279** |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **299 / 300** † |
+| Regression corpus | `llvm-cxxfilt` 18.1.3 | **28 / 28** |
+| Names a reference reads wrongly ✱ | the declaration | **9 / 9** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1073 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
@@ -435,16 +436,42 @@ re-escaping a decoded package path must reproduce the bytes the linker wrote, wh
 escaping is a transcription of Go's own `objabi.PathToPrefix`. It is verified over every
 symbol in the shipped toolchain binaries, not just the recorded sample.
 
-† The two shortfalls are not ours to fix: in each, the two reference implementations
-disagree with *each other* about what belongs in the substitution table — not about how
-to spell it — and matching both would mean two incompatible parses of the same bytes.
-Both are pinned by name.
+† The one shortfall is not ours to fix: inside a requires-clause the two reference
+implementations disagree with *each other* about what belongs in the substitution table —
+not about how to spell it — and matching both would mean two incompatible parses of the
+same bytes. It is pinned by name. A second used to be here and turned out to be ours; see
+✱.
 
-‖ The 31 names the `gnu` style spells differently from `c++filt` are all names the two
-references spell differently from *each other*, and on every one of them this matches
-`llvm-cxxfilt` exactly: a back-reference the two resolve to different entries, and a
-`const` applied to a type that already carries one, which the mangling really does say
-and which GNU folds. A further 97 names `c++filt` refuses outright and this reads.
+✱ **Where following a reference would be the defect.** A `<template-param>` recorded as a
+substitution candidate — and any component built over one — is the *parameter*, not the
+argument bound to it where the entry was made. The mangler canonicalises a template type
+parameter by level and index, so it reuses one entry across two different templates, and
+the two readings differ in any name that mentions a local entity. Freezing it prints a
+type the source disproves: `std::__insertion_sort<llvm::cfg::Update<llvm::BasicBlock*>*, C>`
+taking `llvm::BasicBlock*`, or a generic lambda's `operator()<int>` taking `auto`.
+
+Settled against five reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
+in under `tools/corpus_sources/reference_defects/`, and pinned with four shipped symbols
+in `tests/conformance/itanium-reference-defects.txt` — the one corpus here whose expected
+column comes from the declaration rather than from a demangler. `tools/generate_corpus.py`
+excludes those names, so a regeneration cannot record the wrong answer again.
+
+`llvm-cxxfilt` 18.1.3 freezes both, which is why the llvm-style whole-library rows above
+are no longer 100%: over the 217,730 distinct Itanium symbols in every shared library a
+stock Ubuntu 24.04 ships, it differs from this on 322. GNU `c++filt` 2.42 refuses 227 of
+those and agrees with this on 91 of the 95 it reads. Of the four left, three are the
+`std::once_flag::_Prepare_execution` shape, where libstdc++'s own header settles it
+against *both* references; the fourth is one open case of ours, in ROADMAP.md heading 0.
+Over the same 217,730 symbols this now differs from `c++filt` in the gnu style on 80.
+
+‖ The `gnu` style is short of `c++filt` on 80 of the 217,057 names it reads out of those
+217,730 — four of them in `libLLVM.so.18.1`. None changes what a name *means*; all are
+spelling policy. Three quarters are `&f` inside a template argument, where GNU brackets a
+const member function and omits a non-const one's parameter list; the rest are how a
+callee and a binary operator's operands are bracketed inside an expression, and a `const`
+applied to a type that already carries one, which the mangling really does say and which
+GNU folds. Enumerated under heading 0 of ROADMAP.md. `c++filt` refuses 673 of
+those 217,730 outright, and this reads 457 of them.
 
 A third disagreement used to be here and is now reproduced instead. GNU omits the space
 it otherwise puts between two closing angle brackets when the last template argument is
@@ -461,12 +488,12 @@ Run live against the reference, not replayed.
 
 | Binary | Symbols | Agree |
 |---|---|---|
-| `libLLVM.so.18.1` | 44,186 | **100%** |
-| `libclang-cpp.so` + Polly + LTO | 41,140 | **100%** |
+| `libLLVM.so.18.1` ✱ | 44,186 | **31 differ** |
+| `libclang-cpp.so` + Polly + LTO ✱ | 39,020 | **236 differ** |
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6`, gnu style | 5,990 | **100%** |
-| `libLLVM.so.18.1`, gnu style ‖ | 44,049 | **99.93%** |
-| `libLLVM`, `libclang-cpp`, `libstdc++`, llvm style | 264,610 | **100%** |
+| `libLLVM.so.18.1`, gnu style | 44,093 | **4 differ** ‖ |
+| Every shared library Ubuntu 24.04 ships, llvm style ✱ | 217,409 | **322 differ** |
 | Swift runtime + Foundation | 48,368 | **100%** |
 | Nim standard library routine names ¶ | 5,946 | **99.87%** |
 | Free Pascal runtime and packages § | 236,570 | **100%** |
@@ -476,7 +503,7 @@ Run live against the reference, not replayed.
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 460,000 real symbols, all exact.
+About 460,000 real symbols. Every row is exact except the four marked, and on those every difference is a name a reference reads wrongly (✱) or a spelling policy still short of `c++filt` (‖) — both accounted for below, name by name.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
