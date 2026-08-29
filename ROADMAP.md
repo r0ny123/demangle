@@ -353,6 +353,13 @@ survives.
   symbol-table-decoration fallback at the call site, and that rule is one that has to
   stay in one place.
 
+  What *was* recoverable there, and is now taken, is the question `_claims` asked over
+  again: `split_decorations` depends on nothing but the name, and every candidate scheme
+  was asking it separately. Asked once per name instead — with the answer for a name
+  carrying no ELF version suffix being that no plugin need ask again — that is 3.4
+  interpreter frames per name down to one over a table of ordinary C identifiers, and
+  10.9% off the detection path with `get_style`'s own fast path written out beside it.
+
   The figure quoted here was 10.4%, and re-measuring it against libstdc++ symbols on a
   later build gave 24% — 57.9µs a name detected against 43.7µs with `language="itanium"`
   forced. The number moves with the corpus and with how many schemes are registered, so
@@ -361,8 +368,66 @@ survives.
   wider screen than one character — eight of the ten schemes are offered every `_`, and
   `go`, `nim` and `pascal` are offered every symbol whatever it starts with.
 
+- **A second profile-guided pass over the Itanium parser** — *done*, **7.4%** off the
+  project's own Itanium corpus and **10.2%** off 217,730 real symbols, with byte-identical
+  output. The profile said the same thing a third time, and the answer was to stop paying
+  for frames and comparisons that the corpus says are not needed.
+
+  `Reader.peek()` takes no argument — it is called around fifty times a name, more than
+  anything else in the package, and CPython charges for a default it then has to bind;
+  worth 3.3% alone, with the offset form moved to `ahead(n)`. `Reader.length_prefixed()`
+  reads a `<source-name>` in one frame instead of three. `_type`'s dispatch chain and
+  `prefix_component`'s are ordered by how often each arm is taken over those 217,730
+  symbols rather than by the grammar: a nested name is a third of every type read and a
+  substitution a fifth, and both had to fall through fifteen comparisons to reach the
+  bottom. `cv_qualifiers` asks one lookahead before consuming anything. The bounds every
+  production checks are read from `limits` once.
+
+  Rust's v0 reader got the same treatment where the same shape was visible — `I` and `N`
+  are 58% of its types and both were found by falling off the end of a chain — for
+  between 1% and 5%, which is not cleanly separable from this machine's own spread.
+
+  Measured throughout by alternating two worktrees and taking the median of nine timed
+  rounds per process; identical trees measured that way come out at 0.993 and 1.005,
+  where a single run of the committed benchmark has a 24% spread on its cold phase.
+
 Nothing is left under this heading. The next thing worth measuring is `parse()`, which
 has had the same attention only once.
+
+## 2a. What hostile input can buy
+
+A mangled name is untrusted input, so "how much work can one symbol cause" is a question
+with a number rather than a posture. Measured by growing a repeated unit until it reaches
+the input bound, for every scheme, recording wall time and peak allocation:
+
+- The worst shape in the package is a Swift name of 64KB, the largest `max_input` allows:
+  **586ms and 16MB**, and linear in the input from 5KB up. Every other scheme's worst is
+  under that. Nothing is superlinear.
+- It was not always. `_ZN` and 8,190 components of `1a` — 16KB — read in **a second and
+  98MB**, because every `<prefix>` is a substitution candidate and each entry holds the
+  whole prefix, so N components record O(N²) characters and no single one crosses
+  `max_output`. Bounded now at sixteen times the output bound, which is a hundred times
+  what the largest real name of the 217,730 shipped Itanium symbols records.
+- A Swift name ending in the middle of a specialisation looped without advancing and ran
+  the process out of memory. `Demangler.next_char` returned nothing past the end of input
+  *without moving*, so `push_back` un-consumed a character that had really been read.
+  Fixed in `next_char`, so the two are inverses everywhere rather than at the sites
+  someone happened to check.
+
+Both were found by fuzzing rather than by reading, which is the point of the campaign
+recorded here: roughly 550,000 corpus mutations across every scheme, 380,000
+grammar-generated Itanium names, 120,000 grammar-generated Swift names and 45,000 MSVC
+mutations, checking on each one that nothing but a `DemanglingError` escapes, that the
+tree renders exactly what the text path spelled in both styles, that the result is
+encodable, and that no substitution-table sentinel reaches a builder. The mutation runs
+are under an address-space cap, so a runaway allocation reports the name that caused it
+rather than being killed.
+
+Five defects came out of it, all fixed and all with a named regression test: the two
+above, and three places where the tree spelled a name differently from `demangle()` — a
+pack holding an empty pack, a declarator over an empty pack, and a Free Pascal program's
+lead. That last class now has a test of its own over every corpus at once, in
+`tests/test_architecture.py`, rather than each scheme over its own.
 
 ## 3. Output modes
 
