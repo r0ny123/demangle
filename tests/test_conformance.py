@@ -35,7 +35,7 @@ REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 9, 9
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are
 #: scored against *both* references, one corpus each, because the two spell the same
 #: types differently. Replayed and asserted by tests/test_types.py.
-TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1073
+TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1076
 
 #: What each of `llvm-undname`'s five suppression flags changes, over the 609 names of
 #: `msvc-llvm-corpus.txt`. Only the names a flag actually changes are recorded, so this

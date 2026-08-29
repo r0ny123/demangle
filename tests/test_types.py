@@ -29,8 +29,8 @@ from .test_conformance import TYPES_GNU_EXACT, TYPES_LLVM_EXACT, TYPES_TOTAL
 
 
 class TestTheItaniumTypeGrammar:
-    #: Raised as gaps close, never lowered silently. `gnu` falls three short of `llvm`
-    #: for the doubled-qualifier reason below, on input no compiler emits.
+    #: Raised as gaps close, never lowered silently. Both styles now read every row of
+    #: their reference's corpus exactly; `gnu` used to fall three short, on `KK`.
     EXPECTED_EXACT: ClassVar = {"gnu": TYPES_GNU_EXACT, "llvm": TYPES_LLVM_EXACT}
 
     CORPUS: ClassVar = {"gnu": "itanium-types.txt", "llvm": "itanium-types-llvm.txt"}
@@ -56,26 +56,20 @@ class TestTheItaniumTypeGrammar:
             enc for enc, _ in load_corpus("itanium-types-llvm.txt")
         ]
 
-    def test_the_shortfall_is_only_the_known_divergence(self):
-        """The three misses are `KK`, a doubled cv-qualifier, and are all of them.
+    def test_there_is_no_shortfall_left_in_either_style(self):
+        """`KKDv4_i` and its two neighbours were the last three, and they are read now.
 
-        Not a spelling preference but a different printing model. libiberty holds the
-        modifiers on a stack and walks it, skipping a cv-qualifier it finds already
-        pending -- so `KVKi` comes out `int volatile const` and `VKVi` comes out
-        `int const volatile`, one of each and in an order that depends on the sequence
-        rather than on a canon. LLVM applies each modifier as it reads it and prints what
-        it applied, which is the model here: `int const volatile const`.
-
-        Matching would mean porting the modifier stack, and what it would buy is agreement
-        on input neither reference will ever be given: the ABI writes one
-        `<CV-qualifiers>` group per type, so no compiler emits `KK` at all. Left as a
-        recorded divergence rather than chased. `tests/test_expressions.py` has the same
-        three under the symbol entry point.
+        They were left as a recorded divergence on the reasoning that no compiler emits
+        `KK`, which was true of `KK` written outright and false of what it means: the
+        same doubling arrives through an already-qualified template argument, `K T_`
+        with `T_` bound to `K i`, and the shipped libLLVM has three of those. Closing it
+        for the argument closed it for the literal spelling too. See
+        `collapse_duplicate_qualifiers`, and `TestDuplicateQualifiers` below for the
+        rule and its boundaries.
         """
-        missed = [
+        assert [
             enc for enc, expected in load_corpus("itanium-types.txt") if _spelled(enc, "itanium", "gnu") != expected
-        ]
-        assert missed == ["KKDv4_i", "PKKDv4_i", "RKKDv4_i"]
+        ] == []
         assert [
             enc
             for enc, expected in load_corpus("itanium-types-llvm.txt")
@@ -107,6 +101,64 @@ def _spelled(encoding, language, style):
         return demangle.demangle_type(encoding, language=language, style=style)
     except DemanglingError:
         return None
+
+
+class TestDuplicateQualifiers:
+    """`const const` is a spelling no declaration has, and one reference prints it.
+
+    [basic.type.qualifier] gives a type at most one of each cv-qualifier, so applying
+    `const` to something already const adds nothing. It reaches a mangled name written
+    outright, `K K i`, and through an already-qualified template argument, `K T_` with
+    `T_` bound to `K i` -- which is where all three instances in the shipped libraries
+    come from. llvm-cxxfilt prints both twice; GNU c++filt collapses them, and the gnu
+    style follows it.
+
+    The order the survivors print in is decided by the outer qualifier winning, which is
+    why `K V K i` and `K K V i` both come out `volatile const`. Checked here against the
+    references over every sequence of one to three qualifiers, and against the boundary
+    cases: an array passes them through, every other declarator stops them.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            ("_Z1fKKi", "f(int const const)", "f(int const)"),
+            ("_Z1fKVKi", "f(int const volatile const)", "f(int volatile const)"),
+            ("_Z1fKKVi", "f(int volatile const const)", "f(int volatile const)"),
+            ("_Z1fVKKi", "f(int const const volatile)", "f(int const volatile)"),
+            ("_Z1frKri", "f(int restrict const restrict)", "f(int const restrict)"),
+            ("_Z1fKrVi", "f(int volatile restrict const)", "f(int volatile restrict const)"),
+            # Through a template argument, which is the shape the libraries carry.
+            ("_Z1fIKiEvKT_", "void f<int const>(int const const)", "void f<int const>(int const)"),
+            ("_Z1fIKiEvRKT_", "void f<int const>(int const const&)", "void f<int const>(int const&)"),
+            ("_Z1fIKiEvVT_", "void f<int const>(int const volatile)", "void f<int const>(int const volatile)"),
+            # An array is qualified through to its elements; a pointer is not.
+            ("_Z1fKA3_Ki", "f(int const const [3])", "f(int const [3])"),
+            ("_Z1fKPKi", "f(int const* const)", "f(int const* const)"),
+            ("_Z1fPKKi", "f(int const const*)", "f(int const*)"),
+            # A function type's qualifiers belong to its implicit object parameter and
+            # are not part of this at all.
+            ("_Z1fKFvvE", "f(void () const)", "f(void () const)"),
+        ],
+    )
+    def test_each_style_spells_it_the_way_its_reference_does(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled, style="llvm") == llvm
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+    @pytest.mark.parametrize("style", ["llvm", "gnu"])
+    @pytest.mark.parametrize("mangled", ["_Z1fKVKi", "_Z1fKA3_Ki", "_Z1fIKiEvKT_", "_Z1fPKKi"])
+    def test_the_tree_renders_what_the_text_path_spells(self, mangled, style):
+        assert demangle.parse(mangled, style=style).spell(style=style) == demangle.demangle(mangled, style=style)
+
+    def test_collapsing_does_not_change_what_the_substitution_table_holds(self):
+        """Each `K` is its own `<type>` and so its own candidate, whatever it spells.
+
+        libiberty reads a run of cv-qualifiers as one production and records one entry
+        for it, which is why c++filt refuses `_Z1fKKiS_S0_` -- it has only one entry
+        where the ABI has two. Collapsing the *spelling* must not do that here.
+        """
+        assert demangle.demangle_strict("_Z1fKKiS_S0_") == "f(int const const, int const, int const const)"
+        assert demangle.demangle_strict("_Z1fKKiS_S0_", style="gnu") == "f(int const, int const, int const)"
 
 
 class TestWhatIsRefused:

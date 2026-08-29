@@ -29,6 +29,14 @@ class Spelling:
 
     __slots__ = ("is_array", "is_function", "left", "members", "ref_kind", "right")
 
+    #: The cv-qualifiers this spelling ends with, innermost first, and the text with
+    #: those words taken off. Only a qualified type carries them, and only `qualify`
+    #: writes them -- which is why they are class attributes here and slots on the
+    #: subclass below: the great majority of spellings are not qualified types, and
+    #: adding two more stores to every construction would be paid for by all of them.
+    cv = ()
+    stem = ""
+
     def __init__(self, left, right="", is_function=False, is_array=False, ref_kind="", members=None):
         self.left = left
         self.right = right
@@ -58,6 +66,21 @@ class Spelling:
 
     def __repr__(self):  # pragma: no cover - debugging aid
         return f"Spelling({self.left!r}, {self.right!r})"
+
+
+class QualifiedSpelling(Spelling):
+    """A type that ends in cv-qualifiers, remembering which and what precedes them.
+
+    Enough to answer "is this already const" without reading the text back, which is
+    what `collapse_duplicate_qualifiers` needs and what nothing else does.
+    """
+
+    __slots__ = ("cv", "stem")
+
+    def __init__(self, left, right="", is_array=False, cv=(), stem=""):
+        super().__init__(left, right, is_array=is_array)
+        self.cv = cv
+        self.stem = stem
 
 
 def pack_of(members):
@@ -124,9 +147,9 @@ class SpellingBuilder(Builder):
     Stateless, so one instance is shared by every parse rather than allocated per name.
     """
 
-    __slots__ = ("gnu_clone_suffix", "legacy_angle_spacing")
+    __slots__ = ("collapse_duplicate_qualifiers", "gnu_clone_suffix", "legacy_angle_spacing")
 
-    def __init__(self, legacy_angle_spacing=False, gnu_clone_suffix=False):
+    def __init__(self, legacy_angle_spacing=False, gnu_clone_suffix=False, collapse_duplicate_qualifiers=False):
         #: Write `Foo<Bar<int> >` rather than `Foo<Bar<int>>`. Required before C++11,
         #: when `>>` at the end of a template-id lexed as a right-shift operator. GNU
         #: c++filt still prints it; llvm-cxxfilt does not. Neither is wrong.
@@ -139,6 +162,24 @@ class SpellingBuilder(Builder):
         #: Write a clone suffix as `[clone .cold]` rather than `(.cold)`. GNU c++filt
         #: does the former, llvm-cxxfilt the latter.
         self.gnu_clone_suffix = gnu_clone_suffix
+        #: Print `int const` where the mangling says `K K i`, rather than llvm-cxxfilt's
+        #: `int const const`.
+        #:
+        #: A cv-qualifier applied to a type that already carries it adds nothing --
+        #: [basic.type.qualifier] gives a type at most one of each -- so `const const`
+        #: is a spelling no declaration has. It reaches a mangled name two ways: written
+        #: outright, `K K i`, and through a template argument that is already qualified,
+        #: `K T_` with `T_` bound to `K i`, which is where all three of the shipped
+        #: libraries' instances come from.
+        #:
+        #: The outer one wins, which decides the order the survivors print in: c++filt
+        #: reads `K V K i` as `volatile const` and `K K V i` as `volatile const`.
+        #: Verified against it over all 39 sequences of one to three qualifiers.
+        #:
+        #: An array passes the qualifiers through -- cv on an array qualifies its
+        #: element type, so `K A3_ K i` is `int const [3]` -- and every other declarator
+        #: stops them: `K P K i` is `int const* const`, two different `const`s.
+        self.collapse_duplicate_qualifiers = collapse_duplicate_qualifiers
 
     # -- leaves ----------------------------------------------------------------
 
@@ -180,16 +221,24 @@ class SpellingBuilder(Builder):
             return inner
         if inner.members is not None:
             return pack_of(self.qualify(member, qualifiers) for member in inner.members)
-        text = " ".join(qualifiers)
         if inner.is_function:
             # cv on a function type qualifies the implicit object parameter, so it
             # trails the parameter list rather than the return type.
-            return Spelling(inner.left, inner.right + " " + text, is_function=True)
-        # Both `int const` and `int* const` are "const applied to the thing on the
-        # left", and C++ spells both postfix. The reference demanglers agree.
-        left = inner.left + " " + text
+            return Spelling(inner.left, inner.right + " " + " ".join(qualifiers), is_function=True)
+        if not self.collapse_duplicate_qualifiers:
+            # Both `int const` and `int* const` are "const applied to the thing on the
+            # left", and C++ spells both postfix. The reference demanglers agree.
+            left = inner.left + " " + " ".join(qualifiers)
+            right = _respace_bound(left, inner.right) if inner.is_array else inner.right
+            return Spelling(left, right, is_array=inner.is_array)
+        # See `collapse_duplicate_qualifiers`. The ones already there that this does not
+        # repeat keep their places; the ones it does repeat move to the end, because the
+        # qualifier written outermost is the one c++filt prints last.
+        stem = inner.stem if inner.cv else inner.left
+        combined = tuple(q for q in inner.cv if q not in qualifiers) + tuple(qualifiers)
+        left = stem + " " + " ".join(combined)
         right = _respace_bound(left, inner.right) if inner.is_array else inner.right
-        return Spelling(left, right, is_array=inner.is_array)
+        return QualifiedSpelling(left, right, is_array=inner.is_array, cv=combined, stem=stem)
 
     # -- declarators -----------------------------------------------------------
 
@@ -243,6 +292,18 @@ class SpellingBuilder(Builder):
         return Spelling(left + joiner + token, inner.right)
 
     def array(self, inner, dimension):
+        if inner.cv:
+            # An array carries its element type's qualifiers out with it: cv on an array
+            # is cv on the elements, so `K A3_ K i` has one `const` and not two.
+            bound = f"[{dimension}]" if dimension else "[]"
+            right = inner.right.lstrip(" ") if inner.is_array else inner.right
+            return QualifiedSpelling(
+                inner.left,
+                _respace_bound(inner.left, bound + right),
+                is_array=True,
+                cv=inner.cv,
+                stem=inner.stem,
+            )
         if inner.members is not None:
             # An array of a pack is one array per member, and of an empty pack is no
             # arrays: ` [3]` for a parameter that is not there was what this printed.
@@ -320,4 +381,6 @@ class SpellingBuilder(Builder):
 #: call rather than being allocated per name. Parsers take a builder argument rather
 #: than reaching for these; the API layer selects one per requested style.
 SPELLING_BUILDER = SpellingBuilder()
-LEGACY_SPELLING_BUILDER = SpellingBuilder(legacy_angle_spacing=True, gnu_clone_suffix=True)
+LEGACY_SPELLING_BUILDER = SpellingBuilder(
+    legacy_angle_spacing=True, gnu_clone_suffix=True, collapse_duplicate_qualifiers=True
+)

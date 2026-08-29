@@ -1704,7 +1704,15 @@ class ItaniumParser:
         # parameter is mangled as a reference to a parameter it never declared (ABI
         # 5.1.8), and a conversion operator's type is written *before* the arguments
         # that bind it -- `cv PT_ I c E` reads `T_` with nothing in scope at all, and is
-        # then read again once there is. The reference demanglers spell both `auto`.
+        # then read again once there is.
+        #
+        # llvm-cxxfilt spells both `auto`. GNU c++filt numbers them: `[](auto a, auto b)`
+        # is `{lambda(auto:1, auto:2)#1}`, by the parameter's index and not by its
+        # position, so `Ul T0_ T_ E` is `(auto:2, auto:1)`. The number is what tells two
+        # of a lambda's parameters apart when both are `auto`; the conversion operator
+        # never shows it, because that reading is thrown away and made again.
+        if self.options.gnu_closure_spelling:
+            return self.builder.raw(f"auto:{index + 1}")
         return self.builder.raw("auto")
 
     def _symbolic_parameter(self, index):

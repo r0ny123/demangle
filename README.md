@@ -293,7 +293,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **28 / 28** |
 | Names a reference reads wrongly ✱ | the declaration | **9 / 9** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
-| Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1073 / 1076** ‡‡ |
+| Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
 | Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
@@ -311,10 +311,12 @@ bracket — `int (__cdecl * (__cdecl B::*volatile memptrtofun7)(void)` is not a 
 of anything. This keeps the balanced spelling, which is what the reference itself prints
 with no flag.
 
-‡‡ The same 1,076 encodings under both references, which spell them differently. The
-three are a doubled `KK` cv-qualifier: `c++filt` folds the repeat away and `llvm-cxxfilt`
-keeps it, and this follows LLVM. The ABI writes one `<CV-qualifiers>` group per type, so
-no compiler emits `KK` and the two references disagree only about input neither is given.
+‡‡ The same 1,076 encodings under both references, which spell them differently: each
+style reads every row of its own reference's corpus. The last three to close were a
+doubled `KK` cv-qualifier, which `c++filt` folds away and `llvm-cxxfilt` keeps — left
+alone for a while on the reasoning that no compiler emits `KK`, which was true of the
+literal spelling and false of what it means, since the same doubling arrives through an
+already-qualified template argument and the shipped libLLVM has three of those.
 
 ✦ Nothing demangles ARM64EC's `$$h` marker — `llvm-undname` refuses these and so does
 current upstream — so there is no reference spelling to copy. There is a normative
@@ -462,16 +464,21 @@ stock Ubuntu 24.04 ships, it differs from this on 322. GNU `c++filt` 2.42 refuse
 those and agrees with this on 91 of the 95 it reads. Of the four left, three are the
 `std::once_flag::_Prepare_execution` shape, where libstdc++'s own header settles it
 against *both* references; the fourth is one open case of ours, in ROADMAP.md heading 0.
-Over the same 217,730 symbols this now differs from `c++filt` in the gnu style on 80.
+Over the same 217,730 symbols this now differs from `c++filt` in the gnu style on 3.
 
-‖ The `gnu` style is short of `c++filt` on 80 of the 217,057 names it reads out of those
-217,730 — four of them in `libLLVM.so.18.1`. None changes what a name *means*; all are
-spelling policy. Three quarters are `&f` inside a template argument, where GNU brackets a
-const member function and omits a non-const one's parameter list; the rest are how a
-callee and a binary operator's operands are bracketed inside an expression, and a `const`
+‖ The `gnu` style reads every one of the 44,093 names `c++filt` reads in
+`libLLVM.so.18.1` and spells all of them byte for byte as it does. Over all 217,730
+symbols there are three left, and all three are the `std::once_flag::_Prepare_execution`
+shape above, where the declaration in libstdc++'s own header says this is right and GNU
+is not — so what is left is not a gap. `c++filt` refuses 673 of those 217,730 outright,
+and this reads 457 of them.
+
+Five differences used to be listed here and are now reproduced: `&A::f` inside a template
+argument, which GNU prints without the parameter list the mangling carries; the
+`{default arg#1}` scope of an entity declared in a default argument; a generic lambda's
+`auto:1`; how GNU brackets an operand by *kind* rather than by precedence; and a `const`
 applied to a type that already carries one, which the mangling really does say and which
-GNU folds. Enumerated under heading 0 of ROADMAP.md. `c++filt` refuses 673 of
-those 217,730 outright, and this reads 457 of them.
+GNU folds away because no declaration spells `const const`.
 
 A third disagreement used to be here and is now reproduced instead. GNU omits the space
 it otherwise puts between two closing angle brackets when the last template argument is
@@ -492,7 +499,7 @@ Run live against the reference, not replayed.
 | `libclang-cpp.so` + Polly + LTO ✱ | 39,020 | **236 differ** |
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6`, gnu style | 5,990 | **100%** |
-| `libLLVM.so.18.1`, gnu style | 44,093 | **4 differ** ‖ |
+| `libLLVM.so.18.1`, gnu style | 44,093 | **100%** ‖ |
 | Every shared library Ubuntu 24.04 ships, llvm style ✱ | 217,409 | **322 differ** |
 | Swift runtime + Foundation | 48,368 | **100%** |
 | Nim standard library routine names ¶ | 5,946 | **99.87%** |

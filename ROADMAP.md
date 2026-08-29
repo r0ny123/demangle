@@ -86,23 +86,16 @@ it could equally be. rustc-demangle can afford the wider rule because it is only
 handed names a caller has already decided are Rust's; this plugin is offered every symbol
 in a binary.
 
-**GNU style**, against `c++filt` 2.42: 4 differ of the 44,093 C++ symbols it reads in the
-shipped libLLVM, and 80 of the 217,057 it reads across every shared library a stock Ubuntu
-24.04 ships. It was 31 in libLLVM before the `<template-param>` fix under heading 0, which
-accounted for most of them. What is left is spelling policy, enumerated there: three
-quarters is `&f` inside a template argument, and the rest is bracketing inside expressions
-and a `const` applied to a type that already carries one. `c++filt` refuses 673 of those
-217,730 outright and this reads 457 of them. One name in the purpose-built gnu corpus is
-pinned, for the requires-clause disagreement rather than for any of these.
-
-**Doubled cv-qualifiers**, `KKi`, are the one place the two C++ references disagree that
-this does not follow either into: libiberty holds modifiers on a stack and skips a
-qualifier already pending, so `KVKi` prints `int volatile const` and `VKVi` prints
-`int const volatile` — one of each, in an order that depends on the sequence rather than
-on a canon. LLVM applies each as it reads it, which is the model here. Matching would mean
-porting the modifier stack to buy agreement on input neither reference will ever be given:
-the ABI writes one `<CV-qualifiers>` group per type, so no compiler emits `KK`. Three rows
-of `conformance/itanium-types.txt` record it.
+**GNU style**, against `c++filt` 2.42: nothing differs in the 44,093 C++ symbols it reads
+in the shipped libLLVM, and 3 differ of the 217,057 it reads across every shared library a
+stock Ubuntu 24.04 ships. It was 31 in libLLVM before the `<template-param>` fix under
+heading 0 and 80 across the 217,730 after it; the five spelling policies that accounted
+for the rest are listed as closed there. All three that remain are the
+`std::once_flag::_Prepare_execution` shape, where libstdc++'s own header settles it
+against GNU — so this is a shortfall of the reference and not of the style. `c++filt`
+refuses 673 of those 217,730 outright and this reads 457 of them. One name in the
+purpose-built gnu corpus is pinned, for the requires-clause disagreement rather than for
+any of these.
 
 **Nim**: seven shortfalls, that language's own mangling discarding an underscore, listed
 by name in `tests/conformance/nim-lossy.txt`.
@@ -125,8 +118,8 @@ column comes from the declaration rather than from a demangler — with reduced 
   answer on 322, and GNU c++filt 2.42 refuses 227 of those and agrees with us on 91 of
   the 95 it reads.
 
-- **A generic lambda's own parameter, reached through a substitution** — open, one
-  shipped symbol. For
+- ~~**A generic lambda's own parameter, reached through a substitution**~~ — *closed in
+  the gnu style*, which now spells the number GNU spells. For
 
       template <class T> void run(T &a) { take([](auto &x) { return x; }); }
 
@@ -135,21 +128,42 @@ column comes from the declaration rather than from a demangler — with reduced 
   implicit `auto`, which GNU c++filt spells `auto:1&`; read under `run` it is
   `NoopAnalysis&`, which is what this spells. Closing it means modelling the implicit
   template parameter list a generic lambda has even when the mangling does not declare
-  one with `Ty`, and numbering it the way GNU numbers `auto:N`. GNU tracks it; LLVM does
-  not, and is wrong on the rest of that name besides. The shipped instance is
-  `_ZSt9transform...runDataflowAnalysis...` in libclang-cpp-18 and the reduced case is
-  `_Z4takeIZ3runI12NoopAnalysisEvRT_EUlS3_E_EvS2_`. Worth doing when there is a second
-  such name to check the numbering against; on one symbol in 217,730 it is not worth
-  guessing from.
+  one with `Ty`. What was missing turned out to be only the number: this already read
+  `S3_` as the closure's own unbound parameter and spelled it `auto`, where GNU spells
+  `auto:1` — by the parameter's *index*, so `Ul T0_ T_ E` is `(auto:2, auto:1)`, which
+  is what tells two of a lambda's parameters apart when both are `auto`. Read off
+  `c++filt` and put behind `gnu_closure_spelling`, since llvm-cxxfilt spells every one of
+  them `auto`. The shipped instance is `_ZSt9transform...runDataflowAnalysis...` in
+  libclang-cpp-18 and the reduced case is
+  `_Z4takeIZ3runI12NoopAnalysisEvRT_EUlS3_E_EvS2_`; both now match `c++filt` byte for
+  byte. The llvm style still differs from llvm-cxxfilt on that name, and deliberately:
+  llvm resolves `S3_` under `run` rather than under the closure, which is the defect
+  above.
 
-- **The remaining gnu-style spelling gaps** — open, 80 of the 217,057 names GNU c++filt
-  reads out of those 217,730. None changes what a name *means*; all are spelling policy,
-  in three groups. About three quarters are `&f` inside a template argument, where GNU
-  brackets a const member function — `&(A::get() const)` — and omits a non-const one's
-  parameter list. The rest are how a callee is bracketed inside a call expression, where
-  GNU brackets a template-id and not a plain name; how a binary operator's operands are
-  bracketed; and a `const` applied to a type that already carries one, where the ABI
-  really does nest two `K`s and GNU folds them. Each is mechanical and reproducible.
+- ~~**The remaining gnu-style spelling gaps**~~ — *closed*, 80 of the 217,057 names GNU
+  c++filt reads down to 3, and those 3 are the reference defect above. None of the five
+  changed what a name *means*; all were spelling policy, each read off `c++filt` with
+  probes rather than guessed, each behind its own option and off under llvm style.
+
+  - `&entity` in a template argument, 60 names, all of them LLVM's `sandboxir`. GNU
+    prints `&A::f` where llvm-cxxfilt prints the whole declaration `&A::f(int)`, and
+    brackets it — `&(A::f() const)`, `&(void A::f<int>())`, `&(f())` — for every shape
+    that is not a bare *qualified* function name. `tests/test_address_of.py`.
+  - Operand bracketing, 11 names and every expression the corpus does not cover. GNU
+    brackets by *kind* rather than by precedence: a name, a qualified name, a braced
+    initialiser list and a function parameter go bare and everything else is wrapped, so
+    it writes `(1)+(2)` and `!(x<int>)` but `std::x+(2)` and `{parm#1}+(2)`. Arguments on
+    a *qualifier* do not make a name a template-id — `!is_array<T>::value` is unbracketed
+    — so the last component decides. `tests/test_gnu_expressions.py`.
+  - A doubled cv-qualifier, 3 names. `const` applied to a type that already carries it
+    adds nothing, so `c++filt` folds the repeat away and `llvm-cxxfilt` keeps it; the
+    outer one wins, which is why `K V K i` and `K K V i` both print `volatile const`.
+    Verified over all 39 sequences of one to three qualifiers.
+    `tests/test_types.py::TestDuplicateQualifiers`.
+  - The `{default arg#1}` scope of an entity declared in a default argument, 2 names,
+    which llvm-cxxfilt drops — giving one name to two different lambdas when a function
+    has one in its body too. `tests/test_local_names.py`.
+  - A generic lambda's `auto:1`, 1 name; see the item above.
 
 - ~~**`gnuv2` claims ordinary C symbols**~~ — *mostly closed*, issue #6. Two of the
   three causes were spellings no declaration contains, and `_plausible` now refuses them:
@@ -368,9 +382,9 @@ which is whether to spell something *differently*.
   `c++filt -t` and `llvm-cxxfilt --types`, libiberty's `DMGL_TYPES`,
   `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`, Swift's `demangleTypeAsString`. Scored
   over 1,076 encodings against *both* references, one corpus each because they spell the
-  same types differently: **1,076 of 1,076** against `llvm-cxxfilt --types` and 1,073
-  against `c++filt -t`, the three being a doubled `KK` cv-qualifier that GNU folds away
-  and LLVM keeps, on input no compiler emits.
+  same types differently: **1,076 of 1,076** against `llvm-cxxfilt --types` and **1,076
+  of 1,076** against `c++filt -t`. The last three to close were a doubled `KK`
+  cv-qualifier that GNU folds away and LLVM keeps.
 
 - ~~**ARM64EC hybrid names**~~ — *landed*, **606 of 606**. A function built for the
   hybrid ABI carries `$$h` after its qualified name, and nothing reads it: `llvm-undname`

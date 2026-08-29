@@ -28,6 +28,12 @@ class ItaniumOptions:
     False gives llvm-cxxfilt's `'lambda'(int)` and `'unnamed'`. True gives GNU's
     `{lambda(int)#1}` and `{unnamed type#1}`, which number from one rather than
     suffixing the raw index.
+
+    It also numbers a generic lambda's invented parameters. `[](auto a, auto b)` is
+    mangled as references to parameters the closure never declared (ABI 5.1.8):
+    llvm-cxxfilt spells every one of them `auto`, and GNU spells them `auto:1` and
+    `auto:2` by index -- so `Ul T0_ T_ E` is `{lambda(auto:2, auto:1)#1}`. The number is
+    the only thing that tells two of them apart.
     """
 
     gnu_expression_spelling: bool = False
