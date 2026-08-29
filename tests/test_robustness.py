@@ -335,6 +335,29 @@ class TestResourceBounds:
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(name)
 
+    def test_a_nested_name_cannot_buy_a_second_of_work_with_sixteen_kilobytes(self):
+        """Every `<prefix>` is a substitution candidate, so N components record N
+        entries -- and each entry is the whole prefix, so their sizes sum to O(N^2).
+
+        No single entry exceeds `max_output`, which is why that bound never fired.
+        `_ZN` and 8,190 components of `1a` is 16KB of input that read in a second and
+        allocated 98MB. It is refused in twenty milliseconds and about a megabyte now,
+        and the ceiling does not move as the input grows.
+
+        Not a spelling change: all 217,730 distinct Itanium symbols in the shared
+        libraries of a stock Ubuntu 24.04 demangle to exactly what they did, and the
+        worst of them records 10,209 characters against a budget of 1,048,576.
+        """
+        for components in (1000, 8190, 32000):
+            name = "_ZN" + "1a" * components + "E"
+            assert demangle.demangle(name) == name
+            with pytest.raises(LimitExceeded):
+                demangle.demangle_strict(name)
+        # Short ones are unaffected, and a caller who trusts the input can raise it.
+        assert demangle.demangle_strict("_ZN" + "1a" * 100 + "E") == "::".join(["a"] * 100)
+        relaxed = Limits(max_output=1 << 22)
+        assert demangle.demangle_strict("_ZN" + "1a" * 1000 + "E", limits=relaxed) == "::".join(["a"] * 1000)
+
     def test_truncation_at_every_offset_of_every_corpus_is_answered(self, subtests):
         """Every scheme, on real names, cut short at every offset.
 

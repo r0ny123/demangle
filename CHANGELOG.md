@@ -705,6 +705,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Sixteen kilobytes of nested name bought a second of CPU and 98MB.** Every
+  `<prefix>` is a substitution candidate (ABI 5.1.10), so a nested name of N components
+  records N entries -- and each entry is the whole prefix, so their sizes sum to O(N^2).
+  No single one exceeds `max_output`, which is why that bound never fired: `_ZN` and
+  8,190 components of `1a` read in a second and allocated 98MB before returning a
+  24KB name.
+
+  The prefixes of one name are now charged against a budget of sixteen times the output
+  bound -- a megabyte by default, and it moves with `max_output` for a caller who raises
+  it. The worst of the 217,730 distinct Itanium symbols in the shared libraries of a
+  stock Ubuntu 24.04 records 10,209 characters against that, and the median is 92, so
+  the budget is a hundred times what the largest real name needs. That 16KB name is now
+  refused in twenty milliseconds and about a megabyte, and the ceiling does not move as
+  the input grows. Every one of the 217,730 demangles to exactly what it did.
+
 - **A Swift name ending in the middle of a specialisation could take the process out.**
   `Demangler.next_char` returned `""` past the end of input without moving, so
   `push_back` -- meant to be its exact inverse -- moved the cursor onto the *last

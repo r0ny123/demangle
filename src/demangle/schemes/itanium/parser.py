@@ -110,6 +110,19 @@ _COMPLEX_WORDS = (
     {"C": "_Complex", "G": "_Imaginary"},
 )
 
+#: How many characters the prefixes of one name may build, as a multiple of the output
+#: bound. Every `<prefix>` is a substitution candidate (5.1.10), so a nested name of N
+#: components records N entries -- and each entry is the whole prefix, so their sizes sum
+#: to O(N^2). No single one exceeds `max_output`, which is why that bound never fired:
+#: `_ZN` and 8,190 components of `1a` is 16KB of input that read in a second and
+#: allocated 98MB, which is more work than one symbol should be able to buy.
+#:
+#: Sixteen times the output bound is a megabyte by default. The worst of the 217,730
+#: distinct Itanium symbols in the shared libraries of a stock Ubuntu 24.04 records
+#: 10,209 characters -- the median is 92 -- so this is a hundred times what the largest
+#: real name needs, and it caps that 16KB name at about a megabyte and ten milliseconds.
+_PREFIX_BUDGET = 16
+
 #: The characters that open a `<prefix>` component that is *not* an
 #: `<unqualified-name>`: a substitution, a template parameter, a decltype, a template
 #: argument list, a closure-prefix terminator, a requires-clause.
@@ -279,6 +292,7 @@ class ItaniumParser:
         "_parameter_uses",
         "_pending_conversion",
         "_precedence",
+        "_prefixes",
         "_productions",
         "_reject_unbound_parameters",
         "_rework",
@@ -318,6 +332,7 @@ class ItaniumParser:
         # around four hundred thousand times over a symbol table of forty thousand.
         self._max_depth = limits.max_depth
         self._max_output = limits.max_output
+        self._prefixes = _PREFIX_BUDGET * limits.max_output
         self.subs = SubstitutionTable(mangled, limits.max_substitutions)
         self.targs = TemplateArgumentTable()
         # How many times a template parameter has been resolved. A production that
@@ -798,6 +813,18 @@ class ItaniumParser:
             return self.apply_template_args(base), (), "", True
         return base, (), "", False
 
+    def _spend_prefix(self, combined):
+        """Charge a recorded prefix against the budget, or refuse the name.
+
+        See `_PREFIX_BUDGET`. Reported as the output bound because that is what it
+        bounds -- the characters this name may cause to be built -- and it is the one a
+        caller raises to allow more, the same way `_spend_rework` reports it.
+        """
+        self._prefixes -= self._size(combined)
+        if self._prefixes < 0:
+            raise LimitExceeded(self._mangled, "output length", self._max_output)
+        return combined
+
     def _spend_rework(self, characters):
         """Charge a re-reading against the budget, or refuse the name."""
         self._rework -= characters
@@ -1004,7 +1031,7 @@ class ItaniumParser:
                 # nested-name, and the enclosing <type> production records it -- recording
                 # here too would enter it twice and shift every later index by one.
                 if reader.peek() != "E":
-                    self.subs.remember(combined, "prefix")
+                    self.subs.remember(self._spend_prefix(combined), "prefix")
                 return True, module
 
             if char == "T":
@@ -1041,7 +1068,7 @@ class ItaniumParser:
         parts.append(component)
         if reader.peek() != "E":
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
-            self.subs.remember(combined, "prefix")
+            self.subs.remember(self._spend_prefix(combined), "prefix")
         return False, ""
 
     def local_name(self, as_type=False):
