@@ -164,6 +164,30 @@ class TestWhatItRefusesToClaim:
         assert claimed == []
 
 
+class TestASpellingThatCannotBeADeclaration:
+    """`void` among other parameters, which no declaration contains.
+
+    The same bar `gnuv2` holds a reading to, and the same reason: these two grammars read
+    the same run of type letters out of the same C names. `f__Fcsv` is `char, short,
+    void` to both of them, and `void` is a parameter list only when it is the whole of
+    it. Found while closing the `gnuv2` half -- with that one fixed, this scheme picked
+    the name up instead.
+    """
+
+    def test_void_among_others_is_refused(self):
+        for name in ("f__Fcsv", "f__Fcv", "f__Fivi"):
+            assert not codewarrior.detect(name), name
+            assert demangle.demangle(name) == name
+
+    def test_void_alone_is_still_a_parameter_list(self):
+        assert demangle.demangle("__ct__3FooFv") == "Foo::Foo()"
+
+    def test_the_reference_corpus_is_untouched_by_the_rule(self):
+        """No vector in the reference's own corpus spells `void` among others."""
+        for mangled, flags, expected in vectors():
+            assert read(mangled, flags) == expected, mangled
+
+
 class TestSharingTheOverlapWithGnuV2:
     """Which of the two pre-Itanium schemes reads a name both of them can."""
 

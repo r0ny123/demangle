@@ -154,6 +154,41 @@ class TestWhatItRefusesToClaim:
             assert not gnuv2.detect(name), name
             assert demangle.demangle(name) == name
 
+    def test_a_spelling_that_cannot_be_a_declaration_is_not_a_reading(self):
+        """Two shapes the grammar produces and no C++ declaration contains.
+
+        Both were found by offering every symbol in the 957 shared objects a stock Ubuntu
+        24.04 ships -- 345,601 names -- to the whole registry and looking at what came
+        back changed. They are the naming conventions an analyst actually meets:
+        `g_cclosure_marshal_<RET>__<ARGS>` is GLib's generated marshaller, in every GTK
+        binary, and `PyInit_<module>` covers every CPython extension whose name begins
+        with an underscore.
+
+        `int0_t` is what the reference prints when `I` is followed by something that is
+        not hex -- `sscanf("%x")` over `NT` leaves the width zero and the bytes are
+        swallowed. `f(char, short, void)` is `void` used as one parameter among several,
+        which is a parameter list only when it is the whole of it.
+
+        Both rules are detection only. Asked for by name the reading is unchanged, bug
+        for bug, because that is what the 1,324-vector libiberty corpus measures.
+        """
+        for name, forced in (
+            ("g_cclosure_marshal_VOID__INT", "g_cclosure_marshal_VOID(int0_t)"),
+            ("g_cclosure_marshal_VOID__UINTv", "g_cclosure_marshal_VOID(unsigned int0_t, void)"),
+            ("PyInit__csv", "PyInit(char, short, void)"),
+            ("f__FI", "f(int0_t)"),
+            ("f__Fcsv", "f(char, short, void)"),
+        ):
+            assert not gnuv2.detect(name), name
+            assert demangle.demangle(name) == name
+            assert demangle.demangle_strict(name, language="gnuv2") == forced
+
+    def test_void_alone_is_still_a_parameter_list(self):
+        """The rule is `void` *among others*; on its own it is how the grammar says ()."""
+        assert gnuv2.detect("f__Fv")
+        assert demangle.demangle("f__Fv") == "f(void)"
+        assert demangle.demangle("AtEnd__13ivRubberGroup") == "ivRubberGroup::AtEnd(void)"
+
     def test_a_reading_that_gives_back_its_own_input_is_not_a_reading(self):
         # `demangle_prefix` has a path that appends the rest of the name verbatim. A
         # "successful" demangling that spells the bytes it was given is no evidence.

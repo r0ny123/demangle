@@ -163,6 +163,21 @@ def _plausible(symbol):
         # which writes `M<class>F` where these five write `PM<class>`, and a spelling
         # that cannot be a declaration is not a reading.
         return False
+    parameters = symbol.parameters or ()
+    if any("int0_t" in parameter for parameter in parameters):
+        # `int0_t` is not a type. It is what the reference prints when `I` is followed by
+        # something that is not hex: `demangle_fund_type` copies at most two characters,
+        # runs `sscanf("%x")` over them and prints `int%u_t` whatever happened, so `INT`
+        # comes out `int0_t` with the `NT` swallowed. `_hex_prefix` reproduces that on
+        # purpose, and `language="gnuv2"` keeps it -- but a *claim* on a name nobody
+        # asked about cannot rest on it. `g_cclosure_marshal_VOID__INT` is GLib's
+        # generated marshaller, in every GTK binary, and it is not a C++ symbol.
+        return False
+    if len(parameters) > 1 and any(parameter == "void" for parameter in parameters):
+        # `f(char, short, void)` cannot be a declaration: `void` is a parameter list only
+        # when it is the whole of it. `PyInit__csv` is a CPython module initialiser, and
+        # `csv` reading as three fundamental types is a coincidence of the letters.
+        return False
     if symbol.qualifiers and not (symbol.evidence & _NAMED_SOMETHING):
         # `static`, `const`, `volatile` and `__restrict` qualify a *member* function, and
         # a member function has a class. Where none was read, what was matched was a `S`

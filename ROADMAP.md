@@ -86,12 +86,14 @@ it could equally be. rustc-demangle can afford the wider rule because it is only
 handed names a caller has already decided are Rust's; this plugin is offered every symbol
 in a binary.
 
-**GNU style**, against `c++filt` 2.42 over the 44,049 C++ symbols in the shipped
-libLLVM: 31 differ, and on every one of those this matches `llvm-cxxfilt` exactly — they
-are names the two references spell differently from *each other*, a back-reference they
-resolve to different entries and a `const` applied to a type that already carries one.
-A further 97 `c++filt` refuses outright and this reads. Two names in the purpose-built
-gnu corpus are pinned for the same reason.
+**GNU style**, against `c++filt` 2.42: 4 differ of the 44,093 C++ symbols it reads in the
+shipped libLLVM, and 80 of the 217,057 it reads across every shared library a stock Ubuntu
+24.04 ships. It was 31 in libLLVM before the `<template-param>` fix under heading 0, which
+accounted for most of them. What is left is spelling policy, enumerated there: three
+quarters is `&f` inside a template argument, and the rest is bracketing inside expressions
+and a `const` applied to a type that already carries one. `c++filt` refuses 673 of those
+217,730 outright and this reads 457 of them. One name in the purpose-built gnu corpus is
+pinned, for the requires-clause disagreement rather than for any of these.
 
 **Doubled cv-qualifiers**, `KKi`, are the one place the two C++ references disagree that
 this does not follow either into: libiberty holds modifiers on a stack and skips a
@@ -149,10 +151,24 @@ column comes from the declaration rather than from a demangler — with reduced 
   bracketed; and a `const` applied to a type that already carries one, where the ABI
   really does nest two `K`s and GNU folds them. Each is mechanical and reproducible.
 
-- **`gnuv2` claims ordinary C symbols** — open, and tracked as issue #6. The pre-Itanium
-  scheme rewrites `g_cclosure_marshal_VOID__INT` and `PyInit__csv`; two of the three
-  causes are plain grammar defects and the third is that v2 auto-detection is ambiguous
-  with C naming by construction, which is why binutils dropped `gnu-v2` from `--format`.
+- ~~**`gnuv2` claims ordinary C symbols**~~ — *mostly closed*, issue #6. Two of the
+  three causes were spellings no declaration contains, and `_plausible` now refuses them:
+  a parameter list holding `int0_t` (what libiberty prints when `I` is followed by
+  something that is not hex) and `void` used as one parameter among several. Detection
+  only — `language="gnuv2"` stays bug-compatible with libiberty, which is what the
+  1,324-vector corpus measures — and neither rule costs a vector in it. CodeWarrior holds
+  the `void` rule too, because it reads the same letters out of the same C names. False
+  claims over the 345,601 shipped symbols: 8 to 3.
+
+  The three left are the third cause and it has no fix. `PyInit__lldb` is a well-formed
+  encoding of `(long, long, double, bool)` and `drm_intel_gem_bo_map__wc` of
+  `(wchar_t, char)`; nothing distinguishes them from a real pre-Itanium symbol, because a
+  free function in that mangling is spelled exactly like a C identifier with a `__` and a
+  run of type letters. Binutils 2.42 dropped `gnu-v2` from `--format` rather than keep
+  guessing. The `schemes/go` option — require positive evidence before auto-claiming a
+  bare `name__<builtins>`, and leave the rest to `language="gnuv2"` — would close it at
+  the cost of every genuine free function, which is why it is written down here rather
+  than done.
 
 ## 1. More schemes
 

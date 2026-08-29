@@ -105,6 +105,13 @@ def _plausible(symbol):
     The same bar `gnuv2` holds a reading to: the demangler can read a run of type letters
     out of anything, but it cannot turn someone else's encoding into an *identifier*.
     """
+    parameters = symbol.parameters or ()
+    if len(parameters) > 1 and any(parameter == "void" for parameter in parameters):
+        # `f(char, short, void)` cannot be a declaration: `void` is a parameter list only
+        # when it is the whole of it. The same rule `gnuv2` holds a reading to, for the
+        # same reason -- these two grammars read the same run of type letters out of the
+        # same C names, and `f__Fcsv` is one either of them will claim if allowed to.
+        return False
     name = symbol.qualified_name
     at = name.find("(")
     if at >= 0:

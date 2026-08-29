@@ -645,6 +645,36 @@ All notable changes to this project are recorded here. The format follows
   encode. Found by offering 60,000 random ASCII strings to the whole registry and looking
   at what came back changed.
 
+- **Pre-Itanium C++ claimed ordinary C symbols.** `g_cclosure_marshal_VOID__INT` came
+  back as `g_cclosure_marshal_VOID(int0_t)` and `PyInit__csv` as
+  `PyInit(char, short, void)`. Both are naming conventions an analyst meets constantly --
+  GLib's generated marshallers are in every GTK binary, and `PyInit_<module>` covers every
+  CPython extension whose name begins with an underscore -- and both spellings are things
+  no C++ declaration contains.
+
+  Neither is a defect in the grammar, and the grammar is unchanged. `int0_t` is what
+  libiberty prints when `I` is followed by something that is not hex: `demangle_fund_type`
+  copies at most two characters, runs `sscanf("%x")` over them and prints `int%u_t`
+  whatever happened. `_hex_prefix` reproduces that deliberately, and
+  `demangle_strict(name, language="gnuv2")` still does, bug for bug, because that
+  faithfulness is what the 1,324-vector libiberty corpus measures.
+
+  What changed is *detection*. `_plausible` already refuses `int (CGuiWidget::)(...)` on
+  the ground that a spelling which cannot be a declaration is not a reading; two more of
+  the same kind join it -- a parameter list containing `int0_t`, and `void` used as one
+  parameter among several. Neither costs anything on libiberty's corpus, where no vector
+  has either shape. The CodeWarrior scheme reads the same run of type letters out of the
+  same C names and picked up `f__Fcsv` as soon as `gnuv2` stopped, so it holds the `void`
+  rule too.
+
+  Over the 345,601 symbols in every shared library a stock Ubuntu 24.04 ships, the
+  schemes' false claims go from 8 to 3. The three left -- `PyInit__lldb` reading as
+  `(long, long, double, bool)`, `PyInit__sre`, and `drm_intel_gem_bo_map__wc` as
+  `(wchar_t, char)` -- are well-formed v2 encodings of well-formed parameter lists, so no
+  plausibility rule separates them from a real pre-Itanium symbol. That is why binutils
+  2.42 no longer offers `gnu-v2` in `--format` at all; it is recorded under heading 0 of
+  ROADMAP.md and in issue #6 rather than guessed at.
+
 - **A `<template-param>` recorded as a substitution candidate was frozen to the wrong
   argument**, and so was anything built over one. ABI 5.1.10 makes a `<template-param>` a
   candidate in its own right, and the entry it contributes is *the parameter* -- `T_`,
