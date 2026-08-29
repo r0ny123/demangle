@@ -8,6 +8,20 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **The five `<special-name>` productions GNU reads and LLVM does not**, and GNU's
+  wording for the two both read but word differently. `TF <type>` (`typeinfo fn for`),
+  `TJ <type>` (`java Class for`) and `GA <encoding>` (`hidden alias for`) are GNU
+  extensions rather than ABI productions -- libiberty's `d_special_name` reads them,
+  llvm-cxxfilt refuses them, and this refused them too. `GTt` and `GTn`, the transaction
+  clones, were already read. In the `gnu` style `TH` and `TW` are now `TLS init function
+  for x` and `TLS wrapper function for x`, which is what `c++filt` prints; the default
+  `llvm` style keeps `thread-local initialization routine for x`. The whole table is
+  pinned against both references, in both styles, by `tests/test_special_names.py`.
+
+  Honest about the size of it: `TF`, `TJ` and `GA` appear in none of the 345,601 symbols
+  in the shared libraries this was measured against -- `TJ` is gcj's, which no longer
+  ships. `TH` does appear, and was worded wrongly under `gnu`.
+
 - **Ada, as GNAT encodes it.** The last of the pre-Itanium formats libiberty still
   carries: when the GNU v2, lucid, ARM and HP styles were dropped from the default,
   `--format=gnat` stayed. The reference is `ada_demangle` in `libiberty/cplus-dem.c`,

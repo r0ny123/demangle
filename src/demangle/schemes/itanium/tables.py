@@ -296,20 +296,42 @@ STD_ABBREVIATIONS_EXPANDED_GNU = {
 # -- 5.1.4 Other special functions and entities -------------------------------
 
 #: Special names taking a <type> operand.
+#:
+#: `TF` and `TJ` are GNU extensions rather than ABI productions -- libiberty's
+#: `d_special_name` reads them as `DEMANGLE_COMPONENT_TYPEINFO_FN` and
+#: `DEMANGLE_COMPONENT_JAVA_CLASS` -- and llvm-cxxfilt refuses both. They are here
+#: because a name a reference reads and we refuse is a gap, and because reading them
+#: costs a table entry: `TJ` is gcj's, which no longer ships, and neither appears in any
+#: of the 345,601 symbols in the shared libraries this was measured against.
 SPECIAL_TYPE_NAMES = {
     "TV": "vtable for ",
     "TT": "VTT for ",
     "TI": "typeinfo for ",
     "TS": "typeinfo name for ",
+    "TF": "typeinfo fn for ",
+    "TJ": "java Class for ",
 }
 
 #: Special names taking an <encoding> operand.
+#:
+#: `GA` is a GNU extension -- libiberty reads it as `DEMANGLE_COMPONENT_HIDDEN_ALIAS` --
+#: and llvm-cxxfilt refuses it.
 SPECIAL_ENCODING_NAMES = {
     # `TH` is the initialisation routine and `TW` the wrapper, not the other way round.
     "TH": "thread-local initialization routine for ",
     "TW": "thread-local wrapper routine for ",
     "GV": "guard variable for ",
     "GR": "reference temporary for ",
+    "GA": "hidden alias for ",
+}
+
+#: The two of those the references word differently. GNU c++filt writes `TLS init
+#: function for x`, llvm-cxxfilt `thread-local initialization routine for x`; they name
+#: the same entity. Everything else in the two tables above is spelled identically by
+#: both, which is why only these two are listed.
+SPECIAL_ENCODING_NAMES_GNU = {
+    "TH": "TLS init function for ",
+    "TW": "TLS wrapper function for ",
 }
 
 #: Constructor and destructor variant markers (5.1.4.3). The variant does not change the

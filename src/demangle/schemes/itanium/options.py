@@ -88,6 +88,15 @@ class ItaniumOptions:
     so this is not an obscure corner of the grammar.
     """
 
+    gnu_special_name_spelling: bool = False
+    """Spell the thread-local special names the way GNU c++filt does.
+
+    False gives llvm-cxxfilt's `thread-local initialization routine for x` and
+    `thread-local wrapper routine for x`; True gives GNU's `TLS init function for x` and
+    `TLS wrapper function for x`. They name the same entity. Only `TH` and `TW` differ:
+    every other special name is spelled identically by both references.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -107,4 +116,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_complex_spelling=True,
     gnu_angle_spacing=True,
     gnu_vector_spelling=True,
+    gnu_special_name_spelling=True,
 )

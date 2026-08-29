@@ -44,6 +44,7 @@ from .tables import (
     QUALIFIER_ORDER,
     RIGHT_ASSOCIATIVE,
     SPECIAL_ENCODING_NAMES,
+    SPECIAL_ENCODING_NAMES_GNU,
     SPECIAL_TYPE_NAMES,
     STD_ABBREVIATIONS,
     STD_ABBREVIATIONS_EXPANDED,
@@ -626,11 +627,11 @@ class ItaniumParser:
             # `_ZGRZN1N1gEvE1a`.
             if not reader.eof:
                 reader.seq_id()
-            return self.builder.special(SPECIAL_ENCODING_NAMES["GR"], inner)
+            return self.builder.special(self._encoding_special_label("GR"), inner)
 
         if code in SPECIAL_ENCODING_NAMES:
             reader.pos += 2
-            return self.builder.special(SPECIAL_ENCODING_NAMES[code], self.encoding())
+            return self.builder.special(self._encoding_special_label(code), self.encoding())
 
         if code == "GT":
             reader.pos += 2
@@ -674,6 +675,14 @@ class ItaniumParser:
             return self.builder.special(label, self.encoding())
 
         return None
+
+    def _encoding_special_label(self, code):
+        """How this style words the special name `code`."""
+        if self.options.gnu_special_name_spelling:
+            gnu = SPECIAL_ENCODING_NAMES_GNU.get(code)
+            if gnu is not None:
+                return gnu
+        return SPECIAL_ENCODING_NAMES[code]
 
     def call_offset(self):
         """<call-offset> ::= h <nv-offset> _ | v <v-offset> _"""

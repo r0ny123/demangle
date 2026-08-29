@@ -1,0 +1,110 @@
+"""Every `<special-name>` production, in both styles.
+
+ABI 5.1.4 and the GNU extensions libiberty adds to it. These are the productions that
+name something *about* an entity -- its vtable, its guard variable, a thunk to it -- and
+they are worth pinning together rather than one at a time: the two references word two of
+them differently, refuse five of them between them, and the table that drives them is one
+place where a wrong entry is invisible until someone meets the name in a binary.
+
+The expected column is what each reference printed on this machine, recorded so the test
+needs neither installed:
+
+    llvm-cxxfilt   Ubuntu LLVM version 18.1.3
+    c++filt        GNU Binutils for Ubuntu 2.42
+"""
+
+import pytest
+
+import demangle
+from demangle.core.errors import DemanglingError, LimitExceeded
+
+#: (mangled, llvm-style, gnu-style, which references read it). Where the two spellings
+#: differ, both are recorded; where a reference refuses the name, the note says so and
+#: the expectation is the other one's.
+SPECIAL_NAMES = [
+    ("_ZTV1A", "vtable for A", "vtable for A", "both"),
+    ("_ZTT1A", "VTT for A", "VTT for A", "both"),
+    ("_ZTI1A", "typeinfo for A", "typeinfo for A", "both"),
+    ("_ZTS1A", "typeinfo name for A", "typeinfo name for A", "both"),
+    ("_ZGV1x", "guard variable for x", "guard variable for x", "both"),
+    ("_ZGR1x0_", "reference temporary for x", "reference temporary for x", "llvm; c++filt refuses"),
+    ("_ZTC1A0_1B", "construction vtable for B-in-A", "construction vtable for B-in-A", "both"),
+    ("_ZThn8_N1A1fEv", "non-virtual thunk to A::f()", "non-virtual thunk to A::f()", "both"),
+    ("_ZTv0_n24_N1A1fEv", "virtual thunk to A::f()", "virtual thunk to A::f()", "both"),
+    (
+        "_ZTcv0_n24_v0_n24_N1A1fEv",
+        "covariant return thunk to A::f()",
+        "covariant return thunk to A::f()",
+        "both",
+    ),
+    # The two the references word differently. They name the same entity: `TH` is the
+    # initialisation routine for a thread-local and `TW` the wrapper that calls it.
+    (
+        "_ZTH1x",
+        "thread-local initialization routine for x",
+        "TLS init function for x",
+        "both, worded differently",
+    ),
+    (
+        "_ZTW1x",
+        "thread-local wrapper routine for x",
+        "TLS wrapper function for x",
+        "both, worded differently",
+    ),
+    # GNU extensions. llvm-cxxfilt refuses all five; libiberty's `d_special_name` reads
+    # them, and so do we -- a name a reference reads and we refuse is a gap.
+    ("_ZGTtN1A1fEv", "transaction clone for A::f()", "transaction clone for A::f()", "c++filt only"),
+    (
+        "_ZGTnN1A1fEv",
+        "non-transaction clone for A::f()",
+        "non-transaction clone for A::f()",
+        "c++filt only",
+    ),
+    ("_ZTF1A", "typeinfo fn for A", "typeinfo fn for A", "c++filt only"),
+    ("_ZTJ1A", "java Class for A", "java Class for A", "c++filt only"),
+    ("_ZGA1x", "hidden alias for x", "hidden alias for x", "c++filt only"),
+]
+
+
+@pytest.mark.parametrize(("mangled", "llvm", "gnu", "note"), SPECIAL_NAMES, ids=[n[0] for n in SPECIAL_NAMES])
+def test_both_styles(mangled, llvm, gnu, note):
+    assert demangle.demangle_strict(mangled) == llvm, note
+    assert demangle.demangle_strict(mangled, style="gnu") == gnu, note
+
+
+def test_the_two_styles_differ_exactly_where_the_references_do():
+    """A guard on the option: adding a divergence must be deliberate, not incidental."""
+    differ = {name for name, llvm, gnu, _ in SPECIAL_NAMES if llvm != gnu}
+    assert differ == {"_ZTH1x", "_ZTW1x"}
+
+
+class TestStillRefused:
+    """Shapes that look like special names and are not.
+
+    A table lookup one character too eager reads the encoding after it as an operand and
+    produces a confident answer for a name nobody wrote.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_ZTX1A",  # no such code
+            "_ZGX1x",
+            "_ZTH",  # the code with nothing to operate on
+            "_ZTF",
+            "_ZGA",
+            "_ZTJ",
+            "_ZTC1A0_",  # a construction vtable missing its base
+            "_ZGT",  # a clone marker with no kind and no encoding
+        ],
+    )
+    def test_refused(self, mangled):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled)
+        assert demangle.demangle(mangled) == mangled
+
+
+def test_a_special_name_over_an_encoding_is_still_bounded():
+    """`GV` takes an <encoding>, which may be another special name: `_ZGVGVGV...`."""
+    with pytest.raises(LimitExceeded):
+        demangle.demangle_strict("_Z" + "GV" * 4000 + "1x")
