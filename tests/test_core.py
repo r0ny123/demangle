@@ -139,6 +139,53 @@ class TestTheTwoBuildersAgreeAboutPacks:
         assert demangle.parse(name, style=style).spell(style=style) == "void f<int>(int, nn::Up)"
 
 
+class TestEveryDeclaratorDistributesOverAPack:
+    """`Builder.parameter_pack` says a declarator applied to a pack applies to each
+    member. `_wrap` -- pointers, references, cv-qualifiers -- had always done it; the
+    three constructors that do not go through `_wrap` had not.
+
+    The visible failure was the empty pack. `A3_ T_` with `T_` bound to `J E` printed
+    ` [3]`, an array of a parameter that is not there, where the tree builder short-
+    circuits the same shape to nothing -- so the two builders spelled the same name two
+    ways. A grammar fuzzer found all three (`_Z1fIJEEvViT_A3_T_`,
+    `_ZN1fIJET_EEvU9enable_ifIyET_`, `_Z1fIJEEvMT_T_DTfp0_EDi`).
+
+    None of it changes a name any compiler emits: a pack reaches a declarator through
+    `Dp`, and the parser has always ranged that over the members itself. What this fixes
+    is the encoding that names a pack *without* expanding it, which is ill-formed -- and
+    which llvm-cxxfilt prints as its first member and GNU c++filt refuses outright.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIJicEEviA3_T_", "void f<int, char>(int, int [3], char [3])"),
+            ("_Z1fIJicEEviU9enable_ifT_", "void f<int, char>(int, int enable_if, char enable_if)"),
+            ("_Z1fIJicEEviMT_l", "void f<int, char>(int, long int::*, long char::*)"),
+            ("_Z1fIJEEviA3_T_", "void f<>(int)"),
+            ("_Z1fIJEEviU9enable_ifT_", "void f<>(int)"),
+            ("_Z1fIJEEviMT_i", "void f<>(int)"),
+            ("_Z1fIJEEviMiT_", "void f<>(int)"),
+        ],
+    )
+    def test_a_declarator_over_a_pack_is_one_per_member(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+        assert demangle.parse(mangled).spell() == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIJicEEviDpA3_T_", "void f<int, char>(int, int [3], char [3])"),
+            ("_Z1fIJicEEviDpU9enable_ifT_", "void f<int, char>(int, int enable_if, char enable_if)"),
+            ("_Z1fIJicEEviDpMT_l", "void f<int, char>(int, long int::*, long char::*)"),
+        ],
+    )
+    def test_the_expansion_the_compiler_actually_writes_is_unchanged(self, mangled, expected):
+        """Both references agree on these, and did before this too."""
+        assert demangle.demangle_strict(mangled) == expected
+        assert demangle.demangle_strict(mangled, style="gnu") == expected
+
+
 class TestBoundedCache:
     def test_reports_a_miss_distinctly_from_a_stored_none(self):
         cache = BoundedCache()

@@ -754,7 +754,9 @@ class AstBuilder(Builder):
         return _sized(RValueReference(inner), inner.size + 4)
 
     def member_pointer(self, owner, inner):
-        if _distributes_to_nothing(inner):
+        # The owner distributes too: a pointer to a member of no class at all is no
+        # pointer, and reporting a size for one left a separator behind.
+        if _distributes_to_nothing(owner) or _distributes_to_nothing(inner):
             return _EMPTY_PACK
         return _sized(MemberPointer(owner, inner), owner.size + inner.size + 5)
 

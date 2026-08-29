@@ -224,6 +224,16 @@ class SpellingBuilder(Builder):
         # `int Foo::*` needs the separating space that `int (Foo::*)()` does not: in the
         # function and array cases `_wrap` supplies an opening parenthesis instead.
         token = f"{owner}::*"
+        if owner.members is not None:
+            # The owner is the one operand in this file that is not the type a
+            # declarator is being applied to, and it packs the same way: a pointer to a
+            # member of each of them.
+            return pack_of(self.member_pointer(one, inner) for one in owner.members)
+        if inner.members is not None:
+            # Applying a declarator to a pack applies it to each member. `_wrap` has
+            # always done this; the branch below is the one that reaches a pack, and
+            # skipping it left ` ::*` printed for a pack with no members at all.
+            return pack_of(self.member_pointer(owner, member) for member in inner.members)
         if inner.is_function or inner.is_array:
             return _wrap(inner, token)
         # Always spaced, unlike a bare `*`. `int* A::*` needs the gap even though `int*`
@@ -233,6 +243,10 @@ class SpellingBuilder(Builder):
         return Spelling(left + joiner + token, inner.right)
 
     def array(self, inner, dimension):
+        if inner.members is not None:
+            # An array of a pack is one array per member, and of an empty pack is no
+            # arrays: ` [3]` for a parameter that is not there was what this printed.
+            return pack_of(self.array(member, dimension) for member in inner.members)
         bound = f"[{dimension}]" if dimension else "[]"
         right = inner.right
         # Only the first bracket of a multi-dimensional array is spaced off the type:
@@ -272,7 +286,12 @@ class SpellingBuilder(Builder):
         The reference prints the type and then the extension, so a function type comes
         out `void () block_pointer` -- not `void block_pointer()`, which is what putting
         the word in the left half alone gives for anything that has a right half.
+
+        Distributes over a pack like every other declarator, which it did not: an empty
+        pack came out as a bare ` enable_if`, a qualifier on nothing.
         """
+        if inner.members is not None:
+            return pack_of(self.vendor_qualify(member, qualifier) for member in inner.members)
         return Spelling(inner.spell() + " " + qualifier)
 
     # -- whole symbols ---------------------------------------------------------
