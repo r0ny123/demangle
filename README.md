@@ -575,7 +575,7 @@ symbol tables repeat themselves relentlessly, and results are cached.
 
 The cold figure is lower than earlier releases reported and the demangler is faster than
 it was. The benchmark corpus used to be 887 names, most of them cheap MSVC ones; it is
-now all 14,041 names in every conformance corpus, across every scheme. What changed is
+now 14,037 names drawn from every conformance corpus, across four schemes. What changed is
 what is being measured.
 
 `bench.py --check` gates CI against the committed baseline. It compares figures normalised

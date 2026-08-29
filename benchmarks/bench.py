@@ -304,10 +304,21 @@ def main():
             return 1
         # The second catches the corpus itself shrinking, which would do the same thing
         # more quietly. A deliberate change to it is a deliberate edit to the baseline.
-        expected = baseline.get("structured", {}).get("names")
-        measured = structured.get("names")
-        if expected is not None and measured != expected:
-            print(f"\nstructured benchmark ran over {measured} names, baseline recorded {expected}")
+        #
+        # Asked of *every* phase, not only `structured`. It used to be asked of that one
+        # alone, and the cold corpus quietly lost four names without anything noticing --
+        # which is the whole failure this guard exists for, in the phase the headline
+        # figure comes from.
+        shrunk = [
+            (name, results[name]["names"], baseline[name]["names"])
+            for name in results
+            if name != "calibration"
+            and "names" in baseline.get(name, {})
+            and results[name]["names"] != baseline[name]["names"]
+        ]
+        if shrunk:
+            for name, measured, expected in shrunk:
+                print(f"\n{name} benchmark ran over {measured} names, baseline recorded {expected}")
             print("if the corpus changed on purpose, re-record the baseline and say why")
             return 1
         if "normalised" not in baseline.get("cold", {}):

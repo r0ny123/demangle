@@ -1,6 +1,6 @@
 {
   "cold": {
-    "names": 14041,
+    "names": 14037,
     "seconds": 0.544221,
     "per_second": 25800,
     "microseconds_each": 38.759,
@@ -8,14 +8,14 @@
     "relative_to_pivot": 85.1765
   },
   "warm": {
-    "names": 42123,
+    "names": 42111,
     "seconds": 0.019168,
     "per_second": 2197600,
     "microseconds_each": 0.455,
     "normalised": 15.724
   },
   "negative": {
-    "names": 14041,
+    "names": 14037,
     "seconds": 0.034574,
     "per_second": 406110,
     "microseconds_each": 2.462,
