@@ -154,6 +154,45 @@ class TestNeverRaises:
         assert demangle.signatureb(b"_ZN3foo3barEv").base_name == "bar"
 
 
+class TestTheResultIsWritable:
+    """Whatever comes back must be a string a caller can actually write out.
+
+    `demangle()` is documented never to raise, and a caller reads that as a promise it
+    can print, log, or serialise the answer. A `str` holding a lone surrogate breaks that
+    promise one step later: `UnicodeEncodeError` on `.encode()`, on `json.dump`, on
+    writing to a file. The Go scheme could produce one -- its escapes decode to bytes,
+    and `%89` is not text -- so this is the invariant rather than a note in that module.
+    """
+
+    @staticmethod
+    def writable(value):
+        result = demangle.demangle(value)
+        assert isinstance(result, str)
+        result.encode("utf-8")
+        return True
+
+    @deadline
+    @given(st.text(max_size=200))
+    def test_arbitrary_text(self, value):
+        assert self.writable(value)
+
+    @deadline
+    @given(mutated_symbol())
+    def test_damaged_real_symbols(self, value):
+        assert self.writable(value)
+
+    @deadline
+    @given(st.text(alphabet="%0123456789abcdefABCDEF/.", max_size=60))
+    def test_percent_escapes(self, value):
+        """Aimed straight at the one scheme that decodes bytes out of its input."""
+        assert self.writable(value)
+        assert self.writable("example.com/x/" + value + ".Foo")
+
+    def test_every_corpus_entry_is_writable(self):
+        for name in CORPUS:
+            demangle.demangle(name).encode("utf-8")
+
+
 class TestErrorContract:
     @deadline
     @given(mutated_symbol())

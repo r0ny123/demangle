@@ -198,3 +198,43 @@ class TestSafety:
     def test_every_corpus_name_is_answered(self):
         for mangled, _ in ROWS:
             assert isinstance(demangle.demangle(mangled), str)
+
+
+class TestOutputIsAlwaysText:
+    """A result `demangle()` returns must be a string a caller can write out.
+
+    `unescape_path` is a faithful port of `PrefixToPath`, which works on bytes; Go
+    strings are byte strings and Go's own tooling is content to print whatever the
+    escapes decoded to. This package returns `str`, so an escape that decodes to
+    something that is not UTF-8 would arrive as a lone surrogate -- a string Python
+    refuses to encode. A caller writing that to a file, a socket or JSON would get a
+    `UnicodeEncodeError` out of `demangle()`, which is documented never to raise.
+
+    `PathToPrefix` only produces such a name from a path that was not text to begin
+    with, which the module system does not permit, so the symbol is refused and comes
+    back unchanged.
+    """
+
+    @pytest.mark.parametrize(
+        "symbol",
+        [
+            "example.com/x/pkg%89.Foo",  # a continuation byte with no lead byte
+            "example.com/x/pkg%ff.Foo",  # never valid UTF-8 anywhere
+            "example.com/x/%c3.Foo",  # a lead byte with no continuation
+            "example.com/x/pkg%ed%a0%80.Foo",  # an encoded surrogate
+        ],
+    )
+    def test_a_package_path_that_is_not_text_is_refused(self, symbol):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(symbol, language="go")
+        assert demangle.demangle(symbol) == symbol
+
+    def test_every_corpus_result_encodes(self):
+        from .conftest import load_corpus
+
+        for mangled, _ in load_corpus("go-real-world.txt"):
+            demangle.demangle(mangled, language="go").encode("utf-8")
+
+    def test_a_path_that_is_text_still_decodes(self):
+        # The same mechanism, with bytes that do form UTF-8.
+        assert demangle.demangle("example.com/x/pkg%c3%bc.Foo") == "example.com/x/pkgü.Foo"

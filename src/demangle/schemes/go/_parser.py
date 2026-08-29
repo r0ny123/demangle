@@ -130,6 +130,15 @@ class GoSymbol:
         return f"{self.generated}{self.package}.{self.name}"
 
 
+def _is_text(decoded):
+    """Whether `decoded` is a string that can be written back out as UTF-8."""
+    try:
+        decoded.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _split_package(text):
     """Split a symbol into its package path and the rest.
 
@@ -170,6 +179,16 @@ def parse_go_symbol(symbol):
         package = unescape_path(package)
     except ValueError as error:
         raise ParseError(symbol, None, str(error)) from error
+    if not _is_text(package):
+        # `unescape_path` is a faithful port of `PrefixToPath`, which works on bytes and
+        # is content to hand back whatever the escapes decoded to. This package returns
+        # `str`, so a decoding that is not valid UTF-8 arrives as lone surrogates -- a
+        # string Python will not encode, so a caller writing the result to a file, a
+        # socket or JSON gets a `UnicodeEncodeError` out of a function documented never
+        # to raise. `PathToPrefix` only ever produces this from a path that was not text
+        # to begin with, which the module system does not permit, so refusing costs
+        # nothing real and the name comes back unchanged instead.
+        raise ParseError(symbol, None, "package path does not decode to text")
 
     receiver, pointer, generic = None, False, None
     name = rest

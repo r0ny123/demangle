@@ -615,6 +615,22 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Go: a package path that did not decode to text came back as a string that cannot be
+  written out.** `unescape_path` is a faithful port of `objabi.PrefixToPath`, which works
+  on bytes; `%89` is a valid escape and decodes to a byte that is not UTF-8, so the result
+  reached the caller as a lone surrogate. `demangle()` is documented never to raise, and a
+  caller reads that as a promise it can print or serialise the answer -- but
+  `"example.com/x/pkg\udc89.Foo".encode("utf-8")` raises `UnicodeEncodeError`, one step
+  later and somewhere else. `PathToPrefix` only produces such a name from a path that was
+  not text to begin with, which the module system does not permit, so the symbol is now
+  refused and comes back unchanged. `escape_path` and `unescape_path` keep their byte
+  fidelity, because the round-trip property rests on it.
+
+  The invariant is asserted for every scheme rather than only for Go, in
+  `tests/test_robustness.py::TestTheResultIsWritable`: whatever `demangle()` returns must
+  encode. Found by offering 60,000 random ASCII strings to the whole registry and looking
+  at what came back changed.
+
 - **MSVC reported a bound the parse never had.** The parser narrows both of its bounds
   with ceilings of its own -- `min(limits.max_depth, MAX_DEPTH)` with `MAX_DEPTH` 64, and
   `min(limits.max_output, 8 * len(mangled) + 256)` -- and that is deliberate: a level
