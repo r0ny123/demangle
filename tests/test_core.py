@@ -10,7 +10,9 @@ import string
 
 import pytest
 
+import demangle
 from demangle.core import registry
+from demangle.core.ast import AST_BUILDER as A
 from demangle.core.cache import MISSING, BoundedCache
 from demangle.core.errors import ParseError, TruncatedError
 from demangle.core.reader import Reader
@@ -101,6 +103,40 @@ class TestDeclaratorPlacement:
         """[dcl.ref]: only rvalue-to-rvalue stays an rvalue reference."""
         built = getattr(B, outer)(getattr(B, inner)(B.builtin("int")))
         assert B.spell(built) == expected
+
+
+class TestTheTwoBuildersAgreeAboutPacks:
+    """Nested packs splice, in both builders, because two answers depend on it.
+
+    The tree builder used to keep `ParameterPack((ParameterPack(()),))` as a pack of one
+    member. That pack has a non-zero `size` and renders to nothing, so the two questions
+    the parser asks about a pack got different answers from the two builders: "did this
+    parameter drop out entirely" (`size == 0`) and "how many members does an expansion
+    over this range across" (`len(members)`). `_Z1fIJEJT_EiEviT0_N2nn2UpE` -- an empty
+    pack, then a pack holding a reference to it -- printed `f(int, , nn::Up)` through the
+    tree and `f(int, nn::Up)` through the text. A grammar fuzzer found it; llvm-cxxfilt
+    18.1.3 prints the latter.
+    """
+
+    def test_a_pack_holding_an_empty_pack_is_empty(self):
+        for builder in (B, A):
+            pack = builder.parameter_pack([builder.parameter_pack([])])
+            assert builder.members(pack) == ()
+            assert builder.size(pack) == 0
+            assert builder.spell(pack) == ""
+
+    def test_a_nested_pack_contributes_its_own_members_and_not_itself(self):
+        for builder in (B, A):
+            inner = builder.parameter_pack([builder.builtin("char"), builder.builtin("double")])
+            pack = builder.parameter_pack([builder.builtin("int"), inner])
+            assert len(builder.members(pack)) == 3
+            assert builder.spell(pack) == "int, char, double"
+
+    @pytest.mark.parametrize("style", ["llvm", "gnu"])
+    def test_the_name_that_found_it(self, style):
+        name = "_Z1fIJEJT_EiEviT0_N2nn2UpE"
+        assert demangle.demangle_strict(name, style=style) == "void f<int>(int, nn::Up)"
+        assert demangle.parse(name, style=style).spell(style=style) == "void f<int>(int, nn::Up)"
 
 
 class TestBoundedCache:

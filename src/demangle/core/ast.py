@@ -772,7 +772,22 @@ class AstBuilder(Builder):
         return _sized(Pack(inner), inner.size + 3)
 
     def parameter_pack(self, members):
-        return _sized(ParameterPack(members), _sizes(members) + 2 * len(members))
+        # Nested packs are spliced, which `SpellingBuilder.pack_of` has always done and
+        # this builder did not. Two things went wrong without it. A pack whose one
+        # member is an empty pack has a non-zero `size` and renders to nothing, so
+        # `_drops_out` kept it and the parameter list printed the separator for an
+        # argument that is not there -- `f(int, , nn::Up)` where the reference and the
+        # spelling path both print `f(int, nn::Up)`. And a pack's *arity* is what an
+        # expansion over it ranges across, so an unspliced pack of one empty pack made
+        # `Dp` produce one member here and none there: the two builders disagreeing
+        # about how many parameters a signature has.
+        flattened = []
+        for member in members:
+            if type(member) is ParameterPack:
+                flattened.extend(member.members)
+            else:
+                flattened.append(member)
+        return _sized(ParameterPack(flattened), _sizes(flattened) + 2 * len(flattened))
 
     def vendor_qualify(self, inner, qualifier):
         if _distributes_to_nothing(inner):
