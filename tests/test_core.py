@@ -24,7 +24,12 @@ class TestReader:
         reader = Reader("ab")
         reader.pos = 2
         assert reader.peek() == ""
-        assert reader.peek(10) == ""
+        assert reader.ahead(10) == ""
+
+    def test_ahead_reads_without_moving_and_stops_at_the_end(self):
+        reader = Reader("abc")
+        assert (reader.peek(), reader.ahead(1), reader.ahead(2), reader.ahead(3)) == ("a", "b", "c", "")
+        assert reader.pos == 0
 
     def test_take_past_the_end_raises_truncated(self):
         reader = Reader("")

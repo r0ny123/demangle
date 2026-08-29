@@ -51,8 +51,8 @@ class Reader:
     def remaining(self):
         return self.text[self.pos :]
 
-    def peek(self, offset=0):
-        """The character `offset` ahead, or `""` past the end.
+    def peek(self):
+        """The character at the cursor, or `""` past the end.
 
         Returning a string rather than raising is what lets a parser write
         `if reader.peek() == "N"` without first checking for the end of input.
@@ -64,7 +64,17 @@ class Reader:
         means there was no character to consume -- either way `pos += 1` would step past
         the end, which is the one thing this class exists to prevent. The productions
         that do it say so at the site.
+
+        Takes no argument, where it used to take an offset defaulting to zero. It is
+        called around fifty times per name demangled -- more than any other method in
+        the package -- and CPython charges for a default it then has to bind: dropping
+        the parameter is a fifth off the cost of the call. `ahead` is the offset form.
         """
+        pos = self.pos
+        return self.text[pos] if pos < self.length else ""
+
+    def ahead(self, offset):
+        """The character `offset` past the cursor, or `""` past the end."""
         index = self.pos + offset
         return self.text[index] if index < self.length else ""
 
@@ -132,6 +142,30 @@ class Reader:
             raise ParseError(text, start, "expected a number")
         self.pos = pos
         return text[start:pos]
+
+    def length_prefixed(self):
+        """A decimal length and the characters it counts, as one production.
+
+        `<source-name>` is the commonest production in these grammars -- every component
+        of every qualified name is one -- and reading it as `int(digits())` followed by
+        `take_exactly()` costs three frames for what is one scan and one slice. Raises
+        the same way each of those does: no digits, a run past the bound, or a length
+        the name is too short for.
+        """
+        text, length = self.text, self.length
+        start = pos = self.pos
+        while pos < length and text[pos] in DIGITS:
+            pos += 1
+            if pos - start > MAX_NUMBER_DIGITS:
+                raise ParseError(text, start, "number too long")
+        if pos == start:
+            raise ParseError(text, start, "expected a number")
+        count = int(text[start:pos])
+        end = pos + count
+        if end > length:
+            raise TruncatedError(text, pos)
+        self.pos = end
+        return count, text[pos:end]
 
     def number(self, allow_negative=True):
         """A <number>: an optional leading `n` meaning negative, then digits."""

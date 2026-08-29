@@ -30,6 +30,7 @@ from .substitutions import (
 from .tables import (
     BUILTIN_TYPES,
     CONSTRUCTOR_KINDS,
+    CV_COMBINATIONS,
     DESTRUCTOR_KINDS,
     EXTENDED_BUILTIN_TYPES,
     INFIX_OPERATORS,
@@ -41,7 +42,6 @@ from .tables import (
     PREFIX_OPERATORS,
     PRIMARY_PRECEDENCE,
     QUALIFIER_LETTERS,
-    QUALIFIER_ORDER,
     RIGHT_ASSOCIATIVE,
     SIMPLE_PRECEDENCE,
     SPECIAL_ENCODING_NAMES,
@@ -109,6 +109,16 @@ _COMPLEX_WORDS = (
     {"C": "complex", "G": "imaginary"},
     {"C": "_Complex", "G": "_Imaginary"},
 )
+
+#: The characters that open a `<prefix>` component that is *not* an
+#: `<unqualified-name>`: a substitution, a template parameter, a decltype, a template
+#: argument list, a closure-prefix terminator, a requires-clause.
+_PREFIX_MARKERS = frozenset("STDIMQ")
+
+#: What opens a `<class-enum-type>`: a length-prefixed name, a nested name, a local name
+#: or an internal-linkage marker. One membership test in place of four comparisons, on
+#: the arm `_type` takes for a third of every type it reads.
+_CLASS_ENUM_START = frozenset(DIGITS | {"N", "Z", "L"})
 
 #: The operators that measure or interrogate a type, as `(expression form, opening
 #: text)`. One branch rather than seven: they differ only in the word and in whether the
@@ -254,6 +264,8 @@ class ItaniumParser:
         "_explicit_object",
         "_in_constraint",
         "_mangled",
+        "_max_depth",
+        "_max_output",
         "_module_names",
         "_modules",
         "_naming",
@@ -274,6 +286,7 @@ class ItaniumParser:
         "_saw_pack",
         "_scope_has_pack",
         "_simple_name",
+        "_size",
         "_trailing_empty_pack",
         "_try_template_args",
         "builder",
@@ -297,7 +310,14 @@ class ItaniumParser:
         self._abbrev = expanded if options.expand_std_abbreviations else STD_ABBREVIATIONS
         self.reader = Reader(mangled)
         self.builder = builder
+        # The one builder method the parser calls on every type it reads, bound once.
+        self._size = builder.size
         self.limits = limits
+        # The two bounds every production checks, read once. `limits` is a frozen
+        # dataclass, so reaching through it is two attribute loads on a path taken
+        # around four hundred thousand times over a symbol table of forty thousand.
+        self._max_depth = limits.max_depth
+        self._max_output = limits.max_output
         self.subs = SubstitutionTable(mangled, limits.max_substitutions)
         self.targs = TemplateArgumentTable()
         # How many times a template parameter has been resolved. A production that
@@ -427,8 +447,8 @@ class ItaniumParser:
     # The shape at every site is the same:
     #
     #     depth = self._depth = self._depth + 1
-    #     if depth > self.limits.max_depth:
-    #         raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+    #     if depth > self._max_depth:
+    #         raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
     #     try:
     #         ...
     #     finally:
@@ -487,8 +507,8 @@ class ItaniumParser:
 
         if alloc_token:
             result = self.builder.decorated(result, alloc_token)
-        if self.builder.size(result) > self.limits.max_output:
-            raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
+        if self.builder.size(result) > self._max_output:
+            raise LimitExceeded(self._mangled, "output length", self._max_output)
         return result
 
     def block_invocation(self):
@@ -623,8 +643,8 @@ class ItaniumParser:
         another special name, so `_Z` followed by `GV` repeated is unbounded recursion.
         """
         depth = self._depth = self._depth + 1
-        if depth > self.limits.max_depth:
-            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+        if depth > self._max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
         try:
             return self._special_name()
         finally:
@@ -702,7 +722,7 @@ class ItaniumParser:
             self.call_offset()
             return self.builder.special("covariant return thunk to ", self.encoding())
 
-        if reader.peek() == "T" and reader.peek(1) in ("h", "v"):
+        if reader.peek() == "T" and reader.ahead(1) in ("h", "v"):
             # T <call-offset> <base encoding>
             reader.take()
             virtual = reader.peek() == "v"
@@ -754,7 +774,7 @@ class ItaniumParser:
         if char == "S":
             # Either an abbreviation or a back-reference, each of which may be an
             # <unscoped-template-name> that template arguments then attach to.
-            if reader.peek(1) == "t":
+            if reader.ahead(1) == "t":
                 reader.pos += 2
                 inner = self.unqualified_name()
                 base = self.builder.qualified([self.builder.name("std"), inner])
@@ -782,7 +802,7 @@ class ItaniumParser:
         """Charge a re-reading against the budget, or refuse the name."""
         self._rework -= characters
         if self._rework < 0:
-            raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
+            raise LimitExceeded(self._mangled, "output length", self._max_output)
 
     def _expand_pattern(self, start, mark, arity):
         """Read a pack expansion's pattern once per member of the pack it ranges over.
@@ -888,13 +908,18 @@ class ItaniumParser:
         # implicit object parameter is written on the explicit one instead.
         quals = ()
         ref_qualifier = ""
-        if reader.eat("H"):
+        if reader.peek() == "H":
+            # Licensed by `peek`: the character it just returned is the one consumed.
+            reader.pos += 1
             self._explicit_object = True
         else:
             quals = self.cv_qualifiers()
-            if reader.eat("R"):
+            char = reader.peek()
+            if char == "R":
+                reader.pos += 1
                 ref_qualifier = "&"
-            elif reader.eat("O"):
+            elif char == "O":
+                reader.pos += 1
                 ref_qualifier = "&&"
 
         parts = []
@@ -903,16 +928,18 @@ class ItaniumParser:
         outer_ctor_dtor = self._ctor_dtor
         self._ctor_dtor = False
         try:
+            max_depth = self._max_depth
             while True:
                 char = reader.peek()
                 if char == "E":
-                    reader.take()
+                    # Licensed by `peek`, as above.
+                    reader.pos += 1
                     break
                 if not char:
                     raise ParseError(self._mangled, reader.pos, "unterminated nested name")
                 depth = self._depth = self._depth + 1
-                if depth > self.limits.max_depth:
-                    raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+                if depth > max_depth:
+                    raise LimitExceeded(self._mangled, "recursion depth", max_depth)
                 try:
                     is_template, module = self.prefix_component(parts, as_type, module)
                 finally:
@@ -947,64 +974,68 @@ class ItaniumParser:
         builder = self.builder
         char = reader.peek()
 
-        if char == "S":
-            component = self.substitution(expanded=self._abbreviation_scopes_a_structor())
-            named = self._module_of(component)
-            if named is not None:
-                # A module name, not a scope: it belongs to the component that follows.
-                return False, named
-            parts.append(component)
-            return False, module
+        # Three components in four are a length-prefixed name and none of the markers
+        # below: one membership test sends those straight to the tail rather than
+        # through six comparisons that will all fail.
+        if char in _PREFIX_MARKERS:
+            if char == "S":
+                component = self.substitution(expanded=self._abbreviation_scopes_a_structor())
+                named = self._module_of(component)
+                if named is not None:
+                    # A module name, not a scope: it belongs to the component that follows.
+                    return False, named
+                parts.append(component)
+                return False, module
 
-        if char == "T":
-            component, reference = self.template_param_binding()
-            parts.append(component)
-            self.subs.remember(reference if reference is not None else component, "template-template-param")
-            return False, module
+            if char == "I":
+                # <template-prefix> <template-args>: the arguments attach to the component
+                # just read, and the pair becomes one substitutable component.
+                if not parts:
+                    raise ParseError(self._mangled, reader.pos, "template arguments with no name")
+                pending = self._conversion_pending()
+                arguments = self.template_arguments(install_scope=True)
+                angle_space = not self._trailing_empty_pack
+                if pending is not None:
+                    parts[-1] = builder.name(self._reread_conversion(pending))
+                parts[-1] = builder.template(parts[-1], arguments, angle_space)
+                combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
+                # Only an *interior* <template-prefix> <template-args> is a separate
+                # candidate. When the closing `E` follows, this specialisation is the whole
+                # nested-name, and the enclosing <type> production records it -- recording
+                # here too would enter it twice and shift every later index by one.
+                if reader.peek() != "E":
+                    self.subs.remember(combined, "prefix")
+                return True, module
 
-        if char == "D" and reader.peek(1) in ("t", "T"):
-            parts.append(self.decltype_())
-            return False, module
+            if char == "T":
+                component, reference = self.template_param_binding()
+                parts.append(component)
+                self.subs.remember(reference if reference is not None else component, "template-template-param")
+                return False, module
 
-        if char == "I":
-            # <template-prefix> <template-args>: the arguments attach to the component
-            # just read, and the pair becomes one substitutable component.
-            if not parts:
-                raise ParseError(self._mangled, reader.pos, "template arguments with no name")
-            pending = self._conversion_pending()
-            arguments = self.template_arguments(install_scope=True)
-            angle_space = not self._trailing_empty_pack
-            if pending is not None:
-                parts[-1] = builder.name(self._reread_conversion(pending))
-            parts[-1] = builder.template(parts[-1], arguments, angle_space)
-            combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
-            # Only an *interior* <template-prefix> <template-args> is a separate
-            # candidate. When the closing `E` follows, this specialisation is the whole
-            # nested-name, and the enclosing <type> production records it -- recording
-            # here too would enter it twice and shift every later index by one.
-            if reader.peek() != "E":
-                self.subs.remember(combined, "prefix")
-            return True, module
+            if char == "D" and reader.ahead(1) in ("t", "T"):
+                parts.append(self.decltype_())
+                return False, module
 
-        if char == "M":
-            # <closure-prefix> terminator; carries no spelling of its own.
-            reader.take()
-            return False, module
+            if char == "M":
+                # <closure-prefix> terminator; carries no spelling of its own.
+                reader.take()
+                return False, module
 
-        if char == "Q":
-            # A C++20 requires-clause, `Q <constraint-expression>`. It constrains the
-            # template but is not part of its name, and neither reference demangler
-            # prints it -- so it is parsed for its side effects on the substitution
-            # table and otherwise discarded. Newer than the grammar snapshot in
-            # docs/specs/.
-            reader.take()
-            outer_constraint = self._in_constraint
-            self._in_constraint = True
-            try:
-                self.expression()
-            finally:
-                self._in_constraint = outer_constraint
-            return False, module
+            if char == "Q":
+                # A C++20 requires-clause, `Q <constraint-expression>`. It constrains the
+                # template but is not part of its name, and neither reference demangler
+                # prints it -- so it is parsed for its side effects on the substitution
+                # table and otherwise discarded. Newer than the grammar snapshot in
+                # docs/specs/.
+                reader.take()
+                outer_constraint = self._in_constraint
+                self._in_constraint = True
+                try:
+                    self.expression()
+                finally:
+                    self._in_constraint = outer_constraint
+                return False, module
 
         component = self.unqualified_name(scope=parts, module=module)
         parts.append(component)
@@ -1131,7 +1162,7 @@ class ItaniumParser:
             if self._at_bare_discriminator():
                 reader.pos = reader.length
             return
-        if reader.peek(1) == "_":
+        if reader.ahead(1) == "_":
             saved = reader.pos
             reader.pos += 2
             try:
@@ -1140,7 +1171,7 @@ class ItaniumParser:
             except ParseError:
                 reader.pos = saved
             return
-        if reader.peek(1) in DIGITS:
+        if reader.ahead(1) in DIGITS:
             reader.take()
             reader.number(allow_negative=False)
 
@@ -1159,24 +1190,36 @@ class ItaniumParser:
         """
         reader = self.reader
         builder = self.builder
-        if reader.peek() == "W":
+        char = reader.peek()
+        if char == "W":
             module = self.module_name(module)
+            char = reader.peek()
         # `F` marks a friend declared inside the class it is a friend of. The scope is
         # already in `parts`, which `qualified` joins with `::`, so the marker is the
         # word that follows the last `::`.
-        friend = "friend " if scope and reader.eat("F") else ""
-        char = reader.peek()
+        friend = ""
+        if char == "F" and scope:
+            # Licensed by `peek`: the character it just returned is the one consumed
+            # here, with nothing in between.
+            reader.pos += 1
+            friend = "friend "
+            char = reader.peek()
 
         if char in DIGITS:
-            return builder.name(friend + self._in_module(self.plain_source_name(), module) + self.abi_tags())
+            name = self.plain_source_name()
+            # `_in_module` is a call for a question that is almost always no, on the
+            # production every component of every qualified name goes through.
+            if module:
+                name = f"{name}@{module}"
+            return builder.name(friend + name + self.abi_tags()) if friend else builder.name(name + self.abi_tags())
 
         if char == "L":
             # An internal-linkage name. The marker carries no spelling, but it recurses,
             # so a run of them has to be bounded like any other recursive production.
             reader.take()
             depth = self._depth = self._depth + 1
-            if depth > self.limits.max_depth:
-                raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+            if depth > self._max_depth:
+                raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
             try:
                 inner = self.unqualified_name(scope, module)
             finally:
@@ -1187,7 +1230,7 @@ class ItaniumParser:
             return self.constructor_name(scope, module)
 
         if char == "D":
-            following = reader.peek(1)
+            following = reader.ahead(1)
             if following in DESTRUCTOR_KINDS:
                 reader.pos += 2
                 self._ctor_dtor = True
@@ -1269,10 +1312,9 @@ class ItaniumParser:
         module `MOD` is `Foo@MOD[abi:ABI]`, not `Foo[abi:ABI]@MOD`.
         """
         reader = self.reader
-        length = int(reader.digits())
+        length, text = reader.length_prefixed()
         if length <= 0:
             raise ParseError(self._mangled, reader.pos, "source name of non-positive length")
-        text = reader.take_exactly(length)
         if text.startswith("_GLOBAL__N"):
             # The compiler's spelling for an anonymous namespace.
             return "(anonymous namespace)"
@@ -1696,19 +1738,25 @@ class ItaniumParser:
         back-reference in the name.
         """
         reader = self.reader
-        found = []
-        for letter in ("r", "V", "K"):
-            if reader.eat(letter):
-                found.append(QUALIFIER_LETTERS[letter])
-        if not found:
+        # The common answer, and why it is asked for before anything is consumed: most
+        # types carry no qualifiers, and finding that out through `eat` three times
+        # costs three frames where one lookahead settles it.
+        if reader.peek() not in QUALIFIER_LETTERS:
             return ()
-        return tuple(qualifier for qualifier in QUALIFIER_ORDER if qualifier in found)
+        mask = 0
+        if reader.eat("r"):
+            mask = 1
+        if reader.eat("V"):
+            mask |= 2
+        if reader.eat("K"):
+            mask |= 4
+        return CV_COMBINATIONS[mask]
 
     def type_(self):
         self._productions += 1
         depth = self._depth = self._depth + 1
-        if depth > self.limits.max_depth:
-            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+        if depth > self._max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
         subs = self.subs
         start = self.reader.pos
         uses, entries = self._parameter_uses, len(subs)
@@ -1719,16 +1767,19 @@ class ItaniumParser:
             # earlier one -- `M S_ S_` doubles -- so a few hundred bytes of input can
             # describe gigabytes of output. Measuring the finished string would mean
             # building the very thing the bound exists to prevent; `size()` is O(1).
-            if self.builder.size(result) > self.limits.max_output:
-                raise LimitExceeded(self._mangled, "output length", self.limits.max_output)
+            if self._size(result) > self._max_output:
+                raise LimitExceeded(self._mangled, "output length", self._max_output)
             # A template parameter was resolved while this production ran, so what it
             # spells depends on the scope -- and the entry it just contributed must be
             # re-read under the scope a later back-reference is written in, not frozen to
             # this one. `_type` records the whole production last, after anything nested
             # in it, so the entry to replace is the final one. See `DeferredProduction`.
+            # Ordered by how often each is false. Nearly every type in a symbol table
+            # resolves no template parameter at all, and that test is one attribute load
+            # and a comparison, where the others reach into the table.
             if (
-                subs.recording
-                and self._parameter_uses != uses
+                self._parameter_uses != uses
+                and subs.recording
                 and len(subs) > entries
                 and type(subs.last) is not ParameterReference
             ):
@@ -1784,6 +1835,42 @@ class ItaniumParser:
             reader.pos += 1
             return builder.builtin(builtin)
 
+        # A third of every type read is a nested name, and one in six is a
+        # substitution: the chain below is ordered by how often each arm is taken
+        # over the Itanium symbols of a stock Ubuntu 24.04, because a `<type>` that
+        # had to fall through fifteen character comparisons to reach the arm that
+        # takes a third of them paid for all fifteen.
+        if char in _CLASS_ENUM_START:
+            return subs.remember(self.class_enum_type(), "type")
+
+        if char == "S":
+            if reader.ahead(1) == "t":
+                # `St <unqualified-name>` is an <unscoped-name>, not a bare
+                # abbreviation: the name that follows belongs to it.
+                return subs.remember(self.class_enum_type(), "type")
+            component = self.substitution()
+            named = self._module_of(component)
+            if named is not None:
+                # `S1_ 1A` is `A@FOO.BAR`: the entry is the module, and the name that
+                # follows is the type. The pair is a <type> and so a candidate of its
+                # own -- the module entry alone is not one a later `S<n>_` can mean.
+                component = subs.remember(self.unqualified_name(module=named), "type")
+            if reader.peek() == "I":
+                arguments = self.template_arguments()
+                return subs.remember(builder.template(component, arguments, not self._trailing_empty_pack), "type")
+            return component
+
+        if char == "R":
+            reader.pos += 1
+            return subs.remember(builder.reference(self.type_()), "type")
+        if char == "P":
+            reader.pos += 1
+            inner = self.type_()
+            if id(inner) in self._objc_id_ids:
+                # `objc_object` conforming to a protocol, pointed to, is `id<A>` -- the
+                # pointer is part of what `id` means, so it is not written again.
+                return subs.remember(inner, "type")
+            return subs.remember(builder.pointer(inner), "type")
         if char in QUALIFIER_LETTERS:
             if self._at_function_type():
                 # 5.1.5.3: <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx]
@@ -1797,52 +1884,18 @@ class ItaniumParser:
             inner = self.type_()
             return subs.remember(builder.qualify(inner, qualifiers), "type")
 
-        if char == "P":
-            reader.pos += 1
-            inner = self.type_()
-            if id(inner) in self._objc_id_ids:
-                # `objc_object` conforming to a protocol, pointed to, is `id<A>` -- the
-                # pointer is part of what `id` means, so it is not written again.
-                return subs.remember(inner, "type")
-            return subs.remember(builder.pointer(inner), "type")
-        if char == "R":
-            reader.pos += 1
-            return subs.remember(builder.reference(self.type_()), "type")
-        if char == "O":
-            reader.pos += 1
-            return subs.remember(builder.rvalue_reference(self.type_()), "type")
-        if char == "C" or char == "G":
-            # C99's `_Complex` and `_Imaginary`. Both references qualify the type from
-            # the right, which is what makes `PCd` a pointer to a complex double rather
-            # than a complex pointer; they differ only in the word, and the style says
-            # which. Spelling it `std::complex<double>` named a different type -- a C++
-            # class template -- and lost the declarator besides.
-            reader.pos += 1
-            qualifier = _COMPLEX_WORDS[self.options.gnu_complex_spelling][char]
-            return subs.remember(builder.qualify(self.type_(), (qualifier,)), "type")
-
-        if char == "U":
-            # <type> ::= U <source-name> [<template-args>] <type>  -- vendor qualifier
-            return subs.remember(self.qualified_type(), "type")
-
-        if char == "F":
-            return self.function_type_production()
-        if char == "A":
-            return subs.remember(self.array_type(), "type")
-        if char == "M":
-            return subs.remember(self.member_pointer_type(), "type")
-
-        if char == "T" and reader.peek(1) in _ELABORATED_KEYWORDS and reader.peek(2) not in _INDEX_START:
-            # <class-enum-type> ::= Ts <name> | Tu <name> | Te <name>
-            #
-            # A dependent type the writer had to spell out: `struct T::c`. `Ts` is told
-            # from the `Ts <index> _` pack marker by what follows -- an index is digits
-            # or `_`, and a name is neither.
-            keyword = _ELABORATED_KEYWORDS[reader.peek(1)]
-            reader.pos += 2
-            return subs.remember(builder.raw(f"{keyword} {builder.spell(self.class_enum_type())}"), "type")
-
         if char == "T":
+            following = reader.ahead(1)
+            if following in _ELABORATED_KEYWORDS and reader.ahead(2) not in _INDEX_START:
+                # <class-enum-type> ::= Ts <name> | Tu <name> | Te <name>
+                #
+                # A dependent type the writer had to spell out: `struct T::c`. `Ts` is told
+                # from the `Ts <index> _` pack marker by what follows -- an index is digits
+                # or `_`, and a name is neither.
+                keyword = _ELABORATED_KEYWORDS[following]
+                reader.pos += 2
+                return subs.remember(builder.raw(f"{keyword} {builder.spell(self.class_enum_type())}"), "type")
+
             component, reference = self.template_param_binding()
             recorded = reference if reference is not None else component
             if reader.peek() == "I" and self._try_template_args:
@@ -1868,22 +1921,24 @@ class ItaniumParser:
             subs.remember(recorded, "type")
             return component
 
-        if char == "S":
-            if reader.peek(1) == "t":
-                # `St <unqualified-name>` is an <unscoped-name>, not a bare
-                # abbreviation: the name that follows belongs to it.
-                return subs.remember(self.class_enum_type(), "type")
-            component = self.substitution()
-            named = self._module_of(component)
-            if named is not None:
-                # `S1_ 1A` is `A@FOO.BAR`: the entry is the module, and the name that
-                # follows is the type. The pair is a <type> and so a candidate of its
-                # own -- the module entry alone is not one a later `S<n>_` can mean.
-                component = subs.remember(self.unqualified_name(module=named), "type")
-            if reader.peek() == "I":
-                arguments = self.template_arguments()
-                return subs.remember(builder.template(component, arguments, not self._trailing_empty_pack), "type")
-            return component
+        if char == "O":
+            reader.pos += 1
+            return subs.remember(builder.rvalue_reference(self.type_()), "type")
+        if char == "D":
+            extended = self.extended_type()
+            if extended is not None:
+                return extended
+
+        if char == "F":
+            return self.function_type_production()
+        if char == "A":
+            return subs.remember(self.array_type(), "type")
+        if char == "M":
+            return subs.remember(self.member_pointer_type(), "type")
+
+        if char == "U":
+            # <type> ::= U <source-name> [<template-args>] <type>  -- vendor qualifier
+            return subs.remember(self.qualified_type(), "type")
 
         if char == "u":
             # <builtin-type> ::= u <source-name> [<template-args>]
@@ -1903,13 +1958,15 @@ class ItaniumParser:
                 spelled = f"{spelled}({rendered})" if spelled.startswith("__") else spelled + self._angled(rendered)
             return subs.remember(builder.raw(spelled), "type")
 
-        if char == "D":
-            extended = self.extended_type()
-            if extended is not None:
-                return extended
-
-        if char in DIGITS or char in ("N", "Z", "L"):
-            return subs.remember(self.class_enum_type(), "type")
+        if char == "C" or char == "G":
+            # C99's `_Complex` and `_Imaginary`. Both references qualify the type from
+            # the right, which is what makes `PCd` a pointer to a complex double rather
+            # than a complex pointer; they differ only in the word, and the style says
+            # which. Spelling it `std::complex<double>` named a different type -- a C++
+            # class template -- and lost the declarator besides.
+            reader.pos += 1
+            qualifier = _COMPLEX_WORDS[self.options.gnu_complex_spelling][char]
+            return subs.remember(builder.qualify(self.type_(), (qualifier,)), "type")
 
         raise ParseError(self._mangled, reader.pos, f"unknown type code {char!r}")
 
@@ -2035,7 +2092,7 @@ class ItaniumParser:
         if pair in ("Do", "DO", "Dw", "Dx"):
             return self.function_type_production()
 
-        if pair in ("DA", "DR") or (pair == "DS" and reader.peek(2) == "D" and reader.peek(3) in "AR"):
+        if pair in ("DA", "DR") or (pair == "DS" and reader.ahead(2) == "D" and reader.ahead(3) in "AR"):
             return builder.builtin(self.fixed_point_type())
 
         return None
@@ -2092,7 +2149,7 @@ class ItaniumParser:
         reader = self.reader
         at = reader.pos
         for letter in ("r", "V", "K"):
-            if reader.peek(at - reader.pos) == letter:
+            if reader.ahead(at - reader.pos) == letter:
                 at += 1
         if reader.text[at : at + 2] in ("Do", "DO", "Dw", "Dx"):
             return True
@@ -2213,11 +2270,11 @@ class ItaniumParser:
         while not reader.eat("E"):
             if reader.eof:
                 raise ParseError(self._mangled, reader.pos, "unterminated function type")
-            if reader.peek() == "R" and reader.peek(1) == "E":
+            if reader.peek() == "R" and reader.ahead(1) == "E":
                 reader.take()
                 suffix = " &"
                 continue
-            if reader.peek() == "O" and reader.peek(1) == "E":
+            if reader.peek() == "O" and reader.ahead(1) == "E":
                 reader.take()
                 suffix = " &&"
                 continue
@@ -2263,8 +2320,8 @@ class ItaniumParser:
     def template_param_decl(self, ellipsis="", params=None):
         """Guarded wrapper: `Tp` and `Tt` both recurse into this production."""
         depth = self._depth = self._depth + 1
-        if depth > self.limits.max_depth:
-            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+        if depth > self._max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
         try:
             return self._template_param_decl(ellipsis, params)
         finally:
@@ -2418,8 +2475,8 @@ class ItaniumParser:
                 if not char:
                     raise ParseError(self._mangled, reader.pos, "unterminated template argument list")
                 depth = self._depth = self._depth + 1
-                if depth > self.limits.max_depth:
-                    raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+                if depth > self._max_depth:
+                    raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
                 try:
                     argument, is_empty_pack = self.template_arg()
                 finally:
@@ -2879,8 +2936,8 @@ class ItaniumParser:
         decide whether this operand needs brackets.
         """
         depth = self._depth = self._depth + 1
-        if depth > self.limits.max_depth:
-            raise LimitExceeded(self._mangled, "recursion depth", self.limits.max_depth)
+        if depth > self._max_depth:
+            raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
         try:
             self._precedence = PRIMARY_PRECEDENCE
             return self._expression()
@@ -3131,7 +3188,7 @@ class ItaniumParser:
             reader.eat("_")
             self._precedence = SIMPLE_PRECEDENCE
             return builder.raw(self._spell_parameter(index))
-        if pair == "fL" and reader.peek(2) in DIGITS:
+        if pair == "fL" and reader.ahead(2) in DIGITS:
             # `fL <number> p ...` is a parameter of an enclosing function; `fL` followed
             # by an operator code is a left fold with an initialiser, read below.
             reader.pos += 2

@@ -60,6 +60,18 @@ QUALIFIER_LETTERS = {"r": "restrict", "V": "volatile", "K": "const"}
 #: the parser collects them as a set and emits them through this ordering.
 QUALIFIER_ORDER = ("const", "volatile", "restrict")
 
+#: Every answer `cv_qualifiers` can give, by which of `r`, `V` and `K` were present.
+#: There are eight of them and the production is read once per type: building the tuple
+#: each time meant a generator resumed four times to reorder at most three words.
+CV_COMBINATIONS = {
+    mask: tuple(
+        qualifier
+        for qualifier in QUALIFIER_ORDER
+        if qualifier in {letter for bit, letter in ((1, "restrict"), (2, "volatile"), (4, "const")) if mask & bit}
+    )
+    for mask in range(8)
+}
+
 # -- 5.1.3 Operator encodings -------------------------------------------------
 
 #: code -> (spelling after the word "operator", needs a separating space).
