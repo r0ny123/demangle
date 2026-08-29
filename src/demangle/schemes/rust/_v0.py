@@ -393,6 +393,14 @@ _CONST_DATA_ONLY = ("b", "c", "e")
 #: `<basic-type>` tags. A module-level dict rather than an `lru_cache`d function that
 #: rebuilt this literal on every miss: the lookup is one of the hottest in the scheme,
 #: reached once per type on both the skip pass and the print pass.
+#: What opens a `<path>`, and so what a `<type>` that is one begins with. A type is a
+#: path more often than it is anything else -- 58% of the types in the Rust corpus, `I`
+#: and `N` between them -- and both the printer and the skipper reach that case by
+#: falling off the end of their tag chains, so one membership test up front is the
+#: difference between one comparison and ten. `B` is deliberately absent: in a type
+#: position it is a backref to a *type*, which each of them handles itself.
+_PATH_TAGS = frozenset("CNMXYI")
+
 _BASIC_TYPES = {
     "b": "bool",
     "c": "char",
@@ -602,25 +610,32 @@ class Parser:
         finally:
             self.depth = depth
 
+        # Ordered by how often each arm is taken over the Rust corpus: a nested path
+        # is 54% of them and a crate root another 17%, and both used to be found by
+        # walking a chain written in the grammar's order.
+
     def _skip_path_inner(self):
         at = self.next_val
         if at >= self.end:
             raise UnableTov0Demangle(self.inn)
         val = self.inn[at]
         self.next_val = at + 1
-        if val == "C":
-            self.opt_integer_62("s")
-            self.ident()
-        elif val == "N":
+        if val == "N":
             self.namespace()
             self.skip_path()
             self.opt_integer_62("s")
             self.ident()
 
-        elif val == "M":
+        elif val == "C":
             self.opt_integer_62("s")
+            self.ident()
+        elif val == "B":
+            self.backref()
+
+        elif val == "I":
             self.skip_path()
-            self.skip_type()
+            while not self.eat("E"):
+                self.skip_generic_arg()
 
         elif val == "X":
             self.opt_integer_62("s")
@@ -628,17 +643,14 @@ class Parser:
             self.skip_type()
             self.skip_path()
 
+        elif val == "M":
+            self.opt_integer_62("s")
+            self.skip_path()
+            self.skip_type()
+
         elif val == "Y":
             self.skip_type()
             self.skip_path()
-
-        elif val == "I":
-            self.skip_path()
-            while not self.eat("E"):
-                self.skip_generic_arg()
-
-        elif val == "B":
-            self.backref()
 
         else:
             raise UnableTov0Demangle(self.inn)
@@ -672,6 +684,9 @@ class Parser:
         self.next_val = at + 1
         if n in _BASIC_TYPES:
             pass
+        elif n in _PATH_TAGS:
+            self.next_val = at
+            self.skip_path()
         elif n == "R" or n == "Q":
             # The lifetime is optional; the referent is not. Skipping the lifetime
             # without then skipping the referent leaves it to be read as whatever comes
@@ -1096,14 +1111,6 @@ class Printer:
                 raise UnableTov0Demangle(p.inn)
             tag = p.inn[at]
             p.next_val = at + 1
-            if tag == "C":
-                p.opt_integer_62("s")
-                name = p.ident()
-                name.display()
-                with self.node(nodes.RustName) as built:
-                    self.emit(name.disp)
-                return built[0]
-
             if tag == "N":
                 ns = p.namespace()
                 with self.node(nodes.Path) as built:
@@ -1134,6 +1141,27 @@ class Printer:
                             self.emit(name.disp)
                 return built[0]
 
+            if tag == "C":
+                p.opt_integer_62("s")
+                name = p.ident()
+                name.display()
+                with self.node(nodes.RustName) as built:
+                    self.emit(name.disp)
+                return built[0]
+
+            if tag == "B":
+                return self.backref_printer().print_path(in_value)
+            if tag == "I":
+                collected = []
+                with self.node(lambda parts: nodes.Generics(parts, *_generic_fields(collected))) as built:
+                    collected.append(self.print_path(in_value))
+                    if in_value:
+                        self.emit("::")
+                    self.emit("<")
+                    self.print_sep_list("print_generic_arg", ", ", collected)
+                    self.emit(">")
+                return built[0]
+
             if tag in ("M", "X", "Y"):
                 if tag != "Y":
                     p.opt_integer_62("s")
@@ -1151,20 +1179,6 @@ class Printer:
                         seen.append(self.print_path(False))
                     self.emit(">")
                 return built[0]
-
-            if tag == "I":
-                collected = []
-                with self.node(lambda parts: nodes.Generics(parts, *_generic_fields(collected))) as built:
-                    collected.append(self.print_path(in_value))
-                    if in_value:
-                        self.emit("::")
-                    self.emit("<")
-                    self.print_sep_list("print_generic_arg", ", ", collected)
-                    self.emit(">")
-                return built[0]
-
-            if tag == "B":
-                return self.backref_printer().print_path(in_value)
 
             self.invalid()
         finally:
@@ -1219,6 +1233,11 @@ class Printer:
                 with self.node(lambda parts: nodes.Type(parts, "basic")) as built:
                     self.emit(ty)
                 return built[0]
+
+            if tag in _PATH_TAGS:
+                # The tag belongs to the path, which reads it again.
+                p.next_val = at
+                return self.print_path(False)
 
             if tag == "R" or tag == "Q":
                 with self.node(lambda parts: nodes.Type(parts, "reference")) as built:
