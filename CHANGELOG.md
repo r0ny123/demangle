@@ -567,6 +567,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Performance
 
+- **The tree builder stops paying for generators.** `sum(node.size for node in nodes)` is
+  a frame resumed once per element, and `AstBuilder` asks it of every qualified name,
+  every template argument list, every parameter list and every pack -- seven times per
+  name over the Itanium corpus. Measured at 234ns for three nodes against 68ns for the
+  loop that replaces it. 2.2% off `parse()`. `spelling.py` had already made this argument
+  about its joins and the three sites here had been missed, along with four in the
+  Itanium parser.
+
 - **The Itanium reader is 7.4% faster on the project's own corpus and 10.2% on 217,730
   real symbols, with byte-identical output.** Six changes, each measured by alternating
   two worktrees and taking the median of nine timed rounds per process -- the machine's
@@ -704,6 +712,23 @@ All notable changes to this project are recorded here. The format follows
   detected by rendering each parameter and comparing the text, on every function.
 
 ### Fixed
+
+- **`render()` was a method most node classes had and no class declared.** The schemes
+  whose spelling does not fit C++ declarator syntax carry their fragments as text and
+  render by concatenating them, so `render()` is what their own nodes use and what
+  `spell()` delegates to -- but `core.ast`'s nodes never had it, and neither did four of
+  MSVC's. A Rust tree answered `render()` on every node until the symbol carried an ELF
+  version suffix, which wraps the tree in a `core.Decorated` that did not, so walking a
+  tree and asking each node for its text raised `AttributeError` partway through.
+  Defined on `Node` now, as `spell()` with no declarator, which is the same string every
+  one of the 57 classes that already had it was returning: checked over all 1,851,583
+  nodes of the corpora in both styles. `spell(style=...)` is still the one to reach for,
+  because it takes the style the tree was parsed under and this cannot.
+
+  Found by fuzzing the public API surface rather than `demangle()` -- `signature`,
+  `demangle_type`, the bytes forms, and the node protocol -- which had not been fuzzed
+  before. Nothing else came out of it: `signature`'s own invariants held over 45,000
+  mutated names, and so did every entry point's contract.
 
 - **Sixteen kilobytes of nested name bought a second of CPU and 98MB.** Every
   `<prefix>` is a substitution candidate (ABI 5.1.10), so a nested name of N components

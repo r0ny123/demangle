@@ -956,8 +956,9 @@ class ItaniumParser:
         self._ctor_dtor = False
         try:
             max_depth = self._max_depth
+            peek = reader.peek
             while True:
-                char = reader.peek()
+                char = peek()
                 if char == "E":
                     # Licensed by `peek`, as above.
                     reader.pos += 1
@@ -1238,7 +1239,8 @@ class ItaniumParser:
             # production every component of every qualified name goes through.
             if module:
                 name = f"{name}@{module}"
-            return builder.name(friend + name + self.abi_tags()) if friend else builder.name(name + self.abi_tags())
+            tags = self.abi_tags() if reader.peek() == "B" else ""
+            return builder.name(friend + name + tags) if friend else builder.name(name + tags)
 
         if char == "L":
             # An internal-linkage name. The marker carries no spelling, but it recurses,
@@ -1330,7 +1332,8 @@ class ItaniumParser:
 
     def source_name(self):
         """<source-name> ::= <positive length number> <identifier>"""
-        return self.plain_source_name() + self.abi_tags()
+        text = self.plain_source_name()
+        return text + self.abi_tags() if self.reader.peek() == "B" else text
 
     def plain_source_name(self):
         """A <source-name> without the ABI tags that may follow it.
@@ -1405,11 +1408,15 @@ class ItaniumParser:
         ```
         <abi-tags> ::= <abi-tag>*     <abi-tag> ::= B <source-name>
         ```
+
+        Callers on a hot path ask `reader.peek() == "B"` before calling: the answer is no
+        for all but a handful of names in a symbol table, and asking it here costs a whole
+        interpreter frame to return the empty string -- five times per name over the
+        Itanium corpus, which was 9% of every `peek` the parser makes. The test is
+        repeated below so that a caller who does not ask is still right.
         """
         reader = self.reader
         if reader.peek() != "B":
-            # The overwhelmingly common answer, reached once per <source-name>: no list
-            # and no join for a name that carries no tags.
             return ""
         tags = []
         while reader.peek() == "B":
@@ -2206,7 +2213,7 @@ class ItaniumParser:
             qualifier = self.source_name()
             if reader.peek() == "I":
                 arguments = self.template_arguments()
-                qualifier += self._angled(", ".join(builder.spell(argument) for argument in arguments))
+                qualifier += self._angled(", ".join([builder.spell(argument) for argument in arguments]))
             inner = self.qualified_type()
             if qualifier.startswith(_OBJC_PROTOCOL):
                 # `U <n>objcproto<protocol> <type>` is an Objective-C type conforming to
@@ -2319,7 +2326,7 @@ class ItaniumParser:
 
         if parameters and _is_all_void(builder, parameters):
             parameters = []
-        written = "".join(f" {qualifier}" for qualifier in cv_qualifiers)
+        written = "".join([f" {qualifier}" for qualifier in cv_qualifiers])
         return builder.function(returns, parameters, written + suffix + exception_spec)
 
     def array_type(self):
@@ -2859,7 +2866,7 @@ class ItaniumParser:
     def spelled_template_arguments(self):
         """A template argument list rendered as text, for use inside a name."""
         arguments = self.template_arguments()
-        return self._angled(", ".join(self.builder.spell(argument) for argument in arguments))
+        return self._angled(", ".join([self.builder.spell(argument) for argument in arguments]))
 
     def _angled(self, rendered):
         """Close a hand-built argument list the way the style closes one.
@@ -2924,7 +2931,7 @@ class ItaniumParser:
             text = self.source_name()
             if reader.peek() == "I":
                 arguments = self.template_arguments()
-                rendered = ", ".join(builder.spell(argument) for argument in arguments)
+                rendered = ", ".join([builder.spell(argument) for argument in arguments])
                 return text + self._angled(rendered)
             return text
         # `on <operator-name>` and `dn <destructor-name>`: a callee named by the operator

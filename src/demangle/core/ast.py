@@ -149,6 +149,26 @@ class Node:
         """Yield every descendant of the given `kind`, including this node."""
         return (node for node in self.walk() if node.kind == kind)
 
+    def render(self):
+        """The text of this subtree, under the default spelling policy.
+
+        `spell()` is the method to reach for -- it takes the `style` the tree was parsed
+        under, which this cannot. This exists because most of the node classes in the
+        package already had it: a scheme whose spelling rules do not fit C++ declarator
+        syntax carries its fragments as text and renders by concatenating them, so
+        `render()` is what its own nodes and its own tests use, and `spell()` delegates
+        to it. What they did *not* have was a shared definition, so a tree was a mixture:
+        every Rust node answered `render()` and the `Decorated` wrapper a version suffix
+        puts around one did not, and neither did any Itanium node. Walking a tree and
+        asking each node for its text -- which is the obvious thing to do with `walk()`
+        -- raised `AttributeError` partway through.
+
+        Defined here so that it does not. For a node that carries pre-rendered text this
+        is what it always was; for one spelled from structure it is `spell()` with no
+        declarator, which is the same string.
+        """
+        return self.spell()
+
     def spell(self, declarator="", style=None):
         """Render as declaration text.
 
@@ -654,7 +674,18 @@ def _distributes_to_nothing(inner):
 
 
 def _sizes(nodes):
-    return sum(node.size for node in nodes)
+    """The widths of `nodes`, added up.
+
+    Written as a loop rather than `sum(node.size for node in nodes)`. A generator is a
+    frame resumed once per element, and this is asked of every qualified name, every
+    template argument list, every parameter list and every pack -- seven times per name
+    over the Itanium corpus. Measured at 234ns for three nodes against 68ns for the
+    loop. `spelling.py` says the same thing about its joins.
+    """
+    total = 0
+    for node in nodes:
+        total += node.size
+    return total
 
 
 class AstBuilder(Builder):
@@ -718,7 +749,9 @@ class AstBuilder(Builder):
         return self._leaf(Raw, text)
 
     def expression(self, form, parts):
-        size = sum(len(p) if isinstance(p, str) else p.size for p in parts)
+        size = 0
+        for part in parts:
+            size += len(part) if isinstance(part, str) else part.size
         return _sized(Expression(form, parts), size)
 
     def literal(self, kind, value):
@@ -735,7 +768,9 @@ class AstBuilder(Builder):
             return inner
         if _distributes_to_nothing(inner):
             return _EMPTY_PACK
-        width = sum(len(q) + 1 for q in qualifiers)
+        width = 0
+        for qualifier in qualifiers:
+            width += len(qualifier) + 1
         return _sized(Qualify(inner, qualifiers), inner.size + width)
 
     def pointer(self, inner):

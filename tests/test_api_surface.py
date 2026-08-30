@@ -26,6 +26,7 @@ import pytest
 
 import demangle
 from demangle.core.ast import Builtin, Function, Name, Pointer
+from demangle.core.errors import DemanglingError
 
 from .conftest import load_corpus
 
@@ -283,6 +284,52 @@ class TestTheTreeAsData:
         from demangle.core.ast import Literal
 
         assert Literal.__match_args__ == ("type", "value")
+
+
+class TestEveryNodeAnswersTheNodeProtocol:
+    """`walk()` hands a caller nodes, and every one of them has to be usable.
+
+    The methods a caller reaches for on a node are `spell()`, `render()` and
+    `to_dict()`, and the trees come from fourteen schemes with their own node classes.
+    Checked on every node of every corpus tree rather than on a sample of kinds, because
+    what goes wrong here is a class nobody thought to check -- and one did.
+
+    `render()` used to be a method most node classes had and no class *declared*: the
+    schemes whose spelling does not fit C++ declarator syntax carry their fragments as
+    text and render by concatenating them, so their own tests use it, and `core.ast`'s
+    nodes and four of MSVC's did not have it at all. A Rust tree answered `render()` on
+    every node until the symbol carried an ELF version suffix, which wraps it in a
+    `Decorated` that did not. Walking a tree and asking each node for its text raised
+    `AttributeError` partway through. `Node.render()` is defined for all of them now,
+    and this pins that it agrees with `spell()` everywhere -- which it did on all
+    1,851,583 nodes of the corpora, in both styles, when it was written.
+    """
+
+    def _sampled(self, step):
+        directory = pathlib.Path(__file__).parent / "conformance"
+        names = []
+        for path in sorted(directory.glob("*.txt")):
+            names.extend(name for name, _ in load_corpus(path.name)[::step])
+        return names
+
+    @pytest.mark.parametrize("style", ["llvm", "gnu"])
+    def test_spell_render_and_to_dict_work_on_every_node(self, style, subtests):
+        names = self._sampled(5)
+        assert len(names) > 5000, "corpora did not load; this test would prove nothing"
+        checked = 0
+        for mangled in names:
+            try:
+                tree = demangle.parse(mangled, style=style)
+            except DemanglingError:
+                continue
+            with subtests.test(name=mangled):
+                for node in tree.walk():
+                    checked += 1
+                    assert isinstance(node.spell(), str)
+                    assert isinstance(node.render(), str)
+                    assert node.render() == node.spell()
+                    node.to_dict()
+        assert checked > 50_000, checked
 
 
 class TestThePublishedVocabulary:

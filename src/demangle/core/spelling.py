@@ -196,12 +196,12 @@ class SpellingBuilder(Builder):
         return Spelling(value)
 
     def expression(self, form, parts):
-        return Spelling("".join(part if isinstance(part, str) else self.spell(part) for part in parts))
+        return Spelling("".join([part if isinstance(part, str) else self.spell(part) for part in parts]))
 
     # -- composition -----------------------------------------------------------
 
-    # List comprehensions rather than generator expressions in the joins below. A
-    # generator is a frame that is resumed once per element -- 79,000 resumes over the
+    # List comprehensions rather than generator expressions in the joins here and above.
+    # A generator is a frame that is resumed once per element -- 79,000 resumes over the
     # Itanium corpus for 23,000 `qualified` calls -- where a comprehension is one frame
     # for the whole list, and `join` has to build a sequence either way.
 
