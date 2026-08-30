@@ -913,19 +913,33 @@ class _Parser:
         return CALLING_CONVENTIONS[convention], attributes, parameters, spelled
 
     def parameter(self):
+        """`[M] [Nk] [I[K] | J | K | L] <Type>` -- a fixed sequence, not a set.
+
+        `dlang_function_args` reads each of these once and in this order, and then reads
+        the type. Written as a loop here, it accepted any order and any number of them:
+        `FMMfZv` came back as `(scope scope float)` and `FIJfZv` as `(in out float)`,
+        neither of which is a parameter anything can declare, and `FNkMfZv` reordered
+        `return scope` out of the order the encoding puts it in. The reference hands all
+        three back.
+
+        `I` is the one that takes a second: `in ref`, written `IK`. Nothing else does.
+        """
         reader = self.reader
         storage = []
-        while True:
-            if reader.starts_with("Nk"):
-                reader.pos += 2
-                storage.append("return")
-            elif reader.peek() in PARAMETER_STORAGE and reader.peek() != "M":
-                storage.append(PARAMETER_STORAGE[reader.take()])
-            elif reader.peek() == "M" and reader.peek(1) not in ("", "Z"):
+        if reader.peek() == "M":
+            reader.pos += 1
+            storage.append("scope")
+        if reader.starts_with("Nk"):
+            reader.pos += 2
+            storage.append("return")
+        char = reader.peek()
+        if char in ("I", "J", "K", "L"):
+            reader.pos += 1
+            storage.append(PARAMETER_STORAGE[char])
+            if char == "I" and reader.peek() == "K":
+                # `in ref`, the only pair the reference spells.
                 reader.pos += 1
-                storage.append("scope")
-            else:
-                break
+                storage.append(PARAMETER_STORAGE["K"])
         rendered = self.type_()
         return " ".join([*storage, rendered]) if storage else rendered
 
@@ -1154,9 +1168,18 @@ class _Parser:
         if reader.eat("Z"):
             return ""
         modifiers = []
-        if reader.eat("M"):
+        has_this = reader.eat("M")
+        if has_this:
             modifiers = self.type_modifiers()
         char = reader.peek()
+        if has_this and char not in CALLING_CONVENTIONS:
+            # `M` is the `this` parameter of a member function, so a function type has
+            # to follow it. `dlang_parse_mangle` sets `is_function` on seeing it and
+            # calls `dlang_function_type`, which fails without a calling convention.
+            # Reading a plain type instead dropped the `M`, the modifiers and the type,
+            # so `_D4test3fooMf` came back as `test.foo` -- a variable, from a symbol
+            # that says it is a member function.
+            raise DemangleFailure("a `this` parameter with no function type after it")
         if char in CALLING_CONVENTIONS:
             _, attributes, parameters, _ = self.function_type()
             self._trailing_had_attributes = bool(attributes)

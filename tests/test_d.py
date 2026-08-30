@@ -133,8 +133,70 @@ class TestSafety:
             parse_d_symbol(value)
 
     @pytest.mark.parametrize(
+        "value",
+        [
+            "_D4testFMMfZv",  # `scope` twice
+            "_D4testFIIfZv",  # `in` twice
+            "_D4testFKKfZv",
+            "_D4testFLLfZv",
+            "_D4testFNkNkfZv",
+            "_D4testFIJfZv",  # two of the four that are mutually exclusive
+            "_D4testFKIfZv",  # and out of order
+            "_D4testFNkMfZv",  # `return` before `scope`
+            "_D4testFIKKfZv",  # `in ref` with a second `ref`
+        ],
+    )
+    def test_a_parameter_reads_its_storage_classes_in_order_and_once_each(self, value):
+        """`[M] [Nk] [I[K] | J | K | L] <Type>` is a sequence, not a set.
+
+        `dlang_function_args` reads each of these once and in this order and then reads
+        the type. Written as a loop here, it took any order and any number: `FMMfZv`
+        came back as `(scope scope float)` and `FIJfZv` as `(in out float)`, neither of
+        which is a parameter anything can declare, and `FNkMfZv` reordered `return
+        scope` out of the order the encoding puts it in. `c++filt --format=dlang`
+        (binutils 2.42) hands every one of these back.
+        """
+        with pytest.raises(DemangleFailure):
+            parse_d_symbol(value)
+
+    @pytest.mark.parametrize(
         ("value", "expected"),
         [
+            ("_D4testFMfZv", "test(scope float)"),
+            ("_D4testFIKfZv", "test(in ref float)"),  # the one pair the reference spells
+            ("_D4testFMKfZv", "test(scope ref float)"),
+            ("_D4testFMNkIfZv", "test(scope return in float)"),
+            ("_D4testFMNkKfZv", "test(scope return ref float)"),
+            ("_D4testFJfZv", "test(out float)"),
+            ("_D4testFLfZv", "test(lazy float)"),
+            ("_D4testFZv", "test()"),
+        ],
+    )
+    def test_the_orders_a_parameter_may_be_written_in(self, value, expected):
+        assert parse_d_symbol(value).text == expected
+
+    @pytest.mark.parametrize(
+        "value",
+        ["_D4test3fooMf", "_D4test3fooMxf", "_D4test3fooMC3bar", "_D4test3C33Mf"],
+    )
+    def test_a_this_parameter_needs_a_function_after_it(self, value):
+        """`M` is a member function's `this`, so a function type has to follow it.
+
+        `dlang_parse_mangle` sets `is_function` on seeing `M` and then calls
+        `dlang_function_type`, which fails without a calling convention. This read a
+        plain type instead and dropped the `M`, the modifiers and the type with it, so
+        `_D4test3fooMf` came back as `test.foo` -- a variable, out of a symbol that says
+        it is a member function. The reference hands all of these back.
+        """
+        with pytest.raises(DemangleFailure):
+            parse_d_symbol(value)
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            # `M` with a function after it, which is the shape it exists for.
+            ("_D4test3fooMFiZv", "test.foo(int)"),
+            ("_D4test3fooMxFiZv", "test.foo(int) const"),
             # The check is on how far the cursor moved, not on what came out: a
             # zero-length component is anonymous and spells nothing, and the reference
             # reads this one.

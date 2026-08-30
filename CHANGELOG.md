@@ -732,6 +732,24 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: a parameter's storage classes are a sequence, not a set.**
+  `[M] [Nk] [I[K] | J | K | L] <Type>`: `dlang_function_args` reads each once, in that
+  order, and then reads the type. Written as a loop here, it took any order and any
+  number of them -- `FMMfZv` came back as `(scope scope float)` and `FIJfZv` as
+  `(in out float)`, neither of which is a parameter anything can declare, and `FNkMfZv`
+  reordered `return scope` out of the order the encoding puts it in. `I` is the only one
+  that takes a second, `in ref`; `IKK` is not a parameter either.
+
+- **D: a `this` parameter with no function type after it.** `M` marks a member
+  function's `this`, so a function type has to follow. `dlang_parse_mangle` sets
+  `is_function` on seeing it and calls `dlang_function_type`, which fails without a
+  calling convention. This read a plain type instead and dropped the `M`, the modifiers
+  and the type with it, so `_D4test3fooMf` came back as `test.foo` -- a variable, out of
+  a symbol that says it is a member function. Together with the entry below, this takes
+  the enumeration differential against `c++filt --format=dlang` from 74,000 divergences
+  over 17 million generated `_D` names to 20, and the entry above takes those 20 to
+  none.
+
 - **D: a class, struct, enum or typedef type with no name after it was accepted.**
   `C <QualifiedName>` and its three siblings, where the name is not optional --
   `dlang_parse_qualified` reads at least one symbol name and fails otherwise. This
