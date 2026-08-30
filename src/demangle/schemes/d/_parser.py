@@ -1039,8 +1039,21 @@ class _Parser:
             # type anyone writes.
             return self._cap(pointee if pointee.endswith(" function") else f"{pointee}*")
         if char in ("C", "S", "E", "T"):
+            # `C <QualifiedName>` and its three siblings, where the name is not optional:
+            # `dlang_parse_qualified` reads at least one symbol name and fails otherwise.
+            # This joined an empty list and returned `""`, so `_D3fooC` -- a variable
+            # whose type is a class with no name -- came back as `foo`, and `_D3fooFCZv`
+            # as `foo()` with the parameter gone. The reference hands both back.
+            #
+            # Measured on how far the cursor moved rather than on what came out: a
+            # zero-length component is anonymous and spells nothing, and `_D3fooC0` is a
+            # name the reference does read.
             reader.pos += 1
-            return self._cap(".".join(self.qualified_name()))
+            before = reader.pos
+            spelled = ".".join(self.qualified_name())
+            if reader.pos == before:
+                raise DemangleFailure(f"a {char!r} type with no qualified name")
+            return self._cap(spelled)
         if char == "D":
             reader.pos += 1
             modifiers = self.type_modifiers()

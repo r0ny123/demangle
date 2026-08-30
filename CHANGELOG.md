@@ -732,6 +732,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: a class, struct, enum or typedef type with no name after it was accepted.**
+  `C <QualifiedName>` and its three siblings, where the name is not optional --
+  `dlang_parse_qualified` reads at least one symbol name and fails otherwise. This
+  joined an empty list and returned `""`, so `_D3fooC`, a variable whose type is a class
+  with no name, came back as `foo`, and `_D3fooFCZv` as `foo()` with the parameter
+  simply gone. `c++filt --format=dlang` (binutils 2.42) hands back every one. The check
+  is on how far the cursor moved rather than on what came out: a zero-length component
+  is anonymous and spells nothing, and `_D3fooC0` is a name the reference does read.
+  Found by enumerating every `_D` name up to eight characters over a grammar-shaped
+  alphabet -- 52,052 of the 260,260 this read were names the reference refuses, and they
+  were all this one shape.
+
 - **MSVC: a local static guard's number was read signed.** It counts the static the
   guard belongs to within its function, so it has no negative. `llvm-undname` 18.1 reads
   it unsigned and refuses `??_Bx@@5?0`; this read it signed and answered

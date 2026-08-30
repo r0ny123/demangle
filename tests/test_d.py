@@ -104,6 +104,50 @@ class TestSafety:
         with pytest.raises(DemangleFailure):
             parse_d_symbol(value)
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "_D3fooC",  # a class type with no qualified name after it
+            "_D3fooS",  # a struct
+            "_D3fooE",  # an enum
+            "_D3fooT",  # a typedef
+            "_D3fooPC",  # and behind a pointer
+            "_D3fooFCZv",  # and as a parameter, where it took the parameter with it
+            "_D3C33C",
+        ],
+    )
+    def test_a_named_type_with_no_name_is_refused(self, value):
+        """`C <QualifiedName>` and its three siblings, where the name is not optional.
+
+        `dlang_parse_qualified` reads at least one symbol name and fails otherwise. This
+        joined an empty list and returned `""`, so `_D3fooC` -- a variable whose type is
+        a class with no name -- came back as `foo`, and `_D3fooFCZv` as `foo()` with the
+        parameter simply gone. `c++filt --format=dlang` (binutils 2.42) hands back every
+        one of these.
+
+        Found by enumerating every `_D` name up to eight characters over a
+        grammar-shaped alphabet: 52,052 of the 260,260 this read were names the
+        reference refuses, and they were all this.
+        """
+        with pytest.raises(DemangleFailure):
+            parse_d_symbol(value)
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            # The check is on how far the cursor moved, not on what came out: a
+            # zero-length component is anonymous and spells nothing, and the reference
+            # reads this one.
+            ("_D3fooC0", "foo"),
+            ("_D3fooC3bar", "foo"),
+            ("_D3fooFC3barZv", "foo(bar)"),
+            # A complete type that is not a class still spells only the path.
+            ("_D3fooi", "foo"),
+        ],
+    )
+    def test_what_it_still_reads(self, value, expected):
+        assert parse_d_symbol(value).text == expected
+
     def test_nothing_escapes_as_another_exception(self):
         """Only `DemangleFailure` may come out; anything else would escape `demangle()`."""
         for mangled, _ in ROWS[:400]:
