@@ -442,6 +442,169 @@ class TestSpellingsOnlyTheReferenceCouldSettle:
             assert demangle.demangle(name, language="d") == name
 
 
+class TestWhatMutatingRealSymbolsFound:
+    """Five readings that only a name *near* a real one reaches.
+
+    `tools/enumerate.py` counts short strings, which is the wrong length for anything
+    that needs a symbol a compiler actually emitted -- a pointer stacked on a function
+    pointer, a template argument list several deep. `tools/mutate.py` damages the
+    checked-in corpora instead: one character deleted, duplicated, transposed or
+    swapped, or the head of one symbol spliced onto the tail of another. Each of these
+    came out of that, and each is checked against `c++filt --format=dlang`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The `P` that *is* the word `function` absorbs; the ones above it do not.
+            # `dlang_type` decides that from the character after the `P` -- a calling
+            # convention, and nothing else -- and deciding it from the pointee's
+            # *spelling* swallowed every level: `PPUZi` and `PPPUZi` both came back as
+            # `PUZi`, so a pointer to a function pointer was spelled as the pointer.
+            ("_D3foo3barFUZiZv", "foo.bar(extern(C) int() function)"),
+            ("_D3foo3barFPUZiZv", "foo.bar(extern(C) int() function)"),
+            ("_D3foo3barFPPUZiZv", "foo.bar(extern(C) int() function*)"),
+            ("_D3foo3barFPPPUZiZv", "foo.bar(extern(C) int() function**)"),
+            ("_D3foo3barFPPiZv", "foo.bar(int**)"),
+        ],
+    )
+    def test_only_the_first_pointer_is_the_word_function(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `dlang_parse_integer` appends the characters it read, so a leading zero is
+            # part of the literal. Formatting the value instead spelled `24u` for `024u`.
+            ("_D3foo__T3barVki024Z3bazFZv", "foo.bar!(024u).baz()"),
+            ("_D3foo__T3barVmi007Z3bazFZv", "foo.bar!(007uL).baz()"),
+            ("_D3foo__T3barVii00Z3bazFZv", "foo.bar!(00).baz()"),
+            ("_D3foo__T3barVAmA2i01i02Z3bazFZv", "foo.bar!([01, 02]).baz()"),
+            # The same rule for the two hex digits of an unprintable character in a
+            # string: the reference copies them out of the name, so their case survives.
+            ("_D3foo__T3barVAyaa1_B2Z3bazFZv", 'foo.bar!("\\xB2").baz()'),
+            ("_D3foo__T3barVAyaa1_b2Z3bazFZv", 'foo.bar!("\\xb2").baz()'),
+        ],
+    )
+    def test_a_literal_is_written_with_the_digits_the_name_carried(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D3foo__T3barViN13Z3bazFZv", "foo.bar!(-13).baz()"),
+            # The two kinds that spell their *value* rather than their digits used to
+            # drop the sign with the digits, and `-'\x11'` came back as `'\x11'` -- the
+            # positive literal, not an unspellable one.
+            ("_D3foo__T3barVaN17Z3bazFZv", "foo.bar!(-'\\x11').baz()"),
+            ("_D3foo__T3barVuN1000Z3bazFZv", "foo.bar!(-'\\u03e8').baz()"),
+            ("_D3foo__T3barVbN1Z3bazFZv", "foo.bar!(-true).baz()"),
+        ],
+    )
+    def test_a_negative_value_keeps_its_sign_whatever_the_kind(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            # A bare `0` is the anonymous *scope* inside a path, where the reference
+            # writes nothing for it. An argument list has no such thing: the empty
+            # string took a slot and was spelled as one, so these came back
+            # `foo.bar!(null, ).baz()` and `foo.bar!(, ).qux()`.
+            "_D3foo__T3barVln0Z3bazFZv",
+            "_D3foo__T3bar00Z3quxFZv",
+        ],
+    )
+    def test_a_template_argument_with_no_name_is_refused(self, mangled):
+        assert demangle.demangle(mangled, language="d") == mangled
+
+
+class TestMoreOfWhatMutatingRealSymbolsFound:
+    """Four more, from the second sitting with `tools/mutate.py`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type.
+            # The `Z` is what makes it one, so a truncated `_D10TypeInfo_c6__vtbl` is not
+            # `_D10TypeInfo_c6__vtblZ` with the end missing -- it is not a symbol.
+            ("_D3foo6__vtblZ", "vtable for foo"),
+            ("_D3foo6__vtbl", "_D3foo6__vtbl"),
+            ("_D3foo7__Class", "_D3foo7__Class"),
+            ("_D10TypeInfo_c6__vtbl", "_D10TypeInfo_c6__vtbl"),
+            # And a component that is *called* `__vtbl` with a function type after it is
+            # an ordinary function, which refusing to fall through had made unreadable.
+            ("_D3foo6__vtblFZv", "foo.__vtbl()"),
+        ],
+    )
+    def test_a_generated_symbol_is_the_one_that_ends_in_z(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `dlang_type_modifiers`, which is not the rule a *type* follows: `O` and
+            # `Ng` recurse, `x` and `y` return. So at most one of the last two appears,
+            # and it comes last.
+            ("_D3foo3barMxFZv", "foo.bar() const"),
+            ("_D3foo3barMOxFZv", "foo.bar() shared const"),
+            ("_D3foo3barMNgNgFZv", "foo.bar() inout inout"),
+            ("_D3foo3barMxxFZv", "_D3foo3barMxxFZv"),
+            ("_D3foo3barMxyFZv", "_D3foo3barMxyFZv"),
+            ("_D3foo3barMxOFZv", "_D3foo3barMxOFZv"),
+            # The same run, and the same rule, on a delegate.
+            ("_D3foo3barFDOxFZvZv", "foo.bar(void() delegate shared const)"),
+            ("_D3foo3barFDxxFZvZv", "_D3foo3barFDxxFZvZv"),
+            ("_D3foo3barFDxOFZvZv", "_D3foo3barFDxOFZvZv"),
+            # A *type's* modifiers do nest, and that is a different production: each one
+            # wraps the next, so `xx` is a const const and reads.
+            ("_D3foo3barFxxiZv", "foo.bar(const(const(int)))"),
+            ("_D3foo3barFxyiZv", "foo.bar(const(immutable(int)))"),
+        ],
+    )
+    def test_a_this_parameters_qualifiers_end_at_the_first_const_or_immutable(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `dlang_parse_qualified` skips a literal `0` with a `continue`, which steps
+            # over the "consume the encoded arguments" every other component goes
+            # through -- so the type belongs to a component the reference left out, and
+            # the reference does not spell it. Writing it after the path said the
+            # component before was that function: `Mutex.unlock()` for a name whose `()`
+            # is somewhere else.
+            ("_D3foo3bar0FZv", "foo.bar"),
+            ("_D3foo3bar0FiZv", "foo.bar"),
+            ("_D4core4sync5mutex5Mutex6unlock0FNeZv", "core.sync.mutex.Mutex.unlock"),
+            # Only the *last* one, and only a literal `0`: an anonymous component in the
+            # middle leaves the type belonging to the component after it.
+            ("_D3foo003barFZv", "foo.bar()"),
+            ("_D8demangle004testFaZv", "demangle.test(char)"),
+        ],
+    )
+    def test_an_anonymous_last_component_does_not_lend_its_type_to_the_one_before(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            # `TemplateArgX` is `T Type`, `V Type Value`, `S Number_opt QualifiedName` or
+            # `X`, and nothing else. A bare symbol name was read here as well, on the
+            # grounds that a compiler emits one where the kind is unambiguous -- it does
+            # not, `dlang_template_args` refuses one, and neither corpus has a name that
+            # needs it.
+            "_D3foo__T3bar3bazZ3quxFZv",
+            "_D3foo__T3barQeZ3quxFZv",
+            # An `S` argument whose qualified name spells nothing is not an argument
+            # either: it took a slot and was spelled as one.
+            "_D3foo__T3barS0Z3quxFZv",
+        ],
+    )
+    def test_a_template_argument_is_one_of_the_four_the_grammar_names(self, mangled):
+        assert demangle.demangle(mangled, language="d") == mangled
+
+
 class TestAgainstLibibertysOwnCorpus:
     """The reference's vectors, not this project's.
 

@@ -730,7 +730,163 @@ All notable changes to this project are recorded here. The format follows
 - **A parameter is asked its size, not its spelling.** `void`-only parameter lists were
   detected by rendering each parameter and comparing the text, on every function.
 
+- **`tools/mutate.py`, which damages real symbols and asks the reference about the
+  wreckage.** `tools/enumerate.py` counts short strings, and that is the wrong length
+  for everything that only appears once a name is long: a substitution referring back to
+  a component built earlier, a template argument list three deep, a return type that is
+  itself a function pointer. No alphabet is small enough to reach those by counting.
+  This starts from the 640,892 checked-in symbols instead and truncates, deletes,
+  duplicates, transposes, substitutes and splices them, so a mutant lands *near* the
+  emitted space rather than in the grammar's cheap corners. It shares `ACCEPTED` with
+  the enumerator -- those rules say why a reference's answer is not evidence, and that
+  does not depend on how the name was found -- and adds two mechanisms of its own:
+  `RESCUE`, which asks the reference about a substitute name where it cannot read the
+  one in hand for a known reason, and `SECOND_OPINION`, which asks another reference
+  about the same name. The draw is seeded, so a failure reproduces exactly, and the
+  divergence count is pinned in both directions rather than driven to zero -- the eight
+  still open are named in the tool's docstring with why each is. Fifteen defects came out
+  of the first two sittings with it, in four schemes; all fifteen are below.
+
+- **`tools/rustc-demangle-reference/`, so Rust has its own reference on this machine.**
+  `llvm-cxxfilt` and `c++filt` each carry their own Rust reader -- LLVM's is a port of an
+  older `rustc-demangle`, binutils' is independent of both -- so neither of them is the
+  implementation `src/demangle/schemes/rust/` is a port of, and where the three disagree
+  neither settles it. This is a twenty-line front end over the crate itself, answering
+  one spelling per line the way the C++ demanglers do; `tools/enumerate.py` and
+  `tools/mutate.py` use it when it has been built and fall back to `llvm-cxxfilt` when it
+  has not. Against `rustc-demangle` 0.1.28 this library now spells 5,752 of the 5,753
+  distinct Rust symbols in the corpora identically, and the one that differs is the
+  `Display` impl reporting a trailing `@@16` separately rather than printing it --
+  `rustfilt` prints `foo@@16` for that name too.
+
 ### Fixed
+
+- **Itanium, `gnu` style: a comma expression has no space after the comma.** GNU writes
+  no space around any infix operator -- `(1)+(2)`, `(1)<(2)` -- and the comma was the
+  one this wrote with one, so `decltype ((1), (2))` where `c++filt` writes
+  `decltype ((1),(2))`. The `llvm` style keeps `decltype(1, 2)`, which is what
+  `llvm-cxxfilt` writes. A comma-*separated list* is a different thing and still has its
+  space in both styles.
+
+- **Rust: the `.llvm.<hash>` marker includes its leading dot.** Searching for `llvm.`
+  without it deleted text that belongs to the symbol: `_RNvCs1_1a1fllvm.123` has no
+  suffix at all -- the reference refuses it, because `llvm.123` is left over and a
+  leftover has to open with a `.` -- and this threw eight characters away to read it as
+  `a::f`. `find` rather than `rfind` now too, which is `rustc_demangle::demangle`'s own
+  choice.
+
+- **Itanium: five of the seven `<prefix>` productions are bases and take no prefix on
+  the left.** `<substitution>`, `<template-param>` and `<decltype>` can *open* a prefix
+  and cannot follow one -- only `<prefix> <unqualified-name>` and
+  `<template-prefix> <template-args>` recurse. Reading them anywhere spelled a scope
+  inside a scope that cannot contain it: `_ZN1aSt1bEv` as `a::std::b()`, `_ZN1aSa1bEv`
+  as `a::std::allocator::b()`, `_ZN1a1bS_1cEv` as `a::b::a::c()` and `_ZN1aDtfp_E1bEv`
+  as `a::decltype(fp)::b()`. Every one is a declaration a person would believe, none is
+  a name any compiler writes, and both references refuse all of them. At the front,
+  where they occur, all three are untouched: `_ZNSt1a1bEv`, `_ZNSaIwE1bEv`,
+  `_ZNSt3maxIiEEvv` and `_ZNDtfp_E1bEv` still read. This was 34 of the first mutation
+  sitting's divergences in one shape -- a deleted or duplicated character anywhere in a
+  long `_ZNSb...` symbol leaves an abbreviation stranded mid-prefix.
+
+- **MSVC: the ARM64EC marker is removed once, not until none is left.**
+  `getArm64ECMangledFunctionName` inserts one `$$h` into a name that has none, and
+  `getArm64ECDemangledFunctionName` removes the first and no more -- so a name carrying
+  two is not one either function can produce, and what is left after removing one still
+  does not read. This recursed through the whole rule instead, stripping markers one at
+  a time, so `?f@@$$h$$hYAXXZ` came back `void __cdecl f(void)`.
+
+- **D: an artificial symbol is the one that ends in `Z`.** `dlang_parse_mangle` reads
+  `__init`, `__vtbl`, `__Class`, `__interface` and `__ModuleInfo` as generated symbols
+  that end with a `Z` and carry no type. The `Z` is what makes one, and eating it only
+  if it happened to be there read a truncated `_D10TypeInfo_c6__vtbl` as the whole of
+  `_D10TypeInfo_c6__vtblZ`. Refusing to fall through was the other half of it:
+  `_D3foo6__vtblFZv` is an ordinary function that happens to be called `__vtbl`, which
+  the reference spells `foo.__vtbl()` and this read as nothing at all.
+
+- **D: a `this` parameter's qualifiers end at the first `const` or `immutable`.**
+  `dlang_type_modifiers` is not the rule a *type* follows -- there each modifier wraps
+  the next, and `xx` is `const(const(int))`. On a `this` parameter or a delegate, `O`
+  (shared) and `Ng` (inout) recurse while `x` and `y` return, so at most one of the last
+  two appears and it comes last. Reading the run the way a type reads it spelled
+  `foo.bar() const const` for `_D3foo3barMxxFZv`, and accepted `MxO`, `Mxy` and `Myy`,
+  all four of which the reference refuses.
+
+- **D: an anonymous last component does not lend its type to the one before it.**
+  `dlang_parse_qualified` skips a literal `0` with a `continue`, which steps over the
+  "consume the encoded arguments" that every other component goes through -- so the
+  function type after it belongs to a component the reference leaves out of the
+  spelling, and the reference does not spell it either.
+  `_D4core4sync5mutex5Mutex6unlock0FNeZv` came back `core.sync.mutex.Mutex.unlock()`,
+  which says `unlock` is that function; its `()` is somewhere else. Only the last
+  component, and only a literal `0`: an anonymous one in the middle leaves the type
+  belonging to the component after it, and a back reference that *resolves* to an
+  anonymous component is a component that spells nothing rather than one that was
+  skipped.
+
+- **D: a template argument is one of the four the grammar names.** `TemplateArgX` is
+  `T Type`, `V Type Value`, `S Number_opt QualifiedName` or `X`, and nothing else. A
+  bare symbol name -- a length, a `Q` back reference or a `_D` symbol with no `S` in
+  front of it -- was read here as well, on the grounds that a compiler emits one where
+  the argument's kind is unambiguous from the grammar. It does not,
+  `dlang_template_args` refuses one outright, and no name in either corpus -- 1,257 real
+  symbols and libiberty's own 366 vectors -- needs it. What it did instead was turn
+  malformed names into plausible ones: a mutant that has lost the `S` from `TSQBi...`
+  read the back references after it as further arguments, so a qualified name came apart
+  into `PackedArrayViewImpl!(float, std, uni, BitPacked!(uint, 11uL), BitPacked, 16uL)`
+  -- five arguments where the name has two. An `S` argument whose qualified name spells
+  nothing is refused for the same reason: it took a slot and was spelled as one.
+
+- **Itanium: a `<nested-name>` may not end on a data-member or closure prefix either.**
+  `<data-member-prefix> ::= <member source-name> [<template-args>] M` and
+  `<closure-prefix> ::= [<prefix>] <unqualified-name> M` are both `<prefix>`
+  productions, so an `<unqualified-name>` still has to follow before the `E`: something
+  is named inside the member or the closure. The `M` carries no spelling and was
+  consumed silently, so `_Z1fN1aME` -- "a member of `a`, and here is which one" -- came
+  back as `f(a)`, and `_Z1fNSaME` as `f(std::allocator)`. `c++filt` refuses every shape
+  of it; `llvm-cxxfilt` reads the ones whose prefix is a source name and refuses the one
+  whose prefix is a substitution, which is the same grammar half-applied. The
+  substitution half of this rule shipped in the entry below; this is the other half of
+  the same production.
+
+- **D: a pointer to a function pointer lost every level above the first.** D spells a
+  pointer to a function as `int(char[]) function` -- the word *is* the pointer -- and
+  this decided which `P` was that word by looking at the pointee's *spelling*. So the
+  outer `P` of `PPUZi` saw a pointee already ending in `function` and absorbed itself
+  too: `PPUZi` and `PPPUZi` both came back `extern(C) int() function`, the spelling of
+  `PUZi`. `dlang_type` decides from the character after the `P` -- a calling convention,
+  and nothing else -- and so does this now. A real druntime symbol shows it:
+  `_d_run_main`'s third parameter is `extern(C) int(char[][]) function*`.
+
+- **D: an integer literal is written with the digits the name carried.**
+  `dlang_parse_integer` appends the characters it read rather than the number they
+  spell, so a leading zero is part of the literal: `Vki024` is `024u` and `Vmi007` is
+  `007uL`. This parsed and re-formatted, spelling `24u` and `7uL`. The same rule governs
+  the two hex digits of an unprintable character inside a string, which the reference
+  copies out of the name -- `\xB2` stayed upper-case there and was lower-cased here.
+
+- **D: a negative value kept its sign only for the kinds that spell their digits.** The
+  `N` that marks one is written whatever the kind is, and the two kinds that spell a
+  *value* rather than its digits dropped it with the digits: `VaN17` came back
+  `'\x11'` and `VbN1` came back `true`, each the positive literal rather than the
+  reference's `-'\x11'` and `-true`. Losing a sign spells a different value; the
+  reference's spelling is one D source cannot write either, but that is a separate
+  thing.
+
+- **D: a template argument with no name is refused.** A bare `0` is the anonymous
+  *scope* inside a path, where the reference writes nothing for it. An argument list has
+  no such thing, and the empty string took a slot and was spelled as one: `Vln0` came
+  back `!(null, )` and `00` came back `!(, )`, each with a visible empty argument. The
+  reference refuses both.
+
+- **Rust: a `<base-62-number>` is sixty-four bits wide.** RFC 2603 writes
+  `{<0-9a-zA-Z>} "_"` and states no bound, but `rustc-demangle` -- which this scheme is
+  a port of -- accumulates into a `u64` through `checked_mul` and `checked_add`, so a
+  field whose digits overrun 64 bits is a parse error there and in LLVM's port of it.
+  binutils, whose Rust reader is neither, reads such a field by wrapping and answers
+  `a[aa303280a73f210e]::f` for a crate disambiguator that cannot exist. This read it
+  too. The boundary is now the reference's exactly, checked against it: rustc writes a
+  disambiguator that is a truncated 64-bit hash, so nothing a compiler emits is near the
+  edge -- this was found by mutating symbols that a compiler did emit.
 
 - **`_Complex` and `_Imaginary` are not cv-qualifiers, and a repeat of one does not
   collapse.** They go through `qualify`, which under the `gnu` style folds a duplicate --

@@ -270,7 +270,7 @@ class ItaniumParser:
         "_parameter_uses",
         "_pending_conversion",
         "_precedence",
-        "_prefix_ended_on_substitution",
+        "_prefix_ended_on",
         "_prefixes",
         "_productions",
         "_reading_closure_signature",
@@ -414,7 +414,7 @@ class ItaniumParser:
         # Whether the last component appended to the <prefix> being read came from a
         # `<substitution>`. The final component of a <nested-name> is an
         # <unqualified-name>, which a substitution is not -- see `nested_name`.
-        self._prefix_ended_on_substitution = False
+        self._prefix_ended_on = ""
         # Whether a `<template-param>` at the head of a type may take template arguments
         # of its own. False while reading a conversion operator's type, where an `I`
         # that follows opens the *operator's* argument list: in `cvT_I4MerpE` the
@@ -1028,18 +1028,28 @@ class ItaniumParser:
 
             if not parts:
                 raise ParseError(self._mangled, reader.pos, "empty nested name")
-            if self._prefix_ended_on_substitution:
+            if self._prefix_ended_on:
                 # `<nested-name> ::= N ... <prefix> <unqualified-name> E`. The last
-                # component is an <unqualified-name>, and a <substitution> is not one:
-                # it appears in <prefix> and nowhere else. Both references refuse every
-                # name of this shape, and the readings were the kind a person would
-                # believe -- `_ZNSaEv` as `std::allocator()`, `_ZN1aSaEv` as
-                # `a::std::allocator()`, `_ZN1aS_Ev` as `a::a()`.
+                # component is an <unqualified-name>, and two of the things a <prefix>
+                # can end with are not one.
                 #
-                # `Sa` as a *prefix* is untouched, which is the shape that occurs:
-                # `_ZNSaC1Ev` is `std::allocator::allocator()` and `_ZNSt3maxIiEEvv` is
-                # `void std::max<int>()`.
-                raise ParseError(self._mangled, reader.pos, "a nested name ending in a substitution")
+                # A <substitution> appears in <prefix> and nowhere else. Both references
+                # refuse every name of that shape, and the readings were the kind a
+                # person would believe -- `_ZNSaEv` as `std::allocator()`, `_ZN1aSaEv`
+                # as `a::std::allocator()`, `_ZN1aS_Ev` as `a::a()`.
+                #
+                # An `M` closes a <data-member-prefix> or a <closure-prefix>, both of
+                # which are <prefix> productions: something still has to be named inside
+                # the member or the closure. `_Z1fN1aME` read as `f(a)` and `_Z1fNSaME`
+                # as `f(std::allocator)` -- the `M` silently contributing nothing, so a
+                # name that says "a member of `a`, and here is which one" came back as
+                # `a`. `c++filt` refuses both; `llvm-cxxfilt` reads the first the way we
+                # did and refuses the second, which is the grammar half-applied.
+                #
+                # `Sa` and `1aM` as *interior* prefixes are untouched, which is the
+                # shape that occurs: `_ZNSaC1Ev` is `std::allocator::allocator()` and a
+                # closure prefix is followed by the lambda it introduces.
+                raise ParseError(self._mangled, reader.pos, f"a nested name ending in {self._prefix_ended_on}")
             # A template constructor -- `basic_string<allocator<char>>(char const*, ...)`
             # -- is a template, but constructors have no return type to encode, so the
             # leading type of the signature is a parameter like any other.
@@ -1049,6 +1059,30 @@ class ItaniumParser:
             self._ctor_dtor = outer_ctor_dtor
         name = parts[0] if len(parts) == 1 else self.builder.qualified(parts)
         return name, quals, ref_qualifier, is_template
+
+    def _only_a_base_production(self, parts, what):
+        """Refuse `what` where a `<prefix>` already has a component.
+
+        ```
+        <prefix> ::= <unqualified-name> | <prefix> <unqualified-name>
+                   | <template-prefix> <template-args> | <closure-prefix>
+                   | <template-param> | <decltype> | <substitution>
+        ```
+
+        Only two of those seven take a `<prefix>` on the left. The other five are bases:
+        a `<substitution>`, a `<template-param>` and a `<decltype>` can *open* a prefix
+        and cannot follow one, and the same is true of `<template-prefix>`. Reading them
+        anywhere spelled a scope inside a scope that cannot contain it --
+        `_ZN1aSt1bEv` as `a::std::b()`, `_ZN1aSa1bEv` as `a::std::allocator::b()`,
+        `_ZN1a1bS_1cEv` as `a::b::a::c()`, `_ZN1aDtfp_E1bEv` as
+        `a::decltype(fp)::b()` -- each of them a declaration a person would believe and
+        none of them a name any compiler writes. Both references refuse every one.
+
+        The abbreviations are the shape that occurs and are untouched at the front:
+        `_ZNSt1a1bEv`, `_ZNSaIwE1bEv` and `_ZNSt3maxIiEEvv` all still read.
+        """
+        if parts:
+            raise ParseError(self._mangled, self.reader.pos, f"{what} after the start of a nested name")
 
     def prefix_component(self, parts, as_type=False, module=""):
         """One component of a <prefix>, appended to `parts`.
@@ -1065,7 +1099,7 @@ class ItaniumParser:
         """
         reader = self.reader
         builder = self.builder
-        self._prefix_ended_on_substitution = False
+        self._prefix_ended_on = ""
         char = reader.peek()
 
         # Three components in four are a length-prefixed name and none of the markers
@@ -1076,9 +1110,12 @@ class ItaniumParser:
                 component = self.substitution(expanded=self._abbreviation_scopes_a_structor())
                 named = self._module_of(component)
                 if named is not None:
-                    # A module name, not a scope: it belongs to the component that follows.
+                    # A module name, not a scope: it belongs to the component that
+                    # follows, and it decorates that component wherever it stands. The
+                    # position rule below is about a substitution used as a *scope*.
                     return False, named
-                self._prefix_ended_on_substitution = True
+                self._only_a_base_production(parts, "a substitution")
+                self._prefix_ended_on = "a substitution"
                 parts.append(component)
                 return False, module
 
@@ -1103,18 +1140,23 @@ class ItaniumParser:
                 return True, module
 
             if char == "T":
+                self._only_a_base_production(parts, "a template parameter")
                 component, reference = self.template_param_binding()
                 parts.append(component)
                 self.subs.remember(reference if reference is not None else component, "template-template-param")
                 return False, module
 
             if char == "D" and reader.ahead(1) in ("t", "T"):
+                self._only_a_base_production(parts, "a decltype")
                 parts.append(self.decltype_())
                 return False, module
 
             if char == "M":
-                # <closure-prefix> terminator; carries no spelling of its own.
+                # <closure-prefix> / <data-member-prefix> terminator; carries no spelling
+                # of its own. It ends a <prefix>, so an <unqualified-name> still has to
+                # follow before the `E` -- see `nested_name`.
                 reader.take()
+                self._prefix_ended_on = "a data member or closure prefix"
                 return False, module
 
             if char == "Q":
@@ -3698,7 +3740,12 @@ class ItaniumParser:
                 # arguments, a braced initialiser, a template argument -- which is what
                 # `_element` is for. `decltype(4, 3)` has no brackets and gets none.
                 self._precedence = binding
-                return builder.expression("comma", [left, ", ", right])
+                # GNU writes no space after the comma, as it writes none around any
+                # other infix operator: `decltype ((1),(2))` where LLVM writes
+                # `decltype(1, 2)`. Measured against `c++filt` 2.42 -- it is the one
+                # operator whose GNU spelling this had a space in.
+                separator = "," if self.options.gnu_expression_spelling else ", "
+                return builder.expression("comma", [left, separator, right])
             self._precedence = binding
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
             return builder.expression("binary", [left, gap, spelling, gap, right])

@@ -175,6 +175,13 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         return builder.raw(spelled)
     hybrid = _without_hybrid_marker(mangled)
     if hybrid is not None:
+        if _HYBRID_MARKER in hybrid:
+            # `getArm64ECDemangledFunctionName` removes the *first* marker and no more,
+            # so a name carrying two is one it still cannot read. Recursing removed them
+            # one at a time until none was left, and `?f@@$$h$$hYAXXZ` -- which
+            # `getArm64ECMangledFunctionName` cannot produce, since it inserts one marker
+            # into a name that has none -- came back as `void __cdecl f(void)`.
+            raise ParseError(mangled, None, "more than one ARM64EC marker")
         # ARM64EC. Read as the name it is the hybrid form *of*, which is what LLVM's own
         # `getArm64ECDemangledFunctionName` answers -- and it has to be a fallback rather
         # than a first step, because a name that already reads is not one to rewrite.

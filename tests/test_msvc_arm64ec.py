@@ -54,6 +54,18 @@ class TestTheHybridMarker:
         for mangled, expected in load_corpus("msvc-llvm-corpus.txt"):
             assert demangle.demangle(mangled) == expected, mangled
 
+    def test_the_rule_removes_one_marker_and_not_a_run_of_them(self):
+        """`getArm64ECMangledFunctionName` inserts one marker into a name that has none.
+
+        So a name carrying two is not one it can produce, and
+        `getArm64ECDemangledFunctionName` -- which removes the *first* and no more --
+        leaves a name that still does not read. This stripped them one at a time until
+        none was left, so `?f@@$$h$$hYAXXZ` came back `void __cdecl f(void)`.
+        """
+        for name in ("?f@@$$h$$hYAXXZ", "?priv_stat_foo@S@@$$h$$hYA?CHXZ", "?f@@$$hYAX$$hXZ"):
+            assert demangle.demangle(name) == name, name
+        assert demangle.demangle("?f@@$$hYAXXZ") == "void __cdecl f(void)"
+
 
 class TestWhatIsNotClaimed:
     def test_the_marker_alone_is_not_a_name(self):

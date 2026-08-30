@@ -125,3 +125,33 @@ def test_the_option_is_what_selects_it():
     assert demangle.demangle_strict(mangled, style=plain) == "void g<A<1 + 2> >()"
     bracketed = demangle.style("llvm", itanium={"gnu_expression_spelling": True})
     assert demangle.demangle_strict(mangled, style=bracketed) == "void g<A<(1)+(2)>>()"
+
+
+@pytest.mark.parametrize(
+    ("mangled", "llvm", "gnu"),
+    [
+        # The comma is the one infix operator whose GNU spelling had a space in it here.
+        # GNU writes no space after any operator, this one included -- `(1),(2)` beside
+        # `(1)+(2)` -- and llvm-cxxfilt writes `1, 2`, which is a list and does have one.
+        ("_Z1fDTcmLi1ELi2EEv", "f(decltype(1, 2), void)", "f(decltype ((1),(2)), void)"),
+        (
+            "_Z1fDTcmfp_fp0_Eii",
+            "f(decltype(fp, fp0), int, int)",
+            "f(decltype ({parm#1},{parm#2}), int, int)",
+        ),
+        (
+            "_Z1fIiEDTcmT_T_Ev",
+            "decltype(int, int) f<int>()",
+            "decltype ((int),(int)) f<int>()",
+        ),
+    ],
+)
+def test_a_comma_expression_has_no_space_after_the_comma_under_gnu(mangled, llvm, gnu):
+    assert demangle.demangle_strict(mangled, style="llvm") == llvm
+    assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+
+def test_a_comma_separated_list_keeps_its_space_under_gnu():
+    """The separator in a call's arguments is a list's, not the comma *operator*."""
+    assert demangle.demangle_strict("_Z1fIiEvT_S0_", style="gnu") == "void f<int>(int, int)"
+    assert demangle.demangle_strict("_Z1fILi1ELi2EEvv", style="gnu") == "void f<1, 2>()"

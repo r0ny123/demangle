@@ -167,12 +167,19 @@ def _printable(code):
     return 0x20 <= code <= 0x7E
 
 
-def _escaped(code):
-    """One character of a string literal, as the reference spells it."""
+def _escaped(code, digits):
+    """One character of a string literal, as the reference spells it.
+
+    An unprintable byte is written `\\x` and *the two digits the name carried*:
+    `dlang_parse_string` copies them out of the input rather than formatting the value,
+    so `B2` stays upper-case and `b2` stays lower. Formatting instead lower-cased every
+    one of them, which no compiler makes visible -- dmd writes its hex in lower case --
+    but which is a different string from the one the name spells.
+    """
     if _printable(code):
         return chr(code)
     escape = _STRING_ESCAPES.get(code)
-    return escape if escape is not None else f"\\x{code:02x}"
+    return escape if escape is not None else f"\\x{digits}"
 
 
 def _character(kind, code):
@@ -271,6 +278,18 @@ class _Reader:
             # rather than as this parser saying the name is malformed.
             raise DemangleFailure("implausible numeric literal")
         return int(self.text[start : self.pos])
+
+    def digits(self):
+        """A decimal run, as both its value and the characters it was written with.
+
+        `dlang_parse_integer` appends the characters it read rather than the number they
+        spell, so a leading zero survives into the spelling: `Vki024` is `024u`, and
+        normalising it to `24u` spells a literal the name did not carry. The value is
+        still needed for the kinds that are *not* echoed -- a `bool` reads `true` and a
+        `char` reads as a quoted character -- so both come back.
+        """
+        start = self.pos
+        return self.number(bounded=False), self.text[start : self.pos]
 
 
 class DSymbol:
@@ -398,15 +417,30 @@ class _Parser:
         # `__postblit` is renamed by the reference only when the function has no
         # attributes, so the decision needs the type, which is read after the path.
         postblit = len(path) > 1 and path[-1] == "__postblit"
-        if len(path) > 1 and path[-1] in SPECIAL_COMPONENTS:
+        if len(path) > 1 and path[-1] in SPECIAL_COMPONENTS and reader.peek() == "Z":
+            # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type.
+            # The `Z` is what *makes* it one, and it is not optional. Eating it only if
+            # it was there read `_D10TypeInfo_c6__vtbl` -- a truncated symbol -- as the
+            # whole of `_D10TypeInfo_c6__vtblZ`, and refusing to fall through read
+            # `_D3foo6__vtblFZv` as nothing at all, where the reference spells it
+            # `foo.__vtbl()`: an ordinary function that happens to be called `__vtbl`.
             prefix = SPECIAL_COMPONENTS[path.pop()]
-            # These carry no type of their own beyond the `Z` that ends them.
-            self.reader.eat("Z")
-            if self.reader.pos != self.reader.end:
+            reader.pos += 1
+            if reader.pos != reader.end:
                 raise DemangleFailure("unconsumed input after a generated symbol")
             return prefix + ".".join(path)
+        anonymous_last = self._last_component_anonymous
         self._trailing_had_attributes = True
         trailing = self.trailing_type()
+        if anonymous_last:
+            # The type belongs to the anonymous component, and the reference does not
+            # spell a component it left out. `_D4core4sync5mutex5Mutex6unlock0FNeZv` is
+            # an anonymous symbol inside `unlock`, and writing its parameter list after
+            # the path said `unlock` was that function: `Mutex.unlock()` for a name whose
+            # `()` is somewhere else. `c++filt --format=dlang` writes `Mutex.unlock`.
+            # Consumed either way -- the check that the whole name was read depends on
+            # it -- and only the spelling is dropped.
+            trailing = ""
         if postblit and not self._trailing_had_attributes:
             # `this(this)` reads as a declaration already, so the reference writes no
             # parameter list after it.
@@ -426,8 +460,16 @@ class _Parser:
 
     def qualified_name(self):
         parts = []
+        # Whether the *last* component read was an anonymous `0`. See `parse`.
+        self._last_component_anonymous = False
         while self._opens_symbol_name():
             saved, saved_depth = self.reader.pos, self.reader.depth
+            # A literal `0` is skipped by `dlang_parse_qualified` with a `continue`,
+            # which steps over the "consume the encoded arguments" that every other
+            # component goes through. A back reference that *resolves* to an anonymous
+            # component is not skipped -- it is a component that spells nothing, and its
+            # type is still spelled. See `parse`.
+            anonymous = self.reader.peek() == "0"
             try:
                 component = self.symbol_name()
             except DemangleFailure:
@@ -447,6 +489,7 @@ class _Parser:
             # ordinary names and are kept -- and so is a `__S<n>` that carries a scope
             # type of its own, because dropping it would drop that scope's parameters
             # with it and no name recorded here does that.
+            self._last_component_anonymous = anonymous
             if spelled and not _ANONYMOUS.fullmatch(spelled):
                 parts.append(spelled)
         return parts
@@ -556,6 +599,13 @@ class _Parser:
                 self._in_symbol_argument = outer
             if bounded is not None:
                 reader.pos = bounded
+            if not spelled:
+                # `qualified_name` leaves out an anonymous component, which is right
+                # inside a path -- the reference writes nothing for it -- and leaves an
+                # `S` argument spelling nothing at all. It still took a slot, so
+                # `TrieBuilder!(..., , ...)` came back with a visible empty argument in
+                # the middle of the list.
+                raise DemangleFailure("a symbol argument with no name")
             return self._cap(spelled)
         if marker == "V":
             # The type's own first character is kept: an associative array writes its
@@ -564,11 +614,19 @@ class _Parser:
             code = self._type_code()
             kind = self.type_()
             return self.template_value(kind, code=code)
-        if marker in DIGITS or marker == "Q" or marker == "_":
-            # A bare symbol name, with no `S` in front of it. The compiler emits these
-            # where the argument is a symbol whose kind is unambiguous from the grammar.
-            reader.pos -= 1
-            return self.symbol_name()
+        # A bare symbol name -- a length, a `Q` back reference or a `_D` symbol with no
+        # `S` in front of it -- was read here, on the grounds that the compiler emits one
+        # where the argument's kind is unambiguous. It does not. `TemplateArgX` is
+        # `T Type`, `V Type Value`, `S Number_opt QualifiedName` or `X` and nothing else,
+        # `dlang_template_args` refuses everything else outright, and no name in either
+        # corpus -- 1,257 real symbols and libiberty's own 366 vectors -- needs it.
+        #
+        # What it did instead was rescue malformed names into plausible ones. A mutated
+        # `TSQBi...` that has lost its `S` reads the `Q` back references after it as
+        # further arguments, so a qualified name came apart into
+        # `PackedArrayViewImpl!(float, std, uni, BitPacked!(uint, 11uL), BitPacked, 16uL)`
+        # -- five arguments where the name has two -- and a bare `0` took a slot and was
+        # spelled as one, giving `!(null, )` and `!(, )` with a visible empty argument.
         if marker == "X":
             # An externally mangled argument: a length and that many characters, kept as
             # they stand because they are another mangling entirely.
@@ -605,12 +663,12 @@ class _Parser:
             return "null"
         if char == "i":
             reader.pos += 1
-            return self._integer_literal(kind, reader.number(bounded=False), suffix=suffix)
+            return self._integer_literal(kind, *reader.digits(), suffix=suffix)
         if char == "N":
             reader.pos += 1
-            return self._integer_literal(kind, reader.number(bounded=False), negative=True, suffix=suffix)
+            return self._integer_literal(kind, *reader.digits(), negative=True, suffix=suffix)
         if char in DIGITS:
-            return self._integer_literal(kind, reader.number(bounded=False), suffix=suffix)
+            return self._integer_literal(kind, *reader.digits(), suffix=suffix)
         if char in STRING_SUFFIX:
             return self.string_literal()
         if char == "e":
@@ -870,6 +928,31 @@ class _Parser:
             else:
                 return found
 
+    def this_modifiers(self):
+        """`dlang_type_modifiers`: the qualifiers on a `this` parameter or a delegate.
+
+        Not the rule that governs the modifiers on a *type*, where each one wraps the
+        next and `xx` is `const(const(int))`. Here `O` (shared) and `Ng` (inout) recurse
+        and `x` (const) and `y` (immutable) `return`, so at most one of the last two
+        appears and it comes last. `MOx` reads as `shared const`; `MxO`, `Mxx`, `Myy` and
+        `Mxy` are refused, with the unread character left over. Reading the run the way a
+        type reads it spelled `foo.bar() const const` for a symbol the reference will not
+        read at all.
+        """
+        found = []
+        reader = self.reader
+        while True:
+            if reader.starts_with("Ng"):
+                reader.pos += 2
+                found.append("inout")
+            elif reader.peek() == "O":
+                found.append(TYPE_MODIFIERS[reader.take()])
+            elif reader.peek() in ("x", "y"):
+                found.append(TYPE_MODIFIERS[reader.take()])
+                return found
+            else:
+                return found
+
     def function_attributes(self):
         found = []
         reader = self.reader
@@ -967,24 +1050,31 @@ class _Parser:
         raw = reader.text[reader.pos : reader.pos + digits]
         reader.pos += digits
         try:
-            codes = [int(raw[at : at + 2], 16) for at in range(0, digits, 2)]
+            pairs = [(int(raw[at : at + 2], 16), raw[at : at + 2]) for at in range(0, digits, 2)]
         except ValueError:
             raise DemangleFailure("string literal is not hex") from None
-        return '"' + "".join(_escaped(code) for code in codes) + f'"{suffix}'
+        return '"' + "".join(_escaped(code, written) for code, written in pairs) + f'"{suffix}'
 
     @staticmethod
-    def _integer_literal(kind, value, negative=False, suffix=True):
+    def _integer_literal(kind, value, digits, negative=False, suffix=True):
         """A numeric literal, spelled as the type it belongs to is spelled.
 
         A `bool` reads `false`/`true` and a `char` reads as a quoted character; both are
-        mangled as integers, so the type has to be consulted rather than the value.
+        mangled as integers, so the type has to be consulted rather than the value. Every
+        other kind is written with the digits the name carried -- see `_Reader.digits`.
+
+        The `N` that marks a negative value is written whatever the kind is, and it used
+        to be dropped for the two kinds that do not spell their digits: `VaN17` came back
+        `'\x11'` and `VbN1` came back `true`, each the *positive* literal. The reference
+        writes `-'\x11'` and `-true`, which is a value D source cannot spell either --
+        but losing the sign spells a different value rather than an unspellable one.
         """
-        if kind == "bool":
-            return "true" if value else "false"
-        if kind in _CHARACTER_ESCAPES:
-            return _character(kind, value)
         sign = "-" if negative else ""
-        return f"{sign}{value}{INTEGER_SUFFIX.get(kind, '') if suffix else ''}"
+        if kind == "bool":
+            return f"{sign}{'true' if value else 'false'}"
+        if kind in _CHARACTER_ESCAPES:
+            return f"{sign}{_character(kind, value)}"
+        return f"{sign}{digits}{INTEGER_SUFFIX.get(kind, '') if suffix else ''}"
 
     def type_(self):
         work = self._work = self._work - 1
@@ -1047,11 +1137,16 @@ class _Parser:
             return self._cap(f"{self.type_()}[{key}]")
         if char == "P":
             reader.pos += 1
-            pointee = self.type_()
             # D spells a pointer to a function as `int(char[]) function`, not with a `*`:
-            # the word *is* the pointer. Adding one gives `... function*`, which is not a
-            # type anyone writes.
-            return self._cap(pointee if pointee.endswith(" function") else f"{pointee}*")
+            # the word *is* the pointer. Only the `P` that *is* that word absorbs, though,
+            # and `dlang_type` decides that from the character after the `P` -- a calling
+            # convention, and nothing else. Deciding it from the pointee's *spelling*
+            # instead swallowed every level above the first: `PPUZi` and `PPPUZi` both
+            # came back `extern(C) int() function`, so a pointer to a function pointer
+            # was spelled as the function pointer itself.
+            absorbs = reader.peek() in CALLING_CONVENTIONS
+            pointee = self.type_()
+            return self._cap(pointee if absorbs else f"{pointee}*")
         if char in ("C", "S", "E", "T"):
             # `C <QualifiedName>` and its three siblings, where the name is not optional:
             # `dlang_parse_qualified` reads at least one symbol name and fails otherwise.
@@ -1070,7 +1165,7 @@ class _Parser:
             return self._cap(spelled)
         if char == "D":
             reader.pos += 1
-            modifiers = self.type_modifiers()
+            modifiers = self.this_modifiers()
             if reader.peek() == "Q":
                 # The function type is a back reference: `MxDQsm` is a delegate whose
                 # signature was written earlier in the name.
@@ -1170,7 +1265,7 @@ class _Parser:
         modifiers = []
         has_this = reader.eat("M")
         if has_this:
-            modifiers = self.type_modifiers()
+            modifiers = self.this_modifiers()
         char = reader.peek()
         if has_this and char not in CALLING_CONVENTIONS:
             # `M` is the `this` parameter of a member function, so a function type has

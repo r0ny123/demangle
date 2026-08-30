@@ -221,6 +221,89 @@ class TestStillRefusesWhatItShould:
         assert demangle.demangle(mangled) == mangled
 
     @pytest.mark.parametrize(
+        "mangled",
+        ["_Z1fN1aME", "_Z1fN1a1bME", "_Z1fNSaME", "_Z1fN1aIiEME", "_ZN1aMEv"],
+    )
+    def test_a_nested_name_may_not_end_on_a_member_or_closure_prefix(self, mangled):
+        """The same rule, and the other production a `<prefix>` can end with.
+
+        `<data-member-prefix> ::= <member source-name> [<template-args>] M` and
+        `<closure-prefix> ::= [<prefix>] <unqualified-name> M` are both `<prefix>`
+        productions, so something still has to be named inside the member or the
+        closure. The `M` carries no spelling, and skipping it silently made
+        `_Z1fN1aME` -- "a member of `a`, and here is which one" -- come back as `f(a)`.
+        `c++filt` refuses all of these; `llvm-cxxfilt` reads the ones whose prefix is a
+        source name and refuses the one whose prefix is a substitution, which is the
+        grammar half-applied.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            # A <substitution>, anywhere but the front.
+            "_ZN1aSt1bEv",
+            "_ZN1aSa1bEv",
+            "_ZN1aSaIwE1bEv",
+            "_ZN1a1bS_1cEv",
+            "_ZNSt1NSt14numeric_limitsImE10is_integerE",
+            # A <decltype>, and a <template-param>.
+            "_ZN1aDtfp_E1bEv",
+            "_ZN1aT_1bEv",
+        ],
+    )
+    def test_a_prefix_may_only_open_with_a_substitution_decltype_or_template_parameter(self, mangled):
+        """Five of the seven `<prefix>` productions are bases and take no prefix on the left.
+
+        ```
+        <prefix> ::= <unqualified-name> | <prefix> <unqualified-name>
+                   | <template-prefix> <template-args> | <closure-prefix>
+                   | <template-param> | <decltype> | <substitution>
+        ```
+
+        Reading a `<substitution>`, a `<decltype>` or a `<template-param>` anywhere in the
+        prefix spelled a scope inside a scope that cannot contain it: `_ZN1aSt1bEv` as
+        `a::std::b()`, `_ZN1aSa1bEv` as `a::std::allocator::b()`, `_ZN1a1bS_1cEv` as
+        `a::b::a::c()`, `_ZN1aDtfp_E1bEv` as `a::decltype(fp)::b()`. Every one is a
+        declaration a person would believe and none is a name any compiler writes. Both
+        references refuse all of them.
+
+        Found by mutating real libstdc++ symbols: a deleted or duplicated character in a
+        long `_ZNSb...` name leaves an abbreviation stranded mid-prefix, and 34 of the
+        first sitting's divergences were this one shape.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # At the front, which is where they occur, all three still read.
+            ("_ZNSt1a1bEv", "std::a::b()"),
+            ("_ZNSaIwE1bEv", "std::allocator<wchar_t>::b()"),
+            ("_ZNSt3maxIiEEvv", "void std::max<int>()"),
+            ("_ZNDtfp_E1bEv", "decltype(fp)::b()"),
+            ("_Z1fIiEvNT_1aE", "void f<int>(int::a)"),
+            (
+                "_ZNSbIwSt11char_traitsIwESaIwEE1bEv",
+                "std::basic_string<wchar_t, std::char_traits<wchar_t>, std::allocator<wchar_t>>::b()",
+            ),
+        ],
+    )
+    def test_a_base_production_at_the_front_of_a_prefix_is_untouched(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    def test_a_closure_prefix_with_its_lambda_after_it_still_reads(self):
+        """The shape that occurs: a lambda mangled inside a data member's initialiser."""
+        name = "_ZZN1a1bMUlvE_clEvENKUlvE_clEv"
+        assert demangle.demangle_strict(name, language="itanium") == (
+            "a::b::'lambda'()::operator()()::'lambda'()::operator()() const"
+        )
+
+    @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
             # An abbreviation as a *prefix* is the shape that occurs, and is untouched.

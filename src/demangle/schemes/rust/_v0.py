@@ -19,6 +19,10 @@ class OutputTooLong(Exception):
     """
 
 
+#: `u64::MAX`. See `Parser.integer_62`.
+_U64_MAX = (1 << 64) - 1
+
+
 class UnableTov0Demangle(Exception):
     def __init__(self, given_str, message="Not able to demangle the given string using v0Demangler"):
         self.message = message
@@ -45,22 +49,28 @@ _SYMBOL_LIKE = re.compile(r"[0-9A-Za-z" + re.escape(string.punctuation) + r"]*\Z
 #: reading it as one silently deletes text that belongs to the symbol.
 _LLVM_HASH_CHARACTERS = frozenset(string.digits + "ABCDEF@")
 
-_LLVM_MARKER = "llvm."
+_LLVM_MARKER = ".llvm."
 
 
 def _strip_llvm_suffix(text):
     """Drop a `.llvm.<hash>` internalisation suffix, which names no part of the symbol.
 
-    `rfind`, not `find`: the marker is looked for from the right because an identifier
-    in the path may legitimately contain it.
+    The leading `.` is part of the marker, and dropping it from the search deleted text
+    that belongs to the symbol: `_RNvCs1_1a1fllvm.123` has no suffix at all -- the
+    reference refuses it, because `llvm.123` is left over and a leftover has to open
+    with a `.` -- and this read it as `a::f`, throwing eight characters away to get
+    there.
+
+    `find` rather than `rfind`, which is `rustc_demangle::demangle`'s own choice: the
+    leftmost `.llvm.` whose tail is a hash is the one that goes, along with everything
+    after it.
     """
-    marker = text.rfind(_LLVM_MARKER)
+    marker = text.find(_LLVM_MARKER)
     if marker < 0:
         return text
     if not _LLVM_HASH_CHARACTERS.issuperset(text[marker + len(_LLVM_MARKER) :]):
         return text
-    head = text[:marker]
-    return head[:-1] if head.endswith(".") else head
+    return text[:marker]
 
 
 def _is_symbol_like(text):
@@ -490,6 +500,17 @@ class Parser:
     # out at each site, and `peek` raising at the end of input is preserved there.
 
     def integer_62(self) -> int:
+        """`<base-62-number> ::= {<0-9a-zA-Z>} "_"`, valued one more than its digits spell.
+
+        Bounded to 64 bits because the reference is. `integer_62` accumulates into a
+        `u64` through `checked_mul`/`checked_add`, so a wider field is a parse error to
+        rustc-demangle and to LLVM's port of it; RFC 2603 states no bound, and binutils
+        reads such a field by wrapping it. Python has no ceiling of its own to hit here,
+        so this one is imposed on purpose: `_RNvCsAAAAAAAAAAA_1a1f` is `a::f` to
+        binutils and unreadable to rustc-demangle, and this scheme is a port of
+        rustc-demangle. rustc writes a disambiguator that is a truncated 64-bit hash, so
+        nothing a compiler emits is anywhere near the edge.
+        """
         inn, end = self.inn, self.end
         at = self.next_val
         x = 0
@@ -497,7 +518,11 @@ class Parser:
         while True:
             if at < end and inn[at] == "_":
                 self.next_val = at + 1
-                return 0 if first else x + 1
+                if first:
+                    return 0
+                if x >= _U64_MAX:
+                    raise UnableTov0Demangle(inn)
+                return x + 1
             # Past the end, or not a base-62 digit: what `digit_62` would have raised.
             if at >= end:
                 raise UnableTov0Demangle(inn)
@@ -514,7 +539,11 @@ class Parser:
         if at >= self.end or self.inn[at] != tag:
             return 0
         self.next_val = at + 1
-        return self.integer_62() + 1
+        # `opt_integer_62` adds one of its own, through a `checked_add` of its own.
+        value = self.integer_62()
+        if value >= _U64_MAX:
+            raise UnableTov0Demangle(self.inn)
+        return value + 1
 
     # `disambiguator` was here, a one-line delegation to `opt_integer_62("s")`. It ran
     # 82,000 times over the Rust corpus for an interpreter frame around a call, so the

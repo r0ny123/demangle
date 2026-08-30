@@ -13,6 +13,7 @@ from typing import ClassVar
 import pytest
 
 import demangle
+from demangle.core.errors import DemanglingError
 
 from .conftest import load_corpus
 
@@ -131,6 +132,45 @@ class TestAnIdentifierLengthHasToBeADigit:
     )
     def test_what_it_still_reads(self, mangled, expected):
         assert demangle.demangle_strict(mangled, language="rust") == expected
+
+
+class TestABaseSixtyTwoNumberIsSixtyFourBitsWide:
+    """`<base-62-number> = {<0-9a-zA-Z>} "_"`, and RFC 2603 puts no width on it.
+
+    rustc-demangle does. `integer_62` accumulates into a `u64` through `checked_mul` and
+    `checked_add` and returns `x + 1` through one more, so a field whose digits overrun
+    64 bits is a parse error there and in LLVM's port of it; binutils, whose Rust reader
+    is neither, reads such a field by wrapping and answers `a[aa303280a73f210e]::f`.
+
+    Python has no ceiling of its own to hit, so this one is imposed on purpose: the
+    scheme is a port of rustc-demangle, and refusing where it refuses is the contract.
+    rustc writes a disambiguator that is a truncated 64-bit hash, so nothing a compiler
+    emits comes near the edge -- and this was found by mutating symbols that a compiler
+    did emit, which is how a twelfth digit gets into one.
+
+    The boundary is the reference's exactly, checked against
+    `tools/rustc-demangle-reference/`: the digits of a crate disambiguator spell `x`,
+    `integer_62` answers `x + 1`, and `opt_integer_62` adds the last one, so the widest
+    that still fits is `x = 2**64 - 3`.
+    """
+
+    #: `lYGhA16ahyc` is 2**64 - 4 in base 62, `...d` is 2**64 - 3, `...e` is 2**64 - 2.
+    READ = ("_RNvCslYGhA16ahyc_1a1f", "_RNvCslYGhA16ahyd_1a1f")
+    REFUSED = ("_RNvCslYGhA16ahye_1a1f", "_RNvCslYGhA16ahyf_1a1f", "_RNvCsAAAAAAAAAAA_1a1f")
+
+    @pytest.mark.parametrize("mangled", READ)
+    def test_the_widest_that_fits_is_read(self, mangled):
+        assert demangle.demangle_strict(mangled, language="rust") == "a::f"
+
+    @pytest.mark.parametrize("mangled", REFUSED)
+    def test_one_wider_is_refused(self, mangled):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="rust")
+        assert demangle.demangle(mangled) == mangled
+
+    def test_an_empty_field_is_still_zero(self):
+        """The bound is on the value, not on the digits: `_` alone is 0 and stays legal."""
+        assert demangle.demangle_strict("_RNvCs_1a1f", language="rust") == "a::f"
 
 
 class TestTheRecordedDifferencesAgainstTheTool:
