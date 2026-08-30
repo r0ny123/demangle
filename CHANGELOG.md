@@ -732,6 +732,20 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **The three pre-Itanium false claims are kept on purpose, and now there is a number
+  saying why.** `gnuv2` claims and rewrites three of the 345,601 symbols a stock Ubuntu
+  24.04 ships -- `PyInit__lldb`, `PyInit__sre`, `drm_intel_gem_bo_map__wc` -- and the
+  obvious next rule is to require positive evidence before auto-claiming a bare
+  `name__<builtins>`, the way `schemes/go` declines `fmt.Println`. Measured instead of
+  adopted: it would drop 58 of the 458 names in libiberty's own corpus that detection
+  claims, among them `overload1arg__Fi` and `polar__Fdd`. A free overloaded function is
+  the canonical thing this mangling encodes and has no class, no template and no marker
+  by construction, so the rule cannot tell the residue from the corpus -- both have
+  empty evidence and a parameter list of nothing but fundamental types. 58 correct
+  readings to remove 3 wrong ones is the wrong side of the trade.
+  `TestTheThreeItStillClaimsWrongly` pins both sides so the rule cannot be adopted by
+  accident.
+
 - **`render()` was a method most node classes had and no class declared.** The schemes
   whose spelling does not fit C++ declarator syntax carry their fragments as text and
   render by concatenating them, so `render()` is what their own nodes use and what

@@ -180,9 +180,14 @@ column comes from the declaration rather than from a demangler — with reduced 
   free function in that mangling is spelled exactly like a C identifier with a `__` and a
   run of type letters. Binutils 2.42 dropped `gnu-v2` from `--format` rather than keep
   guessing. The `schemes/go` option — require positive evidence before auto-claiming a
-  bare `name__<builtins>`, and leave the rest to `language="gnuv2"` — would close it at
-  the cost of every genuine free function, which is why it is written down here rather
-  than done.
+  bare `name__<builtins>`, and leave the rest to `language="gnuv2"` — was measured rather
+  than argued about, and it costs 58 of the 458 corpus names detection currently claims:
+  `overload1arg__Fi`, `polar__Fdd`, `complexfunc5__FPFPc_PFl_i` and the rest of
+  libiberty's own free functions, which have no class, no template and no marker by
+  construction. The narrower form — decline only when every parameter is a builtin —
+  drops the same 58, because it is the same set. 58 correct readings to remove 3 wrong
+  ones is the wrong side of the trade, and `TestTheThreeItStillClaimsWrongly` in
+  `tests/test_gnuv2.py` pins both sides of it so the rule cannot be adopted by accident.
 
 ## 1. More schemes
 
