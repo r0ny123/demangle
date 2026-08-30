@@ -40,6 +40,7 @@ Exit status is non-zero when anything disagrees that is not listed in `ACCEPTED`
 import argparse
 import contextlib
 import itertools
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import demangle
+
 
 #: Per scheme: the reference to ask, a second opinion where one exists, and the
 #: (prefix, alphabet) pairs to enumerate over. A prefix costs nothing and buys depth --
@@ -58,6 +60,19 @@ import demangle
 #: the same as being right, and where the two disagree with each other, being on one side
 #: is not evidence of anything -- so a divergence from the first that the second shares
 #: with this library is reported as accepted rather than as a defect.
+def _rust_reference():
+    """rustc-demangle itself where it has been built, and `llvm-cxxfilt` where it has not.
+
+    LLVM's Rust reader is a port of an older rustc-demangle and binutils' is independent
+    of both, so on Rust neither of the two demanglers that ship on this box is the
+    implementation this scheme is a port of. `tools/rustc-demangle-reference/` is a
+    twenty-line front end over the crate; see its README.
+    """
+    built = Path(__file__).resolve().parent / "rustc-demangle-reference" / "target" / "release"
+    binary = built / "rustc-demangle-reference"
+    return str(binary) if binary.exists() else "llvm-cxxfilt"
+
+
 JOBS = {
     "itanium": (
         "llvm-cxxfilt",
@@ -69,7 +84,7 @@ JOBS = {
         ],
     ),
     "rust": (
-        "llvm-cxxfilt",
+        _rust_reference(),
         None,
         [
             ("_R", "NvCsMKIY_1a3bcE"),
@@ -112,7 +127,32 @@ ACCEPTED = {
     # character, so a tag name ending in `$` or `_` is glued to the variable it declares:
     # `struct _x` for `struct _` and `x`, which is the declaration of something else.
     # `struct _ {};` is ordinary C++, so this is reachable, and the space is kept.
-    "msvc": lambda name, ours, first, second: first is not None and ours.replace(" ", "") == first.replace(" ", ""),
+    "msvc": lambda name, ours, first, second: (
+        first is not None
+        and (
+            ours.replace(" ", "") == first.replace(" ", "")
+            # Or a vftable or vbtable base path with more than one element.
+            # `llvm-undname` reads the first element and drops the rest, so
+            # `??_7A@B@@6BC@D@@@`, `...E@F@@@` and `...E@F@@G@H@@@` -- three symbols
+            # naming three different vtables -- all come back from it as one spelling.
+            # Checked against llvm-undname 16, 18 and 20; the head of
+            # `tests/conformance/msvc-llvm-corpus.txt` carries the whole finding.
+            or ("'s `" in ours and "table'{for `" in ours)
+            # Or a placement delete closure, which `llvm-undname` spells with no name at
+            # all -- `void __cdecl (void *)`. Microsoft's own `undname` writes
+            # `` `placement delete closure' ``, and a declaration with no name in it is
+            # not a spelling to follow. Recognised by putting the name back.
+            or _PLACEMENT_CLOSURE.sub("", ours) == first
+        )
+    ),
+    # `c++filt --format=dlang` writes a path separator for a component that spells
+    # nothing. An anonymous component and a `__S<n>` compiler scope are left out of the
+    # spelling by both -- that much is measured, and pinned by `tests/test_d.py` -- but
+    # the reference still writes the dot that would have gone before it, so a name comes
+    # back `TypeInfoArrayGeneric!(...)..compare(...)`, or `startsWith!(...).(...)`, or
+    # with a trailing `.` and nothing after it. Recognised by deleting a separator that
+    # has nothing between it and the next one, the parameter list, or the end.
+    "d": lambda name, ours, first, second: first is not None and _EMPTY_COMPONENT.sub("", first) == ours,
     "itanium": lambda name, ours, first, second: (
         # `llvm-cxxfilt` refuses a parameter list whose first type is a literal `void`
         # followed by anything -- its leading `void` means "empty list, and nothing may
@@ -132,18 +172,56 @@ ACCEPTED = {
         # LLVM 18.1 know none of them, so both hand these back and this library is simply
         # ahead. Anything else both refuse is a defect and is reported.
         or (first is None and second[0] is None and _newer_than_the_references(name))
-        # Or `G` -- `_Imaginary` -- applied to something with a declarator, where the two
-        # references lose it in different ways and neither answer is the declaration.
-        # `_Z1fGA_a` is an imaginary array of `signed char`: `llvm-cxxfilt` drops the
-        # `[]` and answers `signed char imaginary`, `c++filt` writes
+        # Or the same reading with a space `llvm-cxxfilt` does not print. It runs the
+        # return type into the name when the return type is an array -- `signed
+        # charf<>(signed char) []` for `_Z1fIEA_aa`, a function returning an array,
+        # which is not a declaration C++ has and which no compiler emits. `c++filt`
+        # parenthesises instead. Compared without spaces so the difference has to be
+        # only that.
+        or (first is not None and ours.replace(" ", "") == first.replace(" ", ""))
+        # Or `_Complex`/`_Imaginary` applied to something with a declarator, where the
+        # two references lose it in different ways and neither answer is the
+        # declaration. `_Z1fGA_a` is an imaginary array of `signed char`: `llvm-cxxfilt`
+        # drops the `[]` and answers `signed char imaginary`, `c++filt` writes
         # `signed char ( _Imaginary) []` with the brackets round the wrong thing and a
         # space inside them, and `_Z1fGFaE` -- imaginary applied to a function type --
         # loses the `()` to LLVM and is refused outright by GNU. This keeps the
-        # declarator: `signed char imaginary []`, `signed char () imaginary`.
-        or ("GA" in name or "GF" in name)
+        # declarator.
+        #
+        # The condition is the *shape*: the `G` or `C` marker, any cv-qualifiers, and
+        # then an array or a function. Two narrower attempts each missed a family of it
+        # -- `"GA" in name` missed `_Z1fGKA_a`, where a `K` sits between, and
+        # `"[]" in ours or "()" in ours` missed `_Z1fGA1_a` and `_Z1fGFaaE`, where the
+        # declarator is not empty.
+        or (_IMAGINARY_DECLARATOR.search(name) is not None and ("imaginary" in ours or "complex" in ours))
+        # Or a `char` array in a braced initialiser, which the *installed*
+        # `llvm-cxxfilt` spells element by element -- `Hello{char [6]{(char)72, ...}}`
+        # -- and LLVM main spells as a string. The expected column of
+        # `tests/conformance/itanium-libcxxabi.txt.gz` is LLVM's own
+        # `DemangleTestCases.inc` from main, which says `Hello{"Hello"}`, so this follows
+        # the reference's own vectors rather than the older binary that ships beside
+        # them. `c++filt` reads these through libiberty's copy of the same code and is
+        # behind in the same way.
+        or ('{"' in ours and first is not None and "{(char)" in first)
+        # Or a cv-qualifier repeated on a function type, where all three disagree:
+        # `_Z1fKKFaE` is `f(signed char () const const)` here, `f(signed char  const()
+        # const)` to LLVM -- which puts one of them in the declarator and doubles a
+        # space -- and refused by GNU. `const const` on a function type is not a
+        # declaration either.
+        or (name.count("K") + name.count("V") > 1 and "F" in name and second[0] is None)
     ),
 }
 
+
+#: A path separator with nothing before the next one, the parameter list, or the end.
+_EMPTY_COMPONENT = re.compile(r"\.(?=[.(]|$)")
+
+#: The name `llvm-undname` leaves out of a placement delete closure. See `ACCEPTED`.
+_PLACEMENT_CLOSURE = re.compile(r"`placement delete(\[\])? closure'")
+
+#: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
+#: function. The one shape where all three implementations write something different.
+_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVK]*[AF]")
 
 #: The type codes neither shipped reference reads yet.
 _AHEAD_OF_THE_REFERENCES = ("DA", "DR", "DS", "Dk", "DK", "Dy")

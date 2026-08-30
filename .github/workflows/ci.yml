@@ -153,12 +153,27 @@ jobs:
         run: |
           python tools/generate_corpus.py --out /tmp/fresh
           python tools/differential.py --corpus /tmp/fresh/itanium-real-world.txt
+      # `rustc-demangle` is the implementation the Rust scheme is a port of, and neither
+      # of the demanglers installed above is it: LLVM's Rust reader is a port of an older
+      # version and binutils' is independent of both. Built before the two steps below so
+      # they ask the right one about Rust. `cargo` is preinstalled on the runner.
+      - name: Build the rustc-demangle reference
+        run: cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
       # The corpora cover the shapes compilers emit. This covers the shapes the grammars
       # permit -- every string up to four characters over a per-scheme alphabet, offered
       # to the library and then to the reference. Four is what fits in the time here;
       # deeper runs are a thing to do by hand against a parser change.
       - name: Enumerate the shape space against the references
         run: python tools/enumerate.py --length 4 --quiet
+      # Enumeration reaches the shapes a grammar permits at four characters. This reaches
+      # the ones that need a name a compiler actually emitted -- a deep substitution, a
+      # nested argument list -- by damaging real symbols. The seed is fixed, so a failure
+      # here reproduces with the same `--seed` and `--count` locally.
+      - name: Mutate real symbols and compare against the references
+        # Pinned in both directions, like the conformance corpora: a new divergence
+        # fails, and so does a stale pin after one is fixed. The eight are named in the
+        # tool's own docstring, with why each is still open.
+        run: python tools/mutate.py --count 20000 --quiet --expect 8
 
   cross-reference:
     name: cross-version reference check

@@ -136,6 +136,69 @@ list of names -- the shapes are families, and a list goes stale the moment an al
 changes. Where a scheme has two references the tool asks both, each under its own style,
 because agreeing with one build of one reference is not the same as being right.
 
+### Mutation
+
+```console
+python tools/mutate.py --expect 8       # the pinned draw, which is what CI runs
+python tools/mutate.py --count 200000   # more mutants per scheme
+python tools/mutate.py --seed 7         # a different draw; the default draw is fixed
+```
+
+Enumeration counts *short* strings, which is the wrong length for everything that only
+appears once a name is long: a substitution referring back to a component built earlier,
+a template argument list three deep, a return type that is itself a function pointer.
+No alphabet is small enough to reach those by counting.
+
+So `tools/mutate.py` starts from the checked-in corpora instead and damages them --
+truncate, delete, duplicate, transpose, substitute a character from the scheme's own
+alphabet, or splice the head of one symbol onto the tail of another. A mutant keeps
+almost all of its parent's structure, so it lands *near* the emitted space rather than in
+the grammar's cheap corners, which is where a substitution table gets corrupted rather
+than merely emptied. The draw is seeded, so a failure reproduces exactly.
+
+The count is pinned in both directions rather than driven to zero: `--expect` fails on a
+new divergence *and* on a stale pin after one is fixed, which is how the conformance
+corpora are pinned. Eight stand at the default draw, and the tool's own docstring names
+each and says why it is still open -- two Itanium shapes where following the reference
+would cost more than the shape is worth or where all three references disagree, and six D
+back-reference chains whose refusal has not been explained yet. An accept rule for a
+reason nobody has established is how a defect gets filed as a reference's.
+
+It shares `ACCEPTED` with `tools/enumerate.py` on purpose: those rules are statements
+about why a reference's answer is not evidence, and the reason does not change with how
+the name was found. Two mechanisms are its own. `RESCUE` asks the reference about a
+*different* name where it cannot read the one in hand for a known reason --
+`llvm-undname` 18 refuses every ARM64EC name, so it is asked about the name without the
+`$$h` marker, which is exactly how `tests/conformance/msvc-arm64ec.txt` was built.
+`SECOND_OPINION` asks another reference about the same name, for schemes where a
+divergence from the first is not evidence on its own.
+
+Fifteen defects came out of the first two sittings with it, in four schemes. The largest
+was structural: five of the seven Itanium `<prefix>` productions are bases and take no
+prefix on the left, so `_ZN1aSa1bEv` is not a name -- it had read as
+`a::std::allocator::b()`. The rest run from a D pointer to a function pointer spelled as
+the function pointer, through a D integer literal re-formatted rather than echoed and a
+D negative `char` that lost its sign, to a Rust `<base-62-number>` read wider than the
+reference reads one and an MSVC ARM64EC marker stripped until none was left.
+
+### The Rust reference
+
+`llvm-cxxfilt` and `c++filt` each carry their own Rust reader -- LLVM's is a port of an
+older `rustc-demangle`, binutils' is independent of both -- so on Rust neither of the
+demanglers already on the machine is the implementation `src/demangle/schemes/rust/` is a
+port of. Where the three disagree, neither of those two settles it.
+
+`tools/rustc-demangle-reference/` is a twenty-line front end over the crate itself,
+answering one spelling per line the way the C++ demanglers do:
+
+```console
+cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
+```
+
+`tools/enumerate.py` and `tools/mutate.py` use it when it has been built and fall back to
+`llvm-cxxfilt` when it has not. It is not a dependency of the test suite; building it
+needs a Rust toolchain and one fetch from crates.io.
+
 ## CI and workflows
 
 Workflows run with `permissions: contents: read` and grant more only where a job needs

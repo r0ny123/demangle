@@ -86,6 +86,14 @@ it could equally be. rustc-demangle can afford the wider rule because it is only
 handed names a caller has already decided are Rust's; this plugin is offered every symbol
 in a binary.
 
+Against the crate rather than its vectors: `tools/rustc-demangle-reference/` is a
+twenty-line front end over `rustc-demangle` 0.1.28 itself, and over the 5,753 distinct
+Rust symbols in the corpora this spells 5,752 identically. The one is the `@@16` above.
+Neither of the demanglers a Linux box already has is that implementation -- LLVM's Rust
+reader is a port of an older version and binutils' is independent of both -- so it is
+built here rather than assumed, and `tools/enumerate.py` and `tools/mutate.py` ask it
+where it exists.
+
 **GNU style**, against `c++filt` 2.42: nothing differs in the 44,093 C++ symbols it reads
 in the shipped libLLVM, and 3 differ of the 217,057 it reads across every shared library a
 stock Ubuntu 24.04 ships. It was 31 in libLLVM before the `<template-param>` fix under

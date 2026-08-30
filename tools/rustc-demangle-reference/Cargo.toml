@@ -1,0 +1,11 @@
+[package]
+name = "rustc-demangle-reference"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rustc-demangle = "0.1.28"
+
+[profile.release]
+panic = "abort"

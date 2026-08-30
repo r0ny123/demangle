@@ -13,3 +13,4 @@ site/
 .coverage
 htmlcov/
 *.o
+tools/rustc-demangle-reference/target/
