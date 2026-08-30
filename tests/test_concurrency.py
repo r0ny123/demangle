@@ -170,3 +170,38 @@ def test_the_registry_survives_being_loaded_from_several_threads_at_once():
 
     _run_threaded(work)
     assert all(names == expected for names in seen)
+
+
+def test_mixed_budgets_do_not_share_an_answer(corpus):
+    """Threads asking for different `Limits` must not be served each other's answers.
+
+    A limit now has a path of its own: a name that exceeds one is refused, and the
+    refusal is cached like any other answer. The cache is keyed on the limits as well as
+    the name, so the entry a tightened budget leaves must not reach a caller who asked
+    for a relaxed one -- and a shared key would show up exactly here, where the same
+    name is asked about under five budgets at once.
+    """
+    from dataclasses import replace
+
+    budgets = {
+        "default": demangle.DEFAULT_LIMITS,
+        "relaxed": demangle.RELAXED_LIMITS,
+        "substitutions": replace(demangle.RELAXED_LIMITS, max_substitutions=4),
+        "depth": replace(demangle.RELAXED_LIMITS, max_depth=8),
+        "output": replace(demangle.RELAXED_LIMITS, max_output=32),
+    }
+    names = corpus[:1500]
+    expected = {
+        (label, name): demangle.demangle(name, limits=limits) for label, limits in budgets.items() for name in names
+    }
+    demangle.cache_clear()
+
+    def work(seed):
+        import random
+
+        local = random.Random(seed)
+        for name in _shuffled(names, seed):
+            label = local.choice(list(budgets))
+            assert demangle.demangle(name, limits=budgets[label]) == expected[(label, name)], (name, label)
+
+    _run_threaded(work)
