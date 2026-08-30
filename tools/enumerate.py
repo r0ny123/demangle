@@ -240,6 +240,16 @@ ACCEPTED = {
             and _QUALIFIED_NESTED_NAME.search(name) is not None
             and _without_qualifiers(second[0]) == _without_qualifiers(ours)
         )
+        # Or an Objective-C method name standing as a `<local-name>`'s function encoding
+        # -- `Z53-[DeploymentSetupController handleManualServerEntry:]E`. Clang emits
+        # these for a C++ template instantiated inside an Objective-C method, and both
+        # *shipped* references refuse the shape wholesale: llvm-cxxfilt 18.1 and 20.1 and
+        # GNU c++filt 2.42 hand back every one of them unread. libcxxabi's own vectors
+        # carry two, with the answer recorded, and this library matches both exactly --
+        # so the file the reference is tested against says the reading is right and the
+        # binaries built from it are behind it. Their refusal is not evidence about a
+        # mutant of that shape either.
+        or (first is None and second[0] is None and _OBJC_METHOD_SCOPE.search(name) is not None)
         # Or a cv-qualifier repeated on a function type, where all three disagree:
         # `_Z1fKKFaE` is `f(signed char () const const)` here, `f(signed char  const()
         # const)` to LLVM -- which puts one of them in the declarator and doubles a
@@ -291,6 +301,9 @@ _PLACEMENT_CLOSURE = re.compile(r"`placement delete(\[\])? closure'")
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
 #: function. The one shape where all three implementations write something different.
 _IMAGINARY_DECLARATOR = re.compile(r"[GC][rVK]*[AF]")
+
+#: An Objective-C method name as a `<local-name>`'s function encoding. See `ACCEPTED`.
+_OBJC_METHOD_SCOPE = re.compile(r"Z\d+[-+]\[")
 
 #: The type codes neither shipped reference reads yet.
 _AHEAD_OF_THE_REFERENCES = ("DA", "DR", "DS", "Dk", "DK", "Dy")

@@ -845,3 +845,34 @@ class TestAFriendDeclaredInsideItsClass:
     def test_the_marker_needs_a_class_to_be_a_friend_of(self):
         """`F` outside a nested name is a type letter, not a friend marker."""
         assert demangle.demangle_strict("_Z1fFvvE", language="itanium") == "f(void ())"
+
+
+class TestAnObjectiveCMethodAsALocalScope:
+    """`Z <n>-[Class selector:]E` -- a C++ template instantiated inside an ObjC method.
+
+    Clang emits these. Every *shipped* reference refuses the shape wholesale:
+    `llvm-cxxfilt` 18.1.3 and 20.1.2 and GNU `c++filt` 2.42 hand back every one unread.
+    libcxxabi's own `DemangleTestCases.inc` carries two of them with the answer recorded,
+    and this library matches both -- so the file the reference is tested against says the
+    reading is right and the binaries built from it are behind it. That is the reason
+    `tools/enumerate.py` accepts a mutant of the shape rather than reporting it: a
+    refusal that covers the whole family says nothing about any member of it.
+    """
+
+    LOCAL_SCOPE = "_ZZ10+[Foo bar]E3Baz"
+
+    def test_the_short_one_reads(self):
+        assert demangle.demangle_strict(self.LOCAL_SCOPE, language="itanium") == "+[Foo bar]::Baz"
+
+    def test_both_shipped_references_refuse_what_libcxxabi_records(self):
+        """Not a claim about the references' source -- about the binaries that ship."""
+        import shutil
+        import subprocess
+
+        for tool in ("llvm-cxxfilt", "c++filt"):
+            if shutil.which(tool) is None:
+                pytest.skip(f"{tool} is not installed")
+            answer = subprocess.run(
+                [tool, "--no-strip-underscore"], input=self.LOCAL_SCOPE + "\n", capture_output=True, text=True
+            ).stdout.strip()
+            assert answer == self.LOCAL_SCOPE, f"{tool} now reads it; the accept rule needs re-examining"

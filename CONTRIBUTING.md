@@ -139,7 +139,7 @@ because agreeing with one build of one reference is not the same as being right.
 ### Mutation
 
 ```console
-python tools/mutate.py --expect 1       # the pinned draw, which is what CI runs
+python tools/mutate.py                  # the pinned draw, which is what CI runs
 python tools/mutate.py --count 200000   # more mutants per scheme
 python tools/mutate.py --seed 7         # a different draw; the default draw is fixed
 ```
@@ -178,12 +178,14 @@ on the parser as it stood, and nothing on the parser as it is.
 
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
-corpora are pinned. One stands at the default draw, and the tool's own docstring says
-why it is still open: an Itanium name both references refuse and this reads, which is the
-one answer a divergence cannot be argued from. An accept rule for a reason nobody has
-established is how a defect gets filed as a reference's -- the D divergence that stood
-here for several sittings became a rule only once diffing the mutant against its seed
-named the shape, and the description it had carried until then turned out to be wrong.
+corpora are pinned. It stands at zero: every divergence the default draw reports is
+either a defect that was fixed or an accept rule naming the reason a reference's answer
+is not evidence. An accept rule for a reason nobody has established is how a defect gets
+filed as a reference's -- the D divergence that stood here for several sittings became a
+rule only once diffing the mutant against its seed named the shape, and the description
+it had carried until then turned out to be wrong. Zero is not a claim that nothing is
+left, either: a divergence not in this draw is not one that does not exist, which is what
+`--seed` and `--count` are for.
 
 It shares `ACCEPTED` with `tools/enumerate.py` on purpose: those rules are statements
 about why a reference's answer is not evidence, and the reason does not change with how

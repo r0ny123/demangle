@@ -33,16 +33,17 @@ default -- so this gates a commit in both directions, like the conformance corpo
 new divergence fails, and so does a stale pin after one is fixed. The number is a
 property of `--seed` and `--count` together; the pin CI uses is for the defaults.
 
-What the pin currently stands at, and why it is still open
----------------------------------------------------------
-One, at `--seed 0 --count 20000`, and it is Itanium.
+What the pin currently stands at
+--------------------------------
+Zero, at `--seed 0 --count 20000`. Every divergence this draw reports is either a defect
+that was fixed or an `ACCEPTED` rule in `tools/enumerate.py` naming the reason a
+reference's answer is not evidence. `--expect` defaults to 0, so the gate is now "no
+divergence at all", and a name this library reads differently from the reference for a
+reason nobody has written down fails it.
 
-  * A generic lambda's `operator()` called on a type reached through `L_Z...E`, inside a
-    `decltype`, inside an Objective-C method name that the mutation spliced into the
-    middle of a C++ symbol. Both references refuse it outright and this reads it: every
-    production in it is one this scheme has, and neither reference says which of them it
-    is refusing. Kept visible because "both refuse" is the one answer a divergence
-    cannot be argued from -- there is no reading to compare against, only a refusal.
+That is not a claim that nothing is left: a divergence *not in this draw* is not a
+divergence that does not exist. Three such are named at the end of this docstring, and
+`--seed` and `--count` are there to go looking.
 
 What this draw has found and what became of it
 ----------------------------------------------

@@ -883,6 +883,21 @@ All notable changes to this project are recorded here. The format follows
   pinned in `tests/test_types.py` and carried as an `ACCEPTED` rule in
   `tools/enumerate.py` with the reason.
 
+- **The mutation pin reaches zero, and the last one was the references being behind
+  their own test file.** `Z53-[DeploymentSetupController handleManualServerEntry:]E` --
+  an Objective-C method standing as a `<local-name>`'s function encoding, which clang
+  emits for a C++ template instantiated inside one. Diffing the mutant against its seed
+  showed the edit was a two-character transposition inside an identifier, which cannot
+  change anything structural: the *seed* is refused by both shipped references too.
+  libcxxabi's own `DemangleTestCases.inc` carries two names of the shape with the answer
+  recorded, and this library matches both exactly, while `llvm-cxxfilt` 18.1.3 and 20.1.2
+  and GNU `c++filt` 2.42 hand back every one unread. So the file the reference is tested
+  against says the reading is right and the binaries built from it are behind it, and a
+  refusal covering the whole family is not evidence about a mutant of it. `--expect` is
+  back to its default: the gate is now "no divergence at all". Zero is not a claim that
+  nothing is left -- three divergences outside this draw are still named in the tool's
+  docstring.
+
 - **The open D divergence, isolated -- and its description was wrong.** `tools/mutate.py`
   had carried it for several sittings as "a deep chain of `Q` back references round a
   `___dgliteral1`". That was the shape of the *mutant*, not of the disagreement. Diffing
