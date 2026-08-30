@@ -137,6 +137,34 @@ class TestClaimsNothingItShouldNot:
     def test_it_refuses(self, name):
         assert not detect(name)
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "@?0??define_lambda@@YAHXZ@QBE@XZ",
+            "@?0??1@YAHXZ@A",
+            "@?0??nested_lambdas@hard@@YAHXZ@QEBA",
+            "@x?",
+            "@a@b?c",
+        ],
+    )
+    def test_a_question_mark_is_msvcs_marker_and_no_borland_production_writes_one(self, name):
+        """A fragment of an MSVC symbol is not a Delphi export.
+
+        There is no `?` in any of the 11,363 recorded exports, and this parser copies
+        characters through rather than checking an alphabet -- so it read them.
+        `demangle_text` over a listing tokenises
+        `??R<lambda_1>@?0??define_lambda@@YAHXZ@QBE@XZ` at the angle brackets the token
+        cannot hold, and what was left came back as
+        `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ`: a Delphi declaration built out
+        of half an MSVC symbol.
+        """
+        assert not detect(name)
+        assert demangle.demangle(name) == name
+
+    def test_the_parser_still_reads_one_when_the_caller_insists(self):
+        """`detect` decides what to claim unasked; `language=` is the caller saying so."""
+        assert demangle.demangle("@x?", language="delphi") == "x?"
+
     def test_a_qualified_data_name_without_dollar_is_still_claimed(self):
         assert detect("@System@Var")
 

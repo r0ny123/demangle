@@ -834,8 +834,20 @@ def detect(name):
     from: Wii CodeWarrior spells a function-local static `@LOCAL@<function>@<variable>`
     and its guard `@GUARD@...`. Both parse here as a unit called `LOCAL` or `GUARD`,
     which is a name Borland never wrote.
+
+    A `?` is refused for the same reason and a stronger one: no Borland production
+    writes one -- there is none in any of the 11,363 recorded exports -- and it is *the*
+    MSVC marker, so a name carrying one that reaches this scheme is a piece of somebody
+    else's. This copies characters through rather than checking an alphabet, so it read
+    them: `demangle_text` over a listing tokenises `??R<lambda_1>@?0??define_lambda@@YAHXZ@QBE@XZ`
+    at the angle brackets it cannot hold, and the `@?0??define_lambda@@YAHXZ@QBE@XZ` left
+    over came back as `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ` -- a Delphi
+    declaration built out of half an MSVC symbol. Asked for by language it is still read;
+    what this decides is whether to claim a name nobody said was Delphi's.
     """
     if not name or name[0] != "@" or name.startswith("@__swift") or _MSVC_FASTCALL.match(name):
+        return False
+    if "?" in name:
         return False
     if name.startswith(("@LOCAL@", "@GUARD@")):
         return False

@@ -900,6 +900,17 @@ All notable changes to this project are recorded here. The format follows
   contains a component that really is symbol-shaped, and a filter over prose cannot be a
   fixed point in general.
 
+- **Delphi claimed fragments of MSVC symbols.** The parser is a port of Borland's
+  `unmangle.c` and copies characters through rather than checking an alphabet, so a `?`
+  passed straight into an identifier -- and `?` is *the* MSVC marker, with none in any of
+  the 11,363 recorded exports. Where the text filter tokenised
+  `??R<lambda_1>@?0??define_lambda@@YAHXZ@QBE@XZ` at the angle brackets its token cannot
+  hold, what was left came back as `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ`: a
+  Delphi declaration built out of half an MSVC symbol. `detect` refuses a name carrying
+  one now; `language="delphi"` still reads it, because there the caller has said what the
+  name is. Six of the ten remaining partial readings over every corpus are what is left,
+  all of them MSVC and CodeWarrior names the token cannot hold whole.
+
 - **The text filter cut Delphi names in half.** `find_symbols` and `demangle_text`
   tokenise a line before offering the words to the library, and the token held no `%` or
   `#` -- which Delphi writes for a template argument list and a virtual-method-table
