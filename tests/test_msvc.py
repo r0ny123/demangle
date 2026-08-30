@@ -761,6 +761,86 @@ PROBED_DECLINED = [
 ]
 
 
+#: Spellings the mutation fuzzer found, each read off `llvm-undname` 18.1.3.
+MUTATION_RULES = [
+    # `outputQualifiers` tests a bitmask, const first, so the order the qualifiers were
+    # *read* in never reaches the output. A type qualified twice -- a pointee qualifier
+    # and then the variable's own -- came out `char volatile const *`.
+    ("?s4@PR13182@@3PCDD", "char const volatile *PR13182::s4"),
+    ("?s4@PR13182@@3RCDD", "char const volatile *volatile PR13182::s4"),
+    ("?s@@3QBDD", "char const volatile *const s"),
+    # `__unaligned` comes after `__restrict`, on a pointer and on a pointee alike.
+    ("?f@@YAPFAPIAHXZ", "int *__restrict __unaligned * __cdecl f(void)"),
+    ("?f@@YAPFAPIQS@@HXZ", "int S::*__restrict __unaligned * __cdecl f(void)"),
+    ("?f@@YAPFBHXZ", "int const __unaligned * __cdecl f(void)"),
+    # The duplicate test is on the *trailing* words, not on the text: asking whether the
+    # word appears anywhere found one inside a template argument and dropped a qualifier
+    # that belongs to the symbol.
+    (
+        "?h@FTypeWithQuals@@3U?$S@$$A8@@HCAHXZ@1@C",
+        "struct FTypeWithQuals::S<int __cdecl(void) volatile &&> volatile FTypeWithQuals::h",
+    ),
+    # `extern "C"` goes after the access specifier *and* after `static` or `virtual`.
+    ("?overloaded_fn@@$$J0EAAHH@Z", 'private: virtual extern "C" int __cdecl overloaded_fn(int)'),
+    ("?overloaded_fn@@$$J0SAHH@Z", 'public: static extern "C" int __cdecl overloaded_fn(int)'),
+    ("?overloaded_fn@@$$J0YAHH@Z", 'extern "C" int __cdecl overloaded_fn(int)'),
+    # `demanglePointerExtQualifiers` reads an optional `E`, then an optional `I`, then an
+    # optional `F`, in that order and each at most once. There was no `F` in it at all.
+    ("?h3@@3QEIAHFA", "int __unaligned *const __restrict h3"),
+    ("?h3@@3QEIAHEIFA", "int __unaligned *const __restrict h3"),
+    ("?h3@@3QEIAHEIA", "int *const __restrict h3"),
+]
+
+#: Shapes those rules forbid. Every one read as a name before the fuzzer reached it.
+MUTATION_DECLINED = [
+    # The order is fixed, so `I` before `E` is not a name.
+    "?h3@@3QEIAHIEA",
+    # `$$J0` is one literal; the digit is part of the marker, not a field.
+    "?overloaded_fn@@$$J3YAXXZ",
+    "?overloaded_fn@@$$J4YAXXZ",
+    "?overloaded_fn@@$$JYAXXZ",
+    # Only a pointer points into a class: C++ has no reference to member, and the
+    # declarator this produced was not a spelling -- `int __thiscall foo::&l(int)`.
+    "?l@@3A8foo@@AEHH@ZA",
+    # `demangleVcallThunkNode` consumes `$B` and nothing else, so a `??_9` name carrying
+    # a vtordisp slot is two thunk kinds at once -- and a vcall with a parameter list.
+    "??_9Derived@@$4PPPPPPPM@A@EAAPEAXI@Z",
+    # `$$Y` is consumed by `demangleTemplateParameterList` and by nothing else, so it
+    # names an alias template only where a template argument stands.
+    "?f@@YAX$$YURetVal@@@Z",
+    "??$f@PA$$YURetVal@@@@YAXXZ",
+    # The initialiser stub's name ends with the variable it runs for and carries no
+    # scope: there is nowhere for another component to go.
+    "??__E?i@C@@0HA@e@@QEAAHXZ",
+    "??__E?i@C@@0HA@gle_no_backref1@@YAXQAHQAH@Z",
+]
+
+
+class MsvcMutationRuleTestSuite(unittest.TestCase):
+    """What `tools/mutate.py` found by damaging the reference's own corpus."""
+
+    def test_the_spellings_match_the_reference(self):
+        for mangled, expected in MUTATION_RULES:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_the_shapes_those_rules_forbid_are_refused(self):
+        for mangled in MUTATION_DECLINED:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), mangled)
+
+    def test_what_those_rules_still_read(self):
+        for mangled, expected in [
+            ("?overloaded_fn@@$$J0QEAAHH@Z", 'public: extern "C" int __cdecl overloaded_fn(int)'),
+            ("?l@@3P8foo@@AEHH@ZEQ1@", "int (__thiscall foo::*l)(int)"),
+            ("??_9Base@@$B7AA", "[thunk]: __cdecl Base::`vcall'{8, {flat}}"),
+            ("??$f@$$YURetVal@@@@YAXXZ", "void __cdecl f<URetVal>(void)"),
+            ("??__E?i@C@@0HA@@YAXXZ", "void __cdecl `dynamic initializer for `private: static int C::i''(void)"),
+        ]:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+
 class MsvcProbedRuleTestSuite(unittest.TestCase):
     def test_probed_rules_spell_names_the_way_the_reference_does(self):
         for mangled, expected in PROBED_RULES:

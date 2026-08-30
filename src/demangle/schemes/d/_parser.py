@@ -136,12 +136,13 @@ RENAMED_COMPONENTS = {
 #: `__xdtor` and `__xpostblit` are *not* renamed -- checked against the reference rather
 #: than assumed from the pattern, and it leaves both alone.
 #:
-#: `__postblit` is a quirk worth recording. The reference renames it to `this(this)` when
-#: the function carries no attributes and leaves it as `__postblit` when it does, which is
-#: not a distinction the language makes: `_D3foo3Bar10__postblitMFZv` demangles to
-#: `foo.Bar.this(this)` and the same name with `NaNbNiNf` to `foo.Bar.__postblit()`. Every
-#: `__postblit` in the shipped libraries has attributes, so this follows the behaviour the
-#: real symbols get and does not rename it.
+#: `__postblit` is a quirk worth recording. The reference renames it to `this(this)` only
+#: where the type is exactly a `this` parameter and an empty D-convention signature --
+#: `_D3foo3Bar10__postblitMFZv` is `foo.Bar.this(this)`, and every one of `MFNaZv`,
+#: `MxFZv`, `MOFZv`, `MUZv`, `MFiZv`, `UZv` and `FZv` is left as `__postblit`, which is
+#: not a distinction the language makes. "No attributes" was the first reading of it and
+#: renamed six shapes the reference does not. Every `__postblit` in the shipped libraries
+#: has attributes, so the real symbols are not renamed either way.
 
 SPECIAL_COMPONENTS = {
     "__init": "initializer for ",
@@ -417,7 +418,8 @@ class _Parser:
         # `__postblit` is renamed by the reference only when the function has no
         # attributes, so the decision needs the type, which is read after the path.
         postblit = len(path) > 1 and path[-1] == "__postblit"
-        if len(path) > 1 and path[-1] in SPECIAL_COMPONENTS and reader.peek() == "Z":
+        self._trailing_is_bare_member = False
+        if path and path[-1] in SPECIAL_COMPONENTS and reader.peek() == "Z":
             # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type.
             # The `Z` is what *makes* it one, and it is not optional. Eating it only if
             # it was there read `_D10TypeInfo_c6__vtbl` -- a truncated symbol -- as the
@@ -428,7 +430,11 @@ class _Parser:
             reader.pos += 1
             if reader.pos != reader.end:
                 raise DemangleFailure("unconsumed input after a generated symbol")
-            return prefix + ".".join(path)
+            # `_D6__initZ` has nothing left to name once the marker is taken off, and the
+            # reference still writes the prefix -- `initializer for`, with no trailing
+            # space. Requiring a component before it read the marker as an ordinary name
+            # and answered `__init`.
+            return prefix + ".".join(path) if path else prefix.rstrip()
         anonymous_last = self._last_component_anonymous
         self._trailing_had_attributes = True
         trailing = self.trailing_type()
@@ -441,7 +447,7 @@ class _Parser:
             # Consumed either way -- the check that the whole name was read depends on
             # it -- and only the spelling is dropped.
             trailing = ""
-        if postblit and not self._trailing_had_attributes:
+        if postblit and self._trailing_is_bare_member:
             # `this(this)` reads as a declaration already, so the reference writes no
             # parameter list after it.
             path[-1] = "this(this)"
@@ -864,6 +870,17 @@ class _Parser:
                 raise DemangleFailure("back reference recursion")
             reader.depth += 1
             try:
+                if reader.peek() not in DIGITS:
+                    # `dlang_symbol_backref` reads a `dlang_number` and then that many
+                    # characters, so what a `Q` points at is a length-prefixed identifier
+                    # and nothing else -- not a `__T` template instance, and not another
+                    # `Q`. Reading whatever stood there resolved a mutated index onto a
+                    # whole template and spelled it as a path component:
+                    # `_D3std5range__T6ChunksTAhZQo5emptyMFNaNbNdNiNfZb` came back
+                    # `std.range.Chunks!(ubyte[]).Chunks!(ubyte[]).empty()`, with the
+                    # instance named twice. 56 of the 119 shapes the mutation fuzzer had
+                    # this scheme reading and the reference refusing were this one.
+                    raise DemangleFailure("a back reference to something that is not an identifier")
                 resolved = self.symbol_name()
             finally:
                 reader.depth -= 1
@@ -1129,7 +1146,11 @@ class _Parser:
             # is an ordinary declaration and its ten digits reach no further than the two
             # of `char[10]`.
             reader.pos += 1
-            count = reader.number(bounded=False)
+            # The digits the name carried, not the number they spell. `dlang_type`'s `G`
+            # case remembers where the run began and appends it verbatim, so `G012a` is
+            # `char[012]`; re-formatting it wrote `char[12]`, a different bound. Same rule
+            # as an integer literal -- see `_Reader.digits`.
+            _, count = reader.digits()
             return self._cap(f"{self.type_()}[{count}]")
         if char == "H":
             reader.pos += 1
@@ -1276,8 +1297,13 @@ class _Parser:
             # that says it is a member function.
             raise DemangleFailure("a `this` parameter with no function type after it")
         if char in CALLING_CONVENTIONS:
-            _, attributes, parameters, _ = self.function_type()
+            convention, attributes, parameters, _ = self.function_type()
             self._trailing_had_attributes = bool(attributes)
+            # Whether the whole of it is `this` and `()`: a member function of the D
+            # convention, with no modifiers, no attributes and no parameters. That is
+            # what the reference renames `__postblit` on, and nothing wider -- see
+            # `SPECIAL_COMPONENTS`.
+            self._trailing_is_bare_member = has_this and not (modifiers or attributes or parameters or convention)
             spelled = f"({', '.join(parameters)})"
             trailing = " ".join(modifiers)
             return f"{spelled} {trailing}" if trailing else spelled

@@ -743,9 +743,9 @@ All notable changes to this project are recorded here. The format follows
   `RESCUE`, which asks the reference about a substitute name where it cannot read the
   one in hand for a known reason, and `SECOND_OPINION`, which asks another reference
   about the same name. The draw is seeded, so a failure reproduces exactly, and the
-  divergence count is pinned in both directions rather than driven to zero -- the eight
-  still open are named in the tool's docstring with why each is. Fifteen defects came out
-  of the first two sittings with it, in four schemes; all fifteen are below.
+  divergence count is pinned in both directions rather than driven to zero -- the three
+  still open are named in the tool's docstring with why each is. Twenty-eight defects came
+  out of the first three sittings with it, in four schemes; all twenty-eight are below.
 
 - **`tools/rustc-demangle-reference/`, so Rust has its own reference on this machine.**
   `llvm-cxxfilt` and `c++filt` each carry their own Rust reader -- LLVM's is a port of an
@@ -760,6 +760,89 @@ All notable changes to this project are recorded here. The format follows
   `rustfilt` prints `foo@@16` for that name too.
 
 ### Fixed
+
+- **Itanium: only the first pointer to a protocol-qualified `objc_object` is the word
+  `id`.** `U <n>objcproto<protocol> <type>` is `objc_object<A>`, and a pointer to it is
+  `id<A>` -- `id` *is* the pointer, so it is not written again. Only the first one. This
+  collapsed the unpointed form to `id<A>` as well and then handed the same handle back
+  out of every `P`, so `PPU11objcproto1A11objc_object` and `PPPU...` came back `id<A>`
+  too, where the reference writes `id<A>*` and `id<A>**`.
+
+- **Itanium: an inheriting constructor carries a variant.** `CI1` through `CI5`, the
+  same five an ordinary constructor carries; `parseCtorDtorName` requires the digit and
+  `llvm-cxxfilt` refuses `CI0`, `CI6` and `CIT` alike. Taking whatever character stood
+  there read `_ZN1BCIT1AEi` as `B::B(int)`.
+
+- **MSVC: qualifiers are written in the reference's order, not the order they were
+  read.** `outputQualifiers` tests a bitmask, const first, so a type qualified twice --
+  a pointee qualifier and then the variable's own, which `?s4@PR13182@@3PCDD` is -- came
+  out `char volatile const *` where the reference writes `char const volatile *`. The
+  same for a pointer's own: `__unaligned` comes after `__restrict`, on a pointer and on
+  a pointee alike. And the test for a qualifier the type already carries is on the
+  *trailing* words rather than on the text: asking whether the word appears anywhere
+  found one inside a template argument and dropped a `volatile` that belongs to the
+  symbol.
+
+- **MSVC: `extern "C"` goes after `static` and `virtual`, not before.**
+  `?fn@@$$J0EAAHH@Z` is `private: virtual extern "C" int __cdecl fn(int)`, and this had
+  `extern "C" virtual`. Every `$$J` in the corpora is on a free function or an ordinary
+  member, where the two orders are the same string.
+
+- **MSVC: five markers read more loosely than the reference reads them.** `$$J0` is one
+  literal and the digit is part of it, so `$$J3` and `$$J4` are not names; the pointer
+  ext-qualifier run is an optional `E`, then an optional `I`, then an optional `F`, in
+  that order and each at most once, so `IE` is not one either -- and `F` was missing from
+  that run altogether, so `?h3@@3QEIAHFA`, `int __unaligned *const __restrict h3`, was
+  refused; only a pointer points into a class, so `A8foo@@AEHH@Z` -- a reference to
+  member function -- is not a type, and the declarator it produced was not a spelling;
+  `demangleVcallThunkNode` consumes `$B` and nothing else, so a `??_9` name carrying a
+  vtordisp slot was two thunk kinds at once; and `$$Y` names an alias template only where
+  a template argument stands, where this took it anywhere and read
+  `?f@@YAX$$YURetVal@@@Z` as a parameter called `URetVal`.
+
+- **MSVC: a dynamic initializer's name ends with the variable it runs for.**
+  `demangleInitFiniStub` reads the variable, then the `@` terminators the form requires,
+  then the function encoding -- there is nowhere for another component to go. Reading one
+  made `??__E?i@C@@0HA@e@@QEAAHXZ` into an initializer inside a namespace `e`, with an
+  access specifier and a return type the form does not have either.
+
+- **Rust: a bound lifetime runs to `'z` before it starts counting.**
+  `print_lifetime_from_index` takes `depth = bound_lifetime_depth - lt` and writes
+  `'a' + depth` while `depth < 26`. This carried a `depth` one larger and undid it at the
+  letter, which is the same answer for the first twenty-five and not for the rest: the
+  twenty-sixth came out `'_26` where the reference writes `'z`, and every one after it
+  was numbered one too high.
+
+- **Rust: the `.llvm.<hash>` marker includes its leading dot.** Searching for `llvm.`
+  without it deleted text that belongs to the symbol: `_RNvCs1_1a1fllvm.123` has no
+  suffix at all -- the reference refuses it, because `llvm.123` is left over and a
+  leftover has to open with a `.` -- and this threw eight characters away to read it as
+  `a::f`.
+
+- **D: a back reference points at a length-prefixed identifier.**
+  `dlang_symbol_backref` reads a `dlang_number` and then that many characters, so what a
+  `Q` points at is an identifier and nothing else -- not a `__T` template instance.
+  Reading whatever stood there resolved a mutated index onto a whole instance and spelled
+  it as a path component, naming it twice:
+  `_D3std5range__T6ChunksTAhZQo5emptyMFNaNbNdNiNfZb` came back
+  `std.range.Chunks!(ubyte[]).Chunks!(ubyte[]).empty()`. This was 56 of the 119 shapes
+  the fuzzer had this scheme reading and the reference refusing.
+
+- **D: an array bound is written with the digits the name carried.** `dlang_type`'s `G`
+  case remembers where the digit run began and appends it verbatim, so `G012a` is
+  `char[012]` and re-formatting it wrote a different bound. The same rule as an integer
+  literal, in the one place it had not been applied.
+
+- **D: `__postblit` is renamed only on a bare member signature.** The reference writes
+  `this(this)` where the type is exactly a `this` parameter and an empty D-convention
+  signature, and leaves the name alone otherwise: `MFNaZv`, `MxFZv`, `MOFZv`, `MUZv`,
+  `MFiZv`, `UZv` and `FZv` are all `__postblit`. "No attributes" was the first reading of
+  the rule and renamed six shapes it does not.
+
+- **D: a generated symbol with no path is still one.** `_D6__initZ` has nothing left to
+  name once the marker is taken off, and the reference still writes the prefix.
+  Requiring a component before it read the marker as an ordinary name and answered
+  `__init`.
 
 - **Itanium, `gnu` style: a comma expression has no space after the comma.** GNU writes
   no space around any infix operator -- `(1)+(2)`, `(1)<(2)` -- and the comma was the

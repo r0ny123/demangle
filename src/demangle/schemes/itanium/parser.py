@@ -260,8 +260,8 @@ class ItaniumParser:
         "_modules",
         "_naming",
         "_no_return_type",
-        "_objc_id_ids",
         "_objc_ids",
+        "_objc_protocols",
         "_pack_arity",
         "_pack_ids",
         "_pack_index",
@@ -361,11 +361,11 @@ class ItaniumParser:
         # follows it rather than being a component of its own.
         self._modules = []
         self._module_names = {}
-        # Handles for a protocol-qualified `objc_object`, which a pointer collapses into
-        # `id<...>`. Tracked by identity with a strong reference beside it, the same way
-        # packs and module names are.
+        # Handles for a protocol-qualified `objc_object`, which *one* pointer collapses
+        # into `id<...>`. Tracked by identity, with the protocol beside it and a strong
+        # reference keeping the handle alive, the same way packs and module names are.
         self._objc_ids = []
-        self._objc_id_ids = set()
+        self._objc_protocols = {}
         # Types read so far, and how many this parse may read a *second* time.
         #
         # Two productions re-read a span they have already read -- a conversion
@@ -1414,8 +1414,14 @@ class ItaniumParser:
         reader.expect("C")
         self._ctor_dtor = True
         if reader.eat("I"):
-            # An inheriting constructor names the base it inherits from.
-            reader.take()
+            # An inheriting constructor names the base it inherits from. It still carries
+            # a variant, and it is one of the same five an ordinary constructor carries:
+            # `CI1` through `CI5` read and `CI0`, `CI6` and `CIT` do not. Taking whatever
+            # character stood there read `_ZN1BCIT1AEi` as `B::B(int)`, a constructor of
+            # a class the encoding does not say is one.
+            marker = reader.take()
+            if marker not in CONSTRUCTOR_KINDS:
+                raise ParseError(self._mangled, reader.pos, f"unknown constructor variant {marker!r}")
             self.type_()
             return self.builder.name(self._in_module(self.enclosing_class_name(scope), module))
         marker = reader.take()
@@ -2052,10 +2058,12 @@ class ItaniumParser:
         if char == "P":
             reader.pos += 1
             inner = self.type_()
-            if id(inner) in self._objc_id_ids:
+            protocol = self._objc_protocols.get(id(inner))
+            if protocol is not None:
                 # `objc_object` conforming to a protocol, pointed to, is `id<A>` -- the
-                # pointer is part of what `id` means, so it is not written again.
-                return subs.remember(inner, "type")
+                # pointer is part of what `id` means, so it is not written again. The
+                # result is a different handle, so a second pointer is an ordinary one.
+                return subs.remember(builder.raw(f"id<{protocol}>"), "type")
             return subs.remember(builder.pointer(inner), "type")
         if char in QUALIFIER_LETTERS:
             if self._at_function_type():
@@ -2378,12 +2386,17 @@ class ItaniumParser:
                 if digits and int(protocol[:digits]) == len(protocol) - digits:
                     protocol = protocol[digits:]
                 spelled = builder.spell(inner)
+                handle = builder.raw(f"{spelled}<{protocol}>")
                 if spelled == _OBJC_OBJECT:
-                    handle = builder.raw(f"id<{protocol}>")
+                    # `objc_object<A>` on its own, and `id<A>` once a pointer is applied
+                    # to it -- and only the *first* pointer, which is the one the word
+                    # `id` stands for. This used to spell the unpointed form `id<A>` too
+                    # and hand the same handle back out of the `P` branch, so
+                    # `PPU11objcproto1A11objc_object` and `PPPU...` came back `id<A>` as
+                    # well: every level above the first was swallowed, where the
+                    # reference writes `id<A>*` and `id<A>**`.
                     self._objc_ids.append(handle)
-                    self._objc_id_ids.add(id(handle))
-                else:
-                    handle = builder.raw(f"{spelled}<{protocol}>")
+                    self._objc_protocols[id(handle)] = protocol
                 return handle
             return builder.vendor_qualify(inner, qualifier)
         if self._at_function_type():

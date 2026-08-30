@@ -203,6 +203,22 @@ ACCEPTED = {
         # them. `c++filt` reads these through libiberty's copy of the same code and is
         # behind in the same way.
         or ('{"' in ours and first is not None and "{(char)" in first)
+        # Or the CV- and ref-qualifiers of a `<nested-name>` standing where a *type*
+        # goes, which the two references treat differently: `llvm-cxxfilt` drops them and
+        # `c++filt` applies them, so `_Z1fPNK1a1bE` is `f(a::b*)` to one and
+        # `f(a::b const*)` to the other. The ABI gives those qualifiers to a member
+        # function's implicit object parameter and no compiler writes an `N K ... E`
+        # where a type belongs, so being on either side is a choice rather than a
+        # reading. This is on LLVM's, in both styles. Recognised by LLVM agreeing exactly
+        # or refusing the name outright -- it refuses most of these for reasons of its
+        # own, having no opinion to be on a side of -- the name carrying such a nested
+        # name, and GNU's answer differing from this one in nothing but qualifiers.
+        or (
+            (first is None or first == ours)
+            and second[0] is not None
+            and _QUALIFIED_NESTED_NAME.search(name) is not None
+            and _without_qualifiers(second[0]) == _without_qualifiers(ours)
+        )
         # Or a cv-qualifier repeated on a function type, where all three disagree:
         # `_Z1fKKFaE` is `f(signed char () const const)` here, `f(signed char  const()
         # const)` to LLVM -- which puts one of them in the declarator and doubles a
@@ -211,6 +227,19 @@ ACCEPTED = {
         or (name.count("K") + name.count("V") > 1 and "F" in name and second[0] is None)
     ),
 }
+
+
+#: An `N` opening a `<nested-name>` with a CV- or ref-qualifier on it. See `ACCEPTED`.
+_QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
+
+#: Every word that spells a qualifier, and the reference sigils, so two answers can be
+#: compared for "differs in nothing else".
+_QUALIFIER_WORDS = re.compile(r"\b(?:const|volatile|restrict)\b|&&?")
+
+
+def _without_qualifiers(text):
+    """`text` with every qualifier word and sigil gone, and no spaces left to compare."""
+    return _QUALIFIER_WORDS.sub("", text).replace(" ", "")
 
 
 #: A path separator with nothing before the next one, the parameter list, or the end.

@@ -210,6 +210,50 @@ class TestComplexAndImaginaryAreNotCvQualifiers:
                 assert tree.spell(style=style) == text
 
 
+class TestObjectiveCProtocolQualifiedTypes:
+    """`U <n>objcproto<protocol> <type>`, and the one pointer the word `id` stands for.
+
+    A protocol-qualified `objc_object` is `objc_object<A>`, and a pointer to it is
+    `id<A>` -- `id` *is* the pointer, so it is not written again. Only the first one:
+    every level above it is an ordinary `*`. This collapsed the unpointed form to
+    `id<A>` as well and then handed the same handle back out of every `P`, so
+    `PPU11objcproto1A11objc_object` and `PPPU...` came back `id<A>` too, with the
+    pointers gone.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fU11objcproto1A11objc_object", "f(objc_object<A>)"),
+            ("_Z1fPU11objcproto1A11objc_object", "f(id<A>)"),
+            ("_Z1fPPU11objcproto1A11objc_object", "f(id<A>*)"),
+            ("_Z1fPPPU11objcproto1A11objc_object", "f(id<A>**)"),
+            # A class that is not `objc_object` takes the brackets and keeps its pointer.
+            ("_Z1fPU11objcproto1A7NSArray", "f(NSArray<A>*)"),
+            ("_Z1fPKU11objcproto1A7NSArray", "f(NSArray<A> const*)"),
+        ],
+    )
+    def test_only_the_first_pointer_is_the_word_id(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+
+class TestAnInheritingConstructorCarriesAVariant:
+    """`CI1` through `CI5`, the same five an ordinary constructor carries.
+
+    `parseCtorDtorName` requires the digit and `llvm-cxxfilt` refuses `CI0`, `CI6` and
+    `CIT` alike. Taking whatever character stood there read `_ZN1BCIT1AEi` as
+    `B::B(int)`, a constructor of a class the encoding does not say is one.
+    """
+
+    @pytest.mark.parametrize("mangled", ["_ZN1BCIT1AEi", "_ZN1BCI01AEi", "_ZN1BCI61AEi", "_ZN1BCI_1AEi"])
+    def test_a_variant_that_is_not_one_is_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize("mangled", ["_ZN1BCI11AEi", "_ZN1BCI21AEi", "_ZN1BCI51AEi"])
+    def test_the_five_still_read(self, mangled):
+        assert demangle.demangle_strict(mangled, language="itanium") == "B::B(int)"
+
+
 class TestWhatIsRefused:
     def test_an_empty_encoding_is_not_a_type(self):
         with pytest.raises(NotMangledError):

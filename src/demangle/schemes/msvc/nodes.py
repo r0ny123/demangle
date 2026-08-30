@@ -195,7 +195,7 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
         abuts = sigil and not (tail == ">" or (tail.isascii() and tail.isalnum()))
         return node.text + ("" if abuts else " ") + declarator
     if kind == "indirection":
-        token = node.sigil + " ".join(node.qualifiers)
+        token = node.sigil + " ".join(ordered_qualifiers(node.qualifiers))
         # a nested *function* declarator is separated from the sigil - "int * (__cdecl *)()"
         # - while a parenthesised pointer declarator abuts it: "int (*(*a)[20])()"
         nested_function = declarator_is_function and not declarator.startswith(("*", "&", "(*", "(&"))
@@ -266,19 +266,36 @@ def prefixed(text, node):
     The one caller is `extern "C" `, and it lands in the declaration's `member_type`
     rather than ahead of everything: the reference groups it with `static` and `virtual`,
     so `--no-member-type` drops all three together.
+
+    After them and not before, which is where the reference writes it: `?fn@@$$J0EAAHH@Z`
+    is `private: virtual extern "C" int __cdecl fn(int)`, and this had
+    `extern "C" virtual`. Only a name carrying both shows it, and every `$$J` in the
+    corpora is on a free function or an ordinary member, where `member_type` is empty and
+    the two orders are the same string.
     """
     if not text:
         return node
     if node.kind == "declaration":
-        return Declaration(node.prefix, node.declarator, node.type, node.suffix, node.access, text + node.member_type)
+        return Declaration(node.prefix, node.declarator, node.type, node.suffix, node.access, node.member_type + text)
     return Raw(text + render(node))
 
 
 def merge_qualifiers(left, right):
     # "__unaligned" travels with const and volatile: a pointer that points at an unaligned
     # pointer keeps it - "int __unaligned *__unaligned *"
-    merged = [qual for qual in ("const", "volatile", "__unaligned") if qual in left or qual in right]
-    return tuple(merged)
+    return ordered_qualifiers(tuple(left) + tuple(right))
+
+
+#: The order the reference writes them in, which is fixed: `outputQualifiers` tests a
+#: bitmask, const first, so the order they were *read* in never reaches the output.
+#: `__unaligned` comes last -- `int const __unaligned *` on a pointee and
+#: `*__restrict __unaligned` on a pointer, both measured.
+_QUALIFIER_ORDER = ("const", "volatile", "__restrict", "__unaligned")
+
+
+def ordered_qualifiers(quals):
+    """`quals` in `_QUALIFIER_ORDER`, deduplicated."""
+    return tuple(qual for qual in _QUALIFIER_ORDER if qual in quals)
 
 
 def apply_qualifiers(node, quals):
@@ -286,8 +303,21 @@ def apply_qualifiers(node, quals):
 
     Only ever reached with a named type: an indirection merges its qualifiers as it is
     built, and a back-reference declines rather than accept one.
+
+    In `_QUALIFIER_ORDER` and not in the order they arrived. Appending meant a type
+    qualified twice -- a pointee qualifier and then the variable's own, which
+    `?s4@PR13182@@3PCDD` is -- came out `char volatile const *` where the reference
+    writes `char const volatile *`. So any already at the end of the text are taken back
+    off and the whole set is written in one order.
     """
-    return Raw(f"{node.text} {' '.join(quals)}") if quals else node
+    if not quals:
+        return node
+    words = node.text.split(" ")
+    trailing = []
+    while words and words[-1] in _QUALIFIER_ORDER:
+        trailing.insert(0, words.pop())
+    ordered = [qual for qual in _QUALIFIER_ORDER if qual in trailing or qual in quals]
+    return Raw(" ".join([*words, *ordered]))
 
 
 def is_member_function_pointer(node):
@@ -323,7 +353,14 @@ def _qualify(node, quals):
     """
     if node.kind == "indirection":
         return Indirection(node.sigil, merge_qualifiers(node.qualifiers, quals), node.inner)
-    # a named type spells its qualifiers in its own text, so one it already carries must not
-    # be spelled twice: "?s@@3QBDD" is "char const volatile *const", not "char const const .."
-    spelled = node.text.split()
-    return apply_qualifiers(node, tuple(qual for qual in quals if qual not in spelled))
+    # A named type spells its qualifiers in its own text, so one it already carries must
+    # not be spelled twice: "?s@@3QBDD" is "char const volatile *const", not
+    # "char const const ..". `apply_qualifiers` collapses the repeat, because it takes the
+    # trailing qualifiers back off before writing the union.
+    #
+    # Which is why the test is on the *trailing* words and not on the text. Asking whether
+    # the word appears anywhere in it found one inside a template argument and dropped a
+    # qualifier that belongs to the symbol: `?h@FTypeWithQuals@@3U?$S@$$A8@@HCAHXZ@1@C` is
+    # `struct FTypeWithQuals::S<int __cdecl(void) volatile &&> volatile FTypeWithQuals::h`,
+    # and the trailing `volatile` went missing because the argument has one.
+    return apply_qualifiers(node, quals)

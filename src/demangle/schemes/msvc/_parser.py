@@ -620,6 +620,19 @@ class _Demangler:
         self.expect("@")
         return "`anonymous namespace'"
 
+    def endsTheInitialisedName(self):
+        """The stub's name ends with the variable it runs for, and carries no scope.
+
+        `demangleInitFiniStub` reads the variable, then the `@` terminators the form
+        requires -- two where the leading `?` was written, one where it was not -- and
+        then the function encoding. There is nowhere for another component to go, and
+        reading one made `??__E?i@C@@0HA@e@@QEAAHXZ` into a dynamic initializer inside a
+        namespace `e`: `public: int __cdecl e::`dynamic initializer for ...''(void)`,
+        with an access specifier and a return type that the form does not have either.
+        """
+        if self.peek() != "@":
+            raise _Bail
+
     def operatorName(self):
         """The operator or special name, paired with which spelling it takes."""
         if self.eat("_"):
@@ -638,12 +651,14 @@ class _Demangler:
                         # the symbol it runs for is followed by the terminator its own name
                         # would have carried, and the enclosing name still needs one
                         self.expect("@")
+                        self.endsTheInitialisedName()
                         return f"`{_DYNAMIC_INITIALISERS[code]} `{target}''", "func"
                     if self.namesADataSymbol():
                         # it may run for a data symbol written without its leading "?", the
                         # rest reading as it does for one that has it
                         whole = self.nestedSymbol(leading_question=False)
                         # this one leaves the single terminator the enclosing name needs
+                        self.endsTheInitialisedName()
                         return f"`{_DYNAMIC_INITIALISERS[code]} `{whole}''", "func"
                     # what it runs for is recorded, unlike a literal operator's suffix:
                     # "??__EFoo@@YAXU0@@Z" resolves its 0 to Foo
@@ -912,8 +927,16 @@ class _Demangler:
             if self.peek() in "$6" or not at_argument:
                 raise _Bail
             return self.type(quals)
-        if self.eat("Y"):
-            # an alias template is named rather than described
+        if self.peek() == "Y":
+            # An alias template is named rather than described -- and named only where a
+            # template argument stands. `demangleTemplateParameterList` is the one place
+            # that consumes `$$Y`; `demangleType` has no case for it, so
+            # `?f@@YAX$$YURetVal@@@Z` is not a name and `??$f@PA$$YURetVal@@@@YAXXZ` --
+            # a pointer to one -- is not either. Both read here, the first as a
+            # parameter called `URetVal`.
+            if not at_argument:
+                raise _Bail
+            self.pos += 1
             self.simple = False
             return Raw(self.qualifiedName()[0])
         kind = self.take()
@@ -958,7 +981,14 @@ class _Demangler:
         # pointee's own const and volatile: "int const __unaligned *"
         unaligned = ("__unaligned",) if self.eat("F") else ()
         modified = has_ptr64 or unaligned or "__restrict" in own_quals
-        if self.eat("8"):
+        if self.peek() == "8":
+            if token != "*":
+                # Only a pointer points into a class. C++ has no reference to member, so
+                # `A8foo@@AEHH@Z` is not a type however much it looks like one -- and the
+                # declarator it produced was not even a spelling: `int __thiscall
+                # foo::&l(int)`. The same rule the member *data* branch below applies.
+                raise _Bail
+            self.pos += 1
             if modified:
                 # nothing is pointed at in front of a function type, so no modifier stands
                 # there: "P8B@@" and "R8B@@" are names, "PE8B@@" and "RF8B@@" are not
@@ -1134,8 +1164,10 @@ class _Demangler:
 
     def parse(self):
         self.expect("?")
-        # "$$J" marks a name that was mangled although it is extern "C"; the digit after it
-        # counts how many characters of the original mangling it kept, which is not spelled
+        # "$$J0" marks a name that was mangled although it is extern "C".
+        # `demangleFunctionEncoding` consumes the four characters as one literal, so the
+        # digit is part of the marker rather than a field: `$$J3` and `$$J4` are not
+        # names the reference reads, and this took any digit at all
         extern_c = ""
         name, has_no_return_type, special_form = self.qualifiedName()
         if special_form == "descriptor":
@@ -1164,11 +1196,8 @@ class _Demangler:
         if self.eof():
             raise _Bail
         char = self.peek()
-        if char == "$" and self.text.startswith("$$J", self.pos):
-            self.pos += 3
-            if self.eof() or self.peek() not in string.digits:
-                raise _Bail
-            self.take()
+        if char == "$" and self.text.startswith("$$J0", self.pos):
+            self.pos += 4
             extern_c = 'extern "C" '
             char = self.peek()
         if char == "9":
@@ -1204,18 +1233,21 @@ class _Demangler:
             # a pointer into a class spells its own storage the long way, below; the short
             # forms are for everything else
             points_into_class = declared.kind == "indirection" and declared.points_into_class
-            # __ptr64 and __restrict stand in front of the qualifier, and only where
-            # something is pointed at: "?s@@3PEAHEA" is a name and "?s@@3HEA" is not
+            # `demanglePointerExtQualifiers`: an optional `E`, then an optional `I`, then
+            # an optional `F`, in that order and each at most once. This was a loop over a
+            # two-character set with a "seen" guard, which took them in any order --
+            # `?h3@@3QEIAHIEA` is not a name and read as one -- and had no `F` in it at
+            # all, so `?h3@@3QEIAHFA`, which is `int __unaligned *const __restrict h3`,
+            # was refused.
+            #
+            # They stand in front of the qualifier, and only where something is pointed
+            # at: "?s@@3PEAHEA" is a name and "?s@@3HEA" is not.
+            ptr64 = self.eat("E")
+            restrict = ("__restrict",) if self.eat("I") else ()
+            unaligned = ("__unaligned",) if self.eat("F") else ()
+            if (ptr64 or restrict or unaligned) and declared.kind != "indirection":
+                raise _Bail
             trailing = self.take()
-            restrict = ()
-            seen = set()
-            while trailing in ("E", "I"):
-                if declared.kind != "indirection" or trailing in seen:
-                    raise _Bail
-                seen.add(trailing)
-                if trailing == "I":
-                    restrict = ("__restrict",)
-                trailing = self.take()
             if trailing in _MEMBER_DATA_QUALS:
                 # a pointer to data member repeats the member's qualifier here and names its
                 # class again by back-reference: "?m@@3PQfoo@@HR1@" is "int const foo::*m"
@@ -1228,6 +1260,11 @@ class _Demangler:
                 raise _Bail
             if not self.nested and not self.eof():
                 raise _Bail
+            if unaligned:
+                # `F` here qualifies what the pointer points at, the way it does in front
+                # of a pointee's own cv: `?h3@@3QEIAHFA` is `int __unaligned *const
+                # __restrict h3`.
+                declared = qualify_declared(declared, unaligned)
             if restrict and "__restrict" not in declared.qualifiers:
                 # it qualifies the pointer, not what is pointed at, and is written once
                 # however many times it is spelled: "?h3@@3QIAHIA" is "int *const __restrict"
@@ -1338,6 +1375,14 @@ class _Demangler:
         with two displacements written in front of the signature.
         """
         code = self.take()
+        if is_vcall and code != "B":
+            # `demangleVcallThunkNode` consumes `$B` and nothing else, so a `??_9` name
+            # carrying a vtordisp slot is not a name it reads.
+            # `??_9Derived@@$4PPPPPPPM@A@EAAPEAXI@Z` came back as
+            # ``[thunk]: public: virtual void * __cdecl Derived::`vcall'`vtordisp{-4,
+            # 0}'(unsigned int)`` -- two thunk kinds at once, and a vcall with a
+            # parameter list, which is the one thing a vcall does not have.
+            raise _Bail
         if code == "B":
             if not is_vcall:
                 raise _Bail

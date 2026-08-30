@@ -139,7 +139,7 @@ because agreeing with one build of one reference is not the same as being right.
 ### Mutation
 
 ```console
-python tools/mutate.py --expect 8       # the pinned draw, which is what CI runs
+python tools/mutate.py --expect 3       # the pinned draw, which is what CI runs
 python tools/mutate.py --count 200000   # more mutants per scheme
 python tools/mutate.py --seed 7         # a different draw; the default draw is fixed
 ```
@@ -158,10 +158,10 @@ than merely emptied. The draw is seeded, so a failure reproduces exactly.
 
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
-corpora are pinned. Eight stand at the default draw, and the tool's own docstring names
+corpora are pinned. Three stand at the default draw, and the tool's own docstring names
 each and says why it is still open -- two Itanium shapes where following the reference
-would cost more than the shape is worth or where all three references disagree, and six D
-back-reference chains whose refusal has not been explained yet. An accept rule for a
+would cost more than the shape is worth or where all three references disagree, and one D
+back-reference chain whose refusal has not been explained yet. An accept rule for a
 reason nobody has established is how a defect gets filed as a reference's.
 
 It shares `ACCEPTED` with `tools/enumerate.py` on purpose: those rules are statements
@@ -173,13 +173,17 @@ the name was found. Two mechanisms are its own. `RESCUE` asks the reference abou
 `SECOND_OPINION` asks another reference about the same name, for schemes where a
 divergence from the first is not evidence on its own.
 
-Fifteen defects came out of the first two sittings with it, in four schemes. The largest
-was structural: five of the seven Itanium `<prefix>` productions are bases and take no
+Twenty-eight defects came out of the first three sittings with it, in four schemes. Two
+were structural. Five of the seven Itanium `<prefix>` productions are bases and take no
 prefix on the left, so `_ZN1aSa1bEv` is not a name -- it had read as
-`a::std::allocator::b()`. The rest run from a D pointer to a function pointer spelled as
-the function pointer, through a D integer literal re-formatted rather than echoed and a
-D negative `char` that lost its sign, to a Rust `<base-62-number>` read wider than the
-reference reads one and an MSVC ARM64EC marker stripped until none was left.
+`a::std::allocator::b()`. And a D `Q` back reference points at a length-prefixed
+identifier and nothing else, so a mutated index that lands on a template instance is not
+a name either -- it had read as one, with the instance named twice. The rest run from a
+D pointer to a function pointer spelled as the function pointer, through a D integer
+literal re-formatted rather than echoed and a D negative `char` that lost its sign, to a
+Rust `<base-62-number>` read wider than the reference reads one, an MSVC ARM64EC marker
+stripped until none was left, and MSVC qualifiers written in the order they were read
+rather than the order the reference writes them.
 
 ### The Rust reference
 

@@ -35,7 +35,7 @@ property of `--seed` and `--count` together; the pin CI uses is for the defaults
 
 What the pin currently stands at, and why each is still open
 -----------------------------------------------------------
-Eight, at `--seed 0 --count 20000`. Two are Itanium and six are D.
+Three, at `--seed 0 --count 20000`. Two are Itanium and one is D.
 
   * A `<template-param>` naming an argument pack, used outside a `Dp` expansion.
     `_Z1fIJfdEEvT_` is `void f<float, double>(float)` to both references --
@@ -54,13 +54,13 @@ Eight, at `--seed 0 --count 20000`. Two are Itanium and six are D.
     `~operator __vmi_class_type_info`, which is the name the encoding gives. Nothing
     to follow here.
 
-  * Six D mutants that `c++filt --format=dlang` refuses and this reads, every one of
-    them a deep chain of `Q` back references. The bounds `dlang_backref` enforces are
-    already enforced here -- `Q0`, a zero or negative offset and one past the start of
-    the name are all refused, and checked -- so what libiberty is refusing is something
-    narrower that has not been isolated yet. Kept visible rather than accepted: an
-    accept rule for a reason nobody has established is how a defect gets filed as a
-    reference's.
+  * One D mutant that `c++filt --format=dlang` refuses and this reads, a deep chain of
+    `Q` back references round a `___dgliteral1`. The bounds `dlang_backref` enforces
+    are all enforced here -- `Q0`, a zero or negative offset, one past the start of the
+    name, and a target that is not a length-prefixed identifier -- so what libiberty is
+    refusing is something narrower that has not been isolated yet. Kept visible rather
+    than accepted: an accept rule for a reason nobody has established is how a defect
+    gets filed as a reference's.
 """
 
 import argparse

@@ -1033,17 +1033,27 @@ class Printer:
         return Printer(p.backref(), self.sink, self.bound_lifetime_depth, self.recursion + 1)
 
     def print_lifetime_from_index(self, lt):
+        """`'a` through `'z`, then `'_26` and up. The reference's arithmetic exactly.
+
+        `print_lifetime_from_index` takes `depth = bound_lifetime_depth - lt` -- a
+        `checked_sub`, so `lt` past the depth is the invalid name -- and writes
+        `'a' + depth` while `depth < 26`. This carried a `depth` one larger and undid it
+        at the letter, which is the same for the first twenty-five and not for the rest:
+        the twenty-sixth bound lifetime came out `'_26` where the reference writes `'z`,
+        and every one after it was numbered one too high. It takes a `for<>` binding
+        twenty-six lifetimes to reach, which no compiler writes and a mutated symbol
+        does.
+        """
         self.emit("'")
         if lt == 0:
             self.emit("_")
             return
-        depth = self.bound_lifetime_depth - lt + 1
-        if depth <= 0:
+        depth = self.bound_lifetime_depth - lt
+        if depth < 0:
             self.invalid()
 
         if depth < 26:
-            c = ord("a") + depth - 1
-            self.emit(chr(c))
+            self.emit(chr(ord("a") + depth))
         else:
             self.emit(f"_{depth}")
 

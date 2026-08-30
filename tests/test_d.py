@@ -605,6 +605,72 @@ class TestMoreOfWhatMutatingRealSymbolsFound:
         assert demangle.demangle(mangled, language="d") == mangled
 
 
+class TestWhatTheThirdSittingFound:
+    """Four more from `tools/mutate.py`, each measured against `c++filt --format=dlang`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `dlang_type`'s `G` case remembers where the digit run began and appends it
+            # verbatim, so a leading zero is part of the bound. Same rule as an integer
+            # literal; re-formatting it wrote a different bound.
+            ("_D3foo3barFG012aZv", "foo.bar(char[012])"),
+            ("_D3foo3barFG12aZv", "foo.bar(char[12])"),
+            ("_D8demangle4testFG02G42G42aZv", "demangle.test(char[42][42][02])"),
+        ],
+    )
+    def test_an_array_bound_is_written_with_the_digits_the_name_carried(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # Nothing is left to name once the marker is taken off, and the reference
+            # still writes the prefix. Requiring a component before it read the marker as
+            # an ordinary name.
+            ("_D6__initZ", "initializer for"),
+            ("_D6__vtblZ", "vtable for"),
+        ],
+    )
+    def test_a_generated_symbol_with_no_path_is_still_one(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The reference renames `__postblit` only where the type is exactly a `this`
+            # parameter and an empty D-convention signature. "No attributes" was the
+            # first reading of the rule and renamed six shapes it does not.
+            ("_D8demangle4test10__postblitMFZv", "demangle.test.this(this)"),
+            ("_D8demangle4test10__postblitMFZi", "demangle.test.this(this)"),
+            ("_D8demangle4test10__postblitFZv", "demangle.test.__postblit()"),
+            ("_D8demangle4test10__postblitUZv", "demangle.test.__postblit()"),
+            ("_D8demangle4test10__postblitMUZv", "demangle.test.__postblit()"),
+            ("_D8demangle4test10__postblitMFiZv", "demangle.test.__postblit(int)"),
+            ("_D8demangle4test10__postblitMFNaZv", "demangle.test.__postblit()"),
+            ("_D8demangle4test10__postblitMxFZv", "demangle.test.__postblit() const"),
+            ("_D8demangle4test10__postblitMOFZv", "demangle.test.__postblit() shared"),
+        ],
+    )
+    def test_postblit_is_renamed_only_on_a_bare_member_signature(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_back_reference_points_at_a_length_prefixed_identifier(self):
+        """`dlang_symbol_backref` reads a number and then that many characters.
+
+        So what a `Q` points at is an identifier and nothing else -- not a `__T` template
+        instance. Reading whatever stood there resolved a mutated index onto a whole
+        instance and spelled it as a path component, naming it twice: this came back
+        `std.range.Chunks!(ubyte[]).Chunks!(ubyte[]).empty()`. 56 of the 119 shapes the
+        mutation fuzzer had this scheme reading and the reference refusing were this one.
+        """
+        name = "_D3std5range__T6ChunksTAhZQo5emptyMFNaNbNdNiNfZb"
+        assert demangle.demangle(name, language="d") == name
+        # The index the real symbol carries points at `6Chunks`, and still reads.
+        good = "_D3std5range__T6ChunksTAhZQl5emptyMFNaNbNdNiNfZb"
+        assert demangle.demangle(good, language="d") == "std.range.Chunks!(ubyte[]).Chunks.empty()"
+
+
 class TestAgainstLibibertysOwnCorpus:
     """The reference's vectors, not this project's.
 

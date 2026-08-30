@@ -134,6 +134,41 @@ class TestAnIdentifierLengthHasToBeADigit:
         assert demangle.demangle_strict(mangled, language="rust") == expected
 
 
+class TestWhatMutatingRealSymbolsFound:
+    """Two the mutation fuzzer reached, both measured against `rustc-demangle` 0.1.28."""
+
+    def test_a_bound_lifetime_runs_to_z_before_it_starts_counting(self):
+        """`'a` through `'z`, then `'_26` and up.
+
+        `print_lifetime_from_index` takes `depth = bound_lifetime_depth - lt` -- a
+        `checked_sub`, so an index past the depth is the invalid name -- and writes
+        `'a' + depth` while `depth < 26`. This carried a `depth` one larger and undid it
+        at the letter, which is the same answer for the first twenty-five and not for the
+        rest: the twenty-sixth came out `'_26` where the reference writes `'z`, and every
+        one after it was numbered one too high. It takes a `for<>` binding twenty-six
+        lifetimes to reach.
+        """
+        # `G<n>_` binds n+1 lifetimes; `Z_` is 61, so this binds sixty-three of them.
+        spelled = demangle.demangle_strict("_RMC0FGZ_Eu", language="rust")
+        assert "'x, 'y, 'z, '_26, '_27" in spelled
+        assert spelled.endswith("'_60, '_61, '_62> fn()>")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The leading `.` is part of the marker. Searching for `llvm.` without it
+            # deleted text that belongs to the symbol.
+            ("_RNvCs1_1a1f.llvm.123", "a::f"),
+            ("_RNvCs1_1a1fllvm.123", "_RNvCs1_1a1fllvm.123"),
+            ("_RNvCs1_1a1fB2_llvm.123", "_RNvCs1_1a1fB2_llvm.123"),
+            # A hash that is not one keeps the suffix, which is a vendor suffix and legal.
+            ("_RNvCs1_1a1f.llvm.abc", "a::f.llvm.abc"),
+        ],
+    )
+    def test_the_llvm_marker_includes_its_leading_dot(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+
 class TestABaseSixtyTwoNumberIsSixtyFourBitsWide:
     """`<base-62-number> = {<0-9a-zA-Z>} "_"`, and RFC 2603 puts no width on it.
 

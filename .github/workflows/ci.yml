@@ -171,9 +171,9 @@ jobs:
       # here reproduces with the same `--seed` and `--count` locally.
       - name: Mutate real symbols and compare against the references
         # Pinned in both directions, like the conformance corpora: a new divergence
-        # fails, and so does a stale pin after one is fixed. The eight are named in the
+        # fails, and so does a stale pin after one is fixed. The three are named in the
         # tool's own docstring, with why each is still open.
-        run: python tools/mutate.py --count 20000 --quiet --expect 8
+        run: python tools/mutate.py --count 20000 --quiet --expect 3
 
   cross-reference:
     name: cross-version reference check
