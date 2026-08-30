@@ -335,13 +335,22 @@ class Demangler:
     # -- numbers ---------------------------------------------------------------
 
     def natural(self):
-        """A run of digits, or `None` where the reference returns its -1000 sentinel."""
-        if not _is_digit(self.peek()):
+        """A run of digits, or `None` where the reference returns its -1000 sentinel.
+
+        Scanned here rather than through `peek` and `_is_digit`, which between them were
+        the two most-called things in the Swift demangler: 122,000 calls to `_is_digit`
+        from this method alone over the Swift corpus, and one `peek` beside each, for a
+        comparison apiece. Reading past the end still stops the run, because the bound is
+        the same one `peek` tests.
+        """
+        text, end = self.text, self.end
+        start = pos = self.pos
+        while pos < end and "0" <= text[pos] <= "9":
+            pos += 1
+        if pos == start:
             return None
-        start = self.pos
-        while _is_digit(self.peek()):
-            self.pos += 1
-        return int(self.text[start : self.pos])
+        self.pos = pos
+        return int(text[start:pos])
 
     def index(self):
         """`_` is 0 and `<n>_` is n+1, so that 0 costs one character rather than two."""
@@ -490,14 +499,14 @@ class Demangler:
             char = self.next_char()
             if char == "":
                 return None
-            if _is_lower(char):
+            if "a" <= char <= "z":
                 node = self.push_multi_substitutions(repeat, ord(char) - ord("a"))
                 if node is None:
                     return None
                 self.push(node)
                 repeat = None
                 continue
-            if _is_upper(char):
+            if "A" <= char <= "Z":
                 return self.push_multi_substitutions(repeat, ord(char) - ord("A"))
             if char == "_":
                 # The number was an index, not a count. 27 rather than 26 because the
@@ -574,7 +583,10 @@ class Demangler:
         has_word_substitutions = False
         punycoded = False
         char = self.peek()
-        if not _is_digit(char):
+        # `_is_digit`, `_is_letter` and `_is_lower` are written out in this method: it
+        # runs for every identifier in every name and each of them is a frame around one
+        # comparison. They stay defined for their other callers.
+        if not ("0" <= char <= "9"):
             return None
         if char == "0":
             self.pos += 1
@@ -586,9 +598,9 @@ class Demangler:
 
         pieces = []
         while True:
-            while has_word_substitutions and _is_letter(self.peek()):
+            while has_word_substitutions and ("a" <= (char := self.peek()) <= "z" or "A" <= char <= "Z"):
                 char = self.next_char()
-                if _is_lower(char):
+                if "a" <= char <= "z":
                     at = ord(char) - ord("a")
                 else:
                     at = ord(char) - ord("A")
