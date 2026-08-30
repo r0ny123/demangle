@@ -118,7 +118,10 @@ def main():
     parser.add_argument("--compiler", action="append", help="repeatable; default is clang++ and g++")
     parser.add_argument("--prefix", action="append", help="mangled-name prefixes to keep")
     parser.add_argument("--defects", type=Path, default=REFERENCE_DEFECTS, help="names the reference reads wrongly")
+    parser.add_argument("--standard", action="append", help="repeatable; default is c++11 through c++20")
     arguments = parser.parse_args()
+
+    standards = tuple(arguments.standard) if arguments.standard else STANDARDS
 
     sources = arguments.sources
     compilers = tuple(arguments.compiler) if arguments.compiler else COMPILERS
@@ -139,7 +142,7 @@ def main():
         target = f" --target={arguments.target}" if arguments.target else ""
         provenance.append(f"{compiler}{target}: {version}")
         for source in sorted(sources.glob("*.cpp")):
-            for standard in STANDARDS:
+            for standard in standards:
                 for optimisation in OPTIMISATIONS:
                     obj = compile_source(compiler, source, standard, optimisation, build_dir, arguments.target)
                     if obj is None:
@@ -171,7 +174,7 @@ def main():
         handle.write(f"# reference: {tool_version}\n")
         for line in provenance:
             handle.write(f"# compiled by: {line}\n")
-        handle.write(f"# standards: {', '.join(STANDARDS)}\n")
+        handle.write(f"# standards: {', '.join(standards)}\n")
         handle.write(f"# optimisation: {', '.join(OPTIMISATIONS)}\n#\n")
         for name in ordered:
             # A name absent from the map is one the reference wrote nothing for, which is

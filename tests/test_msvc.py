@@ -640,7 +640,35 @@ class MsvcUnalignedAndLiteralTestSuite(unittest.TestCase):
                 self.assertEqual(demangle_msvc_symbol(mangled), expected)
 
     def test_an_unknown_double_underscore_operator_is_refused(self):
-        for mangled in ("??__L_deg@@YAHO@Z", "??__@@YAHO@Z"):
+        # `__L` and `__M` used to stand here as unknown codes and are not: they are
+        # `operator co_await` and `operator<=>`, both of which the reference reads and
+        # clang emits. `__N` and `__Z` are still nobody's.
+        for mangled in ("??__N@@YAHO@Z", "??__Z@@YAHO@Z", "??__@@YAHO@Z"):
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), mangled)
+
+    def test_the_two_operators_written_with_that_prefix(self):
+        for mangled, expected in [
+            ("??__L_deg@@YAHO@Z", "int __cdecl _deg::operator co_await(long double)"),
+            (
+                "??__MSpaceship@hard@@QEBAHAEBU01@@Z",
+                "public: int __cdecl hard::Spaceship::operator<=>(struct hard::Spaceship const &) const",
+            ),
+        ]:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_a_signature_ends_with_z_or_with_the_noexcept_marker(self):
+        """`demangleThrowSpecification` takes `Z` or `_E` and refuses anything else.
+
+        Expecting the `Z` alone refused every `noexcept` function type, which clang emits
+        for an ordinary `int (*)(int) noexcept` parameter.
+        """
+        self.assertEqual(
+            demangle_msvc_symbol("?takes_noexcept@hard@@YAHP6AHH@_EA6AHH@_E@Z"),
+            "int __cdecl hard::takes_noexcept(int (__cdecl *)(int) noexcept, int (__cdecl &)(int) noexcept)",
+        )
+        for mangled in ("?f@@YAHP6AHH@_F@Z", "?f@@YAHP6AHH@_@Z"):
             with self.subTest(mangled=mangled):
                 self.assertEqual(demangle_msvc_symbol(mangled), mangled)
 
@@ -874,6 +902,31 @@ class MsvcClangEmittedTestSuite(unittest.TestCase):
         ]:
             with self.subTest(mangled=mangled):
                 self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_an_auto_non_type_template_argument(self):
+        """`$M <type> <integer>`, which `llvm-undname` 18.1 refuses and 20.1 reads.
+
+        The type is written so the argument's own type is recoverable and the reference
+        spells only the value: `A<42>` rather than `A<(int)42>`, `A<99>` for a `char` and
+        `A<1>` for a `bool`. Every expectation here is `llvm-undname` 20.1.2's output for
+        a symbol `clang++ --target=x86_64-pc-windows-msvc` emitted; the 18.1 on this box
+        refuses all four, which is why they are not in `msvc-clang.txt`.
+        """
+        for mangled, expected in [
+            ("?f@?$A@$MH0CK@@t@@QEBAHXZ", "public: int __cdecl t::A<42>::f(void) const"),
+            ("?f@?$A@$MD0GD@@t@@QEBAHXZ", "public: int __cdecl t::A<99>::f(void) const"),
+            ("?f@?$A@$M_K06@t@@QEBAHXZ", "public: int __cdecl t::A<7>::f(void) const"),
+            ("?f@?$A@$M_N00@t@@QEBAHXZ", "public: int __cdecl t::A<1>::f(void) const"),
+            ("?f@?$AutoNT@$M$$T0A@@hard@@QEBAHXZ", "public: int __cdecl hard::AutoNT<0>::f(void) const"),
+        ]:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_it_is_an_argument_rather_than_a_type(self):
+        """It stands where an argument stands and nowhere a type may nest."""
+        for mangled in ("?f@@YAX$MH0CK@@Z", "?f@@YAXPA$MH0CK@@Z"):
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), mangled)
 
     def test_the_int128_codes_are_read_although_the_reference_refuses_them(self):
         for mangled, expected in CLANG_EMITTED_LLVM_REFUSES:

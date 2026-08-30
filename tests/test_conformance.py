@@ -25,10 +25,12 @@ MSVC_TOTAL, MSVC_EXACT = 609, 609
 #: `clang++ --target=x86_64-pc-windows-msvc` at four standards and two optimisation
 #: levels, scored against `llvm-undname`. `msvc-llvm-corpus.txt` is LLVM's own *test*
 #: file -- hand-written vectors -- so this is the first MSVC corpus here that a compiler
-#: wrote. Two defects came out of its first run: a member function's qualifiers written
-#: past what its return type wraps, and a dynamic initialiser for a qualified variable
-#: refused outright.
-MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 123, 123
+#: wrote. Six defects came out of its first two runs: a member function's qualifiers
+#: written past what its return type wraps, a dynamic initialiser for a qualified
+#: variable refused outright, `operator<=>` and `operator co_await` missing from the
+#: table, the `_E` that ends a `noexcept` signature where a `Z` ends every other one, and
+#: a deduced return type written as a back reference to an earlier one.
+MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 156, 156
 
 #: The names in that run `llvm-undname` cannot read: `_L` and `_M`, which are `__int128`
 #: and `unsigned __int128` and which `demanglePrimitiveType` has no case for. Their

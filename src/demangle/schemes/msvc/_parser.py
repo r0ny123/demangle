@@ -148,6 +148,8 @@ _OPERATORS = {
 _DYNAMIC_INITIALISERS = {"E": "dynamic initializer for", "F": "dynamic atexit destructor for"}
 # what guards a function-local static, and the storage class both forms are written with
 _GUARDS = {"B": "`local static guard'", "__J": "`local static thread guard'"}
+#: The operators written with the `??__` prefix rather than a single code.
+_DOUBLE_UNDERSCORE_OPERATORS = {"L": "operator co_await", "M": "operator<=>"}
 # what a string literal's escapes stand for, and how the reference spells a byte back
 _LITERAL_ESCAPES = {
     "0": ",",
@@ -683,6 +685,13 @@ class _Demangler:
                     scopes.reverse()
                     spelled = "::".join(scopes)
                     return f"`{_DYNAMIC_INITIALISERS[code]} '{spelled}''", "func"
+                if code in _DOUBLE_UNDERSCORE_OPERATORS:
+                    # `??__L` and `??__M`, which the reference reads and this did not:
+                    # `operator co_await` and `operator<=>`. The second is C++20's
+                    # three-way comparison, which clang emits for any class that declares
+                    # one.
+                    self.take()
+                    return _DOUBLE_UNDERSCORE_OPERATORS[code], "func"
                 if self.take() != "K":
                     raise _Bail
                 # a user-defined literal: the identifier after the code is its suffix, and
@@ -845,10 +854,15 @@ class _Demangler:
             # type belongs - a pointee, a template argument, a return type - and the mangler
             # writes none of those; reading them invented spellings for impossible names.
             raise _Bail
-        if char == "?" and self.peek() == "<":
-            # a placeholder the compiler writes where a type would go, named in brackets:
-            # "?A?<decltype-auto>@@" is the deduced return of a function declared with it
-            placeholder = self.identifier()
+        if char == "?" and (self.peek() == "<" or self.peek() in string.digits):
+            # A placeholder the compiler writes where a type would go, named in brackets:
+            # `?A?<decltype-auto>@@` is the deduced return of a function declared with
+            # one. Read through `nameFragment`, so the name is *remembered* and a later
+            # one can be written as a back reference to it -- which is what a lambda
+            # nested inside another lambda does: the inner one's deduced return is
+            # `?A?4@`, and reading the identifier directly both missed that form and
+            # left the back-reference table one entry short for every name after it.
+            placeholder = self.nameFragment(False)[0]
             self.expect("@")
             return apply_qualifiers(Raw(placeholder), quals)
         raise _Bail
@@ -925,6 +939,24 @@ class _Demangler:
                 # and nowhere a type may nest, so it is not an array's element either
                 raise _Bail
             self.take()
+            self.simple = False
+            return Raw(self.templateInteger())
+        if self.peek() == "M":
+            # `$M <type> <integer>`: a non-type template argument declared `auto`. The
+            # type is written so the argument's own type is recoverable, and the
+            # reference spells only the value -- `A<42>` rather than `A<(int)42>`, `A<99>`
+            # for a `char` and `A<1>` for a `bool`. Checked against `llvm-undname` 20,
+            # which reads these; 18 refuses them outright, which is why they are not in
+            # the corpus recorded from it.
+            #
+            # An argument, not a type: it stands where an argument stands and nowhere a
+            # type may nest, the same as the `$0` it ends with.
+            if not at_argument:
+                raise _Bail
+            self.take()
+            self.type()
+            if not self.eat("0"):
+                raise _Bail
             self.simple = False
             return Raw(self.templateInteger())
         if not self.eat("$"):
@@ -1023,9 +1055,9 @@ class _Demangler:
                 params = self.parameters()
             finally:
                 self.pointee_depth = saved_pointee_depth
-            self.expect("Z")
+            noexcept_ = self.throwSpecification()
             self.simple = False
-            return Indirection(token, own_quals, FunctionType(convention, params, returns))
+            return Indirection(token, own_quals, FunctionType(convention, params, returns, noexcept_))
         pointee_quals = _CV_QUALS.get(self.take())
         if pointee_quals is None:
             raise _Bail
@@ -1076,7 +1108,7 @@ class _Demangler:
             params = self.parameters()
         finally:
             self.pointee_depth = saved_pointee_depth
-        self.expect("Z")
+        member_cv += self.throwSpecification()
         self.simple = False
         return Indirection(f"{owner}::{token}", own_quals, FunctionType(convention, params, returns, member_cv))
 
@@ -1100,8 +1132,23 @@ class _Demangler:
             raise _Bail
         returns = self.returnType()
         params = self.parameters()
-        self.expect("Z")
+        member_cv += self.throwSpecification()
         return FunctionType(convention, params, returns, member_cv)
+
+    def throwSpecification(self):
+        """What ends a signature: `Z`, or `_E` for a `noexcept` one.
+
+        `demangleThrowSpecification` takes one or the other and refuses anything else.
+        Expecting the `Z` alone refused every `noexcept` function type -- which clang
+        emits for `int (*)(int) noexcept`, an ordinary parameter -- and there is no other
+        place the marker can go, since the parameter list has already been read.
+        """
+        if self.eat("_"):
+            if not self.eat("E"):
+                raise _Bail
+            return " noexcept"
+        self.expect("Z")
+        return ""
 
     def memberQualifiers(self):
         """What a member function may carry after its parameters: cv, __restrict, a ref.
@@ -1428,7 +1475,7 @@ class _Demangler:
             raise _Bail
         returns = None if self.peek() == "@" and self.take() else self.returnType()
         params = self.parameters()
-        self.expect("Z")
+        self.member_cv += self.throwSpecification()
         if not self.nested and not self.eof():
             raise _Bail
         written = ", ".join(str(value) for value in displacements)
@@ -1474,7 +1521,7 @@ class _Demangler:
         else:
             returns = self.returnType()
         params = self.parameters()
-        self.expect("Z")
+        self.member_cv += self.throwSpecification()
         if not self.nested and not self.eof():
             raise _Bail
         lead = ""

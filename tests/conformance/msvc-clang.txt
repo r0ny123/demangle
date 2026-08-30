@@ -8,17 +8,20 @@
 #
 # reference: Ubuntu LLVM version 18.1.3   Optimized build.
 # compiled by: clang++ --target=x86_64-pc-windows-msvc: Ubuntu clang version 18.1.3 (1ubuntu1)
-# standards: c++11, c++14, c++17, c++20
+# standards: c++17, c++20, c++23
 # optimisation: -O0, -O2
 #
 ?$TSS0@?1??guarded@ns@@YAHXZ@4HA	int `int __cdecl ns::guarded(void)'::`2'::$TSS0
+??$constrained@H@hard@@YAHH@Z	int __cdecl hard::constrained<int>(int)
 ??$dependent@H@ns@@YAHH@Z	int __cdecl ns::dependent<int>(int)
 ??$identity@H@ns@@YAHH@Z	int __cdecl ns::identity<int>(int)
 ??$identity@PEBD@ns@@YAPEBDPEBD@Z	char const * __cdecl ns::identity<char const *>(char const *)
+??$var_template@H@hard@@3HA	int hard::var_template<int>
 ??0Base@ns@@QEAA@XZ	public: __cdecl ns::Base::Base(void)
 ??0Derived@ns@@QEAA@XZ	public: __cdecl ns::Derived::Derived(void)
 ??0Other@ns@@QEAA@XZ	public: __cdecl ns::Other::Other(void)
 ??0Thrower@ns@@QEAA@XZ	public: __cdecl ns::Thrower::Thrower(void)
+??0TlsCtor@hard@@QEAA@XZ	public: __cdecl hard::TlsCtor::TlsCtor(void)
 ??0VirtBase@ns@@QEAA@XZ	public: __cdecl ns::VirtBase::VirtBase(void)
 ??1Base@ns@@UEAA@XZ	public: virtual __cdecl ns::Base::~Base(void)
 ??1Derived@ns@@UEAA@XZ	public: virtual __cdecl ns::Derived::~Derived(void)
@@ -32,11 +35,15 @@
 ??4Q@ns@@QEHAAAEAU01@$$QEAU01@@Z	public: struct ns::Q & __cdecl ns::Q::operator=(struct ns::Q &&) &&
 ??8Q@ns@@QEBA_NAEBU01@@Z	public: bool __cdecl ns::Q::operator==(struct ns::Q const &) const
 ??AQ@ns@@QEBAHH@Z	public: int __cdecl ns::Q::operator[](int) const
+??ASub@hard@@QEBAHHH@Z	public: int __cdecl hard::Sub::operator[](int, int) const
 ??BQ@ns@@QEBAHXZ	public: int __cdecl ns::Q::operator int(void) const
 ??HQ@ns@@QEBAHH@Z	public: int __cdecl ns::Q::operator+(int) const
+??R<lambda_0>@?0??nested_lambdas@hard@@YAHXZ@QEBA?A?<auto>@@H@Z	public: <auto> __cdecl `int __cdecl hard::nested_lambdas(void)'::`1'::<lambda_0>::operator()(int) const
 ??R<lambda_0>@?0??with_lambda@ns@@YAHXZ@QEBA?A?<auto>@@H@Z	public: <auto> __cdecl `int __cdecl ns::with_lambda(void)'::`1'::<lambda_0>::operator()(int) const
+??R<lambda_1>@?0???R<lambda_0>@?0??nested_lambdas@hard@@YAHXZ@QEBA?A?<auto>@@H@Z@QEBA?A?4@H@Z	public: <auto> __cdecl `public: <auto> __cdecl `int __cdecl hard::nested_lambdas(void)'::`1'::<lambda_0>::operator()(int) const'::`1'::<lambda_1>::operator()(int) const
 ??R<lambda_1>@?0??with_lambda@ns@@YAHXZ@QEBA?A?<auto>@@H@Z	public: <auto> __cdecl `int __cdecl ns::with_lambda(void)'::`1'::<lambda_1>::operator()(int) const
 ??RQ@ns@@QEBAHHD@Z	public: int __cdecl ns::Q::operator()(int, char) const
+??RSub@hard@@SAHH@Z	public: static int __cdecl hard::Sub::operator()(int)
 ??_7Base@ns@@6B@	const ns::Base::`vftable'
 ??_7Derived@ns@@6BBase@1@@	const ns::Derived::`vftable'{for `ns::Base'}
 ??_7Derived@ns@@6BOther@1@@	const ns::Derived::`vftable'{for `ns::Other'}
@@ -44,6 +51,7 @@
 ??_7VirtBase@ns@@6B@	const ns::VirtBase::`vftable'
 ??_7type_info@@6B@	const type_info::`vftable'
 ??_8VirtBase@ns@@7B@	const ns::VirtBase::`vbtable'
+??_C@_01FJMABOPO@x?$AA@	"x"
 ??_C@_0N@OLAOGCLC@hello?0?5world?$AA@	"hello, world"
 ??_C@_1M@GINHBNC@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@	L"hello"
 ??_DVirtBase@ns@@QEAAXXZ	public: void __cdecl ns::VirtBase::`vbase dtor'(void)
@@ -80,29 +88,44 @@
 ??_VWithNew@ns@@SAXPEAX@Z	public: static void __cdecl ns::WithNew::operator delete[](void *)
 ??__Eg@deeper@outer@@YAXXZ	void __cdecl `dynamic initializer for 'outer::deeper::g''(void)
 ??__Eh@outer@@YAXXZ	void __cdecl `dynamic initializer for 'outer::h''(void)
+??__Etls_obj@hard@@YAXXZ	void __cdecl `dynamic initializer for 'hard::tls_obj''(void)
 ??__Etop@@YAXXZ	void __cdecl `dynamic initializer for 'top''(void)
 ??__Fd@?1??guarded@ns@@YAHXZ@YAXXZ	void __cdecl `dynamic atexit destructor for '`int __cdecl ns::guarded(void)'::`2'::d''(void)
+??__K_str@hard@@YAPEBDPEBD_K@Z	char const * __cdecl hard::operator ""_str(char const *, unsigned __int64)
+??__K_ull@hard@@YA_K_K@Z	unsigned __int64 __cdecl hard::operator ""_ull(unsigned __int64)
+??__LSpaceship@hard@@QEAAHXZ	public: int __cdecl hard::Spaceship::operator co_await(void)
+??__MSpaceship@hard@@QEBAHAEBU01@@Z	public: int __cdecl hard::Spaceship::operator<=>(struct hard::Spaceship const &) const
 ?anon_fn@?A0xBBA50CF9@ns@@YAHXZ	int __cdecl ns::`anonymous namespace'::anon_fn(void)
 ?arr@ns@@3QBDB	char const *const ns::arr
+?ci@hard@@3HA	int hard::ci
 ?counter@WithStatics@ns@@SAHXZ	public: static int __cdecl ns::WithStatics::counter(void)
 ?d@?1??guarded@ns@@YAHXZ@4UDerived@2@A	struct ns::Derived `int __cdecl ns::guarded(void)'::`2'::d
 ?destroy@ns@@YAXPEAUBase@1@@Z	void __cdecl ns::destroy(struct ns::Base *)
 ?destroy_array@ns@@YAXPEAUBase@1@@Z	void __cdecl ns::destroy_array(struct ns::Base *)
 ?down@ns@@YAPEAUDerived@1@PEAUBase@1@@Z	struct ns::Derived * __cdecl ns::down(struct ns::Base *)
 ?f@?$Higher@UPair@ns@@@ns@@QEBAHXZ	public: int __cdecl ns::Higher<struct ns::Pair>::f(void) const
+?f@?$MemFnNT@$1?fn@HasMember@hard@@QEAAHH@Z@hard@@QEBAHXZ	public: int __cdecl hard::MemFnNT<&public: int __cdecl hard::HasMember::fn(int)>::f(void) const
+?f@?$MemPtrNT@$0A@@hard@@QEBAHXZ	public: int __cdecl hard::MemPtrNT<0>::f(void) const
 ?f@?$Pack@$$V@ns@@QEBAHXZ	public: int __cdecl ns::Pack<>::f(void) const
 ?f@?$Pack@HDN@ns@@QEBAHHDN@Z	public: int __cdecl ns::Pack<int, char, double>::f(int, char, double) const
+?f@?$PtrNT@$1?global@hard@@3HA@hard@@QEBAHXZ	public: int __cdecl hard::PtrNT<&int hard::global>::f(void) const
 ?f@?$Value@$0?2$0CK@$00@ns@@QEBAHXZ	public: int __cdecl ns::Value<-3, 42, 1>::f(void) const
 ?f@?$Value@$0A@$0A@$0A@@ns@@QEBAHXZ	public: int __cdecl ns::Value<0, 0, 0>::f(void) const
 ?f@Anon@?A0xBBA50CF9@ns@@QEBAHXZ	public: int __cdecl ns::`anonymous namespace'::Anon::f(void) const
 ?f@Deeper@Nested@inner@ns@@QEBAHXZ	public: int __cdecl ns::inner::Nested::Deeper::f(void) const
+?f@WithRef@hard@@QEGAAHXZ	public: int __cdecl hard::WithRef::f(void) &
 ?fastcall_fn@ns@@YAHH@Z	int __cdecl ns::fastcall_fn(int)
 ?freefn@ns@@YAHH@Z	int __cdecl ns::freefn(int)
+?g@WithRef@hard@@QEHAAHXZ	public: int __cdecl hard::WithRef::g(void) &&
 ?g@deeper@outer@@3UThrower@ns@@A	struct ns::Thrower outer::deeper::g
 ?get@?$Pair@HD@ns@@QEBAHXZ	public: int __cdecl ns::Pair<int, char>::get(void) const
 ?get@?$Pair@PEBDN@ns@@QEBAPEBDXZ	public: char const * __cdecl ns::Pair<char const *, double>::get(void) const
+?global@hard@@3HA	int hard::global
 ?guarded@ns@@YAHXZ	int __cdecl ns::guarded(void)
+?h@WithRef@hard@@QEGBAHXZ	public: int __cdecl hard::WithRef::h(void) const &
 ?h@outer@@3UThrower@ns@@A	struct ns::Thrower outer::h
+?i@WithRef@hard@@QEHBAHXZ	public: int __cdecl hard::WithRef::i(void) const &&
+?inline_ns_fn@v1@hard@@YAHXZ	int __cdecl hard::v1::inline_ns_fn(void)
 ?literal@ns@@YAPEBDXZ	char const * __cdecl ns::literal(void)
 ?m@Q@ns@@QEAAHH@Z	public: int __cdecl ns::Q::m(int)
 ?make_base@ns@@YAPEAUBase@1@XZ	struct ns::Base * __cdecl ns::make_base(void)
@@ -110,6 +133,8 @@
 ?make_virt@ns@@YAPEAUVirtBase@1@XZ	struct ns::VirtBase * __cdecl ns::make_virt(void)
 ?makes_temporary@ns@@YAHXZ	int __cdecl ns::makes_temporary(void)
 ?n@?1??counter@WithStatics@ns@@SAHXZ@4HA	int `public: static int __cdecl ns::WithStatics::counter(void)'::`2'::n
+?nested_lambdas@hard@@YAHXZ	int __cdecl hard::nested_lambdas(void)
+?noexcept_fn@hard@@YAHH@Z	int __cdecl hard::noexcept_fn(int)
 ?o@Derived@ns@@UEAAHXZ	public: virtual int __cdecl ns::Derived::o(void)
 ?o@Other@ns@@UEAAHXZ	public: virtual int __cdecl ns::Other::o(void)
 ?r1@Q@ns@@QEBAAEAY03$$CBDXZ	public: char const (& __cdecl ns::Q::r1(void) const)[4]
@@ -117,16 +142,24 @@
 ?r3@Q@ns@@QEBAP6AHH@ZXZ	public: int (__cdecl * __cdecl ns::Q::r3(void) const)(int)
 ?r4@Q@ns@@QEBAA6AHH@ZXZ	public: int (__cdecl & __cdecl ns::Q::r4(void) const)(int)
 ?r5@Q@ns@@QEBAP812@EAAHH@ZXZ	public: int (__cdecl ns::Q::* __cdecl ns::Q::r5(void) const)(int)
+?s@WithRef@hard@@SAHH@Z	public: static int __cdecl hard::WithRef::s(int)
 ?stat@Base@ns@@2HA	public: static int ns::Base::stat
 ?stdcall_fn@ns@@YAHH@Z	int __cdecl ns::stdcall_fn(int)
+?structured@hard@@YA?A?<auto>@@XZ	<auto> __cdecl hard::structured(void)
 ?takes_arrays@ns@@YAHAEAY02HPEAY02HAEAY111$$CBH@Z	int __cdecl ns::takes_arrays(int (&)[3], int (*)[3], int const (&)[2][2])
 ?takes_chars@ns@@YAH_Q_S_U_W@Z	int __cdecl ns::takes_chars(char8_t, char16_t, char32_t, wchar_t)
 ?takes_enums@ns@@YAHW4Scoped@1@W4Plain@1@@Z	int __cdecl ns::takes_enums(enum ns::Scoped, enum ns::Plain)
 ?takes_members@ns@@YAHPEQQ@1@HP821@EAAHH@Z@Z	int __cdecl ns::takes_members(int ns::Q::*, int (__cdecl ns::Q::*)(int))
+?takes_noexcept@hard@@YAHP6AHH@_EA6AHH@_E@Z	int __cdecl hard::takes_noexcept(int (__cdecl *)(int) noexcept, int (__cdecl &)(int) noexcept)
+?takes_nullptr@hard@@YAH$$T@Z	int __cdecl hard::takes_nullptr(std::nullptr_t)
 ?takes_pointers@ns@@YAHPEBQEBHPEIAH@Z	int __cdecl ns::takes_pointers(int const *const *, int *__restrict)
 ?takes_refs@ns@@YAH$$QEAHAEBH@Z	int __cdecl ns::takes_refs(int &&, int const &)
+?takes_unaligned@hard@@YAHPEFAH@Z	int __cdecl hard::takes_unaligned(int __unaligned *)
+?tls@hard@@3HA	int hard::tls
+?tls_obj@hard@@3UTlsCtor@1@A	struct hard::TlsCtor hard::tls_obj
 ?top@@3UThrower@ns@@A	struct ns::Thrower top
 ?uses_anon@ns@@YAHXZ	int __cdecl ns::uses_anon(void)
+?uses_literals@hard@@YA_KXZ	unsigned __int64 __cdecl hard::uses_literals(void)
 ?v@Base@ns@@UEBAHH@Z	public: virtual int __cdecl ns::Base::v(int) const
 ?v@Derived@ns@@UEBAHH@Z	public: virtual int __cdecl ns::Derived::v(int) const
 ?v@VirtBase@ns@@UEBAHH@Z	public: virtual int __cdecl ns::VirtBase::v(int) const

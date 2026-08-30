@@ -780,6 +780,24 @@ All notable changes to this project are recorded here. The format follows
   constructor, and every function-local static, whose scope is written the same way. The
   qualified name goes *inside* the quotes, where the reference puts it.
 
+- **MSVC: four more productions a compiler emits.** `??__M` and `??__L` are
+  `operator<=>` and `operator co_await`, both written with the double-underscore prefix
+  and neither in the table -- the first is C++20's three-way comparison, which clang
+  emits for any class that declares one. A signature ends with `Z` *or* with `_E`, which
+  marks it `noexcept`: `demangleThrowSpecification` takes either, and expecting the `Z`
+  alone refused every `noexcept` function type, `int (*)(int) noexcept` included. A
+  deduced return type may be written as a back reference to an earlier one -- `?A?4@`,
+  which is what a lambda nested inside another lambda produces -- and reading the
+  identifier directly both missed that form and left the back-reference table one entry
+  short for every name after it. And `$M <type> <integer>` is an `auto` non-type template
+  argument, where the reference spells only the value: `A<42>`, `A<99>` for a `char`,
+  `A<1>` for a `bool`.
+
+  All four came from `tools/corpus_sources/msvc/modern.cpp`, added beside `msvc.cpp` in
+  the same run. `llvm-undname` 18.1 refuses the `$M` form, so its expectation is 20.1's
+  output and it is pinned by name rather than recorded in the corpus; the two versions
+  agree on all 764 other MSVC names here, and CI now cross-checks 16, 18 and 20.
+
 - **MSVC: a member function's qualifiers go inside what its return type wraps.**
   `FunctionSignatureNode::outputPost` writes the parameter list and then the quals, so
   they land inside whatever the return type wraps around the declarator. Appended to the

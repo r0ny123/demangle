@@ -210,7 +210,7 @@ jobs:
           # `llvm` as well as the versioned packages: the last step in this job
           # regenerates the corpus, and tools/generate_corpus.py calls the unversioned
           # `llvm-cxxfilt`, which the versioned packages do not provide.
-          sudo apt-get install --no-install-recommends -y llvm llvm-16 llvm-18 binutils
+          sudo apt-get install --no-install-recommends -y llvm llvm-16 llvm-18 llvm-20 binutils
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group test
       # Exit status is non-zero only when every reference agrees and we do not. A split
@@ -225,7 +225,7 @@ jobs:
         run: python tools/differential.py --cross llvm-cxxfilt-16 llvm-cxxfilt-18 c++filt
       - name: MSVC across llvm-undname versions
         run: |
-          python tools/differential.py --cross llvm-undname-16 llvm-undname-18 \
+          python tools/differential.py --cross llvm-undname-16 llvm-undname-18 llvm-undname-20 \
             --corpus tests/conformance/msvc-llvm-corpus.txt --language msvc
       # What a demangler is actually accountable to is the mangler. This compiles a
       # source, reads the symbols the compiler emitted, and demangles those.
