@@ -732,6 +732,24 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **A type in expression position was read as one, and neither reference does that.**
+  `_expression` ended with a catch-all: whatever was left that could open a `<type>`, it
+  read as one. The comment said array bounds and non-type template arguments arrive
+  there; instrumented over the conformance corpora and every Itanium symbol this machine
+  ships -- 137,561 names -- it fires exactly zero times, because both of those
+  productions read their operand themselves. What it did do was give malformed input a
+  spelling: `_Z1fDTaE` came back as `f(decltype(signed char))`, `_Z1fDBa_` as
+  `f(_BitInt(signed char))` and `_Z1fAa_a` as `f(signed char [signed char])`, none of
+  which are things. `llvm-cxxfilt`'s `parseExpr` has no type alternative at all, and
+  `c++filt` reads none of them either -- including `_Z1fDTDTfp_EEv`, a `decltype` nested
+  inside a `decltype`, which looks like it ought to work and does not. That one had a
+  test vector here, in the depth-limit suite, which now uses `-(-(-fp))` instead: an
+  expression nested inside an expression, which is what that test wanted and what both
+  references read. The expressions that legitimately mention a type are unaffected:
+  `DT T_ E` is still `decltype(int)` where `T_` is bound to `int`, `DT ng ng fp_ E` is
+  still `decltype(-(-fp))`, and `st`, `at` and `ti` name their operand's type through
+  their own codes.
+
 - **Rust: a non-digit where an identifier's length belongs read as a length of zero.**
   `<identifier>` opens with a decimal length and the reference requires one --
   rustc-demangle reads it as `self.digit_10()?`, so anything else ends the parse. This

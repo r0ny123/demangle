@@ -56,10 +56,6 @@ from .tables import (
 
 __all__ = ["ItaniumParser", "detect", "parse", "parse_type"]
 
-#: Characters that can open a <type>. Used only to decide whether an ambiguous
-#: expression position holds a type, so it errs towards inclusion.
-_TYPE_STARTERS = frozenset("vwbcahstijlmxynofdegzPRODCGUFAMTSN0123456789")
-
 #: <template-param-decl> introducers. None can be confused with a <template-param>,
 #: which is always `T_` or `T` followed by digits.
 _PARAMETER_DECLARATIONS = frozenset({"Ty", "Tk", "Tn", "Tt", "Tp"})
@@ -3781,12 +3777,6 @@ class ItaniumParser:
         if reader.peek() in DIGITS:
             text = self.unresolved_name()
             return self._named_operand(text, self._simple_name)
-
-        # What remains that could open a type, is one: array bounds and non-type
-        # template arguments both arrive here.
-        if reader.peek() in _TYPE_STARTERS:
-            self._precedence = PRIMARY_PRECEDENCE
-            return self.type_()
 
         raise ParseError(self._mangled, reader.pos, "unrecognised expression")
 

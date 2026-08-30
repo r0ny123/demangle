@@ -155,6 +155,50 @@ class TestStillRefusesWhatItShould:
     def test_the_rule_counts_types_read_and_not_parameters_kept(self, mangled, expected):
         assert demangle.demangle_strict(mangled, language="itanium") == expected
 
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_Z1fDTaE",  # a type where `decltype` wants an expression
+            "_Z1fIXaEE",  # and where `X ... E` wants one
+            "_Z1fAa_a",  # a type as an array bound
+            "_Z1fDBa_",  # a type as a bit width
+            "_Z1fDTDTfp_EEv",  # a `decltype` inside a `decltype`
+        ],
+    )
+    def test_a_type_is_not_an_expression(self, mangled):
+        """`_expression` used to end by reading whatever could open a `<type>` as one.
+
+        Its comment said array bounds and non-type template arguments arrive there.
+        Instrumented over the conformance corpora and every Itanium symbol on this
+        machine -- 137,561 names -- it fired exactly zero times, because both of those
+        productions read their operand themselves: `A <number> _` through `digits`,
+        `A _ <expression> _` through `expression_text`, and `<template-arg>`'s type
+        alternative in `template_arg`'s own branch.
+
+        What it did do was give malformed input a spelling. `decltype(signed char)` and
+        `_BitInt(signed char)` are not things, and `f(signed char [signed char])` is an
+        array whose bound is a type. `llvm-cxxfilt`'s `parseExpr` has no type
+        alternative at all and `c++filt` reads none of these either -- including the
+        nested `decltype`, which looks like it ought to work and does not.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The expressions that legitimately mention a type still read.
+            ("_Z1fDTfp_Ev", "f(decltype(fp), void)"),
+            ("_Z1fDTdtfp_1xEv", "f(decltype(fp.x), void)"),
+            ("_Z1fDTngngngfp_Ev", "f(decltype(-(-(-fp))), void)"),
+            ("_Z1fA1_iv", "f(int [1], void)"),
+            ("_Z1fIiEDTT_Ev", "decltype(int) f<int>()"),
+        ],
+    )
+    def test_what_an_expression_may_still_hold(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
     @pytest.mark.parametrize("mangled", ["_Z1fILaEE", "_Z1fILbEE", "_Z1fILPiEE", "_Z1fILSt9nullptr_tEE"])
     def test_a_literal_with_no_value_is_not_a_value(self, mangled):
         """`L <type> <value> E`, and the value is not optional.

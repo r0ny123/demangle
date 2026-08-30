@@ -257,7 +257,13 @@ class TestDepthExhaustionIsReportedAsABound:
         "mangled",
         [
             "_Z1f" + "1XI" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
-            "_Z1f" + "DT" * DEEPER_THAN_THE_LIMIT + "fp_" + "E" * DEEPER_THAN_THE_LIMIT,
+            # An expression nested inside an expression, which is what `ng` is -- not a
+            # `decltype` nested inside a `decltype`, which was here before and which
+            # neither reference reads: `_Z1fDTDTfp_EEv` is handed back by `c++filt` 2.42
+            # and `llvm-cxxfilt` 18.1 alike. It parsed here only through a catch-all in
+            # `_expression` that read whatever could open a `<type>` as one, and it went
+            # with that. `-(-(-fp))` is the same shape and is read the same way by both.
+            "_Z1fDT" + "ng" * DEEPER_THAN_THE_LIMIT + "fp_" + "Ev",
             "_Z1f" + "PF" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
             "?f@@YAX" + "PA" * DEEPER_THAN_THE_LIMIT + "H@Z",
         ],
