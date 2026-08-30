@@ -289,14 +289,11 @@ class TestTheToolsAndTheSuiteAgree:
         from . import test_conformance as pins
 
         tool = self.module("differential")
-        suite = set(pins.GNU_DIVERGENCES) | {
-            # The one entry the tool carries that the suite does not: it is excused
-            # against an *older* reference version rather than against a corpus, so the
-            # suite has nothing to pin it to. Named here so the difference is one item
-            # rather than an unchecked gap.
-            "_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_",
-        }
-        assert suite == tool.KNOWN_DIVERGENCES
+        # The two sets are equal. `_Z16templateTemplate...S4_` was the one entry the tool
+        # carried and the suite did not -- excused against an older reference version
+        # rather than against a corpus -- and it is now a reference defect with the
+        # declaration as its expected column, which is checked rather than excused.
+        assert set(pins.GNU_DIVERGENCES) == tool.KNOWN_DIVERGENCES
 
     def test_no_excused_name_is_also_a_reference_defect(self):
         """A name cannot both be an open disagreement and have a settled answer.

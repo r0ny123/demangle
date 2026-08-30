@@ -780,6 +780,74 @@ All notable changes to this project are recorded here. The format follows
   constructor, and every function-local static, whose scope is written the same way. The
   qualified name goes *inside* the quotes, where the reference puts it.
 
+- **Itanium: `sizeof...` writes an ellipsis after an operand that is not a pack.**
+  `SizeofParamPackExpr` prints its operand through a pack expansion, and an expansion
+  that finds no pack in what it printed writes a `...` after it -- the same rule that
+  makes `sp fp_` read `fp...`. So `sZ` over a parameter bound to a pack spells the
+  members, and over anything else spells the operand and an ellipsis:
+  `sizeof...(int...)` for a `T_` bound to `int`, and `sizeof...(T...)` inside a
+  requires-clause, where the parameter is spelled by its own mangled name and nothing is
+  bound at all. This wrote neither. Clang emits the second for any constrained variadic
+  template.
+
+- **The Itanium corpus at C++20 and C++23.** `tools/corpus_sources/modern23.cpp` adds
+  constrained templates and requires-clauses, coroutines, the defaulted spaceship,
+  abbreviated function templates, `auto` and class-type non-type template parameters,
+  deducing `this`, the multi-argument subscript and the static call operator; `c++23`
+  joins the standards every source is compiled at. `itanium-real-world.txt` goes from
+  279 names to 318 and the GNU-style one from 300 to 311, with coroutine frames,
+  `Tk`-constrained parameters, `Q` requires-clauses, `constinit` and `thread_local`
+  among what is new. The `structured` benchmark walks that corpus, so its baseline is
+  re-recorded over 636 names rather than 558; the mutation pin moves with it too, because
+  the same file is a mutation seed and a bigger seed set is a different draw.
+
+- **Itanium: a constructor repeated a class name cut short.** `Foo<int>::Foo` drops the
+  template arguments and the ABI tags the class name carries, and the cut was made by
+  searching the *spelling* for the first `<` or `[`. Every class named by an operator has
+  one of those inside its name, so `_ZNssC1Ev` came back as `operator<=>::operator()` and
+  `_ZN1XixC1Ev` as `X::operator[]::operator()` -- a constructor of a class the encoding
+  does not mention. The name is now taken from the component that was read, before any
+  template arguments attached to it, so nothing has to be recognised in the text.
+  `llvm-cxxfilt` reads all of these in full; GNU `c++filt` refuses most and answers
+  `X::operator[]::X()` for the one it reads. Found by mutation, and the same change fixes
+  the reverse ordering in an inheriting constructor -- `CI <variant> <base>` read its base
+  type before the class name, so a base that was itself a nested name left its own last
+  component standing where the class should be, which is what `c++filt` does today.
+
+- **Itanium: the `F` friend marker was read and then dropped.**
+  `<unqualified-name> ::= F <name>` says the function was declared inside the class it is
+  a friend of. It was spelled for a source name and an operator, and discarded for a
+  constructor, a destructor and an unnamed type -- so `_ZN1AFC1Ev` came back as `A::A()`,
+  a different declaration from the one the encoding spells. The two references put the
+  marker in different places, so both are followed: `llvm-cxxfilt` writes the word before
+  the name, `A::friend f()`, and GNU `c++filt` a bracketed suffix after the name and its
+  ABI tags but before its template arguments, `A::f[abi:xyz][friend]<int>()`. That second
+  spelling is the new `gnu_friend_spelling` option, on in the GNU style.
+
+- **Itanium: a fold expression printed llvm's spacing under the GNU style.** GNU `c++filt`
+  writes no spaces around the operator or the ellipsis -- `(...+(1, 2))` -- and brackets
+  the initialiser of a binary fold by kind rather than by precedence, the same rule it
+  applies to every other operand, so a literal initialiser gets brackets and a function
+  parameter does not: `((9)+...+(1, 2))` and `((1)+...+{parm#1})`. This wrote neither
+  half, printing `(9 + ... + (1, 2))` in both styles.
+
+- **Itanium: a cv-qualified function type reached through a substitution.** Both
+  references spell one written out as `void () const`; reached through a `<substitution>`
+  each contradicts itself -- `llvm-cxxfilt` answers `void  const()`, moving the qualifier
+  into the declarator and doubling a space, and `c++filt` answers `void ( const)()`. This
+  spells the substituted type the way both spell the written-out one, which is now
+  pinned in `tests/test_types.py` and carried as an `ACCEPTED` rule in
+  `tools/enumerate.py` with the reason.
+
+- **A reference defect the exclusion list was not covering.**
+  `_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_` sat in
+  `itanium-real-world.txt` with the corrected spelling and was absent from
+  `itanium-reference-defects.txt`, so the next regeneration re-recorded llvm-cxxfilt
+  18.1's answer for it -- which is what the first regeneration in a while did. It is the
+  same `<template-param>` substitution defect as the other nine, and llvm-cxxfilt 20.1
+  and GNU c++filt 2.42 both agree with the declaration. Now excluded, so the protection
+  the file exists to give actually covers it.
+
 - **MSVC: four more productions a compiler emits.** `??__M` and `??__L` are
   `operator<=>` and `operator co_await`, both written with the double-underscore prefix
   and neither in the table -- the first is C++20's three-way comparison, which clang

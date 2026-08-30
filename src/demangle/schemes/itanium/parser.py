@@ -152,6 +152,11 @@ _MEASURING_A_TYPE = frozenset({"st", "at", "ti"})
 #: bracket that follows it.
 _PLAIN_CALLEE = re.compile(r"(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*|\{parm#\d+\})\Z")
 
+#: The ABI tags a name carries, at the end of it. A constructor repeats the class name
+#: without them -- `failure[abi:cxx11]::failure` -- and the tags are the only bracketed
+#: thing an <unqualified-name> ends with that is not part of the name: `operator[]` is.
+_ABI_TAGS_AT_END = re.compile(r"(?:\[abi:[^]]*\])+\Z")
+
 _OBJC_PROTOCOL = "objcproto"
 _OBJC_OBJECT = "objc_object"
 
@@ -270,6 +275,7 @@ class ItaniumParser:
         "_parameter_uses",
         "_pending_conversion",
         "_precedence",
+        "_prefix_bare",
         "_prefix_ended_on",
         "_prefixes",
         "_productions",
@@ -415,6 +421,11 @@ class ItaniumParser:
         # `<substitution>`. The final component of a <nested-name> is an
         # <unqualified-name>, which a substitution is not -- see `nested_name`.
         self._prefix_ended_on = ""
+        # The last <prefix> component read, before any template arguments that attach to
+        # it -- or None where the component did not come from an <unqualified-name>. A
+        # constructor repeats the class name, and this is the node it repeats; see
+        # `enclosing_class_name`.
+        self._prefix_bare = None
         # Whether a `<template-param>` at the head of a type may take template arguments
         # of its own. False while reading a conversion operator's type, where an `I`
         # that follows opens the *operator's* argument list: in `cvT_I4MerpE` the
@@ -1007,6 +1018,11 @@ class ItaniumParser:
         module = ""
         outer_ctor_dtor = self._ctor_dtor
         self._ctor_dtor = False
+        # A nested name inside a template argument reads prefix components of its own.
+        # Without this the class name a constructor repeats could be one belonging to an
+        # argument -- `A<B::C>::A` would come back as `A<B::C>::C`.
+        outer_bare = self._prefix_bare
+        self._prefix_bare = None
         try:
             max_depth = self._max_depth
             peek = reader.peek
@@ -1057,6 +1073,7 @@ class ItaniumParser:
                 is_template = False
         finally:
             self._ctor_dtor = outer_ctor_dtor
+            self._prefix_bare = outer_bare
         name = parts[0] if len(parts) == 1 else self.builder.qualified(parts)
         return name, quals, ref_qualifier, is_template
 
@@ -1116,6 +1133,7 @@ class ItaniumParser:
                     return False, named
                 self._only_a_base_production(parts, "a substitution")
                 self._prefix_ended_on = "a substitution"
+                self._prefix_bare = None
                 parts.append(component)
                 return False, module
 
@@ -1125,10 +1143,14 @@ class ItaniumParser:
                 if not parts:
                     raise ParseError(self._mangled, reader.pos, "template arguments with no name")
                 pending = self._conversion_pending()
+                # Captured before the arguments are read: an argument may be a nested
+                # name of its own, and reading it moves `_prefix_bare` on.
+                bare = parts[-1]
                 arguments = self.template_arguments(install_scope=True)
                 angle_space = not self._trailing_empty_pack
                 if pending is not None:
-                    parts[-1] = builder.name(self._reread_conversion(pending))
+                    bare = parts[-1] = builder.name(self._reread_conversion(pending))
+                self._prefix_bare = bare
                 parts[-1] = builder.template(parts[-1], arguments, angle_space)
                 combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
                 # Only an *interior* <template-prefix> <template-args> is a separate
@@ -1141,6 +1163,7 @@ class ItaniumParser:
 
             if char == "T":
                 self._only_a_base_production(parts, "a template parameter")
+                self._prefix_bare = None
                 component, reference = self.template_param_binding()
                 parts.append(component)
                 self.subs.remember(reference if reference is not None else component, "template-template-param")
@@ -1148,6 +1171,7 @@ class ItaniumParser:
 
             if char == "D" and reader.ahead(1) in ("t", "T"):
                 self._only_a_base_production(parts, "a decltype")
+                self._prefix_bare = None
                 parts.append(self.decltype_())
                 return False, module
 
@@ -1157,6 +1181,7 @@ class ItaniumParser:
                 # follow before the `E` -- see `nested_name`.
                 reader.take()
                 self._prefix_ended_on = "a data member or closure prefix"
+                self._prefix_bare = None
                 return False, module
 
             if char == "Q":
@@ -1172,10 +1197,12 @@ class ItaniumParser:
                     self.expression()
                 finally:
                     self._in_constraint = outer_constraint
+                    self._prefix_bare = None
                 return False, module
 
         component = self.unqualified_name(scope=parts, module=module)
         parts.append(component)
+        self._prefix_bare = component
         if reader.peek() != "E":
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
             self.subs.remember(self._spend_prefix(combined), "prefix")
@@ -1335,14 +1362,14 @@ class ItaniumParser:
             module = self.module_name(module)
             char = reader.peek()
         # `F` marks a friend declared inside the class it is a friend of. The scope is
-        # already in `parts`, which `qualified` joins with `::`, so the marker is the
-        # word that follows the last `::`.
-        friend = ""
+        # already in `parts`, which `qualified` joins with `::`, so the marker decorates
+        # the name that follows the last `::` -- see `_befriended` for where it goes.
+        friend = False
         if char == "F" and scope:
             # Licensed by `peek`: the character it just returned is the one consumed
             # here, with nothing in between.
             reader.pos += 1
-            friend = "friend "
+            friend = True
             char = reader.peek()
 
         if char in DIGITS:
@@ -1352,7 +1379,7 @@ class ItaniumParser:
             if module:
                 name = f"{name}@{module}"
             tags = self.abi_tags() if reader.peek() == "B" else ""
-            return builder.name(friend + name + tags) if friend else builder.name(name + tags)
+            return builder.name(self._befriended(name + tags) if friend else name + tags)
 
         if char == "L":
             # An internal-linkage name. The marker carries no spelling of its own, and
@@ -1371,17 +1398,22 @@ class ItaniumParser:
                 inner = self.unqualified_name(scope, module, internal=True)
             finally:
                 self._depth = depth - 1
-            return builder.name(friend + builder.spell(inner)) if friend else inner
+            return builder.name(self._befriended(builder.spell(inner))) if friend else inner
 
         if char == "C":
-            return self.constructor_name(scope, module)
+            # A constructor can be a friend too -- `F C1` -- and the marker used to be
+            # read and then dropped, so `_ZN1AFC1Ev` came back as `A::A()`, which is a
+            # different declaration from the one the encoding spells.
+            name = self.constructor_name(scope, module)
+            return builder.name(self._befriended(builder.spell(name))) if friend else name
 
         if char == "D":
             following = reader.ahead(1)
             if following in DESTRUCTOR_KINDS:
                 reader.pos += 2
                 self._ctor_dtor = True
-                return builder.name(self._in_module("~" + self.enclosing_class_name(scope), module))
+                spelled = self._in_module("~" + self.enclosing_class_name(scope), module)
+                return builder.name(self._befriended(spelled) if friend else spelled)
             if following == "C":
                 # A structured binding declaration: DC <source-name>+ E
                 reader.pos += 2
@@ -1390,18 +1422,32 @@ class ItaniumParser:
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated structured binding")
                     names.append(self.source_name())
-                return builder.name(friend + self._in_module("[" + ", ".join(names) + "]", module))
+                spelled = self._in_module("[" + ", ".join(names) + "]", module)
+                return builder.name(self._befriended(spelled) if friend else spelled)
 
         if char == "U":
-            return self.unnamed_type_name()
+            name = self.unnamed_type_name()
+            return builder.name(self._befriended(builder.spell(name))) if friend else name
 
-        operator = builder.name(friend + self._in_module(self.operator_name(), module) + self.abi_tags())
+        spelled = self._in_module(self.operator_name(), module) + self.abi_tags()
+        operator = builder.name(self._befriended(spelled) if friend else spelled)
         if reader.peek() != "I":
             # Nothing is going to bind a conversion operator's template parameters, so
             # there is nothing to read again. Cleared here rather than left to expire,
             # because the next template argument list in the name is somebody else's.
             self._pending_conversion = None
         return operator
+
+    def _befriended(self, text):
+        """`text`, marked as a friend declared inside the class it is a friend of.
+
+        The two references put the marker in different places. llvm-cxxfilt writes the
+        word before the name, `A::friend f()`; GNU c++filt writes a bracketed suffix
+        after the name and after its ABI tags, `A::f[abi:xyz][friend]()`, and before the
+        template arguments, which attach to this component afterwards -- so
+        `A::f[friend]<int>()`.
+        """
+        return text + "[friend]" if self.options.gnu_friend_spelling else "friend " + text
 
     def constructor_name(self, scope, module=""):
         """A constructor name.
@@ -1422,8 +1468,12 @@ class ItaniumParser:
             marker = reader.take()
             if marker not in CONSTRUCTOR_KINDS:
                 raise ParseError(self._mangled, reader.pos, f"unknown constructor variant {marker!r}")
+            # The class name is read off the scope *before* the base type, which is a
+            # <type> and may itself be a nested name -- reading it first would leave the
+            # base's own last component standing where the class should be.
+            name = self.builder.name(self._in_module(self.enclosing_class_name(scope), module))
             self.type_()
-            return self.builder.name(self._in_module(self.enclosing_class_name(scope), module))
+            return name
         marker = reader.take()
         if marker not in CONSTRUCTOR_KINDS:
             raise ParseError(self._mangled, reader.pos, f"unknown constructor variant {marker!r}")
@@ -1439,14 +1489,24 @@ class ItaniumParser:
         """
         if not scope:
             raise ParseError(self._mangled, self.reader.pos, "constructor outside any class scope")
-        spelled = self.builder.spell(scope[-1])
-        # Drop everything the class name carries but the constructor does not: template
-        # arguments (`Foo<int>::Foo`, never `Foo<int>::Foo<int>`) and ABI tags
-        # (`failure[abi:cxx11]::failure`). Both attach directly to the class name, so
-        # cutting at whichever comes first removes them and nothing else.
-        cut = min((index for index in (spelled.find("<"), spelled.find("[")) if index > 0), default=-1)
-        if cut > 0:
-            spelled = spelled[:cut]
+        bare = self._prefix_bare
+        if bare is not None:
+            # The component as it was read, before the arguments a `<template-args>` may
+            # have attached to it. Searching the *spelling* for a `<` instead cut every
+            # class whose name is an operator: `_ZNssC1Ev` came back as
+            # `operator<=>::operator()` and `_ZNixC1Ev` as `operator[]::operator()` --
+            # a constructor of a class the name does not mention. `llvm-cxxfilt` reads
+            # both in full.
+            spelled = _ABI_TAGS_AT_END.sub("", self.builder.spell(bare))
+        else:
+            # A scope that did not come from an <unqualified-name> -- a substitution, a
+            # `<template-param>`, a `<decltype>` -- has no component to look back at, so
+            # the arguments and tags come off the spelling. Nothing that reaches here is
+            # spelled with a `<` or a `[` of its own.
+            spelled = self.builder.spell(scope[-1])
+            cut = min((index for index in (spelled.find("<"), spelled.find("[")) if index > 0), default=-1)
+            if cut > 0:
+                spelled = spelled[:cut]
         # Then take the last component. A scope reached through an abbreviation arrives
         # as one part rather than as separate prefixes -- `Sa` is the single component
         # `std::allocator` -- and the class name is only its tail, so without this the
@@ -3446,13 +3506,26 @@ class ItaniumParser:
         if pair == "sZ":
             reader.pos += 2
             outer_index = self._pack_index
+            outer_pack = self._saw_pack
             self._pack_index = None
+            self._saw_pack = False
             try:
                 inner = self.template_param()
+                over_pack = self._saw_pack
             finally:
                 self._pack_index = outer_index
+                self._saw_pack = outer_pack or self._saw_pack
+            # `sizeof...` prints its operand through a pack expansion, and an expansion
+            # that finds no pack in what it printed writes an ellipsis after it -- the
+            # same rule that makes `sp fp_` read `fp...`. So `sZ` over a parameter bound
+            # to a pack spells the members, and over anything else spells the operand and
+            # a `...`: `sizeof...(int...)` for a `T_` bound to `int`, and
+            # `sizeof...(T...)` inside a requires-clause, where the parameter is spelled
+            # by its own mangled name and nothing is bound at all. This wrote neither
+            # ellipsis. Clang emits the second for any constrained variadic template.
+            ellipsis = [] if over_pack else ["..."]
             self._precedence = PRIMARY_PRECEDENCE
-            return builder.expression("sizeof_pack", ["sizeof...(", inner, ")"])
+            return builder.expression("sizeof_pack", ["sizeof...(", inner, *ellipsis, ")"])
         if pair == "sP":
             reader.pos += 2
             members = []
@@ -3713,16 +3786,24 @@ class ItaniumParser:
             reader.pos += 2
             left_fold = marker in ("l", "L")
             initialiser = None
+            # The initialiser is an operand of the fold's operator, and GNU c++filt
+            # brackets it on the same rule as any other -- by kind, not by precedence --
+            # so `fL pl Li9E T_` is `((9)+...+(1, 2))` there and `(9 + ... + (1, 2))`
+            # here. Reading it without `subexpression` printed GNU's spacing rule but
+            # llvm's brackets, which is neither reference.
             if marker == "L":
                 # The initialiser comes first for a left fold and second for a right one.
-                initialiser = self._operand(UNARY_PRECEDENCE)
+                initialiser = self._operand(UNARY_PRECEDENCE, subexpression=True)
                 pack = self._fold_pack()
             elif marker == "R":
                 pack = self._fold_pack()
-                initialiser = self._operand(UNARY_PRECEDENCE)
+                initialiser = self._operand(UNARY_PRECEDENCE, subexpression=True)
             else:
                 pack = self._fold_pack()
-            operator = f" {INFIX_OPERATORS[code]} "
+            # GNU writes no spaces around the operator, here as everywhere else in an
+            # expression: `(...+(1, 2))`, not `(... + (1, 2))`.
+            spelt = INFIX_OPERATORS[code]
+            operator = spelt if self.options.gnu_expression_spelling else f" {spelt} "
             # `[init op ]... [op pack]` for a left fold and `[pack op ]... [op init]`
             # for a right one, with the halves an absent initialiser leaves out.
             before = initialiser if left_fold else pack

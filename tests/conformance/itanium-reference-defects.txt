@@ -34,7 +34,7 @@
 #
 # style: llvm
 #
-# pairs: 9
+# pairs: 10
 #
 # tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
 # `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,
@@ -90,3 +90,16 @@ _ZN5clang12ast_matchers7dynamic8internal23makeMatcherAutoMarshallINS0_8internal1
 # `llvm::InstructionCost`, the return type of the enclosing `processBuildVector`; GNU
 # c++filt 2.42 agrees with us byte for byte.
 _ZSt9__find_ifIPKPN4llvm5ValueEN9__gnu_cxx5__ops12_Iter_negateIZNS0_13slpvectorizer7BoUpSLP18processBuildVectorINS9_20ShuffleCostEstimatorENS0_15InstructionCostEJNS0_19TargetTransformInfoENS0_8ArrayRefIS2_EES9_NS0_15SmallPtrSetImplIS2_EEEEET0_PKNS9_9TreeEntryEDpRT1_EUlS2_E_EEET_SR_SR_SI_St26random_access_iterator_tag	llvm::Value* const* std::__find_if<llvm::Value* const*, __gnu_cxx::__ops::_Iter_negate<llvm::InstructionCost llvm::slpvectorizer::BoUpSLP::processBuildVector<llvm::slpvectorizer::BoUpSLP::ShuffleCostEstimator, llvm::InstructionCost, llvm::TargetTransformInfo, llvm::ArrayRef<llvm::Value*>, llvm::slpvectorizer::BoUpSLP, llvm::SmallPtrSetImpl<llvm::Value*>>(llvm::slpvectorizer::BoUpSLP::TreeEntry const*, llvm::TargetTransformInfo&, llvm::ArrayRef<llvm::Value*>&, llvm::slpvectorizer::BoUpSLP&, llvm::SmallPtrSetImpl<llvm::Value*>&)::'lambda'(llvm::Value*)>>(llvm::Value* const*, llvm::Value* const*, __gnu_cxx::__ops::_Iter_negate<llvm::InstructionCost llvm::slpvectorizer::BoUpSLP::processBuildVector<llvm::slpvectorizer::BoUpSLP::ShuffleCostEstimator, llvm::InstructionCost, llvm::TargetTransformInfo, llvm::ArrayRef<llvm::Value*>, llvm::slpvectorizer::BoUpSLP, llvm::SmallPtrSetImpl<llvm::Value*>>(llvm::slpvectorizer::BoUpSLP::TreeEntry const*, llvm::TargetTransformInfo&, llvm::ArrayRef<llvm::Value*>&, llvm::slpvectorizer::BoUpSLP&, llvm::SmallPtrSetImpl<llvm::Value*>&)::'lambda'(llvm::Value*)>, std::random_access_iterator_tag)
+#
+# tools/corpus_sources/features.cpp, clang++ 18.1.3 and g++ 13.3.0 at every standard.
+# `template <template <typename, int> class C, typename T> C<T, 3> templateTemplate(T)`,
+# so the parameter is `T` -- `int` -- and `S4_` names the `T0_` entry rather than the
+# `Holder<int, 3>` the application produced. llvm-cxxfilt 18.1.3 reads it as
+# `outer::inner::Holder<int, 3>`; llvm-cxxfilt 20.1.2 and GNU c++filt 2.42 both agree
+# with the declaration, and with this.
+#
+# It is here because a regeneration would otherwise re-record 18's answer. The corpus
+# carried the corrected spelling and the exclusion list did not carry the name, so the
+# protection this file exists to give was not actually covering it -- which the first
+# regeneration in a while turned up.
+_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(int)

@@ -139,7 +139,7 @@ because agreeing with one build of one reference is not the same as being right.
 ### Mutation
 
 ```console
-python tools/mutate.py --expect 3       # the pinned draw, which is what CI runs
+python tools/mutate.py --expect 2       # the pinned draw, which is what CI runs
 python tools/mutate.py --count 200000   # more mutants per scheme
 python tools/mutate.py --seed 7         # a different draw; the default draw is fixed
 ```
@@ -158,11 +158,10 @@ than merely emptied. The draw is seeded, so a failure reproduces exactly.
 
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
-corpora are pinned. Three stand at the default draw, and the tool's own docstring names
-each and says why it is still open -- two Itanium shapes where following the reference
-would cost more than the shape is worth or where all three references disagree, and one D
-back-reference chain whose refusal has not been explained yet. An accept rule for a
-reason nobody has established is how a defect gets filed as a reference's.
+corpora are pinned. Two stand at the default draw, and the tool's own docstring names
+each and says why it is still open -- one Itanium name both references refuse and this
+reads, and one D back-reference chain whose refusal has not been explained yet. An accept
+rule for a reason nobody has established is how a defect gets filed as a reference's.
 
 It shares `ACCEPTED` with `tools/enumerate.py` on purpose: those rules are statements
 about why a reference's answer is not evidence, and the reason does not change with how

@@ -264,7 +264,7 @@ $ demangle --json _Z1fPi                           # the parse tree as JSON
 ```
 
 `-p` is `c++filt -p`: over the shipped libstdc++ and the GNU-style corpus the two agree
-on **6132 / 6213** names. The 81 are deliberate. `c++filt` strips the parameter list only
+on **6138 / 6224** names. The 86 are deliberate. `c++filt` strips the parameter list only
 from the outermost declaration, so a thunk keeps its target's — `non-virtual thunk to
 X::~X()` — and it drops a `[clone .cold]` suffix while keeping an `@@GLIBCXX_3.4` one.
 This strips throughout and keeps both suffixes, because a filter over a symbol table
@@ -288,10 +288,10 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | MSVC RTTI type descriptors, both forms | `llvm-undname` 18.1.3 | **106 / 106** |
 | MSVC ARM64EC hybrid names | LLVM's own mangling rule ✦ | **606 / 606** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
-| Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **279 / 279** |
-| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **299 / 300** † |
+| Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **310 / 311** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **28 / 28** |
-| Names a reference reads wrongly ✱ | the declaration | **9 / 9** |
+| Names a reference reads wrongly ✱ | the declaration | **10 / 10** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |

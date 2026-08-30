@@ -155,3 +155,54 @@ def test_a_comma_separated_list_keeps_its_space_under_gnu():
     """The separator in a call's arguments is a list's, not the comma *operator*."""
     assert demangle.demangle_strict("_Z1fIiEvT_S0_", style="gnu") == "void f<int>(int, int)"
     assert demangle.demangle_strict("_Z1fILi1ELi2EEvv", style="gnu") == "void f<1, 2>()"
+
+
+@pytest.mark.parametrize(
+    ("mangled", "llvm", "gnu"),
+    [
+        # A unary fold, both directions: no spaces around the operator or the ellipsis.
+        (
+            "_Z5foldlIJLi1ELi2EEEv1AIXflplT_EE",
+            "void foldl<1, 2>(A<(... + (1, 2))>)",
+            "void foldl<1, 2>(A<(...+(1, 2))>)",
+        ),
+        (
+            "_Z5foldrIJLi1ELi2EEEv1AIXfrplT_EE",
+            "void foldr<1, 2>(A<((1, 2) + ...)>)",
+            "void foldr<1, 2>(A<((1, 2)+...)>)",
+        ),
+        # A binary fold's initialiser is an operand like any other, so GNU brackets it by
+        # kind: a literal gets brackets, a function parameter does not.
+        (
+            "_Z6foldl1IJLi1ELi2EEEv1AIXfLplLi9ET_EE",
+            "void foldl1<1, 2>(A<(9 + ... + (1, 2))>)",
+            "void foldl1<1, 2>(A<((9)+...+(1, 2))>)",
+        ),
+        (
+            "_Z6foldr1IJLi1ELi2EEEv1AIXfRplT_Li9EEE",
+            "void foldr1<1, 2>(A<((1, 2) + ... + 9)>)",
+            "void foldr1<1, 2>(A<((1, 2)+...+(9))>)",
+        ),
+        (
+            "_Z6foldr1IJLi1EEEv1AIXfRplT_fp_EE",
+            "void foldr1<1>(A<((1) + ... + fp)>)",
+            "void foldr1<1>(A<((1)+...+{parm#1})>)",
+        ),
+        (
+            "_Z6foldl1IJLi1EEEv1AIXfLplplLi1ELi2ET_EE",
+            "void foldl1<1>(A<((1 + 2) + ... + (1))>)",
+            "void foldl1<1>(A<(((1)+(2))+...+(1))>)",
+        ),
+        # An expansion over a pack with no members, which still prints its brackets.
+        ("_Z5foldlIJEEv1AIXflplT_EE", "void foldl<>(A<(... + ())>)", "void foldl<>(A<(...+())>)"),
+    ],
+)
+def test_a_fold_expression_is_spelled_the_way_each_reference_spells_it(mangled, llvm, gnu):
+    """Found by mutation: the fold branch printed llvm's spacing under both styles.
+
+    Every column here is what the named reference answers on this machine. The GNU
+    spelling differs in both halves -- no spaces around the operator, and the initialiser
+    bracketed by kind rather than by precedence -- and this printed neither.
+    """
+    assert demangle.demangle_strict(mangled, style="llvm") == llvm
+    assert demangle.demangle_strict(mangled, style="gnu") == gnu

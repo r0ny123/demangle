@@ -409,3 +409,29 @@ class TestTheBytesForms:
     def test_a_str_is_a_mistake_in_the_calling_code(self):
         with pytest.raises(TypeError):
             demangle.demangleb_type("Pi", language="itanium")  # ty: ignore[invalid-argument-type]
+
+
+class TestACvQualifiedFunctionTypeReachedThroughASubstitution:
+    """The same type, written out and abbreviated, spells the same thing.
+
+    A cv-qualifier on a function type is the ABI's way of writing a member function's
+    implicit object parameter, and both references spell one written out as
+    `void () const`. Reached through a `<substitution>` they each contradict that:
+    `llvm-cxxfilt` 18.1.3 answers `void  const()`, moving the qualifier into the
+    declarator and doubling a space, and GNU `c++filt` 2.42 answers `void ( const)()`,
+    putting it inside the brackets. Found by mutating a real libstdc++ symbol, whose
+    `RKS4_` refers back to a function type in the template arguments.
+    """
+
+    @pytest.mark.parametrize(
+        ("written_out", "abbreviated", "expected"),
+        [
+            ("_Z1fFvvEKFvvE", "_Z1fFvvEKS_", "f(void (), void () const)"),
+            ("_Z1fFvvERKFvvE", "_Z1fFvvERKS_", "f(void (), void (&)() const)"),
+            ("_Z1fFvvEPKFvvE", "_Z1fFvvEPKS_", "f(void (), void (*)() const)"),
+            ("_Z1fFvvEVFvvE", "_Z1fFvvEVS_", "f(void (), void () volatile)"),
+        ],
+    )
+    def test_the_substitution_spells_what_the_type_spells(self, written_out, abbreviated, expected):
+        assert demangle.demangle_strict(written_out, language="itanium") == expected
+        assert demangle.demangle_strict(abbreviated, language="itanium") == expected

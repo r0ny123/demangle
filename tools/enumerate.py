@@ -233,12 +233,28 @@ ACCEPTED = {
         # space -- and refused by GNU. `const const` on a function type is not a
         # declaration either.
         or (name.count("K") + name.count("V") > 1 and "F" in name and second[0] is None)
+        # Or a cv-qualified function type reached through a <substitution>, where each
+        # reference contradicts its own answer for the same type written out. `_Z1fKFvvE`
+        # is `f(void () const)` to both; `_Z1fFvvEKS_` is `f(void (), void  const())` to
+        # LLVM -- the qualifier moved into the declarator, with a doubled space -- and
+        # `f(void (), void ( const)())` to GNU. This spells the substituted type the way
+        # both references spell the written-out one. Recognised by a qualifier applied
+        # directly to a substitution and an answer that differs in nothing but where the
+        # qualifier words sit.
+        or (
+            _QUALIFIED_SUBSTITUTION.search(name) is not None
+            and first is not None
+            and _without_qualifiers(first) == _without_qualifiers(ours)
+        )
     ),
 }
 
 
 #: An `N` opening a `<nested-name>` with a CV- or ref-qualifier on it. See `ACCEPTED`.
 _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
+
+#: A CV-qualifier applied directly to a `<substitution>`. See `ACCEPTED`.
+_QUALIFIED_SUBSTITUTION = re.compile(r"[rVK]S")
 
 #: Every word that spells a qualifier, and the reference sigils, so two answers can be
 #: compared for "differs in nothing else".

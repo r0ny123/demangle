@@ -31,7 +31,7 @@ SOURCES = HERE / "corpus_sources"
 REFERENCE_DEFECTS = ROOT / "tests" / "conformance" / "itanium-reference-defects.txt"
 
 COMPILERS = ("clang++", "g++")
-STANDARDS = ("c++11", "c++14", "c++17", "c++20")
+STANDARDS = ("c++11", "c++14", "c++17", "c++20", "c++23")
 OPTIMISATIONS = ("-O0", "-O2")
 
 

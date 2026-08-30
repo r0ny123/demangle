@@ -17,8 +17,8 @@ from demangle.core.errors import DemanglingError
 from .conftest import CONFORMANCE, load_corpus
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42 on the checked-in corpora.
-ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 279, 279
-ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 300, 299
+ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 318, 318
+ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 311, 310
 MSVC_TOTAL, MSVC_EXACT = 609, 609
 
 #: Real compiler output for the MS ABI: `tools/corpus_sources/msvc/msvc.cpp` through
@@ -45,7 +45,12 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 28, 28
 #: corpora recorded from llvm-cxxfilt, whose answer turned out to be the defect rather
 #: than the reference; `tools/generate_corpus.py` reads this file and excludes them, so a
 #: regeneration cannot quietly record the wrong answer again.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 9, 9
+#:
+#: The tenth is here because that protection was not covering it. `templateTemplate` sat
+#: in `itanium-real-world.txt` with the corrected spelling and was absent from this file,
+#: so the next regeneration re-recorded llvm-cxxfilt 18's answer -- which is what the
+#: first regeneration in a while did.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 10, 10
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are
@@ -78,7 +83,7 @@ RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT = 394, 394
 
 #: What the CLI's `-p` prints, against `c++filt -p`, over the libstdc++ and GNU-style
 #: corpora. The differences are deliberate and are enumerated in tests/test_signature.py.
-NO_PARAMS_TOTAL, NO_PARAMS_AGREE = 6213, 6132
+NO_PARAMS_TOTAL, NO_PARAMS_AGREE = 6224, 6138
 
 #: JNI, pinned like Go and Nim -- there is no reference demangler for these at all, so
 #: the expected column is this library's own reading and the count alone would be a

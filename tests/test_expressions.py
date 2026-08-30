@@ -740,3 +740,108 @@ class TestTheQualifiedFormOfAnUnresolvedName:
     def test_the_arguments_are_not_part_of_the_substitution_the_type_records(self):
         """The reference records the bare parameter, so a later `S_` names it alone."""
         assert demangle.demangle("_Z1fIiEvDTsrT_1xES0_") == "void f<int>(decltype(int::x), int)"
+
+
+class TestTheNameAConstructorRepeats:
+    """A constructor spells its class, and the class name was being cut short.
+
+    `Foo<int>::Foo` is right -- a constructor drops the template arguments and the ABI
+    tags the class name carries -- and the cut was made by searching the *spelling* for
+    the first `<` or `[`. Every class whose name is an operator has one of those inside
+    it, so `_ZNssC1Ev` came back as `operator<=>::operator()`: a constructor of a class
+    the encoding does not mention. Expectations are `llvm-cxxfilt` 18.1.3's; GNU
+    `c++filt` 2.42 refuses most of these and reads `_ZN1XixC1Ev` as `X::operator[]::X()`,
+    naming a class that is not the one in scope.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZNssC1Ev", "operator<=>::operator<=>()"),
+            ("_ZNssD1Ev", "operator<=>::~operator<=>()"),
+            ("_ZNltC1Ev", "operator<::operator<()"),
+            ("_ZNlsD1Ev", "operator<<::~operator<<()"),
+            ("_ZN1XixC1Ev", "X::operator[]::operator[]()"),
+            ("_ZNixC2Ev", "operator[]::operator[]()"),
+        ],
+    )
+    def test_an_operator_named_class_keeps_its_whole_name(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # What the cut was there for, and still does.
+            ("_ZN3FooIiEC1Ev", "Foo<int>::Foo()"),
+            ("_ZN3FooIiED1Ev", "Foo<int>::~Foo()"),
+            ("_ZN3FooB3abcC1Ev", "Foo[abi:abc]::Foo()"),
+            ("_ZN3FooB3abcB3defC1Ev", "Foo[abi:abc][abi:def]::Foo()"),
+            ("_ZNSaIcEC1Ev", "std::allocator<char>::allocator()"),
+            ("_ZNSaC1Ev", "std::allocator::allocator()"),
+            ("_ZN1A1BIiEC1Ev", "A::B<int>::B()"),
+        ],
+    )
+    def test_the_arguments_and_the_tags_still_come_off(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    def test_the_class_is_read_before_an_inherited_base(self):
+        """`CI <variant> <base>`: the base is a type and may be a nested name itself.
+
+        Read in the other order it leaves the base's own last component standing where
+        the class should be. GNU `c++filt` 2.42 does exactly that and answers `A::C()`;
+        `llvm-cxxfilt` 18.1.3 answers `A::A()`, which is the class the encoding names.
+        """
+        assert demangle.demangle_strict("_ZN1ACI1N1B1CEEv", language="itanium") == "A::A()"
+
+    def test_a_nested_name_in_a_template_argument_does_not_become_the_class(self):
+        assert demangle.demangle_strict("_ZN1AIN1B1CEEC1Ev", language="itanium") == "A<B::C>::A()"
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZNv13fooC1Ev", "operator foo::operator foo()"),
+            ("_ZNv13fooD1Ev", "operator foo::~operator foo()"),
+        ],
+    )
+    def test_a_vendor_extended_operator_names_the_class_in_full(self, mangled, expected):
+        """`v <digit> <source-name>` as the class, where all three readings differ.
+
+        `llvm-cxxfilt` 18.1.3 writes no name at all -- `operator foo::()` and
+        `operator foo::~()` -- and GNU `c++filt` 2.42 drops the `operator` and writes
+        `operator foo::foo()`. Both name something other than the class in scope. This
+        repeats the name the encoding gives, which is what a constructor spells."""
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+
+class TestAFriendDeclaredInsideItsClass:
+    """`<unqualified-name> ::= F <name>`, and the marker was being dropped.
+
+    It was read and spelled for a source name and an operator, and read and silently
+    discarded for a constructor, a destructor and an unnamed type -- so `_ZN1AFC1Ev` came
+    back as `A::A()`, which is a different declaration from the one the encoding spells.
+    The two references put the marker in different places, so both spellings are pinned:
+    `llvm-cxxfilt` 18.1.3 writes the word before the name and GNU `c++filt` 2.42 writes a
+    bracketed suffix, after the ABI tags and before the template arguments.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            ("_ZN1AF1fEv", "A::friend f()", "A::f[friend]()"),
+            ("_ZN1AFC1Ev", "A::friend A()", "A::A[friend]()"),
+            ("_ZN1AFD1Ev", "A::friend ~A()", "A::~A[friend]()"),
+            ("_ZN1AFUt_Ev", "A::friend 'unnamed'()", "A::{unnamed type#1}[friend]()"),
+            ("_ZN1AFltERKS_", "A::friend operator<(A const&)", "A::operator<[friend](A const&)"),
+            ("_ZN1AFDC1a1bEEv", "A::friend [a, b]()", "A::[a, b][friend]()"),
+            ("_ZN1AFL1fEv", "A::friend f()", "A::f[friend]()"),
+            ("_ZN1AF1fB3xyzEv", "A::friend f[abi:xyz]()", "A::f[abi:xyz][friend]()"),
+            ("_ZN1AF1fIiEEvv", "void A::friend f<int>()", "void A::f[friend]<int>()"),
+        ],
+    )
+    def test_both_references_are_pinned(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled, language="itanium", style="llvm") == llvm
+        assert demangle.demangle_strict(mangled, language="itanium", style="gnu") == gnu
+
+    def test_the_marker_needs_a_class_to_be_a_friend_of(self):
+        """`F` outside a nested name is a type letter, not a friend marker."""
+        assert demangle.demangle_strict("_Z1fFvvE", language="itanium") == "f(void ())"

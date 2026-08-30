@@ -242,6 +242,21 @@ class TestPacks:
         name = "_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_"
         assert demangle.parse(name, style=style).spell(style=style) == demangle.demangle(name, style=style)
 
+    def test_a_parameter_naming_a_pack_outside_an_expansion_spells_every_member(self):
+        """A known divergence from both references, recorded rather than left implicit.
+
+        `_Z1fIJfdEEvT_` binds `T_` to a pack of two and uses it where no `Dp` expands it.
+        Both references print the *first* member -- libcxxabi's `ParameterPack::printLeft`
+        prints `Data[OB.CurrentPackIndex]`, and `initializePackExpansion` leaves that
+        index at 0 -- so they answer `void f<float, double>(float)`. This prints the
+        members. Making element 0 the default is two lines and breaks eleven of
+        libcxxabi's own vectors: `sizeof...`, the four fold expressions and `sp` all
+        reach a pack through the same path and each wants every member of it. No
+        compiler writes `T_` for a pack -- only `Dp T_` -- so the shape is a mutation
+        finding, and following the references here would cost more than it is worth.
+        """
+        assert demangle.demangle_strict("_Z1fIJfdEEvT_") == "void f<float, double>(float, double)"
+
 
 def test_a_table_rejects_a_production_the_abi_does_not_call_a_candidate():
     """Unchanged by deferral: the guard is on the production, not on what is stored."""

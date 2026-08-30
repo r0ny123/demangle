@@ -35,24 +35,14 @@ property of `--seed` and `--count` together; the pin CI uses is for the defaults
 
 What the pin currently stands at, and why each is still open
 -----------------------------------------------------------
-Three, at `--seed 0 --count 20000`. Two are Itanium and one is D.
+Two, at `--seed 0 --count 20000`. One is Itanium and one is D.
 
-  * A `<template-param>` naming an argument pack, used outside a `Dp` expansion.
-    `_Z1fIJfdEEvT_` is `void f<float, double>(float)` to both references --
-    libcxxabi's `ParameterPack::printLeft` prints `Data[CurrentPackIndex]`, and
-    `initializePackExpansion` sets that index to 0 where nothing else has -- and
-    `(float, double)` here. Making the default index 0 is a two-line change and it
-    breaks eleven of libcxxabi's *own* vectors, because `sizeof...`, the four fold
-    expressions and `sp` all reach a pack through the same path and each wants every
-    member. Doing it properly means giving those their own expansion, which is more
-    than the shape is worth: no compiler writes `T_` for a pack, only `Dp T_`.
-
-  * A destructor whose class is named by a vendor extended operator --
-    `v1 <source-name>` -- where all three implementations write something different.
-    `llvm-cxxfilt` writes `~()`, with no name at all; `c++filt` writes
-    `~__vmi_class_type_info`, dropping the `operator`; this writes
-    `~operator __vmi_class_type_info`, which is the name the encoding gives. Nothing
-    to follow here.
+  * A generic lambda's `operator()` called on a type reached through `L_Z...E`, inside a
+    `decltype`, inside an Objective-C method name that the mutation spliced into the
+    middle of a C++ symbol. Both references refuse it outright and this reads it: every
+    production in it is one this scheme has, and neither reference says which of them it
+    is refusing. Kept visible because "both refuse" is the one answer a divergence
+    cannot be argued from -- there is no reading to compare against, only a refusal.
 
   * One D mutant that `c++filt --format=dlang` refuses and this reads, a deep chain of
     `Q` back references round a `___dgliteral1`. The bounds `dlang_backref` enforces
@@ -61,6 +51,27 @@ Three, at `--seed 0 --count 20000`. Two are Itanium and one is D.
     refusing is something narrower that has not been isolated yet. Kept visible rather
     than accepted: an accept rule for a reason nobody has established is how a defect
     gets filed as a reference's.
+
+What this draw has found and what became of it
+----------------------------------------------
+Five divergences this draw reported are gone because the defect was this library's and
+was fixed: a constructor whose class is named by an operator (`_ZNssC1Ev` read as
+`operator<=>::operator()`, the class name cut at the first `<`), the `F` friend marker
+read and then dropped from a constructor, and a fold expression printed with llvm's
+spacing and bracketing under the GNU style. One more is now an `ACCEPTED` rule in
+`tools/enumerate.py` with the reason a reference's answer is not evidence: a
+cv-qualified function type reached through a substitution, where each reference
+contradicts its own answer for the same type written out.
+
+The draw is a property of the seed *and the corpora*, so growing a seed corpus changes
+which mutants are drawn. Two divergences earlier draws reported are simply not in this
+one and are still open, pinned by nothing but this note: a `<template-param>` naming an
+argument pack outside a `Dp` expansion -- `_Z1fIJfdEEvT_` is `void f<float,
+double>(float)` to both references and `(float, double)` here, and making the default
+pack index 0 breaks eleven of libcxxabi's own vectors -- and a destructor whose class is
+named by a vendor extended operator, `v1 <source-name>`, where `llvm-cxxfilt` writes
+`~()`, `c++filt` writes the name without `operator`, and this writes the name the
+encoding gives.
 """
 
 import argparse

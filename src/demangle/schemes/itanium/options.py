@@ -131,6 +131,15 @@ class ItaniumOptions:
     has one lambda in its body and another in a default argument.
     """
 
+    gnu_friend_spelling: bool = False
+    """Mark a friend declared inside its class the way GNU c++filt does.
+
+    `<unqualified-name> ::= F <name>` says the function was declared inside the class it
+    is a friend of. False (the default) gives llvm-cxxfilt's `A::friend f()`, the word
+    before the name; True gives GNU c++filt's `A::f[friend]()`, a bracketed suffix after
+    the name and its ABI tags but before its template arguments -- `A::f[friend]<int>`.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -153,4 +162,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_special_name_spelling=True,
     gnu_entity_operand_spelling=True,
     gnu_default_argument_scope=True,
+    gnu_friend_spelling=True,
 )

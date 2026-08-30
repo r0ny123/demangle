@@ -184,7 +184,7 @@ jobs:
         # Pinned in both directions, like the conformance corpora: a new divergence
         # fails, and so does a stale pin after one is fixed. The three are named in the
         # tool's own docstring, with why each is still open.
-        run: python tools/mutate.py --count 20000 --quiet --expect 3
+        run: python tools/mutate.py --count 20000 --quiet --expect 2
 
   cross-reference:
     name: cross-version reference check
