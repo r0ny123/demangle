@@ -32,7 +32,17 @@ _SEQ_ID_VALUES = {char: index for index, char in enumerate(SEQ_ID_ALPHABET)}
 
 
 class Reader:
-    """A cursor over `text`, with the lookahead and consumption parsers need."""
+    """A cursor over `text`, with the lookahead and consumption parsers need.
+
+    `length` is the end of input and is not always `len(text)`. A parser may shorten it
+    to bound a nested encoding it has found the end of by other means -- the Itanium
+    scheme does this for `___Z<encoding>_block_invoke`, where a regex says where the
+    encoding stops and the parser must not read the literal that follows. *Every* method
+    here answers against `length` rather than against the string, because a bound only
+    half the class honours is worse than none: `peek` reported the end of input while
+    `expect` stepped past it, so a truncated `S` borrowed the `_` of `_block_invoke` for
+    its terminator and 4,931 truncated encodings read as though they were whole.
+    """
 
     __slots__ = ("length", "pos", "text")
 
@@ -49,7 +59,7 @@ class Reader:
 
     @property
     def remaining(self):
-        return self.text[self.pos :]
+        return self.text[self.pos : self.length]
 
     def peek(self):
         """The character at the cursor, or `""` past the end.
@@ -80,10 +90,26 @@ class Reader:
 
     def peek2(self):
         """The next two characters, for the many two-letter codes in these grammars."""
-        return self.text[self.pos : self.pos + 2]
+        pos = self.pos
+        end = pos + 2
+        length = self.length
+        return self.text[pos : end if end < length else length]
+
+    def ahead2(self, offset):
+        """The two characters `offset` past the cursor, bounded like `peek2`.
+
+        For the lookaheads that decide a branch without consuming anything -- whether an
+        abbreviation is followed by a constructor, whether `gs` introduces an allocation.
+        They reached into `text` directly before, which is the end of input's one blind
+        spot: a bound only half the class honours is worse than none.
+        """
+        start = self.pos + offset
+        end = start + 2
+        length = self.length
+        return self.text[start : end if end < length else length]
 
     def startswith(self, literal):
-        return self.text.startswith(literal, self.pos)
+        return self.pos + len(literal) <= self.length and self.text.startswith(literal, self.pos)
 
     # -- consumption -----------------------------------------------------------
 
@@ -106,8 +132,10 @@ class Reader:
 
     def eat(self, literal):
         """Consume `literal` if it is next, reporting whether it was."""
-        if self.text.startswith(literal, self.pos):
-            self.pos += len(literal)
+        pos = self.pos
+        end = pos + len(literal)
+        if end <= self.length and self.text.startswith(literal, pos):
+            self.pos = end
             return True
         return False
 
@@ -117,8 +145,9 @@ class Reader:
         # every production that has a fixed opening character, and reaching a three-line
         # method through another one costs a whole interpreter frame to save three lines.
         pos = self.pos
-        if self.text.startswith(literal, pos):
-            self.pos = pos + len(literal)
+        end = pos + len(literal)
+        if end <= self.length and self.text.startswith(literal, pos):
+            self.pos = end
             return
         raise ParseError(self.text, pos, f"expected {literal!r}")
 

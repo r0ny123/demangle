@@ -732,6 +732,32 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **A truncated encoding borrowed the literal that bounds it.** `___Z<encoding>_block_invoke`
+  is the one place a parser moves the end of input: a regex says where the encoding
+  stops and `reader.length` is shortened to there, so the literal after it must be
+  unreadable. `peek`, `take`, `ahead` and `eof` honoured that bound; `expect`, `eat`,
+  `startswith`, `peek2` and `remaining` indexed the string and did not. So a
+  substitution written at the very end took the `_` of `_block_invoke` as its
+  terminator, and `___ZN1a1bES_block_invoke` -- which both `c++filt` and `llvm-cxxfilt`
+  leave alone -- came back as `invocation function for block in a::b(a)`. Across the
+  Itanium corpora, 4,931 truncated encodings read as though they were whole, in 3,317
+  distinct spellings, every one of them looking like a real declaration.
+
+  The overshoot was silent rather than loud because `eof` is `pos >= length`: a cursor
+  that had gone *past* the end satisfied the check for having consumed all of it. Every
+  method answers against `length` now, and the invariant is asserted directly -- a
+  `Reader` that reports any write leaving `pos` beyond `length`, run over the corpus and
+  over the same names truncated inside a window, which found 633 violations before and
+  none after. Byte-identical on all 563,331 real symbols: nothing well-formed went
+  anywhere near this.
+
+  Three lookaheads in the Itanium parser reached past the class into `reader.text` for
+  the same answer -- whether an abbreviation is followed by a constructor, whether `gs`
+  introduces an allocation, whether a vendor qualifier precedes a function type. This
+  literal happens to contain none of the characters they test for, so none of them could
+  be fooled by it; they go through a bounded `ahead2` now anyway, because an invariant
+  with three documented exceptions is not one.
+
 - **The three pre-Itanium false claims are kept on purpose, and now there is a number
   saying why.** `gnuv2` claims and rewrites three of the 345,601 symbols a stock Ubuntu
   24.04 ships -- `PyInit__lldb`, `PyInit__sre`, `drm_intel_gem_bo_map__wc` -- and the

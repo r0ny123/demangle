@@ -1587,7 +1587,7 @@ class ItaniumParser:
         reader = self.reader
         if reader.peek2() not in STD_ABBREVIATIONS:
             return False
-        following = reader.text[reader.pos + 2 : reader.pos + 4]
+        following = reader.ahead2(2)
         if len(following) != 2:
             return False
         return (following[0] == "C" and following[1] in CONSTRUCTOR_KINDS) or (
@@ -2193,9 +2193,10 @@ class ItaniumParser:
         for letter in ("r", "V", "K"):
             if reader.ahead(at - reader.pos) == letter:
                 at += 1
-        if reader.text[at : at + 2] in ("Do", "DO", "Dw", "Dx"):
+        offset = at - reader.pos
+        if reader.ahead2(offset) in ("Do", "DO", "Dw", "Dx"):
             return True
-        return reader.text[at : at + 1] == "F"
+        return reader.ahead(offset) == "F"
 
     def qualified_type(self):
         """<qualified-type>, as the reference reads it: one production, one candidate.
@@ -3425,7 +3426,7 @@ class ItaniumParser:
             # A leading `::` forcing global scope. It introduces either a global-scope
             # allocation -- `::new`, `::delete` -- or a global-scope name, and only the
             # next production says which.
-            if reader.text[reader.pos + 2 : reader.pos + 4] in ("nw", "na", "dl", "da"):
+            if reader.ahead2(2) in ("nw", "na", "dl", "da"):
                 reader.pos += 2
                 self._precedence = UNARY_PRECEDENCE
                 return builder.expression("global_scope", ["::", self.expression()])

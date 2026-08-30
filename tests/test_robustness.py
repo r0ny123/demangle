@@ -289,6 +289,66 @@ class TestDeterminism:
         assert demangle.demangle(value) == first
 
 
+class TestTheCursorNeverPassesTheEndOfInput:
+    """`eof` is `pos >= length`, so an overshoot *satisfies* the all-input-consumed check.
+
+    That is what made the block-invoke window bug silent rather than loud. The window
+    shortens `reader.length` so a nested encoding stops before the literal that bounds
+    it; `expect`, `eat`, `startswith`, `peek2` and `remaining` indexed the string instead
+    of asking `length`, so a truncated encoding consumed a character past the end and
+    then passed `if not reader.eof` because it had gone *further* than the end rather
+    than not far enough.
+
+    The invariant is stronger than that one bug and is checked as such: whatever the
+    input, `pos` never exceeds `length`. It is asserted by watching every write to `pos`,
+    which is the only way an overshoot can happen, so a new production cannot reintroduce
+    one anywhere. Over the corpus and the same names truncated inside a window, this
+    reported 633 violations before the fix and none after.
+    """
+
+    @staticmethod
+    def _watching():
+        """A `Reader` that records every write leaving the cursor past the end."""
+        from demangle.core import reader as reader_module
+
+        violations = []
+
+        class Watched(reader_module.Reader):
+            __slots__ = ()
+
+            def __setattr__(self, name, value):
+                object.__setattr__(self, name, value)
+                if name == "pos" and value > getattr(self, "length", value):
+                    violations.append((self.text, value, self.length))
+
+        return Watched, violations
+
+    def test_no_production_leaves_the_cursor_past_the_end(self):
+        from demangle.schemes.itanium import parser as itanium_parser
+
+        watched, violations = self._watching()
+        names = corpus_sample(37)
+        # The shape that had the bug: a real encoding cut short inside the window that
+        # `___Z..._block_invoke` installs, so the literal sits where the rest would be.
+        for name in list(names):
+            if name.startswith("_Z"):
+                body = name[2:]
+                for cut in (1, len(body) // 2, len(body) - 1):
+                    if cut > 0:
+                        names.append(f"___Z{body[:cut]}_block_invoke")
+
+        original = itanium_parser.Reader
+        itanium_parser.Reader = watched
+        try:
+            for name in names:
+                with contextlib.suppress(Exception):
+                    demangle.demangle_strict(name, language="itanium")
+        finally:
+            itanium_parser.Reader = original
+
+        assert not violations, f"{len(violations)} overshoots, first five: {violations[:5]}"
+
+
 class TestResourceBounds:
     @pytest.mark.parametrize(
         "value",
