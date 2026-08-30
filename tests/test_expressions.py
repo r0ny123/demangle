@@ -155,6 +155,41 @@ class TestStillRefusesWhatItShould:
     def test_the_rule_counts_types_read_and_not_parameters_kept(self, mangled, expected):
         assert demangle.demangle_strict(mangled, language="itanium") == expected
 
+    @pytest.mark.parametrize("mangled", ["_Z1fILaEE", "_Z1fILbEE", "_Z1fILPiEE", "_Z1fILSt9nullptr_tEE"])
+    def test_a_literal_with_no_value_is_not_a_value(self, mangled):
+        """`L <type> <value> E`, and the value is not optional.
+
+        `_Z1fILaEE` came back as `f<(signed char)0>` -- a zero that is nowhere in the
+        name, and the same spelling the well-formed `_Z1fILa0EE` has, so two manglings
+        arrived as one name and one of them was not a mangling. Both references hand
+        every one of these back.
+
+        `Dn` is the exception, and it is decided by the two characters written rather
+        than by what they spell: `_Z1fILSt9nullptr_tEE` names `std::nullptr_t` the long
+        way round and both references refuse it too.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            # The references disagree about the no-value form and agree about the other.
+            ("_Z1fILDnEE", "f<nullptr>", "f<decltype(nullptr)>"),
+            ("_Z1fILDn0EE", "f<nullptr>", "f<(decltype(nullptr))0>"),
+        ],
+    )
+    def test_the_two_nullptr_literals_are_two_spellings_under_gnu(self, mangled, llvm, gnu):
+        """`LDnE` is the type on its own; `LDn0E` is a value of it.
+
+        `c++filt` writes `decltype(nullptr)` for the first and `(decltype(nullptr))0`
+        for the second; `llvm-cxxfilt` writes `nullptr` for both. This wrote
+        `(decltype(nullptr))0` for both under `gnu`, which is one of them.
+        """
+        assert demangle.demangle_strict(mangled, language="itanium", style="llvm") == llvm
+        assert demangle.demangle_strict(mangled, language="itanium", style="gnu") == gnu
+
     @pytest.mark.parametrize("mangled", ["_Z1fT_", "_Z1f1AT_", "_Z1fT_i", "_ZN1a1bET_", "_Z1fT0_"])
     def test_a_template_parameter_with_no_arguments_in_scope_names_nothing(self, mangled):
         """`T_` indexes the enclosing `<template-args>`. A plain function has none.

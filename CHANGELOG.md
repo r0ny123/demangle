@@ -732,6 +732,30 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Rust: a non-digit where an identifier's length belongs read as a length of zero.**
+  `<identifier>` opens with a decimal length and the reference requires one --
+  rustc-demangle reads it as `self.digit_10()?`, so anything else ends the parse. This
+  read a non-digit as zero and left the character in place, and the `_` that separates a
+  length from its text then swallowed it, so nothing was left over for the residual
+  check to refuse. What came back was a name with an empty component spelled as though
+  it were there and blank: `_RNvC_1f` is a function in a crate with no name and read as
+  `::f`, and `_RNvC1CC_` has an instantiating crate that is not a path at all and read
+  as `C`. `llvm-cxxfilt` 18.1 hands back every one of these. A length written `0` is a
+  different thing and stays legal -- `_RNvC0_1f` is `::f` to the reference too -- so the
+  rule is "not a digit", not "falsy". Found by enumerating every `_R` name up to eight
+  characters over a grammar-shaped alphabet and asking the reference about each one this
+  reads.
+
+- **A literal with no value invented a zero, and the two `nullptr` literals were one
+  spelling under `gnu`.** `<expr-primary> ::= L <type> <value> E`, and the value is not
+  optional: `_Z1fILaEE` came back as `f<(signed char)0>`, a zero nowhere in the name and
+  the same spelling the well-formed `_Z1fILa0EE` has. `Dn` is the exception, and it is
+  decided by the two characters written rather than by what they spell --
+  `_Z1fILSt9nullptr_tEE` names the same type the long way round and both references
+  refuse it. The two `Dn` forms are also two spellings to `c++filt`: `LDnE` is
+  `decltype(nullptr)` where `LDn0E` is `(decltype(nullptr))0`, and both are `nullptr` to
+  `llvm-cxxfilt`. This wrote `(decltype(nullptr))0` for both under `gnu`.
+
 - **A `void` that arrived by substitution was mistaken for the `v` that means "no
   parameters".** `f(void)` is how the mangling writes `f()`, and both references read
   that by position: the first signature type, if it is a literal `void`, *is* the empty

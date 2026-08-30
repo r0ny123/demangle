@@ -2768,14 +2768,27 @@ class ItaniumParser:
         # so there is nothing to print but the type, and the reference prints it in
         # angle brackets inside the quotes to say as much.
         was_array = reader.peek() == "A"
+        # `Dn` is the only type whose literal may carry no value, and it is decided by
+        # the two characters written rather than by what they spell: `LSt9nullptr_tE`
+        # names the same type the long way round and both references refuse it.
+        wrote_nullptr = reader.peek2() == "Dn"
         kind = self.type_()
         spelling = builder.spell(kind)
         if was_array and reader.eat("E"):
             return f'"<{spelling}>"'
 
         if reader.eat("E"):
-            # A literal with no value: how the scheme writes `nullptr`.
-            return "nullptr" if spelling == "std::nullptr_t" else f"({spelling})0"
+            if not wrote_nullptr:
+                # A value is not optional. `LaE` came back as `(signed char)0`, a zero
+                # that is nowhere in the name and the same spelling the well-formed
+                # `La0E` has -- two manglings as one name, and one of them not a
+                # mangling. Both references hand every one of these back.
+                raise ParseError(self._mangled, reader.pos, "a literal with no value")
+            # GNU distinguishes the two forms and llvm-cxxfilt does not: `LDnE` is
+            # `decltype(nullptr)` to `c++filt` where `LDn0E` is `(decltype(nullptr))0`,
+            # and both are `nullptr` to `llvm-cxxfilt`. The no-value form is the type on
+            # its own, which is what `spelling` already is.
+            return spelling if self.options.gnu_nullptr_spelling else "nullptr"
 
         start = reader.pos
         while not reader.eat("E"):

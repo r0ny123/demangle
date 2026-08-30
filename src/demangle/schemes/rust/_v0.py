@@ -555,25 +555,30 @@ class Parser:
         if is_punycode:
             at += 1
 
-        # The reference reads the first digit unconditionally, so a truncated name is a
-        # failure here rather than an empty identifier.
+        # The reference reads the first digit unconditionally -- `self.digit_10()?` --
+        # so anything that is not a digit is a failure here, not an identifier of length
+        # zero. Reading it as zero made `_RNvC_1f` a function `f` in a crate with no
+        # name, spelled `::f`, and `_RNvC1CC_` a name whose instantiating crate is
+        # nonsense, spelled `C`: the `_` was swallowed as the optional separator and
+        # nothing was left over for the residual check to refuse. A length written `0`
+        # is a different thing and still legal -- `_RNvC0_1f` is `::f` to the reference
+        # too -- which is why this tests for "not a digit" rather than for falsehood.
         if at >= end:
             raise UnableTov0Demangle(inn)
         length = _BASE_10.get(inn[at])
         if length is None:
-            length = 0
-        else:
-            at += 1
-            # A leading `0` is the whole length; only a non-zero first digit continues.
-            if length:
-                while True:
-                    if at >= end:
-                        raise UnableTov0Demangle(inn)
-                    digit = _BASE_10.get(inn[at])
-                    if digit is None:
-                        break
-                    at += 1
-                    length = length * 10 + digit
+            raise UnableTov0Demangle(inn)
+        at += 1
+        # A leading `0` is the whole length; only a non-zero first digit continues.
+        if length:
+            while True:
+                if at >= end:
+                    raise UnableTov0Demangle(inn)
+                digit = _BASE_10.get(inn[at])
+                if digit is None:
+                    break
+                at += 1
+                length = length * 10 + digit
 
         if at < end and inn[at] == "_":
             at += 1

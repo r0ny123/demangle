@@ -10,6 +10,8 @@ symbol and so answers a different question.
 
 from typing import ClassVar
 
+import pytest
+
 import demangle
 
 from .conftest import load_corpus
@@ -90,6 +92,45 @@ class TestNonAsciiIsRefused:
     def test_the_ascii_names_either_side_of_it_still_read(self):
         assert demangle.demangle("_RC2ab") == "ab"
         assert demangle.demangle("_ZN1a1b17h0123456789abcdefE") == "a::b"
+
+
+class TestAnIdentifierLengthHasToBeADigit:
+    """`<identifier>` opens with a decimal length, and the reference requires one.
+
+    rustc-demangle reads it as `self.digit_10()?`, so anything that is not a digit ends
+    the parse. This read a non-digit as a length of *zero* and left the character where
+    it was -- and the `_` that separates a length from its text then swallowed it, so
+    nothing was left over for the residual check to refuse.
+
+    The result was a name with an empty component in it, spelled as though the component
+    were there and blank. `_RNvC_1f` is a function `f` in a crate with no name, which
+    came back as `::f`; `_RNvC1CC_` has an instantiating crate that is not a path at
+    all, and came back as `C`. `llvm-cxxfilt` 18.1 hands back every one of these.
+
+    Found by enumerating every `_R` name up to eight characters over a grammar-shaped
+    alphabet and asking `llvm-cxxfilt` about each one this reads.
+    """
+
+    REFUSED = ("_RC1CC_", "_RNvC_1f", "_RNvC1C_", "_RNvC1CC_", "_RNvNtC_1a1b", "_RCa", "_RC_")
+
+    @pytest.mark.parametrize("mangled", REFUSED)
+    def test_a_non_digit_where_the_length_belongs_ends_the_parse(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # A length written `0` is a different thing and stays legal: the reference
+            # spells this `::f` too. So the test is "not a digit", not "falsy".
+            ("_RNvC0_1f", "::f"),
+            ("_RC1C", "C"),
+            ("_RNvC1C1f", "C::f"),
+            # An instantiating crate that is a real path is still skipped, not refused.
+            ("_RNvC1C1fC1D", "C::f"),
+        ],
+    )
+    def test_what_it_still_reads(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="rust") == expected
 
 
 class TestTheRecordedDifferencesAgainstTheTool:
