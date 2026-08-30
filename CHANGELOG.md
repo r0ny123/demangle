@@ -900,6 +900,14 @@ All notable changes to this project are recorded here. The format follows
   contains a component that really is symbol-shaped, and a filter over prose cannot be a
   fixed point in general.
 
+- **The call-count instrument counted the `warm` phase cold.** `bench.py --calls`, added
+  a few entries below, cleared the result cache immediately before profiling each phase --
+  which is the one thing the `warm` phase must not have done to it, since its premise is
+  the entries the pass before it left. It reported 120 calls a name where a cache hit
+  costs eight, and the fix is to let the priming pass stand. `cold` and `negative` clear
+  their own cache inside and were never affected. Found by asking why a cached lookup
+  looked like a parse.
+
 - **Delphi claimed fragments of MSVC symbols.** The parser is a port of Borland's
   `unmangle.c` and copies characters through rather than checking an alphabet, so a `?`
   passed straight into an identifier -- and `?` is *the* MSVC marker, with none in any of

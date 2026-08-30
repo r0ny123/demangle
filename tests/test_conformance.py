@@ -498,6 +498,47 @@ def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
         assert rewritten == []
 
 
+#: How many readable corpus names the text filter reports as *pieces* rather than whole,
+#: by corpus. Every one is a name whose token the filter's alphabet cannot hold: MSVC
+#: writes `<lambda_1>` and CodeWarrior a template argument list in angle brackets, which
+#: the token leaves out on purpose -- objdump spells a call target
+#: `call 1050 <_ZN3foo3barEv>`, and a token that takes the brackets in is one no scheme
+#: reads. Go's two carry a `,` inside `[...]`, which the token also stops at, and there
+#: the piece plus the text after it still spells the whole name.
+#:
+#: Pinned because the number was 172 before `?` stopped being a character a Delphi
+#: identifier may hold, and 2,983 before `%` and `#` became characters a token may.
+FILTER_REPORTS_PIECES = {
+    "codewarrior-cwdemangle.txt": 2,
+    "go-real-world.txt": 2,
+    "msvc-llvm-corpus.txt": 2,
+    "msvc-suppressions.txt": 4,
+}
+
+
+@pytest.mark.parametrize("corpus", _every_corpus())
+def test_the_filter_reports_no_piece_of_a_name_it_reads_whole(corpus):
+    """A fragment that happens to demangle is a reading of something that is not there.
+
+    `@?0??define_lambda@@YAHXZ@QBE@XZ` -- what the token had left of an MSVC symbol after
+    the angle bracket it cannot hold -- came back as
+    `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ`, a Delphi declaration built out of
+    half somebody else's name. This is the guard that found it.
+    """
+    pieces = []
+    for mangled, _ in load_corpus(corpus):
+        try:
+            spelled = demangle.demangle_strict(mangled)
+        except demangle.DemanglingError:
+            continue
+        if spelled == mangled:
+            continue
+        found = list(demangle.find_symbols(mangled))
+        if found and (len(found) > 1 or found[0].mangled != mangled):
+            pieces.append(mangled)
+    assert len(pieces) == FILTER_REPORTS_PIECES.get(corpus, 0), pieces
+
+
 class TestAgainstLibcxxabisOwnCorpus:
     """LLVM's own Itanium vectors -- the reference measuring itself.
 

@@ -294,9 +294,13 @@ def calls():
         if not count:
             continue
         demangle.cache_clear()
-        function()  # Warm any lazy import, which is not what this is counting.
+        # One pass first, and the cache is *not* cleared after it. `cold` and `negative`
+        # clear their own inside, so they are unaffected; `warm` is the phase whose whole
+        # premise is the entries the pass before it left, and clearing here counted a
+        # third of it as misses -- 120 calls a name where a cache hit costs eight. The
+        # timing path gets the same state from `time_it` running the function five times.
+        function()
         profiler = cProfile.Profile()
-        demangle.cache_clear()
         profiler.enable()
         function()
         profiler.disable()
