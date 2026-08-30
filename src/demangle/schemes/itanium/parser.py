@@ -270,8 +270,10 @@ class ItaniumParser:
         "_parameter_uses",
         "_pending_conversion",
         "_precedence",
+        "_prefix_ended_on_substitution",
         "_prefixes",
         "_productions",
+        "_reading_closure_signature",
         "_reading_conversion_type",
         "_reject_unbound_parameters",
         "_rework",
@@ -404,6 +406,15 @@ class ItaniumParser:
         # exist. The one place a `<template-param>` may resolve to nothing with no
         # <template-args> in scope at all -- see `bind_template_param`.
         self._reading_conversion_type = False
+        # True while a `<closure-type-name>`'s own signature is being read. A generic
+        # lambda's `auto` parameters are mangled as references to parameters it never
+        # declared (ABI 5.1.8), so a `<template-param>` that resolves to nothing is a
+        # normal reading *there* and nowhere else -- see `bind_template_param`.
+        self._reading_closure_signature = False
+        # Whether the last component appended to the <prefix> being read came from a
+        # `<substitution>`. The final component of a <nested-name> is an
+        # <unqualified-name>, which a substitution is not -- see `nested_name`.
+        self._prefix_ended_on_substitution = False
         # Whether a `<template-param>` at the head of a type may take template arguments
         # of its own. False while reading a conversion operator's type, where an `I`
         # that follows opens the *operator's* argument list: in `cvT_I4MerpE` the
@@ -1017,6 +1028,18 @@ class ItaniumParser:
 
             if not parts:
                 raise ParseError(self._mangled, reader.pos, "empty nested name")
+            if self._prefix_ended_on_substitution:
+                # `<nested-name> ::= N ... <prefix> <unqualified-name> E`. The last
+                # component is an <unqualified-name>, and a <substitution> is not one:
+                # it appears in <prefix> and nowhere else. Both references refuse every
+                # name of this shape, and the readings were the kind a person would
+                # believe -- `_ZNSaEv` as `std::allocator()`, `_ZN1aSaEv` as
+                # `a::std::allocator()`, `_ZN1aS_Ev` as `a::a()`.
+                #
+                # `Sa` as a *prefix* is untouched, which is the shape that occurs:
+                # `_ZNSaC1Ev` is `std::allocator::allocator()` and `_ZNSt3maxIiEEvv` is
+                # `void std::max<int>()`.
+                raise ParseError(self._mangled, reader.pos, "a nested name ending in a substitution")
             # A template constructor -- `basic_string<allocator<char>>(char const*, ...)`
             # -- is a template, but constructors have no return type to encode, so the
             # leading type of the signature is a parameter like any other.
@@ -1042,6 +1065,7 @@ class ItaniumParser:
         """
         reader = self.reader
         builder = self.builder
+        self._prefix_ended_on_substitution = False
         char = reader.peek()
 
         # Three components in four are a length-prefixed name and none of the markers
@@ -1054,6 +1078,7 @@ class ItaniumParser:
                 if named is not None:
                     # A module name, not a scope: it belongs to the component that follows.
                     return False, named
+                self._prefix_ended_on_substitution = True
                 parts.append(component)
                 return False, module
 
@@ -1250,7 +1275,7 @@ class ItaniumParser:
 
     # -- 5.1.2 unqualified names -----------------------------------------------
 
-    def unqualified_name(self, scope=None, module=""):
+    def unqualified_name(self, scope=None, module="", internal=False):
         """<unqualified-name> ::= [<module-name>] <name body> [<abi-tags>]
 
         ```
@@ -1288,14 +1313,20 @@ class ItaniumParser:
             return builder.name(friend + name + tags) if friend else builder.name(name + tags)
 
         if char == "L":
-            # An internal-linkage name. The marker carries no spelling, but it recurses,
-            # so a run of them has to be bounded like any other recursive production.
+            # An internal-linkage name. The marker carries no spelling of its own, and
+            # there is at most one: `<unqualified-name> ::= [<module-name>] [L] <name
+            # body> [<abi-tags>]`, and both references refuse a second. This read the
+            # rest of the name recursively, which accepted a run of them -- `_Z1fLL1A`
+            # and `_Z1fLLL1A` both came back as `f(A)`, the same spelling the well-formed
+            # `_Z1fL1A` has. `internal` is what says the marker has been spent.
+            if internal:
+                raise ParseError(self._mangled, reader.pos, "a second internal-linkage marker")
             reader.take()
             depth = self._depth = self._depth + 1
             if depth > self._max_depth:
                 raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
             try:
-                inner = self.unqualified_name(scope, module)
+                inner = self.unqualified_name(scope, module, internal=True)
             finally:
                 self._depth = depth - 1
             return builder.name(friend + builder.spell(inner)) if friend else inner
@@ -1517,6 +1548,8 @@ class ItaniumParser:
             declared = []
             self.targs.push(declared)
             constraint = ""
+            was_reading_closure = self._reading_closure_signature
+            self._reading_closure_signature = True
             try:
                 while reader.peek2() in _PARAMETER_DECLARATIONS:
                     _, declaration = self.template_param_decl(params=declared)
@@ -1536,6 +1569,7 @@ class ItaniumParser:
                         )
                     parameters.append(self.builder.spell(self.type_()))
             finally:
+                self._reading_closure_signature = was_reading_closure
                 self._parameter_counts = saved_counts
                 self.targs.restore(saved_scope)
             return self._closure(declarations, constraint, parameters, "", lambda_expression)
@@ -1786,7 +1820,7 @@ class ItaniumParser:
             # the branch above.
             raise ParseError(self._mangled, reader.pos, f"no template parameter level {level} in scope")
 
-        if not (self.targs.depth() or self._reading_conversion_type):
+        if not (self._reading_closure_signature or self._reading_conversion_type):
             # No <template-args> anywhere in scope, and this is not the one reading that
             # expects to run ahead of them -- so there is no list for this to be a
             # parameter *of*, and nothing later will supply one. `_Z1f1AT_` is a plain
@@ -2076,7 +2110,10 @@ class ItaniumParser:
             # class template -- and lost the declarator besides.
             reader.pos += 1
             qualifier = _COMPLEX_WORDS[self.options.gnu_complex_spelling][char]
-            return subs.remember(builder.qualify(self.type_(), (qualifier,)), "type")
+            # Not a cv-qualifier, so a repeat does not collapse: `c++filt` writes
+            # `signed char _Imaginary _Imaginary` for `_Z1fGGa` and folding it lost a
+            # word of the name.
+            return subs.remember(builder.qualify(self.type_(), (qualifier,), cv=False), "type")
 
         raise ParseError(self._mangled, reader.pos, f"unknown type code {char!r}")
 

@@ -161,6 +161,55 @@ class TestDuplicateQualifiers:
         assert demangle.demangle_strict("_Z1fKKiS_S0_", style="gnu") == "f(int const, int const, int const)"
 
 
+class TestComplexAndImaginaryAreNotCvQualifiers:
+    """They go through `qualify` and a repeat of one does not collapse.
+
+    `[basic.type.qualifier]` folds a duplicate `const`, which is why the `gnu` style
+    collapses one; nothing folds a duplicate `_Imaginary`. `c++filt` 2.42 writes
+    `signed char _Imaginary _Imaginary` for `_Z1fGGa` and this wrote one of them, losing
+    a word of the name -- and the two styles disagreed with each other about it, since
+    only the gnu one collapses at all.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            ("_Z1fGGa", "f(signed char imaginary imaginary)", "f(signed char _Imaginary _Imaginary)"),
+            ("_Z1fGCa", "f(signed char complex imaginary)", "f(signed char _Complex _Imaginary)"),
+            ("_Z1fGa", "f(signed char imaginary)", "f(signed char _Imaginary)"),
+        ],
+    )
+    def test_a_repeat_is_kept(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled, language="itanium", style="llvm") == llvm
+        assert demangle.demangle_strict(mangled, language="itanium", style="gnu") == gnu
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            # The collapse the gnu style does do, and still does: a real duplicate
+            # cv-qualifier, where the outer one wins.
+            ("_Z1fKKi", "f(int const const)", "f(int const)"),
+            ("_Z1fKVi", "f(int volatile const)", "f(int volatile const)"),
+        ],
+    )
+    def test_a_repeated_cv_qualifier_still_collapses_under_gnu(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled, language="itanium", style="llvm") == llvm
+        assert demangle.demangle_strict(mangled, language="itanium", style="gnu") == gnu
+
+    def test_the_tree_spells_what_the_text_path_spells(self):
+        """`cv` rides on the node, or the two builders would disagree about the repeat.
+
+        `spell(style=...)` rather than `spell()`: the style is the renderer's, not the
+        tree's, and a bare `spell()` uses the default policy whatever the tree was parsed
+        under. That is the documented contract and is not what is under test here.
+        """
+        for mangled in ("_Z1fGGa", "_Z1fGCa", "_Z1fKKi"):
+            for style in ("llvm", "gnu"):
+                text = demangle.demangle_strict(mangled, language="itanium", style=style)
+                tree = demangle.parse(mangled, language="itanium", style=style)
+                assert tree.spell(style=style) == text
+
+
 class TestWhatIsRefused:
     def test_an_empty_encoding_is_not_a_type(self):
         with pytest.raises(NotMangledError):

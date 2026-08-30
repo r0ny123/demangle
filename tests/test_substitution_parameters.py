@@ -157,16 +157,29 @@ class TestOutOfScope:
     """A recorded parameter read where fewer arguments are in scope.
 
     `TemplateArgumentTable.lookup` answers None rather than raising, because a return
-    type is encoded before the arguments that bind it; both references spell that `auto`,
-    and reaching it through a back-reference must behave no differently from reaching it
-    directly.
+    type is encoded before the arguments that bind it. What the parser does with that
+    None is its business; the property this class is about is that reaching a parameter
+    through a back-reference behaves no differently from reaching it directly.
     """
 
-    def test_a_parameter_past_the_end_spells_auto_through_a_substitution(self):
-        # `f<int>` has one argument, so `T0_` names a parameter that is not in scope.
-        # `S0_` is the entry `T0_` itself contributed, and must answer the same way.
-        assert demangle.demangle_strict("_Z1fIiEvT0_") == "void f<int>(auto)"
-        assert demangle.demangle_strict("_Z1fIiEvT0_S0_") == "void f<int>(auto, auto)"
+    def test_a_parameter_past_the_end_is_refused_through_a_substitution_too(self):
+        """`f<int>` has one argument, so `T0_` names one that is not in scope.
+
+        This used to answer `void f<int>(auto)`, and `S0_` -- the entry `T0_` itself
+        contributed -- answered the same way, which was the property under test. Both
+        `c++filt` 2.42 and `llvm-cxxfilt` 18.1 hand both names back: an index past the
+        end of the argument list binds to nothing and nothing later will supply it, and
+        `auto` is a type the encoding does not contain. The property still holds, and
+        now holds of a refusal.
+        """
+        for mangled in ("_Z1fIiEvT0_", "_Z1fIiEvT0_S0_"):
+            with pytest.raises(DemanglingError):
+                demangle.demangle_strict(mangled, language="itanium")
+
+    def test_a_parameter_in_scope_reads_the_same_directly_and_through_a_substitution(self):
+        """The other half, and the one that says the back-reference machinery works."""
+        assert demangle.demangle_strict("_Z1fIiEvT_S0_") == "void f<int>(int, int)"
+        assert demangle.demangle_strict("_Z1fIiEvPT_S0_") == "void f<int>(int*, int)"
 
     def test_no_table_sentinel_ever_reaches_a_builder(self):
         """The real check, not a substring one.

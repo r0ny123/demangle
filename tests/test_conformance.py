@@ -449,11 +449,19 @@ class TestAgainstLibcxxabisOwnCorpus:
         reads all four; see `tests/test_types.py`.
 
         **One self-referential conversion operator.** `_Zcv1BIRT_EIS1_E` is
-        `operator B<T_&><B<T_&>>`, a cycle. The reference guards against printing one by
-        printing *nothing* for the second visit, so it answers `operator B<><>`; this
-        reads the type a second time once the arguments are bound and answers
-        `operator B<auto&><auto&>`. Neither is the declaration, because there is no
-        declaration: the mangling is self-referential and no compiler emits one.
+        `operator B<T_&><B<T_&>>`, a cycle. `llvm-cxxfilt` guards against printing one by
+        printing *nothing* for the second visit, so it answers `operator B<><>`. This
+        used to read the type a second time once the arguments were bound and answer
+        `operator B<auto&><auto&>`; neither is the declaration, because there is no
+        declaration -- the mangling is self-referential and no compiler emits one.
+
+        It is refused now, which is what `c++filt` 2.42 does with it. The rule that
+        refuses it is the general one: a `<template-param>` resolves to `auto` only in
+        the two readings where nothing is bound on purpose -- a generic lambda's invented
+        parameters, and a conversion operator's type read ahead of its arguments -- and
+        the `T_` here is in neither, because the arguments it would bind against are the
+        ones this very type is inside. Of the three answers, declining to read a name
+        that has no declaration is the one that claims least.
 
         **Nine where this corpus records llvm-cxxfilt's own defect.** A
         `<template-param>` recorded as a substitution candidate -- or a component built

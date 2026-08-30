@@ -180,8 +180,13 @@ class TestTheTreeAsData:
                     "kind": "pointer",
                     "inner": {
                         "kind": "qualify",
+                        # `cv` says these are cv-qualifiers rather than `_Complex` or
+                        # `_Imaginary`, which arrive through the same node and do not
+                        # collapse when repeated. A consumer rebuilding the tree needs
+                        # it, so it is in the dict.
                         "inner": {"kind": "builtin", "spelling": "char"},
                         "qualifiers": ["const"],
+                        "cv": True,
                     },
                 }
             ],

@@ -112,6 +112,30 @@ style and language it was recorded with, and exits non-zero if anything disagree
 If a change moves a conformance number, say which way and why in the commit message.
 If it moves a benchmark, say that too.
 
+### Enumeration
+
+```console
+python tools/enumerate.py            # every scheme with a reference on this machine
+python tools/enumerate.py --length 6 # deeper, and much slower
+```
+
+The corpora are real symbols, so they cover the shapes compilers *emit*. They do not
+cover the shapes a grammar *permits*, and that is where the worst defects live: an
+encoding no compiler writes, read as something that looks like a declaration a person
+would believe. `tools/enumerate.py` offers every string up to `--length` characters over
+a per-scheme alphabet to the library, puts the ones it reads to the reference demangler,
+and reports every disagreement -- including the direction that matters, where the
+reference hands the name back and this library answers.
+
+It is worth running against any change to a parser's shape rules. Seventeen defects came
+out of one sitting with it, in five schemes: `_Z1fIiEi` read as `int f<int>()`, `_RNvC_1f`
+as `::f`, `_D3fooC` as `foo`, `_D4testFMMfZv` as `test(scope scope float)`.
+
+A disagreement that is the reference's own goes in `ACCEPTED` with the reason, not in a
+list of names -- the shapes are families, and a list goes stale the moment an alphabet
+changes. Where a scheme has two references the tool asks both, each under its own style,
+because agreeing with one build of one reference is not the same as being right.
+
 ## CI and workflows
 
 Workflows run with `permissions: contents: read` and grant more only where a job needs

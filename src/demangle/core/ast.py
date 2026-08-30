@@ -434,21 +434,28 @@ class Template(Node):
 
 
 class Qualify(Node):
-    """cv-qualifiers applied to a type."""
+    """Qualifiers applied to a type, written on the right.
 
-    __slots__ = ("inner", "qualifiers")
+    `cv` says whether they are cv-qualifiers. `_Complex` and `_Imaginary` arrive here
+    too and are not, which matters only because a repeated cv-qualifier collapses under
+    the `gnu` style and a repeated `_Imaginary` does not. Carried on the node so that a
+    tree spells what the text path spelled.
+    """
+
+    __slots__ = ("cv", "inner", "qualifiers")
     kind = "qualify"
-    __match_args__ = ("inner", "qualifiers")
+    __match_args__ = ("inner", "qualifiers", "cv")
 
-    def __init__(self, inner, qualifiers):
+    def __init__(self, inner, qualifiers, cv=True):
         self.inner = inner
         self.qualifiers = tuple(qualifiers)
+        self.cv = cv
 
     def children(self):
         return (self.inner,)
 
     def build(self, builder):
-        return builder.qualify(self.inner.build(builder), self.qualifiers)
+        return builder.qualify(self.inner.build(builder), self.qualifiers, cv=self.cv)
 
 
 # -- declarators --------------------------------------------------------------
@@ -763,7 +770,7 @@ class AstBuilder(Builder):
     def template(self, base, arguments, angle_space=True):
         return _sized(Template(base, arguments, angle_space), base.size + _sizes(arguments) + 2 * len(arguments) + 2)
 
-    def qualify(self, inner, qualifiers):
+    def qualify(self, inner, qualifiers, cv=True):
         if not qualifiers:
             return inner
         if _distributes_to_nothing(inner):
@@ -771,7 +778,7 @@ class AstBuilder(Builder):
         width = 0
         for qualifier in qualifiers:
             width += len(qualifier) + 1
-        return _sized(Qualify(inner, qualifiers), inner.size + width)
+        return _sized(Qualify(inner, qualifiers, cv=cv), inner.size + width)
 
     def pointer(self, inner):
         if _distributes_to_nothing(inner):

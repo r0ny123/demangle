@@ -38,8 +38,12 @@ class TestShape:
         assert [str(operand) for operand in node.operands] == ["int", "int", "int"]
 
     def test_sizeof_carries_what_it_measures(self):
-        node = only("_ZN1AIXszcvT__EEE1fEv", "sizeof")
-        assert str(node.operands[0]) == "(auto)()"
+        # `_ZN1AIXszcvi_EEE1fEv` rather than `_ZN1AIXszcvT__EEE1fEv`, which was here
+        # before: that one puts a `T_` inside the very argument list it belongs to, and
+        # both references hand it back. This is the same shape with a concrete type, and
+        # all three read it alike.
+        node = only("_ZN1AIXszcvi_EEE1fEv", "sizeof")
+        assert str(node.operands[0]) == "(int)()"
 
     def test_decltype_carries_its_expression(self):
         node = only("_Z1fIiEvDTplT_T_E", "decltype")
@@ -78,7 +82,7 @@ class TestSpellingIsUnchanged:
         [
             ("_Z1fIiEvDTplT_T_E", "void f<int>(decltype(int + int))"),
             ("_Z1fIiEvDTquT_T_T_E", "void f<int>(decltype(int ? int : int))"),
-            ("_ZN1AIXszcvT__EEE1fEv", "A<sizeof ((auto)())>::f()"),
+            ("_ZN1AIXszcvi_EEE1fEv", "A<sizeof ((int)())>::f()"),
             ("_Z1fILi5EEvv", "void f<5>()"),
         ],
     )
@@ -86,7 +90,7 @@ class TestSpellingIsUnchanged:
         assert demangle.demangle(mangled) == expected
 
     def test_a_tree_spells_what_demangle_spells(self):
-        for mangled in ("_Z1fIiEvDTplT_T_E", "_Z1fIiEvDTquT_T_T_E", "_ZN1AIXszcvT__EEE1fEv"):
+        for mangled in ("_Z1fIiEvDTplT_T_E", "_Z1fIiEvDTquT_T_T_E", "_ZN1AIXszcvi_EEE1fEv"):
             assert demangle.parse(mangled).spell() == demangle.demangle(mangled)
 
 
@@ -198,6 +202,91 @@ class TestStillRefusesWhatItShould:
     )
     def test_what_an_expression_may_still_hold(self, mangled, expected):
         assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["_ZNSaEv", "_ZNKSaE", "_ZN1aSaEv", "_ZN1aS_Ev", "_ZN1a1bS_Ev", "_ZNSaSaEv"],
+    )
+    def test_a_nested_name_may_not_end_in_a_substitution(self, mangled):
+        """`N ... <prefix> <unqualified-name> E`. A `<substitution>` is not one of those.
+
+        It appears in `<prefix>` and nowhere else, so a nested name whose last component
+        is a back reference is not a nested name. Both references refuse every shape of
+        it, and the readings were the kind a person would believe: `_ZNSaEv` as
+        `std::allocator()`, `_ZN1aSaEv` as `a::std::allocator()` -- a `std::` nested
+        inside an `a::` -- and `_ZN1aS_Ev` as `a::a()`.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # An abbreviation as a *prefix* is the shape that occurs, and is untouched.
+            ("_ZNSaC1Ev", "std::allocator::allocator()"),
+            ("_ZNSa1bEv", "std::allocator::b()"),
+            ("_ZNSt3maxIiEEvv", "void std::max<int>()"),
+            ("_ZN1a1bEv", "a::b()"),
+        ],
+    )
+    def test_a_substitution_as_a_prefix_is_untouched(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z1fLL1A", "_Z1fLLL1A", "_ZLL1fv"])
+    def test_there_is_one_internal_linkage_marker_and_not_a_run_of_them(self, mangled):
+        """`<unqualified-name> ::= [<module-name>] [L] <name body> [<abi-tags>]`.
+
+        The marker carries no spelling of its own, and this read the rest of the name
+        recursively -- which accepted a run of them, so `_Z1fLL1A` and `_Z1fLLL1A` both
+        came back as `f(A)`, the spelling the well-formed `_Z1fL1A` has. Both references
+        refuse the second one.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fL1A", "f(A)"),
+            ("_ZL1fv", "f()"),
+            ("_ZN1aL1bEv", "a::b()"),
+            # One on the entity and one inside a parameter's type are two names, not a run.
+            ("_ZL1fL1A", "f(A)"),
+        ],
+    )
+    def test_one_internal_linkage_marker_per_name_still_reads(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z1fIET_a", "_Z1fIET_v", "_Zcv1BIRT_EIS1_E"])
+    def test_a_template_parameter_in_an_empty_argument_list_binds_to_nothing(self, mangled):
+        """`I E` installs a list with nothing in it, and `T_` indexes into it.
+
+        The `auto` fallback is for the two readings where nothing is bound on purpose: a
+        generic lambda's invented parameters (ABI 5.1.8) and a conversion operator's type
+        read ahead of its arguments. An empty argument list is neither -- it is a list
+        that was read and is empty -- and `_Z1fIET_a` came back as `auto f<>(signed
+        char)`, which reads as a declaration. Both references refuse it.
+
+        Marked by *where the reading is* rather than by what is in scope, because the two
+        are indistinguishable from the tables: a lambda's level and an empty argument
+        list are both one level holding nothing.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    def test_the_two_readings_that_may_still_find_nothing_bound(self):
+        """A generic lambda's `auto`, and a conversion operator read before its arguments."""
+        assert (
+            demangle.demangle_strict("_ZZ1fvENKUlT_E_clIiEEDaS_", language="itanium")
+            == "auto f()::'lambda'(auto)::operator()<int>(int) const"
+        )
+        assert (
+            demangle.demangle_strict("_ZN1Scv7MuncherIJDpPT_EEIJFivEA_iEEEv", language="itanium")
+            == "S::operator Muncher<int (*)(), int (*) []><int (), int []>()"
+        )
 
     @pytest.mark.parametrize("mangled", ["_Z1fILaEE", "_Z1fILbEE", "_Z1fILPiEE", "_Z1fILSt9nullptr_tEE"])
     def test_a_literal_with_no_value_is_not_a_value(self, mangled):

@@ -153,6 +153,12 @@ jobs:
         run: |
           python tools/generate_corpus.py --out /tmp/fresh
           python tools/differential.py --corpus /tmp/fresh/itanium-real-world.txt
+      # The corpora cover the shapes compilers emit. This covers the shapes the grammars
+      # permit -- every string up to four characters over a per-scheme alphabet, offered
+      # to the library and then to the reference. Four is what fits in the time here;
+      # deeper runs are a thing to do by hand against a parser change.
+      - name: Enumerate the shape space against the references
+        run: python tools/enumerate.py --length 4 --quiet
 
   cross-reference:
     name: cross-version reference check

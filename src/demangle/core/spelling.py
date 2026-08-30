@@ -216,16 +216,26 @@ class SpellingBuilder(Builder):
         opening = " <" if self.legacy_angle_spacing and name.endswith("<") else "<"
         return Spelling(f"{name}{opening}{rendered}>")
 
-    def qualify(self, inner, qualifiers):
+    def qualify(self, inner, qualifiers, cv=True):
+        """Apply `qualifiers` to `inner`, on the right, the way C++ writes them.
+
+        `cv` says whether these are cv-qualifiers, which is what decides whether a
+        repeat collapses. `_Complex` and `_Imaginary` go through here too and are not
+        cv-qualifiers: `[basic.type.qualifier]` folds a duplicate `const`, and nothing
+        folds a duplicate `_Imaginary`. `c++filt` 2.42 writes `signed char _Imaginary
+        _Imaginary` for `_Z1fGGa` and this collapsed it to one, which is a word of the
+        name lost -- and the two styles disagreed with each other about it, since only
+        the gnu one collapses at all.
+        """
         if not qualifiers:
             return inner
         if inner.members is not None:
-            return pack_of(self.qualify(member, qualifiers) for member in inner.members)
+            return pack_of(self.qualify(member, qualifiers, cv=cv) for member in inner.members)
         if inner.is_function:
             # cv on a function type qualifies the implicit object parameter, so it
             # trails the parameter list rather than the return type.
             return Spelling(inner.left, inner.right + " " + " ".join(qualifiers), is_function=True)
-        if not self.collapse_duplicate_qualifiers:
+        if not (self.collapse_duplicate_qualifiers and cv):
             # Both `int const` and `int* const` are "const applied to the thing on the
             # left", and C++ spells both postfix. The reference demanglers agree.
             left = inner.left + " " + " ".join(qualifiers)

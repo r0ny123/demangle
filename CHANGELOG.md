@@ -732,6 +732,34 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **`_Complex` and `_Imaginary` are not cv-qualifiers, and a repeat of one does not
+  collapse.** They go through `qualify`, which under the `gnu` style folds a duplicate --
+  correctly, for `const` and friends, because `[basic.type.qualifier]` says so. Nothing
+  folds a duplicate `_Imaginary`: `c++filt` 2.42 writes `signed char _Imaginary
+  _Imaginary` for `_Z1fGGa` and this wrote one of them, losing a word of the name. The
+  two styles disagreed with each other about it, too, since only the gnu one collapses
+  at all. The flag rides on the tree node as well as the builder call, so a tree still
+  spells what the text path spelled -- which puts a `cv` key on a `qualify` node's
+  `to_dict()` and a third entry in its `__match_args__`, both of which a consumer
+  rebuilding a tree needs.
+
+- **Three more Itanium shapes neither reference reads.** A `<nested-name>` ending in a
+  substitution -- `N ... <prefix> <unqualified-name> E`, and a `<substitution>` is not an
+  `<unqualified-name>` -- so `_ZNSaEv` came back as `std::allocator()`, `_ZN1aSaEv` as
+  `a::std::allocator()` with a `std::` nested inside an `a::`, and `_ZN1aS_Ev` as
+  `a::a()`. A run of internal-linkage markers, where the grammar allows one: `_Z1fLL1A`
+  and `_Z1fLLL1A` both read as `f(A)`, the spelling the well-formed `_Z1fL1A` has. And a
+  `<template-param>` that binds to nothing -- an *empty* argument list, where
+  `_Z1fIET_a` read as `auto f<>(signed char)`, and an index past the end of a real one,
+  where `_Z1fIiEvT0_` read as `void f<int>(auto)`. The `auto` fallback belongs to the two
+  readings that find nothing bound on purpose, a generic lambda's invented parameters and
+  a conversion operator's type read ahead of its arguments, and those are marked by where
+  the reading *is* rather than by what is in scope, because a lambda's level and an empty
+  argument list are indistinguishable from the tables. That rule also changes
+  `_Zcv1BIRT_EIS1_E`, a self-referential conversion operator with no declaration to
+  spell: it is refused now, as `c++filt` refuses it, rather than answered
+  `operator B<auto&><auto&>`.
+
 - **D: a parameter's storage classes are a sequence, not a set.**
   `[M] [Nk] [I[K] | J | K | L] <Type>`: `dlang_function_args` reads each once, in that
   order, and then reads the type. Written as a loop here, it took any order and any
