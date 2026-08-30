@@ -1,0 +1,136 @@
+# Conformance corpus: real compiler output.
+#
+# Each line is a mangled name, a tab, and the spelling the reference
+# demangler produces for it. Regenerate with tools/generate_corpus.py.
+#
+# Names the reference reads wrongly are excluded; their expected spelling comes
+# from the declaration instead, in msvc-reference-defects.txt.
+#
+# reference: Ubuntu LLVM version 18.1.3   Optimized build.
+# compiled by: clang++ --target=x86_64-pc-windows-msvc: Ubuntu clang version 18.1.3 (1ubuntu1)
+# standards: c++11, c++14, c++17, c++20
+# optimisation: -O0, -O2
+#
+?$TSS0@?1??guarded@ns@@YAHXZ@4HA	int `int __cdecl ns::guarded(void)'::`2'::$TSS0
+??$dependent@H@ns@@YAHH@Z	int __cdecl ns::dependent<int>(int)
+??$identity@H@ns@@YAHH@Z	int __cdecl ns::identity<int>(int)
+??$identity@PEBD@ns@@YAPEBDPEBD@Z	char const * __cdecl ns::identity<char const *>(char const *)
+??0Base@ns@@QEAA@XZ	public: __cdecl ns::Base::Base(void)
+??0Derived@ns@@QEAA@XZ	public: __cdecl ns::Derived::Derived(void)
+??0Other@ns@@QEAA@XZ	public: __cdecl ns::Other::Other(void)
+??0Thrower@ns@@QEAA@XZ	public: __cdecl ns::Thrower::Thrower(void)
+??0VirtBase@ns@@QEAA@XZ	public: __cdecl ns::VirtBase::VirtBase(void)
+??1Base@ns@@UEAA@XZ	public: virtual __cdecl ns::Base::~Base(void)
+??1Derived@ns@@UEAA@XZ	public: virtual __cdecl ns::Derived::~Derived(void)
+??1Other@ns@@UEAA@XZ	public: virtual __cdecl ns::Other::~Other(void)
+??1VirtBase@ns@@UEAA@XZ	public: virtual __cdecl ns::VirtBase::~VirtBase(void)
+??2@YAPEAX_K@Z	void * __cdecl operator new(unsigned __int64)
+??2WithNew@ns@@SAPEAX_K@Z	public: static void * __cdecl ns::WithNew::operator new(unsigned __int64)
+??3@YAXPEAX@Z	void __cdecl operator delete(void *)
+??3WithNew@ns@@SAXPEAX@Z	public: static void __cdecl ns::WithNew::operator delete(void *)
+??4Q@ns@@QEGAAAEAU01@AEBU01@@Z	public: struct ns::Q & __cdecl ns::Q::operator=(struct ns::Q const &) &
+??4Q@ns@@QEHAAAEAU01@$$QEAU01@@Z	public: struct ns::Q & __cdecl ns::Q::operator=(struct ns::Q &&) &&
+??8Q@ns@@QEBA_NAEBU01@@Z	public: bool __cdecl ns::Q::operator==(struct ns::Q const &) const
+??AQ@ns@@QEBAHH@Z	public: int __cdecl ns::Q::operator[](int) const
+??BQ@ns@@QEBAHXZ	public: int __cdecl ns::Q::operator int(void) const
+??HQ@ns@@QEBAHH@Z	public: int __cdecl ns::Q::operator+(int) const
+??R<lambda_0>@?0??with_lambda@ns@@YAHXZ@QEBA?A?<auto>@@H@Z	public: <auto> __cdecl `int __cdecl ns::with_lambda(void)'::`1'::<lambda_0>::operator()(int) const
+??R<lambda_1>@?0??with_lambda@ns@@YAHXZ@QEBA?A?<auto>@@H@Z	public: <auto> __cdecl `int __cdecl ns::with_lambda(void)'::`1'::<lambda_1>::operator()(int) const
+??RQ@ns@@QEBAHHD@Z	public: int __cdecl ns::Q::operator()(int, char) const
+??_7Base@ns@@6B@	const ns::Base::`vftable'
+??_7Derived@ns@@6BBase@1@@	const ns::Derived::`vftable'{for `ns::Base'}
+??_7Derived@ns@@6BOther@1@@	const ns::Derived::`vftable'{for `ns::Other'}
+??_7Other@ns@@6B@	const ns::Other::`vftable'
+??_7VirtBase@ns@@6B@	const ns::VirtBase::`vftable'
+??_7type_info@@6B@	const type_info::`vftable'
+??_8VirtBase@ns@@7B@	const ns::VirtBase::`vbtable'
+??_C@_0N@OLAOGCLC@hello?0?5world?$AA@	"hello, world"
+??_C@_1M@GINHBNC@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@	L"hello"
+??_DVirtBase@ns@@QEAAXXZ	public: void __cdecl ns::VirtBase::`vbase dtor'(void)
+??_EDerived@ns@@WBA@EAAPEAXI@Z	[thunk]: public: virtual void * __cdecl ns::Derived::`vector deleting dtor'`adjustor{16}'(unsigned int)
+??_GBase@ns@@UEAAPEAXI@Z	public: virtual void * __cdecl ns::Base::`scalar deleting dtor'(unsigned int)
+??_GDerived@ns@@UEAAPEAXI@Z	public: virtual void * __cdecl ns::Derived::`scalar deleting dtor'(unsigned int)
+??_GOther@ns@@UEAAPEAXI@Z	public: virtual void * __cdecl ns::Other::`scalar deleting dtor'(unsigned int)
+??_GVirtBase@ns@@UEAAPEAXI@Z	public: virtual void * __cdecl ns::VirtBase::`scalar deleting dtor'(unsigned int)
+??_R0?AUBase@ns@@@8	struct ns::Base `RTTI Type Descriptor'
+??_R0?AUDerived@ns@@@8	struct ns::Derived `RTTI Type Descriptor'
+??_R0?AUOther@ns@@@8	struct ns::Other `RTTI Type Descriptor'
+??_R0?AUVirtBase@ns@@@8	struct ns::VirtBase `RTTI Type Descriptor'
+??_R1A@?0A@EA@Base@ns@@8	ns::Base::`RTTI Base Class Descriptor at (0, -1, 0, 64)'
+??_R1A@?0A@EA@Derived@ns@@8	ns::Derived::`RTTI Base Class Descriptor at (0, -1, 0, 64)'
+??_R1A@?0A@EA@Other@ns@@8	ns::Other::`RTTI Base Class Descriptor at (0, -1, 0, 64)'
+??_R1A@?0A@EA@VirtBase@ns@@8	ns::VirtBase::`RTTI Base Class Descriptor at (0, -1, 0, 64)'
+??_R1A@A@3FA@Base@ns@@8	ns::Base::`RTTI Base Class Descriptor at (0, 0, 4, 80)'
+??_R1BA@?0A@EA@Other@ns@@8	ns::Other::`RTTI Base Class Descriptor at (16, -1, 0, 64)'
+??_R2Base@ns@@8	ns::Base::`RTTI Base Class Array'
+??_R2Derived@ns@@8	ns::Derived::`RTTI Base Class Array'
+??_R2Other@ns@@8	ns::Other::`RTTI Base Class Array'
+??_R2VirtBase@ns@@8	ns::VirtBase::`RTTI Base Class Array'
+??_R3Base@ns@@8	ns::Base::`RTTI Class Hierarchy Descriptor'
+??_R3Derived@ns@@8	ns::Derived::`RTTI Class Hierarchy Descriptor'
+??_R3Other@ns@@8	ns::Other::`RTTI Class Hierarchy Descriptor'
+??_R3VirtBase@ns@@8	ns::VirtBase::`RTTI Class Hierarchy Descriptor'
+??_R4Base@ns@@6B@	const ns::Base::`RTTI Complete Object Locator'
+??_R4Derived@ns@@6BBase@1@@	const ns::Derived::`RTTI Complete Object Locator'{for `ns::Base'}
+??_R4Derived@ns@@6BOther@1@@	const ns::Derived::`RTTI Complete Object Locator'{for `ns::Other'}
+??_R4Other@ns@@6B@	const ns::Other::`RTTI Complete Object Locator'
+??_R4VirtBase@ns@@6B@	const ns::VirtBase::`RTTI Complete Object Locator'
+??_UWithNew@ns@@SAPEAX_K@Z	public: static void * __cdecl ns::WithNew::operator new[](unsigned __int64)
+??_V@YAXPEAX@Z	void __cdecl operator delete[](void *)
+??_VWithNew@ns@@SAXPEAX@Z	public: static void __cdecl ns::WithNew::operator delete[](void *)
+??__Eg@deeper@outer@@YAXXZ	void __cdecl `dynamic initializer for 'outer::deeper::g''(void)
+??__Eh@outer@@YAXXZ	void __cdecl `dynamic initializer for 'outer::h''(void)
+??__Etop@@YAXXZ	void __cdecl `dynamic initializer for 'top''(void)
+??__Fd@?1??guarded@ns@@YAHXZ@YAXXZ	void __cdecl `dynamic atexit destructor for '`int __cdecl ns::guarded(void)'::`2'::d''(void)
+?anon_fn@?A0xBBA50CF9@ns@@YAHXZ	int __cdecl ns::`anonymous namespace'::anon_fn(void)
+?arr@ns@@3QBDB	char const *const ns::arr
+?counter@WithStatics@ns@@SAHXZ	public: static int __cdecl ns::WithStatics::counter(void)
+?d@?1??guarded@ns@@YAHXZ@4UDerived@2@A	struct ns::Derived `int __cdecl ns::guarded(void)'::`2'::d
+?destroy@ns@@YAXPEAUBase@1@@Z	void __cdecl ns::destroy(struct ns::Base *)
+?destroy_array@ns@@YAXPEAUBase@1@@Z	void __cdecl ns::destroy_array(struct ns::Base *)
+?down@ns@@YAPEAUDerived@1@PEAUBase@1@@Z	struct ns::Derived * __cdecl ns::down(struct ns::Base *)
+?f@?$Higher@UPair@ns@@@ns@@QEBAHXZ	public: int __cdecl ns::Higher<struct ns::Pair>::f(void) const
+?f@?$Pack@$$V@ns@@QEBAHXZ	public: int __cdecl ns::Pack<>::f(void) const
+?f@?$Pack@HDN@ns@@QEBAHHDN@Z	public: int __cdecl ns::Pack<int, char, double>::f(int, char, double) const
+?f@?$Value@$0?2$0CK@$00@ns@@QEBAHXZ	public: int __cdecl ns::Value<-3, 42, 1>::f(void) const
+?f@?$Value@$0A@$0A@$0A@@ns@@QEBAHXZ	public: int __cdecl ns::Value<0, 0, 0>::f(void) const
+?f@Anon@?A0xBBA50CF9@ns@@QEBAHXZ	public: int __cdecl ns::`anonymous namespace'::Anon::f(void) const
+?f@Deeper@Nested@inner@ns@@QEBAHXZ	public: int __cdecl ns::inner::Nested::Deeper::f(void) const
+?fastcall_fn@ns@@YAHH@Z	int __cdecl ns::fastcall_fn(int)
+?freefn@ns@@YAHH@Z	int __cdecl ns::freefn(int)
+?g@deeper@outer@@3UThrower@ns@@A	struct ns::Thrower outer::deeper::g
+?get@?$Pair@HD@ns@@QEBAHXZ	public: int __cdecl ns::Pair<int, char>::get(void) const
+?get@?$Pair@PEBDN@ns@@QEBAPEBDXZ	public: char const * __cdecl ns::Pair<char const *, double>::get(void) const
+?guarded@ns@@YAHXZ	int __cdecl ns::guarded(void)
+?h@outer@@3UThrower@ns@@A	struct ns::Thrower outer::h
+?literal@ns@@YAPEBDXZ	char const * __cdecl ns::literal(void)
+?m@Q@ns@@QEAAHH@Z	public: int __cdecl ns::Q::m(int)
+?make_base@ns@@YAPEAUBase@1@XZ	struct ns::Base * __cdecl ns::make_base(void)
+?make_other@ns@@YAPEAUOther@1@XZ	struct ns::Other * __cdecl ns::make_other(void)
+?make_virt@ns@@YAPEAUVirtBase@1@XZ	struct ns::VirtBase * __cdecl ns::make_virt(void)
+?makes_temporary@ns@@YAHXZ	int __cdecl ns::makes_temporary(void)
+?n@?1??counter@WithStatics@ns@@SAHXZ@4HA	int `public: static int __cdecl ns::WithStatics::counter(void)'::`2'::n
+?o@Derived@ns@@UEAAHXZ	public: virtual int __cdecl ns::Derived::o(void)
+?o@Other@ns@@UEAAHXZ	public: virtual int __cdecl ns::Other::o(void)
+?r1@Q@ns@@QEBAAEAY03$$CBDXZ	public: char const (& __cdecl ns::Q::r1(void) const)[4]
+?r2@Q@ns@@QECAPEAY03$$CBDXZ	public: char const (* __cdecl ns::Q::r2(void) volatile)[4]
+?r3@Q@ns@@QEBAP6AHH@ZXZ	public: int (__cdecl * __cdecl ns::Q::r3(void) const)(int)
+?r4@Q@ns@@QEBAA6AHH@ZXZ	public: int (__cdecl & __cdecl ns::Q::r4(void) const)(int)
+?r5@Q@ns@@QEBAP812@EAAHH@ZXZ	public: int (__cdecl ns::Q::* __cdecl ns::Q::r5(void) const)(int)
+?stat@Base@ns@@2HA	public: static int ns::Base::stat
+?stdcall_fn@ns@@YAHH@Z	int __cdecl ns::stdcall_fn(int)
+?takes_arrays@ns@@YAHAEAY02HPEAY02HAEAY111$$CBH@Z	int __cdecl ns::takes_arrays(int (&)[3], int (*)[3], int const (&)[2][2])
+?takes_chars@ns@@YAH_Q_S_U_W@Z	int __cdecl ns::takes_chars(char8_t, char16_t, char32_t, wchar_t)
+?takes_enums@ns@@YAHW4Scoped@1@W4Plain@1@@Z	int __cdecl ns::takes_enums(enum ns::Scoped, enum ns::Plain)
+?takes_members@ns@@YAHPEQQ@1@HP821@EAAHH@Z@Z	int __cdecl ns::takes_members(int ns::Q::*, int (__cdecl ns::Q::*)(int))
+?takes_pointers@ns@@YAHPEBQEBHPEIAH@Z	int __cdecl ns::takes_pointers(int const *const *, int *__restrict)
+?takes_refs@ns@@YAH$$QEAHAEBH@Z	int __cdecl ns::takes_refs(int &&, int const &)
+?top@@3UThrower@ns@@A	struct ns::Thrower top
+?uses_anon@ns@@YAHXZ	int __cdecl ns::uses_anon(void)
+?v@Base@ns@@UEBAHH@Z	public: virtual int __cdecl ns::Base::v(int) const
+?v@Derived@ns@@UEBAHH@Z	public: virtual int __cdecl ns::Derived::v(int) const
+?v@VirtBase@ns@@UEBAHH@Z	public: virtual int __cdecl ns::VirtBase::v(int) const
+?vectorcall_fn@ns@@YQHH@Z	int __vectorcall ns::vectorcall_fn(int)
+?w@Base@ns@@UECAHH@Z	public: virtual int __cdecl ns::Base::w(int) volatile
+?what@ns@@YAPEBXPEAUBase@1@@Z	void const * __cdecl ns::what(struct ns::Base *)
+?with_lambda@ns@@YAHXZ	int __cdecl ns::with_lambda(void)

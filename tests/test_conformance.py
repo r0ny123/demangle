@@ -20,6 +20,20 @@ from .conftest import CONFORMANCE, load_corpus
 ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 279, 279
 ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 300, 299
 MSVC_TOTAL, MSVC_EXACT = 609, 609
+
+#: Real compiler output for the MS ABI: `tools/corpus_sources/msvc/msvc.cpp` through
+#: `clang++ --target=x86_64-pc-windows-msvc` at four standards and two optimisation
+#: levels, scored against `llvm-undname`. `msvc-llvm-corpus.txt` is LLVM's own *test*
+#: file -- hand-written vectors -- so this is the first MSVC corpus here that a compiler
+#: wrote. Two defects came out of its first run: a member function's qualifiers written
+#: past what its return type wraps, and a dynamic initialiser for a qualified variable
+#: refused outright.
+MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 123, 123
+
+#: The names in that run `llvm-undname` cannot read: `_L` and `_M`, which are `__int128`
+#: and `unsigned __int128` and which `demanglePrimitiveType` has no case for. Their
+#: expected column is the declaration in the source, as for the Itanium file above.
+MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 3, 3
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 28, 28
 
@@ -243,6 +257,18 @@ def test_msvc_matches_llvm_undname():
     assert (total, exact) == (MSVC_TOTAL, MSVC_EXACT)
 
 
+def test_msvc_matches_llvm_undname_on_real_compiler_output():
+    """See `MSVC_CLANG_TOTAL`. Names a compiler wrote, not vectors somebody chose."""
+    total, exact = _score("msvc-clang.txt", "llvm", language="msvc")
+    assert (total, exact) == (MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT)
+
+
+def test_msvc_reads_what_its_reference_cannot():
+    """See `MSVC_REFERENCE_DEFECTS_TOTAL`. The expected column is the declaration."""
+    total, exact = _score("msvc-reference-defects.txt", "llvm", language="msvc")
+    assert (total, exact) == (MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT)
+
+
 def test_matches_llvm_cxxfilt_on_the_system_libstdcxx():
     """Every mangled symbol the shipped libstdc++ exports.
 
@@ -340,6 +366,7 @@ def test_gnu_shortfalls_are_only_the_known_reference_divergences():
     [
         "itanium-real-world.txt",
         "msvc-llvm-corpus.txt",
+        "msvc-clang.txt",
         "itanium-libstdcxx.txt",
         "rust-real-world.txt",
         "rust-toolchain.txt",

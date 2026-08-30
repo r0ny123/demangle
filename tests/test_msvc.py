@@ -850,6 +850,31 @@ class MsvcClangEmittedTestSuite(unittest.TestCase):
             with self.subTest(mangled=mangled):
                 self.assertEqual(demangle_msvc_symbol(mangled), expected)
 
+    def test_a_dynamic_initializer_name_may_be_qualified(self):
+        """`demangleInitFiniStub` reads a whole declarator and names the stub with it.
+
+        So the variable's scopes go *inside* the quotes. This read the leading identifier
+        and refused anything after it, which is every namespace-scope object with a
+        non-trivial constructor -- `ns::Thrower g;` in a namespace is one -- and every
+        function-local static, whose scope is written the same way.
+        """
+        for mangled, expected in [
+            ("??__Eg@inner@outer@@YAXXZ", "void __cdecl `dynamic initializer for 'outer::inner::g''(void)"),
+            ("??__Fh@outer@@YAXXZ", "void __cdecl `dynamic atexit destructor for 'outer::h''(void)"),
+            ("??__Etop@@YAXXZ", "void __cdecl `dynamic initializer for 'top''(void)"),
+            (
+                "??__Fd@?1??guarded@ns@@YAHXZ@YAXXZ",
+                "void __cdecl `dynamic atexit destructor for '`int __cdecl ns::guarded(void)'::`2'::d''(void)",
+            ),
+            # The `?`-prefixed form, where the variable carries its own storage class.
+            (
+                "??__E?i@C@@0HA@@YAXXZ",
+                "void __cdecl `dynamic initializer for `private: static int C::i''(void)",
+            ),
+        ]:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
     def test_the_int128_codes_are_read_although_the_reference_refuses_them(self):
         for mangled, expected in CLANG_EMITTED_LLVM_REFUSES:
             with self.subTest(mangled=mangled):

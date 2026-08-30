@@ -761,6 +761,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **An MSVC corpus a compiler wrote.** `msvc-llvm-corpus.txt` is LLVM's own *test* file
+  -- vectors somebody chose -- and every MSVC corpus here was derived from it.
+  `tools/corpus_sources/msvc/msvc.cpp` is compiled instead, by
+  `clang++ --target=x86_64-pc-windows-msvc` at four standards and two optimisation
+  levels: 123 real symbols, with vftables, RTTI records, thunks through multiple and
+  virtual inheritance, guards, the dynamic initialiser and atexit stubs, the anonymous
+  namespace, local scopes and the extended integer types. Two defects came out of its
+  first run, both in shapes LLVM's vectors do not carry; both are below.
+  `tools/generate_corpus.py` grew `--sources`, `--target`, `--compiler`, `--prefix` and
+  `--defects` to do it, and `tests/conformance/msvc-reference-defects.txt` holds the
+  three names from that run `llvm-undname` cannot read at all.
+
+- **MSVC: a dynamic initializer's name may be qualified.** `demangleInitFiniStub` reads a
+  whole declarator and hands its name to the stub, so `??__Eg@inner@outer@@YAXXZ` is
+  `` `dynamic initializer for 'outer::inner::g'' ``. This read the leading identifier and
+  refused anything after it -- which is every namespace-scope object with a non-trivial
+  constructor, and every function-local static, whose scope is written the same way. The
+  qualified name goes *inside* the quotes, where the reference puts it.
+
 - **MSVC: a member function's qualifiers go inside what its return type wraps.**
   `FunctionSignatureNode::outputPost` writes the parameter list and then the quals, so
   they land inside whatever the return type wraps around the declarator. Appended to the

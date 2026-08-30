@@ -99,7 +99,7 @@ SEEDS = {
     "rust": (["rust-real-world.txt", "rust-toolchain.txt"], "_R"),
     "d": (["d-real-world.txt", "d-libiberty.txt"], "_D"),
     "ada": (["ada-libiberty.txt"], ""),
-    "msvc": (["msvc-llvm-corpus.txt", "msvc-arm64ec.txt"], "?"),
+    "msvc": (["msvc-llvm-corpus.txt", "msvc-arm64ec.txt", "msvc-clang.txt"], "?"),
 }
 
 #: A second reading of the *same* name, for schemes where a divergence from the first

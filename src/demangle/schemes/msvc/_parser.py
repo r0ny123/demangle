@@ -666,13 +666,23 @@ class _Demangler:
                         # a digit there stands for an earlier name, and there is none
                         raise _Bail
                     target = self.identifier()
-                    if not self.eat("@"):
-                        # a plain name may still be qualified, and the whole of that name
-                        # belongs inside the quotes rather than around them
-                        raise _Bail
-                    self.pos -= 1
                     self.rememberName(target)
-                    return f"`{_DYNAMIC_INITIALISERS[code]} '{target}''", "func"
+                    # The variable may be qualified, and the whole of that name belongs
+                    # inside the quotes rather than around them: `demangleInitFiniStub`
+                    # reads a whole declarator and hands its `Name` to the stub, so
+                    # `??__Eg@inner@outer@@YAXXZ` is
+                    # `` `dynamic initializer for 'outer::inner::g'' ``. This read the
+                    # leading identifier and refused anything after it, which is every
+                    # namespace-scope object with a non-trivial constructor -- and every
+                    # function-local static, whose scope is written the same way.
+                    scopes = [target]
+                    while self.peek() != "@":
+                        if self.eof():
+                            raise _Bail
+                        scopes.append(self.nameFragment(False)[0])
+                    scopes.reverse()
+                    spelled = "::".join(scopes)
+                    return f"`{_DYNAMIC_INITIALISERS[code]} '{spelled}''", "func"
                 if self.take() != "K":
                     raise _Bail
                 # a user-defined literal: the identifier after the code is its suffix, and

@@ -185,6 +185,35 @@ Rust `<base-62-number>` read wider than the reference reads one, an MSVC ARM64EC
 stripped until none was left, and MSVC qualifiers written in the order they were read
 rather than the order the reference writes them.
 
+### The MSVC corpus a compiler wrote
+
+`msvc-llvm-corpus.txt` is LLVM's own *test* file: vectors somebody chose, which means it
+carries the shapes its author thought of. `tools/corpus_sources/msvc/msvc.cpp` is
+compiled instead:
+
+```console
+python tools/generate_corpus.py --sources tools/corpus_sources/msvc \
+  --target x86_64-pc-windows-msvc --compiler clang++ --prefix '?' \
+  --tool llvm-undname --name msvc-clang.txt \
+  --defects tests/conformance/msvc-reference-defects.txt
+```
+
+`clang++` can target the MS ABI from a Linux box, so the object file it produces holds
+real MSVC-mangled symbols -- vftables, RTTI records, thunks, guards, the dynamic
+initialiser stubs, the anonymous namespace, local scopes. The source is freestanding
+because that target has no headers here.
+
+Two defects came out of the first run of it, and neither shape is in LLVM's vectors: a
+member function's qualifiers written past what its return type wraps -- `char const (&
+S::b7(void))[2] const`, a const array rather than a const member function -- and a
+dynamic initialiser for a *qualified* variable refused outright, which is every
+namespace-scope object with a non-trivial constructor.
+
+`tests/conformance/msvc-reference-defects.txt` holds the names from that run
+`llvm-undname` cannot read at all, with the declaration as the expected column. The
+generator reads it and excludes them, so a regeneration cannot record the refusal as the
+answer.
+
 ### The Rust reference
 
 `llvm-cxxfilt` and `c++filt` each carry their own Rust reader -- LLVM's is a port of an

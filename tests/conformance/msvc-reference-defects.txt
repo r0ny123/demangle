@@ -1,0 +1,20 @@
+# Conformance corpus: MSVC names `llvm-undname` reads wrongly, or not at all.
+#
+# Every other MSVC corpus here records what `llvm-undname` printed. These cannot, so the
+# expected column is derived from the *declaration* instead -- and the declaration is not
+# a guess: `tools/corpus_sources/msvc/msvc.cpp` is compiled with
+# `clang++ --target=x86_64-pc-windows-msvc`, the symbol is read out of the object file
+# with `nm`, and the spelling is what that source says the symbol's type is.
+#
+# All three are one gap. `_L` and `_M` are `__int128` and `unsigned __int128` in the MS
+# mangling, and `demanglePrimitiveType` in `MicrosoftDemangle.cpp` has neither -- so
+# LLVM's demangler refuses a name LLVM's own compiler emits. Checked against
+# llvm-undname 18.1.3; `tools/generate_corpus.py` reads this file and excludes these, so
+# a regeneration cannot record the refusal as the answer.
+#
+# `?bd@S@@QEBA_L_M@Z` is `__int128 S::bd(unsigned __int128) const`; the other two are the
+# same pair as free-function parameters.
+
+?bd@S@@QEBA_L_M@Z	public: __int128 __cdecl S::bd(unsigned __int128) const
+?alpha@@YAX_L@Z	void __cdecl alpha(__int128)
+?beta@@YAX_M@Z	void __cdecl beta(unsigned __int128)

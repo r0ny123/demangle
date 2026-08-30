@@ -153,6 +153,17 @@ jobs:
         run: |
           python tools/generate_corpus.py --out /tmp/fresh
           python tools/differential.py --corpus /tmp/fresh/itanium-real-world.txt
+      # The same for the MS ABI, which clang can target from here. `msvc-llvm-corpus.txt`
+      # is LLVM's own *test* file -- vectors somebody chose -- so this is the only MSVC
+      # corpus a compiler wrote, and the two defects it found on its first run were both
+      # in shapes those vectors do not carry.
+      - name: Regenerate the MSVC corpus and compare live
+        run: |
+          python tools/generate_corpus.py --out /tmp/fresh --sources tools/corpus_sources/msvc \
+            --target x86_64-pc-windows-msvc --compiler clang++ --prefix '?' \
+            --tool llvm-undname --name msvc-clang.txt \
+            --defects tests/conformance/msvc-reference-defects.txt
+          python tools/differential.py --corpus /tmp/fresh/msvc-clang.txt --language msvc
       # `rustc-demangle` is the implementation the Rust scheme is a port of, and neither
       # of the demanglers installed above is it: LLVM's Rust reader is a port of an older
       # version and binutils' is independent of both. Built before the two steps below so

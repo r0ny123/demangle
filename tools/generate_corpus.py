@@ -39,10 +39,16 @@ def run(command, **kwargs):
     return subprocess.run(command, capture_output=True, text=True, **kwargs)
 
 
-def compile_source(compiler, source, standard, optimisation, out_dir):
+def compile_source(compiler, source, standard, optimisation, out_dir, target=None):
     """Compile one source, returning the object file path or None."""
-    output = out_dir / f"{source.stem}-{compiler}-{standard}-{optimisation.lstrip('-')}.o"
-    result = run([compiler, f"-std={standard}", optimisation, "-c", str(source), "-o", str(output)])
+    tag = f"-{target}" if target else ""
+    output = out_dir / f"{source.stem}-{compiler}{tag}-{standard}-{optimisation.lstrip('-')}.o"
+    command = [compiler, f"-std={standard}", optimisation, "-c", str(source), "-o", str(output)]
+    if target:
+        # Only clang can be asked for another ABI, and it is the only compiler that can
+        # produce an MSVC-mangled object on this box.
+        command.insert(1, f"--target={target}")
+    result = run(command)
     return output if result.returncode == 0 else None
 
 
@@ -73,23 +79,31 @@ def reference_output(tool, names):
     if not shutil.which(tool):
         return {}
     result = run([tool], input="\n".join(names))
-    if result.returncode != 0:
-        return {}
     lines = result.stdout.splitlines()
     if len(lines) == len(names):
         return dict(zip(names, lines, strict=True))
-    if len(lines) == len(names) * 3:
-        return {name: lines[index * 3 + 1] for index, name in enumerate(names)}
+    if tool.endswith("undname"):
+        # Blank-line-separated records rather than three lines a name: a record of one
+        # line is a refusal -- which `llvm-undname` sends to stderr and this run has to
+        # survive, since a corpus is generated exactly where the reference has gaps.
+        answers, record = {}, []
+        for line in [*lines, ""]:
+            if line:
+                record.append(line)
+            elif record:
+                answers[record[0]] = record[1] if len(record) > 1 else record[0]
+                record = []
+        return answers
     return {}
 
 
-def reference_defects():
+def reference_defects(path):
     """The mangled names whose expected spelling is not a reference's to give."""
-    if not REFERENCE_DEFECTS.exists():  # pragma: no cover - only in a partial checkout
+    if not path.exists():  # pragma: no cover - only in a partial checkout
         return frozenset()
     return frozenset(
         line.split("\t", 1)[0]
-        for line in REFERENCE_DEFECTS.read_text(encoding="utf-8").splitlines()
+        for line in path.read_text(encoding="utf-8").splitlines()
         if line and not line.startswith("#") and "\t" in line
     )
 
@@ -99,34 +113,43 @@ def main():
     parser.add_argument("--out", type=Path, default=ROOT / "tests" / "conformance")
     parser.add_argument("--tool", default="llvm-cxxfilt", help="reference demangler")
     parser.add_argument("--name", default="itanium-real-world.txt")
+    parser.add_argument("--sources", type=Path, default=SOURCES, help="directory of .cpp sources")
+    parser.add_argument("--target", default=None, help="compiler target triple, for another ABI")
+    parser.add_argument("--compiler", action="append", help="repeatable; default is clang++ and g++")
+    parser.add_argument("--prefix", action="append", help="mangled-name prefixes to keep")
+    parser.add_argument("--defects", type=Path, default=REFERENCE_DEFECTS, help="names the reference reads wrongly")
     arguments = parser.parse_args()
 
-    if not SOURCES.is_dir():
-        sys.exit(f"no corpus sources at {SOURCES}")
+    sources = arguments.sources
+    compilers = tuple(arguments.compiler) if arguments.compiler else COMPILERS
+    prefixes = tuple(arguments.prefix) if arguments.prefix else ("_Z", "__Z")
+    if not sources.is_dir():
+        sys.exit(f"no corpus sources at {sources}")
 
     build_dir = ROOT / "build" / "corpus"
     build_dir.mkdir(parents=True, exist_ok=True)
 
     mangled = set()
     provenance = []
-    for compiler in COMPILERS:
+    for compiler in compilers:
         if not shutil.which(compiler):
             print(f"skipping {compiler}: not installed")
             continue
         version = run([compiler, "--version"]).stdout.splitlines()[0]
-        provenance.append(f"{compiler}: {version}")
-        for source in sorted(SOURCES.glob("*.cpp")):
+        target = f" --target={arguments.target}" if arguments.target else ""
+        provenance.append(f"{compiler}{target}: {version}")
+        for source in sorted(sources.glob("*.cpp")):
             for standard in STANDARDS:
                 for optimisation in OPTIMISATIONS:
-                    obj = compile_source(compiler, source, standard, optimisation, build_dir)
+                    obj = compile_source(compiler, source, standard, optimisation, build_dir, arguments.target)
                     if obj is None:
                         continue
-                    mangled |= {s for s in symbols_of(obj) if s.startswith(("_Z", "__Z"))}
+                    mangled |= {s for s in symbols_of(obj) if s.startswith(prefixes)}
 
-    excluded = reference_defects()
+    excluded = reference_defects(arguments.defects)
     known_defects = mangled & excluded
     if known_defects:
-        print(f"excluding {len(known_defects)} name(s) the reference reads wrongly; see {REFERENCE_DEFECTS.name}")
+        print(f"excluding {len(known_defects)} name(s) the reference reads wrongly; see {arguments.defects.name}")
     mangled -= excluded
 
     print(f"collected {len(mangled)} distinct mangled symbols")
@@ -144,19 +167,21 @@ def main():
         handle.write("# Each line is a mangled name, a tab, and the spelling the reference\n")
         handle.write("# demangler produces for it. Regenerate with tools/generate_corpus.py.\n#\n")
         handle.write("# Names the reference reads wrongly are excluded; their expected spelling comes\n")
-        handle.write(f"# from the declaration instead, in {REFERENCE_DEFECTS.name}.\n#\n")
+        handle.write(f"# from the declaration instead, in {arguments.defects.name}.\n#\n")
         handle.write(f"# reference: {tool_version}\n")
         for line in provenance:
             handle.write(f"# compiled by: {line}\n")
         handle.write(f"# standards: {', '.join(STANDARDS)}\n")
         handle.write(f"# optimisation: {', '.join(OPTIMISATIONS)}\n#\n")
         for name in ordered:
-            spelled = expected[name]
+            # A name absent from the map is one the reference wrote nothing for, which is
+            # the same thing as echoing it back: there is no answer to record.
+            spelled = expected.get(name, name)
             if spelled == name:
-                continue  # the reference could not read it either; nothing to assert
+                continue
             handle.write(f"{name}\t{spelled}\n")
 
-    kept = sum(1 for n in ordered if expected[n] != n)
+    kept = sum(1 for n in ordered if expected.get(n, n) != n)
     print(f"wrote {kept} pairs to {target}")
 
 

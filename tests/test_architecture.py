@@ -313,11 +313,13 @@ class TestTheToolsAndTheSuiteAgree:
 
     def test_the_generator_excludes_every_settled_name(self):
         """Regenerating a corpus must not re-record a reference's wrong answer."""
-        from .conftest import load_corpus
+        from .conftest import CONFORMANCE, load_corpus
 
-        settled = {mangled for mangled, _ in load_corpus("itanium-reference-defects.txt")}
-        assert settled
-        assert settled <= self.module("generate_corpus").reference_defects()
+        generator = self.module("generate_corpus")
+        for corpus in ("itanium-reference-defects.txt", "msvc-reference-defects.txt"):
+            settled = {mangled for mangled, _ in load_corpus(corpus)}
+            assert settled, corpus
+            assert settled <= generator.reference_defects(CONFORMANCE / corpus), corpus
 
 
 class TestPackaging:
