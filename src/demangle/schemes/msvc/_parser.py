@@ -843,8 +843,8 @@ class _Demangler:
             return apply_qualifiers(Raw(placeholder), quals)
         raise _Bail
 
-    def rendered(self, node, declarator=""):
-        text = render(node, declarator, options=self.options)
+    def rendered(self, node, declarator="", member_cv=""):
+        text = render(node, declarator, options=self.options, member_cv=member_cv)
         if len(text) > self.max_render:
             raise _LimitHit("output length", self.max_render)
         return text
@@ -1427,7 +1427,7 @@ class _Demangler:
         if returns is not None:
             # the bound is enforced where a spelling is completed; the form that writes no
             # return type has nothing wrapped around its parameters to grow one
-            self.rendered(signature, spelled)
+            self.rendered(signature, spelled, self.member_cv)
         return Declaration("[thunk]: ", Name(spelled), signature, self.member_cv, f"{access}: ", "virtual ")
 
     def function(self, name, has_no_return_type, is_vcall=False):
@@ -1484,10 +1484,10 @@ class _Demangler:
                 raise _Bail
             name = name.replace("\0conversion\0", f"operator {self.rendered(returns)}")
         signature = FunctionType(convention, params, returns)
+        trailing = self.member_cv if access and not is_static else ""
         if returns is not None:
             # as in thunkBody: completing the spelling is what refuses one past the bound
-            self.rendered(signature, name)
-        trailing = self.member_cv if access and not is_static else ""
+            self.rendered(signature, name, trailing)
         return Declaration(lead, Name(name), signature, trailing, access_text, storage)
 
 

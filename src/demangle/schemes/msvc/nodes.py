@@ -170,7 +170,7 @@ class Declaration(_Spelled):
         return (self.declarator, self.type)
 
 
-def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OPTIONS):
+def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OPTIONS, member_cv=""):
     """Spell a type around a declarator, the way C nests one inside the other.
 
     A pointer or array binds to the declarator built so far, and a name therefore ends up
@@ -218,7 +218,15 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
             # A variable spelled as its name alone. Its access and storage still print:
             # `public: static C::sm`, which is what the reference gives.
             return lead + node.declarator.text + node.suffix
-        return lead + render(node.type, node.declarator.text, options=options) + node.suffix
+        # The member qualifiers go *inside* whatever the return type wraps around the
+        # declarator, which is where `FunctionSignatureNode::outputPost` writes them:
+        # after the parameter list. Appended out here they came past the wrapping, so
+        # `?b7@S@@QEBAAEAY01$$CBDXZ` -- a const member returning a reference to an array,
+        # which clang emits -- read `char const (& S::b7(void))[2] const`: a const array
+        # rather than a const member function. They stay on the declaration as well,
+        # because they are how the symbol is reached rather than part of its type, and
+        # `signature()` and the tree both read them off it.
+        return lead + render(node.type, node.declarator.text, options=options, member_cv=node.suffix)
     # A function reached as a *pointer's* pointee has its convention printed by the
     # pointer, not by the signature, and the reference's flag never reaches it there:
     # `--no-calling-convention` gives `int (__cdecl * fn(void))(int)`, dropping the one
@@ -231,7 +239,9 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
     # *not printed* keeps the shape it had, so a bare `$$A6A_N_N@Z` reads `__cdecl(bool)`
     # rather than the `__cdecl (bool)` a constructor's spelling would give.
     suppressed = node.returns is not None and not (options.return_type or as_pointee)
-    member_cv = node.member_cv
+    # A declaration threads its own down; a nested function type carries its own and is
+    # never handed one, so the two never collide.
+    member_cv = node.member_cv or member_cv
     params = ", ".join([render(parameter, options=options) for parameter in node.parameters])
     if node.returns is None:
         # the forms that write no return type write nothing around the parameter list

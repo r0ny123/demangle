@@ -761,6 +761,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a member function's qualifiers go inside what its return type wraps.**
+  `FunctionSignatureNode::outputPost` writes the parameter list and then the quals, so
+  they land inside whatever the return type wraps around the declarator. Appended to the
+  declaration instead they came out past the wrapping, and
+  `?b7@S@@QEBAAEAY01$$CBDXZ` -- a const member returning a reference to an array, which
+  `clang++ --target=x86_64-pc-windows-msvc` emits for two lines of ordinary C++ -- read
+  `char const (& __cdecl S::b7(void))[2] const`: a const array rather than a const member
+  function. The same for a pointer to an array, a function pointer and a function
+  reference. They stay on the declaration node as well, because they are how the symbol
+  is reached rather than part of its type, and `signature()` and the tree both read them
+  off it.
+
+  Found by asking the compiler rather than the fuzzer: the mutation sweep flagged the
+  shape, and the symbol that settled it came off an object file.
+
 - **Itanium: only the first pointer to a protocol-qualified `objc_object` is the word
   `id`.** `U <n>objcproto<protocol> <type>` is `objc_object<A>`, and a pointer to it is
   `id<A>` -- `id` *is* the pointer, so it is not written again. Only the first one. This

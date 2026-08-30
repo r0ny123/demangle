@@ -128,22 +128,30 @@ ACCEPTED = {
     # `struct _x` for `struct _` and `x`, which is the declaration of something else.
     # `struct _ {};` is ordinary C++, so this is reachable, and the space is kept.
     "msvc": lambda name, ours, first, second: (
-        first is not None
-        and (
-            ours.replace(" ", "") == first.replace(" ", "")
-            # Or a vftable or vbtable base path with more than one element.
-            # `llvm-undname` reads the first element and drops the rest, so
-            # `??_7A@B@@6BC@D@@@`, `...E@F@@@` and `...E@F@@G@H@@@` -- three symbols
-            # naming three different vtables -- all come back from it as one spelling.
-            # Checked against llvm-undname 16, 18 and 20; the head of
-            # `tests/conformance/msvc-llvm-corpus.txt` carries the whole finding.
-            or ("'s `" in ours and "table'{for `" in ours)
-            # Or a placement delete closure, which `llvm-undname` spells with no name at
-            # all -- `void __cdecl (void *)`. Microsoft's own `undname` writes
-            # `` `placement delete closure' ``, and a declaration with no name in it is
-            # not a spelling to follow. Recognised by putting the name back.
-            or _PLACEMENT_CLOSURE.sub("", ours) == first
+        (
+            first is not None
+            and (
+                ours.replace(" ", "") == first.replace(" ", "")
+                # Or a vftable or vbtable base path with more than one element.
+                # `llvm-undname` reads the first element and drops the rest, so
+                # `??_7A@B@@6BC@D@@@`, `...E@F@@@` and `...E@F@@G@H@@@` -- three symbols
+                # naming three different vtables -- all come back from it as one spelling.
+                # Checked against llvm-undname 16, 18 and 20; the head of
+                # `tests/conformance/msvc-llvm-corpus.txt` carries the whole finding. The
+                # same for an RTTI Complete Object Locator, which carries the same path.
+                or ("'s `" in ours and "'{for `" in ours)
+                # Or a placement delete closure, which `llvm-undname` spells with no name at
+                # all -- `void __cdecl (void *)`. Microsoft's own `undname` writes
+                # `` `placement delete closure' ``, and a declaration with no name in it is
+                # not a spelling to follow. Recognised by putting the name back.
+                or _PLACEMENT_CLOSURE.sub("", ours) == first
+            )
         )
+        # Or `__int128`, which `llvm-undname` 18.1 cannot read and its own compiler
+        # emits: `clang++ --target=x86_64-pc-windows-msvc` writes `_L` for `__int128`
+        # and `_M` for `unsigned __int128`, and `demanglePrimitiveType` has neither.
+        # Checked by compiling one rather than read off a table.
+        or (first is None and ("__int128" in ours))
     ),
     # `c++filt --format=dlang` writes a path separator for a component that spells
     # nothing. An anonymous component and a `__S<n>` compiler scope are left out of the

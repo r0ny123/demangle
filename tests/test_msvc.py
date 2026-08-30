@@ -816,6 +816,46 @@ MUTATION_DECLINED = [
 ]
 
 
+#: Symbols `clang++ --target=x86_64-pc-windows-msvc` actually emits, taken off the object
+#: file rather than written by hand. The member qualifiers go *inside* whatever the return
+#: type wraps around the declarator -- which is where `FunctionSignatureNode::outputPost`
+#: writes them, after the parameter list -- and appending them to the declaration instead
+#: put them past the wrapping: a const array rather than a const member function.
+CLANG_EMITTED = [
+    ("?b7@S@@QEBAAEAY01$$CBDXZ", "public: char const (& __cdecl S::b7(void) const)[2]"),
+    ("?b8@S@@QECAAEAY01$$CBDXZ", "public: char const (& __cdecl S::b8(void) volatile)[2]"),
+    ("?b9@S@@QEBAPEAY01$$CBDXZ", "public: char const (* __cdecl S::b9(void) const)[2]"),
+    ("?ba@S@@QEBAP6AHH@ZXZ", "public: int (__cdecl * __cdecl S::ba(void) const)(int)"),
+    ("?bc@S@@QEBAA6AHH@ZXZ", "public: int (__cdecl & __cdecl S::bc(void) const)(int)"),
+    # An ordinary member keeps the spelling it had, which is the same string either way.
+    ("?f@S@@QEBAXXZ", "public: void __cdecl S::f(void) const"),
+]
+
+#: The same source, and the one symbol in it `llvm-undname` 18.1 cannot read. `_L` and
+#: `_M` are `__int128` and `unsigned __int128`; `demanglePrimitiveType` has neither, so
+#: LLVM's demangler refuses a name LLVM's own compiler emits. Verified by compiling
+#: `__int128 S::bd(unsigned __int128) const` for that target and reading the object file.
+CLANG_EMITTED_LLVM_REFUSES = [
+    ("?bd@S@@QEBA_L_M@Z", "public: __int128 __cdecl S::bd(unsigned __int128) const"),
+    ("?alpha@@YAX_L@Z", "void __cdecl alpha(__int128)"),
+    ("?beta@@YAX_M@Z", "void __cdecl beta(unsigned __int128)"),
+]
+
+
+class MsvcClangEmittedTestSuite(unittest.TestCase):
+    """Names a compiler wrote, which is the only ground truth a demangler has."""
+
+    def test_a_member_qualifier_goes_inside_what_the_return_type_wraps(self):
+        for mangled, expected in CLANG_EMITTED:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_the_int128_codes_are_read_although_the_reference_refuses_them(self):
+        for mangled, expected in CLANG_EMITTED_LLVM_REFUSES:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+
 class MsvcMutationRuleTestSuite(unittest.TestCase):
     """What `tools/mutate.py` found by damaging the reference's own corpus."""
 
