@@ -732,6 +732,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a local static guard's number was read signed.** It counts the static the
+  guard belongs to within its function, so it has no negative. `llvm-undname` 18.1 reads
+  it unsigned and refuses `??_Bx@@5?0`; this read it signed and answered
+  ``x::`local static guard'{-1}``, a scope index that cannot exist. Both the plain and
+  the thread form. Found by enumerating 40 million MSVC names and asking the reference
+  about each one this reads -- of the 306,000 it reads, this and the four below were all
+  that differed.
+
 - **A type in expression position was read as one, and neither reference does that.**
   `_expression` ended with a catch-all: whatever was left that could open a `<type>`, it
   read as one. The comment said array bounds and non-type template arguments arrive

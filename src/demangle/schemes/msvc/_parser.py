@@ -1152,6 +1152,12 @@ class _Demangler:
             # static it guards within its function and is left out when it is the first
             self.expect("5")
             counted = self.templateInteger()
+            if counted.startswith("-"):
+                # The number counts the static this guard belongs to within its
+                # function, so it has no negative. The reference reads it unsigned and
+                # refuses `??_B@5?0`; this read it signed and answered `{-1}`, which
+                # is a scope index that cannot exist.
+                raise _Bail
             if not self.nested and not self.eof():
                 raise _Bail
             return Raw(name if counted == "0" else f"{name}{{{counted}}}")

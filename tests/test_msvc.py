@@ -425,6 +425,15 @@ COMPLETING_FORMS = [
     # a name replaced by a hash of itself, and what may follow it
     ("??@a6a285da2eea70dba6b578022be61d81@", "??@a6a285da2eea70dba6b578022be61d81@"),
     ("??@a6a285da2eea70dba6b578022be61d81@asdf", "??@a6a285da2eea70dba6b578022be61d81@"),
+    # A tag name that does not end in an alphanumeric still needs the space that
+    # separates it from the variable it declares. `llvm-undname` 18.1 writes
+    # `struct _x` here, because its `insertSpaceIfNeeded` emits one only after an
+    # alphanumeric character -- and `struct _x` is the declaration of a variable
+    # called `_x`, which is a different symbol. `struct _ {};` is ordinary C++, so
+    # this is reachable; the reading is kept rather than followed.
+    ("?x@@3U_@@A", "struct _ x"),
+    ("?x@@3V$@@A", "class $ x"),
+    ("?x@@3UA_@@A", "struct A_ x"),
     # a guard, and what runs for a static with a lifetime
     ("??_Bx@@51", "x::`local static guard'{2}"),
     ("??__Jx@@51", "x::`local static thread guard'{2}"),
@@ -437,6 +446,12 @@ COMPLETING_DECLINED = [
     "??$f@$X@@YAXXZ",  # "$" introduces one of a fixed set, and "X" is not among them
     "??_R2Base@@8X",  # nor does the rest of the RTTI family carry anything after its storage
     "??_Bx@@51X",  # nor a guard
+    # A guard's number counts the static it belongs to within its function, so it has no
+    # negative. `llvm-undname` 18.1 reads it unsigned and refuses `?0`; this read it
+    # signed and answered `x::`local static guard'{-1}`, a scope index that cannot exist.
+    "??_Bx@@5?0",
+    "??_Bx@@5?9",
+    "??__Jx@@5?0",
     "??__EFoo@@3HA",  # what runs code takes a signature, never a storage class
     "??_C@_12ABCDEFGH@hi?$AA@",  # a wide literal is two bytes to the character, so never an odd count
     "??_C@_02ABCDEFGH@h?$Qi?$AA@",  # a byte is written as two nibbles from "A" to "P"
