@@ -101,6 +101,99 @@ class TestFindingWhereASymbolWas:
         assert "".join(pieces) == demangle.demangle_text(text)
 
 
+class TestAReadingThatSaysOnlyWhatTheWordSays:
+    """`@Override` is not a symbol, whatever a symbol table would make of it.
+
+    `@Name` is a real Delphi symbol -- a unit-scope routine, which Embarcadero's own
+    `tdump -um` reads as `Name` -- and `@@Name` is a runtime linker procedure, read as
+    `__linkproc__ Name`. 39 of them are in the Delphi corpora, so `demangle()` reads
+    them: there the caller has said the word is a name. `find_symbols` is guessing, and
+    it is run over whole files. `@Override public void f()` came back
+    `Override public void f()`; a Swift signature this library had *just printed* came
+    back with its `@escaping` and `@autoclosure` shaved off; and
+    `typeinfo for X const*@@CXXABI_FLOAT128` came back with `__linkproc__ CXXABI_FLOAT128`
+    where the ELF version had been.
+
+    What those readings have in common is that the identifier survives them whole -- all
+    they add is the marker's name, or nothing at all. The caller can see the identifier
+    already and cannot see whether it was an annotation, so the filter declines them. A
+    reading that says more is untouched, which is why the 475 `._OBJC_CLASS_*` names in
+    the corpus are still found.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "@Override public void f()",
+            "use @property here",
+            "swift @escaping closure",
+            "@safe pure nothrow",
+            "see @param x",
+            "func(@autoclosure () -> Int)",
+            "0000000000001139 T @AddCustomAttrib",
+            ".text and .rodata",
+            "@@AsClass is a linker procedure",
+            "std::cout const*@@CXXABI_FLOAT128",
+            "void f()@GLIBCXX_3.4",
+            "(@Swift.MainActor () -> A)?",
+        ],
+    )
+    def test_the_filter_leaves_it_alone(self, text):
+        assert demangle.demangle_text(text) == text
+        assert list(demangle.find_symbols(text)) == []
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [("@AddCustomAttrib", "AddCustomAttrib"), ("@@AsClass", "__linkproc__ AsClass")],
+    )
+    def test_demangle_still_reads_it_when_asked(self, mangled, expected):
+        """The caller has said it is a symbol; the filter had to decide for itself."""
+        assert demangle.demangle(mangled) == expected
+
+    def test_a_reading_that_says_more_is_still_found(self):
+        assert demangle.demangle_text("lead ._OBJC_CLASS_Alpha319 tail") == ("lead Objective-C class Alpha319 tail")
+
+    def test_a_delphi_name_that_says_more_than_the_marker_is_still_found(self):
+        name = "@%TAutoDriver$24Shdocvw_tlb@IWebBrowser2%@$bnot$xqv"
+        assert demangle.demangle_text(f"lead {name} tail") == (
+            "lead TAutoDriver<Shdocvw_tlb::IWebBrowser2>::operator !() const tail"
+        )
+
+
+class TestTheCharactersAMangledNameMayHold:
+    """The token is as wide as real names need and no wider, measured both ways round.
+
+    `%` and `#` are Delphi's -- a template argument list is `%...%` and a
+    virtual-method-table flag is `#$cf$`. Without them the tokeniser cut 638 readable
+    names of the corpora in half and handed back the pieces that happened to read, which
+    is worse than handing back nothing: `@$bnot$xqv` out of the middle of a name reads as
+    `operator !() const`, a real declaration belonging to a class the fragment no longer
+    names.
+
+    `<` and `>` are not in it, though MSVC writes `<unnamed-type-a>` and `<lambda_0>`.
+    objdump spells a call target `call 1050 <_ZN3foo3barEv>`; a token that takes the
+    brackets in is one no scheme reads, so admitting them to recover 99 corpus names
+    would lose the symbol in the listing this module exists to filter.
+    """
+
+    DELPHI = "@%TAutoDriver$24Shdocvw_tlb@IWebBrowser2%@$bnot$xqv"
+
+    def test_a_delphi_name_is_one_token(self):
+        found = list(demangle.find_symbols(f"lead {self.DELPHI} tail"))
+        assert [item.mangled for item in found] == [self.DELPHI]
+        assert found[0].demangled == "TAutoDriver<Shdocvw_tlb::IWebBrowser2>::operator !() const"
+
+    def test_a_delphi_flag_is_one_token(self):
+        name = "@f@#$cf$@bar"
+        found = list(demangle.find_symbols(f"lead {name} tail"))
+        assert [item.mangled for item in found] == [name]
+        assert found[0].demangled == "f::__vdflg__ bar"
+
+    def test_an_objdump_call_target_is_still_found_inside_its_brackets(self):
+        line = "  4011a6:\tcall   1050 <_ZN3foo3barEv>"
+        assert demangle.demangle_text(line) == "  4011a6:\tcall   1050 <foo::bar()>"
+
+
 class TestTokenisingANameWithASpaceInIt:
     """An Objective-C method is one name, not two words.
 

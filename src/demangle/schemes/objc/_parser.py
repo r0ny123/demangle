@@ -722,6 +722,29 @@ def parse_objc_symbol(name):
     raise DemangleFailure("not an Objective-C symbol")
 
 
+#: The two method manglings whose shape is an ordinary C identifier. See `detect`.
+_METHOD_PREFIXES = ("_i_", "_c_")
+
+
+def _method_prefixed(name):
+    """Whether any strip `_candidates` makes leaves `_i_` or `_c_` at the front.
+
+    The same question as `any(c.startswith(_METHOD_PREFIXES) for c in _candidates(name))`
+    and the same answer, without building the list: `detect` is offered every symbol in
+    a binary and this was two thirds of what it cost -- 1.13us a name over the shipped
+    libstdc++, of which 0.57 was `_candidates` and most of the rest the generator over
+    it. Every strip that production makes is one or two characters off the front, so the
+    offsets are what it does, written out.
+    """
+    if name.startswith(_METHOD_PREFIXES):
+        return True
+    opening = name[:2]
+    # `.` and `_` each strip one character; `l_`, `L_` and `._` strip two.
+    if (opening[:1] == "." or opening[:1] == "_") and name.startswith(_METHOD_PREFIXES, 1):
+        return True
+    return opening in ("l_", "L_", "._") and name.startswith(_METHOD_PREFIXES, 2)
+
+
 def _candidates(name):
     """`name` with each layer of assembler decoration stripped, most-stripped first."""
     found = []
@@ -762,12 +785,7 @@ def detect(name):
         return False
     if name[0] in "-+":
         return _apple_method(name) is not None
-    if (
-        "objc" not in name
-        and "OBJC" not in name
-        and "_block_invoke" not in name
-        and not any(candidate.startswith(("_i_", "_c_")) for candidate in _candidates(name))
-    ):
+    if "objc" not in name and "OBJC" not in name and "_block_invoke" not in name and not _method_prefixed(name):
         return False
     try:
         return parse_objc_symbol(name) is not None

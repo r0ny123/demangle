@@ -882,6 +882,47 @@ All notable changes to this project are recorded here. The format follows
   only the label was wrong; `detect` is a public answer of its own, and a caller labelling
   a symbol table gets that answer and no second chance.
 
+- **The text filter rewrote Java annotations, Python decorators and Swift attributes.**
+  `@Name` is a real Delphi symbol -- Embarcadero's `tdump -um` reads it as `Name`, and 33
+  of them are in the corpus -- and it is also `@Override`, `@property`, `@escaping` and
+  `@param`. `find_symbols` and `demangle_text` are run over whole files, so
+  `@Override public void f()` came back `Override public void f()`, and a Swift signature
+  this library had just printed came back with its `@escaping` and `@autoclosure` shaved
+  off, and `typeinfo for X const*@@CXXABI_FLOAT128` came back with `__linkproc__
+  CXXABI_FLOAT128` where the ELF version had been -- a version suffix this library prints
+  on every versioned symbol. What those readings have in common is that the identifier
+  survives them whole: all they add is the marker's name, or nothing at all. The caller
+  can see the identifier already and cannot see whether it was an annotation, so the
+  filter now declines them. A reading that says more is untouched, which is why the 475
+  `._OBJC_CLASS_*` names in the corpus are still found. `demangle()` still reads them:
+  there the caller has said the word is a name. Pinned by a test over every corpus --
+  seven spellings are still rewritten, all of them pre-Itanium names whose demangling
+  contains a component that really is symbol-shaped, and a filter over prose cannot be a
+  fixed point in general.
+
+- **The text filter cut Delphi names in half.** `find_symbols` and `demangle_text`
+  tokenise a line before offering the words to the library, and the token held no `%` or
+  `#` -- which Delphi writes for a template argument list and a virtual-method-table
+  flag. 638 readable names of the corpora came apart, and the pieces that happened to
+  read were handed back as symbols: `@%TAutoDriver$24Shdocvw_tlb@IWebBrowser2%@$bnot$xqv`
+  reported `@$bnot$xqv` as `operator !() const`, a real declaration belonging to a class
+  the fragment no longer names. Both are in the token now. `<` and `>` are deliberately
+  still out, though MSVC writes `<unnamed-type-a>` and `<lambda_0>`: objdump spells a
+  call target `call 1050 <_ZN3foo3barEv>`, and a token that takes the brackets in is one
+  no scheme reads, so the 99 names they would recover cost the symbol in the listing this
+  module exists to filter. Measured both ways round, over the corpora and over synthetic
+  `nm`, objdump and crash-log lines.
+
+- **Objective-C: detection cost two thirds of what it was.** The screen asked whether
+  any layer of assembler decoration leaves `_i_` or `_c_` at the front, and asked it by
+  building the candidate list and running a generator over it -- on every symbol in a
+  binary, since this scheme declares no first character. Every strip that production
+  makes is one or two characters off the front, so the offsets are written out instead:
+  1.13us a name over the shipped libstdc++ becomes 0.43, and detection across all the
+  schemes offered a lower-case name drops from 3.51us to 3.15. The predicate is
+  unchanged, checked against the list form over 301,313 strings -- every corpus name,
+  every string up to five characters over a telling alphabet, and 200,000 random ones.
+
 - **Rust: 234,000 fewer interpreter calls over the Rust corpus.** The three `skip_*`
   productions still kept their depth guard in a wrapper around an inner method, which is
   two frames per production on a pass whose whole job is to validate; `namespace` is one

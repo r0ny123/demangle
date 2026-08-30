@@ -465,6 +465,39 @@ def test_a_style_does_not_decide_whether_a_name_parses(corpus):
     assert differ == []
 
 
+#: How many demangled spellings the text filter rewrites again, over every corpus. Pinned
+#: rather than driven to zero: a filter over prose cannot be a fixed point in general,
+#: because a demangled name can contain a word that really is symbol-shaped. All seven
+#: are pre-Itanium, where `T5__pt__11_PFiPPdPv_i` -- a component of a name libiberty
+#: spells with the mangling still in it -- reads as a name of its own.
+FILTER_REWRITES_AGAIN = 7
+
+
+@pytest.mark.parametrize("corpus", _every_corpus())
+def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
+    """`demangle_text` over a spelling this library produced should leave it alone.
+
+    It is the second pass a user gets by accident -- a log file that already went through
+    the filter, a demangled name pasted into a report -- and it was corrupting output:
+    `@escaping`, `@autoclosure` and `@Swift.MainActor` lost their `@` to Delphi's
+    unit-scope routine, and `@GLIBCXX_3.4` and `@@CXXABI_FLOAT128`, which this library
+    prints on every versioned symbol, lost theirs to the same rule. 89 of the first 20,000
+    corpus names were affected. `FILTER_REWRITES_AGAIN` is what is left.
+    """
+    rewritten = []
+    for mangled, _ in load_corpus(corpus):
+        try:
+            spelled = demangle.demangle_strict(mangled)
+        except demangle.DemanglingError:
+            continue
+        if demangle.demangle_text(spelled) != spelled:
+            rewritten.append(mangled)
+    if corpus == "gnuv2-libiberty.txt":
+        assert len(rewritten) == FILTER_REWRITES_AGAIN, rewritten
+    else:
+        assert rewritten == []
+
+
 class TestAgainstLibcxxabisOwnCorpus:
     """LLVM's own Itanium vectors -- the reference measuring itself.
 

@@ -209,3 +209,40 @@ class TestTree:
             demangle.demangle_strict(".objc_category_RootExtra")
         with pytest.raises(demangle.DemanglingError):
             demangle.parse(".objc_category_RootExtra")
+
+
+class TestTheMethodShapeScreen:
+    """`_i_`/`_c_` after every strip `_candidates` makes, computed without the list.
+
+    `detect` is offered every symbol in a binary, and asking the question by building
+    the candidate list and running a generator over it was two thirds of what it cost:
+    1.13us a name over the shipped libstdc++, against 0.43 for the same predicate
+    written out. These pin that it *is* the same predicate -- the strips are one or two
+    characters off the front, and each of them is a case here.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("_i_Object_class", True),
+            ("_c_Object_class", True),
+            ("__i_Object_class", True),  # the leading underscore a Mach-O table adds
+            ("._i_Object_class", True),  # an ELF object built for GNUstep
+            ("l__i_Object_class", True),  # an assembler-local label
+            ("L__i_Object_class", True),
+            ("._i_", True),
+            ("x_i_Object_class", False),  # not at the front of any candidate
+            ("__x_i_Object", False),
+            ("l_x_i_Object", False),
+            ("_i", False),
+            ("", False),
+            ("_", False),
+            ("l_", False),
+        ],
+    )
+    def test_the_written_out_screen_agrees_with_the_candidate_list(self, name, expected):
+        from demangle.schemes.objc._parser import _candidates, _method_prefixed
+
+        assert _method_prefixed(name) is expected
+        listed = any(candidate.startswith(("_i_", "_c_")) for candidate in _candidates(name)) if name else False
+        assert listed is expected
