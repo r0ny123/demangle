@@ -71,11 +71,17 @@ class ParameterReference:
     the parser that turns one of these back into a handle.
     """
 
-    __slots__ = ("index", "level")
+    __slots__ = ("index", "level", "symbolic")
 
-    def __init__(self, index, level=0):
+    def __init__(self, index, level=0, symbolic=None):
         self.index = index
         self.level = level
+        #: The parameter's own mangled text, where it was read inside a requires-clause
+        #: under a style that substitutes the bound argument. The clause's scope can be
+        #: gone by the time a later `S_` names the entry, and this is what stands in --
+        #: the spelling the other style uses throughout. None everywhere else, which is
+        #: every entry outside a clause.
+        self.symbolic = symbolic
 
     def __repr__(self):  # pragma: no cover - debugging aid
         name = "T" + ("" if self.index == 0 else str(self.index - 1))

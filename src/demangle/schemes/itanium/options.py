@@ -52,6 +52,12 @@ class ItaniumOptions:
     llvm-cxxfilt prints `T` where GNU c++filt substitutes the bound argument. The clause
     itself is never printed, but it contributes entries to the substitution table that
     the signature refers back to, so the choice is visible in the output.
+
+    A clause names parameters of enclosing templates, and not all of them are in scope --
+    which is the reason llvm-cxxfilt spells them symbolically in the first place. Where
+    there is nothing to substitute, this falls back to that spelling rather than refusing
+    the name: an option chooses how a name is spelled and must not change which names
+    read at all.
     """
 
     gnu_nullptr_spelling: bool = False

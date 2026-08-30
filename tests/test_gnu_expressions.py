@@ -206,3 +206,57 @@ def test_a_fold_expression_is_spelled_the_way_each_reference_spells_it(mangled, 
     """
     assert demangle.demangle_strict(mangled, style="llvm") == llvm
     assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+
+class TestAConstraintParameterUnderTheGnuStyle:
+    """`symbolic_constraint_parameters` decides a spelling, not whether a name parses.
+
+    GNU c++filt substitutes the argument bound to a `<template-param>` inside a
+    requires-clause; llvm-cxxfilt spells the parameter by its own mangled name, because
+    not every enclosing template's parameters are in scope. Resolving one that is not
+    bound used to refuse the whole name, so twelve corpus names read under `--style llvm`
+    and came back mangled under `--style gnu` -- among them `std::pair`'s constrained
+    constructor, which is what GCC 13 emits for the real `std::pair`. GNU c++filt 2.42
+    refuses every one of these itself, so there is no reference answer to follow here;
+    what there is, is the rule that a style cannot decide the grammar.
+    """
+
+    PAIR = "_ZNSt4pairIidEC2IidQaacl16_S_constructibleITL0__TL0_0_EEntcl10_S_danglesIS2_S3_EEEEOT_OT0_"
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            PAIR,
+            "_ZN5test21hIvEEvzQ4TrueITL0__E",
+            "_ZN5test21AIiEF1gIvEEvzQaa4TrueIT_E4TrueITL0__E",
+            "_ZN5test21jIvQ4TrueITL0__EEEvz",
+        ],
+    )
+    def test_both_styles_read_it(self, mangled):
+        for style in ("llvm", "gnu"):
+            assert demangle.demangle_strict(mangled, style=style)
+
+    def test_the_clause_is_not_printed_and_the_declaration_is_the_same(self):
+        """The clause never reaches the output, so the two styles agree on the name."""
+        assert demangle.demangle_strict(self.PAIR, style="llvm") == (
+            "std::pair<int, double>::pair<int, double>(int&&, double&&)"
+        )
+        assert demangle.demangle_strict(self.PAIR, style="gnu") == (
+            "std::pair<int, double>::pair<int, double>(int&&, double&&)"
+        )
+
+    def test_a_template_id_inside_a_clause_does_not_become_the_parameter_scope(self):
+        """A clause names no entity, so what it mentions must not install a `T_` scope.
+
+        `R 11SmallerThan I Li1234E E` is a nested requirement; its `1234` became what the
+        *next* requirement's `T_` resolved to, so a type requirement naming `T` printed
+        `typename 1234` -- a plausible spelling of something the name does not say.
+        """
+        mangled = (
+            "_Z1fIiEviQrqXcvT__EXfp_Xeqfp_cvS0__EXplcvS0__ELi1ER5SmallXmicvS0__ELi1ENXmlcvS0__ELi2EN"
+            "R11SmallerThanILi1234EETS0_T1XIS0_ETNS3_4typeETS2_IiEQ11SmallerThanIS0_Li256EEE"
+        )
+        gnu = demangle.demangle_strict(mangled, style="gnu")
+        assert "typename int; typename X<int>; typename X<int>::type; typename X<int>;" in gnu
+        assert "requires SmallerThan<int, 256>;" in gnu
+        assert "1234" in gnu  # the nested requirement itself still says what it says

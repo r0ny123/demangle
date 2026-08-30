@@ -182,9 +182,16 @@ jobs:
       # here reproduces with the same `--seed` and `--count` locally.
       - name: Mutate real symbols and compare against the references
         # Pinned in both directions, like the conformance corpora: a new divergence
-        # fails, and so does a stale pin after one is fixed. The three are named in the
+        # fails, and so does a stale pin after one is fixed. The two are named in the
         # tool's own docstring, with why each is still open.
         run: python tools/mutate.py --count 20000 --quiet --expect 2
+      # The same mutants, put to the library instead of to a reference. What it checks
+      # has no reference to ask: that a *style* cannot decide whether a name parses,
+      # that the tree spells what the text spells, and that no public entry point
+      # raises anything but a DemanglingError on a name `demangle` read. The first of
+      # those was broken for twelve corpus names when this was written.
+      - name: Check the invariants no reference can be asked about
+        run: python tools/invariants.py --count 20000 --quiet
 
   cross-reference:
     name: cross-version reference check

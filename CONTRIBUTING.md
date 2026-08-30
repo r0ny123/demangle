@@ -156,6 +156,17 @@ almost all of its parent's structure, so it lands *near* the emitted space rathe
 the grammar's cheap corners, which is where a substitution table gets corrupted rather
 than merely emptied. The draw is seeded, so a failure reproduces exactly.
 
+```console
+python tools/invariants.py                # the same mutants, put to the library itself
+```
+
+`tools/invariants.py` reuses those mutants and asks what no reference can be asked: that
+a *style* decides a spelling and never whether a name parses, that `parse(name).spell()`
+is what `demangle(name)` returns in every style, and that `signature`, `demangleb` and
+`parse().to_dict()` raise nothing but a `DemanglingError` on a name `demangle` read. The
+first of those was broken for twelve corpus names when the tool was written -- the GNU
+style refused `std::pair`'s constrained constructor that the llvm style read.
+
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
 corpora are pinned. Two stand at the default draw, and the tool's own docstring names

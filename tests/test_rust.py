@@ -239,3 +239,31 @@ class TestTheRecordedDifferencesAgainstTheTool:
         """Sixteen hex digits behind `17h`, which is every hash in a real binary."""
         assert demangle.detect("_ZN3foo17h05af221e174051e9E") == "rust"
         assert demangle.demangle("_ZN3foo17h05af221e174051e9E") == "foo"
+
+
+class TestWhatOpensAVZeroName:
+    """`_R` is not on its own enough to claim a name.
+
+    `<symbol-name> ::= _R <path> [<instantiating-crate>]`, and every `<path>` production
+    opens with one of seven letters. Without that second character the plugin claimed
+    CodeWarrior's `__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>`, which is in this
+    package's own corpus: the parse failed and `demangle` fell through to the scheme that
+    owns it, so the spelling was right and `detect` -- a public answer of its own, and the
+    only one a caller labelling a symbol table gets -- named the wrong scheme.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["_RNvC1a1f", "__RNvC1a1f", "_RC1a", "_RB0_", "_RIC1aE", "_RMC1aC1b", "_RXC1aC1bC1c", "_RYC1aC1b"],
+    )
+    def test_every_path_production_is_still_claimed(self, mangled):
+        assert demangle.detect(mangled) == "rust"
+
+    @pytest.mark.parametrize("mangled", ["_R", "__R", "_RT", "_Rv", "_R$", "__RTTI__3Foo"])
+    def test_a_name_that_opens_no_path_is_left_alone(self, mangled):
+        assert demangle.detect(mangled) != "rust"
+
+    def test_the_codewarrior_symbol_goes_to_codewarrior(self):
+        mangled = "__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>"
+        assert demangle.detect(mangled) == "codewarrior"
+        assert demangle.demangle(mangled) == "TObjOwnerDerivedFromIObj<CStringTable>::__RTTI"

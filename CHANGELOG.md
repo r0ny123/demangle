@@ -839,6 +839,45 @@ All notable changes to this project are recorded here. The format follows
   pinned in `tests/test_types.py` and carried as an `ACCEPTED` rule in
   `tools/enumerate.py` with the reason.
 
+- **`tools/invariants.py`: the mutants, put to the library instead of to a reference.**
+  Some properties have no reference to ask about -- that a style decides a spelling and
+  never whether a name parses, that `parse(name).spell()` is what `demangle(name)`
+  returns in every style, that `signature`, `demangleb` and `parse().to_dict()` raise
+  nothing but a `DemanglingError` on a name `demangle` read. It reuses `tools/mutate.py`'s
+  seeds, operators and alphabets and changes only the oracle; the first invariant was
+  broken for twelve corpus names when it was written, and it reports exactly those on the
+  parser as it stood and nothing on the parser as it is. CI runs it beside the mutation
+  check.
+
+- **Itanium: the output style decided whether a name parses.** GNU c++filt substitutes
+  the argument bound to a `<template-param>` inside a requires-clause where llvm-cxxfilt
+  spells the parameter by its own mangled name, and that is the
+  `symbolic_constraint_parameters` option. Under the GNU style a parameter that resolved
+  to nothing -- which is most of what clang emits constraints for, since a clause names
+  parameters of enclosing templates that are not all in scope -- refused the whole name.
+  Twelve names in the corpora read under `--style llvm` and came back mangled under
+  `--style gnu`, `std::pair`'s constrained constructor among them, which is what GCC 13
+  emits for the real `std::pair`. What cannot be substituted now falls back to the
+  spelling the other style uses, and `tests/test_conformance.py` checks the invariant
+  over every corpus: a style is a spelling policy and cannot change what the grammar
+  accepts.
+
+- **Itanium: a template-id inside a requires-clause installed a `T_` scope.** A clause
+  names no entity, so what it mentions is a type mentioned in passing -- but its
+  arguments became the innermost template scope, so in
+  `Q ... R 11SmallerThan I Li1234E E T S0_ ...` the nested requirement's `1234` was what
+  the *next* requirement's `T_` resolved to, and a type requirement naming `T` printed
+  `typename 1234`. Only visible under a style that substitutes rather than spells,
+  which is why it surfaced with the fix above.
+
+- **Rust: `_R` alone claimed a name that was not Rust's.** `<symbol-name> ::= _R <path>`,
+  and every `<path>` production opens with one of seven letters; the screen tested only
+  the prefix, so `detect` answered `rust` for CodeWarrior's
+  `__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>` -- a name in this package's own
+  corpus. `demangle` fell through to the scheme that owns it and spelled it correctly, so
+  only the label was wrong; `detect` is a public answer of its own, and a caller labelling
+  a symbol table gets that answer and no second chance.
+
 - **Rust: 234,000 fewer interpreter calls over the Rust corpus.** The three `skip_*`
   productions still kept their depth guard in a wrapper around an inner method, which is
   two frames per production on a pass whose whole job is to validate; `namespace` is one

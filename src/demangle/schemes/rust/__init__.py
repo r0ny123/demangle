@@ -24,7 +24,7 @@ from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from ._dispatch import ManglingType, RustDemangler, TypeNotFoundError
 from ._legacy import UnableToLegacyDemangle
-from ._v0 import OutputTooLong, UnableTov0Demangle
+from ._v0 import _PATH_TAGS, OutputTooLong, UnableTov0Demangle
 
 _DEMANGLER = RustDemangler()
 
@@ -44,13 +44,29 @@ _LEGACY_HASH_DIGITS = 16
 #: is what keeps this from claiming those.
 _LEGACY_ESCAPE = re.compile(r"\$[A-Za-z0-9]{1,8}\$")
 
+#: What a v0 name is `_R` and: `<symbol-name> ::= _R <path> [<instantiating-crate>]`, and
+#: every `<path>` production opens with one of these seven letters. `B` is the
+#: back-reference, which cannot be the first thing in a name but is one character to test
+#: for and is refused a line later by the parser rather than by the screen.
+_V0_PATH_START = frozenset(_PATH_TAGS | {"B"})
+
 
 def detect(name):
     """Cheap test for a Rust mangled name.
 
-    v0 is unambiguous: nothing else uses `_R`. Legacy shares Itanium's `_ZN` prefix, so
-    it additionally requires evidence that the name is Rust's -- without that this plugin
-    would claim every C++ symbol it was offered.
+    v0 needs its prefix *and* the letter that opens a `<path>`, which is one of seven.
+    `_R` on its own is not enough: CodeWarrior writes `__RTTI__40TObjOwnerDerivedFromIObj
+    <12CStringTable>` and this claimed it, so `detect` named the wrong scheme for a
+    symbol in this package's own corpus. The parse then failed and `demangle` fell
+    through to the scheme that owns it, which is why the spelling was right and the
+    label was not -- but `detect` is a public answer in its own right, and a caller
+    labelling a symbol table gets that answer and no second chance. Nothing is lost by
+    the narrower test: a v0 name that does not open a `<path>` is one the parser refuses
+    on its next step.
+
+    Legacy shares Itanium's `_ZN` prefix, so it additionally requires evidence that the
+    name is Rust's -- without that this plugin would claim every C++ symbol it was
+    offered.
 
     Two kinds of evidence, either of which is enough:
 
@@ -79,7 +95,8 @@ def detect(name):
     if not name:
         return False
     if name.startswith(("_R", "__R")):
-        return True
+        opening = name[3:4] if name[1] == "_" else name[2:3]
+        return opening in _V0_PATH_START
     if not name.startswith(("_ZN", "__ZN", "ZN")):
         return False
     marker = name.rfind(_LEGACY_HASH_MARKER)

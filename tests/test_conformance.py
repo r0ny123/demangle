@@ -435,6 +435,36 @@ def test_the_tree_spells_what_the_fast_path_spells(corpus, style):
         assert tree.spell(style=style) == demangle.demangle(mangled, style=style), mangled
 
 
+@pytest.mark.parametrize("corpus", _every_corpus())
+def test_a_style_does_not_decide_whether_a_name_parses(corpus):
+    """A style is a spelling policy. It must not change what the grammar accepts.
+
+    It did, for twelve names -- eleven of libcxxabi's own C++20 vectors and `std::pair`'s
+    constrained constructor, which is what GCC 13 emits for the real `std::pair`. GNU
+    c++filt substitutes the argument bound to a `<template-param>` inside a
+    requires-clause where llvm-cxxfilt spells the parameter symbolically, so the GNU
+    style resolves one -- and a clause names parameters of enclosing templates that are
+    not all in scope. Failing to resolve refused the whole name, so `--style llvm` read
+    it and `--style gnu` handed the symbol back mangled. What cannot be substituted now
+    falls back to the spelling the other style uses.
+
+    Checked over every corpus rather than over the C++ ones, because the invariant
+    belongs to the library and not to one scheme.
+    """
+    differ = []
+    for mangled, _ in load_corpus(corpus):
+        read = {}
+        for style in demangle.styles():
+            try:
+                demangle.demangle_strict(mangled, style=style)
+                read[style] = True
+            except demangle.DemanglingError:
+                read[style] = False
+        if len(set(read.values())) > 1:
+            differ.append((mangled, read))
+    assert differ == []
+
+
 class TestAgainstLibcxxabisOwnCorpus:
     """LLVM's own Itanium vectors -- the reference measuring itself.
 

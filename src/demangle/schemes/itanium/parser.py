@@ -1192,11 +1192,14 @@ class ItaniumParser:
                 # docs/specs/.
                 reader.take()
                 outer_constraint = self._in_constraint
+                outer_naming = self._naming
                 self._in_constraint = True
+                self._naming = False
                 try:
                     self.expression()
                 finally:
                     self._in_constraint = outer_constraint
+                    self._naming = outer_naming
                     self._prefix_bare = None
                 return False, module
 
@@ -1821,7 +1824,12 @@ class ItaniumParser:
             # recorded; those differ whenever the back-reference is read under a
             # different template scope. `bind_template_param` does the pack handling
             # `_pack_aware` would, so it is not applied twice. See `ParameterReference`.
-            return self.bind_template_param(entry.index, entry.level)
+            if entry.symbolic is None:
+                return self.bind_template_param(entry.index, entry.level)
+            try:
+                return self.bind_template_param(entry.index, entry.level)
+            except ParseError:
+                return self.builder.raw(entry.symbolic)
         if kind is DeferredProduction:
             # The same, for a component built *over* a parameter. See
             # `DeferredProduction`.
@@ -1887,12 +1895,43 @@ class ItaniumParser:
         index = 0 if reader.peek() == "_" else reader.integer(allow_negative=False) + 1
         reader.expect("_")
 
-        if self._in_constraint and self.options.symbolic_constraint_parameters:
+        if self._in_constraint:
             # Inside a requires-clause the references spell a parameter by its own
             # mangled name -- `T_` is `T`, `TL0__` is `TL0_` -- rather than substituting
             # the argument bound to it, because not every enclosing template's
             # parameters are tracked well enough to substitute reliably.
-            return self.builder.raw(reader.text[begin : reader.pos - 1]), None
+            symbolic = reader.text[begin : reader.pos - 1]
+            if self.options.symbolic_constraint_parameters:
+                return self.builder.raw(symbolic), None
+            # GNU c++filt substitutes the bound argument instead, and where a clause
+            # names a parameter of an enclosing template there may be nothing bound to
+            # it: `TL0__` inside `Q` on a member of `A<int>`, which is most of what
+            # clang emits constraints for. Refusing there made the *output style* decide
+            # whether a name parses -- twelve names in the corpora, `std::pair`'s
+            # constrained constructor among them, read under `--style llvm` and came
+            # back mangled under `--style gnu`. A style is a spelling policy; the
+            # grammar is the same either way, so what cannot be substituted falls back
+            # to the spelling the other style uses. `_parameter_uses` is put back with
+            # it, so the two paths defer the same productions.
+            #
+            # The reference this records carries the symbolic text with it: the entry is
+            # re-read when a later `S_` names it, and by then the clause's scope may be
+            # gone -- the same refusal one production further on. See `substitution`.
+            uses = self._parameter_uses
+            try:
+                bound = self.bind_template_param(index, level)
+            except ParseError:
+                bound = self.builder.raw(symbolic)
+                reference = None
+            else:
+                reference = ParameterReference(index, level, symbolic)
+            # `_parameter_uses` is put back either way, so a production inside a clause
+            # is not marked scope-dependent and deferred. The symbolic path does not
+            # count one -- it never asks what the parameter is bound to -- and a clause
+            # whose entries were deferred here re-read them later under the signature's
+            # scope, which spelled `typename 1234` for a type requirement naming `T`.
+            self._parameter_uses = uses
+            return bound, reference
         return self.bind_template_param(index, level), ParameterReference(index, level)
 
     def bind_template_param(self, index, level=0):
@@ -2637,11 +2676,14 @@ class ItaniumParser:
             # The concept's own arguments are constraint operands, and the reference
             # spells a parameter inside one by its own mangled name.
             outer = self._in_constraint
+            outer_naming = self._naming
             self._in_constraint = True
+            self._naming = False
             try:
                 concept = self.builder.spell(self.name()[0])
             finally:
                 self._in_constraint = outer
+                self._naming = outer_naming
             binding = self._declare("T", params)
             return binding, f"{concept} {ellipsis}{binding}"
         if pair == "Tn":
@@ -2805,11 +2847,14 @@ class ItaniumParser:
             # the substitution table; neither reference prints it.
             reader.take()
             outer_constraint = self._in_constraint
+            outer_naming = self._naming
             self._in_constraint = True
+            self._naming = False
             try:
                 self.expression()
             finally:
                 self._in_constraint = outer_constraint
+                self._naming = outer_naming
             return None, False
 
         if char == "X":
@@ -3241,11 +3286,20 @@ class ItaniumParser:
         reference does for the same reason.
         """
         outer = self._in_constraint
+        outer_naming = self._naming
         self._in_constraint = True
+        # A clause names no entity, so a template-id inside it is a type mentioned in
+        # passing and its arguments must not become the `T_` scope. They did, and under
+        # a style that substitutes a constraint parameter rather than spelling it
+        # symbolically the effect was visible: in `Q ... R 11SmallerThan I Li1234E E
+        # T S0_ ...` the nested requirement's `1234` became what the *next* requirement's
+        # `T_` resolved to, so a type requirement naming `T` printed `typename 1234`.
+        self._naming = False
         try:
             return self.expression()
         finally:
             self._in_constraint = outer
+            self._naming = outer_naming
 
     def expression_text(self):
         """An expression where the grammar around it needs characters, not a shape.
