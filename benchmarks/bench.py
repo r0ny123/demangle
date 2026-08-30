@@ -13,6 +13,16 @@ profiles and only the first is what a naive benchmark reports:
   warm        names repeat, as they do in a real symbol table
   negative    names that are not mangled at all -- the majority in most binaries
   structured  building a full AST rather than a string
+
+`--calls` is a second instrument for the same corpora, and it exists because the clock
+here cannot resolve everything worth doing. This machine's spread between runs of the
+same code is 15-25% (see `PIVOT` below), so a change that removes a tenth of the work is
+invisible to `--check`: six interleaved before/after runs of one such change put both
+sides at 75-77us per name with 63-82us of noise around them. The number of Python-level
+calls a corpus costs is exactly reproducible on a given interpreter, and fewer calls for
+the same output is strictly less work, so it reports what the clock cannot. It is a
+report and not a gate: the count moves with the interpreter version as well as with this
+package, and a gate that fails on someone else's Python would be worse than none.
 """
 
 import argparse
@@ -273,11 +283,43 @@ def report(results):
     print(f"\ncalibration: {results['calibration']['seconds'] * 1e3:.2f}ms for {CALIBRATION_ROUNDS:,} rounds")
 
 
+def calls():
+    """Python-level calls per name, per phase. Deterministic; see the module docstring."""
+    import cProfile
+    import pstats
+
+    counted = {}
+    _, cases = benchmarks()
+    for name, function, count in cases:
+        if not count:
+            continue
+        demangle.cache_clear()
+        function()  # Warm any lazy import, which is not what this is counting.
+        profiler = cProfile.Profile()
+        demangle.cache_clear()
+        profiler.enable()
+        function()
+        profiler.disable()
+        counted[name] = (pstats.Stats(profiler).total_calls, count)
+    return counted
+
+
+def report_calls(counted):
+    print(f"{'benchmark':12} {'names':>8} {'calls':>14} {'per name':>10}")
+    for name, (total, count) in counted.items():
+        print(f"{name:12} {count:>8} {total:>14,} {total / count:>10.1f}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--save", action="store_true", help="record these numbers as the baseline")
     parser.add_argument("--check", action="store_true", help="fail if slower than the baseline")
+    parser.add_argument("--calls", action="store_true", help="report calls per name instead of timing")
     arguments = parser.parse_args()
+
+    if arguments.calls:
+        report_calls(calls())
+        return 0
 
     results = run()
     report(results)

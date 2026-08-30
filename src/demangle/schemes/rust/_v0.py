@@ -549,6 +549,11 @@ class Parser:
     # 82,000 times over the Rust corpus for an interpreter frame around a call, so the
     # nine sites that wanted it call `opt_integer_62("s")` themselves. The production is
     # `<disambiguator> ::= "s" <base-62-number>` and that is what they read.
+    #
+    # Three quarters of those calls -- 59,000 of the 82,000 -- find no `s` at all and
+    # return zero, so the sites on the two hot paths test for the tag before making the
+    # call rather than paying a frame to be told the production is absent. The test is
+    # `opt_integer_62`'s own first two lines, and the call still reads the number.
 
     def namespace(self) -> Optional[str]:
         at = self.next_val
@@ -571,12 +576,17 @@ class Parser:
 
         return Parser(self.inn, i)
 
-    def ident(self):
+    def ident(self, build=True):
         """A `<identifier>`: an optional `u`, a decimal length, an optional `_`, the text.
 
         Written out rather than composed from `eat` and `digit_10` because it runs once
         per path component of every symbol -- 78,000 times over the Rust corpus -- and
         each of those helpers is an interpreter frame around a bounds test.
+
+        `build` is False on the skip pass, which validates the production and throws the
+        `Ident` away: half of those 78,000 objects, each with a list of its own, were
+        allocated to be discarded. What is read, and what is refused, is the same either
+        way -- there is one implementation of the production and this is it.
         """
         inn, end = self.inn, self.end
         at = self.next_val
@@ -622,18 +632,16 @@ class Parser:
         if is_punycode:
             if "_" in ident:
                 i = ident.rindex("_")
-                idt = Ident(ident[:i], ident[i + 1 :])
+                ascii_part, punycode = ident[:i], ident[i + 1 :]
             else:
-                idt = Ident("", ident)
+                ascii_part, punycode = "", ident
 
-            if not idt.punycode:
+            if not punycode:
                 raise UnableTov0Demangle(inn)
 
-            return idt
+            return Ident(ascii_part, punycode) if build else None
 
-        else:
-            idt = Ident(ident, "")
-            return idt
+        return Ident(ident, "") if build else None
 
     # The three `skip_*` productions kept the depth guard in a wrapper that called an
     # inner method, which is two interpreter frames per production on a pass whose whole
@@ -646,54 +654,62 @@ class Parser:
             raise UnableTov0Demangle(self.inn)
         self.depth = depth + 1
         try:
-            self._skip_path_inner()
+            at = self.next_val
+            if at >= self.end:
+                raise UnableTov0Demangle(self.inn)
+            val = self.inn[at]
+            self.next_val = at + 1
+            # Ordered by how often each arm is taken over the Rust corpus: a nested path
+            # is 54% of them and a crate root another 17%, and both used to be found by
+            # walking a chain written in the grammar's order.
+            if val == "N":
+                # `namespace` inlined: it is one character, and this runs 59,000 times
+                # over the Rust corpus for a frame around a bounds test. The input is
+                # ASCII -- `sanity_check` refuses anything else before a parser is built
+                # -- so "a letter" and "upper or lower" are the same test here, and the
+                # skip pass has no use for which it was.
+                at = self.next_val
+                if at >= self.end or not self.inn[at].isalpha():
+                    raise UnableTov0Demangle(self.inn)
+                self.next_val = at + 1
+                self.skip_path()
+                at = self.next_val
+                if at < self.end and self.inn[at] == "s":
+                    self.opt_integer_62("s")
+                self.ident(False)
+
+            elif val == "C":
+                at = self.next_val
+                if at < self.end and self.inn[at] == "s":
+                    self.opt_integer_62("s")
+                self.ident(False)
+            elif val == "B":
+                self.backref()
+
+            elif val == "I":
+                self.skip_path()
+                while not self.eat("E"):
+                    self.skip_generic_arg()
+
+            elif val == "X":
+                self.opt_integer_62("s")
+                self.skip_path()
+                self.skip_type()
+                self.skip_path()
+
+            elif val == "M":
+                self.opt_integer_62("s")
+                self.skip_path()
+                self.skip_type()
+
+            elif val == "Y":
+                self.skip_type()
+                self.skip_path()
+
+            else:
+                raise UnableTov0Demangle(self.inn)
         finally:
             self.depth = depth
-
-        # Ordered by how often each arm is taken over the Rust corpus: a nested path
-        # is 54% of them and a crate root another 17%, and both used to be found by
-        # walking a chain written in the grammar's order.
-
-    def _skip_path_inner(self):
-        at = self.next_val
-        if at >= self.end:
-            raise UnableTov0Demangle(self.inn)
-        val = self.inn[at]
-        self.next_val = at + 1
-        if val == "N":
-            self.namespace()
-            self.skip_path()
-            self.opt_integer_62("s")
-            self.ident()
-
-        elif val == "C":
-            self.opt_integer_62("s")
-            self.ident()
-        elif val == "B":
-            self.backref()
-
-        elif val == "I":
-            self.skip_path()
-            while not self.eat("E"):
-                self.skip_generic_arg()
-
-        elif val == "X":
-            self.opt_integer_62("s")
-            self.skip_path()
-            self.skip_type()
-            self.skip_path()
-
-        elif val == "M":
-            self.opt_integer_62("s")
-            self.skip_path()
-            self.skip_type()
-
-        elif val == "Y":
-            self.skip_type()
-            self.skip_path()
-
-        else:
-            raise UnableTov0Demangle(self.inn)
 
     def skip_generic_arg(self):
         if self.eat("L"):
@@ -709,74 +725,71 @@ class Parser:
             raise UnableTov0Demangle(self.inn)
         self.depth = depth + 1
         try:
-            self._skip_type_inner()
+            # `w` marks a splat argument and decorates the type that follows rather than
+            # being one, so it is skipped like the marker it is.
+            self.eat("w")
+            at = self.next_val
+            if at >= self.end:
+                raise UnableTov0Demangle(self.inn)
+            n = self.inn[at]
+            self.next_val = at + 1
+            if n in _BASIC_TYPES:
+                pass
+            elif n in _PATH_TAGS:
+                self.next_val = at
+                self.skip_path()
+            elif n == "R" or n == "Q":
+                # The lifetime is optional; the referent is not. Skipping the lifetime
+                # without then skipping the referent leaves it to be read as whatever comes
+                # next, desynchronising every later offset -- and because an impl path is
+                # reached through this skipper, `<&'_ u8 as Trait>::method` is then rejected
+                # outright.
+                if self.eat("L"):
+                    self.integer_62()
+                self.skip_type()
+            elif n == "P" or n == "O" or n == "S":
+                self.skip_type()
+            elif n == "A":
+                self.skip_type()
+                self.skip_const()
+            elif n == "T":
+                while not self.eat("E"):
+                    self.skip_type()
+            elif n == "F":
+                _binder = self.opt_integer_62("G")
+                _is_unsafe = self.eat("U")
+                if self.eat("K"):
+                    c_abi = self.eat("C")
+                    if not c_abi:
+                        abi = self.ident()
+                        if not abi.ascii or abi.punycode:
+                            raise UnableTov0Demangle(self.inn)
+                while not self.eat("E"):
+                    self.skip_type()
+                self.skip_type()
+            elif n == "D":
+                _binder = self.opt_integer_62("G")
+                while not self.eat("E"):
+                    self.skip_path()
+                    while self.eat("p"):
+                        self.ident(False)
+                        if self.eat("K"):
+                            self.skip_const()
+                        else:
+                            self.skip_type()
+                if not self.eat("L"):
+                    raise UnableTov0Demangle(self.inn)
+                self.integer_62()
+            elif n == "B":
+                self.backref()
+            elif n == "W":
+                self.skip_type()
+                self.skip_pattern()
+            else:
+                self.next_val -= 1
+                self.skip_path()
         finally:
             self.depth = depth
-
-    def _skip_type_inner(self):
-        # `w` marks a splat argument and decorates the type that follows rather than
-        # being one, so it is skipped like the marker it is.
-        self.eat("w")
-        at = self.next_val
-        if at >= self.end:
-            raise UnableTov0Demangle(self.inn)
-        n = self.inn[at]
-        self.next_val = at + 1
-        if n in _BASIC_TYPES:
-            pass
-        elif n in _PATH_TAGS:
-            self.next_val = at
-            self.skip_path()
-        elif n == "R" or n == "Q":
-            # The lifetime is optional; the referent is not. Skipping the lifetime
-            # without then skipping the referent leaves it to be read as whatever comes
-            # next, desynchronising every later offset -- and because an impl path is
-            # reached through this skipper, `<&'_ u8 as Trait>::method` is then rejected
-            # outright.
-            if self.eat("L"):
-                self.integer_62()
-            self.skip_type()
-        elif n == "P" or n == "O" or n == "S":
-            self.skip_type()
-        elif n == "A":
-            self.skip_type()
-            self.skip_const()
-        elif n == "T":
-            while not self.eat("E"):
-                self.skip_type()
-        elif n == "F":
-            _binder = self.opt_integer_62("G")
-            _is_unsafe = self.eat("U")
-            if self.eat("K"):
-                c_abi = self.eat("C")
-                if not c_abi:
-                    abi = self.ident()
-                    if not abi.ascii or abi.punycode:
-                        raise UnableTov0Demangle(self.inn)
-            while not self.eat("E"):
-                self.skip_type()
-            self.skip_type()
-        elif n == "D":
-            _binder = self.opt_integer_62("G")
-            while not self.eat("E"):
-                self.skip_path()
-                while self.eat("p"):
-                    self.ident()
-                    if self.eat("K"):
-                        self.skip_const()
-                    else:
-                        self.skip_type()
-            if not self.eat("L"):
-                raise UnableTov0Demangle(self.inn)
-            self.integer_62()
-        elif n == "B":
-            self.backref()
-        elif n == "W":
-            self.skip_type()
-            self.skip_pattern()
-        else:
-            self.next_val -= 1
-            self.skip_path()
 
     def skip_pattern(self):
         """Advance past one `<pattern>`, the value set a pattern type narrows to."""
@@ -812,49 +825,46 @@ class Parser:
             raise UnableTov0Demangle(self.inn)
         self.depth = depth + 1
         try:
-            self._skip_const_inner()
+            if self.eat("B"):
+                self.backref()
+                return
+
+            ty_tag = self.next_func()
+            if ty_tag == "p":
+                return
+
+            if ty_tag in _CONST_UNSIGNED or ty_tag in _CONST_DATA_ONLY:
+                self.hex_nibbles()
+            elif ty_tag in _CONST_SIGNED:
+                self.eat("n")
+                self.hex_nibbles()
+            elif ty_tag in ("R", "Q"):
+                # `Re<hex>_` is a string literal rather than a reference to a nested const,
+                # so only the non-`e` spelling continues into another `<const>`.
+                if ty_tag == "R" and self.eat("e"):
+                    self.hex_nibbles()
+                else:
+                    self.skip_const()
+            elif ty_tag in ("A", "T"):
+                while not self.eat("E"):
+                    self.skip_const()
+            elif ty_tag == "V":
+                self.skip_path()
+                variant = self.next_func()
+                if variant == "T":
+                    while not self.eat("E"):
+                        self.skip_const()
+                elif variant == "S":
+                    while not self.eat("E"):
+                        self.opt_integer_62("s")
+                        self.ident(False)
+                        self.skip_const()
+                elif variant != "U":
+                    raise UnableTov0Demangle(self.inn)
+            else:
+                raise UnableTov0Demangle(self.inn)
         finally:
             self.depth = depth
-
-    def _skip_const_inner(self):
-        if self.eat("B"):
-            self.backref()
-            return
-
-        ty_tag = self.next_func()
-        if ty_tag == "p":
-            return
-
-        if ty_tag in _CONST_UNSIGNED or ty_tag in _CONST_DATA_ONLY:
-            self.hex_nibbles()
-        elif ty_tag in _CONST_SIGNED:
-            self.eat("n")
-            self.hex_nibbles()
-        elif ty_tag in ("R", "Q"):
-            # `Re<hex>_` is a string literal rather than a reference to a nested const,
-            # so only the non-`e` spelling continues into another `<const>`.
-            if ty_tag == "R" and self.eat("e"):
-                self.hex_nibbles()
-            else:
-                self.skip_const()
-        elif ty_tag in ("A", "T"):
-            while not self.eat("E"):
-                self.skip_const()
-        elif ty_tag == "V":
-            self.skip_path()
-            variant = self.next_func()
-            if variant == "T":
-                while not self.eat("E"):
-                    self.skip_const()
-            elif variant == "S":
-                while not self.eat("E"):
-                    self.opt_integer_62("s")
-                    self.ident()
-                    self.skip_const()
-            elif variant != "U":
-                raise UnableTov0Demangle(self.inn)
-        else:
-            raise UnableTov0Demangle(self.inn)
 
 
 def _impl_fields(seen):
@@ -1162,10 +1172,20 @@ class Printer:
             tag = p.inn[at]
             p.next_val = at + 1
             if tag == "N":
-                ns = p.namespace()
+                # `namespace` inlined, as in `skip_path`, and for the same reason.
+                at = p.next_val
+                if at >= p.end:
+                    raise UnableTov0Demangle(p.inn)
+                ns = p.inn[at]
+                p.next_val = at + 1
+                if ns.islower():
+                    ns = None
+                elif not ns.isupper():
+                    raise UnableTov0Demangle(p.inn)
                 with self.node(nodes.Path) as built:
                     self.print_path(in_value)
-                    dis = p.opt_integer_62("s")
+                    at = p.next_val
+                    dis = p.opt_integer_62("s") if at < p.end and p.inn[at] == "s" else 0
                     name = p.ident()
                     if ns:
                         with self.node(lambda parts: nodes.Namespace(parts, ns, dis)):
@@ -1192,7 +1212,9 @@ class Printer:
                 return built[0]
 
             if tag == "C":
-                p.opt_integer_62("s")
+                at = p.next_val
+                if at < p.end and p.inn[at] == "s":
+                    p.opt_integer_62("s")
                 name = p.ident()
                 name.display()
                 with self.node(nodes.RustName) as built:

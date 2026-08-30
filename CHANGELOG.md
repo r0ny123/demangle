@@ -839,6 +839,19 @@ All notable changes to this project are recorded here. The format follows
   pinned in `tests/test_types.py` and carried as an `ACCEPTED` rule in
   `tools/enumerate.py` with the reason.
 
+- **Rust: 234,000 fewer interpreter calls over the Rust corpus.** The three `skip_*`
+  productions still kept their depth guard in a wrapper around an inner method, which is
+  two frames per production on a pass whose whole job is to validate; `namespace` is one
+  character and ran 59,000 times through a frame of its own; three quarters of the 82,000
+  `opt_integer_62` calls found no tag and returned zero; and half the 78,000 `Ident`
+  objects were built by the skip pass to be thrown away. Guard and body now share a
+  frame, `namespace` is inlined at its two sites, the two hot disambiguator sites test
+  for the tag before calling, and `ident(False)` validates without allocating. Measured
+  by call count -- 2,732,768 to 2,464,124, deterministic -- because this machine's
+  wall-clock spread is larger than the change: six interleaved before/after runs put both
+  at 75-77us per name with 63-82us of noise around it. The reading is unchanged: the full
+  suite passes and 20,000 mutants still agree with `rustc-demangle` exactly.
+
 - **A reference defect the exclusion list was not covering.**
   `_Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_` sat in
   `itanium-real-world.txt` with the corrected spelling and was absent from
