@@ -1,4 +1,5 @@
 import contextlib
+import re
 import string
 import unicodedata
 from typing import NoReturn, Optional
@@ -33,6 +34,11 @@ class UnableTov0Demangle(Exception):
 #: and two copies of a rule are two chances to disagree about it.
 _PUNCTUATION = frozenset(string.punctuation)
 
+#: The same set as one C-level match: ASCII alphanumeric or ASCII punctuation, all the
+#: way to the end. Written as a generator over the characters it was resumed once each,
+#: on a test taken for every name carrying a vendor suffix.
+_SYMBOL_LIKE = re.compile(r"[0-9A-Za-z" + re.escape(string.punctuation) + r"]*\Z")
+
 #: Characters LLVM's internaliser writes in the hash of a `.llvm.<hash>` suffix. Upper
 #: case only, and `@` because a versioned symbol keeps its `@@VERS` inside the run. This
 #: is the reference's set verbatim: a *lower* case run is not one of these suffixes, and
@@ -65,7 +71,7 @@ def _is_symbol_like(text):
     means the trailing text is not a suffix at all, and the name is refused rather than
     half-read.
     """
-    return all(char.isascii() and (char.isalnum() or char in _PUNCTUATION) for char in text)
+    return _SYMBOL_LIKE.match(text) is not None
 
 
 class V0Demangler:

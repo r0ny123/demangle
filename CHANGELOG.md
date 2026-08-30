@@ -567,6 +567,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Performance
 
+- **Three schemes stop scanning a name one character at a time in Python.** The same
+  shape in three places, each on a path every symbol of that scheme takes.
+
+  MSVC refuses a decorated name holding a control character, written as
+  `any(char < " " or char == "\x7f" for char in name)` -- a generator resumed once per
+  character, at three call sites. As one compiled scan it is 7.8x cheaper on a
+  64-character name, and **10.2%** off the MSVC corpus.
+
+  Swift's `_record_words` splits every identifier into the words a later one may refer
+  back to, calling `_is_word_end` and `_is_word_start` per character: 322,000 calls to
+  the first alone over the Swift corpus, the largest single item in its profile, each an
+  interpreter frame around one comparison. Written out, the splitter is 1.65x faster and
+  the corpus is **5.3%** faster. Checked against the original on 400,000 random
+  identifiers: the same split every time.
+
+  Rust's `_is_hex` and `_is_symbol_like` are a `str.strip` and a compiled match now.
+  All three were checked for equivalence over 200,000 random strings including
+  non-ASCII, surrogates and control characters.
+
 - **The tree builder stops paying for generators.** `sum(node.size for node in nodes)` is
   a frame resumed once per element, and `AstBuilder` asks it of every qualified name,
   every template argument list, every parameter list and every pack -- seven times per

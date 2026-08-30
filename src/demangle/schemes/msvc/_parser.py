@@ -1,5 +1,6 @@
 """Demangling for MSVC decorated symbol names."""
 
+import re
 import string
 from functools import lru_cache
 
@@ -181,6 +182,11 @@ _LITERAL_MAX_BYTES = 64
 #: 32; some compilers wrote more, so the reference allows four times that rather than
 #: refusing a name it can read.
 _LITERAL_MAX_DECODED = 32 * 4
+
+
+#: What a decorated name may not contain, as one C-level scan rather than a generator
+#: resumed once per character. See the note in `schemes/msvc/__init__.py`.
+_CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _escaped_literal_character(value):
@@ -1464,7 +1470,7 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTION
     """
     if not name or not name.startswith("?"):
         return None
-    if any(char < " " or char == "\x7f" for char in name):
+    if _CONTROL_CHARACTER.search(name) is not None:
         return None
     try:
         return _Demangler(name, limits, options).parse()
@@ -1481,7 +1487,7 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS):
     """
     if not name:
         return None
-    if any(char < " " or char == "\x7f" for char in name):
+    if _CONTROL_CHARACTER.search(name) is not None:
         return None
     if name.startswith("."):
         name = name[1:]

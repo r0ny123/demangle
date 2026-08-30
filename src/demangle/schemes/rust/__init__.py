@@ -96,7 +96,9 @@ def detect(name):
 
 
 def _is_hex(text):
-    return all(char in "0123456789abcdef" for char in text)
+    # `not text.strip(set)` is "every character is in set", in one C-level scan, where
+    # the generator this replaces was resumed once per character of every hash tested.
+    return not text.strip("0123456789abcdef")
 
 
 #: What each builder class answered to `_wants_structure`, asked once per class rather

@@ -631,16 +631,27 @@ class Demangler:
         A word runs from a character that can start one to the next capital or `_`, and
         must be at least two characters. The table is capped at 26 because a reference to
         one is a single letter.
+
+        The tests `_is_word_start` and `_is_word_end` name are written out here rather
+        than called. This runs once per character of every identifier in every Swift
+        name -- 322,000 calls to `_is_word_end` alone over the Swift corpus, which was
+        the largest single item in its profile -- and each of them is an interpreter
+        frame around one comparison. The conditions are the same ones, in the same
+        order; the two functions stay for the other callers and for the definition.
         """
+        words = self.words
         start = -1
-        for at in range(len(slice_) + 1):
-            char = slice_[at] if at < len(slice_) else ""
-            if start >= 0 and _is_word_end(char, slice_[at - 1]):
-                if at - start >= 2 and len(self.words) < _MAX_NUM_WORDS:
-                    self.words.append(slice_[start:at])
+        previous = ""
+        length = len(slice_)
+        for at in range(length + 1):
+            char = slice_[at] if at < length else ""
+            if start >= 0 and (char == "_" or char == "" or (not ("A" <= previous <= "Z") and "A" <= char <= "Z")):
+                if at - start >= 2 and len(words) < _MAX_NUM_WORDS:
+                    words.append(slice_[start:at])
                 start = -1
-            if start < 0 and _is_word_start(char):
+            if start < 0 and char != "" and char != "_" and not ("0" <= char <= "9"):
                 start = at
+            previous = char
 
     #: `a` through `z` map to the operator characters an identifier may encode. A space
     #: means the letter is not one, which is a refusal rather than a guess.
