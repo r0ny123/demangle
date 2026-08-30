@@ -726,3 +726,71 @@ class TestAgainstLibibertysOwnCorpus:
             demangle.demangle(mangled, language="d")
             elapsed = time.perf_counter() - started
             assert elapsed < 1.0, f"{elapsed:.1f}s for {mangled[:60]}"
+
+
+class TestWhereLibibertyIsNarrowerThanTheGrammar:
+    """Two shapes the D grammar admits, `c++filt --format=dlang` refuses, and this reads.
+
+    The grammar this scheme follows, recorded at the head of `_parser.py`:
+
+        SymbolFunctionName ::= SymbolName
+                             | SymbolName TypeFunctionNoReturn
+                             | SymbolName "M" TypeModifiers? TypeFunctionNoReturn
+        SymbolName         ::= LName | TemplateInstanceName | IdentifierBackRef | "0"
+        TemplateArgX       ::= T Type | V Type Value | S Number_opt QualifiedName | X ...
+
+    Neither shape is one a compiler writes -- both corpora, 1,257 real symbols and
+    libiberty's 366 vectors, have neither -- so both are reachable only by mutation, and
+    both are recorded here rather than followed. `tools/mutate.py` carried the first for
+    several sittings as "a deep chain of `Q` back references"; that was the shape of the
+    mutant, not of the disagreement.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # What libiberty reads, and this reads the same way: the anonymous
+            # `<SymbolName>` alone, and carrying a plain function type.
+            ("_D1a0i", "a"),
+            ("_D1a0FZv", "a"),
+            ("_D1a1b0i", "a.b"),
+            # What it refuses: the same `0`, carrying the `M` member-function form. Nine
+            # characters, and the two neighbours above are what make the refusal an
+            # inconsistency inside the reference rather than a rule.
+            ("_D1a0MFZv", "a"),
+            ("_D1a0MxFZv", "a"),
+            ("_D1a1b0MFZv", "a.b"),
+        ],
+    )
+    def test_the_anonymous_symbol_name_carries_a_member_function_type(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D1w__T1bS__T1cZZ1xi", "w.b!(c!()).x"),
+            ("_D1w__T1bS__T1cTaZZ1xi", "w.b!(c!(char)).x"),
+            ("_D1w__T1bS__T1cZ1yZ1xi", "w.b!(c!().y).x"),
+        ],
+    )
+    def test_a_symbol_argument_opening_on_a_template_instance(self, mangled, expected):
+        """`S <QualifiedName>`, and a `QualifiedName` may open with a template instance.
+
+        `dlang_template_args` has no arm for it and refuses the whole name. Kept out of
+        `tools/enumerate.py`'s accept rules on purpose: the pinned draw never reaches
+        this shape, and a rule that never fires is one nobody would notice going wrong.
+        """
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_the_shape_the_mutation_actually_produced(self):
+        """The seed, the one-character edit, and what it turns the name into.
+
+        `13__dgliteral10` becomes `13___dgliteral10`: the length still says 13, so it now
+        covers `___dgliteral1` and the `0` that was part of the identifier is handed to
+        the grammar as the anonymous `<SymbolName>` -- with the `MFNaNbNiNfZ` after it,
+        which is the shape above.
+        """
+        mutant = "_D1a13___dgliteral10MFNaNbNiNfZAxa"
+        assert demangle.demangle(mutant, language="d") == "a.___dgliteral1"
+        seed = "_D1a13__dgliteral10MFNaNbNiNfZAxa"
+        assert demangle.demangle(seed, language="d") == "a.__dgliteral10()"

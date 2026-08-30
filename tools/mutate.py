@@ -33,9 +33,9 @@ default -- so this gates a commit in both directions, like the conformance corpo
 new divergence fails, and so does a stale pin after one is fixed. The number is a
 property of `--seed` and `--count` together; the pin CI uses is for the defaults.
 
-What the pin currently stands at, and why each is still open
------------------------------------------------------------
-Two, at `--seed 0 --count 20000`. One is Itanium and one is D.
+What the pin currently stands at, and why it is still open
+---------------------------------------------------------
+One, at `--seed 0 --count 20000`, and it is Itanium.
 
   * A generic lambda's `operator()` called on a type reached through `L_Z...E`, inside a
     `decltype`, inside an Objective-C method name that the mutation spliced into the
@@ -44,24 +44,29 @@ Two, at `--seed 0 --count 20000`. One is Itanium and one is D.
     is refusing. Kept visible because "both refuse" is the one answer a divergence
     cannot be argued from -- there is no reading to compare against, only a refusal.
 
-  * One D mutant that `c++filt --format=dlang` refuses and this reads, a deep chain of
-    `Q` back references round a `___dgliteral1`. The bounds `dlang_backref` enforces
-    are all enforced here -- `Q0`, a zero or negative offset, one past the start of the
-    name, and a target that is not a length-prefixed identifier -- so what libiberty is
-    refusing is something narrower that has not been isolated yet. Kept visible rather
-    than accepted: an accept rule for a reason nobody has established is how a defect
-    gets filed as a reference's.
-
 What this draw has found and what became of it
 ----------------------------------------------
 Five divergences this draw reported are gone because the defect was this library's and
 was fixed: a constructor whose class is named by an operator (`_ZNssC1Ev` read as
 `operator<=>::operator()`, the class name cut at the first `<`), the `F` friend marker
 read and then dropped from a constructor, and a fold expression printed with llvm's
-spacing and bracketing under the GNU style. One more is now an `ACCEPTED` rule in
-`tools/enumerate.py` with the reason a reference's answer is not evidence: a
+spacing and bracketing under the GNU style. Two more are now `ACCEPTED` rules in
+`tools/enumerate.py`, each with the reason a reference's answer is not evidence: a
 cv-qualified function type reached through a substitution, where each reference
-contradicts its own answer for the same type written out.
+contradicts its own answer for the same type written out, and the D one below.
+
+The D divergence was carried here for several sittings as "a deep chain of `Q` back
+references round a `___dgliteral1`", which was wrong -- that was the shape of the
+*mutant*, not of the disagreement. Diffing the mutant against the seed it came from
+named the edit: one duplicated `_` inside `13__dgliteral10`, which leaves the length
+prefix covering `___dgliteral1` and hands the `0` after it to the grammar as the
+anonymous `<SymbolName>`. `_D1a0MFZv` is the whole of it in nine characters -- `a` here,
+refused by `c++filt --format=dlang` -- and libiberty reads both neighbours, `_D1a0i` and
+`_D1a0FZv`, so the refusal is an inconsistency inside the reference rather than a rule.
+Shrinking the mutant by deletion had found a *different* shape with the same symptom, an
+`S` template argument opening on a template instance; that one is real too and is pinned
+in `tests/test_d.py`, but it is not what this draw reaches. A reproducer that reproduces
+the symptom is not yet the cause.
 
 The draw is a property of the seed *and the corpora*, so growing a seed corpus changes
 which mutants are drawn. Two divergences earlier draws reported are simply not in this

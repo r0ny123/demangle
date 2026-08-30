@@ -160,7 +160,20 @@ ACCEPTED = {
     # back `TypeInfoArrayGeneric!(...)..compare(...)`, or `startsWith!(...).(...)`, or
     # with a trailing `.` and nothing after it. Recognised by deleting a separator that
     # has nothing between it and the next one, the parameter list, or the end.
-    "d": lambda name, ours, first, second: first is not None and _EMPTY_COMPONENT.sub("", first) == ours,
+    "d": lambda name, ours, first, second: (
+        (first is not None and _EMPTY_COMPONENT.sub("", first) == ours)
+        # Or the anonymous `<SymbolName>` carrying a *member* function type.
+        # `SymbolFunctionName` is `SymbolName | SymbolName TypeFunctionNoReturn |
+        # SymbolName "M" TypeModifiers? TypeFunctionNoReturn`, and `SymbolName` is
+        # `LName | TemplateInstanceName | IdentifierBackRef | "0"` -- so `0 M F Z` is in
+        # the grammar. libiberty reads the two neighbouring shapes and refuses this one:
+        # `_D1a0i` and `_D1a0FZv` are both `a` to it, and `_D1a0MFZv` is unreadable,
+        # which makes the refusal an inconsistency inside the reference rather than a
+        # rule. No compiler writes it -- the two corpus names matching this shape carry
+        # the `0` inside an identifier, and both references agree on them -- so it is
+        # reachable only by mutation. See `tests/test_d.py`.
+        or (first is None and _ANONYMOUS_MEMBER.search(name) is not None)
+    ),
     "itanium": lambda name, ours, first, second: (
         # `llvm-cxxfilt` refuses a parameter list whose first type is a literal `void`
         # followed by anything -- its leading `void` means "empty list, and nothing may
@@ -265,6 +278,9 @@ def _without_qualifiers(text):
     """`text` with every qualifier word and sigil gone, and no spaces left to compare."""
     return _QUALIFIER_WORDS.sub("", text).replace(" ", "")
 
+
+#: The anonymous `<SymbolName>` `0`, then the `M` member-function form. See `ACCEPTED`.
+_ANONYMOUS_MEMBER = re.compile(r"0M[A-Za-z]{0,6}F")
 
 #: A path separator with nothing before the next one, the parameter list, or the end.
 _EMPTY_COMPONENT = re.compile(r"\.(?=[.(]|$)")

@@ -182,9 +182,9 @@ jobs:
       # here reproduces with the same `--seed` and `--count` locally.
       - name: Mutate real symbols and compare against the references
         # Pinned in both directions, like the conformance corpora: a new divergence
-        # fails, and so does a stale pin after one is fixed. The two are named in the
-        # tool's own docstring, with why each is still open.
-        run: python tools/mutate.py --count 20000 --quiet --expect 2
+        # fails, and so does a stale pin after one is fixed. The one that stands is named
+        # in the tool's own docstring, with why it is still open.
+        run: python tools/mutate.py --count 20000 --quiet --expect 1
       # Mutants put to the library instead of to a reference. Nothing here needs one --
       # it lives in this job because it shares the mutation machinery, not because it
       # shares the dependency -- so it seeds from every corpus rather than from the five

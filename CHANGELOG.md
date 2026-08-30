@@ -883,6 +883,26 @@ All notable changes to this project are recorded here. The format follows
   pinned in `tests/test_types.py` and carried as an `ACCEPTED` rule in
   `tools/enumerate.py` with the reason.
 
+- **The open D divergence, isolated -- and its description was wrong.** `tools/mutate.py`
+  had carried it for several sittings as "a deep chain of `Q` back references round a
+  `___dgliteral1`". That was the shape of the *mutant*, not of the disagreement. Diffing
+  the mutant against the seed it came from named the edit: one duplicated `_` inside
+  `13__dgliteral10`, which leaves the length prefix covering `___dgliteral1` and hands
+  the `0` after it to the grammar as the anonymous `<SymbolName>`. The whole of it is
+  nine characters -- `_D1a0MFZv`, `a` here and refused by `c++filt --format=dlang` --
+  and libiberty reads both neighbours, `_D1a0i` and `_D1a0FZv`, so the refusal is an
+  inconsistency inside the reference rather than a rule the grammar states.
+  `SymbolFunctionName ::= ... | SymbolName "M" TypeModifiers? TypeFunctionNoReturn` and
+  `SymbolName ::= ... | "0"`, so the shape is in the grammar; no compiler writes it. Now
+  an `ACCEPTED` rule with that reason, and the mutation pin goes 2 -> 1.
+
+  Shrinking the mutant by deletion had found a *different* shape with the same symptom --
+  an `S` template argument opening on a template instance, which the grammar also admits
+  and libiberty also refuses. It is pinned in `tests/test_d.py` and deliberately not
+  given an accept rule: the draw never reaches it, and a rule that never fires is one
+  nobody would notice going wrong. A reproducer that reproduces the symptom is not yet
+  the cause.
+
 - **`tools/invariants.py`: the mutants, put to the library instead of to a reference.**
   Some properties have no reference to ask about -- that a style decides a spelling and
   never whether a name parses, that `parse(name).spell()` is what `demangle(name)`
