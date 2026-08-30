@@ -844,10 +844,14 @@ All notable changes to this project are recorded here. The format follows
   never whether a name parses, that `parse(name).spell()` is what `demangle(name)`
   returns in every style, that `signature`, `demangleb` and `parse().to_dict()` raise
   nothing but a `DemanglingError` on a name `demangle` read. It reuses `tools/mutate.py`'s
-  seeds, operators and alphabets and changes only the oracle; the first invariant was
-  broken for twelve corpus names when it was written, and it reports exactly those on the
-  parser as it stood and nothing on the parser as it is. CI runs it beside the mutation
-  check.
+  operators and changes the oracle -- and, because none of this needs a reference, it
+  seeds from *every* corpus rather than from the five schemes a reference can be asked
+  about, so Swift, Nim, Free Pascal, Delphi, Go, Objective-C and JNI are fuzzed here and
+  nowhere else. Each corpus's own characters are the alphabet its mutations draw from.
+  The first invariant was broken for twelve corpus names when it was written, and
+  `--seed 1 --count 20000 --corpus itanium-libcxxabi` reports it on the parser as it
+  stood and nothing on the parser as it is, which is what says the instrument works
+  rather than that it is quiet. CI runs it beside the mutation check.
 
 - **Itanium: the output style decided whether a name parses.** GNU c++filt substitutes
   the argument bound to a `<template-param>` inside a requires-clause where llvm-cxxfilt

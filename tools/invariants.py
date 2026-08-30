@@ -18,27 +18,48 @@ no reference to ask, because they are about this package rather than about the s
     anything but a `DemanglingError` out of them is a defect: a caller walking a symbol
     table gets a verdict, not a traceback.
 
-The seeds, the mutation operators and the per-scheme alphabets are `tools/mutate.py`'s;
-only the oracle differs. Exit status is non-zero when any invariant fails.
+The mutation operators are `tools/mutate.py`'s. The seeds are not: that tool can only
+damage names it has a reference to ask about, which is five schemes of the fourteen, and
+none of these invariants needs one. So this seeds from *every* conformance corpus --
+Swift, Nim, Free Pascal, Delphi, Go, Objective-C and JNI included, none of which had ever
+been fuzzed -- and takes each corpus's own characters as the alphabet to draw
+substitutions from, which is the alphabet its scheme actually writes.
+
+Exit status is non-zero when any invariant fails.
+
+The draw is seeded, so a finding reproduces exactly. The three defects this was written
+for were all the first invariant, and `--seed 1 --count 20000 --corpus itanium-libcxxabi`
+reports them on the parser as it stood before the fix and nothing on the parser as it is:
+that is what says the instrument works, rather than that it is quiet.
 
 Usage
 -----
     tools/invariants.py                  the default draw, which is what CI runs
-    tools/invariants.py --count 200000   more mutants per scheme
+    tools/invariants.py --count 200000   more mutants per corpus
     tools/invariants.py --seed 7         a different draw; the default draw is fixed
+    tools/invariants.py --corpus rust    only corpora whose name holds this
 """
 
 import argparse
+import gzip
 import random
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from mutate import SEEDS, alphabet_for, load_seeds, mutate
+from mutate import mutate
 
 import demangle
 from demangle.core.errors import DemanglingError
+
+CONFORMANCE = Path(__file__).resolve().parent.parent / "tests" / "conformance"
+
+#: How many seeds contribute to the alphabet. Every corpus here is homogeneous -- one
+#: scheme, one mangler -- so the characters of the first few thousand names are the
+#: characters of all of them, and reading every one of 35,000 to build a set of forty
+#: is work for nothing.
+_ALPHABET_SAMPLE = 2000
 
 #: What a mutant is offered, beyond `demangle` itself. Each is a call and the name it is
 #: reported under; none of them may raise anything but a `DemanglingError`.
@@ -89,41 +110,54 @@ def problems_with(name):
     return found
 
 
+def corpora(pattern=None):
+    """Every conformance corpus as `(name, seeds, alphabet)`, longest names first."""
+    found = []
+    for path in sorted(CONFORMANCE.iterdir()):
+        if path.suffix == ".gz":
+            text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
+        elif path.suffix == ".txt":
+            text = path.read_text(encoding="utf-8", errors="surrogateescape")
+        else:
+            continue
+        if pattern and pattern not in path.name:
+            continue
+        seeds = [line.split("\t", 1)[0] for line in text.splitlines() if line and not line.startswith("#")]
+        # Two characters is not a name to damage; three leaves nothing after a cut.
+        seeds = [seed for seed in seeds if len(seed) > 3]
+        if not seeds:
+            continue
+        alphabet = "".join(sorted({character for seed in seeds[:_ALPHABET_SAMPLE] for character in seed}))
+        found.append((path.name.removesuffix(".gz"), seeds, alphabet))
+    return found
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--count", type=int, default=20000, help="mutants per scheme")
+    parser.add_argument("--count", type=int, default=4000, help="mutants per corpus")
     parser.add_argument("--seed", type=int, default=0, help="the draw; fixed by default")
-    parser.add_argument("--scheme", action="append", help="only these schemes")
-    parser.add_argument("--quiet", action="store_true", help="one line per scheme")
+    parser.add_argument("--corpus", help="only corpora whose filename holds this")
+    parser.add_argument("--quiet", action="store_true", help="one line per corpus")
     arguments = parser.parse_args()
 
-    schemes = arguments.scheme or sorted(SEEDS)
     total = 0
-    for scheme in schemes:
-        seeds = load_seeds(scheme)
-        if not seeds:
-            print(f"{scheme:8} no seed corpus in this checkout")
-            continue
-        alphabet, prefix = alphabet_for(scheme), SEEDS[scheme][1]
+    for name, seeds, alphabet in corpora(arguments.corpus):
         rng = random.Random(arguments.seed)
-        read = 0
         broken = []
         for _ in range(arguments.count):
-            name = mutate(rng, seeds, alphabet, prefix)
-            if not name:
+            mutant = mutate(rng, seeds, alphabet, "")
+            if not mutant:
                 continue
-            found = problems_with(name)
+            found = problems_with(mutant)
             if found:
-                broken.append((name, found))
-            else:
-                read += 1
+                broken.append((mutant, found))
         total += len(broken)
-        print(f"{scheme:8} {len(seeds):6} seeds, {arguments.count:7} mutants, {len(broken):4} broken")
-        if not arguments.quiet:
-            for name, reasons in broken[:10]:
-                print(f"   {name}")
-                for reason in reasons:
-                    print(f"     {reason}")
+        if broken or not arguments.quiet:
+            print(f"{name:34} {len(seeds):6} seeds, {arguments.count:7} mutants, {len(broken):4} broken")
+        for mutant, reasons in broken[:10]:
+            print(f"   {mutant}")
+            for reason in reasons:
+                print(f"     {reason}")
     if total:
         print(f"\n{total} name(s) broke an invariant")
         return 1

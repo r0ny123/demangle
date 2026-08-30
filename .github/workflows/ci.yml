@@ -185,13 +185,16 @@ jobs:
         # fails, and so does a stale pin after one is fixed. The two are named in the
         # tool's own docstring, with why each is still open.
         run: python tools/mutate.py --count 20000 --quiet --expect 2
-      # The same mutants, put to the library instead of to a reference. What it checks
-      # has no reference to ask: that a *style* cannot decide whether a name parses,
-      # that the tree spells what the text spells, and that no public entry point
-      # raises anything but a DemanglingError on a name `demangle` read. The first of
-      # those was broken for twelve corpus names when this was written.
+      # Mutants put to the library instead of to a reference. Nothing here needs one --
+      # it lives in this job because it shares the mutation machinery, not because it
+      # shares the dependency -- so it seeds from every corpus rather than from the five
+      # schemes a reference can be asked about, Swift, Nim, Free Pascal, Delphi, Go,
+      # Objective-C and JNI included. What it checks: that a *style* cannot decide
+      # whether a name parses, that the tree spells what the text spells, and that no
+      # public entry point raises anything but a DemanglingError on a name `demangle`
+      # read. The first was broken for twelve corpus names when this was written.
       - name: Check the invariants no reference can be asked about
-        run: python tools/invariants.py --count 20000 --quiet
+        run: python tools/invariants.py --count 4000 --quiet
 
   cross-reference:
     name: cross-version reference check

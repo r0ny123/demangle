@@ -158,14 +158,23 @@ than merely emptied. The draw is seeded, so a failure reproduces exactly.
 
 ```console
 python tools/invariants.py                # the same mutants, put to the library itself
+python tools/invariants.py --corpus swift # one corpus
 ```
 
-`tools/invariants.py` reuses those mutants and asks what no reference can be asked: that
-a *style* decides a spelling and never whether a name parses, that `parse(name).spell()`
-is what `demangle(name)` returns in every style, and that `signature`, `demangleb` and
-`parse().to_dict()` raise nothing but a `DemanglingError` on a name `demangle` read. The
-first of those was broken for twelve corpus names when the tool was written -- the GNU
-style refused `std::pair`'s constrained constructor that the llvm style read.
+`tools/invariants.py` borrows those mutation operators and asks what no reference can be
+asked: that a *style* decides a spelling and never whether a name parses, that
+`parse(name).spell()` is what `demangle(name)` returns in every style, and that
+`signature`, `demangleb` and `parse().to_dict()` raise nothing but a `DemanglingError` on
+a name `demangle` read. The first of those was broken for twelve corpus names when the
+tool was written -- the GNU style refused `std::pair`'s constrained constructor that the
+llvm style read.
+
+Because none of that needs a reference, it seeds from *every* corpus rather than from the
+five schemes `tools/mutate.py` can ask about, and takes each corpus's own characters as
+its alphabet -- so Swift, Nim, Free Pascal, Delphi, Go, Objective-C and JNI are fuzzed
+here and nowhere else. A tool that is quiet proves nothing on its own:
+`--seed 1 --count 20000 --corpus itanium-libcxxabi` reports the defect it was written for
+on the parser as it stood, and nothing on the parser as it is.
 
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
