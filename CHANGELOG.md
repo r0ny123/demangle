@@ -883,6 +883,28 @@ All notable changes to this project are recorded here. The format follows
   pinned in `tests/test_types.py` and carried as an `ACCEPTED` rule in
   `tools/enumerate.py` with the reason.
 
+- **A resource limit handed the name to a laxer scheme instead of refusing it.**
+  `demangle()` tries the schemes that claim a name in priority order and moves on when
+  one fails, and a `LimitExceeded` was being treated as one of those failures. It is a
+  different statement: the scheme *did* claim the name and then ran out of the budget the
+  caller set. Offering the same text on is how `_ZN11Expressions2f2ILi1EEEvPApsT__i`,
+  under a tightened substitution budget, came back as
+  `_ZN11Expressions2f2ILi1EEEvPApsT(int)` -- the pre-Itanium scheme reading the mangling
+  itself as an identifier and the trailing `i` as a parameter. Nine corpus names did
+  this, found by tightening each bound in turn over all 77,749 and asking which came back
+  *different* rather than refused. A limit now ends the search: `demangle()` returns the
+  name unchanged and `demangle_strict()` and `parse()` raise the `LimitExceeded`. A
+  caller who lowers a limit is defending against hostile input, which is the last place
+  to start guessing.
+
+- **MSVC leaked its internal limit exception from the type-descriptor branch.** That
+  branch sits in front of the `try` that turns `_LimitHit` into `LimitExceeded`, so
+  `.?AV?$vector@HV?$allocator@H@std@@@std@@` under a lowered `max_depth` came back as
+  `ParseError: msvc parser failed: _LimitHit('recursion depth')` -- the arm `api` keeps
+  for a plugin with a *defect*. Wrong exception type, a message accusing this library of
+  a bug for doing exactly what the caller asked, and, with the fix above, the one shape
+  that would still have fallen through to another scheme.
+
 - **The mutation pin reaches zero, and the last one was the references being behind
   their own test file.** `Z53-[DeploymentSetupController handleManualServerEntry:]E` --
   an Objective-C method standing as a `<local-name>`'s function encoding, which clang

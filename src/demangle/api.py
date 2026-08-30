@@ -195,6 +195,18 @@ def demangle(
             if plugin is None and not _claims(candidate, mangled, base):
                 continue
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
+        except LimitExceeded:
+            # A limit is not a "this name is not mine". The scheme claimed it and then
+            # ran out of the budget the caller set, which says the name is expensive --
+            # not that some other scheme should be handed the same text. Offering it on
+            # is how `_ZN11Expressions2f2ILi1EEEvPApsT__i`, an Itanium name that spends
+            # more substitutions than a tightened budget allows, came back as
+            # `_ZN11Expressions2f2ILi1EEEvPApsT(int)`: the pre-Itanium scheme reading the
+            # mangling itself as an identifier and the trailing `i` as a parameter. A
+            # declaration that names nothing is the one answer this library treats as
+            # worse than no answer, and a caller who *lowers* a limit is defending
+            # against hostile input, which is the last place to start guessing.
+            break
         except Exception as exc:
             reraise_if_operational(exc)
             # Try the next scheme. Detection is a cheap prefix test and is allowed to be
@@ -419,6 +431,11 @@ def _parse_handle(mangled, builder, language, style, limits):
             if first_error is None:
                 first_error = _depth_exceeded(mangled, limits)
                 first_error.__cause__ = exc
+        except LimitExceeded as exc:
+            # Raised, not remembered: see the note in `demangle`. The next candidate
+            # would be reading a name this one has already claimed, and the answer it
+            # gives is a reading of the mangling rather than of the name.
+            raise exc
         except DemanglingError as exc:
             # Keep the first failure: it came from the highest-priority plugin that
             # claimed the name, so it is the most likely to be the useful diagnostic.

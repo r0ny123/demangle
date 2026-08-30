@@ -44,6 +44,13 @@ Out of scope:
   bound observed only afterwards is a report: a fourteen-character Rust name asking for
   fourteen million bound lifetimes took fourteen seconds to build the string that the
   output bound then rejected.
+- Hitting a bound ends the reading. It is not a "this name is not mine": the scheme
+  claimed the name and then ran out of the budget the caller set, so the name is offered
+  to no other scheme. Passing it on meant a laxer one read the mangling itself — an
+  Itanium name over a tightened substitution budget came back as
+  `_ZN11Expressions2f2ILi1EEEvPApsT(int)`, a declaration built out of the encoding by the
+  pre-Itanium scheme. A caller who lowers a limit is defending against hostile input,
+  which is the last place to start guessing.
 - `KeyboardInterrupt`, `SystemExit` and `MemoryError` are never swallowed by the
   best-effort paths — they mean the process is in trouble, not that a name is malformed.
 - The library is safe to call from several threads. `tests/test_concurrency.py` asserts

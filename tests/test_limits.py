@@ -284,3 +284,83 @@ class TestDepthExhaustionIsReportedAsABound:
         # rather than as an exception, which is `demangle()`'s promise.
         deep = "_Z1f" + "1XI" * 400 + "i" + "E" * 400
         assert demangle.demangle(deep) == deep
+
+
+class TestALimitRefusesRatherThanTruncates:
+    """A bound must end the reading, not hand the name to a laxer scheme.
+
+    `demangle()` tries the schemes that claim a name in priority order and moves on when
+    one fails. A `LimitExceeded` was being treated as one of those failures, and it is a
+    different statement: the scheme *did* claim the name and then ran out of the budget
+    the caller set. Offering the same text on is how an Itanium name that spends more
+    substitutions than a tightened budget allows came back as a declaration built by the
+    pre-Itanium scheme out of the mangling itself.
+
+    Nine corpus names did this, found by tightening each bound in turn over all 77,749 of
+    them and asking which came back *different* rather than refused. A caller who lowers
+    a limit is defending against hostile input, which is the last place to start guessing.
+    """
+
+    #: An Itanium name whose trailing `__i` the pre-Itanium schemes will read as a
+    #: parameter list once Itanium gives up on it.
+    OVERSPENT = "_ZN11Expressions2f2ILi1EEEvPApsT__i"
+
+    #: An MSVC RTTI type descriptor, which reaches the scheme by a branch of its own.
+    DESCRIPTOR = ".?AV?$vector@HV?$allocator@H@std@@@std@@"
+
+    def test_the_name_comes_back_whole_rather_than_read_by_another_scheme(self):
+        tight = replace(demangle.RELAXED_LIMITS, max_substitutions=2)
+        assert demangle.demangle(self.OVERSPENT, limits=tight) == self.OVERSPENT
+        # What the scheme it used to fall through to says about the same text, so the
+        # test fails if that reading ever becomes the answer again.
+        assert demangle.demangle(self.OVERSPENT, language="gnuv2") == "_ZN11Expressions2f2ILi1EEEvPApsT(int)"
+
+    @pytest.mark.parametrize("entry", ["demangle_strict", "parse"])
+    def test_the_strict_paths_report_the_bound(self, entry):
+        tight = replace(demangle.RELAXED_LIMITS, max_substitutions=2)
+        with pytest.raises(demangle.LimitExceeded):
+            getattr(demangle, entry)(self.OVERSPENT, limits=tight)
+
+    def test_a_relaxed_budget_still_reads_it(self):
+        assert demangle.demangle(self.OVERSPENT, limits=demangle.RELAXED_LIMITS) == (
+            "void Expressions::f2<1>(int (*) [+1])"
+        )
+
+    @pytest.mark.parametrize(("field", "value"), [("max_depth", 4), ("max_output", 8)])
+    def test_a_type_descriptor_reports_the_bound_as_one(self, field, value):
+        """The descriptor branch sat in front of the translation and leaked `_LimitHit`.
+
+        `api` wrapped it in the arm meant for a plugin with a defect, so a caller who
+        lowered a bound was told `msvc parser failed: _LimitHit('recursion depth')` --
+        the wrong type, and a message accusing this library of a bug for doing what was
+        asked.
+        """
+        limits = replace(demangle.RELAXED_LIMITS, **{field: value})
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict(self.DESCRIPTOR, limits=limits)
+        assert demangle.demangle_strict(self.DESCRIPTOR) == (
+            "class std::vector<int, class std::allocator<int>> `RTTI Type Descriptor Name'"
+        )
+
+    def test_no_corpus_name_answers_differently_under_a_tighter_bound(self, subtests):
+        """The property the nine were found by, over a sample of every corpus."""
+        names = [
+            mangled for corpus in ("itanium-libstdcxx.txt", "gnuv2-libiberty.txt") for mangled, _ in load_corpus(corpus)
+        ]
+        for field, value in (("max_depth", 8), ("max_output", 32), ("max_substitutions", 4)):
+            with subtests.test(field=field):
+                changed = []
+                for name in names:
+                    try:
+                        want = demangle.demangle_strict(name, limits=demangle.RELAXED_LIMITS)
+                    except demangle.DemanglingError:
+                        continue
+                    try:
+                        got = demangle.demangle_strict(name, limits=replace(demangle.RELAXED_LIMITS, **{field: value}))
+                    except demangle.LimitExceeded:
+                        continue
+                    except demangle.DemanglingError:
+                        continue
+                    if got != want:
+                        changed.append(name)
+                assert changed == []

@@ -164,13 +164,24 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         # `.PEAX` is the string a `type_info` points at: a bare type encoding with a `.`
         # in front of it. It is not a declaration, so it has no tree of its own beyond
         # the type -- the reference spells the type and appends what it is.
-        tree = parse_msvc_type(mangled, limits)
-        if tree is None:
-            raise ParseError(mangled, None, "not a type descriptor name this demangler can read")
-        # The marker goes where a *declarator* goes. For anything that wraps its name
-        # that is not the same place as after the type: a pointer to an array of two
-        # reads `int (*`RTTI Type Descriptor Name')[2]`.
-        spelled = _render(tree, _TYPE_DESCRIPTOR_SUFFIX, options=options)
+        #
+        # `_LimitHit` is translated here as well as below. This branch used to sit in
+        # front of the `try` that does it, so a bound hit while reading a descriptor
+        # escaped as the internal exception, and `api` wrapped it in the arm meant for a
+        # plugin with a *defect*: `.?AV?$vector@HV?$allocator@H@std@@@std@@` under a
+        # lowered `max_depth` came back as `ParseError: msvc parser failed:
+        # _LimitHit('recursion depth')`. Wrong type, and a message accusing this library
+        # of a bug for doing exactly what the caller asked.
+        try:
+            tree = parse_msvc_type(mangled, limits)
+            if tree is None:
+                raise ParseError(mangled, None, "not a type descriptor name this demangler can read")
+            # The marker goes where a *declarator* goes. For anything that wraps its name
+            # that is not the same place as after the type: a pointer to an array of two
+            # reads `int (*`RTTI Type Descriptor Name')[2]`.
+            spelled = _render(tree, _TYPE_DESCRIPTOR_SUFFIX, options=options)
+        except _LimitHit as hit:
+            raise LimitExceeded(mangled, hit.what, hit.limit) from hit
         _check_length(mangled, len(spelled), limits)
         return builder.raw(spelled)
     hybrid = _without_hybrid_marker(mangled)
