@@ -255,6 +255,27 @@ cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
 `llvm-cxxfilt` when it has not. It is not a dependency of the test suite; building it
 needs a Rust toolchain and one fetch from crates.io.
 
+### The Swift reference
+
+Nothing a distribution ships reads a Swift name: `llvm-cxxfilt` and `c++filt` both
+decline a `$s` outright. So `tools/swift-demangle-reference/` builds swiftlang/swift's
+own `lib/Demangling` -- eleven files, unmodified, at a pinned revision -- behind the same
+line-per-name front end the Rust reference uses:
+
+```console
+tools/swift-demangle-reference/build.sh
+```
+
+It needs a C++17 compiler, LLVM's headers (`llvm-dev`) and one fetch from github.com.
+No Swift toolchain, no CMake, no LLVM libraries; the checkout is a blobless sparse one
+over five directories, about 16 MB. `tools/enumerate.py` and `tools/mutate.py` use it
+when it has been built and skip the Swift job when it has not, since there is nothing to
+fall back to.
+
+The revision is a commit on `main` rather than a release tag, and
+`tools/swift-demangle-reference/README.md` has the measurements that decide it, along
+with the one place the reference is wrong and this library does not follow it.
+
 ## CI and workflows
 
 Workflows run with `permissions: contents: read` and grant more only where a job needs

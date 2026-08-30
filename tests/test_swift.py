@@ -27,6 +27,7 @@ from demangle.schemes.swift import detect
 from demangle.schemes.swift._demangler import Demangler, demangle_symbol
 from demangle.schemes.swift._printer import print_root
 
+from . import test_conformance as pins
 from .conftest import load_corpus
 
 CORPUS = pathlib.Path(__file__).parent / "conformance" / "swift-real-world.txt"
@@ -150,6 +151,41 @@ class TestWhatSwiftAddedAfterThisWasWritten:
         name = "$sSUss17FixedWidthIntegerRzrlEyxqd__cSzRd__lufCSu_SiTgm5"
         assert demangle.demangle(name, language="swift").startswith("generic specialization <Swift.UInt, Swift.Int>")
 
+    def test_a_subset_parameters_thunk_with_nothing_to_thunk_is_refused(self):
+        """The four trailing children are the kind and three index subsets; at least one
+        ahead of them names the thing being thunked. Without it the walk back through the
+        children runs off the front and the "from" clause comes out empty -- a thunk for
+        nothing, which is a reading no name has. The reference guards the same count, and
+        5.10.1, which did not, takes its printer down with `std::bad_alloc` on this."""
+        assert demangle.demangle("$sTJSdSSSpSrSUSP", language="swift") == "$sTJSdSSSpSrSUSP"
+
+    def test_a_dependent_root_conformance_says_what_conforms_to_what(self):
+        """The two children are the conforming type and the protocol, with " to " between
+        them. Without it `#0 A to lib.P` runs together as `#0 Alib.P`, which reads as one
+        name."""
+        name = "$s3use1xAA3OfPVy3lib1GVyAA1fQryFQOyQo_GAjE1PAAxAeKHD1_AIHO_HC"
+        assert " dependent root protocol conformance #0 A to lib.P of " in demangle.demangle(name, language="swift")
+
+    def test_a_lowered_parameters_markers_follow_the_references_child_count(self):
+        """`isolated` and `sil_implicit_leading_param` are spelled at three children and
+        at four, and at five or more the reference spells none of them. Following the
+        count rather than deciding per marker is what makes all three of these agree."""
+        # Four children: differentiability, `isolated`, and the type. Spelled.
+        assert "(@guaranteed isolated Builtin.ImplicitActor) -> () to " in spell("$sBAIeNghHgI_BAytIeNghHgILr_TR")
+        # Four children with the implicit leading parameter instead. Also spelled.
+        assert "(@guaranteed sil_implicit_leading_param Builtin.ImplicitActor)" in spell("$sIeg_BAIegHgL_TR")
+        # Five: both markers, and neither is spelled.
+        assert spell("$sBAIgHgIL_BAIegHgIL_TR") == (
+            "reabstraction thunk helper from "
+            "@callee_guaranteed @async (@guaranteed Builtin.ImplicitActor) -> () to "
+            "@escaping @callee_guaranteed @async (@guaranteed Builtin.ImplicitActor) -> ()"
+        )
+
+    def test_an_extended_existential_shape_spells_its_type(self):
+        """Where the reference spells `<null node pointer>`: it reads the node one child
+        too high. See tests/conformance/swift-reference-defects.txt."""
+        assert demangle.demangle("$sSiXg", language="swift") == "existential shape for any Swift.Int"
+
 
 class TestAgainstSwiftsOwnCorpus:
     """`test/Demangle/Inputs/manglings.txt` from the swiftlang/swift repository.
@@ -165,14 +201,16 @@ class TestAgainstSwiftsOwnCorpus:
     """
 
     #: Every vector. Nothing left to raise, and a drop is a regression whatever the
-    #: total -- which is what the two tests below are for.
-    EXPECTED_EXACT = 513
+    #: total -- which is what the two tests below are for. Shared with
+    #: tests/test_conformance.py, where tests/test_readme.py looks for the README's
+    #: counts.
+    EXPECTED_EXACT = pins.SWIFT_UPSTREAM_EXACT
 
     def _score(self):
         return sum(1 for mangled, expected in UPSTREAM if demangle.demangle(mangled) == expected)
 
     def test_the_corpus_is_the_whole_upstream_file(self):
-        assert len(UPSTREAM) == 513
+        assert len(UPSTREAM) == pins.SWIFT_UPSTREAM_TOTAL
 
     def test_no_name_that_matched_has_stopped_matching(self):
         assert self._score() >= self.EXPECTED_EXACT

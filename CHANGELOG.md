@@ -8,6 +8,29 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **A Swift reference demangler, built from source.** Nothing a distribution ships reads
+  a Swift name -- `llvm-cxxfilt` and `c++filt` both decline a `$s` outright -- so until
+  now the largest scheme in this repository had no oracle: 8,494 real-world names, 514
+  compiler vectors and 217 simplified ones, all resting on expectations recorded once
+  with no way to re-derive them and no way to put a *new* name to a reference.
+  `tools/swift-demangle-reference/` builds swiftlang/swift's own `lib/Demangling` --
+  eleven files, unmodified, at a pinned revision -- behind the same line-per-name front
+  end the Rust reference uses. It needs a C++17 compiler, LLVM's headers and one fetch
+  from github.com: no Swift toolchain, no CMake, no LLVM libraries.
+
+  The revision is a commit on `main` and not a release tag, and that was measured rather
+  than assumed. Every shipped release refuses part of the compiler's own vector file:
+  `manglings.txt` holds 446 rows at 5.10.1, 500 at 6.3.3 and 514 on `main`, and 5.10.1
+  scores 455 of the 514. It also settles a claim this repository had been making: the
+  corpora were credited to `swift-demangle` 5.10.1, and 5.10.1 is not what recorded
+  them -- it spells `$s4main3fooyySiFyyXEfU_TA.1` the other way round, exactly as its own
+  `manglings.txt` at that tag expects. `tools/swift-demangle-reference/README.md` carries
+  the measurements.
+
+  Swift is now a job in `tools/enumerate.py` and a scheme in `tools/mutate.py`, and CI
+  builds the reference before both. Three defects came out of the first sweeps; all are
+  below.
+
 - **The five spellings that stood between the `gnu` style and `c++filt`.** Over the
   217,730 distinct Itanium symbols in every shared library a stock Ubuntu 24.04 ships,
   the gnu style differed from `c++filt` 2.42 on 80 of the 217,057 it reads. It differs
@@ -804,6 +827,30 @@ All notable changes to this project are recorded here. The format follows
   `rustfilt` prints `foo@@16` for that name too.
 
 ### Fixed
+
+- **Swift: an autodiff subset-parameters thunk with nothing to thunk was spelled as a
+  thunk for nothing.** The four trailing children of the node are the function kind and
+  three index subsets, and at least one ahead of them names the thing being thunked.
+  `$sTJSdSSSpSrSUSP` has none, so the walk back through the children ran off the front
+  and the "from" clause came out empty: a complete-looking declaration for a name that
+  says nothing. Upstream guards the same count -- 5.10.1, which did not, takes its
+  printer down with `std::bad_alloc` on this name, which is why it exists in
+  `manglings.txt` at all. Found by building the reference and diffing the vector file
+  against it.
+
+- **Swift: a dependent root protocol conformance ran the conforming type into the
+  protocol.** The reference writes `" to "` between the two children of
+  `DependentProtocolConformance{Root,Associated,Inherited}`; this wrote nothing, so
+  `#0 A to lib.P` came out as `#0 Alib.P`, which reads as one name. Found by the
+  mutation fuzzer against the new reference; no corpus vector reaches the shape.
+
+- **Swift: `isolated` and `sil_implicit_leading_param` on a lowered parameter.** The
+  reference spells a parameter's markers when the node has exactly three children or
+  exactly four, and at five or more spells none of them -- so `$sBAIgHgIL_BAIegHgIL_TR`,
+  which carries both, prints neither, while `$sBAIeNghHgI_...`, which carries one,
+  prints it. This had been read off the first shape alone and both markers suppressed
+  unconditionally, which is right for the vectors in the corpus and wrong for every name
+  carrying exactly one. Following the child count is what makes all of them agree.
 
 - **An MSVC corpus a compiler wrote.** `msvc-llvm-corpus.txt` is LLVM's own *test* file
   -- vectors somebody chose -- and every MSVC corpus here was derived from it.

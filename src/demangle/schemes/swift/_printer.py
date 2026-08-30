@@ -1874,6 +1874,12 @@ def _print_auto_diff_self_reordering(self, node, depth, as_prefix_context):
 
 @_handler("AutoDiffSubsetParametersThunk")
 def _print_auto_diff_subset(self, node, depth, as_prefix_context):
+    # The four trailing children are the kind and three index subsets, and at least one
+    # ahead of them names the thing being thunked. Without that one, `at` walks off the
+    # front and the "from" clause comes out empty -- `$sTJSdSSSpSrSUSP` spelled as a
+    # thunk for nothing, which is a reading no name has.
+    if len(node.children) < 5:
+        raise _Invalid
     self.write("autodiff subset parameters thunk for ")
     at = len(node.children) - 1
     to_parameters = node.child(at)
@@ -2130,24 +2136,12 @@ _IMPL_DIFFERENTIABILITY = {ord("l"): "(_linear)", ord("f"): "(_forward)", ord("r
 
 @_handler("ImplParameterResultDifferentiability")
 @_handler("ImplParameterSending")
+@_handler("ImplParameterIsolated")
+@_handler("ImplParameterImplicitLeading")
 def _print_impl_parameter_differentiability(self, node, depth, as_prefix_context):
     """A marker on one lowered parameter. Empty text is the default and prints nothing."""
     if node.text:
         self.write(node.text + " ")
-    return None
-
-
-@_handler("ImplParameterIsolated")
-@_handler("ImplParameterImplicitLeading")
-def _print_impl_parameter_unspelled(self, node, depth, as_prefix_context):
-    """A marker the reference reads and does not spell.
-
-    `I` and `L` after a lowered parameter mark it as the isolated parameter and as the
-    compiler-inserted leading one. Every vector in the reference's own corpus that
-    carries them -- `$sBAIgHgIL_BAIegHgIL_TR` and the two beside it -- prints the
-    parameter without either word, so they are kept on the node for a consumer walking
-    the tree and left out of the spelling.
-    """
     return None
 
 
@@ -2183,13 +2177,20 @@ for _kind, _lead in (("ImplErrorResult", "@error "), ("ImplYield", "@yields ")):
 for _kind in ("ImplParameter", "ImplResult"):
 
     def _print_impl_parameter(self, node, depth, as_prefix_context):
-        # `convention, marker*, type`. The markers -- differentiability, `sending`,
-        # `isolated`, the implicit leading parameter -- each print themselves with a
-        # trailing space, and each prints nothing when its text is empty.
+        # `convention, marker*, type`. Differentiability is always one of the markers,
+        # empty text and all, so a plain parameter has three children and each further
+        # marker -- `sending`, `isolated`, the compiler-inserted leading one -- adds one.
+        #
+        # The reference spells the markers at three children and at four, and at five or
+        # more spells none of them: `$sBAIgHgIL_BAIegHgIL_TR` carries both `isolated` and
+        # `sil_implicit_leading_param` and prints neither, while `$sBAIeNghHgI_...`
+        # carries only the first and prints it. Following the count rather than deciding
+        # per marker is what makes both of those come out right.
         self.print(node.first, depth + 1)
         self.write(" ")
-        for child in node.children[1:-1]:
-            self.print(child, depth + 1)
+        if len(node.children) in (3, 4):
+            for child in node.children[1:-1]:
+                self.print(child, depth + 1)
         self.print(node.last, depth + 1)
         return None
 
@@ -2428,6 +2429,10 @@ for _kind, _lead in (
         self.write(_l)
         self.print_optional_index(node.child(2))
         self.print(node.first, depth + 1)
+        # The two children are the conforming type and the protocol, and the reference
+        # writes " to " between them. Without it the two run together --
+        # `#0 Alib.P` for what is `#0 A to lib.P` -- which reads as one name.
+        self.write(" to ")
         self.print(node.child(1), depth + 1)
         return None
 

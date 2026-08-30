@@ -73,6 +73,17 @@ def _rust_reference():
     return str(binary) if binary.exists() else "llvm-cxxfilt"
 
 
+def _swift_reference():
+    """Swift's own demangler, where `tools/swift-demangle-reference/build.sh` has been run.
+
+    Nothing on this box reads a Swift name: `llvm-cxxfilt` and `c++filt` both decline a
+    `$s` outright, so there is no fallback and this job is skipped when the reference has
+    not been built. See `tools/swift-demangle-reference/README.md`.
+    """
+    built = Path(__file__).resolve().parent / "swift-demangle-reference" / "build"
+    return str(built / "swift-demangle-reference")
+
+
 JOBS = {
     "itanium": (
         "llvm-cxxfilt",
@@ -115,6 +126,21 @@ JOBS = {
             ("?f@@", "YAXPEAUHVW@Z$0_"),
             ("??", "0A@$?QEBH1_23456"),
             ("??_B@5", "?0123456789ABC"),
+        ],
+    ),
+    "swift": (
+        _swift_reference(),
+        None,
+        [
+            # `$s` is the current mangling: a module length, a name, and an entity
+            # marker. The alphabet is the operators that end a symbol -- `F` function,
+            # `V`/`C`/`O` nominal kinds, `D` type, `M` metadata -- plus what a type
+            # position needs.
+            ("$s", "1a4mainVCOFDMSiySS_"),
+            ("$s1a", "1bVCOFDMSiySSxq_G"),
+            # `_T` is Swift 3's, read by a separate demangler in the compiler and still
+            # what the ObjC runtime holds for a Swift class.
+            ("_T", "tFCVOSiSS_1a3foo"),
         ],
     ),
 }
@@ -270,6 +296,24 @@ ACCEPTED = {
             and _without_qualifiers(first) == _without_qualifiers(ours)
         )
     ),
+    # `Tg` is a generic specialization and the `m` after it is `MetatypeParamsRemoved`,
+    # a flag 5.10.1's `demangleSpecAttributes` reads and current `main` -- which is what
+    # this reference is built from, see tools/swift-demangle-reference/README.md -- does
+    # not, because upstream deleted it. The 5.10.1 runtime shipped names carrying it,
+    # `$sSUss17FixedWidthIntegerRzrlEyxqd__cSzRd__lufCSu_SiTgm5` among them, and those
+    # binaries are still on disk, so reading it is the answer a demangler pointed at the
+    # wild wants. The reference refusing a mangling it has dropped is not evidence about
+    # the reading; it is only evidence that it is newer.
+    "swift": lambda name, ours, first, second: (
+        (first is None and _METATYPE_PARAMS_REMOVED.search(name) is not None)
+        # Or an extended existential shape, where `NodePrinter` reads the node one child
+        # too high and spells the type as `<null node pointer>` -- a diagnostic rather
+        # than a demangling, and the whole of what the name says. It survives upstream
+        # because `manglings.txt` has no `Xg`/`XG` vector at any revision, so its own
+        # corpus never asks. `tests/conformance/swift-reference-defects.txt` carries the
+        # finding and pins what these names must spell.
+        or (first is not None and "<null node pointer>" in first)
+    ),
 }
 
 
@@ -304,6 +348,10 @@ _IMAGINARY_DECLARATOR = re.compile(r"[GC][rVK]*[AF]")
 
 #: An Objective-C method name as a `<local-name>`'s function encoding. See `ACCEPTED`.
 _OBJC_METHOD_SCOPE = re.compile(r"Z\d+[-+]\[")
+
+#: A Swift generic specialization carrying the `MetatypeParamsRemoved` flag. See the
+#: `swift` rule in `ACCEPTED`.
+_METATYPE_PARAMS_REMOVED = re.compile(r"T[gGB]m\d")
 
 #: The type codes neither shipped reference reads yet.
 _AHEAD_OF_THE_REFERENCES = ("DA", "DR", "DS", "Dk", "DK", "Dy")

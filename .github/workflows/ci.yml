@@ -141,7 +141,7 @@ jobs:
       - name: Install reference toolchains
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y llvm clang g++ binutils
+          sudo apt-get install --no-install-recommends -y llvm clang g++ binutils llvm-dev
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group test
       - name: Replay the committed corpora
@@ -170,6 +170,12 @@ jobs:
       # they ask the right one about Rust. `cargo` is preinstalled on the runner.
       - name: Build the rustc-demangle reference
         run: cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
+      # Swift's own demangler, likewise: nothing installed above reads a `$s` name at
+      # all, so without this the two steps below have no Swift job to run and say so.
+      # It builds swiftlang/swift's lib/Demangling at a pinned revision against the LLVM
+      # headers already on the runner -- no Swift toolchain, no CMake, no LLVM libraries.
+      - name: Build the Swift reference
+        run: tools/swift-demangle-reference/build.sh
       # The corpora cover the shapes compilers emit. This covers the shapes the grammars
       # permit -- every string up to four characters over a per-scheme alphabet, offered
       # to the library and then to the reference. Four is what fits in the time here;

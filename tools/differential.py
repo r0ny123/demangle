@@ -52,6 +52,9 @@ CORPUS_SETTINGS = {
     "msvc-llvm-corpus.txt": {"language": "msvc"},
     "msvc-clang.txt": {"language": "msvc"},
     "msvc-reference-defects.txt": {"language": "msvc"},
+    # Auto-detection would work on all four, but naming the language keeps the file
+    # scored as the Swift corpus it is rather than as a test of the detector.
+    "swift-reference-defects.txt": {"language": "swift"},
     # Go on purpose. Most Go symbols carry nothing that distinguishes them from any other
     # dotted name -- `bytes.Compare` could be anything -- so the scheme declines to claim
     # them and a caller names the language instead, which is how a tool that read the
@@ -89,9 +92,8 @@ NOT_REPLAYED = frozenset(
         # that something somewhere disagreed. It is also stored gzipped, which this
         # replay does not read.
         "itanium-libcxxabi.txt",
-        # Swift's own vectors, 513 of them, of which 46 name Swift 6 constructs this
-        # does not read yet. Pinned by tests/test_swift.py, for the reason the two
-        # above are.
+        # Swift's own vectors, all 514 of which match. Pinned by tests/test_swift.py in
+        # both directions, for the reason the two above are.
         "swift-upstream.txt",
         # rustc-demangle's own vectors, whose expected column is its `{:#}` mode rather
         # than the `{}` this library prints. Pinned by tests/test_rust.py, which records

@@ -67,6 +67,8 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.GO_EXACT, pins.GO_TOTAL),
         (pins.D_EXACT, pins.D_TOTAL),
         (pins.SWIFT_EXACT, pins.SWIFT_TOTAL),
+        (pins.SWIFT_UPSTREAM_EXACT, pins.SWIFT_UPSTREAM_TOTAL),
+        (pins.SWIFT_REFERENCE_DEFECTS_EXACT, pins.SWIFT_REFERENCE_DEFECTS_TOTAL),
         (pins.NIM_EXACT, pins.NIM_TOTAL),
         (pins.PASCAL_EXACT, pins.PASCAL_TOTAL),
         (pins.OBJC_EXACT, pins.OBJC_TOTAL),

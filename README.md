@@ -318,13 +318,15 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Names a reference reads wrongly ✱ | the declaration | **10 / 10** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
-| Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
+| Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |
+| Swift — the compiler's own demangler vectors | `swift-demangle`, built from source ✤ | **514 / 514** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
 | Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
 | Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
-| Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` | **217 / 217** |
+| Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` ✤ | **217 / 217** |
+| Swift names the reference reads wrongly ✤ | the demangling tree | **4 / 4** |
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
 | Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
 | CodeWarrior — the reference's own vectors ✧ | `cwdemangle` 1.0 | **47 / 47** |
@@ -370,6 +372,17 @@ it holds for all 236,570 readable symbols in the shipped runtime, not only the s
 above. Independently, `ppudump` prints both a unit's mangled names and the names it
 declares, and every name read is one the unit declares. Case is not recoverable: Pascal
 is case-insensitive and the compiler upper-cases before mangling.
+
+✤ **The Swift reference is built here, from source.** Nothing a distribution ships
+reads a Swift name — `llvm-cxxfilt` and `c++filt` both decline a `$s` outright — so
+`tools/swift-demangle-reference/` builds swiftlang/swift's own `lib/Demangling` at a
+pinned revision behind a line-per-name front end. The revision is a commit on `main` and
+not a release tag, because every release through 6.3.3 refuses part of the compiler's own
+vector file: 5.10.1 scores 455 of the 514 and 6.3.3 does not carry all of them. Its
+README has the measurements, and the one row where following it would be the defect —
+`NodePrinter` reads an extended existential shape one child too high and spells the type
+as `<null node pointer>`, a path its own test corpus never exercises — is pinned in
+`tests/conformance/swift-reference-defects.txt` against what the tree says instead.
 
 ✻ A mangled name in Swift *metadata* can hold a one-byte marker and a four-byte offset
 in place of a type the image already describes, so reading one needs the image:

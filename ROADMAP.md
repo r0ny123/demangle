@@ -66,7 +66,7 @@ it was written), struct and function-literal values, `extern(Pascal)`, the anony
 outright. Each was derived by running the reference over the input space rather than read
 from a specification that does not describe it.
 
-**Swift**, `test/Demangle/Inputs/manglings.txt`: 513 of 513, with no name answered by a
+**Swift**, `test/Demangle/Inputs/manglings.txt`: 514 of 514, with no name answered by a
 different spelling at any point along the way. The last eight were features Swift added
 after this scheme was written -- function-signature specialisation kinds (an escaping
 closure, a closure the same as an earlier argument, propagated structs, and `p` becoming
@@ -76,6 +76,10 @@ conformances and an opaque result type's conformance. Each was transcribed from
 swiftlang/swift's own `Demangler.cpp` and `NodePrinter.cpp` rather than fitted to the
 vectors, which is the only way the no-wrong-spellings property survives.
 `simplified-manglings.txt` is a whole output mode this does not have; see section 3.
+The reference is `tools/swift-demangle-reference/`, which builds swiftlang/swift's own
+`lib/Demangling` at a pinned revision -- nothing a distribution ships reads a Swift name
+at all -- and the one place following it would be the defect is
+`tests/conformance/swift-reference-defects.txt`.
 
 **Rust**, rustc-demangle's own `#[test]` vectors: 47 of 51. Two of the other four are
 not differences from the *tool*: `rustfilt` prints `foo@@16` and echoes `ZN4testE` back
@@ -210,8 +214,10 @@ D, Swift, Nim, Free Pascal, Objective-C and Delphi have all landed the same way.
 each is measured against differs, and the difference is the interesting part:
 
 - **D** — 100% against GNU binutils' `c++filt --format=dlang`.
-- **Swift** — exact against `swift-demangle` 5.10.1 over the whole shipped runtime and
-  the compiler's own test corpus, in both the current mangling and Swift 3's.
+- **Swift** — exact against `swift-demangle` built from swiftlang/swift's own sources,
+  over the whole shipped runtime and the compiler's own test corpus, in both the current
+  mangling and Swift 3's. Nothing a distribution ships reads a Swift name, so the
+  reference is built here: `tools/swift-demangle-reference/`.
 - **Nim** — no reference demangler exists, so the property is that re-mangling what is
   read reproduces the symbol, plus agreement with the name the compiler recorded in its
   own `.ndi` files.

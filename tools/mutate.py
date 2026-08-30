@@ -117,6 +117,10 @@ SEEDS = {
     "d": (["d-real-world.txt", "d-libiberty.txt"], "_D"),
     "ada": (["ada-libiberty.txt"], ""),
     "msvc": (["msvc-llvm-corpus.txt", "msvc-arm64ec.txt", "msvc-clang.txt"], "?"),
+    # Only the `$s` corpus rows: `swift-real-world.txt` carries both manglings and the
+    # prefix a mutant has to keep can only be one of them. `swift-symbolic.txt` is hex
+    # and `swift-simplified.txt` is scored under other options, so neither seeds this.
+    "swift": (["swift-real-world.txt", "swift-upstream.txt", "swift-refusals.txt"], "$s"),
 }
 
 #: A second reading of the *same* name, for schemes where a divergence from the first

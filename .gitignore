@@ -14,3 +14,5 @@ site/
 htmlcov/
 *.o
 tools/rustc-demangle-reference/target/
+tools/swift-demangle-reference/swift/
+tools/swift-demangle-reference/build/

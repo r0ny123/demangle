@@ -140,6 +140,19 @@ NIM_TOTAL, NIM_EXACT = 2115, 2115
 #: current mangling and Swift 3's.
 SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 
+#: Swift's own `test/Demangle/Inputs/manglings.txt`. Not scored here -- 70 of its rows
+#: are names the reference refuses, recorded as `mangled\tmangled`, and `_score` reads a
+#: refusal as a miss. tests/test_swift.py scores it, in both directions, against this
+#: number; it lives here because that is where tests/test_readme.py looks for the
+#: README's counts.
+SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 514, 514
+
+#: Swift names the reference reads wrongly. One defect, in `NodePrinter`'s extended
+#: existential shape case, which reads the node one child too high and spells the type as
+#: `<null node pointer>`. The expected column is what the demangling tree says instead;
+#: see the file's own header.
+SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT = 4, 4
+
 #: Objective-C. No reference demangler exists, so the expected column is what the
 #: *declaration* said: every symbol here was emitted by clang 18.1.3 for Objective-C this
 #: package wrote, or read out of the shipped GCC runtime, libobjc.a. Three ABIs are
@@ -310,6 +323,15 @@ def test_d_matches_gnu_dlang_demangler():
 def test_swift_matches_swift_demangle():
     total, exact = _score("swift-real-world.txt", "llvm", language="swift")
     assert (total, exact) == (SWIFT_TOTAL, SWIFT_EXACT)
+
+
+def test_swift_reference_defect_corpus():
+    """Names where following `swift-demangle` would mean printing `<null node pointer>`.
+
+    See `SWIFT_REFERENCE_DEFECTS_TOTAL` and the file's own header.
+    """
+    total, exact = _score("swift-reference-defects.txt", "llvm", language="swift")
+    assert (total, exact) == (SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT)
 
 
 def test_pascal_corpus():
