@@ -118,6 +118,132 @@ class TestStillRefusesWhatItShould:
     def test_and_demangle_still_never_raises(self, mangled):
         assert demangle.demangle(mangled) == mangled
 
+    @pytest.mark.parametrize("mangled", ["_Z1fIiEi", "_Z1fIiEv", "_Z1fI1DEa", "_ZN1a1bIiEEi"])
+    def test_a_signature_with_no_parameter_type_is_not_a_declaration(self, mangled):
+        """`<bare-function-type> ::= <signature type>+` is one or more, not zero or more.
+
+        A template specialisation spends its first type on the return type -- a plain
+        function encodes none, because overloads cannot differ by it -- so `_Z1fIiEi` has
+        a return type and then nothing. That is not a declaration of anything, and both
+        `c++filt` 2.42 and `llvm-cxxfilt` 18.1 hand it straight back. The reference reads
+        the production as a do-while for exactly this reason.
+
+        It was accepted here and spelled `int f<int>()`, which is what the *well formed*
+        `_Z1fIiEiv` says: two manglings came back as one name, and one of them was not a
+        mangling. Found by enumerating every Itanium name up to five characters over a
+        grammar-shaped alphabet and asking both references about each one this reads.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The same names with a parameter list, which is the only difference.
+            ("_Z1fIiEiv", "int f<int>()"),
+            ("_Z1fIiEvv", "void f<int>()"),
+            ("_Z1fI1DEav", "signed char f<D>()"),
+            # A list that reads to nothing is still a list that was read: `v` is how the
+            # grammar spells `()`, and an empty pack expansion drops out after the fact.
+            ("_Z1fIJEEvDpT_", "void f<>()"),
+            # And a plain function encodes no return type, so its one type is a parameter.
+            ("_Z1fi", "f(int)"),
+            ("_Z1fv", "f()"),
+        ],
+    )
+    def test_the_rule_counts_types_read_and_not_parameters_kept(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z1fT_", "_Z1f1AT_", "_Z1fT_i", "_ZN1a1bET_", "_Z1fT0_"])
+    def test_a_template_parameter_with_no_arguments_in_scope_names_nothing(self, mangled):
+        """`T_` indexes the enclosing `<template-args>`. A plain function has none.
+
+        Both references hand every one of these back. This read them as `auto` -- so
+        `_Z1f1AT_` was `f(A, auto)`, which is a declaration a reader would believe, of a
+        type the encoding does not contain.
+
+        The fallback that spells `auto` is right for the two readings that legitimately
+        find nothing bound, and both of those have something in scope: a generic lambda
+        occupies a level even when it declared no parameters, and a conversion operator's
+        type is read ahead of the arguments that bind it. Over the 226,402 names of the
+        corpora plus every Itanium symbol on this machine, exactly one reaches that
+        fallback, and it is a generic lambda.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    def test_a_generic_lambdas_invented_parameter_still_reaches_the_fallback(self):
+        """The other side: `Ul T_ E` has a level, and `auto` is the right answer there."""
+        mangled = "_ZZ1fvENKUlT_E_clIiEEDaS_"
+        assert "auto" in demangle.demangle_strict(mangled, language="itanium")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # A parameter that *arrived* as `void` is not one that was written `v`.
+            ("_Z1fIvEvT_", "void f<void>(void)"),
+            ("_Z1fIJvEEvDpT_", "void f<void>(void)"),
+            ("_Z1fIvEvPFvT_E", "void f<void>(void (*)(void))"),
+            # Nor is a `v` that is not the first signature type.
+            ("_Z1fIJEEvDpT_v", "void f<>(void)"),
+            ("_Z1fvv", "f(void, void)"),
+            ("_Z1fvi", "f(void, int)"),
+            # And the shape the rule exists for, which is exactly one written `v`.
+            ("_Z1fv", "f()"),
+            ("_Z1fIiEvv", "void f<int>()"),
+            ("_ZN1ScviEv", "S::operator int()"),
+            ("_Z1fPFvvE", "f(void (*)())"),
+        ],
+    )
+    def test_only_a_written_v_spells_the_empty_parameter_list(self, mangled, expected):
+        """`f(void)` is `f()` only when the `void` is the `v` the grammar writes.
+
+        Both references read it by position: the first signature type, if it is a
+        literal `void`, *is* the empty list. This asked instead whether every parameter
+        spelled `void` after the fact, which is a different question and got two shapes
+        wrong.
+
+        `_Z1fIvEvT_` is `template <class T> void f(T)` instantiated with `void`. Both
+        references spell it `void f<void>(void)`; this spelled `void f<void>()`, dropping
+        a parameter that is in the name -- and there is no reference behind that answer,
+        which is the part that makes it a defect rather than a choice. A list of several
+        voids is not an empty one either: `_Z1fvv` is `f(void, void)` to `c++filt` and
+        refused outright by `llvm-cxxfilt`, and came back here as `f()`, which is what
+        `_Z1fv` says.
+
+        Every row now matches at least one reference, and matches `llvm-cxxfilt`
+        wherever it reads the name at all. The two it does not are the two it refuses.
+        """
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # The case that tells the two apart: an operator that takes a parameter.
+            ("_ZN1ScviEiv", "S::operator int(int, void)"),
+            ("_ZN1ScviEv", "S::operator int()"),
+            ("_ZN1Scv7MuncherIJDpPT_EEIJFivEA_iEEEv", "S::operator Muncher<int (*)(), int (*) []><int (), int []>()"),
+        ],
+    )
+    def test_a_conversion_operator_has_no_return_type_to_read(self, mangled, expected):
+        """It encodes none however template it is: what it returns is in its name.
+
+        This read one anyway and threw it away, which spent the first type of the
+        signature. Invisible while that type is the `v` of an empty parameter list --
+        discarding it and spelling `()` from what was left came to the same thing -- and
+        wrong the moment the operator takes a parameter, where `_ZN1ScviEiv` came back
+        as `S::operator int()` rather than `S::operator int(int, void)`.
+
+        Distinct from the return type GNU *omits* on the function a local name is scoped
+        by: that one is in the input and has to be read before it can be dropped. The two
+        shared a flag, so fixing this by not reading turned `_M_construct<char const*>`'s
+        `v` into a first parameter under `gnu`. They are separate flags now, and the
+        pinned gnu score is what says so.
+        """
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
 
 class TestOperatorNamesAsCallees:
     """`on <operator-name>` -- a callee named by the operator it is.
@@ -179,6 +305,44 @@ class TestProductionsTakenFromLibcxxabi:
     def test_an_objective_c_block_is_still_objective_cs(self):
         """Only `__` and an *Itanium* encoding is claimed here; `__foo_block_invoke` is not."""
         assert demangle.demangle("___cfunc_block_invoke") == "block #1 in cfunc"
+
+    @pytest.mark.parametrize(
+        "encoding",
+        [
+            "N1a1bES",  # a substitution whose `_` terminator is missing
+            "N1a1bES0",
+            "1fPS",
+            "N1a1bERS",
+        ],
+    )
+    def test_a_truncated_encoding_cannot_borrow_the_literal_that_bounds_it(self, encoding):
+        """The window that stops the encoding before `_block_invoke` is the end of input.
+
+        This shape is the only place a parser moves the end of input: a regex says where
+        the encoding stops, `reader.length` is shortened to there, and the literal after
+        it must be unreadable. `peek`, `take` and `eof` honoured that; `expect`, `eat`,
+        `startswith`, `peek2` and `remaining` indexed the string and did not. So `S` at
+        the very end took the `_` of `_block_invoke` as its terminator and
+        `___ZN1a1bES_block_invoke` came back as `a::b(a)` -- 4,931 truncated encodings
+        across the corpora read as though they were whole, every one of them spelling
+        something that looks like a declaration.
+
+        Both references leave every one of these alone.
+        """
+        windowed = f"___Z{encoding}_block_invoke"
+        # Truncated on its own, and the window must not change that.
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(f"_Z{encoding}", language="itanium")
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(windowed, language="itanium")
+        assert demangle.demangle(windowed) == windowed
+
+    def test_the_same_encodings_read_when_they_are_not_truncated(self):
+        """The other half: the bound refuses what runs past it and nothing else."""
+        assert demangle.demangle("___ZN1a1bE_block_invoke") == "invocation function for block in a::b"
+        # The `_` this one ends on is its own, and the literal's still follows it.
+        assert demangle.demangle("___ZN1a1bES__block_invoke") == "invocation function for block in a::b(a)"
+        assert demangle.demangle("_ZN1a1bES_") == "a::b(a)"
 
     def test_a_vendor_qualifier_and_its_cv_qualifiers_are_one_component(self):
         """`U3AS1Ki` enters one substitution, so `S0_` is the pointer and not the type.

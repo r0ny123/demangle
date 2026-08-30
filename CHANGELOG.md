@@ -732,6 +732,42 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **A `void` that arrived by substitution was mistaken for the `v` that means "no
+  parameters".** `f(void)` is how the mangling writes `f()`, and both references read
+  that by position: the first signature type, if it is a literal `void`, *is* the empty
+  list. This asked instead whether every parameter spelled `void` after the fact, which
+  is a different question. `_Z1fIvEvT_` is `template <class T> void f(T)` instantiated
+  with `void` -- both references spell it `void f<void>(void)` and this spelled
+  `void f<void>()`, dropping a parameter that is in the name and answering to no
+  reference at all. So did `_Z1fIvEvPFvT_E` inside a function type, and
+  `_Z1fIJEEvDpT_v` where an empty pack precedes the `v`. And a list of several voids is
+  not an empty one: `_Z1fvv` is `f(void, void)` to `c++filt` and refused outright by
+  `llvm-cxxfilt`, where this said `f()`. Every one of these now matches at least one
+  reference, and matches `llvm-cxxfilt` wherever it reads the name at all -- the two it
+  does not are the two it refuses.
+
+- **A conversion operator's return type was read out of the input, where it is not.**
+  It encodes none however template it is -- what it returns is in its name -- and this
+  read a type anyway and discarded it, spending the first type of the signature. That is
+  invisible while the type in question is the `v` of an empty parameter list, since
+  discarding it and spelling `()` from what remained came to the same thing, and wrong
+  the moment the operator takes a parameter: `_ZN1ScviEiv` is `S::operator int(int,
+  void)` to `llvm-cxxfilt` and came back here as `S::operator int()`. It shared a flag
+  with the return type GNU *omits* on the function a local name is scoped by, which is a
+  different thing -- that one is in the input and has to be read before it can be
+  dropped -- so the two are separate flags now. Found because the rule below refused
+  seven libcxxabi vectors that had been passing on the two errors cancelling.
+
+- **A template parameter with no arguments in scope was read as `auto`.** `T_` indexes
+  the enclosing `<template-args>`, and a plain function has none, so `_Z1f1AT_` came
+  back as `f(A, auto)` -- a declaration a reader would believe, of a type the encoding
+  does not contain. Both references hand it back. The `auto` fallback is right for the
+  two readings that legitimately find nothing bound, and both of those have something in
+  scope: a generic lambda occupies a level even when it declared no parameters, and a
+  conversion operator's type is read ahead of the arguments that bind it. Over the
+  226,402 names of the corpora plus every Itanium symbol this machine ships, exactly one
+  reaches that fallback, and it is a generic lambda.
+
 - **A truncated encoding borrowed the literal that bounds it.** `___Z<encoding>_block_invoke`
   is the one place a parser moves the end of input: a regex says where the encoding
   stops and `reader.length` is shortened to there, so the literal after it must be
@@ -757,6 +793,20 @@ All notable changes to this project are recorded here. The format follows
   literal happens to contain none of the characters they test for, so none of them could
   be fooled by it; they go through a bounded `ahead2` now anyway, because an invariant
   with three documented exceptions is not one.
+
+- **A function signature with no parameter types was read as a declaration.**
+  `<bare-function-type> ::= <signature type>+` is one or more, and a template
+  specialisation spends its first type on the return type -- a plain function encodes
+  none, because overloads cannot differ by it. So `_Z1fIiEi` has a return type and then
+  nothing, which is not a declaration of anything; both `c++filt` 2.42 and
+  `llvm-cxxfilt` 18.1 hand it straight back, and the reference reads the production as a
+  do-while for exactly this reason. It came back here as `int f<int>()`, which is what
+  the well-formed `_Z1fIiEiv` says -- two manglings spelled as one name, and one of them
+  was not a mangling. The rule counts *types read* rather than parameters kept, because
+  a parameter list can legitimately end up empty after being read: `v` on its own is how
+  the grammar spells `()`, and an empty pack expansion drops out. Byte-identical on all
+  563,331 real symbols. Found by enumerating every Itanium name up to five characters
+  over a grammar-shaped alphabet and asking both references about each one this reads.
 
 - **The three pre-Itanium false claims are kept on purpose, and now there is a number
   saying why.** `gnuv2` claims and rewrites three of the 345,601 symbols a stock Ubuntu

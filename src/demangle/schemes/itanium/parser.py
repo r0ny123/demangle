@@ -227,12 +227,6 @@ def detect(name):
     )
 
 
-#: `void` is four characters, and `builder.size` is O(1) on both builders. Filtering on
-#: the width before spelling anything is what keeps `_is_all_void` from rendering a
-#: parameter list that was never going to be `(void)`.
-_VOID_WIDTH = 4
-
-
 def _drops_out(builder, handle):
     """Whether a parsed parameter spells to nothing and so is not a parameter at all.
 
@@ -243,19 +237,6 @@ def _drops_out(builder, handle):
     for a question that is only ever "is it empty".
     """
     return builder.size(handle) == 0
-
-
-def _is_all_void(builder, parameters):
-    """Whether every parameter is `void`, which is how the scheme spells "none".
-
-    C++ writes `f()` where the mangling writes `f(void)`. The width test comes first so
-    that an ordinary signature is settled without spelling anything; only a list whose
-    parameters are all four characters wide can be the one this is looking for.
-    """
-    for parameter in parameters:
-        if builder.size(parameter) != _VOID_WIDTH:
-            return False
-    return all(builder.spell(parameter) == "void" for parameter in parameters)
 
 
 class ItaniumParser:
@@ -282,6 +263,7 @@ class ItaniumParser:
         "_module_names",
         "_modules",
         "_naming",
+        "_no_return_type",
         "_objc_id_ids",
         "_objc_ids",
         "_pack_arity",
@@ -294,6 +276,7 @@ class ItaniumParser:
         "_precedence",
         "_prefixes",
         "_productions",
+        "_reading_conversion_type",
         "_reject_unbound_parameters",
         "_rework",
         "_saw_empty_pack",
@@ -407,6 +390,12 @@ class ItaniumParser:
         # return type GNU c++filt omits. The type is still parsed -- it is there in the
         # input either way -- and then discarded.
         self._drop_return = False
+        # Set by a conversion operator, which encodes no return type at all however
+        # template it is: what it returns is in its name. Distinct from `_drop_return`,
+        # which is about a type that *is* in the input and is not printed -- read and
+        # discarded. Conflating the two spent the first type of the signature on a
+        # return type the encoding did not contain.
+        self._no_return_type = False
         # Whether the name just read declares its object parameter explicitly, `N H ...`.
         # C++23 lets a member function name the object it is called on, and the
         # reference marks that parameter `this`.
@@ -415,6 +404,10 @@ class ItaniumParser:
         # entries there were before it: `(position, mark)`, or None. See
         # `_reread_conversion`.
         self._pending_conversion = None
+        # True while that type is being read for the first time, before the arguments
+        # exist. The one place a `<template-param>` may resolve to nothing with no
+        # <template-args> in scope at all -- see `bind_template_param`.
+        self._reading_conversion_type = False
         # Whether a `<template-param>` at the head of a type may take template arguments
         # of its own. False while reading a conversion operator's type, where an `I`
         # that follows opens the *operator's* argument list: in `cvT_I4MerpE` the
@@ -583,6 +576,7 @@ class ItaniumParser:
             # A data symbol: a name and nothing after it, and so no return type for a
             # conversion operator's name to have suppressed.
             self._drop_return = False
+            self._no_return_type = False
             self._explicit_object = False
             self._entity_shape = ("data", name)
             return name
@@ -615,23 +609,75 @@ class ItaniumParser:
         was_naming = self._naming
         self._naming = False
         try:
-            returns = self.type_() if is_template else None
-            if self._drop_return:
+            if self._no_return_type:
+                # A conversion operator encodes no return type however template it is:
+                # what it returns is in its name. So there is nothing to read -- where
+                # this used to read a type and throw it away, spending the first type of
+                # the signature on one the encoding does not contain. It went unnoticed
+                # because that type is almost always the `v` of an empty parameter list,
+                # and discarding it and spelling `()` from the empty list left over came
+                # to the same thing. It does not when the operator takes a parameter:
+                # `_ZN1ScviEiv` is `S::operator int(int, void)`, and reading `i` as a
+                # return type made it `S::operator int()`.
+                self._no_return_type = False
                 returns = None
-                self._drop_return = False
+            else:
+                returns = self.type_() if is_template else None
+                if self._drop_return:
+                    # A type that *is* in the input and is not printed: GNU omits the
+                    # return type of the function a local name is scoped by. Read, then
+                    # discarded -- which is the opposite of the branch above.
+                    returns = None
+                    self._drop_return = False
 
             parameters = []
+            read = 0
+            # Whether the first signature type was *written* `v`. Noted before it is
+            # read, because it cannot be recovered afterwards: a `T_` bound to `void`
+            # spells `void` too, and that is not the same thing.
+            wrote_void = False
             while not reader.eof and reader.peek() not in ("E", ".", "Q"):
+                if not read:
+                    wrote_void = reader.peek() == "v"
                 parameter = self.type_()
-                if explicit_object and not parameters:
+                read += 1
+                if _drops_out(builder, parameter):
+                    # An expansion over an empty pack. It is not a parameter, so it is
+                    # not the explicit object parameter either -- the marker waits for
+                    # the first type that stays.
+                    continue
+                if explicit_object:
                     explicit_object = False
                     parameter = builder.raw("this " + builder.spell(parameter))
-                if not _drops_out(builder, parameter):
-                    parameters.append(parameter)
+                parameters.append(parameter)
+            if not read:
+                # `<signature type>+` is one or more, and the reference reads it as a
+                # do-while for that reason. A template specialisation spends its first
+                # type on the return type, so `_Z1fIiEi` has a return type and no
+                # parameter list at all -- not a declaration, and both references refuse
+                # it. Accepting it spelled `int f<int>()`, which is what the *well
+                # formed* `_Z1fIiEiv` says, so two manglings came back as one name and
+                # one of them was not a mangling.
+                #
+                # Counted rather than tested with `if not parameters`, because a
+                # parameter list can legitimately end up empty after being read: `v` on
+                # its own is how `()` is written, and an empty pack expansion drops out.
+                raise ParseError(self._mangled, reader.pos, "a function signature has no parameter types")
         finally:
             self._naming = was_naming
 
-        if parameters and _is_all_void(builder, parameters):
+        if read == 1 and wrote_void:
+            # `f(void)` is how the mangling writes `f()`, and only exactly that: one
+            # signature type, written `v`. Both references read it by position -- the
+            # first type, if it is a literal `void`, *is* the empty list.
+            #
+            # This asked instead whether every parameter spelled `void`, which is not
+            # the same question and got two shapes wrong. `_Z1fIvEvT_` is
+            # `template <class T> void f(T)` instantiated with `void`; both references
+            # spell it `void f<void>(void)` and this spelled `void f<void>()`, dropping
+            # a parameter that is in the name. And a list of several voids is not an
+            # empty one: `_Z1fvv` is `f(void, void)` to `c++filt` and refused outright
+            # by `llvm-cxxfilt`, where this said `f()` -- which is what `_Z1fv` says.
             parameters = []
 
         suffix = ""
@@ -1089,13 +1135,16 @@ class ItaniumParser:
         outer_scope = self.targs.snapshot()
         self._naming = True
         outer_drop_return = self._drop_return
+        outer_no_return_type = self._no_return_type
         outer_explicit_object = self._explicit_object
         self._drop_return = not self.options.local_name_return_type
+        self._no_return_type = False
         self._explicit_object = False
         try:
             outer = self.encoding()
         finally:
             self._drop_return = outer_drop_return
+            self._no_return_type = outer_no_return_type
             self._explicit_object = outer_explicit_object
 
         if reader.eat("Ed"):
@@ -1542,10 +1591,17 @@ class ItaniumParser:
             start = reader.pos
             mark = self.subs.mark()
             was_trying = self._try_template_args
+            was_reading = self._reading_conversion_type
             self._try_template_args = False
+            # This is the one reading that legitimately resolves a template parameter
+            # with nothing in scope: the arguments that bind it come later in the name,
+            # and `_reread_conversion` throws this spelling away and makes it again once
+            # they are. See `bind_template_param`.
+            self._reading_conversion_type = True
             try:
                 spelled = "operator " + self.builder.spell(self.type_())
             finally:
+                self._reading_conversion_type = was_reading
                 self._try_template_args = was_trying
             self._pending_conversion = (start, mark)
             # Only the entity's own name suppresses a return type. A conversion operator
@@ -1553,7 +1609,7 @@ class ItaniumParser:
             # argument -- is not this declaration's name, and letting it set the flag
             # would drop the return type of whatever function the name belongs to.
             if self._naming:
-                self._drop_return = True
+                self._no_return_type = True
             return spelled
 
         if code == "li":
@@ -1733,6 +1789,22 @@ class ItaniumParser:
             # requires-clause it is spelled by its own mangled text instead, which is
             # the branch above.
             raise ParseError(self._mangled, reader.pos, f"no template parameter level {level} in scope")
+
+        if not (self.targs.depth() or self._reading_conversion_type):
+            # No <template-args> anywhere in scope, and this is not the one reading that
+            # expects to run ahead of them -- so there is no list for this to be a
+            # parameter *of*, and nothing later will supply one. `_Z1f1AT_` is a plain
+            # function with a parameter written as a template parameter; both references
+            # hand it straight back, and it came back here as `f(A, auto)`, which reads
+            # as a real declaration and names a type the encoding does not contain.
+            #
+            # The two readings that legitimately find nothing bound are both excluded
+            # above. A generic lambda occupies a level even when it declared no
+            # parameters -- that is what its `auto` parameters are numbered against --
+            # and a conversion operator's type is written before the arguments that bind
+            # it, which is what `_reading_conversion_type` marks; `_reread_conversion`
+            # discards that spelling and makes it again with them in scope.
+            raise ParseError(self._mangled, reader.pos, "template parameter with no arguments in scope")
 
         # Level 0, or a level in scope whose parameter is not. A generic lambda's `auto`
         # parameter is mangled as a reference to a parameter it never declared (ABI
@@ -2309,6 +2381,9 @@ class ItaniumParser:
 
         returns = self.type_()
         parameters = []
+        #: One flag per kept parameter: was it written `v`, rather than merely spelling
+        #: `void` after a substitution?
+        written_void = []
         suffix = ""
         while not reader.eat("E"):
             if reader.eof:
@@ -2321,11 +2396,20 @@ class ItaniumParser:
                 reader.take()
                 suffix = " &&"
                 continue
+            wrote_void = reader.peek() == "v"
             parameter = self.type_()
             if not _drops_out(builder, parameter):
                 parameters.append(parameter)
+                written_void.append(wrote_void)
 
-        if parameters and _is_all_void(builder, parameters):
+        if parameters and all(written_void):
+            # As above, and for the same reason -- but counted the way this production's
+            # references count. `llvm-cxxfilt` drops every literal `void` from a function
+            # type's parameters, `c++filt` keeps all of them, and they agree only when
+            # every one is a literal `void`; that is what this collapses, unchanged.
+            # What changes is that a `T_` bound to `void` is no longer one of them:
+            # `_Z1fIvEvPFvT_E` is `void f<void>(void (*)(void))` to both references and
+            # came back here as `void f<void>(void (*)())`.
             parameters = []
         written = "".join([f" {qualifier}" for qualifier in cv_qualifiers])
         return builder.function(returns, parameters, written + suffix + exception_spec)
