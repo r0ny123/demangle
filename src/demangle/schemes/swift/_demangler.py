@@ -1552,6 +1552,13 @@ class Demangler:
     def demangle_thunk_or_specialization(self):
         """`T` -- the largest operator, covering everything the compiler synthesises."""
         char = self.next_char()
+        # `TT` is the namespace for thunks that come from a thunk instruction, and `TTI`
+        # is the only one so far. Read before the tables below because `T` is in none of
+        # them and would otherwise fall through to a refusal.
+        if char == "T":
+            if self.next_char() != "I":
+                return None
+            return self.with_child("SILThunkIdentity", self.pop(is_entity))
         plain = _THUNK_PLAIN.get(char)
         if plain is not None:
             return Node(plain)
@@ -1574,7 +1581,7 @@ class Demangler:
             signature = self.pop("DependentGenericSignature")
             result = self.pop("Type")
             implementation = self.pop("Type")
-            kind = "ObjCAsyncCompletionHandlerImpl" if char == "z" else "PredefinedObjCAsyncCompletionHandlerImpl"
+            kind = "ObjCAsyncCompletionHandlerImpl" if char == "z" else "CheckedObjCAsyncCompletionHandlerImpl"
             node = self.with_children(kind, implementation, result, flags)
             if signature is not None:
                 self.add_child(node, signature)
@@ -1667,7 +1674,14 @@ class Demangler:
         return None
 
     def _key_path_accessor_thunk(self, char):
-        kind = "KeyPathGetterThunkHelper" if char == "K" else "KeyPathSetterThunkHelper"
+        # `mu` and `MA` after the `K`/`k` name a method thunk rather than an accessor
+        # one, and which of `K` or `k` was written stops mattering once they do.
+        if self.next_if("mu"):
+            kind = "KeyPathUnappliedMethodThunkHelper"
+        elif self.next_if("MA"):
+            kind = "KeyPathAppliedMethodThunkHelper"
+        else:
+            kind = "KeyPathGetterThunkHelper" if char == "K" else "KeyPathSetterThunkHelper"
         serialized = self.next_if("q")
         types = []
         node = self.pop()
@@ -2045,7 +2059,23 @@ class Demangler:
             conformance = self.pop_protocol_conformance()
             return self.with_children("BaseWitnessTableAccessor", conformance, protocol)
         if char == "O":
-            kind = _OUTLINED_VALUE_WITNESSES.get(self.next_char())
+            marker = self.next_char()
+            # The three enum-payload operations carry the case index after the marker,
+            # and it goes last -- after the signature, where there is one.
+            kind = _OUTLINED_ENUM_OPERATIONS.get(marker)
+            if kind is not None:
+                if marker == "g":
+                    signature = self.pop("DependentGenericSignature")
+                    if signature is not None:
+                        return self.with_children(kind, self.pop("Type"), signature)
+                    return self.with_child(kind, self.pop("Type"))
+                # The case index is read before the operand is popped, and goes last.
+                case_index = self.index_as_node()
+                signature = self.pop("DependentGenericSignature")
+                if signature is not None:
+                    return self.with_children(kind, self.pop("Type"), signature, case_index)
+                return self.with_children(kind, self.pop("Type"), case_index)
+            kind = _OUTLINED_VALUE_WITNESSES.get(marker)
             if kind is None:
                 return None
             signature = self.pop("DependentGenericSignature")
@@ -2133,6 +2163,10 @@ class Demangler:
             value = self.pop("Type")
             key = self.pop("Type")
             return self.make_type_or_none(self.with_children("SugaredDictionary", key, value))
+        if char == "A":
+            element = self.pop("Type")
+            count = self.pop("Type")
+            return self.make_type_or_none(self.with_children("SugaredInlineArray", count, element))
         kind = {"q": "SugaredOptional", "a": "SugaredArray", "p": "SugaredParen"}.get(char)
         if kind is None:
             return None
@@ -2406,6 +2440,9 @@ class Demangler:
 
         if constraint == "inverse":
             return self.with_children("DependentGenericInverseConformanceRequirement", constrained, inverted)
+        if constraint == "value-marker":
+            # `let N: Int`: the marker carries the parameter's *type* as well.
+            return self.with_children("DependentGenericParamValueMarker", constrained, self.pop("Type"))
         if constraint == "pack-marker":
             return self.with_child("DependentGenericParamPackMarker", constrained)
         if constraint == "protocol":
@@ -2517,7 +2554,7 @@ class Demangler:
             # Swift 6 typed throws: the error type is named rather than implied.
             return self.with_child("TypedThrowsAnnotation", self.pop_type_and_get_child())
         if char == "t":
-            return self.make_type_or_none(self.with_child("CompileTimeConst", self.pop_type_and_get_child()))
+            return self.make_type_or_none(self.with_child("CompileTimeLiteral", self.pop_type_and_get_child()))
         if char == "g":
             return self.make_type_or_none(self.with_child("ConstValue", self.pop_type_and_get_child()))
         if char == "T":
@@ -2718,6 +2755,15 @@ _OUTLINED_VALUE_WITNESSES = {
     "h": "OutlinedDestroy",
 }
 
+#: `WO` operations over an enum payload. Separate from the table above because each
+#: carries the case index after its marker -- except `g`, which reads the tag rather than
+#: naming a case.
+_OUTLINED_ENUM_OPERATIONS = {
+    "g": "OutlinedEnumGetTag",
+    "i": "OutlinedEnumTagStore",
+    "j": "OutlinedEnumProjectDataForLoad",
+}
+
 _SPECIAL_FUNCTION_TYPES = {
     "E": "NoEscapeFunctionType",
     "O": "CalledOnceFunctionType",
@@ -2788,6 +2834,7 @@ _ADDRESSORS = {
 
 #: Constraint kind and how the constrained type is written, for each `R` operator.
 _GENERIC_REQUIREMENTS = {
+    "V": ("value-marker", "generic"),
     "v": ("pack-marker", "generic"),
     "c": ("base-class", "assoc"),
     "C": ("base-class", "compound-assoc"),
@@ -2882,6 +2929,11 @@ _MACRO_EXPANSIONS = {
     "p": ("PeerAttachedMacroExpansion", True, False),
     "c": ("ConformanceAttachedMacroExpansion", True, False),
     "e": ("ExtensionAttachedMacroExpansion", True, False),
+    # `swift/Basic/MacroRoles.def` spells `q` as an experimental role, which changes
+    # nothing here: the compiler mangles it either way and a demangler has to read what
+    # is on disk.
+    "q": ("PreambleAttachedMacroExpansion", True, False),
+    "b": ("BodyAttachedMacroExpansion", True, False),
     "u": ("MacroExpansionUniqueName", False, False),
 }
 

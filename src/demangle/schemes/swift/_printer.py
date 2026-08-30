@@ -78,8 +78,15 @@ _SIMPLE_TYPES = frozenset(
         "TypeSymbolicReference",
         "SugaredOptional",
         "SugaredArray",
+        "SugaredInlineArray",
         "SugaredDictionary",
         "SugaredParen",
+        # A type that spells itself with no operator a suffix could bind to, so nothing
+        # around it needs bracketing: `$_Sg` is `0?`, not `(0)?`.
+        "BuiltinFixedArray",
+        "BuiltinBorrow",
+        "Integer",
+        "NegativeInteger",
     ]
 )
 
@@ -552,7 +559,7 @@ class Printer:
             child = node.child(first_requirement)
             if child.kind == "Type":
                 child = child.first
-            if child.kind != "DependentGenericParamPackMarker":
+            if child.kind not in ("DependentGenericParamPackMarker", "DependentGenericParamValueMarker"):
                 break
             first_requirement += 1
 
@@ -572,6 +579,29 @@ class Printer:
                     return True
             return False
 
+        def value_type(at_depth, at_index):
+            """`(is a value parameter, the type to spell after it or None)`.
+
+            The reference reads *both* the parameter and its type out of the marker's
+            first child, which is the `Type` wrapping the parameter alone -- so the type
+            is a child that is not there, and it prints `let A` with no `: Int` after it.
+            Reading past the end is null there and an IndexError here, which refused the
+            whole name; the two are the same answer and this says so.
+            """
+            for value_at in range(parameters, first_requirement):
+                child = node.child(value_at)
+                if child.kind != "DependentGenericParamValueMarker":
+                    continue
+                child = child.first
+                if child.kind != "Type":
+                    continue
+                parameter = child.first
+                if parameter.kind != "DependentGenericParamType":
+                    continue
+                if at_index == parameter.first.index and at_depth == parameter.child(1).index:
+                    return True, (child.child(1) if len(child.children) > 1 else None)
+            return False, None
+
         for at_depth in range(parameters):
             if at_depth:
                 self.write("><")
@@ -584,7 +614,13 @@ class Printer:
                     break
                 if is_pack(at_depth, index):
                     self.write("each ")
+                is_value, found = value_type(at_depth, index)
+                if is_value:
+                    self.write("let ")
                 self.write(generic_parameter_name(at_depth, index))
+                if found is not None:
+                    self.write(": ")
+                    self.print(found, depth + 1)
 
         if first_requirement != count and self.options.display_where_clauses:
             self.write(" where ")
@@ -968,6 +1004,7 @@ class Printer:
 _PREFIX_THEN_FIRST_CHILD = {
     "Static": "static ",
     "CurryThunk": "curry thunk of ",
+    "SILThunkIdentity": "identity thunk of ",
     "DispatchThunk": "dispatch thunk of ",
     "MethodDescriptor": "method descriptor for ",
     "MethodLookupFunction": "method lookup function for ",
@@ -992,7 +1029,7 @@ _PREFIX_THEN_FIRST_CHILD = {
     "Isolated": "isolated ",
     "Sending": "sending ",
     "ConstValue": "@const ",
-    "CompileTimeConst": "_const ",
+    "CompileTimeLiteral": "_const ",
     "Shared": "__shared ",
     "Owned": "__owned ",
     "NoDerivative": "@noDerivative ",
@@ -1179,11 +1216,15 @@ _ABSTRACT_STORAGE = {
 #: `<macro kind> @<name> expansion #<n>`, keyed by node kind.
 _MACRO_EXPANSION_NAMES = {
     "AccessorAttachedMacroExpansion": "accessor macro @",
-    "MemberAttributeAttachedMacroExpansion": "member attribute macro @",
+    # `memberAttribute`, not `member attribute`: the words are the role names from
+    # `swift/Basic/MacroRoles.def` verbatim, and that one is spelled as an identifier.
+    "MemberAttributeAttachedMacroExpansion": "memberAttribute macro @",
     "MemberAttachedMacroExpansion": "member macro @",
     "PeerAttachedMacroExpansion": "peer macro @",
     "ConformanceAttachedMacroExpansion": "conformance macro @",
     "ExtensionAttachedMacroExpansion": "extension macro @",
+    "PreambleAttachedMacroExpansion": "preamble macro @",
+    "BodyAttachedMacroExpansion": "body macro @",
 }
 
 _SPECIALIZATION_PREFIXES = {
@@ -1717,6 +1758,9 @@ for _kind, _lead in (
 for _kind, _lead in (
     ("KeyPathGetterThunkHelper", "key path getter for "),
     ("KeyPathSetterThunkHelper", "key path setter for "),
+    # The method thunks say neither "for" nor "of": the reference's own wording.
+    ("KeyPathUnappliedMethodThunkHelper", "key path unapplied method "),
+    ("KeyPathAppliedMethodThunkHelper", "key path applied method "),
 ):
 
     def _print_key_path_accessor(self, node, depth, as_prefix_context, _l=_lead):
@@ -2468,6 +2512,17 @@ def _print_sugared_array(self, node, depth, as_prefix_context):
     return None
 
 
+@_handler("SugaredInlineArray")
+def _print_sugared_inline_array(self, node, depth, as_prefix_context):
+    """`XSA` -- `[3 of Swift.Int]`, the count first."""
+    self.write("[")
+    self.print(node.first, depth + 1)
+    self.write(" of ")
+    self.print(node.child(1), depth + 1)
+    self.write("]")
+    return None
+
+
 @_handler("SugaredDictionary")
 def _print_sugared_dictionary(self, node, depth, as_prefix_context):
     self.write("[")
@@ -2531,7 +2586,7 @@ def _print_once_decl_list(self, node, depth, as_prefix_context):
 
 for _kind, _lead in (
     ("ObjCAsyncCompletionHandlerImpl", ""),
-    ("PredefinedObjCAsyncCompletionHandlerImpl", "predefined "),
+    ("CheckedObjCAsyncCompletionHandlerImpl", "checked "),
 ):
 
     def _print_objc_completion_handler(self, node, depth, as_prefix_context, _l=_lead):
@@ -2619,3 +2674,19 @@ for _kind, _lead in (("OutlinedCopy", "outlined copy of "), ("OutlinedConsume", 
         return None
 
     _HANDLERS[_kind] = _print_outlined_copy
+
+
+for _kind, _lead in (
+    ("OutlinedEnumGetTag", "outlined enum get tag of "),
+    ("OutlinedEnumTagStore", "outlined enum tag store of "),
+    ("OutlinedEnumProjectDataForLoad", "outlined enum project data for load of "),
+):
+
+    def _print_outlined_enum_operation(self, node, depth, as_prefix_context, _l=_lead):
+        """The operand only. A generic signature, and for two of the three the enum case
+        index, are read and kept on the node; the reference spells neither."""
+        self.write(_l)
+        self.print(node.first, depth + 1)
+        return None
+
+    _HANDLERS[_kind] = _print_outlined_enum_operation

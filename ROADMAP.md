@@ -81,6 +81,16 @@ The reference is `tools/swift-demangle-reference/`, which builds swiftlang/swift
 at all -- and the one place following it would be the defect is
 `tests/conformance/swift-reference-defects.txt`.
 
+The vectors are not the whole grammar, and having a reference is what makes the rest
+reachable. Diffing the node kinds this scheme builds against the compiler's own
+`DemangleNodes.def` named nine manglings with no production here at all -- the identity
+thunk, the three outlined enum-payload operations, inline-array sugar, a value generic
+parameter, the two key path method thunk helpers, and the body and preamble macro roles
+-- none of which any corpus carries. Each was then put to the reference rather than
+guessed at. `ALL_KINDS` now mirrors `DemangleNodes.def` exactly and a test walks every
+tree the corpus produces and fails on a kind missing from it, so the same drift cannot
+happen again in silence.
+
 **Rust**, rustc-demangle's own `#[test]` vectors: 47 of 51. Two of the other four are
 not differences from the *tool*: `rustfilt` prints `foo@@16` and echoes `ZN4testE` back
 unread, exactly as this does, and the vectors record the library's own `Display` instead.

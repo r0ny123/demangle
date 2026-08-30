@@ -186,6 +186,78 @@ class TestWhatSwiftAddedAfterThisWasWritten:
         too high. See tests/conformance/swift-reference-defects.txt."""
         assert demangle.demangle("$sSiXg", language="swift") == "existential shape for any Swift.Int"
 
+    def test_the_identity_thunk(self):
+        """`TT` is the namespace for thunks that come from a thunk instruction, and `TTI`
+        is so far its only member. `T` is in none of the other tables, so without this it
+        fell through to a refusal."""
+        assert spell("$s4main1fyyFTTI") == "identity thunk of main.f() -> ()"
+        assert demangle.demangle("$s4main1fyyFTTX", language="swift") == "$s4main1fyyFTTX"
+
+    @pytest.mark.parametrize(
+        "mangled,expected",
+        [
+            ("$sSiWOg", "outlined enum get tag of Swift.Int"),
+            ("$sSiWOi0_", "outlined enum tag store of Swift.Int"),
+            ("$sSiWOj0_", "outlined enum project data for load of Swift.Int"),
+        ],
+    )
+    def test_the_outlined_enum_payload_operations(self, mangled, expected):
+        """`WOi` and `WOj` carry the enum case index after the marker, and all three may
+        carry a generic signature. The reference reads both and spells neither, so the
+        operand is the whole of the spelling -- but reading them is what makes the cursor
+        end where it should."""
+        assert spell(mangled) == expected
+
+    def test_an_outlined_enum_operation_without_its_case_index_is_refused(self):
+        assert demangle.demangle("$sSiWOi", language="swift") == "$sSiWOi"
+
+    def test_the_inline_array_sugar_puts_the_count_first(self):
+        """`XSA` -- what the debugger shows for `[3 of Int]`."""
+        assert spell("$s$3_SiXSAD") == "[4 of Swift.Int]"
+
+    def test_the_key_path_method_thunk_helpers(self):
+        """`mu` and `MA` after the `K`/`k` name a method thunk rather than an accessor
+        one, and which of the two letters was written stops mattering once they do."""
+        assert spell("$s4main1fyySiFSiTkmuSi_").startswith("key path unapplied method main.f(Swift.Int) -> ()")
+        assert spell("$s4main1fyyFSiTKMASi_").startswith("key path applied method main.f() -> ()")
+        assert spell("$s4main1fyySiFSiTKmuSi_").startswith("key path unapplied method ")
+
+    def test_the_checked_objc_completion_handler(self):
+        """`TZ`. The reference calls this one *checked*; it was `predefined` when this
+        scheme was written, and the node was renamed with it."""
+        assert spell("$sSiSSTZ0_").startswith("checked @objc completion handler block implementation")
+        assert spell("$sSiSSTz0_").startswith("@objc completion handler block implementation")
+
+    def test_the_two_macro_roles_added_after_this_scheme_was_written(self):
+        assert spell("$s4main1a1bfMb_") == "body macro @b expansion #1 of a in main"
+        assert spell("$s4main1a1bfMq_") == "preamble macro @b expansion #1 of a in main"
+
+    def test_a_macro_role_is_spelled_as_the_compiler_names_it(self):
+        """`memberAttribute`, not `member attribute`: the words in these spellings are the
+        role names from `swift/Basic/MacroRoles.def` verbatim."""
+        assert spell("$s4main1a1bfMr_") == "memberAttribute macro @b expansion #1 of a in main"
+
+    def test_a_value_generic_parameter(self):
+        """`RV` -- `let N: Int`, the parameter a fixed-size array is generic over.
+
+        The reference reads the parameter *and* its type out of the marker's first child,
+        which is the `Type` wrapping the parameter alone, so the type is a child that is
+        not there and it prints `let A` with nothing after it. Reading past the end is
+        null there and an IndexError here; this refused the whole name until the two were
+        made to say the same thing."""
+        assert spell("$s4main1fyyxRVzlF") == "main.f<let A>() -> ()"
+        assert spell("$s4main1fyySixRVzlF") == "main.f<let A>(Swift.Int) -> ()"
+        # The pack marker beside it, which shares the walk.
+        assert spell("$s4main1fyyxRvzlF") == "main.f<each A>(A) -> ()"
+
+    def test_a_type_that_needs_no_brackets_under_a_suffix(self):
+        """`isSimpleType`. An integer, a `Builtin.FixedArray` and a `Builtin.Borrow` each
+        spell themselves with nothing a `?` could bind to, so `$_Sg` is `0?`, not `(0)?`.
+        Missing them put brackets round every one under sugar."""
+        assert spell("$sSi$3_SgD").endswith("4?")
+        assert spell("$s$n3_SSBVSgD") == "Builtin.FixedArray<-4, Swift.String>?"
+        assert spell("$sSiBWSgD") == "Builtin.Borrow<Swift.Int>?"
+
 
 class TestAgainstSwiftsOwnCorpus:
     """`test/Demangle/Inputs/manglings.txt` from the swiftlang/swift repository.
@@ -337,6 +409,52 @@ class TestGrammarFacts:
 
     def test_a_generic_signature_names_its_parameters_by_position(self):
         assert spell("$s4main1fyyxlF") == "main.f<A>(A) -> ()"
+
+
+class TestTheNodeKindRegistry:
+    """`ALL_KINDS` mirrors the compiler's `DemangleNodes.def`, and nothing enforced it.
+
+    It had drifted: five kinds the demangler builds were missing from it, and two more
+    that upstream had renamed were listed under the old names. A frozen set nothing reads
+    cannot be wrong in a way a test catches, so these two read it.
+    """
+
+    def test_every_kind_the_demangler_builds_is_registered(self, subtests):
+        from demangle.schemes.swift._node import ALL_KINDS
+
+        seen = set()
+
+        def walk(node):
+            seen.add(node.kind)
+            for child in node.children:
+                walk(child)
+
+        for mangled, _ in ROWS:
+            root = demangle_symbol(mangled)
+            if root is not None:
+                walk(root)
+        # Plus the shapes the corpus does not carry, from the tests above.
+        for mangled in (
+            "$s4main1fyyFTTI",
+            "$sSiWOg",
+            "$sSiWOi0_",
+            "$sSiWOj0_",
+            "$s4main1a1bfMb_",
+            "$s4main1a1bfMq_",
+            "$s4main1fyyxRVzlF",
+            "$s$3_SiXSAD",
+            "$sSiSSTZ0_",
+            "$s4main1fyySiFSiTkmuSi_",
+            "$s4main1fyyFSiTKMASi_",
+            "$sSiYtD",
+        ):
+            root = demangle_symbol(mangled)
+            assert root is not None, mangled
+            walk(root)
+        assert seen, "nothing walked"
+        for kind in sorted(seen - ALL_KINDS):
+            with subtests.test(kind=kind):
+                pytest.fail(f"{kind} is built but not in ALL_KINDS")
 
 
 REFUSALS = [

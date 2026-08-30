@@ -828,6 +828,40 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Swift: nine manglings the scheme had no production for.** Diffing the node kinds
+  this scheme builds against the compiler's own `DemangleNodes.def` named the gaps, and
+  each was then put to the reference rather than guessed at: `TTI` the identity thunk,
+  `WOg`/`WOi`/`WOj` the three outlined enum-payload operations, `XSA` the inline-array
+  sugar, `RV` a value generic parameter (`let N: Int`), `Tkmu`/`TKMA` the key path
+  method thunk helpers, and `fMb`/`fMq` the body and preamble macro roles. Every one of
+  them was a name the reference reads and this handed back unread.
+
+  Three of those needed more than a table entry. The outlined enum operations read a
+  case index the reference does not spell -- reading it is what makes the cursor end
+  where it should. A value parameter's marker is read by the reference *one child too
+  high*, so it prints `let A` and never the `: Int`; reading past the end is null there
+  and an IndexError here, which refused the whole name until the two were made to agree.
+  And `Tkmu`/`TKMA` make the `K`/`k` that introduced them stop mattering.
+
+- **Swift: three spellings that were the reference's and are not any more.** `TZ` is a
+  *checked* `@objc` completion handler, not a `predefined` one; a `memberAttribute` macro
+  is spelled as one word, because the words in those spellings are the role names from
+  `swift/Basic/MacroRoles.def` verbatim; and `CompileTimeConst` is now `CompileTimeLiteral`.
+  The first two are wrong output, the third only a name.
+
+- **Swift: `isSimpleType` was missing four kinds, so sugar bracketed what needs no
+  brackets.** An integer, a `Builtin.FixedArray`, a `Builtin.Borrow` and the inline-array
+  sugar each spell themselves with nothing a suffix could bind to, so `$_Sg` is `0?` and
+  not `(0)?`. Found by the mutation fuzzer.
+
+- **Swift: the node-kind registry had drifted and nothing read it.** `ALL_KINDS` mirrors
+  `DemangleNodes.def` and was defined, exported and never used: eight kinds the demangler
+  builds were missing from it, `Weak`/`Unowned`/`Unmanaged` among them, which the
+  compiler's file names indirectly through `swift/AST/ReferenceStorage.def`. It now
+  matches upstream exactly -- one deliberate extra, `MetatypeParamsRemoved` -- and a test
+  walks every tree the corpus produces and fails on a kind that is not in it, so it
+  cannot drift again in silence. That test found two of the eight on its first run.
+
 - **Swift: an autodiff subset-parameters thunk with nothing to thunk was spelled as a
   thunk for nothing.** The four trailing children of the node are the function kind and
   three index subsets, and at least one ahead of them names the thing being thunked.
