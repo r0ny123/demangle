@@ -412,6 +412,26 @@ COMPLETING_FORMS = [
     ("??_C@_19FINJPIIF@?$AAw?$AAi?$AAd?$AAe?$AA?$AA@", 'L"wide"'),
     # only 32 bytes of a string are ever written, so a longer one is cut short and says so
     ("??_C@_05ABCDEFGH@hi?$AA@", '"hi\\0"...'),
+    # A wide literal of more than sixteen characters: the compiler writes 32 bytes and
+    # declares the true length, so the terminator is not among the characters written.
+    # The reference counts the declared length down and drops the character where two
+    # bytes remain, which is past the end here -- so every one of the sixteen is spelled.
+    # Dropping "the last one decoded" instead ate the sixteenth character of every wide
+    # literal between seventeen and thirty-two characters long.
+    (
+        "??_C@_1CK@GINHBNC@?$AAa?$AAb?$AAc?$AAd?$AAe?$AAf?$AAg?$AAh?$AAi?$AAj?$AAk?$AAl?$AAm?$AAn?$AAo?$AAp@",
+        'L"abcdefghijklmnop"',
+    ),
+    # Past 64 declared bytes the reference calls the wide string truncated and says so,
+    # and then spells every character it has -- terminator included, if one was written.
+    (
+        "??_C@_1EE@GINHBNC@?$AAa?$AAb?$AAc?$AAd?$AAe?$AAf?$AAg?$AAh?$AAi?$AAj?$AAk?$AAl?$AAm?$AAn?$AAo?$AAp@",
+        'L"abcdefghijklmnop"...',
+    ),
+    # Where the declared length falls *inside* what was written, the character it lands on
+    # is the one dropped -- not the last. Ten declared bytes over six characters is the
+    # fifth, so "hello\0" comes back as "hell" and the terminator that follows it.
+    ("??_C@_1K@GINHBNC@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@", 'L"hell\\0"'),
     # the rest of the RTTI family names a class, and the descriptor says where the base sits
     ("??_R1A@?0A@EA@Base@@8", "Base::`RTTI Base Class Descriptor at (0, -1, 0, 64)'"),
     ("??_R2Base@@8", "Base::`RTTI Base Class Array'"),
@@ -457,6 +477,9 @@ COMPLETING_DECLINED = [
     "??_C@_02ABCDEFGH@h?$Qi?$AA@",  # a byte is written as two nibbles from "A" to "P"
     "??_C@_02ABCDEFGH@h?zi?$AA@",  # and an escape names one of ten characters
     "??_C@_02ABCDEFGH@hi?$AA@X",  # and nothing follows the literal
+    # The reference decodes a narrow literal into a fixed 128-byte buffer and refuses a
+    # name that would run past it. 129 bytes is the first that does.
+    "??_C@_0IC@ABCDEFGH@" + "a" * 129 + "@",
     "??_9Base@@$RB7AA",  # a thunk through a virtual base names an access this does not
     # a conversion operator is named by its return, which a template argument list displaces
     "??$?BH@S@@QEAAAEAU0@H@Z",

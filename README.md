@@ -279,6 +279,9 @@ $ demangle --detect _RNvC6_123foo3bar
 $ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the signature
 $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
+$ demangle --ret-postfix _Z1fIiET_S0_              # `f<int>(int)int`, as `DMGL_RET_POSTFIX`
+$ demangle --strip-underscore '_?f@@YAXH@Z'        # ignore one leading underscore
+$ demangle --keep-hash _ZN4core3fmt5write17h05af221e174051e9E   # keep Rust's hash
 $ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t`
 $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
 $ demangle --no-tag-kind '?g3@@YAXVV@@@Z'          # `void __cdecl g3(V)`

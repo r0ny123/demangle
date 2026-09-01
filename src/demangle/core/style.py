@@ -73,6 +73,7 @@ def _build_styles():
     from ..schemes.gnuv2.options import DEFAULT_OPTIONS as GNUV2_OPTIONS
     from ..schemes.itanium.options import DEFAULT_OPTIONS, GNU_OPTIONS
     from ..schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
+    from ..schemes.rust.options import DEFAULT_OPTIONS as RUST_OPTIONS
     from ..schemes.swift.options import DEFAULT_OPTIONS as SWIFT_OPTIONS
 
     # MSVC's, Swift's and pre-Itanium C++'s options are the same in both styles, and
@@ -88,6 +89,7 @@ def _build_styles():
             "swift": SWIFT_OPTIONS,
             "gnuv2": GNUV2_OPTIONS,
             "codewarrior": CODEWARRIOR_OPTIONS,
+            "rust": RUST_OPTIONS,
         },
     )
     gnu = Style(
@@ -99,6 +101,7 @@ def _build_styles():
             "swift": SWIFT_OPTIONS,
             "gnuv2": GNUV2_OPTIONS,
             "codewarrior": CODEWARRIOR_OPTIONS,
+            "rust": RUST_OPTIONS,
         },
     )
     return {"llvm": llvm, "gnu": gnu}

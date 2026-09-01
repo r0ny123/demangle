@@ -1419,6 +1419,12 @@ class _Demangler:
             self.take()
         raw = []
         while not self.eat("@"):
+            # The reference decodes a narrow literal into a fixed buffer and refuses a
+            # name that would run past it. Nothing here can overflow, but a name it calls
+            # malformed is not one to answer: reading 200 bytes where it reads none is
+            # exactly the plausible lie this library exists not to tell.
+            if not wide and len(raw) >= _LITERAL_MAX_DECODED:
+                raise _Bail
             raw.append(self._literalByte())
         if not self.nested and not self.eof():
             raise _Bail
@@ -1429,6 +1435,14 @@ class _Demangler:
             truncated = length > _LITERAL_MAX_BYTES
             values = [(raw[at] << 8) | raw[at + 1] for at in range(0, len(raw), 2)]
             prefix = "L"
+            # Where the terminator sits according to the *declared* length, which is not
+            # the last character decoded whenever the encoder wrote fewer than it
+            # declared -- and it writes at most 32 bytes, so every wide literal longer
+            # than sixteen characters is such a name. The reference walks the characters
+            # counting the declared length down and drops the one where two bytes remain;
+            # dropping the last one instead ate the sixteenth character of every wide
+            # literal between seventeen and thirty-two characters long.
+            terminator = length // 2 - 1
         else:
             truncated = length > len(raw)
             width = _guess_character_width(raw, length)
@@ -1436,11 +1450,18 @@ class _Demangler:
                 raise _Bail
             values = [int.from_bytes(bytes(raw[at : at + width]), "little") for at in range(0, len(raw), width)]
             prefix = {1: "", 2: "u", 4: "U"}[width]
+            # A narrow literal is truncated exactly when the declared length exceeds what
+            # was written, so the character to drop is always the last one decoded.
+            terminator = len(values) - 1
 
-        # The last character is the terminator and is not part of the string -- unless
-        # the string was cut short, in which case there is no terminator to drop.
+        # The terminator is not part of the string -- unless the string was cut short, in
+        # which case the reference spells every character it has.
         if not truncated:
-            values = values[:-1]
+            # A slice either side of it rather than a filter over every character: where
+            # the index is past the end -- which is the whole point of tracking it -- the
+            # second slice is empty and nothing is dropped, which is what the reference
+            # does when its countdown never reaches the terminator.
+            values = values[:terminator] + values[terminator + 1 :]
         spelled = "".join(_escaped_literal_character(value) for value in values)
         return f'{prefix}"{spelled}"' + ("..." if truncated else "")
 

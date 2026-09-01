@@ -90,11 +90,12 @@ class V0Demangler:
     `RustDemangler` builds a fresh one per name for that reason -- see its docstring.
     """
 
-    __slots__ = ("inpstr", "suffix")
+    __slots__ = ("inpstr", "keep_hash", "suffix")
 
-    def __init__(self):
+    def __init__(self, keep_hash: bool = False):
         self.inpstr = ""
         self.suffix = ""
+        self.keep_hash = keep_hash
 
     def demangle(self, inpstr: str, limit: int) -> str:
         """Demangle to text, writing at most `limit` characters."""
@@ -126,7 +127,7 @@ class V0Demangler:
 
         self.inpstr = _strip_llvm_suffix(self.inpstr)
 
-        parser = Parser(self.inpstr, 0)
+        parser = Parser(self.inpstr, 0, self.keep_hash)
         parser.skip_path()
         # An <instantiating-crate> is a second <path>, and only a <path> can follow the
         # first one. Every path production opens with a capital.
@@ -456,11 +457,15 @@ class Parser:
     # CPython's own recursion limit (each level consumes several interpreter frames).
     MAX_RECURSION_COUNT = 256
 
-    __slots__ = ("depth", "end", "inn", "next_val")
+    __slots__ = ("depth", "end", "inn", "keep_hash", "next_val")
 
-    def __init__(self, inn: str, next_val: int) -> None:
+    def __init__(self, inn: str, next_val: int, keep_hash: bool = False) -> None:
         self.inn = inn
         self.next_val = next_val
+        # Carried on the parser rather than the printer because a backref builds a new
+        # parser and a new printer from it, and the crate root reached through one has
+        # to spell its disambiguator the same way as one reached directly.
+        self.keep_hash = keep_hash
         self.depth = 0
         # `inn` is never reassigned, so its length is a constant for this parser. It was
         # being recomputed in `peek`, `eat` and `next_func` -- over a million `len` calls
@@ -574,7 +579,7 @@ class Parser:
         if i >= s_start:
             raise UnableTov0Demangle(self.inn)
 
-        return Parser(self.inn, i)
+        return Parser(self.inn, i, self.keep_hash)
 
     def ident(self, build=True):
         """A `<identifier>`: an optional `u`, a decimal length, an optional `_`, the text.
@@ -1213,12 +1218,19 @@ class Printer:
 
             if tag == "C":
                 at = p.next_val
+                disambiguator = 0
                 if at < p.end and p.inn[at] == "s":
-                    p.opt_integer_62("s")
+                    disambiguator = p.opt_integer_62("s")
                 name = p.ident()
                 name.display()
                 with self.node(nodes.RustName) as built:
                     self.emit(name.disp)
+                    if p.keep_hash and disambiguator:
+                        # `features[9f05e0465351d495]`. Plain hex and not padded, and
+                        # nothing at all where the crate wrote no disambiguator, which is
+                        # what `{}` on rustc-demangle's own `Demangle` prints -- the
+                        # formatting `{:#}` exists to suppress.
+                        self.emit(f"[{disambiguator:x}]")
                 return built[0]
 
             if tag == "B":
@@ -1527,8 +1539,10 @@ class Printer:
                 self.emit("_")
             elif ty_tag in _CONST_UNSIGNED:
                 self.print_const_uint()
+                self.print_const_type_suffix(ty_tag)
             elif ty_tag in _CONST_SIGNED:
                 self.print_const_int()
+                self.print_const_type_suffix(ty_tag)
             elif ty_tag == "b":
                 self.print_const_bool()
             elif ty_tag == "c":
@@ -1628,6 +1642,17 @@ class Printer:
             else:
                 self.emit(escape_debug(character))
         self.emit(quote)
+
+    def print_const_type_suffix(self, tag):
+        """`0usize`, `-17i32`: an integer const's own type, spelled after its value.
+
+        The same flag that keeps the crate disambiguator, and not a second option:
+        rustc-demangle writes both under `{}` and neither under `{:#}`, so a caller
+        asking for one gets the other. Integers only -- a `bool` prints `false` and a
+        `char` prints `'x'`, and the reference suffixes neither.
+        """
+        if self.parser.keep_hash:
+            self.emit(_BASIC_TYPES[tag])
 
     def print_const_uint(self):
         nibbles = self.parser.hex_nibbles()

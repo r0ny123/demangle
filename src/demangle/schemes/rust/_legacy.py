@@ -22,6 +22,9 @@ class UnableToLegacyDemangle(Exception):
 class LegacyDemangler:
     _UNESCAPED = {"SP": "@", "BP": "*", "RF": "&", "LT": "<", "GT": ">", "LP": "(", "RP": ")", "C": ","}
 
+    def __init__(self, keep_hash: bool = False):
+        self.keep_hash = keep_hash
+
     def demangle(self, inpstr: str, limit: int) -> str:
         """Demangle to text.
 
@@ -175,6 +178,13 @@ class LegacyDemangler:
                     break
             disp += rest
             self.spans.append((component, len(disp)))
+
+        # The trailing `17h<16 hex>` component the parse recorded and the spelling drops.
+        # It is the only thing telling two monomorphisations of one generic apart, so
+        # `{}` on rustc-demangle's own `Demangle` spells it and `{:#}` is what suppresses
+        # it. Before the vendor suffix, which is not part of the path.
+        if self.keep_hash and self.hash:
+            disp += f"::h{self.hash}"
 
         # `inn` is positioned on the `E` that closes the path, so what follows it is
         # whatever the grammar did not account for. The reference carries it only when

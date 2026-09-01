@@ -543,8 +543,32 @@ which is whether to spell something *differently*.
   the four flags they *share* turned up three disagreements about exactly that, which
   `UNDNAME_REACH_DIVERGENCES` records rather than resolves.
 
-  Still to come from the same list: the Itanium and Rust knobs — `--strip-underscore`,
-  `DMGL_RET_POSTFIX`, Rust hash retention — and Swift's simplified bundle below.
+  The rest of that list has since landed too. `--strip-underscore` is `c++filt`'s and
+  `llvm-cxxfilt`'s, which agree on every case including the sharp one: a name that does
+  *not* read once stripped comes back as it arrived rather than a character short, so
+  `_Z1fv` under the flag prints itself. It matters for fewer names here than it does
+  there, because the Itanium, Swift and Rust readers already tolerate the extra
+  underscore a Mach-O symbol carries; an MSVC name, which opens with `?`, does not.
+
+  `--ret-postfix` is libiberty's `DMGL_RET_POSTFIX` — the return type after the
+  parameter list, with no space, which is the spelling `java_demangle_v3` asks for. No
+  shipped tool exposes it, so the reference was built: `cp-demangle.c` at the gcc-13 tag
+  against a twenty-line `main`, which is what `--ret-drop` was checked against as well.
+  Doing that found a defect in `--no-return-type`, which had been cutting the return type
+  off the *front* of the spelling: a return type that wraps the declarator —
+  `int (*g<int>(int))(int)` — has no prefix to cut, so the flag silently did nothing.
+  MSVC had met the same shape and answered it with a scheme option; the Itanium tree now
+  answers it directly. 342 of the 345 corpus names the reference reads match exactly
+  under both flags, and the three that do not differ in a `std::` abbreviation under
+  both alike.
+
+  Rust hash retention is one option and not two, because that is how rustc-demangle has
+  it: the same `alternate` bit that hides the legacy `17h<16 hex>` component also hides
+  the v0 crate disambiguator and the type suffix on an integer const, so `{}` writes
+  `features[9f05e0465351d495]::const_signed::<-17i32>` where `{:#}` writes
+  `features::const_signed::<-17>`. `demangle --keep-hash` is the first of those, scored
+  at **5,751 of 5,753** against the reference asked the same way; the two that differ do
+  so in both modes and for reasons that have nothing to do with the hash.
 
 - ~~**Swift's simplified manglings**~~ — *landed*, **217 of 217** against
   `test/Demangle/Inputs/simplified-manglings.txt`. What `swift-demangle --simplified`

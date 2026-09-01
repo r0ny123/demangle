@@ -267,3 +267,47 @@ class TestWhatOpensAVZeroName:
         mangled = "__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>"
         assert demangle.detect(mangled) == "codewarrior"
         assert demangle.demangle(mangled) == "TObjOwnerDerivedFromIObj<CStringTable>::__RTTI"
+
+
+class TestKeepingTheHash:
+    """`keep_hash`: rustc-demangle's `{}` rather than the `{:#}` this spells by default.
+
+    One option and not two, because the reference has one bit for all of it: the same
+    `alternate` flag suppresses the legacy `17h<16 hex>` component, the v0 crate
+    disambiguator and the type suffix on an integer const. Scored at 5,751 of the 5,753
+    corpus names the reference reads.
+
+    What is pinned here is the invariant the spellings rest on, over every Rust name in
+    every corpus: the tree spells exactly what the text path spells. Both manglings emit
+    one stream of fragments whether they are building text or a tree, and this option
+    adds fragments to that stream, so a divergence here would mean the two had come
+    apart.
+    """
+
+    KEEP: ClassVar = demangle.style("llvm", rust={"keep_hash": True})
+
+    @pytest.mark.parametrize(
+        ("mangled", "default", "kept"),
+        [
+            ("_ZN4core3fmt5write17h05af221e174051e9E", "core::fmt::write", "core::fmt::write::h05af221e174051e9"),
+            ("_RNvCs1_1a1f", "a::f", "a[3]::f"),
+            ("_RNvCs0_1a1f", "a::f", "a[2]::f"),
+            # No disambiguator written, so nothing is spelled -- not a zero.
+            ("_RNvC1a1f", "a::f", "a::f"),
+        ],
+    )
+    def test_what_the_flag_reaches(self, mangled, default, kept):
+        assert demangle.demangle(mangled) == default
+        assert demangle.demangle(mangled, style=self.KEEP) == kept
+
+    def test_the_tree_still_spells_what_the_text_spells(self, subtests):
+        checked = 0
+        for mangled, _expected in UPSTREAM:
+            try:
+                text = demangle.demangle_strict(mangled, style=self.KEEP)
+            except DemanglingError:
+                continue
+            with subtests.test(mangled=mangled):
+                assert demangle.parse(mangled, style=self.KEEP).spell(style=self.KEEP) == text
+            checked += 1
+        assert checked, "no vector was read under the option; has the corpus moved?"

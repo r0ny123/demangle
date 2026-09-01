@@ -37,6 +37,7 @@ import sys
 from . import __version__
 from ._signature import signature
 from .api import demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
+from .core.ast import Function
 from .core.errors import DemanglingError
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 from .filter import TOKEN, TOKEN_MUST_HOLD
@@ -68,6 +69,12 @@ def build_parser():
         action="store_true",
         help="read each NAME as a bare type encoding, not a symbol (needs --language)",
     )
+    parser.add_argument(
+        "-_",
+        "--strip-underscore",
+        action="store_true",
+        help="ignore one leading underscore, as `c++filt --strip-underscore` does",
+    )
     parser.add_argument("--strict", action="store_true", help="report failures instead of echoing the input")
     parser.add_argument(
         "-b", "--both", action="store_true", help="print the mangled name and its expansion, as `mangled ==> demangled`"
@@ -89,6 +96,11 @@ def build_parser():
     )
     parts.add_argument(
         "--no-return-type", action="store_true", help="print the whole declaration except the return type"
+    )
+    parts.add_argument(
+        "--ret-postfix",
+        action="store_true",
+        help="print the return type after the parameter list, as libiberty's `DMGL_RET_POSTFIX` does",
     )
     less = parser.add_argument_group(
         "printing less of a name",
@@ -116,6 +128,11 @@ def build_parser():
         action="store_true",
         help="Swift names the way Xcode shows them, as `swift-demangle --simplified`",
     )
+    parser.add_argument(
+        "--keep-hash",
+        action="store_true",
+        help="spell the hash Rust writes to keep a symbol unique, as rustc-demangle's `{}` does",
+    )
     parser.add_argument("--relaxed", action="store_true", help="raise the resource bounds, for input you trust")
     parser.add_argument("--max-input", type=int, metavar="N", help="characters of input to consider")
     parser.add_argument("--max-output", type=int, metavar="N", help="characters of output to allow")
@@ -126,16 +143,20 @@ def build_parser():
     return parser
 
 
-#: `--flag` to the MSVC option it turns off. `--no-return-type` is shared with the
-#: selection flags: for every other scheme it is a render-time cut of the spelling, and
-#: for MSVC it has to be an option, because a return type there wraps *around* the
-#: declarator -- `int (__cdecl * __cdecl fn(void))(int)` has no prefix to strip.
+#: `--flag` to the MSVC option it turns off. `--no-return-type` and `--ret-postfix` are
+#: shared with the selection flags -- both need the declaration without its return type,
+#: and differ only in whether the type is then written after it. For MSVC that has to be
+#: an option, because a return type there wraps *around* the declarator:
+#: `int (__cdecl * __cdecl fn(void))(int)` has no prefix to strip. Itanium has the same
+#: shape in `int (*g<int>(int))(int)` and answers it from the tree instead; see
+#: `_without_return_type`.
 _MSVC_SUPPRESSIONS = {
     "no_calling_convention": "calling_convention",
     "no_access_specifier": "access_specifier",
     "no_member_type": "member_type",
     "no_variable_type": "variable_type",
     "no_return_type": "return_type",
+    "ret_postfix": "return_type",
     "no_ms_keywords": "ms_keywords",
     "no_leading_underscores": "leading_underscores",
     "no_this_type": "this_type",
@@ -153,6 +174,8 @@ def _style_from(arguments):
         from .schemes.swift.options import SIMPLIFIED_OPTIONS
 
         changes["swift"] = SIMPLIFIED_OPTIONS
+    if arguments.keep_hash:
+        changes["rust"] = {"keep_hash": True}
     if not changes:
         return arguments.style
     return style(arguments.style, **changes)
@@ -246,7 +269,7 @@ def main(argv=None):
             parser.error(f"{arguments.language} has no type grammar of its own; {readable} do")
         if arguments.detect:
             parser.error("--types and --detect ask different questions; --types already names the scheme")
-        if arguments.no_params or arguments.base_name or arguments.no_return_type:
+        if arguments.no_params or arguments.base_name or arguments.no_return_type or arguments.ret_postfix:
             parser.error("--types reads a type, which has no name, parameters or return type to select")
     if arguments.style not in styles():
         parser.error(f"unknown style {arguments.style!r}; choose from {', '.join(styles())}")
@@ -293,6 +316,21 @@ def _silence_stdout():
 
 
 def _expand(name, arguments, limits):
+    """What this run has to say about one name, after any leading underscore is dealt with.
+
+    `--strip-underscore` is for the targets whose assembler prepends one, where the
+    symbol in the table is `__Z1fv` and the name the compiler mangled is `_Z1fv`. Both
+    references drop exactly one and, where what is left does not read, print the name
+    they were *given* rather than the stripped form -- so a table full of `_foo` comes
+    back untouched instead of a character short.
+    """
+    if arguments.strip_underscore and name.startswith("_"):
+        answer = _expand_read(name[1:], arguments, limits)
+        return name if answer == name[1:] else answer
+    return _expand_read(name, arguments, limits)
+
+
+def _expand_read(name, arguments, limits):
     """What this run has to say about one name."""
     if arguments.detect:
         return arguments.language or detect(name) or "-"
@@ -305,7 +343,7 @@ def _expand(name, arguments, limits):
         return json.dumps(parse(name, language=arguments.language, style=arguments.style, limits=limits).to_dict())
     if arguments.tree:
         return "\n".join(_dump(parse(name, language=arguments.language, style=arguments.style, limits=limits)))
-    if arguments.no_params or arguments.base_name or arguments.no_return_type:
+    if arguments.no_params or arguments.base_name or arguments.no_return_type or arguments.ret_postfix:
         return _part_of(name, arguments, limits)
     if arguments.strict:
         return demangle_strict(name, language=arguments.language, style=arguments.style, limits=limits)
@@ -332,9 +370,37 @@ def _part_of(name, arguments, limits):
         # around it nor the qualifiers after it. A `vtable for` still says so.
         lead = f"{parts.special} " if parts.special else ""
         return f"{lead}{parts.qualified_name}{parts.decoration}"
-    # `--no-return-type`: everything else, with the return type cut off the front. Cut
-    # by what it is rather than at the first space, so a return type with spaces in it
-    # goes whole.
+    without = _without_return_type(name, arguments, limits, parts)
+    if arguments.ret_postfix and parts.return_type:
+        # libiberty writes the return type straight after the parameter list with no
+        # space between them -- `f<int>(int)int` -- because the space it puts between a
+        # return type and a signature belongs to the prefix form. Checked against
+        # `cplus_demangle_v3(name, DMGL_PARAMS | DMGL_RET_POSTFIX)` rather than assumed.
+        return f"{without}{parts.return_type}"
+    return without
+
+
+def _without_return_type(name, arguments, limits, parts):
+    """The whole declaration with the return type taken out of it.
+
+    Cutting it off the front of the spelling is right only where it *is* a prefix. A
+    return type that wraps the declarator has none to cut -- `int (*g<int>(int))(int)`,
+    a function returning a pointer to a function -- and the cut then left the return type
+    in place and reported success, which is the silently ignored flag this file warns
+    about a few lines up. MSVC met the same shape first and answers it with a scheme
+    option; an Itanium `function` node answers it directly, by spelling the same node
+    with nothing where the return type was. `libiberty`'s own `DMGL_RET_DROP` agrees.
+    """
+    if parts.return_type:
+        try:
+            tree = parse(name, language=arguments.language, style=arguments.style, limits=limits)
+        except Exception:  # the cut below is the answer when there is no tree
+            tree = None
+        if isinstance(tree, Function) and tree.returns is not None:
+            bare = Function(returns=None, parameters=tree.parameters, suffix=tree.suffix, name=tree.name)
+            return bare.spell(style=arguments.style)
+    # Cut by what the return type is rather than at the first space, so one with spaces
+    # in it goes whole.
     spelling = parts.demangled
     prefix = f"{parts.return_type} " if parts.return_type else ""
     return spelling[len(prefix) :] if prefix and spelling.startswith(prefix) else spelling

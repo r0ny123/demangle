@@ -87,6 +87,11 @@ local name is scoped by. `MsvcOptions` below says which is which.
       members:
         - CodeWarriorOptions
 
+::: demangle.schemes.rust.options
+    options:
+      members:
+        - RustOptions
+
 ## A file, not a name
 
 `nm` writes an address and a type letter before a name. The useful operation over a file

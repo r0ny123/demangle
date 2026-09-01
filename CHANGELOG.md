@@ -8,6 +8,27 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **The last three option knobs on the roadmap's list, and the reference to check two of
+  them against.** `--strip-underscore` is `c++filt`'s and `llvm-cxxfilt`'s, which agree
+  on every case: one underscore, and a name that does not read once stripped comes back
+  as it arrived rather than a character short. `--ret-postfix` is libiberty's
+  `DMGL_RET_POSTFIX`, the return type after the parameter list with no space between
+  them. `--keep-hash` is rustc-demangle's `{}` in place of its `{:#}`.
+
+  No shipped tool exposes `DMGL_RET_POSTFIX`, so rather than implement it from the
+  source's semantics alone, libiberty's `cp-demangle.c` was built at the gcc-13 tag
+  behind a twenty-line `main` -- the same thing this repository already does for Swift
+  and Rust -- and both return-type flags scored against it: 342 of the 345 corpus names
+  it reads, with the three left over differing in a `std::` abbreviation under either
+  flag alike. `tools/rustc-demangle-reference` grew a `--keep-hash` of its own so the
+  Rust knob has an oracle too: **5,751 of 5,753**.
+
+  `--keep-hash` is one option and not two because that is how the reference has it. The
+  same `alternate` bit hides the legacy `17h<16 hex>` component, the v0 crate
+  disambiguator *and* the type suffix on an integer const, so `{}` writes
+  `features[9f05e0465351d495]::const_signed::<-17i32>` where `{:#}` writes
+  `features::const_signed::<-17>`. `RustOptions` carries it.
+
 - **The documentation is now checked against the code, not just the README.** The
   README's counts, version and printed output have been verified by
   `tests/test_readme.py` for a while; nothing covered the rest of `docs/`. Two rules
@@ -851,6 +872,32 @@ All notable changes to this project are recorded here. The format follows
   `rustfilt` prints `foo@@16` for that name too.
 
 ### Fixed
+
+- **MSVC: a wide string literal lost a character, and a bound that was written down was
+  never applied.** Both are in `??_C@` names and both were found by running the mutation
+  fuzzer deeper than CI does -- 150,000 mutants against its 20,000.
+
+  The reference drops the character sitting at the *declared* terminator offset, counting
+  the declared byte length down two at a time; this dropped the last character decoded.
+  Those agree only when the encoder wrote exactly what it declared, and it writes at most
+  32 bytes and declares the true length -- so every wide literal between seventeen and
+  thirty-two characters long lost its sixteenth character.
+  `??_C@_1CK@GINHBNC@?$AAa...?$AAp@` came back `L"abcdefghijklmno"` where the reference
+  says `L"abcdefghijklmnop"`. Read out of `demangleStringLiteral` rather than inferred
+  from the answers.
+
+  `_LITERAL_MAX_DECODED` was defined, documented as the reference's own cap, and never
+  referenced. The reference refuses a narrow literal past 128 decoded bytes; this read
+  200 of them happily. The boundary is now exact at 128 and 129.
+
+- **`--no-return-type` silently did nothing to a return type that wraps the declarator.**
+  It cut the return type off the front of the spelling, and `int (*g<int>(int))(int)` --
+  a function returning a pointer to a function -- has no prefix to cut, so the flag
+  reported success and changed nothing. This file already warns that a silently ignored
+  flag is worse than an error, and MSVC had already met the same shape and answered it
+  with a scheme option; the Itanium tree now answers it directly, by spelling the same
+  function node with nothing where the return type was. Checked against libiberty's own
+  `DMGL_RET_DROP`.
 
 - **Three documentation defects that a passing build had been reporting all along.**
   `mkdocs build --strict` fails on warnings, and mkdocs emits these at INFO, so they

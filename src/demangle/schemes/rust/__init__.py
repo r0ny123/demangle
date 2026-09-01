@@ -149,12 +149,15 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     # which is the only place a bound on input size means what it says.
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
+    # `keep_hash` is the one thing a style changes here; see `options.py` for what it
+    # reaches in each of the two manglings.
+    keep_hash = bool(getattr(options, "keep_hash", False))
     if _wants_structure(builder):
-        tree = _guard(mangled, limits, _DEMANGLER.structure)
+        tree = _guard(mangled, limits, _DEMANGLER.structure, keep_hash)
         _check_length(mangled, tree.size, limits)
         _refuse_empty(mangled, tree.size)
         return tree
-    expanded = _guard(mangled, limits, _DEMANGLER.demangle)
+    expanded = _guard(mangled, limits, _DEMANGLER.demangle, keep_hash)
     _check_length(mangled, len(expanded), limits)
     _refuse_empty(mangled, len(expanded))
     return builder.raw(expanded)
@@ -179,14 +182,14 @@ def _refuse_empty(mangled, length):
         raise ParseError(mangled, None, "read as a Rust name but spells nothing")
 
 
-def _guard(mangled, limits, demangle_with):
+def _guard(mangled, limits, demangle_with, keep_hash=False):
     """Run one of the demanglers, translating its errors into this package's.
 
     The two entry points fail in exactly the same ways -- they are the same parser --
     so the translation lives here rather than twice.
     """
     try:
-        return demangle_with(mangled, limits.max_output)
+        return demangle_with(mangled, limits.max_output, keep_hash)
     except OutputTooLong as exc:
         raise LimitExceeded(mangled, "output length", limits.max_output) from exc
     except TypeNotFoundError as exc:

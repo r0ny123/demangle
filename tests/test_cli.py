@@ -441,3 +441,136 @@ class TestMsvcSuppressionFlags:
         monkeypatch.setattr("sys.stdin", io.StringIO(f"0000000000001139 T {self.TAGGED}\n"))
         main(["--no-tag-kind"])
         assert capsys.readouterr().out == "0000000000001139 T void __cdecl f(C<int> *)\n"
+
+
+class TestTheReturnTypeFlags:
+    """`--no-return-type` and `--ret-postfix`, against libiberty's own two options.
+
+    `DMGL_RET_DROP` and `DMGL_RET_POSTFIX` are what these are, and no shipped tool
+    exposes either -- `c++filt` has no flag for them -- so the expectations here were
+    read off `cplus_demangle_v3(name, DMGL_PARAMS | DMGL_ANSI | flag)` built from
+    libiberty's own `cp-demangle.c`, over every Itanium name in the corpora. 342 of the
+    345 the reference reads match exactly; the three that do not differ in a `std::`
+    abbreviation under both flags alike, which is a spelling question and not this one.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "dropped", "postfix"),
+        [
+            # A plain template function: the return type is a prefix, so cutting the
+            # front of the spelling would have worked too.
+            ("_Z1fIiET_S0_", "f<int>(int)", "f<int>(int)int"),
+            ("_Z1fIiEvT_", "f<int>(int)", "f<int>(int)void"),
+            # And one that *wraps* the declarator. `int (*g<int>(int))(int)` has no
+            # prefix to strip, so the cut left the return type in place and reported
+            # success -- the silently ignored flag this is here to keep fixed.
+            ("_Z1gIiEPFT_S0_ES0_", "g<int>(int)", "g<int>(int)int (*)(int)"),
+            # A name whose mangling carries no return type at all is untouched by both.
+            ("_Z1fi", "f(int)", "f(int)"),
+        ],
+    )
+    def test_against_libiberty(self, capsys, name, dropped, postfix):
+        _, out, _ = run(capsys, ["--no-return-type", name])
+        assert out.strip() == dropped
+        _, out, _ = run(capsys, ["--ret-postfix", name])
+        assert out.strip() == postfix
+
+    def test_msvc_answers_through_its_own_option(self, capsys):
+        """MSVC writes the return type around the declarator, so it is a scheme option.
+
+        `int (__cdecl * __cdecl g(int))(int)` is the same shape as the Itanium case
+        above and was already right; this pins that both flags reach it.
+        """
+        _, out, _ = run(capsys, ["--no-return-type", "?g@@YAP6AHH@ZH@Z"])
+        assert out.strip() == "__cdecl g(int)"
+        _, out, _ = run(capsys, ["--ret-postfix", "?g@@YAP6AHH@ZH@Z"])
+        assert out.strip() == "__cdecl g(int)int (__cdecl *)(int)"
+
+    def test_the_two_are_mutually_exclusive(self, capsys):
+        with pytest.raises(SystemExit):
+            run(capsys, ["--no-return-type", "--ret-postfix", VECTOR])
+
+
+class TestStripUnderscore:
+    """`-_`, as `c++filt --strip-underscore` and `llvm-cxxfilt --strip-underscore`.
+
+    Every expectation here was taken from both references, which agree on all of them.
+
+    What the flag is *for* here is narrower than it looks, because the Itanium, Swift and
+    Rust readers already tolerate the extra underscore a Mach-O symbol carries -- `__Z1fv`
+    and `_$s...` read with or without it. The schemes that do not are the ones whose
+    prefix is not itself an underscore: an MSVC name opens with `?`, and it does not read
+    until the underscore is gone.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("__Z1fv", "f()"),
+            ("__ZN3foo3barEv", "foo::bar()"),
+            # The one that needs it.
+            ("_?f@@YAXH@Z", "void __cdecl f(int)"),
+            # Stripping leaves something that does not read: both references print the
+            # name they were *given*, not the stripped form, so a table of `_foo` comes
+            # back untouched rather than a character short. `_Z1fv` is the sharp case --
+            # it reads perfectly well *unstripped*, and asking for the strip costs the
+            # reading, which is exactly what `c++filt --strip-underscore` does with it.
+            ("_Z1fv", "_Z1fv"),
+            ("_foo", "_foo"),
+            ("_", "_"),
+        ],
+    )
+    def test_against_both_references(self, capsys, name, expected):
+        _, out, _ = run(capsys, ["--strip-underscore", name])
+        assert out.strip() == expected
+
+    def test_off_by_default(self, capsys):
+        _, out, _ = run(capsys, ["_?f@@YAXH@Z"])
+        assert out.strip() == "_?f@@YAXH@Z"
+
+    def test_the_filter_strips_too(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-_"], stdin="0000 T __Z1fv\n", monkeypatch=monkeypatch)
+        assert out.strip() == "0000 T f()"
+
+
+class TestKeepHash:
+    """`--keep-hash`: rustc-demangle's `{}` rather than its `{:#}`.
+
+    One flag with two manifestations, because that is how the reference has it -- the
+    same `alternate` bit suppresses all of this. Scored at 5,751 of the 5,753 corpus
+    names the reference reads; the two that differ do so in both modes and for reasons
+    that have nothing to do with the hash.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "default", "kept"),
+        [
+            # legacy: the path's trailing `17h<16 hex>` component
+            (
+                "_ZN4core3fmt5write17h05af221e174051e9E",
+                "core::fmt::write",
+                "core::fmt::write::h05af221e174051e9",
+            ),
+            # v0: the crate's disambiguator, wherever a crate root is spelled
+            ("_RNvCs1_1a1f", "a::f", "a[3]::f"),
+            # and nothing at all where the crate wrote none
+            ("_RNvC1a1f", "a::f", "a::f"),
+            # v0 again: the same bit spells an integer const's own type after its value
+            (
+                "_RINvCsdEttCVZFADF_8features12const_signedKln11_EB2_",
+                "features::const_signed::<-17>",
+                "features[9f05e0465351d495]::const_signed::<-17i32>",
+            ),
+            # a `bool` const takes no suffix under either, which the reference decides
+            (
+                "_RINvCsdEttCVZFADF_8features10const_boolKb0_EB2_",
+                "features::const_bool::<false>",
+                "features[9f05e0465351d495]::const_bool::<false>",
+            ),
+        ],
+    )
+    def test_against_rustc_demangle(self, capsys, name, default, kept):
+        _, out, _ = run(capsys, [name])
+        assert out.strip() == default
+        _, out, _ = run(capsys, ["--keep-hash", name])
+        assert out.strip() == kept
