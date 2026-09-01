@@ -217,11 +217,18 @@ def _dll_version(handle):
     import ctypes
     from ctypes import wintypes
 
+    # `ctypes.windll` exists only on Windows, so a checker running anywhere else is
+    # right that the module has no such member. Reaching it once, here, is what keeps
+    # that true statement from having to be repeated at every use: this file is only
+    # ever run on Windows -- the caller has already loaded `dbghelp.dll` -- so the
+    # platform is this function's precondition rather than a branch it takes.
+    windll = ctypes.windll  # ty: ignore[unresolved-attribute]
+
     path = ctypes.create_unicode_buffer(1024)
-    if not ctypes.windll.kernel32.GetModuleFileNameW(wintypes.HMODULE(handle), path, 1024):
+    if not windll.kernel32.GetModuleFileNameW(wintypes.HMODULE(handle), path, 1024):
         return "unknown"
     dll = path.value
-    version = ctypes.windll.version
+    version = windll.version
     version.GetFileVersionInfoSizeW.restype = wintypes.DWORD
     size = version.GetFileVersionInfoSizeW(dll, None)
     if not size:

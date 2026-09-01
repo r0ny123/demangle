@@ -12,7 +12,9 @@ measured rather than what seems reasonable.
 """
 
 import gzip
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -156,14 +158,24 @@ class TestDetectionDeclinesWhatItCannotTell:
         Skipped where `nm` is not available, which is every platform that is not the one
         this number was taken on. It is the check that would catch a widening of the
         evidence test, so it is worth running where it can be.
+
+        The listing is a glob rather than a shell, and that is not a style preference.
+        `bash` on a Windows runner is `C:\\Windows\\System32\\bash.exe` -- the WSL
+        launcher -- which, with no distribution installed, writes its complaint to
+        *stdout* in UTF-16. Decoded as text that is `'W\\x00i\\x00n\\x00...'`, which
+        passed the `if not listing` guard and reached `subprocess` as a filename with
+        NUL bytes in it. A directory that does not exist globs to nothing on every
+        platform, which is the answer this wanted in the first place.
         """
-        listing = subprocess.run(
-            ["bash", "-c", "ls /usr/lib/x86_64-linux-gnu/*.so* /lib/x86_64-linux-gnu/*.so* 2>/dev/null | head -120"],
-            capture_output=True,
-            text=True,
-        ).stdout.split()
+        listing = []
+        for directory in (Path("/usr/lib/x86_64-linux-gnu"), Path("/lib/x86_64-linux-gnu")):
+            if directory.is_dir():
+                listing.extend(str(path) for path in sorted(directory.glob("*.so*")))
+        listing = listing[:120]
         if not listing:
             pytest.skip("no shared libraries to read symbols from")
+        if shutil.which("nm") is None:
+            pytest.skip("nm is not available")
         seen = 0
         claimed = []
         for library in listing:

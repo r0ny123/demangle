@@ -48,7 +48,7 @@ pip install demangle          # once released to PyPI
 pip install git+https://github.com/r0ny123/demangle    # until then
 ```
 
-Python 3.11 or newer. That is the whole dependency list.
+Python 3.13 or newer. That is the whole dependency list.
 
 ## Use
 

@@ -828,6 +828,27 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Three defects CI found the moment it could run again.** The Actions quota had been
+  exhausted for five commits, so every job failed in two seconds with no logs; the first
+  real run afterwards was red for three separate reasons, none of them the demangler.
+
+  - `tests/test_ada.py` asked a shell for the machine's shared libraries. On a Windows
+    runner `bash` is `C:\Windows\System32\bash.exe`, the WSL launcher, which with no
+    distribution installed writes its complaint to *stdout* in UTF-16 -- decoded as text,
+    `'W\x00i\x00n\x00d\x00o\x00w\x00s\x00'`, which passed the "did I get a listing"
+    guard and reached `subprocess` as a filename with NUL bytes in it. It globs the two
+    directories now, which needs no shell and answers nothing on the platforms that do
+    not have them.
+  - `tests/test_architecture.py` located the corpora by walking up from
+    `demangle.__file__`, which reaches `tests/` only in an editable install pointing at a
+    checkout. From the sdist the CI job builds and installs, it landed in site-packages
+    and raised `FileNotFoundError`. Anchored on the test file, like every other test in
+    the suite.
+  - Two `ty` findings that had never been through the type checker in CI: `pstats.Stats`
+    sets `total_calls` in a method typeshed does not declare, and `ctypes.windll` exists
+    only on Windows. Both are now stated as the deliberate exceptions they are, with the
+    reason next to them.
+
 - **Swift: nine manglings the scheme had no production for.** Diffing the node kinds
   this scheme builds against the compiler's own `DemangleNodes.def` named the gaps, and
   each was then put to the reference rather than guessed at: `TTI` the identity thunk,
@@ -2013,6 +2034,17 @@ a number can only go up and cannot quietly stop being accurate.
   further 97 names it refuses outright and this reads.
 
 ### Changed
+
+- **Python 3.13 is the floor, and the test matrix is no longer a cross product.**
+  `requires-python` was `>=3.11`; three operating systems by four versions was twelve
+  test rows, plus a PyPy one, for a library whose only platform-dependent surface is the
+  harness around it. Both supported versions run on Linux now, with one row each on
+  macOS and Windows -- the ceiling and the floor, so neither end of the range is only
+  ever exercised on Linux. Fourteen rows to five.
+
+  The PyPy row goes with the floor rather than by choice: PyPy's newest is Python 3.11,
+  so there is no PyPy this package installs on, and the classifier claiming otherwise
+  would have been a promise nothing runs. `ruff` targets `py313` and `ty` assumes it.
 
 - **MSVC: a suppressed calling convention now takes its space with it.** `int ( *)()` is
   a convention the mangling spells with nothing, and the reference keeps the space it

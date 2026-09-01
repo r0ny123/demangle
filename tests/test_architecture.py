@@ -58,7 +58,12 @@ def corpus_names():
     """Every mangled name in every conformance corpus, whatever scheme wrote it."""
     import gzip
 
-    conformance = Path(demangle.__file__).parent.parent.parent / "tests" / "conformance"
+    # Anchored on this file, not on `demangle.__file__`. Walking up from the package
+    # only reaches `tests/` when the package is an editable install pointing into this
+    # checkout; from an installed wheel or sdist it lands in site-packages, where there
+    # is no `tests/conformance` -- which is exactly how the suite failed when the CI job
+    # that installs the sdist and runs the shipped tests got round to this one.
+    conformance = Path(__file__).parent / "conformance"
     names = []
     for path in sorted(conformance.iterdir()):
         if path.suffix == ".gz":

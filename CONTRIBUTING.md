@@ -18,8 +18,8 @@ hatch run check
 ```
 
 The pieces are available on their own: `hatch run test`, `cover`, `lint`, `fmt`,
-`bench`, `differential`. `hatch run test:test` runs the suite across Python 3.11 through
-3.13, and `hatch run docs:serve` previews the documentation site.
+`bench`, `differential`. `hatch run test:test` runs the suite on Python 3.13 and 3.14,
+and `hatch run docs:serve` previews the documentation site.
 
 Without Hatch:
 
@@ -282,6 +282,14 @@ Workflows run with `permissions: contents: read` and grant more only where a job
 it. Checkout uses `persist-credentials: false`, because nothing in CI pushes and a token
 left in `.git/config` is readable by every later step. Releases publish through PyPI
 Trusted Publishing, so there is no long-lived API token in repository secrets.
+
+The test matrix is deliberately not a cross product. Both supported versions run on
+Linux; macOS and Windows get one row each, the ceiling and the floor, so neither end of
+the range is only ever exercised on Linux. This is a pure-Python library, and everything
+that has ever differed between platforms differed in the harness -- a glob, a subprocess,
+a console encoding -- which one row per operating system catches as well as four do. Add
+a row when a defect shows up that only that row would have caught, and say so in the
+comment next to it.
 
 Two rules for anyone editing `.github/`:
 

@@ -304,7 +304,9 @@ def calls():
         profiler.enable()
         function()
         profiler.disable()
-        counted[name] = (pstats.Stats(profiler).total_calls, count)
+        # `total_calls` is set on the instance by `Stats.get_top_level_stats`, which the
+        # constructor calls; typeshed declares neither, so a checker cannot see it.
+        counted[name] = (pstats.Stats(profiler).total_calls, count)  # ty: ignore[unresolved-attribute]
     return counted
 
 

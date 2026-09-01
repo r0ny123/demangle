@@ -34,14 +34,28 @@ jobs:
     strategy:
       fail-fast: false
       # Everything the classifiers in `pyproject.toml` promise is tested here: a support
-      # claim nobody runs quietly stops being true. PyPy on Linux only -- it is here to
-      # catch a dependence on CPython internals, which is not platform-specific.
+      # claim nobody runs quietly stops being true. Both supported versions on Linux,
+      # and one row each on the other two operating systems rather than the full cross
+      # product -- the floor on one and the ceiling on the other, so neither end of the
+      # range is only ever exercised on Linux. Three OSes by four versions was twelve
+      # rows of a pure-Python library whose platform-dependent surface is `pathlib`,
+      # `subprocess` and the console encoding; the rows that ever caught anything caught
+      # it in the test harness, not in the demangler, and one row per OS catches those
+      # just as well.
+      #
+      # No PyPy row: `requires-python` is `>=3.13` and PyPy's newest is 3.11, so there
+      # is no PyPy this package installs on. It was here to catch a dependence on
+      # CPython internals; the free-threaded row below is now the only interpreter
+      # variation left, and `tests/test_architecture.py` is what keeps the source
+      # portable in the meantime.
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-latest]
+        python: ["3.13", "3.14"]
         include:
-          - os: ubuntu-latest
-            python: "pypy3.11"
+          - os: macos-latest
+            python: "3.14"
+          - os: windows-latest
+            python: "3.13"
           # A free-threaded build, where the GIL is not there to make a shared mutable
           # parser look safe. The Rust scheme held one at module scope and returned
           # another symbol's name under threads; on a GIL build that took eight threads
@@ -115,7 +129,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group lint
       - name: Ruff lint
@@ -137,7 +151,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Install reference toolchains
         run: |
           sudo apt-get update
@@ -215,7 +229,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       # Several LLVM versions on purpose. Agreeing with one build of one reference is not
       # the same as being right: llvm-cxxfilt 16 drops a constructor's name after an ABI
       # tag, and between 18 and 20 LLVM changed its substitution numbering for a template
@@ -264,7 +278,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group docs
       # Strict: a warning is a broken cross-reference or an undocumented parameter.
@@ -286,7 +300,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e .
       - run: python benchmarks/bench.py --check
@@ -303,7 +317,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - run: python -m pip install --upgrade pip build twine
       # `build` is the standard frontend and backend-agnostic; hatchling does the work.
       - run: python -m build

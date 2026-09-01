@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "demangle"
 description = "Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal and Delphi -- in pure Python, with no dependencies."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "demangle contributors" }]
@@ -19,12 +19,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Security",
     "Topic :: Software Development :: Disassemblers",
     "Topic :: Software Development :: Debuggers",
@@ -137,7 +134,7 @@ differential = "python tools/differential.py {args}"
 check = ["lint", "test", "differential", "bench --check"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
+python = ["3.13", "3.14"]
 
 # `template` set to its own name so this environment does *not* inherit the default's
 # scripts, which would run the type checker against an environment holding only the
@@ -161,7 +158,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py313"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -179,4 +176,4 @@ ignore = [
 "src/demangle/schemes/rust/_dispatch.py" = ["ALL"]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.13"
