@@ -1,4 +1,3 @@
-import contextlib
 import re
 import string
 import unicodedata
@@ -900,7 +899,44 @@ class _NoScope:
 
 _NO_SCOPE = _NoScope()
 
-#: Stands in for the list `node` yields, so `built[0]` reads as None on the text path.
+
+#: And what it returns when the sink *does* keep structure. The same argument as the
+#: no-op above, which was made for the text path and left the tree path on `contextlib`:
+#: a generator, a `_GeneratorContextManager` around it and two `next` calls to reach an
+#: `open` and a `close`. Over the Rust corpora that is 89,796 scopes paying for five
+#: frames each to do two things.
+class _Scope:
+    """Brackets one production so a tree sink learns where it began and ended.
+
+    `__enter__` hands back the list that holds the finished node once the block has
+    exited, which is how a caller needing the subtree -- an impl wanting its own trait,
+    say -- gets hold of it: `with self.node(f) as built: ...` and then `built[0]`.
+
+    `__exit__` closes in every case, exception included, only so the sink's stack stays
+    balanced for a caller that catches `UnableTov0Demangle` and carries on with the same
+    sink. Nothing in this package does -- an abandoned name discards its sink -- but an
+    unbalanced stack would be a silent, later, much stranger failure than the one that
+    caused it. Returning false rather than true, so an exception still propagates.
+    """
+
+    __slots__ = ("box", "factory", "sink")
+
+    def __init__(self, sink, factory):
+        self.sink = sink
+        self.factory = factory
+        self.box = []
+
+    def __enter__(self):
+        self.sink.open()
+        return self.box
+
+    def __exit__(self, *exception):
+        self.box.append(self.sink.close(self.factory))
+        return False
+
+
+#: Stands in for the list a real scope hands back, so `built[0]` reads as None on the
+#: text path.
 _NO_NODE = (None,)
 
 
@@ -1010,30 +1046,10 @@ class Printer:
         raise UnableTov0Demangle("Error")
 
     def node(self, factory):
-        """Bracket a production; see `_node` for what it does when structure is wanted."""
+        """Bracket a production; see `_Scope` for what it does when structure is wanted."""
         if self._plain:
             return _NO_SCOPE
-        return self._node(factory)
-
-    @contextlib.contextmanager
-    def _node(self, factory):
-        """Bracket a production, so a tree sink learns where it began and ended.
-
-        Yields a list that holds the finished node once the block has exited, which is
-        how a caller needing the subtree -- an impl wanting its own trait, say -- gets
-        hold of it. Under `TextSink` that value is None and nobody reads it.
-
-        Closed in a `finally` only so the stack stays balanced for a caller that catches
-        `UnableTov0Demangle` and carries on with the same sink. Nothing in this package
-        does -- an abandoned name discards its sink -- but an unbalanced stack would be a
-        silent, later, much stranger failure than the one that caused it.
-        """
-        box = []
-        self.sink.open()
-        try:
-            yield box
-        finally:
-            box.append(self.sink.close(factory))
+        return _Scope(self.sink, factory)
 
     def eat(self, b):
         parser = self.parser

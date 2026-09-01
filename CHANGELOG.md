@@ -6,6 +6,28 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Performance
+
+- **Rust's tree path: 12% off, by giving it the scope object the text path already had.**
+  `Printer.node` brackets every grammar production, and under a tree sink it returned a
+  `@contextlib.contextmanager` generator -- a generator, a `_GeneratorContextManager`
+  around it and two `next` calls, five frames to reach one `open` and one `close`, 89,796
+  times over the Rust corpora. `_NoScope`, the hand-written no-op the *text* path returns,
+  exists for precisely this reason and says so in its comment: it was 8% there. The tree
+  path never got the same treatment. `_Scope` is that class with the two methods filled
+  in.
+
+  637.9ms to 561.4ms over the 5,752 corpus names the scheme reads, measured by alternating
+  the two versions three times at medians of seven, with no overlap between the sets;
+  `parse()` against `demangle_strict()` goes from 1.61x to 1.35x. Every tree still spells
+  exactly what the text path spells -- 17,256 readings across three styles, zero
+  divergences -- which is the invariant the whole design rests on.
+
+  Stopped there deliberately. What remains is `_Rust.__init__` summing its parts to set
+  `size`, and `size` is what `_check_length` enforces `max_output` against. The sink knows
+  that figure in O(1) and could hand it over, but a wrong `size` is a bound on untrusted
+  input that silently does not hold, and a few percent does not buy that risk.
+
 ### Added
 
 - **The last three option knobs on the roadmap's list, and the reference to check two of

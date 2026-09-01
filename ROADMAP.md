@@ -431,19 +431,29 @@ names, cache cleared each round, median of nine.
 | MSVC | LLVM's own 609 | **0.87x** |
 | Itanium | libcxxabi, 29,928 | **1.04x** |
 | Swift | real-world, 8,000 | **1.23x** |
-| Rust | every corpus name it reads, 5,752 | **1.61x** |
+| Rust | every corpus name it reads, 5,752 | **1.35x**, was 1.61x |
 
-Which says the headroom is not where the phrasing implied. Building the tree is *free*
+Which says the headroom was not where the phrasing implied. Building the tree is *free*
 for the two C-family schemes -- MSVC comes out ahead because the text path renders a
 declaration the tree merely records -- and the multiplier lives in the schemes whose
-nodes are parts in output order. Rust is the outlier at 1.61x, and that is `TreeSink`
-against `TextSink` rather than a second traversal: the printer emits one stream of
-fragments either way, and what differs is that one appends to a string while the other
-allocates a node per fragment.
+nodes are parts in output order.
 
-So the thing to profile, if this is picked up, is `schemes/rust/_v0.py`'s sink and not
-the parsers -- and it is worth saying that nothing measured here is on the benchmark's
-hot path, which times `demangle()`. A caller who wants the tree is asking for the tree.
+Rust was the outlier, and most of what made it one was not the tree at all. `Printer.node`
+brackets every production, and under a tree sink it returned a `@contextlib.contextmanager`
+generator: a generator object, a `_GeneratorContextManager` around it and two `next` calls,
+five frames to reach an `open` and a `close`, 89,796 times over these corpora. The text
+path had already been given a hand-written no-op scope for exactly this reason -- the
+comment on `_NoScope` says it was 8% there -- and the tree path was left behind. It has
+one too now, `_Scope`, which is the same two methods without the generator: **12.0% off**,
+measured by alternating the two versions three times, medians of seven, 637.9ms against
+561.4ms with no overlap between the sets.
+
+What is left is the node objects themselves, and that is where this stops. `_Rust.__init__`
+sums its parts to set `size`, and `size` is what `_check_length` enforces `max_output`
+against -- a bound on untrusted input. It could be handed the figure by the sink, which
+knows it in O(1), but a wrong `size` is a resource bound that silently does not hold. A
+few percent is not worth that, and nothing measured here is on the benchmark's hot path
+anyway, which times `demangle()`. A caller who wants the tree is asking for the tree.
 
 ## 2a. What hostile input can buy
 
