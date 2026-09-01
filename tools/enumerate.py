@@ -235,11 +235,15 @@ ACCEPTED = {
         # loses the `()` to LLVM and is refused outright by GNU. This keeps the
         # declarator.
         #
-        # The condition is the *shape*: the `G` or `C` marker, any cv-qualifiers, and
-        # then an array or a function. Two narrower attempts each missed a family of it
-        # -- `"GA" in name` missed `_Z1fGKA_a`, where a `K` sits between, and
-        # `"[]" in ours or "()" in ours` missed `_Z1fGA1_a` and `_Z1fGFaaE`, where the
-        # declarator is not empty.
+        # The condition is the *shape*: the `G` or `C` marker, any cv-qualifiers or
+        # pointer sigils, and then an array or a function. Three narrower attempts each
+        # missed a family of it -- `"GA" in name` missed `_Z1fGKA_a`, where a `K` sits
+        # between; `"[]" in ours or "()" in ours` missed `_Z1fGA1_a` and `_Z1fGFaaE`,
+        # where the declarator is not empty; and allowing only cv-qualifiers between the
+        # marker and the declarator missed the twelve `_Z1fGPFvE` shapes -- imaginary
+        # applied to a pointer or reference *to* a function -- where `llvm-cxxfilt`
+        # answers `f(void (* imaginary)`, opening two brackets and closing one. An
+        # unbalanced spelling is not a second opinion about anything.
         or (_IMAGINARY_DECLARATOR.search(name) is not None and ("imaginary" in ours or "complex" in ours))
         # Or a `char` array in a braced initialiser, which the *installed*
         # `llvm-cxxfilt` spells element by element -- `Hello{char [6]{(char)72, ...}}`
@@ -344,7 +348,7 @@ _PLACEMENT_CLOSURE = re.compile(r"`placement delete(\[\])? closure'")
 
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
 #: function. The one shape where all three implementations write something different.
-_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVK]*[AF]")
+_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVKPRO]*[AF]")
 
 #: An Objective-C method name as a `<local-name>`'s function encoding. See `ACCEPTED`.
 _OBJC_METHOD_SCOPE = re.compile(r"Z\d+[-+]\[")
