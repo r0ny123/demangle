@@ -6,6 +6,42 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **MSVC: a name that opens with `?` where no code claims it is an identifier, not a
+  refusal and not an operator.** The reference reads three name positions with three
+  functions -- `demangleUnqualifiedSymbolName`, `demangleUnqualifiedTypeName` and
+  `demangleNameScopePiece` -- and each claims a different set of codes: a template
+  anywhere, an operator only where a symbol names itself, a namespace or a scope number
+  only where a scope is being named. What no code claims falls through to the same
+  `demangleSimpleName` a plain name uses, `?` and all, recorded for back-references like
+  any other. This parser reads all three positions with one function and allowed an
+  operator in every leading one.
+
+  Mostly that showed as a refusal, but through a pointer to member it produced a
+  declaration: a class named `?DecoderStream` came back as
+  `media::$01::ecoderStream::operator*::*`, which is the plausible lie this library
+  exists not to tell. Found by `tools/mutate.py --scheme msvc --seed 202`, which now
+  reports nothing at 150,000 mutants. Over a 2,934-name probe of every `?` shape in every
+  name position, divergence from llvm-undname 18.1.3 went from 177 to 0 -- with no case
+  in either direction where one reads and the other refuses.
+
+  Two rules moved with it. A scope number is now recognised by the reference's own
+  lookahead (`startsWithLocalScopePattern`) rather than by trying to read one, so `?0B@`
+  -- a digit with no symbol after it -- is the name `?0B` instead of a refusal; deciding
+  by lookahead matters because reading and falling back would have already spent a nested
+  symbol's worth of entries on the shared back-reference table. And an anonymous
+  namespace's discriminator is now whatever stands before the `@` rather than only `0x`
+  and hex digits: it is never printed, only recorded, so checking its spelling refused
+  names for no gain.
+
+- **MSVC: a bare type encoding made an allowance only a symbol is entitled to.**
+  `parse_msvc_type` -- what `demangle --types -l msvc` and `parse_type` reach -- left the
+  "this is the symbol's own name" flag set, so the class a type names could be read as an
+  operator and, worse, a template standing as that type was not recorded for
+  back-references. `P6AXV?$A@H@@V0@@Z` was refused on its own and read inside
+  `??_R0P6AXV?$A@H@@V0@@Z@8`, which is the same type either way.
+
 ### Performance
 
 - **Rust's tree path: 12% off, by giving it the scope object the text path already had.**

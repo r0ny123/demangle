@@ -531,20 +531,72 @@ class _Demangler:
                     # f<int>. A template met anywhere else is recorded like any other name.
                     self.rememberName(rendered)
                 return rendered, "func" if operator else None
-            if is_leading:
-                # "??A" here is operator[], not the namespace below: the leading fragment is
-                # the symbol's own name, and a namespace can only qualify it
+            if is_symbol_name:
+                # "??A" here is operator[], not the namespace below: only a symbol's own
+                # name may be an operator, and a namespace can only qualify it
                 return self.operatorName()
-            if self.peek() == "A":
-                return self.anonymousNamespace(), None
-            # a scope number is written the way a template argument's is, so it may be
-            # nibbles too; "A" is not among them because "?A" is the namespace above
-            if self.peek() in string.digits or self.peek() in "@BCDEFGHIJKLMNOP":
-                return self.localScope(), None
-            raise _Bail
+            if not is_leading:
+                if self.peek() == "A":
+                    return self.anonymousNamespace(), None
+                # a scope number is written the way a template argument's is, so it may be
+                # nibbles too; "A" is not among them because "?A" is the namespace above
+                if self.atLocalScope():
+                    return self.localScope(), None
+            # Everything else that opens with "?" is an ordinary identifier that happens to
+            # keep it. The reference reads three name positions with three functions, and
+            # the codes above are exactly what each one claims: a template anywhere, an
+            # operator only where a symbol names itself, a namespace or a scope number only
+            # where a scope is being named. What no code claims falls through to the same
+            # `demangleSimpleName` a plain name uses, "?" and all, recorded for
+            # back-references like any other. No compiler emits one; what does reach here
+            # is a name written by hand or by another tool, and reading it the way the
+            # reference reads it beats both refusing it and -- as a class named "?D" once
+            # did, through a pointer to member, where a tag type would have refused it --
+            # answering it as an operator.
+            return self.questionName(), None
         name = self.identifier()
         self.rememberName(name)
         return name, None
+
+    def questionName(self):
+        """A name whose leading "?" is part of it, the "?" already read.
+
+        Empty after the "?" is a name too -- the reference stops at the first "@" that is
+        not the very first character, and the "?" is that character -- so "?@" is the name
+        "?" rather than a refusal.
+        """
+        end = self.text.find("@", self.pos)
+        if end < 0:
+            raise _Bail
+        name = "?" + self.text[self.pos : end]
+        self.pos = end + 1
+        self.rememberName(name)
+        return name
+
+    def atLocalScope(self):
+        """Whether the "?" just read opens a scope number, by the reference's own test.
+
+        Deciding by lookahead rather than by trying, because the alternative -- reading a
+        scope and falling back when it fails -- would have already spent a nested symbol's
+        worth of back-reference entries on the shared table by the time it found out.
+
+        A number, then a "?" for the symbol the scope belongs to: one digit standing for
+        itself, or "@" for zero, or nibbles from B-P then A-P ended by "@". "A" cannot open
+        one because "?A" is the anonymous namespace, and a leading zero would be spelled as
+        a digit anyway.
+        """
+        end = self.text.find("?", self.pos)
+        if end < 0:
+            return False
+        spelled = self.text[self.pos : end]
+        if not spelled:
+            return False
+        if len(spelled) == 1:
+            return spelled == "@" or spelled in string.digits
+        if spelled[-1] != "@":
+            return False
+        spelled = spelled[:-1]
+        return "B" <= spelled[0] <= "P" and all("A" <= digit <= "P" for digit in spelled[1:])
 
     def localScope(self):
         """A scope inside a function: the function's own name, and which scope of it.
@@ -613,22 +665,21 @@ class _Demangler:
         The discriminator tells two of them apart inside one binary, and the reference does
         not spell it, so two anonymous namespaces render alike - which is what C++ source
         looks like too.
+
+        Whatever stands between the "?A" and the "@" is that discriminator, and it is taken
+        as it is written rather than checked against the "0x" and hex digits a compiler
+        emits. The reference does the same, and the spelling is not load-bearing: it is
+        never printed, only recorded, so a discriminator this did not expect is a name it
+        would refuse for no gain.
         """
         self.expect("A")
-        start = self.pos
-        if self.eat("0"):
-            if not self.eat("x"):
-                raise _Bail
-            digits = 0
-            while not self.eof() and self.peek() in string.hexdigits:
-                self.take()
-                digits += 1
-            if not digits:
-                raise _Bail
+        end = self.text.find("@", self.pos)
+        if end < 0:
+            raise _Bail
         # the discriminator, not the spelling, is what a later back-reference resolves to:
         # "?f@?A0x1@@YAXV1@@Z" names its parameter "class 0x1"
-        self.rememberName(self.text[start : self.pos])
-        self.expect("@")
+        self.rememberName(self.text[self.pos : end])
+        self.pos = end + 1
         return "`anonymous namespace'"
 
     def endsTheInitialisedName(self):
@@ -1663,6 +1714,12 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         return None
     try:
         demangler = _Demangler(name, limits, options)
+        # There is no symbol here to name itself, so the one allowance made for a symbol's
+        # own name is not made: the class this type names may not be an operator, and a
+        # template standing as it is recorded for back-references rather than skipped.
+        # Without this `P6AXV?$A@H@@V0@@Z` refuses on its own and reads inside
+        # `??_R0P6AXV?$A@H@@V0@@Z@8`, which is the same type either way.
+        demangler.at_symbol_name = False
         # `returnType` rather than `type`: this position is the one that may carry a
         # qualifier group of its own, and `?A` -- the unqualified case, not an absent one
         # -- is how every class type is written here. `??_R0?AVFoo@@@8` reads its type the

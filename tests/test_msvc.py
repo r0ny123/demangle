@@ -1,7 +1,8 @@
 import unittest
 from pathlib import Path
 
-from demangle.schemes.msvc._parser import demangle_msvc_symbol
+from demangle.schemes.msvc._parser import demangle_msvc_symbol, parse_msvc_type
+from demangle.schemes.msvc.nodes import render
 
 # Every pair below is a real MSVC mangled name with the spelling llvm-undname produces
 # for it. The mangled names come from LLVM's own demangler test corpus, except the two
@@ -212,6 +213,16 @@ ANONYMOUS_NAMESPACE = [
     ("?f@?A0x1@N@@YAXV2@@Z", "void __cdecl N::`anonymous namespace'::f(class N)"),
     # a leading "??A" is operator[], which a namespace fragment must not claim
     ("??AFoo@@QAGXXZ", "public: void __stdcall Foo::operator[](void)"),
+    # the discriminator is whatever stands before the "@", not only "0x" and hex digits
+    ("?x@?A0@@3HA", "int `anonymous namespace'::x"),
+    ("?x@?A0x@@3HA", "int `anonymous namespace'::x"),
+    ("?x@?A0xZZ@@3HA", "int `anonymous namespace'::x"),
+    ("?x@?ABANANA@@3HA", "int `anonymous namespace'::x"),
+    # ... and it is that discriminator a back-reference resolves to, whatever it spells
+    ("?f@?ABANANA@@YAXV1@@Z", "void __cdecl `anonymous namespace'::f(class BANANA)"),
+    # only where a scope is being named, though: the innermost name of a *type* is never
+    # a namespace, so this one is the class "?A0x1"
+    ("?f@@YAXPAU?A0x1@@@Z", "void __cdecl f(struct ?A0x1 *)"),
 ]
 
 
@@ -221,10 +232,77 @@ class MsvcAnonymousNamespaceTestSuite(unittest.TestCase):
             with self.subTest(mangled=mangled):
                 self.assertEqual(demangle_msvc_symbol(mangled), expected)
 
-    def test_a_discriminator_that_is_not_hexadecimal_is_refused(self):
-        for mangled in ("?x@?A0@@3HA", "?x@?A0x@@3HA", "?x@?A0xZZ@@3HA"):
+    def test_a_discriminator_that_runs_to_the_end_is_refused(self):
+        # it is delimited by an "@", and a name without one is not a name
+        self.assertEqual(demangle_msvc_symbol("?x@?A0x1"), "?x@?A0x1")
+
+
+# A name that opens with "?" where no code claims it. The reference reads three name
+# positions with three functions -- `demangleUnqualifiedSymbolName`,
+# `demangleUnqualifiedTypeName` and `demangleNameScopePiece` -- and each claims a
+# different set: a template anywhere, an operator only where a symbol names itself, a
+# namespace or a scope number only where a scope is being named. Everything else reaches
+# the same `demangleSimpleName` a plain name does, and keeps its "?". Every spelling below
+# was put to llvm-undname 18.1.3.
+QUESTION_NAMES = [
+    # the innermost name of a type is not an operator: "?B" here is a class, not
+    # operator-conversion
+    ("?f@@YAXPAU?B@A@@@Z", "void __cdecl f(struct A::?B *)"),
+    ("?f@@YAXPAU?DEcoder@N@@@Z", "void __cdecl f(struct N::?DEcoder *)"),
+    # ... including through a pointer to member, which is where reading one as an operator
+    # produced a declaration rather than a refusal:
+    # "media::$01::ecoderStream::operator*::*" for a class named "?DecoderStream"
+    ("?f@@YAXP8?D@N@@AEXXZ@Z", "void __cdecl f(void (__thiscall N::?D::*)(void))"),
+    # it is recorded for back-references like any other name: "?B" and "A" take 1 and 2
+    ("?f@@YAXPAU?B@A@@PAU01@@Z", "void __cdecl f(struct A::?B *, struct ?B::f *)"),
+    ("?f@@YAXPAUX@?B@A@@PAU2@@Z", "void __cdecl f(struct A::?B::X *, struct ?B *)"),
+    # a scope number is a number and then the symbol it belongs to. "?0B@" has the digit
+    # but no symbol after it, so it is not one, and what is left is a name
+    ("?f@@YAXPAU?0B@@@Z", "void __cdecl f(struct ?0B *)"),
+    ("?x@?Q@@3HA", "int ?Q::x"),
+    # empty after the "?" is a name too: the reference stops at the first "@" that is not
+    # the first character, and the "?" is that character
+    ("?f@@YAXPAU?@N@@@Z", "void __cdecl f(struct N::?*)"),
+    # and the codes that *are* claimed still are, in the positions that claim them
+    ("??AFoo@@QAGXXZ", "public: void __stdcall Foo::operator[](void)"),
+    ("?x@?A0x1@@3HA", "int `anonymous namespace'::x"),
+    ("?x@?@??f@@YAXXZ@4HA", "int `void __cdecl f(void)'::`0'::x"),
+    ("?x@?0??f@@YAXXZ@4HA", "int `void __cdecl f(void)'::`1'::x"),
+    ("?x@?BB@??f@@YAXXZ@4HA", "int `void __cdecl f(void)'::`17'::x"),
+    ("??$f@H@@YAXXZ", "void __cdecl f<int>(void)"),
+]
+
+
+class MsvcQuestionNameTestSuite(unittest.TestCase):
+    def test_a_name_no_code_claims_keeps_its_question_mark(self):
+        for mangled, expected in QUESTION_NAMES:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_a_name_that_never_reaches_an_at_sign_is_refused(self):
+        for mangled in ("?f@@YAXPAU?B", "?f@@YAXPAUX@?B"):
             with self.subTest(mangled=mangled):
                 self.assertEqual(demangle_msvc_symbol(mangled), mangled)
+
+
+class MsvcTypeOnlyTestSuite(unittest.TestCase):
+    """A bare type encoding has no symbol in it, so it makes none of a symbol's allowances."""
+
+    def test_a_template_standing_as_the_type_is_recorded_for_back_references(self):
+        # the one name a symbol does not record is its own, and there is no symbol here.
+        # The same encoding inside "??_R0...@8" has always read.
+        tree = parse_msvc_type("P6AXV?$A@H@@V0@@Z")
+        self.assertIsNotNone(tree)
+        self.assertEqual(render(tree), "void (__cdecl *)(class A<int>, class A<int>)")
+        self.assertEqual(
+            demangle_msvc_symbol("??_R0P6AXV?$A@H@@V0@@Z@8"),
+            "void (__cdecl *`RTTI Type Descriptor')(class A<int>, class A<int>)",
+        )
+
+    def test_the_class_a_type_names_is_never_an_operator(self):
+        tree = parse_msvc_type("PAU?B@A@@")
+        self.assertIsNotNone(tree)
+        self.assertEqual(render(tree), "struct A::?B *")
 
 
 MEMBER_POINTERS_AND_INTEGERS = [
@@ -632,9 +710,10 @@ class MsvcMemberQualifierTestSuite(unittest.TestCase):
     def test_a_qualifier_the_table_does_not_hold_is_refused(self):
         self.assertEqual(demangle_msvc_symbol("??$f@$$A8@@GZAHXZ@@YAXXZ"), "??$f@$$A8@@GZAHXZ@@YAXXZ")
 
-    def test_a_qualified_fragment_that_is_neither_a_namespace_nor_a_scope_is_refused(self):
-        # "?Q" names no scope: the numbers stop at P and "?A" is the unnamed namespace
-        self.assertEqual(demangle_msvc_symbol("?x@?Q@@3HA"), "?x@?Q@@3HA")
+    def test_a_qualified_fragment_that_is_neither_a_namespace_nor_a_scope_is_a_name(self):
+        # "?Q" names no scope -- the numbers stop at P and "?A" is the unnamed namespace --
+        # so what is left is an identifier that happens to keep its "?"
+        self.assertEqual(demangle_msvc_symbol("?x@?Q@@3HA"), "int ?Q::x")
 
 
 class MsvcTrailingQualifierTestSuite(unittest.TestCase):
