@@ -125,10 +125,25 @@ by name in `tests/conformance/nim-lossy.txt`.
 ## 0. Where a reference is wrong
 
 Agreeing with a reference is not the same as being right, and this is the heading for the
-places where that has been established rather than assumed. The vectors live in
-`tests/conformance/itanium-reference-defects.txt` — the one corpus here whose expected
-column comes from the declaration rather than from a demangler — with reduced sources in
-`tools/corpus_sources/reference_defects/` and the compiler named on each entry.
+places where that has been established rather than assumed. The vectors live in the
+`*-reference-defects.txt` corpora — the ones whose expected column comes from the
+declaration rather than from a demangler — with reduced sources in
+`tools/corpus_sources/reference_defects/` and `tools/corpus_sources/msvc/`, and the
+compiler named on each entry.
+
+- **A qualifier in front of an MSVC deduced return type, dropped by `llvm-undname`.** A
+  deduced return type is written `?` and a name — `?A?<auto>@@` — and takes a qualifier
+  like any other type, so `const auto structured_const()` is `?B?<auto>@@`.
+  `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp` is `Identifier->output(OB, Flags);`
+  and nothing else, where every other type node's `outputPre` writes its qualifiers
+  first — so `?A`, `?B`, `?C` and `?D` in front of a custom type all come back spelled
+  the same, and the `const` is gone. Not a refusal but a wrong reading, which is the
+  worse kind: `<auto> __cdecl hard::structured_const(void)` is the declaration of a
+  different function. Compiler-emitted, so it is pinned by
+  `tests/conformance/msvc-reference-defects.txt` from the source in
+  `tools/corpus_sources/msvc/modern.cpp` rather than argued about, and `ACCEPTED` in
+  `tools/enumerate.py` carries the reason the reference's answer is not evidence when the
+  fuzzers reach the same shape.
 
 - ~~**A recorded `<template-param>` resolved where it was written, not where it is
   read**~~ — *fixed*, for the parameter and for anything built over one. The entry a

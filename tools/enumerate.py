@@ -171,6 +171,17 @@ ACCEPTED = {
                 # `` `placement delete closure' ``, and a declaration with no name in it is
                 # not a spelling to follow. Recognised by putting the name back.
                 or _PLACEMENT_CLOSURE.sub("", ours) == first
+                # Or a qualifier in front of a deduced return type. That type is written
+                # `?` and a name -- `?A?<auto>@@` -- and takes a qualifier like any other,
+                # so `const auto f()` is `?B?<auto>@@`. `CustomTypeNode::outputPre` in
+                # LLVM's `MSNodes.cpp` is `Identifier->output(OB, Flags);` and nothing
+                # else, where every other type node's writes its qualifiers first, so
+                # `?A`, `?B`, `?C` and `?D` in front of one all come back spelled the
+                # same. Compiler-emitted and pinned in
+                # `tests/conformance/msvc-reference-defects.txt`; recognised here by
+                # taking the qualifier words back out, so the two answers have to differ
+                # in nothing else.
+                or (_QUALIFIED_CUSTOM_TYPE.search(name) is not None and _MSVC_QUALIFIER_WORDS.sub("", ours) == first)
             )
         )
         # Or `__int128`, which `llvm-undname` 18.1 cannot read and its own compiler
@@ -323,6 +334,14 @@ ACCEPTED = {
 
 #: An `N` opening a `<nested-name>` with a CV- or ref-qualifier on it. See `ACCEPTED`.
 _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
+
+#: A CV-qualifier code in front of an MSVC custom type -- `?B?<auto>@@`, where `?A` is
+#: the same shape with no qualifier and so no disagreement. See `ACCEPTED`.
+_QUALIFIED_CUSTOM_TYPE = re.compile(r"\?[B-D]\?")
+
+#: The qualifier words MSVC writes after a type, so an answer can be compared against one
+#: that dropped them. See `ACCEPTED`.
+_MSVC_QUALIFIER_WORDS = re.compile(r" (?:const|volatile)\b")
 
 #: A CV-qualifier applied directly to a `<substitution>`. See `ACCEPTED`.
 _QUALIFIED_SUBSTITUTION = re.compile(r"[rVK]S")

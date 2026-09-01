@@ -6,15 +6,27 @@
 # `clang++ --target=x86_64-pc-windows-msvc`, the symbol is read out of the object file
 # with `nm`, and the spelling is what that source says the symbol's type is.
 #
-# All three are one gap. `_L` and `_M` are `__int128` and `unsigned __int128` in the MS
-# mangling, and `demanglePrimitiveType` in `MicrosoftDemangle.cpp` has neither -- so
-# LLVM's demangler refuses a name LLVM's own compiler emits. Checked against
+# The first three are one gap. `_L` and `_M` are `__int128` and `unsigned __int128` in
+# the MS mangling, and `demanglePrimitiveType` in `MicrosoftDemangle.cpp` has neither --
+# so LLVM's demangler refuses a name LLVM's own compiler emits. Checked against
 # llvm-undname 18.1.3; `tools/generate_corpus.py` reads this file and excludes these, so
 # a regeneration cannot record the refusal as the answer.
 #
 # `?bd@S@@QEBA_L_M@Z` is `__int128 S::bd(unsigned __int128) const`; the other two are the
 # same pair as free-function parameters.
+#
+# The fourth is not a refusal but a wrong reading, which is the worse kind. A deduced
+# return type is written `?` and a name -- `?A?<auto>@@` -- and a qualifier stands in
+# front of it like any other type's, so `const auto structured_const()` is
+# `?B?<auto>@@`. `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp` is
+# `Identifier->output(OB, Flags);` and nothing else, where every other type node's
+# `outputPre` writes its qualifiers first -- so `?A`, `?B`, `?C` and `?D` in front of a
+# custom type all come back spelled the same, and the `const` is gone. Checked by
+# compiling one rather than read off a table: `const auto structured_const()` in
+# `tools/corpus_sources/msvc/modern.cpp`, next to the `auto structured()` whose
+# unqualified `?A?<auto>@@` the reference does read.
 
 ?bd@S@@QEBA_L_M@Z	public: __int128 __cdecl S::bd(unsigned __int128) const
 ?alpha@@YAX_L@Z	void __cdecl alpha(__int128)
 ?beta@@YAX_M@Z	void __cdecl beta(unsigned __int128)
+?structured_const@hard@@YA?B?<auto>@@XZ	<auto> const __cdecl hard::structured_const(void)

@@ -6,6 +6,27 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Conformance
+
+- **A fourth MSVC name where the reference is wrong, established rather than assumed.**
+  A deduced return type is written `?` and a name -- `?A?<auto>@@` -- and takes a
+  qualifier like any other type, so `const auto structured_const()` is `?B?<auto>@@`.
+  `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp` is `Identifier->output(OB, Flags);`
+  and nothing else, where every other type node's writes its qualifiers first, so
+  llvm-undname 18.1.3 prints `<auto> __cdecl hard::structured_const(void)` -- the
+  declaration of a different function. Not a refusal but a wrong reading, which is the
+  worse kind.
+
+  Compiler-emitted, so it is settled from the source rather than argued about: the
+  `const auto` function is in `tools/corpus_sources/msvc/modern.cpp` next to the `auto`
+  one whose unqualified `?A?<auto>@@` the reference does read, the expected column in
+  `tests/conformance/msvc-reference-defects.txt` is the declaration, and
+  `tools/generate_corpus.py` excludes it so a regeneration cannot record the wrong answer
+  -- verified by regenerating `msvc-clang.txt` byte for byte. An `ACCEPTED` rule in
+  `tools/enumerate.py` carries the same reason for the fuzzers, which reached this shape
+  by mutation: `tools/mutate.py --scheme msvc --seed 101 --count 150000` now reports
+  nothing, as `--seed 202` does.
+
 ### Fixed
 
 - **MSVC: a name that opens with `?` where no code claims it is an identifier, not a

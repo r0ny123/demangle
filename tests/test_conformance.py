@@ -32,10 +32,12 @@ MSVC_TOTAL, MSVC_EXACT = 609, 609
 #: a deduced return type written as a back reference to an earlier one.
 MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 156, 156
 
-#: The names in that run `llvm-undname` cannot read: `_L` and `_M`, which are `__int128`
-#: and `unsigned __int128` and which `demanglePrimitiveType` has no case for. Their
-#: expected column is the declaration in the source, as for the Itanium file above.
-MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 3, 3
+#: The names in that run `llvm-undname` reads wrongly: `_L` and `_M`, which are
+#: `__int128` and `unsigned __int128` and which `demanglePrimitiveType` has no case for,
+#: and a qualifier in front of a deduced return type, which `CustomTypeNode::outputPre`
+#: drops. Their expected column is the declaration in the source, as for the Itanium file
+#: above.
+MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 4, 4
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 28, 28
 

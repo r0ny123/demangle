@@ -110,6 +110,16 @@ auto structured() {
   auto [x, y, z] = b;
   return x + y + z;
 }
+// The same deduced return type with a qualifier in front of it, which is what makes
+// `?A?<auto>@@` into `?B?<auto>@@`. `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp`
+// prints the identifier and nothing else, where every other type node prints its
+// qualifiers first, so `llvm-undname` 18.1 loses the `const` here. See
+// `tests/conformance/msvc-reference-defects.txt`.
+const auto structured_const() {
+  Big b{4, 5, 6};
+  auto [x, y, z] = b;
+  return x + y + z;
+}
 
 constexpr int cx(int a) { return a; }
 constinit int ci = 7;
