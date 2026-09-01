@@ -422,8 +422,28 @@ survives.
   rounds per process; identical trees measured that way come out at 0.993 and 1.005,
   where a single run of the committed benchmark has a 24% spread on its cold phase.
 
-Nothing is left under this heading. The next thing worth measuring is `parse()`, which
-has had the same attention only once.
+Nothing is left under this heading. `parse()` was the next thing worth measuring, and it
+has now been measured rather than guessed at: against `demangle_strict()` over the same
+names, cache cleared each round, median of nine.
+
+| scheme | corpus | `parse()` against the text path |
+| --- | --- | --- |
+| MSVC | LLVM's own 609 | **0.87x** |
+| Itanium | libcxxabi, 29,928 | **1.04x** |
+| Swift | real-world, 8,000 | **1.23x** |
+| Rust | every corpus name it reads, 5,752 | **1.61x** |
+
+Which says the headroom is not where the phrasing implied. Building the tree is *free*
+for the two C-family schemes -- MSVC comes out ahead because the text path renders a
+declaration the tree merely records -- and the multiplier lives in the schemes whose
+nodes are parts in output order. Rust is the outlier at 1.61x, and that is `TreeSink`
+against `TextSink` rather than a second traversal: the printer emits one stream of
+fragments either way, and what differs is that one appends to a string while the other
+allocates a node per fragment.
+
+So the thing to profile, if this is picked up, is `schemes/rust/_v0.py`'s sink and not
+the parsers -- and it is worth saying that nothing measured here is on the benchmark's
+hot path, which times `demangle()`. A caller who wants the tree is asking for the tree.
 
 ## 2a. What hostile input can buy
 
