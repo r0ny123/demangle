@@ -2,8 +2,8 @@
 
 Read mangled symbol names — **Itanium C++** (GCC/Clang), **MSVC**, **pre-Itanium C++**
 (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior), **Ada/GNAT**, **Rust**, **Swift**,
-**Objective-C**, **Go**, **D**, **Nim**, **Free Pascal** and **Delphi** — in pure Python. No dependencies, no native
-code, no compiler required.
+**Objective-C**, **Go**, **D**, **Nim**, **Free Pascal**, **Delphi** and **JNI** — in pure
+Python. No dependencies, no native code, no compiler required.
 
 ```python
 >>> import demangle
@@ -331,6 +331,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
 | CodeWarrior — the reference's own vectors ✧ | `cwdemangle` 1.0 | **47 / 47** |
 | Ada/GNAT — libiberty's own vectors ✦ | GNU `c++filt --format=gnat` | **34 / 34** |
+| JNI native method names, from real `native` declarations ✽ | round trip ✽ | **50 / 50** |
 
 ※ `UnDecorateSymbolName` with the mask set, driven over the same 609 names by
 `tools/generate_msvc_dbghelp_corpus.py`. The two references do not spell a name alike —
@@ -482,6 +483,12 @@ must reproduce the bytes — plus agreement with the name the compiler recorded 
 debugger. Seven names in the corpus cannot come back exactly, and all seven are that one
 documented loss; they are listed by name in `tests/conformance/nim-lossy.txt` rather than
 rounded off.
+
+✽ JNI has no reference demangler either — neither binutils, LLVM, Ghidra nor IDA reads
+one — but it is the only scheme here transcribed from a *normative* specification
+rather than from a reference implementation, so the check is the specification's own
+rule run backwards: re-encoding a reading must reproduce the symbol the compiler
+wrote, escapes and overload descriptor included.
 
 ‡ Go has no reference demangler — `go tool nm` prints symbol names with their escapes
 intact and nothing in the toolchain decodes one. So the check is a property instead:
@@ -672,4 +679,5 @@ codebase. Where it does, that is a bug.
 
 MIT. The Rust demangler derives from Team bi0s' `rust_demangler` (MIT) and the MSVC
 demangler from [SMDA](https://github.com/danielplohmann/smda) (BSD 2-Clause); both are
-substantially modified, and both upstream licences are reproduced in [NOTICE](NOTICE).
+substantially modified, and both upstream licences are reproduced in
+[NOTICE](https://github.com/r0ny123/demangle/blob/main/NOTICE).

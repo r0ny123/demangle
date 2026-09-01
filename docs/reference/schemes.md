@@ -209,6 +209,42 @@ different mangling from Free Pascal. Transcribed from `unmangle.c`.
         - parse_delphi_symbol
         - detect
 
+## Ada / GNAT
+
+The last of the pre-Itanium formats libiberty still carries: when the GNU v2, Lucid, ARM
+and HP styles were dropped from the default, `--format=gnat` stayed. A GNAT symbol is a
+lower-case dotted path with no types and no marker saying whose it is, so the difficulty
+is not the grammar but deciding what is Ada at all -- which is why `detect` asks for
+something GNAT wrote that a C compiler would not.
+
+Note that this is the one scheme where a name spelling *itself* is a reading rather than
+a refusal: `demangle_ada("x")` is `x`, because a bare lower-case identifier is a valid
+Ada unit name. `detect` still declines it, so autodetection never claims it.
+
+::: demangle.schemes.ada
+    options:
+      members:
+        - AdaSymbol
+        - demangle_ada
+        - detect
+        - parse
+
+## JNI
+
+The one scheme here that was transcribed from a normative specification rather than from
+a reference implementation: the JNI Design Overview writes down how a `native` method's
+class, name and -- where it is overloaded -- parameter types are encoded into the C
+function the runtime calls.
+
+::: demangle.schemes.jni
+    options:
+      members:
+        - JniSymbol
+        - descriptor_types
+        - parse_jni_symbol
+        - detect
+        - parse
+
 ## Objective-C
 
 Barely a mangling, and what there is comes from the compiler rather than the language.

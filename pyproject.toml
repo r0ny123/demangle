@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "demangle"
-description = "Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal and Delphi -- in pure Python, with no dependencies."
+description = "Read mangled symbol names -- Itanium C++, MSVC, pre-Itanium C++, Ada/GNAT, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi and JNI -- in pure Python, with no dependencies."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"

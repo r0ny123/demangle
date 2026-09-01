@@ -143,7 +143,9 @@ column comes from the declaration rather than from a demangler — with reduced 
 - ~~**A generic lambda's own parameter, reached through a substitution**~~ — *closed in
   the gnu style*, which now spells the number GNU spells. For
 
-      template <class T> void run(T &a) { take([](auto &x) { return x; }); }
+  ```cpp
+  template <class T> void run(T &a) { take([](auto &x) { return x; }); }
+  ```
 
   both g++ 13.3 and clang++ 18.1.3 write the closure's parameter as `S3_`, the `R T_`
   entry from `run`'s own signature. Read under the closure, `T_` is the closure's

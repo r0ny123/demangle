@@ -151,6 +151,19 @@ structural pattern matching works over them.
       members:
         - Node
 
+## Registering another scheme
+
+A distribution can add a scheme of its own without being part of this one, either by
+calling it or by advertising a `demangle.languages` entry point.
+[Adding a scheme](../adding-a-scheme.md) is the walk-through. The package exports this
+under the name `demangle.register_language`; it is `demangle.core.registry.register`,
+spelled unambiguously for a caller who has imported the package and nothing else.
+
+::: demangle.core.registry
+    options:
+      members:
+        - register
+
 ## Errors
 
 `demangle()` never raises. `demangle_strict()` and `parse()` raise these, and nothing

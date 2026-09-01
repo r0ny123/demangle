@@ -26,8 +26,26 @@ nav:
   - Roadmap: ROADMAP.md
   - Changelog: CHANGELOG.md
 
+# Every one of these is reported by default, and every one of them was reported on a
+# build that passed: `--strict` fails on warnings, and these are emitted at INFO. Three
+# had been sitting in the log -- a page the nav never listed, a README link to the
+# NOTICE file (which is a repository file and not a page of this site), and a C++ lambda
+# `[](auto &x)` left in an indented block, which Markdown reads as a link to `auto &x`.
+# Promoting them is what makes the docs job notice the next one.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
 not_in_nav: |
   docs/adding-a-scheme.md
+  docs/analysing-a-binary.md
 
 theme:
   name: material

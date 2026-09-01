@@ -24,13 +24,17 @@ module that keeps the hole in the right place.
 
 ## The tree
 
-What `parse()` returns.
+`Node` itself is documented once, on the [public API page](api.md#the-tree), because
+that is where a caller meets it -- two renderings of one class give `mkdocs-autorefs`
+two primary URLs for it and every cross-reference then picks one at random. What is
+here is the rest of `core.ast`: the builder a scheme hands its nodes to, and the wrapper
+that carries what the linker appended to a name.
 
 ::: demangle.core.ast
     options:
       members:
-        - Node
         - AstBuilder
+        - Decorated
 
 ## Reading
 

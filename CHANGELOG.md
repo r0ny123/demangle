@@ -8,6 +8,30 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **The documentation is now checked against the code, not just the README.** The
+  README's counts, version and printed output have been verified by
+  `tests/test_readme.py` for a while; nothing covered the rest of `docs/`. Two rules
+  now do, and both were written because what they check had already drifted: every name
+  in `demangle.__all__` must be rendered somewhere in the API reference, and every
+  registered scheme must have a section. `tests/test_docs.py` also runs the examples on
+  `docs/reference/api.md`, which print a call and its result the way the README's do.
+
+- **A cross-scheme contract, stated and enforced.** `tests/test_parity.py` holds all
+  fourteen schemes to the same behaviour where behaviour can be the same -- which is not
+  output, since the schemes decode different grammars, but the contract around it:
+  `demangle()` never raises and returns an unread name unchanged, `demangle_strict()`
+  refuses with a `DemanglingError` and nothing else, `parse()` and `demangle_strict()`
+  agree about what is readable, the bytes entry points answer what the text ones answer,
+  and every scheme accepts every style. The bytes-against-text check runs over all
+  77,754 distinct names in every corpus.
+
+  It records one intentional divergence, with its reason. For every scheme but Ada, an
+  answer equal to the input means the name was refused; a GNAT symbol is a lower-case
+  dotted path with no marker, so a bare identifier is a valid Ada unit name that spells
+  itself -- which is what libiberty's `ada_demangle` does too. `detect()` still declines
+  it, so autodetection never claims one. A test asserts that this remains the *only*
+  such case, so the exception list cannot quietly grow.
+
 - **A Swift reference demangler, built from source.** Nothing a distribution ships reads
   a Swift name -- `llvm-cxxfilt` and `c++filt` both decline a `$s` outright -- so until
   now the largest scheme in this repository had no oracle: 8,494 real-world names, 514
@@ -827,6 +851,27 @@ All notable changes to this project are recorded here. The format follows
   `rustfilt` prints `foo@@16` for that name too.
 
 ### Fixed
+
+- **Three documentation defects that a passing build had been reporting all along.**
+  `mkdocs build --strict` fails on warnings, and mkdocs emits these at INFO, so they
+  printed on every green run and were scrolled past: a page the nav never listed (the
+  alias stub for `analysing-a-binary.md` -- its twin was declared in `not_in_nav` and it
+  was not), the README's `[NOTICE](NOTICE)`, which is a repository file rather than a
+  page of the site, and, in the ROADMAP, a C++ lambda written `[](auto &x)` in an
+  indented block, which Markdown reads as a link with no text pointing at `auto &x`.
+  `validation:` in `mkdocs.yml` now promotes an unresolved link, an unlisted page and a
+  bad anchor to warnings, so the next one turns the docs job red instead of printing.
+
+  Promoting them surfaced a fourth: `Node` was rendered on both reference pages, which
+  gives `mkdocs-autorefs` two primary URLs for one class and makes every cross-reference
+  to it pick one at random. It has one home now.
+
+- **Four public names that were documented nowhere.** `Decorated` and
+  `register_language` are exported from the package, and no page rendered either; the
+  Ada and JNI schemes are registered, tested and pinned, and `docs/reference/schemes.md`
+  had no section for them. JNI was also missing from the README's headline, from its
+  conformance table -- where it is 50 / 50 -- and from the distribution's own
+  description, which is the summary line PyPI shows.
 
 - **Three defects CI found the moment it could run again.** The Actions quota had been
   exhausted for five commits, so every job failed in two seconds with no logs; the first
