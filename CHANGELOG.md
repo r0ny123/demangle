@@ -873,6 +873,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a conversion operator to a pointer-to-member was bracketed as if it were one.**
+  `??BFoo@@QEAAPEQBar@@HXZ` -- `struct Foo { operator int Bar::*(); }`, which is ordinary
+  C++ -- came back
+  `public: int Bar::* (__cdecl Foo::operator int Bar::*)(void)` where the reference writes
+  `public: int Bar::* __cdecl Foo::operator int Bar::*(void)`.
+
+  The renderer decided whether a function was being written as a *pointer's pointee* --
+  which is what says where the calling convention goes -- by matching `Owner::*` in the
+  declarator's text, and a conversion operator's own name ends in exactly that when it
+  converts to a member pointer. Anchoring the pattern harder would not have saved it: a
+  template owner puts a space and a comma before its `::*`. The indirection node knows it
+  is rendering a pointee, so it says so now and the pattern is gone. The shape that must
+  still bracket -- a conversion operator returning a *function* pointer -- is unchanged,
+  and a plain function returning a member pointer was always right.
+
 - **MSVC: a wide string literal lost a character, and a bound that was written down was
   never applied.** Both are in `??_C@` names and both were found by running the mutation
   fuzzer deeper than CI does -- 150,000 mutants against its 20,000.

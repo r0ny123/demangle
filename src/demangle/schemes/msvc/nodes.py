@@ -28,8 +28,6 @@ declares, its indirections, its parameter list, its return type -- over leaves t
 text.
 """
 
-import re
-
 from ...core.ast import Array, Name, Node, Raw, rendered
 from ...core.style import get_style
 from .options import DEFAULT_OPTIONS
@@ -49,11 +47,6 @@ __all__ = [
     "render",
     "spelled_after",
 ]
-
-#: A member-pointer declarator is "Owner::*", possibly qualified. The pattern is anchored
-#: and refuses parentheses so that a nested type's own "::*" -- which a rendered parameter
-#: may well hold -- is not mistaken for one.
-_MEMBER_POINTER_RE = re.compile(r"^[^()]*::\*")
 
 
 class _Spelled(Node):
@@ -170,7 +163,7 @@ class Declaration(_Spelled):
         return (self.declarator, self.type)
 
 
-def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OPTIONS, member_cv=""):
+def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OPTIONS, member_cv="", as_pointee=False):
     """Spell a type around a declarator, the way C nests one inside the other.
 
     A pointer or array binds to the declarator built so far, and a name therefore ends up
@@ -197,7 +190,10 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
     if kind == "indirection":
         token = node.sigil + " ".join(ordered_qualifiers(node.qualifiers))
         separator = " " if _spaced_off_the_sigil(node, declarator, declarator_is_function, options) else ""
-        return render(node.inner, token + separator + declarator, options=options)
+        # Whatever this points at is being written as a *pointee*, which is what decides
+        # where a function's calling convention goes. Said here, where it is known,
+        # rather than guessed from the declarator's text further down.
+        return render(node.inner, token + separator + declarator, options=options, as_pointee=True)
     if kind == "array":
         if declarator.startswith(("*", "&")):
             declarator = f"({declarator})"
@@ -227,7 +223,14 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
     # `--no-calling-convention` gives `int (__cdecl * fn(void))(int)`, dropping the one
     # `fn` carries and keeping the one the pointer it returns carries. Told apart by the
     # declarator, which is what says how this function is being written.
-    as_pointee = declarator.startswith(("*", "&")) or bool(_MEMBER_POINTER_RE.match(declarator))
+    # A declarator opening with a sigil is a pointee whatever route it arrived by; anything
+    # else is one only if an indirection said so. Matching `Owner::*` in the declarator's
+    # *text* did this before, and a conversion operator's name ends in exactly that when
+    # it converts to a member pointer -- so `??BFoo@@QEAAPEQBar@@HXZ` was written
+    # `int Bar::* (__cdecl Foo::operator int Bar::*)(void)`, bracketing a declarator that
+    # is not a pointer's at all. Anchoring the pattern harder would not have helped: a
+    # template owner puts a space and a comma in front of its own `::*`.
+    as_pointee = as_pointee or declarator.startswith(("*", "&"))
     convention = node.convention if options.calling_convention or as_pointee else ""
     # Suppressed is not the same as absent. A constructor writes no return type and
     # nothing around the parameter list either; a function whose return type is merely

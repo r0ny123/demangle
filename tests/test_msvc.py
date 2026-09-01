@@ -440,6 +440,22 @@ COMPLETING_FORMS = [
     # a conversion operator is named by the type it converts to, which it writes as its return
     ("??BBase@@QEAAHXZ", "public: int __cdecl Base::operator int(void)"),
     ("??BFoo@@QBEPAHXZ", "public: int * __thiscall Foo::operator int *(void) const"),
+    # Converting to a *member* pointer. The operator's own name then ends in `Owner::*`,
+    # and the renderer used to decide "is this function being written as a pointer's
+    # pointee?" by looking for exactly that in the declarator's text -- so it bracketed a
+    # declarator that is not a pointer's at all, giving
+    # `int Bar::* (__cdecl Foo::operator int Bar::*)(void)`. Anchoring the pattern harder
+    # would not have saved it: a template owner puts a space and a comma before its
+    # `::*`. Whether something is a pointee is now said by the indirection that knows.
+    ("??BFoo@@QEAAPEQBar@@HXZ", "public: int Bar::* __cdecl Foo::operator int Bar::*(void)"),
+    ("??BFoo@@QEAAQEQBar@@HXZ", "public: int Bar::*const __cdecl Foo::operator int Bar::*const(void)"),
+    # The shape it must still bracket: a conversion operator returning a function pointer.
+    (
+        "??BFoo@@QEAAP6AHH@ZXZ",
+        "public: int (__cdecl * __cdecl Foo::operator int (__cdecl *)(int)(void))(int)",
+    ),
+    # And a plain function returning a member pointer, which never bracketed.
+    ("?g@@YAPEQBar@@HXZ", "int Bar::* __cdecl g(void)"),
     # a placeholder the compiler writes where a type would go
     ("?f@@YA?A?<decltype-auto>@@XZ", "<decltype-auto> __cdecl f(void)"),
     # a name replaced by a hash of itself, and what may follow it
