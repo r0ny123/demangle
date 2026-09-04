@@ -404,8 +404,10 @@ class _Parser:
                 code = self.advance()
                 if code == "g":
                     regconv = "__saveregs "
+                elif code in CALLING:
+                    callconv = CALLING[code]
                 else:
-                    callconv = CALLING.get(code, "")
+                    raise DemangleFailure(f"unknown calling convention {code!r}")
             saved_adj = self.adjust_quals
             self.adjust_quals = False
             self.buf += "("
@@ -447,6 +449,7 @@ class _Parser:
         table = []
         char = self.peek()
         while char and char != end:
+            is_first = first
             if first:
                 first = False
             else:
@@ -479,6 +482,10 @@ class _Parser:
                 self.copy_type(len(self.buf), arglvl=not tmplargs)
                 if self.pos == before:
                     raise DemangleFailure("unknown type")
+                if char == "v" and (not is_first or self.peek() not in (end, "")):
+                    # `void` on its own is the empty list; beside other types it is
+                    # nothing at all, which the trailing comma would then betray.
+                    raise DemangleFailure("void is not an argument type")
             table[-1][1] = len(self.buf) - table[-1][0]
             char = self.peek()
             if tmplargs and char == "$":

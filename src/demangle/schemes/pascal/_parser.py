@@ -63,6 +63,11 @@ _LABEL = re.compile(r"^_\$([A-Za-z0-9_.]+)\$_(L[a-z][0-9]+)$")
 _CHECKSUM = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}(?:\.[A-Za-z0-9_.]+)?$|^[0-9]+$")
 _ELIDED_PARAMETERS = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}$")
 
+#: The compiler's own initialisation and finalisation routines. They take no
+#: parameters but are still written with the parameter separator, so `AVL_TREE_$$_init$`
+#: is `AVL_TREE.init()` while `MYUNIT_$$_ADD$` is an empty parameter type and refused.
+_UNIT_SECTIONS = frozenset({"init", "finalize", "init_implicit", "finalize_implicit"})
+
 #: What the compiler calls each overloadable operator, from `overloaded_names` in
 #: `compiler/symtable.pas`. A name of one of these forms is written with a `$` in front
 #: so that it stays distinct when the mangled name is lower-cased for a section name --
@@ -212,10 +217,23 @@ def _split_signature(suffix):
     at = 0
     while at < len(rest):
         # An empty piece is the `$$` that marks the result.
-        if rest[at] == "" and at + 1 < len(rest):
-            result = rest[at + 1]
-            at += 2
-            continue
+        if rest[at] == "":
+            if at + 1 < len(rest):
+                result_piece = rest[at + 1]
+                if not result_piece:
+                    raise DemangleFailure("empty result type")
+                if result is not None:
+                    raise DemangleFailure("multiple result types")
+                result = result_piece
+                at += 2
+                continue
+            if name in _UNIT_SECTIONS:
+                # The compiler's own sections end in a lone separator with no
+                # parameter behind it; anywhere else that is an empty parameter.
+                parameters.append(rest[at])
+                at += 1
+                continue
+            raise DemangleFailure("empty parameter type")
         parameters.append(rest[at])
         at += 1
     return name, parameters, result
