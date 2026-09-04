@@ -6,6 +6,25 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The checks that were not checking.** The cross-scheme import rule knew three scheme
+  names and walked past the other eleven; it discovers every directory under `schemes/`
+  and refuses to pass over none. The `core.spelling` rule matched only a dotted module
+  path, so `from demangle.core import spelling` walked through it; a `from` import now
+  records the name behind the `import` as well, with a self-test that the rule fires on
+  that form. `core/style.py` was excused from the layering test wholesale; only its lazy,
+  in-function scheme imports are excused now. `bench.py --check` exited 0 with no
+  baseline and ignored a phase the baseline did not name; both are failures. Its
+  `everything` corpus was seven files under a comment claiming every corpus, and is
+  `sampled` with the comment made true. The sdist carries `mkdocs.yml`, so a
+  documentation build from the tarball has its configuration. `tools/differential.py`
+  reads a gzipped corpus, replays `d-libiberty.txt` again now that it is at 366 of 366,
+  and scores a name both sides refuse as agreement. The parity test offers every style
+  a name each scheme actually reads, where `_Z1fv` had exercised Itanium alone, and the
+  best-effort conformance test runs over every corpus file rather than a list that went
+  stale as files were added. Issue #9.
+
 ### Fixed
 
 - **Free Pascal, Delphi, JNI, pre-Itanium C++ and CodeWarrior: seven readings of names
