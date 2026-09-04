@@ -21,6 +21,7 @@ import itertools
 import json
 import pathlib
 import time
+from typing import Any
 
 import pytest
 
@@ -63,6 +64,18 @@ class TestTheStreamFilter:
 
     def test_the_style_reaches_it(self):
         assert demangle.demangle_text(VECTOR, style="gnu").endswith("std::allocator<int> >::push_back(int const&)")
+
+    def test_a_bad_language_or_style_is_refused_before_any_symbol_is_seen(self):
+        """Plain prose never reaches `demangle()`, so a typo'd argument used to pass
+        silently until the first line that happened to hold a symbol."""
+        bad: list[dict[str, Any]] = [{"language": "cobol"}, {"style": "nonexistent"}]
+        for arguments in bad:
+            with pytest.raises(ValueError):
+                demangle.demangle_text("hello world", **arguments)
+            with pytest.raises(ValueError):
+                demangle.find_symbols("hello world", **arguments)
+            with pytest.raises(ValueError):
+                demangle.demangle_stream(io.StringIO("hello world\n"), io.StringIO(), **arguments)
 
     def test_the_command_and_the_library_scan_alike(self):
         """One tokenizer. Two would drift, and the drift would be silent."""

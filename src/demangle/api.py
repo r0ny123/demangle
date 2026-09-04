@@ -24,7 +24,7 @@ carry the uncommon one's error handling, so they are two functions.
 """
 
 from collections.abc import Iterable, Iterator
-from typing import Any
+from typing import Any, NoReturn
 
 from .core import registry as _registry
 from .core import style as _style_module
@@ -133,6 +133,23 @@ def _parse_with(plugin, mangled, builder, limits, style):
     return builder.decorated(handle, decoration) if decoration else handle
 
 
+def _refuse_unhashable(language, limits) -> NoReturn:
+    """Name the argument that could not go into the cache key, as a `ValueError`.
+
+    Only reached once a lookup has raised `TypeError`, so one of the two is unhashable;
+    the name is a `str` and a style's name is one too.
+    """
+    try:
+        hash(language)
+    except TypeError:
+        raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
+    try:
+        hash(limits)
+    except TypeError:
+        raise ValueError(f"unhashable limits {limits!r}; pass a Limits instance") from None
+    raise TypeError("arguments to demangle() must be hashable")
+
+
 def demangle(
     mangled: str,
     *,
@@ -182,17 +199,17 @@ def demangle(
     if isinstance(style, Style):
         key = None
     else:
-        try:
-            hash(language)
-        except TypeError:
-            raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
-        try:
-            hash(limits)
-        except TypeError:
-            raise ValueError(f"unhashable limits {limits!r}; pass a Limits instance") from None
         key = (mangled, language, resolved_style.name, limits)
-    if key is not None:
-        cached = _CACHE.get(key)
+        # The lookup hashes the key once. An argument that cannot be hashed -- a list
+        # for `limits`, say -- surfaces there as a `TypeError`, and is reported as the
+        # bad argument it is. Reported from the failure rather than checked for in
+        # advance, because `Limits` is a frozen dataclass whose hash is computed from
+        # its fields every time: checking it first would hash it twice on every warm
+        # call, which is the call the cache exists to make cheap.
+        try:
+            cached = _CACHE.get(key)
+        except TypeError:
+            _refuse_unhashable(language, limits)
         if cached is not MISSING:
             return cached
 

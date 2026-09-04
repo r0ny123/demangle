@@ -4,6 +4,11 @@ These are the promises callers build on, so they are tested as promises rather t
 through whatever happens to exercise them.
 """
 
+import pathlib
+import subprocess
+import sys
+from typing import Any
+
 import pytest
 
 import demangle
@@ -96,6 +101,33 @@ class TestStyles:
     def test_unknown_language_is_rejected_clearly(self):
         with pytest.raises(ValueError, match="unknown language"):
             demangle.demangle("_Z1fv", language="cobol")
+
+    def test_an_argument_that_cannot_be_hashed_is_reported_as_a_bad_argument(self):
+        """A list where a name belongs used to surface as `TypeError: unhashable type`
+        from inside the cache, which names the mechanism rather than the mistake."""
+        unhashable: Any = ["a list"]
+        with pytest.raises(ValueError, match="unknown language"):
+            demangle.demangle("_Z1fv", language=unhashable)
+        with pytest.raises(ValueError, match="unknown style"):
+            demangle.demangle("_Z1fv", style=unhashable)
+        with pytest.raises(ValueError, match="unhashable limits"):
+            demangle.demangle("_Z1fv", limits=unhashable)
+
+    def test_a_style_subclass_with_the_same_name_is_not_served_from_the_cache(self):
+        """The cache is keyed on a style's *name*, so two objects sharing one must both
+        stay out of it -- a subclass included, which used to be keyed like a name."""
+        from demangle.core.spelling import SPELLING_BUILDER, SpellingBuilder
+        from demangle.core.style import Style
+
+        class Sneaky(Style):
+            pass
+
+        name = "_ZNSt6vectorIiSaIiEE9push_backERKi"
+        tight = Sneaky(name="llvm", spelling_builder=SPELLING_BUILDER)
+        spaced = Sneaky(name="llvm", spelling_builder=SpellingBuilder(legacy_angle_spacing=True))
+        demangle.cache_clear()
+        assert demangle.demangle(name, style=tight).count("> >") == 0
+        assert demangle.demangle(name, style=spaced).count("> >") == 1
 
 
 class TestForcedLanguage:
@@ -226,6 +258,19 @@ class TestStyleRegistration:
 
         assert get_style(get_style("gnu")) is get_style("gnu")
 
+    def test_with_options_refuses_an_unknown_language_in_either_form(self):
+        """The mapping form always checked; the object form quietly added dead options
+        under a name nothing reads."""
+        from demangle.core.style import get_style
+        from demangle.schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
+
+        base = get_style("llvm")
+        with pytest.raises(ValueError, match="carries no options for 'mscv'"):
+            base.with_options(mscv={"calling_convention": False})
+        with pytest.raises(ValueError, match="unknown language 'mscv'"):
+            base.with_options(mscv=MSVC_OPTIONS)
+        assert base.with_options(msvc=MSVC_OPTIONS).options_for("msvc") is MSVC_OPTIONS
+
 
 class TestBatchOptions:
     def test_demangle_all_honours_language_and_style(self):
@@ -272,6 +317,22 @@ class TestCacheStatistics:
         assert stats["misses"] == 1
         assert stats["hit_rate"] == 0.5
         assert stats["size"] >= 1
+
+    def test_the_very_first_call_in_a_process_counts_as_a_miss(self):
+        """Loading the registry clears the cache, statistics included. The first call
+        used to look the name up, *then* load, and lose the miss it had just recorded."""
+        source = pathlib.Path(__file__).resolve().parent.parent / "src"
+        script = (
+            "import demangle\n"
+            "demangle.demangle('_Z1fv')\n"
+            "demangle.demangle('_Z1fv')\n"
+            "s = demangle.cache_stats()\n"
+            "print(s['misses'], s['hits'])\n"
+        )
+        run = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, check=True, env={"PYTHONPATH": str(source)}
+        )
+        assert run.stdout.split() == ["1", "1"]
 
 
 class TestIntrospection:
