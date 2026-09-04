@@ -145,12 +145,16 @@ SECOND_OPINION = {
 #: the substitute is what this library said for the original, the marker was read as the
 #: marker and everything else agrees.
 #:
-#: `llvm-undname` 18 does not know the ARM64EC marker `$$h` and refuses every name
-#: carrying one. The marker says "this is the hybrid entry for that function" and
-#: changes no part of the declaration, which is exactly how
-#: `tests/conformance/msvc-arm64ec.txt` was built -- so the substitute is the name
-#: without it. Checked rather than skipped: a mutation that put a `$$h` somewhere it does
-#: not belong still has to agree.
+#: `llvm-undname` 18 does not know the ARM64EC marker `$$h`: where one stands in a
+#: function's encoding it refuses the name, and where one stands inside an identifier it
+#: reads it as three more characters of the identifier. The marker says "this is the
+#: hybrid entry for that function" and changes no part of the declaration, which is
+#: exactly how `tests/conformance/msvc-arm64ec.txt` was built -- so the substitute is
+#: the name without it. Checked rather than skipped: a mutation that put a `$$h`
+#: somewhere it does not belong still has to agree. The substitute stands in only where
+#: the reference's own answer is not already ours: the library reads a name as it stands
+#: before it takes the marker out, and a `$$h` that is part of an identifier is read as
+#: one by both sides.
 RESCUE = {
     "msvc": lambda name: name.replace("$$h", "", 1) if "$$h" in name else None,
 }
@@ -282,10 +286,13 @@ def run(scheme, count, seed, quiet, show, batch):
         wanted = sorted({s for s in substitutes.values() if s and s not in theirs})
         stand_in = {**theirs, **ask(tool, wanted)}
         for name, substitute in substitutes.items():
-            if substitute:
-                # Unconditionally, including over an answer the reference did give.
-                # `llvm-undname` has no production for `$$h` at all, so what it says
-                # about a name carrying one is not evidence either way: it read
+            if substitute and theirs.get(name) != ours[name]:
+                # Over an answer the reference did give, unless it is the answer this
+                # library gave: the library reads the name as it stands first, and where
+                # the two agree on that reading the marker was part of an identifier --
+                # `?foo$$hbar@@YAXXZ` is `foo$$hbar` to both. Otherwise what the
+                # reference says about a name carrying the marker is not evidence either
+                # way, since it has no production for `$$h` at all: it read
                 # `?$oo_aad@@$$hYAXAEAD@Z` as `public: char && $oo_aad()`, taking the
                 # marker for part of a type.
                 theirs[name] = stand_in.get(substitute)

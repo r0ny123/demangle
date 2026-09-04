@@ -53,6 +53,13 @@ class TestTheHybridMarker:
         """A name that already reads is never rewritten, whatever characters it holds."""
         for mangled, expected in load_corpus("msvc-llvm-corpus.txt"):
             assert demangle.demangle(mangled) == expected, mangled
+        # The same rule on names no corpus holds: a `$$h` that is part of an identifier,
+        # which `llvm-undname` reads as three more characters of it, and one inside an
+        # MD5 hash, which the reference keeps as part of the hash. Stripping first read
+        # `foobar` and `??@YAXP6AXQEAH@` -- names of something else.
+        assert demangle.demangle("?foo$$hbar@@YAXXZ") == "void __cdecl foo$$hbar(void)"
+        assert demangle.demangle("?foo$$hbar@@3HA") == "int foo$$hbar"
+        assert demangle.demangle("??@$$hYAXP6AXQEAH@Z1@Z") == "??@$$hYAXP6AXQEAH@"
 
     def test_the_rule_removes_one_marker_and_not_a_run_of_them(self):
         """`getArm64ECMangledFunctionName` inserts one marker into a name that has none.

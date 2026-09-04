@@ -8,6 +8,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: the ARM64EC marker is taken out of a name only once the name has failed to
+  read with it, and four bounds reach where they did not.** `$$h` was stripped before
+  the plain parse was tried, so `?foo$$hbar@@YAXXZ` -- a function named `foo$$hbar`,
+  which `llvm-undname` reads as exactly that -- came back as `foobar`, and an MD5 name
+  with the three characters inside its hash lost them. The plain reading is tried first
+  and the marker rule is the fallback the comment always said it was; `tools/mutate.py`'s
+  stand-in for the reference, which took the marker out unconditionally, now stands in
+  only where the reference's own answer is not already ours. The `.` type-descriptor
+  symbol path handed `parse_msvc_type` its limits and not its options, so `tag_kind`,
+  `ms_keywords`, `leading_underscores` and `this_type` were inert on `.?AVFoo@@` while
+  `demangle_type` honoured them on the same encoding. A nested symbol -- a template
+  argument that is itself a decorated name -- and the probe that tells a data symbol
+  from a scope were parsed with the default limits rather than the caller's, so a tight
+  `max_depth` could be dodged by nesting the deep part. An MD5 name skipped the
+  `max_output` check every other path went through. And an array's extents nested one
+  `Array` node per extent with no depth check, so a count of 1000 was a `RecursionError`
+  swallowed into a `ParseError` that called the name unreadable; it is a `LimitExceeded`
+  naming the bound. Issue #11.
+
 - **`demangle()`: a `Style` subclass was served the named entry, the first call lost its
   miss, and a bad argument failed late or with the wrong error.** The cache key held a
   style's *name*, and the check that kept a `Style` object out of the cache was
