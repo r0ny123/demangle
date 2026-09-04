@@ -174,6 +174,10 @@ def parse_go_symbol(symbol):
         if not generated:
             raise NotMangledError(symbol, "no package separator")
         package, rest = "", body
+    if not rest:
+        raise NotMangledError(symbol, "empty name")
+    if not package and not generated:
+        raise NotMangledError(symbol, "empty package")
 
     try:
         package = unescape_path(package)
