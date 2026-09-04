@@ -23,9 +23,10 @@ import re
 from collections.abc import Iterator
 from typing import NamedTuple
 
+from .api import _resolve as _resolve_language
 from .api import demangle as _demangle
 from .core.limits import DEFAULT_LIMITS, Limits
-from .core.style import DEFAULT_STYLE, Style
+from .core.style import DEFAULT_STYLE, Style, get_style
 
 __all__ = ["Found", "demangle_stream", "demangle_text", "find_symbols"]
 
@@ -137,6 +138,20 @@ def find_symbols(
     The spans do not overlap and are in increasing order, so a caller can rebuild the
     string around them -- which is all `demangle_text` does.
     """
+    # Validated here rather than on first match: a text with no symbols would otherwise
+    # never reach `demangle`, and a typo'd language/style would pass silently.
+    _resolve_language(language)
+    get_style(style)
+    return _find_symbols(text, language=language, style=style, limits=limits)
+
+
+def _find_symbols(
+    text: str,
+    *,
+    language: str | None,
+    style: str | Style | None,
+    limits: Limits,
+) -> Iterator[Found]:
     for match in TOKEN.finditer(text):
         word = match.group()
         if not TOKEN_MUST_HOLD.search(word):
@@ -161,6 +176,8 @@ def demangle_text(
     Never raises for any string, for the reason `demangle()` does not: this is run over
     whole files, and one unreadable word must not end the run.
     """
+    _resolve_language(language)
+    get_style(style)
     pieces = []
     end = 0
     for found in find_symbols(text, language=language, style=style, limits=limits):
@@ -191,5 +208,7 @@ def demangle_stream(
     so open both ends with `errors="surrogateescape"` if the input is one. The `demangle`
     command does exactly that.
     """
+    _resolve_language(language)
+    get_style(style)
     for line in fin:
         fout.write(demangle_text(line, language=language, style=style, limits=limits))
