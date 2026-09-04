@@ -173,7 +173,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         # _LimitHit('recursion depth')`. Wrong type, and a message accusing this library
         # of a bug for doing exactly what the caller asked.
         try:
-            tree = parse_msvc_type(mangled, limits)
+            tree = parse_msvc_type(mangled, limits, options)
             if tree is None:
                 raise ParseError(mangled, None, "not a type descriptor name this demangler can read")
             # The marker goes where a *declarator* goes. For anything that wraps its name
@@ -184,6 +184,47 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
             raise LimitExceeded(mangled, hit.what, hit.limit) from hit
         _check_length(mangled, len(spelled), limits)
         return builder.raw(spelled)
+    # ARM64EC. Read as the name it is the hybrid form *of*, which is what LLVM's own
+    # `getArm64ECDemangledFunctionName` answers -- and it has to be a fallback rather
+    # than a first step, because a name that already reads is not one to rewrite.
+    plain_error = None
+    try:
+        if mangled.startswith(_MD5_PREFIX):
+            # A hashed name carries no recoverable spelling, so it is its own expansion.
+            # This is a successful parse, not a failure: there is nothing more to say about
+            # the symbol, and the reference demangler agrees.
+            hashed = _md5_name(mangled)
+            if hashed is None:
+                raise ParseError(mangled, None, "unterminated MD5-hashed name")
+            _check_length(mangled, len(hashed), limits)
+            return builder.raw(hashed)
+        try:
+            if _wants_structure(builder):
+                tree = parse_msvc_symbol_strict(mangled, limits, options)
+                if tree is None:
+                    raise ParseError(mangled, None, "not a decorated name this demangler can read")
+                # No length check here, and that is not an omission. The parser bounds its
+                # own output as it builds -- `_Demangler.rendered` refuses past
+                # `min(limits.max_output, ...)`, and the top-level declaration goes through
+                # it -- so by the time there is a tree the bound has already been enforced.
+                # Checking again meant calling `tree.spell()` and throwing the string away:
+                # the expensive half of `parse()` run for a number that was already settled.
+                return tree
+            tree = parse_msvc_symbol_strict(mangled, limits, options)
+            if tree is None:
+                raise ParseError(mangled, None, "not a decorated name this demangler can read")
+            expanded = _render(tree, options=options)
+            _check_length(mangled, len(expanded), limits)
+            return builder.raw(expanded)
+        except _LimitHit as hit:
+            # A bound stopped the parse. Reported as a `ParseError` this said the name could
+            # not be read, which is a different claim: the name may be well formed and
+            # merely larger than this caller allowed. `hit.limit` rather than the caller's
+            # figure, because this scheme narrows both bounds with one of its own and the
+            # caller's is not the one that stopped the parse -- see `_LimitHit`.
+            raise LimitExceeded(mangled, hit.what, hit.limit) from hit
+    except ParseError as exc:
+        plain_error = exc
     hybrid = _without_hybrid_marker(mangled)
     if hybrid is not None:
         if _HYBRID_MARKER in hybrid:
@@ -193,43 +234,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
             # `getArm64ECMangledFunctionName` cannot produce, since it inserts one marker
             # into a name that has none -- came back as `void __cdecl f(void)`.
             raise ParseError(mangled, None, "more than one ARM64EC marker")
-        # ARM64EC. Read as the name it is the hybrid form *of*, which is what LLVM's own
-        # `getArm64ECDemangledFunctionName` answers -- and it has to be a fallback rather
-        # than a first step, because a name that already reads is not one to rewrite.
         return parse(hybrid, builder, limits, options)
-    if mangled.startswith(_MD5_PREFIX):
-        # A hashed name carries no recoverable spelling, so it is its own expansion.
-        # This is a successful parse, not a failure: there is nothing more to say about
-        # the symbol, and the reference demangler agrees.
-        hashed = _md5_name(mangled)
-        if hashed is None:
-            raise ParseError(mangled, None, "unterminated MD5-hashed name")
-        return builder.raw(hashed)
-    try:
-        if _wants_structure(builder):
-            tree = parse_msvc_symbol_strict(mangled, limits, options)
-            if tree is None:
-                raise ParseError(mangled, None, "not a decorated name this demangler can read")
-            # No length check here, and that is not an omission. The parser bounds its
-            # own output as it builds -- `_Demangler.rendered` refuses past
-            # `min(limits.max_output, ...)`, and the top-level declaration goes through
-            # it -- so by the time there is a tree the bound has already been enforced.
-            # Checking again meant calling `tree.spell()` and throwing the string away:
-            # the expensive half of `parse()` run for a number that was already settled.
-            return tree
-        tree = parse_msvc_symbol_strict(mangled, limits, options)
-        if tree is None:
-            raise ParseError(mangled, None, "not a decorated name this demangler can read")
-        expanded = _render(tree, options=options)
-        _check_length(mangled, len(expanded), limits)
-        return builder.raw(expanded)
-    except _LimitHit as hit:
-        # A bound stopped the parse. Reported as a `ParseError` this said the name could
-        # not be read, which is a different claim: the name may be well formed and
-        # merely larger than this caller allowed. `hit.limit` rather than the caller's
-        # figure, because this scheme narrows both bounds with one of its own and the
-        # caller's is not the one that stopped the parse -- see `_LimitHit`.
-        raise LimitExceeded(mangled, hit.what, hit.limit) from hit
+    assert plain_error is not None
+    raise plain_error
 
 
 def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
