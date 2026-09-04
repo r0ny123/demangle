@@ -120,6 +120,10 @@ class V0Demangler:
             self.inpstr = inpstr[3:]
         elif inpstr.startswith("_R"):
             self.inpstr = inpstr[2:]
+        elif inpstr.startswith("R"):
+            # On Windows, dbghelp strips leading underscores, so the bare form is
+            # accepted too -- the same reason the legacy scheme takes a bare `ZN`.
+            self.inpstr = inpstr[1:]
         else:
             raise UnableTov0Demangle(inpstr)
         self.sanity_check(self.inpstr)
@@ -265,6 +269,13 @@ class Ident:
             try:
                 c = chr(n)
             except (ValueError, OverflowError):
+                return False
+
+            # `char::from_u32` refuses surrogates; Python's `chr` accepts them, so a
+            # punycode body spelling one decoded to a lone surrogate here -- which then
+            # crashed `demangleb` trying to encode it -- where the reference falls back
+            # to `punycode{...}`.
+            if 0xD800 <= n <= 0xDFFF:
                 return False
 
             if not self.insert(i, c):

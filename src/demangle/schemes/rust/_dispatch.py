@@ -71,15 +71,15 @@ class RustDemangler:
             ManglingType: type of the string
 
         Note:
-            A bare `R` is excluded: it is too broad and would match names that are not
-            Rust's. A bare `ZN` is accepted here because the plugin's `detect` has
-            already required evidence -- the trailing hash or a `$...$` escape -- before
-            anything reaches this point, and some symbol tables have had the leading
-            underscore stripped before the name got here.
+            A bare `R` is accepted here, like the bare `ZN` below it: some symbol tables
+            have had the leading underscore stripped before the name got here, and the
+            reference reads that form too. It stays out of `detect`, which is deliberately
+            narrower -- a bare `R` is too broad a claim to make about every symbol in a
+            binary -- so auto-detection still needs `_R` or `__R`.
         """
         if inpstr.startswith(("_ZN", "__ZN", "ZN")):
             return ManglingType.LEGACY
-        elif inpstr.startswith(("_R", "__R")):
+        elif inpstr.startswith(("_R", "__R", "R")):
             return ManglingType.V0
         else:
             raise TypeNotFoundError(inpstr)
