@@ -773,6 +773,12 @@ def _candidates(name):
 #: `-[NXConstantString cString]` and `-[NXConstantString length]` -- every one a real
 #: Objective-C method in the shipped `libobjc.a`. A reading must still re-mangle to the
 #: symbol, so being shaped right claims nothing on its own.
+#: What a name must say somewhere for the parse to be tried at all. The last two are the
+#: `__block_literal_global` and `__block_descriptor` forms the parse reads; without them
+#: on the screen, `detect` refused what `parse` accepted.
+_SCREEN_MARKERS = ("objc", "OBJC", "_block_invoke", "block_literal", "block_descriptor")
+
+
 def detect(name):
     """Whether `name` is one this reads, and distinctive enough to claim unasked.
 
@@ -785,7 +791,7 @@ def detect(name):
         return False
     if name[0] in "-+":
         return _apple_method(name) is not None
-    if "objc" not in name and "OBJC" not in name and "_block_invoke" not in name and "block_literal" not in name and "block_descriptor" not in name and not _method_prefixed(name):
+    if not any(marker in name for marker in _SCREEN_MARKERS) and not _method_prefixed(name):
         return False
     try:
         return parse_objc_symbol(name) is not None

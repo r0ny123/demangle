@@ -142,7 +142,7 @@ def mangle(name):
             try:
                 raw = character.encode("utf-8", "surrogateescape")
             except UnicodeEncodeError:
-                raise DemangleFailure(f"cannot mangle {name!r}")
+                raise DemangleFailure(f"cannot mangle {name!r}") from None
             out.extend(f"X{byte:02X}" for byte in raw)
             escaped = True
     if escaped:

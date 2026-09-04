@@ -21,6 +21,7 @@ import subprocess
 import pytest
 
 import demangle
+from demangle.core.errors import DemanglingError
 from demangle.schemes.nim._parser import (
     DemangleFailure,
     detect,
@@ -186,12 +187,22 @@ class TestClaimsNothingItShouldNot:
             "a__b_u",
             "SYSTEM_$$_init",
             "_GLOBAL__sub_I_main.cpp",
+            # A lone surrogate, which is what a byte that is not UTF-8 arrives as. The
+            # re-mangling check used to let a `UnicodeEncodeError` out instead of saying no.
+            "\ud800__b_1",
+            "tyObject_\ud800__abc",
         ],
     )
     def test_it_refuses(self, name):
         assert not detect(name)
         with pytest.raises(DemangleFailure):
             parse_nim_symbol(name)
+
+    def test_a_byte_that_is_not_text_is_refused_rather_than_raised(self):
+        """`demangleb` hands the parser a lone surrogate for every byte that is not UTF-8."""
+        assert demangle.demangleb(b"\x80__b_1", language="nim") == b"\x80__b_1"
+        with pytest.raises(DemanglingError):
+            demangle.demangleb_strict(b"\x80__b_1", language="nim")
 
     def test_it_claims_nothing_in_the_other_schemes_corpora(self, subtests):
         for path in sorted(CONFORMANCE.glob("*.txt")):
