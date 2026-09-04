@@ -217,13 +217,16 @@ def detect(name):
 
     Runs on every symbol a caller passes, including the overwhelming majority that are
     not mangled at all, so it does no work beyond a prefix comparison.
+
+    `_GLOBAL__` is deliberately not one of the prefixes: `parse` has never read those
+    names -- GNU's "global constructors keyed to ..." extension -- and claiming them
+    here only meant handing them back unchanged one step later.
     """
     return (
         name.startswith("_Z")
         or name.startswith("__Z")
         or name.startswith("___Z")
         or name.startswith("____Z")
-        or name.startswith("_GLOBAL__")
         or name.startswith(_ALLOC_TOKEN)
     )
 
@@ -719,7 +722,7 @@ class ItaniumParser:
         """Vtables, typeinfo, thunks, guard variables. None if this is not one.
 
         Guarded: several of these productions contain an `<encoding>`, which can be
-        another special name, so `_Z` followed by `GV` repeated is unbounded recursion.
+        another special name, so `_Z` followed by `GA` repeated is unbounded recursion.
         """
         depth = self._depth = self._depth + 1
         if depth > self._max_depth:
@@ -766,7 +769,13 @@ class ItaniumParser:
 
         if code in SPECIAL_ENCODING_NAMES:
             reader.pos += 2
-            return self.builder.special(self._encoding_special_label(code), self.encoding())
+            # GA is a GNU extension: libiberty reads any <encoding> here, including
+            # another special name (`_ZGATW1x`), so only it keeps `encoding()`. GV, TH
+            # and TW take an <object name> -- data only, with no function type and no
+            # nested special name -- and `encoding()` accepted both, reading guard
+            # variables for functions nobody declared.
+            inner = self.encoding() if code == "GA" else self.name()[0]
+            return self.builder.special(self._encoding_special_label(code), inner)
 
         if code == "GT":
             reader.pos += 2
@@ -2315,6 +2324,7 @@ class ItaniumParser:
         if pair == "Dp":
             reader.pos += 2
             start = reader.pos
+            first = reader.peek()
             mark = self.subs.mark()
             outer_empty = self._saw_empty_pack
             outer_pack = self._saw_pack
@@ -2359,7 +2369,18 @@ class ItaniumParser:
                 # is what those members *are*; an ellipsis would be spelling it twice.
                 return self.subs.remember(inner, "type")
             # No pack in scope: this is an unexpanded expansion, and the ellipsis is the
-            # whole content of it.
+            # whole content of it. GNU brackets the element on the rule it brackets any
+            # other operand -- everything but a (possibly qualified) name -- so `Dp i`
+            # is `(int)...`. The test is on the spelling, which is all a handle offers:
+            # a builtin or a template parameter spells as one identifier too, so those
+            # productions are excluded by their opening character rather than by text.
+            if self.options.gnu_expression_spelling and not (
+                first not in BUILTIN_TYPES
+                and first != "D"
+                and first != "T"
+                and _PLAIN_CALLEE.match(builder.spell(inner)) is not None
+            ):
+                inner = builder.expression("paren", ["(", inner, ")"])
             return self.subs.remember(builder.pack(inner), "type")
 
         if pair in ("Dk", "DK"):
@@ -3559,16 +3580,27 @@ class ItaniumParser:
             return self._named_operand(text, self._simple_name)
         if pair == "sZ":
             reader.pos += 2
+            # `sZ` takes a <template-param> or a <function-param>. A fold expression
+            # opens with `f` too, but only `fp` and `fL <digit>` are parameters, so a
+            # fold still falls through to `template_param` and is refused there.
+            is_function_param = reader.peek() == "f" and (
+                reader.ahead(1) == "p" or (reader.ahead(1) == "L" and reader.ahead(2) in DIGITS)
+            )
             outer_index = self._pack_index
             outer_pack = self._saw_pack
             self._pack_index = None
             self._saw_pack = False
             try:
-                inner = self.template_param()
+                inner = self.expression() if is_function_param else self.template_param()
                 over_pack = self._saw_pack
             finally:
                 self._pack_index = outer_index
                 self._saw_pack = outer_pack or self._saw_pack
+            if is_function_param:
+                # A function parameter is wrapped as it stands, with a space and no
+                # ellipsis: `sizeof... (fp)`, which is how llvm-cxxfilt spells it.
+                self._precedence = PRIMARY_PRECEDENCE
+                return builder.expression("sizeof_pack", ["sizeof... (", inner, ")"])
             # `sizeof...` prints its operand through a pack expansion, and an expansion
             # that finds no pack in what it printed writes an ellipsis after it -- the
             # same rule that makes `sp fp_` read `fp...`. So `sZ` over a parameter bound
@@ -3623,13 +3655,17 @@ class ItaniumParser:
             self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("throw", ["throw"])
         if pair == "tw":
-            # `tw <expression>`, a throw with an operand. GNU brackets the operand and
-            # LLVM writes it after a space; both spell the keyword the same way.
+            # `tw <expression>`, a throw with an operand. LLVM writes it after a space
+            # with no brackets of its own; GNU brackets it on the rule it brackets any
+            # other operand -- a name stays bare, so `throw {parm#1}` and
+            # `throw std::x`, while a literal or anything with structure keeps the
+            # brackets it always had.
             reader.pos += 2
-            operand = self.expression()
-            self._precedence = LOOSEST_PRECEDENCE
             if self.options.gnu_expression_spelling:
-                return builder.expression("throw", ["throw (", operand, ")"])
+                operand = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
+            else:
+                operand = self.expression()
+            self._precedence = LOOSEST_PRECEDENCE
             return builder.expression("throw", ["throw ", operand])
 
         if pair == "cl":
@@ -3768,7 +3804,11 @@ class ItaniumParser:
             if over_pack or self._scope_has_pack:
                 # The expansion *is* its members, so it binds however they do.
                 return expanded
-            # An unexpanded one is `x...`, which GNU brackets as an operand.
+            # An unexpanded one is `x...`, which GNU brackets on the rule it brackets
+            # any other operand -- everything but a name -- so `(1)...` but
+            # `{parm#1}...`.
+            if self.options.gnu_expression_spelling and self._precedence < SIMPLE_PRECEDENCE:
+                expanded = builder.expression("paren", ["(", expanded, ")"])
             self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("pack_expansion", [expanded, "..."])
 
@@ -3813,6 +3853,16 @@ class ItaniumParser:
             operand = self._operand(POSTFIX_PRECEDENCE, subexpression=True)
             self._precedence = POSTFIX_PRECEDENCE
             return builder.expression("postfix", [operand, POSTFIX_OPERATORS[pair]])
+
+        if pair == "aw":
+            # `aw <expression>`, co_await. A keyword operator, so unlike the symbolic
+            # prefix operators below it takes a space before its operand; the operand
+            # itself is bracketed on the same rule as any other unary operand, which is
+            # what puts GNU's `co_await (1)` in brackets.
+            reader.pos += 2
+            operand = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
+            self._precedence = UNARY_PRECEDENCE
+            return builder.expression("unary", ["co_await ", operand])
 
         if pair in PREFIX_OPERATORS:
             reader.pos += 2

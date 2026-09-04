@@ -73,6 +73,10 @@ class TestDetection:
             ("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E", "rust"),
             ("memcpy", None),
             ("", None),
+            # Itanium `parse` never read `_GLOBAL__` names -- GNU's "global
+            # constructors keyed to ..." extension -- so `detect` does not claim
+            # them either. It used to, and handed them back unchanged one step later.
+            ("_GLOBAL__sub_I_main", None),
         ],
     )
     def test_detect(self, name, expected):

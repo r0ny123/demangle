@@ -96,6 +96,10 @@ class TestStillRefused:
             "_ZTJ",
             "_ZTC1A0_",  # a construction vtable missing its base
             "_ZGT",  # a clone marker with no kind and no encoding
+            "_ZGVN1A1fEv",  # a guard variable for a function, which has none
+            "_ZTHN1A1fEv",  # neither does a thread-local init routine ...
+            "_ZTWN1A1fEv",  # ... nor its wrapper
+            "_ZGVGV1x",  # a guard variable for a guard variable
         ],
     )
     def test_refused(self, mangled):
@@ -105,6 +109,6 @@ class TestStillRefused:
 
 
 def test_a_special_name_over_an_encoding_is_still_bounded():
-    """`GV` takes an <encoding>, which may be another special name: `_ZGVGVGV...`."""
+    """`GA` takes an <encoding>, which may be another special name: `_ZGAGAGA...`."""
     with pytest.raises(LimitExceeded):
-        demangle.demangle_strict("_Z" + "GV" * 4000 + "1x")
+        demangle.demangle_strict("_Z" + "GA" * 4000 + "1x")
