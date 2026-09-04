@@ -104,6 +104,15 @@ class TestSafety:
         with pytest.raises(DemangleFailure):
             parse_d_symbol(value)
 
+    def test_detect_takes_only_an_ascii_digit_like_the_parser(self):
+        """`str.isdigit` is Unicode-aware, so `_D²foo` was claimed and then refused."""
+        from demangle.schemes.d import detect
+
+        assert detect("_D1a") is True
+        assert detect("_D²foo") is False
+        with pytest.raises(DemangleFailure):
+            parse_d_symbol("_D²foo")
+
     @pytest.mark.parametrize(
         "value",
         [

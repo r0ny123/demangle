@@ -6,6 +6,20 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Nim, Go, Objective-C and D: four small refusals, each where the scheme said something
+  other than no.** A Nim name holding a lone surrogate -- which is what `demangleb` hands
+  the parser for a byte that is not UTF-8 -- escaped as a `UnicodeEncodeError` from the
+  re-mangling check, out of `detect` and `demangle_strict` alike; it is refused now. A Go
+  symbol with nothing after its package separator read as the empty string (`.` came back
+  as `''`, `go:.` as `go:`), a dot dropped rather than a name read; an empty name, or an
+  empty package on anything but a generated symbol, is refused. Objective-C's `parse` read
+  `__block_literal_global` and `__block_descriptor` but the detector's screen never
+  mentioned either, so auto-detection handed back unchanged what `language="objc"` read.
+  And D's `detect` tested `str.isdigit`, which is Unicode-aware, where the parser takes
+  only `0`-`9`, so `_D²foo` was claimed and then refused. Issue #12.
+
 ### Conformance
 
 - **A fourth MSVC name where the reference is wrong, established rather than assumed.**
