@@ -132,10 +132,21 @@ class TestClaimsNothingItShouldNot:
             "@@bug@@x",
             "@foo$q%",
             "@foo$q$",
+            # A calling-convention letter this does not know, which used to vanish.
+            "@foo$qqzv",
+            # `void` beside another parameter, or under a reference: `foo(long double, )`
+            # and `foo(void&)` were read from these. On its own it is the empty list.
+            "@foo$qqrgv",
+            "@foo$qqrvi",
+            "@foo$qqriv",
+            "@foo$qqqrv",
         ],
     )
     def test_it_refuses(self, name):
         assert not detect(name)
+
+    def test_void_alone_is_still_the_empty_list(self):
+        assert demangle.demangle("@foo$qqrv") == "__fastcall foo()"
 
     @pytest.mark.parametrize(
         "name",

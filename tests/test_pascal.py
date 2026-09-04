@@ -192,10 +192,24 @@ class TestClaimsNothingItShouldNot:
             "$",
             "_$",
             "A_$$_",
+            # An empty parameter type, an empty result type, and both: the separator with
+            # nothing behind it. `MYUNIT.ADD()` and `MYUNIT.ADD: ` were read from these.
+            "MYUNIT_$$_ADD$",
+            "MYUNIT_$$_ADD$$",
+            "MYUNIT_$$_ADD$LONGINT$$",
+            "MYUNIT_$$_ADD$$LONGINT$$LONGINT",
         ],
     )
     def test_it_refuses(self, name):
         assert not detect(name)
+
+    def test_the_compilers_own_sections_keep_their_lone_separator(self):
+        """`init`, `finalize` and their `_implicit` forms are written with the parameter
+        separator and nothing behind it -- 29 times in the real-world corpus -- so for
+        those four names alone the lone separator is the empty list."""
+        assert demangle.demangle("AVL_TREE_$$_init$") == "AVL_TREE.init()"
+        assert demangle.demangle("MYUNIT_$$_finalize_implicit$") == "MYUNIT.finalize_implicit()"
+        assert demangle.demangle("MYUNIT_$$_ADD$LONGINT$$LONGINT") == "MYUNIT.ADD(LONGINT): LONGINT"
 
     def test_it_claims_nothing_in_the_other_schemes_corpora(self, subtests):
         for path in sorted(CONFORMANCE.glob("*.txt")):

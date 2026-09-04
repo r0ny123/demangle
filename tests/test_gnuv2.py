@@ -183,6 +183,24 @@ class TestWhatItRefusesToClaim:
             assert demangle.demangle(name) == name
             assert demangle.demangle_strict(name, language="gnuv2") == forced
 
+    def test_a_second_argument_list_after_the_ellipsis_is_not_a_reading(self):
+        """`e` ends the list, so only the end or a return type may follow it.
+
+        libiberty itself reads `foo__Fex` as `foo(...)(long long)`: back in
+        `demangle_signature` the `x` is taken for the start of another list, and nothing
+        checks that one was already read. A function returning a function is not a C++
+        declaration, so this is refused -- a deliberate divergence, and one of very few,
+        from the reference this scheme otherwise follows bug for bug.
+        """
+        for name in ("foo__Fex", "foo__Fiex", "foo__FPFe_vex"):
+            assert not gnuv2.detect(name), name
+            assert demangle.demangle(name) == name
+            with pytest.raises(DemanglingError):
+                demangle.demangle_strict(name, language="gnuv2")
+        assert demangle.demangle("foo__Fe") == "foo(...)"
+        assert demangle.demangle("foo__Fie") == "foo(int,...)"
+        assert demangle.demangle("foo__FPFe_vi") == "foo(void (*)(...), int)"
+
     def test_void_alone_is_still_a_parameter_list(self):
         """The rule is `void` *among others*; on its own it is how the grammar says ()."""
         assert gnuv2.detect("f__Fv")
