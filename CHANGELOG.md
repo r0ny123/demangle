@@ -27,6 +27,27 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: six gaps in expressions and special names, each settled against both
+  references.** `co_await` (`aw`) had no branch at all and fell through to an
+  unrecognised expression; it reads as a keyword unary operator, `co_await (1)` under
+  the GNU spelling as c++filt prints it. `sizeof...` (`sZ`) tried only a template
+  parameter, so the function-parameter form was refused; it takes both, and the
+  parameter form comes out `sizeof... (fp)` as llvm-cxxfilt prints it -- c++filt prints
+  `0` there, counting a pack a function parameter does not have, and is not followed.
+  `GV`, `TH` and `TW` went through `encoding()`, which reads functions and nested special
+  names too, so a guard variable was demangled for a function nobody declared
+  (`_ZGVN1A1fEv`) and for another guard variable (`_ZGVGV1x`); they take the object name
+  the ABI gives them, as `GR` always did, and both references refuse the same names.
+  `GA` keeps `encoding()`, since GNU does read `_ZGATW1x`. `throw` bracketed its operand
+  unconditionally under the GNU spelling; it follows the operand-kind rule every other
+  operator does, so `throw {parm#1}` and `throw std::x` stay bare while `throw (1)` and
+  `throw ({parm#1}())` keep their brackets. An unexpanded pack expansion -- `Dp` with no
+  pack in scope, `sp` over one -- is bracketed the same way under GNU, `(int)...` and
+  `(1)...` against a bare `A...` and `{parm#1}...`, with the LLVM spelling untouched. And
+  `detect` claimed `_GLOBAL__` names that `parse` has never read, GNU's global
+  constructors extension, and handed them back unchanged one step later; it no longer
+  claims them. Issue #16.
+
 - **Free Pascal, Delphi, JNI, pre-Itanium C++ and CodeWarrior: seven readings of names
   that are not declarations.** Free Pascal took a `$` with no parameter type behind it
   and a `$$` with no result -- `MYUNIT.ADD()` and `MYUNIT.ADD: ` -- and refuses both,

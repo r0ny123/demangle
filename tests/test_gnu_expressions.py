@@ -87,6 +87,8 @@ OPERANDS = [
     # bracketed. The last is an expansion with no pack in it, bracketed the same way.
     ("awLi1E", "co_await 1", "co_await (1)"),
     ("awfp_", "co_await fp", "co_await {parm#1}"),
+    # c++filt prints `0` for this one: it counts the pack behind a `sizeof...` and a
+    # function parameter has no pack to count, so the column is the operand it names.
     ("sZfp_", "sizeof... (fp)", "sizeof... ({parm#1})"),
     ("twfp_", "throw fp", "throw {parm#1}"),
     ("twsr3stdE1x", "throw std::x", "throw std::x"),
