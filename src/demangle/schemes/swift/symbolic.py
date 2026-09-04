@@ -166,6 +166,8 @@ def end_of_name(data, start=0):
     cuts a name in half. Swift's own reflection reader walks the name for the same
     reason.
     """
+    if start < 0 or start > len(data):
+        raise ValueError(f"no byte at {start}")
     pos = start
     length = len(data)
     while pos < length:

@@ -178,7 +178,10 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     text = name.decode("latin-1")
     if whole_symbol is None:
         whole_symbol = detect(text)
-    root = demangle_symbol(text, resolver) if whole_symbol else demangle_type(text, resolver)
+    try:
+        root = demangle_symbol(text, resolver) if whole_symbol else demangle_type(text, resolver)
+    except RecursionError:
+        return None
     if root is None:
         return None
     if root.kind == "Suffix":

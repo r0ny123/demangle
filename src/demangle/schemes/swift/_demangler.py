@@ -350,7 +350,10 @@ class Demangler:
         if pos == start:
             return None
         self.pos = pos
-        return int(text[start:pos])
+        try:
+            return int(text[start:pos])
+        except ValueError:
+            return None
 
     def index(self):
         """`_` is 0 and `<n>_` is n+1, so that 0 costs one character rather than two."""
