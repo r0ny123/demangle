@@ -2656,7 +2656,7 @@ def print_root(root, options=DEFAULT_OPTIONS):
     printer = Printer(options)
     try:
         printer.print(root, 0)
-    except (_Invalid, IndexError, AttributeError, KeyError, RecursionError):
+    except (_Invalid, IndexError, AttributeError, KeyError, RecursionError, ValueError):
         # The reference asserts on a malformed tree; refusing is the safe equivalent.
         return ""
     return printer.result()

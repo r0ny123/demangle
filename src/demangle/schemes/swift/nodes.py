@@ -138,6 +138,6 @@ def build(root, options=DEFAULT_OPTIONS):
     printer = _TreePrinter(options)
     try:
         printer.print(root, 0)
-    except (_Invalid, IndexError, AttributeError, KeyError, RecursionError):
+    except (_Invalid, IndexError, AttributeError, KeyError, RecursionError, ValueError):
         return None
     return printer.tree()
