@@ -194,7 +194,9 @@ class LegacyDemangler:
         # It is the only thing telling two monomorphisations of one generic apart, so
         # `{}` on rustc-demangle's own `Demangle` spells it and `{:#}` is what suppresses
         # it. Before the vendor suffix, which is not part of the path.
-        if self.keep_hash and self.hash:
+        # `is not None` rather than truth: a bare `h` is a hash with no digits, which the
+        # reference spells as `::h`, and the empty string is false.
+        if self.keep_hash and self.hash is not None:
             disp += f"::h{self.hash}"
 
         # `inn` is positioned on the `E` that closes the path, so what follows it is
