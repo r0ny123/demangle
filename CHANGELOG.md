@@ -8,6 +8,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Free Pascal, Delphi, JNI, pre-Itanium C++ and CodeWarrior: seven readings of names
+  that are not declarations.** Free Pascal took a `$` with no parameter type behind it
+  and a `$$` with no result -- `MYUNIT.ADD()` and `MYUNIT.ADD: ` -- and refuses both,
+  except for the compiler's own `init`, `finalize`, `init_implicit` and
+  `finalize_implicit` sections, which it does write with the lone separator (29 times
+  in the real-world corpus). Delphi dropped a calling-convention letter it did not know
+  and let `void` stand beside other parameters or under a reference (`foo(long double,
+  )`, `foo(void&)`); an unknown letter is refused and `void` is a list only when it is
+  the whole of it. JNI read `V` as a parameter type -- it is return-only, and the
+  overload signature carries only parameters -- and took an overload head that unescapes
+  to `a//b`, which the fallback path already refused. Pre-Itanium C++ read two argument
+  lists off `foo__Fex`, as `foo(...)(long long)`: libiberty does the same, taking the
+  `x` after the terminator for the start of another list, and a function returning a
+  function is not a declaration, so this is refused -- a deliberate divergence from the
+  reference, and one of very few. And CodeWarrior echoed a qualified name standing where
+  the function's own name goes, so `Q23foo3bar__Fv` is `foo::bar()` rather than a
+  function called `Q23foo3bar`, and nothing may follow its `...` either -- with
+  pre-Itanium C++ refusing `foo__Fex`, this scheme had picked it up instead. Issue #13.
+
 - **Swift: a number is read into the reference's own type, a resolver that answers itself
   is given up on, and a bad start is refused.** A run of digits went through `int()`,
   whose cap is 4,300 digits: past it a `ValueError` escaped `demangle_strict`, and short
