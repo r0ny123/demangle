@@ -188,15 +188,19 @@ def demangle(
     # other's spelling. A style holds a builder and a mapping of per-language options,
     # neither of which hashes by value, so it cannot go into the key itself; a call that
     # passes one is simply not cached. That is the rare path. The common one is a name,
-    # and it stays a four-element tuple. `isinstance` rather than `__class__ is`: a
-    # subclass carrying a different builder under the same name must take the rare path
-    # too, or it is served whatever was cached under that name first.
+    # and it stays a four-element tuple. The test is for the name -- `None` or a `str` --
+    # rather than for a `Style`, so a subclass of one carrying a different builder under
+    # the same name takes the rare path too, instead of being served whatever was cached
+    # under that name first. `__class__ is str` rather than `isinstance`, and the
+    # registry's flag rather than its `_load()`, because this is the hottest line in the
+    # package: the two calls together cost the warm path a sixth of its time.
     #
     # Warmed before the cache is touched: the first `candidates()`/`get()` loads the
     # registry, and loading registers plugins, which clears the cache -- wiping the miss
     # just recorded if the `get` runs first.
-    _registry._load()
-    if isinstance(style, Style):
+    if not _registry._loaded:
+        _registry._load()
+    if style is not None and style.__class__ is not str:
         key = None
     else:
         key = (mangled, language, resolved_style.name, limits)

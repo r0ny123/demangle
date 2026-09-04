@@ -99,7 +99,11 @@ All notable changes to this project are recorded here. The format follows
   reported as the unknown language, unknown style or unhashable limits it is. Reported
   from the failed lookup rather than checked for beforehand, because `Limits` is a frozen
   dataclass hashed from its fields on every call: pre-hashing it cost the warm path 713
-  ns per call against 539 without, over two million cached lookups. Issue #14.
+  ns per call against 539 without, over two million cached lookups. The registry check
+  and the style test that came with the fix are the registry's flag and a `__class__`
+  test rather than two calls, for the same reason -- the warm path was 466 ns per call
+  before the fix, 540 with it, and is 484 now, which `bench.py --check` had caught as a
+  regression against its baseline. Issue #14.
 
 - **Registry: a plugin refused for one alias no longer leaves its others behind.** An
   alias that would shadow a registered language name is refused, and every alias is
