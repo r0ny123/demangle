@@ -88,9 +88,13 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
 
 def test_the_version_is_stated_once(readme):
     """`__version__` is the single source of truth; the metadata is read from it."""
-    from importlib.metadata import version
+    from importlib.metadata import PackageNotFoundError, version
 
-    assert version("demangle") == demangle.__version__
+    try:
+        installed = version("demangle")
+    except PackageNotFoundError:
+        pytest.skip("demangle is not installed; no metadata to compare against")
+    assert installed == demangle.__version__
 
 
 class TestExamples:

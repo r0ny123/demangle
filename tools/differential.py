@@ -61,6 +61,10 @@ CORPUS_SETTINGS = {
     # binary's build info would do it. Replaying this corpus on auto-detection would be
     # measuring the detector's caution rather than the demangler.
     "go-real-world.txt": {"language": "go"},
+    # D on purpose, for the same reason as Go above is not the issue here -- D names
+    # are distinctive -- but so the file is scored as the D corpus rather than as a
+    # test of the detector.
+    "d-libiberty.txt": {"language": "d"},
 }
 
 #: Files in `tests/conformance/` that are not mangled-name corpora at all. The refusal
@@ -79,19 +83,14 @@ NOT_REPLAYED = frozenset(
         # text, and what it spells depends on the image it came out of. Replayed by
         # tests/test_swift_symbolic.py, which carries the fragments as well.
         "swift-symbolic.txt",
-        # The reference's own D vectors, and 149 of the 366 do not match yet. This file
-        # is a record of where the gaps are, not a claim that there are none, so it is
-        # pinned by tests/test_d.py -- which asserts the score in both directions, so it
-        # can only go up and cannot quietly stop being accurate -- rather than replayed
-        # here, where one number for the whole suite would say only that something
-        # somewhere disagreed.
-        "d-libiberty.txt",
-        # libcxxabi's own vectors, 29,928 of them, of which 200 do not match yet. Pinned
-        # by tests/test_conformance.py for the reason `d-libiberty.txt` is: this file
-        # records where the gaps are, and one number for the whole suite would say only
-        # that something somewhere disagreed. It is also stored gzipped, which this
-        # replay does not read.
+        # libcxxabi's own vectors, 29,928 of them, of which 14 do not match. Pinned
+        # by tests/test_conformance.py because that is where the shortfall is grouped
+        # and named: one number for the whole suite would say only that something
+        # somewhere disagreed. Stored gzipped; this replay reads gzip when a .gz
+        # path is named explicitly, but the default run covers the plain-text
+        # corpora.
         "itanium-libcxxabi.txt",
+        "itanium-libcxxabi.txt.gz",
         # Swift's own vectors, all 514 of which match. Pinned by tests/test_swift.py in
         # both directions, for the reason the two above are.
         "swift-upstream.txt",
@@ -183,8 +182,15 @@ KNOWN_DIVERGENCES = {
 
 def load_corpus(path):
     """Read (mangled, expected) pairs, skipping comments and blank lines."""
+    raw = Path(path)
+    if raw.suffix == ".gz" or raw.suffixes[-2:] == [".txt", ".gz"]:
+        import gzip
+
+        text = gzip.decompress(raw.read_bytes()).decode("utf-8", "surrogateescape")
+    else:
+        text = raw.read_text(encoding="utf-8", errors="surrogateescape")
     pairs = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         if not line or line.startswith("#") or "\t" not in line:
             continue
         mangled, expected = line.split("\t", 1)
@@ -216,6 +222,11 @@ def replay(paths, style, language, show, quiet, overrides=True):
                 matched += 1
             elif mangled in KNOWN_DIVERGENCES:
                 divergent += 1
+            elif expected == mangled and got.startswith("<"):
+                # Both sides refuse it: the corpus records a name the reference
+                # hands back, and we raise rather than misread it. `demangle()`
+                # answers those with the name unchanged, so this is agreement.
+                matched += 1
             else:
                 failures.append((mangled, expected, got))
                 reasons[got if got.startswith("<") else "wrong spelling"] += 1
