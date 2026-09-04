@@ -342,11 +342,16 @@ def _demangle_arg(text, options):
 def demangle_function_args(text, options):
     """The argument list, spelled, and whatever follows it."""
     result = ""
+    ellipsis = False
     while text:
+        if ellipsis:
+            # `...` ends the list: no declaration has a parameter after it.
+            _fail("a parameter follows ...")
         if result:
             result += ", "
         argument, argument_post, rest = demangle_arg(text, options)
         result += argument + argument_post
+        ellipsis = argument_post == "" and argument.split()[-1:] == ["..."]
         text = rest
         if text.startswith(("_", ",")):
             break
@@ -477,8 +482,15 @@ def _demangle(text, options):
             name = text[: inner + 6]
             rest = rest[inner + 2 :]
     else:
-        base, args = demangle_template_args(name, options)
-        name = f"{base}{args}"
+        if len(name) > 1 and name[0] == "Q" and name[1].isdigit():
+            # A qualified name in the name's own seat: `Q23foo3bar__Fv` is
+            # `foo::bar()`, not a function called `Q23foo3bar`.
+            _bare, name, name_rest = demangle_qualified_name(name, options)
+            if name_rest:
+                _fail("trailing characters in qualified name")
+        else:
+            base, args = demangle_template_args(name, options)
+            name = f"{base}{args}"
 
     # GameCube CodeWarrior wrote a function-local static the other way round, as
     # `<variable>$localstatic<n>$<function>`.

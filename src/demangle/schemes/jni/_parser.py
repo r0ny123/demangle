@@ -123,6 +123,11 @@ def descriptor_types(text):
             raise DemangleFailure("array descriptor with no element type")
         char = text[at]
         at += 1
+        if char == "V":
+            # `V` is the return type, not a parameter type (JVMS 4.3.2). The JNI
+            # overload signature carries only parameters, so it never appears here --
+            # neither bare nor as an array element.
+            raise DemangleFailure("void is not a parameter type")
         if char in PRIMITIVES:
             spelled = PRIMITIVES[char]
         elif char == "L":
@@ -163,6 +168,9 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
         head, tail = body[:at], body[at + 2 :]
         if head:
             try:
+                head_path = unescape(head)
+                if "//" in head_path:
+                    raise DemangleFailure("no component between separators")
                 # An *empty* tail is a valid signature: an overloaded method taking no
                 # arguments is written `Java_pkg_C_m__`, with the empty argument list
                 # the long name promises.
@@ -170,7 +178,7 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
             except DemangleFailure:
                 candidate = None
             if candidate is not None:
-                path, parameters = unescape(head), candidate
+                path, parameters = head_path, candidate
                 break
         at = body.find("__", at + 1)
     if path is None:
