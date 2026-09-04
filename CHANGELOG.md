@@ -46,6 +46,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: an unexpanded pack expansion over a declarator type puts its ellipsis after
+  the whole type, as the reference does.** `ParameterPackExpansion` prints its child --
+  both halves of a declarator -- and then the dots, so llvm-cxxfilt spells `_Z1fDpFvvEv`
+  as `f(void ()..., void)`. This put the dots in the left half alone, which is where a
+  declarator's name goes: `f(void ...(), void)`, and `void (*...)()`, `int... [3]`,
+  `void (A::*...)()` for a pointer to function, an array and a pointer to member --
+  spellings neither reference prints. The GNU spelling brackets the type first and was
+  already right; a type with no right half, `int*...`, is unchanged. Noticed while
+  reviewing the `Dp` bracketing fix; no corpus vector carried the shape.
+
 - **Pre-Itanium C++: a virtual table, thunk or `type_info` name whose body does not read
   is refused, not read as a function named after its tail.** `gnu_special` advances the
   cursor as it reads a virtual table's class, and on a class it could not read it

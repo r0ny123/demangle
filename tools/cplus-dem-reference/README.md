@@ -44,9 +44,9 @@ default of the scheme this is the oracle for.
 ## What it found, and what it reads that this does not
 
 Over the 168,420 four-character argument lists `tools/enumerate.py --scheme gnuv2`
-offers, the constructor, template-function and name-boundary shapes beside them, and
-420,000 mutants of the corpus over five seeds, this library never reads a name libiberty
-refuses. Every divergence is in the other direction, and of one kind: libiberty reads
+offers, the constructor, template-function and name-boundary shapes beside them -- 5.5
+million strings at five characters, of which 667,000 read -- and 420,000 mutants of the
+corpus over five seeds, this library never reads a name libiberty refuses. Every divergence is in the other direction, and of one kind: libiberty reads
 what it is given. A type code it does not know, a template argument list with nothing in
 it, a scope with no name, an `operator` with no symbol -- each is spelled as the empty
 string, with the punctuation printed round the gap -- and whatever follows a finished

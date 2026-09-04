@@ -349,7 +349,15 @@ class SpellingBuilder(Builder):
         return Spelling(result.spell(str(name)))
 
     def pack(self, inner):
-        return Spelling(inner.left + "...", inner.right)
+        """An unexpanded pack expansion: the whole type, then `...`.
+
+        The reference's `ParameterPackExpansion` prints its child -- both halves -- and
+        appends the ellipsis, so a declarator type keeps its shape and the dots follow
+        it: `void ()...`, `void (*)()...`, `int [3]...`. Putting them in the left half
+        alone set them where a declarator's name goes, `void (*...)()` and `int... [3]`,
+        which is not what any reference prints. A type with no right half is unchanged.
+        """
+        return Spelling(inner.left + inner.right + "...")
 
     def vendor_qualify(self, inner, qualifier):
         """A vendor qualifier goes after the *whole* type, declarator and all.

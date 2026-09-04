@@ -144,6 +144,28 @@ def test_an_unexpanded_type_pack_expansion_is_bracketed_under_gnu():
     assert demangle.demangle_strict("_Z1fDp1Av", style="gnu") == "f(A..., void)"
 
 
+def test_an_unexpanded_pack_over_a_declarator_type_puts_the_ellipsis_after_the_whole_type():
+    """`ParameterPackExpansion` prints its child whole and then the dots.
+
+    This put them in the declarator's name slot -- `void (*...)()`, `int... [3]` --
+    which neither reference prints. GNU brackets the type first, and was already right.
+    """
+    for mangled, llvm, gnu in (
+        ("_Z1fDpFvvEv", "f(void ()..., void)", "f((void ())..., void)"),
+        ("_Z1fDpPFvvEv", "f(void (*)()..., void)", "f((void (*)())..., void)"),
+        ("_Z1fDpRFvvEv", "f(void (&)()..., void)", "f((void (&)())..., void)"),
+        ("_Z1fDpA3_iv", "f(int [3]..., void)", "f((int [3])..., void)"),
+        ("_Z1fDpPA3_iv", "f(int (*) [3]..., void)", "f((int (*) [3])..., void)"),
+        ("_Z1fDpM1AFvvEv", "f(void (A::*)()..., void)", "f((void (A::*)())..., void)"),
+        ("_Z1fDpPKFvvEv", "f(void (*)() const..., void)", "f((void (*)() const)..., void)"),
+        ("_Z1fDpFvDpFvvEEv", "f(void (void ()...)..., void)", "f((void ((void ())...))..., void)"),
+        ("_Z1fDpPiv", "f(int*..., void)", "f((int*)..., void)"),
+    ):
+        assert demangle.demangle_strict(mangled, style="llvm") == llvm, mangled
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu, mangled
+        assert demangle.parse(mangled).spell() == llvm, mangled
+
+
 def test_the_option_is_what_selects_it():
     mangled = wrap("plLi1ELi2E")
     plain = demangle.style("gnu", itanium={"gnu_expression_spelling": False})
