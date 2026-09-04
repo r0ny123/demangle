@@ -785,7 +785,7 @@ def detect(name):
         return False
     if name[0] in "-+":
         return _apple_method(name) is not None
-    if "objc" not in name and "OBJC" not in name and "_block_invoke" not in name and not _method_prefixed(name):
+    if "objc" not in name and "OBJC" not in name and "_block_invoke" not in name and "block_literal" not in name and "block_descriptor" not in name and not _method_prefixed(name):
         return False
     try:
         return parse_objc_symbol(name) is not None
