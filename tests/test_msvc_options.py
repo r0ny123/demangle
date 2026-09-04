@@ -439,6 +439,19 @@ class TestTheOptionsReachABareType:
         narrow = demangle.style("llvm", msvc={"tag_kind": False})
         assert demangle.demangle_type(".PEAUS@@", language="msvc", style=narrow) == "S *"
 
+    def test_the_descriptor_symbol_reaches_the_flags_as_the_type_does(self):
+        """`demangle(".?AVFoo@@")` went through `parse`, which handed `parse_msvc_type`
+        its limits and not its options, so every flag was inert on the symbol path while
+        `demangle_type` honoured it on the same encoding."""
+        narrow = demangle.style("llvm", msvc={"tag_kind": False})
+        assert demangle.demangle(".?AVFoo@@", language="msvc") == "class Foo `RTTI Type Descriptor Name'"
+        assert demangle.demangle(".?AVFoo@@", language="msvc", style=narrow) == "Foo `RTTI Type Descriptor Name'"
+        no_keywords = demangle.style("llvm", msvc={"ms_keywords": False})
+        assert (
+            demangle.demangle(".P6AHXZ", language="msvc", style=no_keywords)
+            == "int (*`RTTI Type Descriptor Name')(void)"
+        )
+
     def test_the_lexical_flags_reach_a_function_type(self):
         for field, spelled in (
             ("ms_keywords", "int (*)(void)"),

@@ -121,6 +121,28 @@ class TestBoundsAreEnforcedWhileWorking:
         with pytest.raises(demangle.LimitExceeded):
             demangle.demangle_strict("?f@@YAX" + "PA" * 5000 + "H@Z")
 
+    def test_an_msvc_symbol_nested_in_a_template_argument_keeps_the_callers_bound(self):
+        """The parser spun up for a nested symbol ran with the default limits, so a
+        tight `max_depth` could be dodged by putting the deep part in a template argument."""
+        nested = "?g@@YAXPAPAPAPAPAPAH@Z"
+        tight = Limits(max_depth=5)
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict(nested, language="msvc", limits=tight)
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict(f"??$f@H$1{nested}@@YAXXZ", language="msvc", limits=tight)
+        assert demangle.demangle_strict(f"??$f@H$1{nested}@@YAXXZ", language="msvc").startswith("void __cdecl f<")
+
+    def test_an_msvc_md5_name_is_held_to_max_output(self):
+        """Every other path went through the length check; the hashed one just returned."""
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict("??@" + "A" * 1000 + "@", language="msvc", limits=Limits(max_output=10))
+
+    def test_an_msvc_array_with_a_thousand_extents_reports_the_bound_it_hit(self):
+        """`DOI@` is a count of 1000, and each extent nested without a depth check: a
+        `RecursionError`, swallowed into a `ParseError` that called the name unreadable."""
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.demangle_strict("?arr@@3QAYDOI@" + "1" * 1000 + "HB", language="msvc")
+
 
 class TestNothingEverAnswersWithNothing:
     """`demangle()` returns the spelling or the name. The empty string is neither.
