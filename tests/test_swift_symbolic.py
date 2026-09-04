@@ -106,6 +106,36 @@ class TestFindingWhereANameEnds:
     def test_a_truncated_reference_takes_the_rest_of_the_blob(self):
         assert end_of_name(b"ab\x01\x17") == 4
 
+    def test_a_start_outside_the_blob_is_refused_as_read_refuses_it(self):
+        """A negative start indexed from the end, or raised `IndexError`; the end itself
+        is a fine place to start and finds nothing."""
+        for start in (-1, -5, 4):
+            with pytest.raises(ValueError):
+                end_of_name(b"abc", start=start)
+        assert end_of_name(b"abc", start=3) == 3
+
+
+class TestAResolverThatAnswersItself:
+    """A fragment a resolver hands back may hold references of its own, and each is
+    resolved in turn; one that names another without end used to recurse until the
+    interpreter gave up, and `demangle_symbolic` let the `RecursionError` out."""
+
+    REFERENCE = b"\x01\x00\x00\x00\x00"
+
+    def test_it_is_given_up_on_rather_than_recursed_into(self):
+        asked = []
+
+        def loop(reference, at):
+            asked.append(at)
+            return self.REFERENCE.decode("latin-1")
+
+        assert demangle_symbolic(self.REFERENCE, loop) is None
+        assert len(asked) < 200, "stopped by the interpreter's recursion limit, not by a bound"
+
+    def test_a_chain_that_ends_is_followed_to_its_end(self):
+        answers = iter([self.REFERENCE.decode("latin-1"), "4main3FooV"])
+        assert demangle_symbolic(self.REFERENCE, lambda reference, at: next(answers)) == "main.Foo"
+
 
 class TestWithoutAResolver:
     """The reference refuses a name it cannot resolve rather than reading round it."""

@@ -39,6 +39,14 @@ BUILTIN_TYPE_NAME_PREFIX = "Builtin."
 
 _MAX_NUM_WORDS = 26
 _MAX_REPEAT_COUNT = 2048
+#: The reference reads a number into an `int`, and returns its "no number" sentinel the
+#: moment the next digit would overflow one.
+_INT_MAX = 2**31 - 1
+#: How many resolved fragments may stand inside one another. A fragment a resolver
+#: hands back may hold references of its own -- a nested type names its parent -- but
+#: one that keeps naming another without end is a resolver answering itself, which
+#: recursed until the interpreter gave up.
+_MAX_NESTING = 64
 
 #: `getManglingPrefixLength`: the prefixes a Swift symbol may carry. `_T0` is the Swift 4
 #: mangling and still appears in shipped binaries; `$e` is Embedded Swift, whose names
@@ -238,8 +246,8 @@ class Demangler:
         #: The word table for identifier substitutions, capped as the reference caps it.
         self.words = []
         self.is_old_function_type_mangling = False
-        #: Guards against a name whose substitutions refer to each other in a cycle.
-        self.depth = 0
+        #: How many resolved fragments this demangler stands inside; see `_MAX_NESTING`.
+        self.nesting = 0
 
     # -- reading ---------------------------------------------------------------
 
@@ -349,11 +357,24 @@ class Demangler:
             pos += 1
         if pos == start:
             return None
+        if pos - start > 9:
+            # The reference accumulates into an `int` and answers "no number" the moment
+            # the next digit would overflow one, with that digit still unread -- and no
+            # production takes a digit there, so whatever asked for the number refuses.
+            # Ported as written rather than left to `int()`, whose own cap is 4,300
+            # digits: past it `int()` raised, and short of it a run of eleven read as a
+            # number the reference never sees. The walk is only taken past nine digits,
+            # which no name a compiler wrote has.
+            number = 0
+            for at in range(start, pos):
+                number = number * 10 + (ord(text[at]) - 48)
+                if number > _INT_MAX:
+                    self.pos = at
+                    return None
+            self.pos = pos
+            return number
         self.pos = pos
-        try:
-            return int(text[start:pos])
-        except ValueError:
-            return None
+        return int(text[start:pos])
 
     def index(self):
         """`_` is 0 and `<n>_` is n+1, so that 0 costs one character rather than two."""
@@ -468,7 +489,11 @@ class Demangler:
         fragment = self.resolver(SymbolicReference(raw_kind, kind, directness, offset, at), at)
         if not fragment:
             return None
-        resolved = Demangler(fragment, self.resolver).demangle_fragment()
+        if self.nesting >= _MAX_NESTING:
+            return None
+        inner = Demangler(fragment, self.resolver)
+        inner.nesting = self.nesting + 1
+        resolved = inner.demangle_fragment()
         if resolved is None:
             return None
         # "Types register as substitutions even when symbolically referenced" -- except
