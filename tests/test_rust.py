@@ -269,6 +269,61 @@ class TestWhatOpensAVZeroName:
         assert demangle.demangle(mangled) == "TObjOwnerDerivedFromIObj<CStringTable>::__RTTI"
 
 
+class TestSevenEdgesSettledAgainstTheReference:
+    """Each of these disagreed with rustc-demangle by one rule, read line by line.
+
+    Every expectation is the reference's own answer, from
+    `tools/rustc-demangle-reference`. Asked with `language="rust"` throughout: several
+    are names the detector rightly leaves to C++ -- a bare `h` with no digits behind it
+    is a name C++ can have -- and the rule under test is the reader's, not the detector's.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # A path with no closing `E` is not a path; this read it as `std`.
+            ("_ZN3std", "_ZN3std"),
+            # An escape the reference does not know is printed as it stands, where this
+            # refused the whole name.
+            ("_ZN11test$XX$fooE", "test$XX$foo"),
+            # `$u..$` takes lowercase hex only, and a control character stays literal.
+            ("_ZN14test$u00ab$fooE", "test«foo"),
+            ("_ZN14test$u00AB$fooE", "test$u00AB$foo"),
+            ("_ZN14test$u0000$fooE", "test$u0000$foo"),
+            # `char::from_u32` refuses a surrogate; `chr` does not, and the lone surrogate
+            # it produced crashed `demangleb` on the way back out.
+            ("_ZN14test$uD800$fooE", "test$uD800$foo"),
+            # A bare `h` is the hash marker with no digits, so the hash is empty.
+            ("_ZN4test1hE", "test"),
+            # The hash may hold uppercase hex; an uppercase `H` is not the marker.
+            ("_ZN4test17h0123456789ABCDEFE", "test"),
+            ("_ZN4test17H0123456789ABCDEFE", "test::H0123456789ABCDEF"),
+            # A punycode body spelling a surrogate falls back to the raw form.
+            ("_RCu4_2d9b", "punycode{2d9b}"),
+            # A bare `R`, the underscore stripped by a symbol table, when Rust is asked for.
+            ("RNvC1a1f", "a::f"),
+        ],
+    )
+    def test_what_the_reference_prints(self, mangled, expected):
+        assert demangle.demangle(mangled, language="rust") == expected
+        assert demangle.demangleb(mangled.encode(), language="rust") == expected.encode()
+
+    def test_an_empty_hash_is_still_a_hash_when_the_hash_is_kept(self):
+        """`""` is false, so `keep_hash` used to drop what the reference spells `::h`."""
+        assert demangle.demangle("_ZN4test1hE", language="rust", style=TestKeepingTheHash.KEEP) == "test::h"
+
+    def test_an_uppercase_hash_is_claimed_as_the_parser_reads_it(self):
+        """`detect` tested lowercase hex where the parser took either case, so the one
+        route read the name as Rust and the other handed it to Itanium."""
+        assert demangle.detect("_ZN4test17h0123456789ABCDEFE") == "rust"
+        assert demangle.demangle("_ZN4test17h0123456789ABCDEFE") == "test"
+
+    def test_a_bare_r_is_not_claimed_unasked(self):
+        """Too broad a claim to make about every symbol in a binary; `_R` is still needed."""
+        assert demangle.detect("RNvC1a1f") is None
+        assert demangle.demangle("RNvC1a1f") == "RNvC1a1f"
+
+
 class TestKeepingTheHash:
     """`keep_hash`: rustc-demangle's `{}` rather than the `{:#}` this spells by default.
 

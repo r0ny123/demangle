@@ -8,6 +8,23 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Rust: seven places the legacy and v0 readers disagreed with rustc-demangle, read
+  line by line against it.** A legacy path with no closing `E` read as a path (`_ZN3std`
+  came back `std`) where the reference hands the name back unread. An escape the
+  reference does not know refused the whole name where it prints the escape as it
+  stands, so `_ZN11test$XX$fooE` is `test$XX$foo`. `$u..$` takes lowercase hex only, and
+  a control character stays literal: `$u00AB$` and `$u0000$` print as written, `$u00ab$`
+  is `«`. A surrogate is refused in both schemes -- `char::from_u32` refuses one where
+  `chr` does not -- which also stops `demangleb` crashing with a `UnicodeEncodeError` on
+  `_ZN14test$uD800$fooE` and on a punycode body spelling one. A bare trailing `h` is the
+  hash marker with no digits, so `_ZN4test1hE` is `test`, and `test::h` when the hash is
+  kept. The detector's hash test takes uppercase hex as the parser does, so
+  `_ZN4test17h0123456789ABCDEFE` is read as Rust by both routes rather than handed to
+  Itanium by one. And a bare `R` -- the leading underscore stripped by a symbol table, as
+  a bare `ZN` already was -- is accepted when Rust is asked for by name, while
+  auto-detection still needs `_R`. Every expectation is the reference's own answer.
+  Issue #15.
+
 - **MSVC: the ARM64EC marker is taken out of a name only once the name has failed to
   read with it, and four bounds reach where they did not.** `$$h` was stripped before
   the plain parse was tried, so `?foo$$hbar@@YAXXZ` -- a function named `foo$$hbar`,
