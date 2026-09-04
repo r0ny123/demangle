@@ -139,7 +139,11 @@ def mangle(name):
             out.append(_BY_CHARACTER[character])
             escaped = True
         else:
-            out.extend(f"X{byte:02X}" for byte in character.encode("utf-8"))
+            try:
+                raw = character.encode("utf-8", "surrogateescape")
+            except UnicodeEncodeError:
+                raise DemangleFailure(f"cannot mangle {name!r}")
+            out.extend(f"X{byte:02X}" for byte in raw)
             escaped = True
     if escaped:
         out.append("_")
@@ -157,7 +161,10 @@ def _decode_hex(body):
             at += 3
             found = True
         else:
-            out.append(body[at].encode())
+            try:
+                out.append(body[at].encode("utf-8", "surrogateescape"))
+            except UnicodeEncodeError:
+                return None, found
             at += 1
     try:
         return b"".join(out).decode("utf-8"), found
@@ -227,8 +234,11 @@ def unmangle(text):
                 candidates.append(decoded)
     candidates.append(text)
     for candidate in candidates:
-        if mangle(candidate) == text:
-            return candidate
+        try:
+            if mangle(candidate) == text:
+                return candidate
+        except (DemangleFailure, UnicodeError):
+            continue
     return None
 
 
@@ -372,7 +382,10 @@ _READERS = (_routine, _type_info, _marker, _type_name, _module_temporary)
 def parse_nim_symbol(name):
     """Parse `name`, returning a `NimSymbol`, or raise `DemangleFailure`."""
     for reader in _READERS:
-        found = reader(name)
+        try:
+            found = reader(name)
+        except UnicodeError:
+            continue
         if found is not None:
             return found
     raise DemangleFailure("not a Nim symbol")
@@ -452,6 +465,6 @@ def detect(name):
         return False
     try:
         parse_nim_symbol(name)
-    except DemangleFailure:
+    except (DemangleFailure, UnicodeError):
         return False
     return True

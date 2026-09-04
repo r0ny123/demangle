@@ -40,7 +40,7 @@ def detect(name):
     """
     if not name or not name.startswith("_D"):
         return False
-    return name == _MAIN or (len(name) > 2 and name[2].isdigit())
+    return name == _MAIN or (len(name) > 2 and "0" <= name[2] <= "9")
 
 
 def _wants_structure(builder):

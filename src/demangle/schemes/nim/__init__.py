@@ -51,6 +51,8 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         symbol = parse_nim_symbol(mangled)
     except DemangleFailure as error:
         raise NotMangledError(mangled, str(error)) from error
+    except UnicodeError as error:
+        raise NotMangledError(mangled, f"undecodable name: {error}") from error
 
     if len(symbol.text) > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)
