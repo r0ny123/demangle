@@ -16,3 +16,5 @@ htmlcov/
 tools/rustc-demangle-reference/target/
 tools/swift-demangle-reference/swift/
 tools/swift-demangle-reference/build/
+tools/cplus-dem-reference/gcc/
+tools/cplus-dem-reference/build/

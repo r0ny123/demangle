@@ -276,6 +276,24 @@ The revision is a commit on `main` rather than a release tag, and
 `tools/swift-demangle-reference/README.md` has the measurements that decide it, along
 with the one place the reference is wrong and this library does not follow it.
 
+### The pre-Itanium C++ reference
+
+Nothing current reads a pre-Itanium name either: binutils 2.42's `c++filt` offers no
+`--format=gnu`, `lucid`, `arm` or `hp`, and GCC 9 removed the demangler from libiberty.
+So `tools/cplus-dem-reference/` builds it from GCC 8.3.0's tree -- `cplus-dem.c` and the
+five helpers it calls, unmodified, which is the tree `tests/conformance/gnuv2-libiberty.txt`
+was transcribed from -- behind the same line-per-name front end:
+
+```console
+tools/cplus-dem-reference/build.sh
+```
+
+It needs a C compiler, `curl`, `sha256sum` and one fetch from github.com; every file is
+pinned by tag and by checksum. `tools/enumerate.py` and `tools/mutate.py` use it when it
+has been built and skip the `gnuv2` job when it has not. Its README records what the
+build reproduces (the corpus, 1,324 of 1,324) and the two families where libiberty reads
+what this library refuses.
+
 ## CI and workflows
 
 Workflows run with `permissions: contents: read` and grant more only where a job needs

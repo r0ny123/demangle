@@ -2151,10 +2151,11 @@ def gnu_special(work, cur, declp):
             else:
                 success = 0
                 break
-        if success:
-            declp.append(" virtual table")
-            work.suffix = " virtual table"
-        return success
+        if not success:
+            _refuse_special("a virtual table whose class does not read")
+        declp.append(" virtual table")
+        work.suffix = " virtual table"
+        return 1
 
     if rest[:1] == "_" and rest[1:2] and rest[1] in "0123456789Qt" and _find_marker(s, cur.i) is not None:
         marker = _find_marker(s, cur.i)
@@ -2196,11 +2197,11 @@ def gnu_special(work, cur, declp):
         cur.advance(8)
         delta = consume_count(cur)
         if delta == -1 or cur.at() != "_":
-            return 0
+            _refuse_special("a thunk with no delta")
         cur.advance()
         method = _demangle_nested(work, cur.rest())
         if method is None:
-            return 0
+            _refuse_special("a thunk whose method does not read")
         phrase = f"virtual function thunk (delta:{-delta}) for "
         declp.append(phrase)
         declp.append(method)
@@ -2220,12 +2221,28 @@ def gnu_special(work, cur, declp):
             success = do_type(work, cur, declp)
         if success and not cur.done():
             success = 0
-        if success:
-            declp.append(suffix)
-            work.suffix = suffix
-        return success
+        if not success:
+            _refuse_special("a type_info name whose type does not read")
+        declp.append(suffix)
+        work.suffix = suffix
+        return 1
 
     return 0
+
+
+def _refuse_special(reason):
+    """Refuse a name whose special-form prefix is unambiguous but whose body does not read.
+
+    `gnu_special` advances the cursor as it reads, and the reference goes on from
+    wherever a failed attempt stopped, so `demangle_prefix` then reads the *tail* of the
+    name as a function: `_vt$t8BDDHookV1__pt__2_cFv` is `_c::_pt(void)` to libiberty,
+    and `_vt$t3Foo1Z_bar__Fi` was `_bar(int)` here. A function named after the end of a
+    virtual table's symbol is not a reading of that symbol. A `_vt`, `__vt_`, `__thunk_`,
+    `__ti` or `__tf` prefix says what the name is, so a body that does not read as that
+    is refused rather than read as something else. Found by `tools/mutate.py --scheme
+    gnuv2` against the libiberty reference; no vector in the corpus is touched.
+    """
+    raise DemangleFailure(reason)
 
 
 def _find_marker(s, start):
@@ -2343,7 +2360,9 @@ def _internal_demangle(work, mangled):
         # A GNU special form is tried first, because `_$_5__foo` has a `__` in it that
         # `demangle_prefix` would otherwise read as the separator. One cursor throughout:
         # `gnu_special` advances it even on the paths where it then fails, and
-        # `demangle_prefix` picks up from wherever it stopped, as the reference does.
+        # `demangle_prefix` picks up from wherever it stopped, as the reference does --
+        # except for the forms whose prefix is unambiguous, which refuse instead; see
+        # `_refuse_special`.
         if work.auto or work.gnu:
             success = gnu_special(work, cur, declp)
             if success:

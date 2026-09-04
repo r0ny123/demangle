@@ -201,6 +201,37 @@ class TestWhatItRefusesToClaim:
         assert demangle.demangle("foo__Fie") == "foo(int,...)"
         assert demangle.demangle("foo__FPFe_vi") == "foo(void (*)(...), int)"
 
+    def test_a_special_form_that_does_not_read_is_not_read_as_something_else(self):
+        """`_vt$t3Foo1Z_bar__Fi` came back `_bar(int)`.
+
+        `gnu_special` reads a virtual table's class and fails on the junk template with
+        the cursor past it, and `demangle_prefix` then reads the tail of the name as a
+        function. libiberty does the same -- `_vt$t8BDDHookV1__pt__2_cFv` is
+        `_c::_pt(void)` to it -- and a function named after the end of a virtual table's
+        symbol is not a reading of that symbol. Found by `tools/mutate.py --scheme gnuv2`
+        against the libiberty reference; the same for a thunk and a `type_info` name.
+        """
+        for name in (
+            "_vt$t3Foo1Z_bar__Fi",
+            "_vt$t8BDDHookV1ZP_new_Fix__FUs",
+            "_vt$t8BDDHookV1__pt__2_cFv",
+            "__tfPQ25libcwt16option_evet__12T1__pt__3_1tFv",
+            "__thunk_8__$_junk__Fi",
+            # libiberty's own test for a `type_info` name is the four-character prefix,
+            # so a function whose name merely begins `__ti` is misread: `k(int)` to it,
+            # and to this before the rule.
+            "__tick__Fi",
+        ):
+            assert not gnuv2.detect(name), name
+            assert demangle.demangle(name, language="gnuv2") == name
+            with pytest.raises(DemanglingError):
+                demangle.demangle_strict(name, language="gnuv2")
+        assert demangle.demangle("_vt$t3Foo1ZPc") == "Foo<char *> virtual table"
+        assert (
+            demangle.demangle("__thunk_8__$_7ostream")
+            == "virtual function thunk (delta:-8) for ostream::~ostream(void)"
+        )
+
     def test_void_alone_is_still_a_parameter_list(self):
         """The rule is `void` *among others*; on its own it is how the grammar says ()."""
         assert gnuv2.detect("f__Fv")

@@ -6,6 +6,25 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A reference for pre-Itanium C++, built from source.** Nothing current reads one of
+  these names: binutils 2.42's `c++filt` offers no `--format=gnu`, `lucid`, `arm` or
+  `hp`, and GCC 9 removed the demangler from libiberty, so every claim about the scheme
+  rested on a corpus recorded once. `tools/cplus-dem-reference/build.sh` fetches GCC
+  8.3.0's `cplus-dem.c` and the five helpers it calls -- the tree the corpus was
+  transcribed from, pinned by tag and by checksum -- and compiles them behind the
+  line-per-name front end the other references use. It reproduces the corpus 1,324 of
+  1,324 in all four styles and both `DMGL_PARAMS` settings, and GCC 8.5.0's copy answers
+  identically over 100,000 mutants. `tools/enumerate.py` and `tools/mutate.py` gained a
+  `gnuv2` job, run in CI, and what they found is recorded in the tool's README: over
+  420,000 mutants this library never reads a name libiberty refuses, and every divergence
+  is libiberty spelling a gap round something it should have refused, taking what follows
+  a finished argument list for the start of another, or stepping over the character after
+  a template's arguments without checking it is the `_` -- each recognised by
+  `ACCEPTED["gnuv2"]` and each checked against every recorded spelling in the corpus,
+  which none of them matches, so that what the tools report is what is left.
+
 ### Changed
 
 - **The checks that were not checking.** The cross-scheme import rule knew three scheme
@@ -26,6 +45,17 @@ All notable changes to this project are recorded here. The format follows
   stale as files were added. Issue #9.
 
 ### Fixed
+
+- **Pre-Itanium C++: a virtual table, thunk or `type_info` name whose body does not read
+  is refused, not read as a function named after its tail.** `gnu_special` advances the
+  cursor as it reads a virtual table's class, and on a class it could not read it
+  returned with the cursor past it, so `demangle_prefix` read the rest of the name as a
+  function: `_vt$t3Foo1Z_bar__Fi` came back `_bar(int)`. libiberty does the same --
+  `_vt$t8BDDHookV1__pt__2_cFv` is `_c::_pt(void)` to it -- and a function named after
+  the end of a virtual table's symbol is not a reading of that symbol. A `_vt`, `__vt_`,
+  `__thunk_`, `__ti` or `__tf` prefix says what the name is, so a body that does not
+  read as that refuses the name. Found by the new reference on its first run; the corpus
+  is untouched.
 
 - **Itanium: six gaps in expressions and special names, each settled against both
   references.** `co_await` (`aw`) had no branch at all and fell through to an

@@ -121,6 +121,10 @@ SEEDS = {
     # prefix a mutant has to keep can only be one of them. `swift-symbolic.txt` is hex
     # and `swift-simplified.txt` is scored under other options, so neither seeds this.
     "swift": (["swift-real-world.txt", "swift-upstream.txt", "swift-refusals.txt"], "$s"),
+    # No prefix to keep: a pre-Itanium name is an ordinary identifier with a `__` in it.
+    # All four styles' rows seed this, read under `gnu` on both sides, which is what the
+    # scheme's default does with them too.
+    "gnuv2": (["gnuv2-libiberty.txt"], ""),
 }
 
 #: A second reading of the *same* name, for schemes where a divergence from the first

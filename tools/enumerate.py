@@ -84,6 +84,20 @@ def _swift_reference():
     return str(built / "swift-demangle-reference")
 
 
+def _gnuv2_reference():
+    """libiberty's own pre-Itanium demangler, where `tools/cplus-dem-reference/build.sh`
+    has been run.
+
+    binutils 2.42's `c++filt` no longer knows `--format=gnu`, `lucid`, `arm` or `hp`, and
+    GCC 9 removed the demangler from libiberty, so nothing installed reads one of these
+    names at all. The build is GCC 8.3.0's `cplus-dem.c` -- the tree the corpus's own
+    expectations came from -- behind a line-per-name front end; see the README there.
+    Skipped, like the Swift job, when it has not been built.
+    """
+    built = Path(__file__).resolve().parent / "cplus-dem-reference" / "build"
+    return str(built / "cplus-dem-reference")
+
+
 JOBS = {
     "itanium": (
         "llvm-cxxfilt",
@@ -126,6 +140,26 @@ JOBS = {
             ("?f@@", "YAXPEAUHVW@Z$0_"),
             ("??", "0A@$?QEBH1_23456"),
             ("??_B@5", "?0123456789ABC"),
+        ],
+    ),
+    "gnuv2": (
+        # The style is `gnu`, the scheme's default: the corpus carries four styles and
+        # the reference reads one per run, and this is the one a caller who does not
+        # know the compiler gets.
+        f"{_gnuv2_reference()} gnu",
+        None,
+        [
+            # A function's argument list, which is where the type grammar lives:
+            # builtins, the modifiers, a back-reference, a class name and the `e`
+            # that ends a list.
+            ("foo__F", "icsvlxPCRUQ1_e3bTNAG"),
+            # The constructor and the other `__`-prefixed special forms, with the
+            # class name and signature that follow.
+            ("__ct__3Foo", "FivcPRCe_Q21ATA"),
+            # A template function: `H<count>Z<arg>...`, then `_` and the signature.
+            ("foo__H1Z", "iZ_X01ct2TAvl3"),
+            # Where the name ends and the signature begins.
+            ("foo__", "F1AQ23Bivct$_CH"),
         ],
     ),
     "swift": (
@@ -319,6 +353,32 @@ ACCEPTED = {
     # binaries are still on disk, so reading it is the answer a demangler pointed at the
     # wild wants. The reference refusing a mangling it has dropped is not evidence about
     # the reading; it is only evidence that it is newer.
+    # libiberty reads what it is given. A type code it does not know, a template argument
+    # list with nothing in it, a scope with no name, an `operator` with no symbol: each
+    # is spelled as the empty string and the surrounding punctuation is printed round the
+    # gap -- `T1__pt__2_::__ct(char,  (void))`, `char foo<>(void)`, `T1::::get(void)`,
+    # `foo::operator (void)`. None of those is a declaration, so none is evidence about
+    # what the name says, and this library either refuses the name or -- since the
+    # reference's own `iterate_demangle_function` is what it runs -- moves on to the next
+    # `__` and reads the name that split gives. Recognised by the gap.
+    #
+    # Or the reference read the name at an earlier `__` than this library did. Both run
+    # libiberty's `iterate_demangle_function`: guess the first `__`, demangle the whole
+    # signature, and on failure move to the next. Where they part is what counts as
+    # failure. libiberty skips what it cannot place between a template's arguments and
+    # the `_` that opens the return type, so `foo__H1Zit__3iosFP9streambuf` -- `t` where
+    # nothing goes -- is `ios foo<int>(streambuf *)` to it; this library refuses that
+    # guess and reads the split at `__3ios`, `ios::foo__H1Zit(streambuf *)`. Neither is
+    # a name a compiler wrote. Recognised by the function's own name: the reference's
+    # is a proper prefix of ours, up to a `__`.
+    "gnuv2": lambda name, ours, first, second: (
+        first is not None
+        and (
+            _GNUV2_GAP.search(first) is not None
+            or _gnuv2_second_list(first)
+            or _gnuv2_function_name(ours).startswith(_gnuv2_function_name(first) + "__")
+        )
+    ),
     "swift": lambda name, ours, first, second: (
         (first is None and _METATYPE_PARAMS_REMOVED.search(name) is not None)
         # Or an extended existential shape, where `NodePrinter` reads the node one child
@@ -338,6 +398,71 @@ _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
 #: A CV-qualifier code in front of an MSVC custom type -- `?B?<auto>@@`, where `?A` is
 #: the same shape with no qualifier and so no disagreement. See `ACCEPTED`.
 _QUALIFIED_CUSTOM_TYPE = re.compile(r"\?[B-D]\?")
+#: A gap where libiberty spelled a component it could not read as nothing: an empty
+#: type slot (`( const)`, `,  (void)`, `( *)`), an empty template argument (`<>`, `< *>`,
+#: `<int, >`), an empty scope (`::::`, `:: `, a leading `::`), an `operator` with no
+#: symbol, an argument list printed in front of the whole declaration, or an argument
+#: list with nothing in it at all -- the grammar writes an empty one as `v`, so `()` is a
+#: list it could not read, except behind `operator`, where it is the call operator.
+#: Checked against every recorded spelling in the corpus, which none of this matches:
+#: `> >`, `(*)(char *)` and `operator()` are all real, and were all matched by an earlier
+#: draft of this.
+_GNUV2_GAP = re.compile(
+    r"^\s|^::|\(\s|(?<!operator)\(\)|,\s\s|,\s*[,)>]|<>|<\s|::::|::\s|operator \(|operator\s\s|\s\s"
+)
+
+
+def _gnuv2_second_list(spelled):
+    """Whether a second argument list follows the first: `foo(...)(long long)`.
+
+    libiberty's `demangle_signature` takes whatever follows a finished argument list for
+    the start of another and prints it straight after, which no declaration has. Told
+    apart from a function pointer's `(*)(char *)` by depth: that pair sits *inside* the
+    parameter list, where this is a second group at the top level. Two more places a
+    real spelling has a top-level pair before its parameter list are taken out first:
+    a template argument, `T5<int (*)(int)>::~T5(void)`, and the call operator's own
+    `operator()(foo &)`. No recorded spelling in the corpus has one after that.
+    """
+    depth = 0
+    groups = 0
+    for character in _without_template_arguments(spelled).replace("operator()", "operator"):
+        if character == "(":
+            if depth == 0:
+                groups += 1
+                if groups == 2:
+                    return True
+            depth += 1
+        elif character == ")":
+            depth -= 1
+    return False
+
+
+def _gnuv2_function_name(spelled):
+    """The unqualified name a pre-Itanium spelling declares, without its template arguments.
+
+    The text before the first `(`, with every `<...>` group taken out first -- a nested
+    one is spelled `NA<int> >`, spaces and all, so the last word of the raw text can be
+    a `>` -- then the last space-separated word of what is left, since a return type
+    comes first, with any `scope::` taken off.
+    """
+    head = _without_template_arguments(spelled.split("(", 1)[0])
+    word = head.strip().rsplit(" ", 1)[-1]
+    return word.rsplit("::", 1)[-1]
+
+
+def _without_template_arguments(spelled):
+    """`spelled` with every balanced `<...>` group taken out."""
+    kept = []
+    depth = 0
+    for character in spelled:
+        if character == "<":
+            depth += 1
+        elif character == ">":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            kept.append(character)
+    return "".join(kept)
+
 
 #: The qualifier words MSVC writes after a type, so an answer can be compared against one
 #: that dropped them. See `ACCEPTED`.

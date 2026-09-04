@@ -190,6 +190,13 @@ jobs:
       # headers already on the runner -- no Swift toolchain, no CMake, no LLVM libraries.
       - name: Build the Swift reference
         run: tools/swift-demangle-reference/build.sh
+      # libiberty's own pre-Itanium C++ demangler, likewise: binutils 2.42 no longer
+      # ships the `--format=gnu` family and GCC 9 removed the demangler, so the build is
+      # GCC 8.3.0's `cplus-dem.c` -- the tree the corpus's own expectations came from --
+      # behind a line-per-name front end. One fetch from github.com, pinned by tag and
+      # by checksum. See tools/cplus-dem-reference/README.md.
+      - name: Build the pre-Itanium C++ reference
+        run: tools/cplus-dem-reference/build.sh
       # The corpora cover the shapes compilers emit. This covers the shapes the grammars
       # permit -- every string up to four characters over a per-scheme alphabet, offered
       # to the library and then to the reference. Four is what fits in the time here;

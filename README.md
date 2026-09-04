@@ -418,7 +418,14 @@ family is an ordinary C identifier with a `__` in it, this scheme is offered *la
 its detection reads the whole name rather than a prefix: over the 80,748 names in every
 other scheme's corpus it claims none, and over 339,117 symbols from this machine's own
 shared libraries it claims one — `drm_intel_gem_bo_map__wc`, where `wc` is a valid
-argument list and `c++filt --format=gnu` reads it exactly the same way.
+argument list and libiberty reads it exactly the same way. That reference is built here
+too: binutils 2.42 no longer ships the pre-Itanium styles and GCC 9 removed the
+demangler, so `tools/cplus-dem-reference/` compiles the 8.3.0 tree's own `cplus-dem.c`
+behind a line-per-name front end, pinned by tag and by checksum, and the enumeration and
+mutation fuzzers ask it. It reproduces the corpus 1,324 of 1,324, and over 420,000
+mutants of it this library never reads a name libiberty refuses; where the two part,
+libiberty is spelling a gap round something it should have refused, and its README has
+the families.
 
 ✧ Metrowerks CodeWarrior is the other pre-Itanium C++ mangling, and the one libiberty
 never read: `cplus-dem.c` has no CodeWarrior flag and `demangle-expected` has no vectors

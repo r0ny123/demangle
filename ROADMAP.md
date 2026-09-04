@@ -275,7 +275,10 @@ each is measured against differs, and the difference is the interesting part:
   the port is a transcription of it at `releases/gcc-8.3.0`, the last release that
   carried it. Scored against that tree's own `demangle-expected`: the 662 cases marked
   `--format=gnu`, `--format=lucid`, `--format=arm` or `--format=hp`, under both settings
-  of `DMGL_PARAMS` — **1324 of 1324**.
+  of `DMGL_PARAMS` — **1324 of 1324**. That tree is now also *built* here, as
+  `tools/cplus-dem-reference/`, so the fuzzers have an oracle for this scheme too: it
+  reproduces the corpus exactly, and over 420,000 mutants this library never reads a name
+  it refuses.
 
   The two things that made it a pass of its own were the ones named here before it
   started. The demangler is *stateful* in a way none of the other schemes are —
