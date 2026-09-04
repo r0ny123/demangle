@@ -89,6 +89,13 @@ class TestWhatIsRefused:
             "Java_pkg_C_m__Ljava_lang_String",
             # An array with no element type.
             "Java_pkg_C_m___3",
+            # `V` is a return type (JVMS 4.3.2) and the overload signature carries only
+            # parameters, so it never stands here -- bare or as an array's element.
+            "Java_pkg_C_m__V",
+            "Java_pkg_C_m___3V",
+            # An overload head that unescapes to `a//b`: the fallback path refused the
+            # empty component, the overload loop did not, and `a..b(int)` was read.
+            "Java_a__b__I",
             # Not this scheme at all.
             "JNI_OnLoad",
             "JavaScript_thing",
