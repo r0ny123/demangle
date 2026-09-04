@@ -109,7 +109,7 @@ def _resolve(language):
         return None
     try:
         return get(language)
-    except KeyError:
+    except (KeyError, TypeError):
         raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
 
 
@@ -171,13 +171,26 @@ def demangle(
     # other's spelling. A style holds a builder and a mapping of per-language options,
     # neither of which hashes by value, so it cannot go into the key itself; a call that
     # passes one is simply not cached. That is the rare path. The common one is a name,
-    # and it stays a four-element tuple.
+    # and it stays a four-element tuple. `isinstance` rather than `__class__ is`: a
+    # subclass carrying a different builder under the same name must take the rare path
+    # too, or it is served whatever was cached under that name first.
     #
-    # `__class__ is` rather than `isinstance`: this runs once per call on the hottest
-    # path in the package, and a subclass of `Style` is not a thing this distinction
-    # needs to be right about -- it would only be cached where it could have been left
-    # uncached, which is the safe direction.
-    key = None if style.__class__ is Style else (mangled, language, resolved_style.name, limits)
+    # Warmed before the cache is touched: the first `candidates()`/`get()` loads the
+    # registry, and loading registers plugins, which clears the cache -- wiping the miss
+    # just recorded if the `get` runs first.
+    _registry._load()
+    if isinstance(style, Style):
+        key = None
+    else:
+        try:
+            hash(language)
+        except TypeError:
+            raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
+        try:
+            hash(limits)
+        except TypeError:
+            raise ValueError(f"unhashable limits {limits!r}; pass a Limits instance") from None
+        key = (mangled, language, resolved_style.name, limits)
     if key is not None:
         cached = _CACHE.get(key)
         if cached is not MISSING:

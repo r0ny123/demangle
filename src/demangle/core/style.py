@@ -64,6 +64,16 @@ class Style:
                         f"pass that language's options object instead of a mapping"
                     )
                 value = replace(current, **value)
+            elif language not in changed:
+                # The object form adds rather than changes, so the mapping check above
+                # cannot see it -- but a typo must still fail rather than add dead
+                # options under a name nothing reads. Looked up lazily so this module
+                # keeps no import-time dependency on any scheme.
+                from .registry import names as _known_languages
+
+                known = _known_languages()
+                if language not in known:
+                    raise ValueError(f"unknown language {language!r}; known languages are {known}")
             changed[language] = value
         return replace(self, language_options=changed)
 
@@ -160,7 +170,7 @@ def get_style(name):
         return name
     try:
         return styles[name]
-    except KeyError:
+    except (KeyError, TypeError):
         raise ValueError(f"unknown style {name!r}; known styles are {sorted(styles)}") from None
 
 
