@@ -67,9 +67,13 @@ def register(plugin):
     if not isinstance(plugin, LanguagePlugin):
         raise TypeError(f"expected a LanguagePlugin, got {type(plugin).__name__}")
     with _lock:
-        _plugins[plugin.name] = plugin
         for alias in plugin.aliases:
+            if alias in _plugins and alias != plugin.name:
+                raise ValueError(f"alias {alias!r} collides with a registered language name")
             _aliases[alias] = plugin.name
+        _plugins[plugin.name] = plugin
+        # A re-registered name wins back over any alias that had shadowed it.
+        _aliases.pop(plugin.name, None)
         _ordered = None
         _by_first = None
     for callback in _on_change:
@@ -122,9 +126,13 @@ def _load_entry_points():
 def get(name):
     """Look up a plugin by name or alias. Raises KeyError if unknown."""
     _load()
-    with _lock:
-        resolved = _aliases.get(name, name)
-        return _plugins[resolved]
+    try:
+        with _lock:
+            if name in _plugins:
+                return _plugins[name]
+            return _plugins[_aliases[name]]
+    except TypeError:
+        raise KeyError(name) from None
 
 
 def available():
