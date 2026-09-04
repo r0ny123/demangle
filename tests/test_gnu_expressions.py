@@ -81,6 +81,18 @@ OPERANDS = [
     # c++filt refuses `at` and `ti` over a type; the column is what this reads it as.
     ("ati", "alignof (int)", "alignof (int)"),
     ("tii", "typeid (int)", "typeid (int)"),
+    # `co_await`, `sizeof...` over a function parameter, `throw`, and an unexpanded
+    # pack expansion. The first three are keyword operators whose GNU operand follows
+    # the same kind rule as every other one: a name stays bare and anything else is
+    # bracketed. The last is an expansion with no pack in it, bracketed the same way.
+    ("awLi1E", "co_await 1", "co_await (1)"),
+    ("awfp_", "co_await fp", "co_await {parm#1}"),
+    ("sZfp_", "sizeof... (fp)", "sizeof... ({parm#1})"),
+    ("twfp_", "throw fp", "throw {parm#1}"),
+    ("twsr3stdE1x", "throw std::x", "throw std::x"),
+    ("twLi1E", "throw 1", "throw (1)"),
+    ("twclfp_E", "throw fp()", "throw ({parm#1}())"),
+    ("spLi1E", "1...", "(1)..."),
     # The conditional: `?` hard against its operands, `:` spaced off them.
     ("quLi1ELi2ELi3E", "1 ? 2 : 3", "(1)?(2) : (3)"),
     ("qufp_sr3stdE1xsr3stdE1y", "fp ? std::x : std::y", "{parm#1}?std::x : std::y"),
@@ -117,6 +129,17 @@ def test_the_shape_as_it_appears_in_a_shipped_library():
         assert "<!is_array<clang::ento::PathDiagnosticControlFlowPiece>::value," in demangle.demangle_strict(
             mangled, style=style
         )
+
+
+def test_an_unexpanded_type_pack_expansion_is_bracketed_under_gnu():
+    """`Dp` with no pack in it: `(int)...` to c++filt, `int...` to llvm-cxxfilt.
+
+    A name stays bare under both, on the same rule as any other operand.
+    """
+    assert demangle.demangle_strict("_Z1fDpiv", style="llvm") == "f(int..., void)"
+    assert demangle.demangle_strict("_Z1fDpiv", style="gnu") == "f((int)..., void)"
+    assert demangle.demangle_strict("_Z1fDp1Av", style="llvm") == "f(A..., void)"
+    assert demangle.demangle_strict("_Z1fDp1Av", style="gnu") == "f(A..., void)"
 
 
 def test_the_option_is_what_selects_it():
