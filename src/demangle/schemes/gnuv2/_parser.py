@@ -1639,6 +1639,10 @@ def demangle_args(work, cur, declp, capture=None):
             declp.append("...")
         if capture is not None:
             capture.append("...")
+        if cur.at() not in ("", "_"):
+            # `e` ends the list, so a type after it is a second list rather than the
+            # rest of this one. Only the end or a return type may follow it.
+            return 0
 
     if work.params:
         declp.append(")")
