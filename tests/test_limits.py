@@ -165,16 +165,25 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
             spelling_builder=SPELLING_BUILDER,
         )
         demangle.register_style(replacement)
-        first = demangle.demangle(self.NAME, style="cache-probe")
-        demangle.register_style(
-            Style(
-                name="cache-probe",
-                spelling_builder=LEGACY_SPELLING_BUILDER,
-                language_options={"itanium": GNU_OPTIONS},
+        try:
+            first = demangle.demangle(self.NAME, style="cache-probe")
+            demangle.register_style(
+                Style(
+                    name="cache-probe",
+                    spelling_builder=LEGACY_SPELLING_BUILDER,
+                    language_options={"itanium": GNU_OPTIONS},
+                )
             )
-        )
-        assert demangle.demangle(self.NAME, style="cache-probe") != first
-        assert demangle.demangle(self.NAME) == before
+            assert demangle.demangle(self.NAME, style="cache-probe") != first
+            assert demangle.demangle(self.NAME) == before
+        finally:
+            # Taken back out, or `--list-styles` in a later test file sees it: this ran
+            # after `test_cli.py` in the default order and hid a missing cleanup.
+            from demangle.core.style import _STYLES
+
+            if _STYLES is not None:
+                _STYLES.pop("cache-probe", None)
+            demangle.cache_clear()
 
     def test_limits_are_part_of_the_key(self):
         """Tight limits from one caller must not poison the entry for the next."""

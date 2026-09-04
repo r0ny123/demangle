@@ -8,6 +8,32 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **`demangle()`: a `Style` subclass was served the named entry, the first call lost its
+  miss, and a bad argument failed late or with the wrong error.** The cache key held a
+  style's *name*, and the check that kept a `Style` object out of the cache was
+  `__class__ is Style`, so a subclass carrying a different builder under the name `llvm`
+  was answered with whatever had been cached under `llvm` first; any `Style` instance
+  now takes the uncached path. The very first call in a process looked the name up and
+  *then* loaded the registry, whose loading clears the cache and its statistics, so
+  `cache_stats()` reported no miss for it; the registry is now loaded before the cache is
+  touched. `demangle_text`, `find_symbols` and `demangle_stream` only reached the check
+  for an unknown language or style on the first word that happened to demangle, so plain
+  prose passed a typo silently; they check up front, once per call rather than once per
+  line. `Style.with_options` validated the language name in its mapping form and not in
+  its object form, which added dead options under a name nothing reads; both forms now
+  refuse an unknown language. And an unhashable `language`, `style` or `limits` -- a
+  list, say -- surfaced as `TypeError: unhashable type` from inside the cache, and is
+  reported as the unknown language, unknown style or unhashable limits it is. Reported
+  from the failed lookup rather than checked for beforehand, because `Limits` is a frozen
+  dataclass hashed from its fields on every call: pre-hashing it cost the warm path 713
+  ns per call against 539 without, over two million cached lookups. Issue #14.
+
+- **Registry: a plugin refused for one alias no longer leaves its others behind.** An
+  alias that would shadow a registered language name is refused, and every alias is
+  checked before any is recorded, so a rejected plugin leaves the alias table exactly as
+  it found it -- where the entry-point loader only warns and moves on, an alias pointing
+  at a plugin that never arrived would have failed every later lookup by that name.
+
 - **Nim, Go, Objective-C and D: four small refusals, each where the scheme said something
   other than no.** A Nim name holding a lone surrogate -- which is what `demangleb` hands
   the parser for a byte that is not UTF-8 -- escaped as a `UnicodeEncodeError` from the

@@ -179,6 +179,30 @@ class TestPluginContract:
         order = [plugin.name for plugin in available()]
         assert order.index("rust") < order.index("itanium")
 
+    def test_a_rejected_plugin_leaves_the_registry_as_it_found_it(self):
+        """An alias may not shadow a registered language, and a plugin refused for one
+        alias must not leave its other aliases pointing at a plugin that never arrived."""
+        from demangle.core import registry
+        from demangle.core.plugin import LanguagePlugin
+
+        def detect(name):
+            return False
+
+        def parse(mangled, builder, limits=None, options=None):
+            return builder.raw(mangled)
+
+        before = dict(registry.aliases())
+        hijack = LanguagePlugin(
+            name="hijack", aliases=("zzz-unclaimed", "itanium"), detect=detect, parse=parse, description="test"
+        )
+        with pytest.raises(ValueError, match="collides with a registered language name"):
+            demangle.register_language(hijack)
+        assert "hijack" not in demangle.languages()
+        assert registry.aliases() == before
+        with pytest.raises(KeyError):
+            registry.get("zzz-unclaimed")
+        assert registry.get("itanium").name == "itanium"
+
     def test_a_third_party_plugin_can_be_registered(self):
         """The extension point works without touching this package."""
         from demangle.core.plugin import LanguagePlugin

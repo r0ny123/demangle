@@ -178,9 +178,20 @@ def demangle_text(
     """
     _resolve_language(language)
     get_style(style)
+    return _demangle_text(text, language=language, style=style, limits=limits)
+
+
+def _demangle_text(
+    text: str,
+    *,
+    language: str | None,
+    style: str | Style | None,
+    limits: Limits,
+) -> str:
+    """`demangle_text` with its arguments already validated, for the callers that loop."""
     pieces = []
     end = 0
-    for found in find_symbols(text, language=language, style=style, limits=limits):
+    for found in _find_symbols(text, language=language, style=style, limits=limits):
         pieces.append(text[end : found.start])
         pieces.append(found.demangled)
         end = found.end
@@ -208,7 +219,8 @@ def demangle_stream(
     so open both ends with `errors="surrogateescape"` if the input is one. The `demangle`
     command does exactly that.
     """
+    # Validated once here, not once per line: `_demangle_text` is the unchecked form.
     _resolve_language(language)
     get_style(style)
     for line in fin:
-        fout.write(demangle_text(line, language=language, style=style, limits=limits))
+        fout.write(_demangle_text(line, language=language, style=style, limits=limits))

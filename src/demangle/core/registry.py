@@ -67,11 +67,15 @@ def register(plugin):
     if not isinstance(plugin, LanguagePlugin):
         raise TypeError(f"expected a LanguagePlugin, got {type(plugin).__name__}")
     with _lock:
+        # Every alias is checked before any is recorded: a rejected plugin has to leave
+        # the table as it found it, or its earlier aliases point at a plugin that was
+        # never registered and `get` fails on a name the loader only warned about.
         for alias in plugin.aliases:
             if alias in _plugins and alias != plugin.name:
                 raise ValueError(f"alias {alias!r} collides with a registered language name")
-            _aliases[alias] = plugin.name
         _plugins[plugin.name] = plugin
+        for alias in plugin.aliases:
+            _aliases[alias] = plugin.name
         # A re-registered name wins back over any alias that had shadowed it.
         _aliases.pop(plugin.name, None)
         _ordered = None
