@@ -115,7 +115,10 @@ def detect(name):
 def _is_hex(text):
     # `not text.strip(set)` is "every character is in set", in one C-level scan, where
     # the generator this replaces was resumed once per character of every hash tested.
-    return not text.strip("0123456789abcdef")
+    # Both cases: the parser's `is_rust_hash` takes them too (like the reference's
+    # `is_digit(16)`), and the two have to agree or one route reads the name and the
+    # other hands it to Itanium.
+    return not text.strip("0123456789abcdefABCDEF")
 
 
 #: What each builder class answered to `_wants_structure`, asked once per class rather

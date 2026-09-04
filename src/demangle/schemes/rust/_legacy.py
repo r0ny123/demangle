@@ -8,6 +8,12 @@ from ._v0 import _is_symbol_like, _strip_llvm_suffix
 _DIGITS = frozenset(string.digits)
 _HEXDIGITS = frozenset(string.hexdigits)
 
+#: What a `$uXXXX$` escape may hold: lowercase hex only, like the reference's
+#: `'0'..='9' | 'a'..='f'` test. Uppercase decodes fine with `int(_, 16)` but the
+#: reference leaves it literal, so `$u00AB$` is printed as-is while `$u00ab$`
+#: becomes the character.
+_LOWER_HEXDIGITS = frozenset(string.digits + "abcdef")
+
 
 class UnableToLegacyDemangle(Exception):
     def __init__(self, given_str, message="Not able to demangle the given string using LegacyDemangler"):
@@ -129,32 +135,37 @@ class LegacyDemangler:
                 elif rest.startswith("$"):
                     end = rest[1:].find("$")
                     if end == -1:
-                        raise UnableToLegacyDemangle(original_inpstr)
+                        break
                     escape = rest[1 : end + 1]
                     after_escape = rest[end + 2 :]
                     if not escape:
-                        raise UnableToLegacyDemangle(original_inpstr)
+                        break
 
                     if escape.startswith("u"):
                         digits = escape[1:]
                         if not digits:
-                            raise UnableToLegacyDemangle(original_inpstr)
+                            break
 
-                        if not _HEXDIGITS.issuperset(digits):
-                            raise UnableToLegacyDemangle(original_inpstr)
+                        if not _LOWER_HEXDIGITS.issuperset(digits):
+                            break
 
-                        try:
-                            c = int(digits, 16)
-                            disp += chr(c)
-                        except (OverflowError, ValueError):
-                            raise UnableToLegacyDemangle(original_inpstr) from None
+                        c = int(digits, 16)
+                        # `char::from_u32` refuses surrogates and anything past
+                        # U+10FFFF, and the reference additionally keeps control
+                        # characters literal. Python's `chr` accepts surrogates,
+                        # so those are checked by hand.
+                        if c > 0x10FFFF or 0xD800 <= c <= 0xDFFF:
+                            break
+                        if c < 0x20 or 0x7F <= c <= 0x9F:
+                            break
+                        disp += chr(c)
 
                         rest = after_escape
                         continue
 
                     else:
                         if escape not in self._UNESCAPED:
-                            raise UnableToLegacyDemangle(original_inpstr)
+                            break
                         disp += self._UNESCAPED[escape]
                         rest = after_escape
                         continue
@@ -192,6 +203,8 @@ class LegacyDemangler:
         # can hold -- and refuses the name otherwise. Dropping it instead, which is what
         # this did, meant `_ZN3fooE.llvm moocow` read as plain `foo`: a name that is not
         # the symbol and not the truth.
+        if not inn.startswith("E"):
+            raise UnableToLegacyDemangle(original_inpstr)
         self.suffix = inn[1:]
         if self.suffix:
             if not (self.suffix.startswith(".") and _is_symbol_like(self.suffix)):
@@ -210,7 +223,7 @@ class LegacyDemangler:
         never begins with one -- `19` followed by `17h...` reads as the length 1917, and
         the name is refused before this is reached at all.
         """
-        return s.startswith("h") and len(s) > 1 and _HEXDIGITS.issuperset(s[1:])
+        return s.startswith("h") and _HEXDIGITS.issuperset(s[1:])
 
     def sanity_check(self, inpstr: str):
         # The reference reads the symbol as *bytes* and rejects it outright if any of
@@ -239,3 +252,9 @@ class LegacyDemangler:
 
             c += length
             self.elements += 1
+
+        # The scan stopped somewhere other than an `E`: the path was never
+        # terminated, so this is not a mangled name. Without this `_ZN3std` read
+        # as `std`, where the reference echoes it back unread.
+        if c >= limit:
+            raise UnableToLegacyDemangle(inpstr)
