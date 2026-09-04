@@ -8,6 +8,24 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Swift: a number is read into the reference's own type, a resolver that answers itself
+  is given up on, and a bad start is refused.** A run of digits went through `int()`,
+  whose cap is 4,300 digits: past it a `ValueError` escaped `demangle_strict`, and short
+  of it a run of eleven read as a number the reference never sees -- `demangleNatural`
+  answers "no number" the moment the next digit would overflow an `int`, with that digit
+  still unread, and no production takes a digit, so `$sS<eleven ones>i` is refused where
+  this read it as `Swift.Int` with the digits taken for an absent repeat count. That rule
+  is ported as written. The old mangling's number is 64 bits unsigned and the reference
+  lets it wrap -- its own suite pins `_Ttu4222222222222222222222222_rW_2T_2TJ_` as the
+  signature the low 64 bits count out -- so it wraps here too, which is also what keeps
+  it printable, and a closure's number is printed through `(int)` as the reference prints
+  it. A resolver whose fragment names another reference without end recursed until the
+  interpreter gave up and `demangle_symbolic` let the `RecursionError` out; resolved
+  fragments now stand at most 64 deep inside one another, and the entry point answers
+  None past that as it does for any name it cannot read. And `end_of_name` with a
+  negative start indexed from the end of the blob, or raised `IndexError`; it raises
+  `ValueError` as `read` does. Issue #10.
+
 - **Rust: seven places the legacy and v0 readers disagreed with rustc-demangle, read
   line by line against it.** A legacy path with no closing `E` read as a path (`_ZN3std`
   came back `std`) where the reference hands the name back unread. An escape the

@@ -225,6 +225,21 @@ def _child_of_kind(node, kind):
     return None
 
 
+def _c_int(number):
+    """`(int)` of a node index, which is what the reference hands `printEntity`.
+
+    An index is 64 bits unsigned and the old mangling lets it wrap, so on a name with a
+    25-digit closure number the reference prints the low 32 bits of the wrapped value,
+    signed -- and a negative one not at all, since `printEntity` prints an extra index
+    only where it is not negative. Applied again after the `+ 1` the closure, macro and
+    unique-name forms add, because the reference adds it in `int` too. Real names never
+    reach either wrap; this is so a junk name prints the same junk as the reference
+    rather than different junk.
+    """
+    number &= 0xFFFFFFFF
+    return number - 0x100000000 if number >= 0x80000000 else number
+
+
 class Printer:
     """The reference's `NodePrinter`, and the options it consults."""
 
@@ -1292,7 +1307,7 @@ for _kind, _lead in _MACRO_EXPANSION_NAMES.items():
         "none",
         True,
         _lead + _node_to_string(node.child(2)) + " expansion #",
-        node.child(3).index + 1,
+        _c_int(_c_int(node.child(3).index) + 1),
     )
 
 
@@ -1404,13 +1419,15 @@ def _print_freestanding_macro(self, node, depth, as_prefix_context):
         "none",
         True,
         "freestanding macro expansion #",
-        node.child(2).index + 1,
+        _c_int(_c_int(node.child(2).index) + 1),
     )
 
 
 @_handler("MacroExpansionUniqueName")
 def _print_macro_unique_name(self, node, depth, as_prefix_context):
-    return self.print_entity(node, depth, as_prefix_context, "none", True, "unique name #", node.child(2).index + 1)
+    return self.print_entity(
+        node, depth, as_prefix_context, "none", True, "unique name #", _c_int(_c_int(node.child(2).index) + 1)
+    )
 
 
 @_handler("ExplicitClosure")
@@ -1418,20 +1435,24 @@ def _print_explicit_closure(self, node, depth, as_prefix_context):
     # A closure's signature is its type, so the flag that hides a function's parameters
     # hides this too -- `closure #1 in f()` rather than `closure #1 () in f()`.
     style = "function" if self.options.show_function_argument_types else "none"
-    return self.print_entity(node, depth, as_prefix_context, style, False, "closure #", node.child(1).index + 1)
+    return self.print_entity(
+        node, depth, as_prefix_context, style, False, "closure #", _c_int(_c_int(node.child(1).index) + 1)
+    )
 
 
 @_handler("ImplicitClosure")
 def _print_implicit_closure(self, node, depth, as_prefix_context):
     style = "function" if self.options.show_function_argument_types else "none"
     return self.print_entity(
-        node, depth, as_prefix_context, style, False, "implicit closure #", node.child(1).index + 1
+        node, depth, as_prefix_context, style, False, "implicit closure #", _c_int(_c_int(node.child(1).index) + 1)
     )
 
 
 @_handler("DefaultArgumentInitializer")
 def _print_default_argument(self, node, depth, as_prefix_context):
-    return self.print_entity(node, depth, as_prefix_context, "none", False, "default argument ", node.child(1).index)
+    return self.print_entity(
+        node, depth, as_prefix_context, "none", False, "default argument ", _c_int(node.child(1).index)
+    )
 
 
 @_handler("Allocator")
@@ -2656,7 +2677,7 @@ def print_root(root, options=DEFAULT_OPTIONS):
     printer = Printer(options)
     try:
         printer.print(root, 0)
-    except (_Invalid, IndexError, AttributeError, KeyError, RecursionError, ValueError):
+    except (_Invalid, IndexError, AttributeError, KeyError, RecursionError):
         # The reference asserts on a malformed tree; refusing is the safe equivalent.
         return ""
     return printer.result()
