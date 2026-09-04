@@ -196,10 +196,14 @@ class OldDemangler:
         if not ("0" <= char <= "9"):
             return None
         number = ord(char) - ord("0")
+        digits = 1
         while True:
             char = reader.peek()
             if not ("0" <= char <= "9"):
                 return number
+            digits += 1
+            if digits > 4300:
+                return None
             number = 10 * number + (ord(char) - ord("0"))
             reader.next()
 
