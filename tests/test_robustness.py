@@ -251,6 +251,7 @@ class TestErrorContract:
         finally:
             registry._plugins.pop("bug", None)
             registry._ordered = None
+            registry._by_first = None
             demangle.cache_clear()
 
     def test_a_broken_detect_cannot_take_the_library_down(self):

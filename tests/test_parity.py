@@ -34,6 +34,26 @@ LANGUAGES = sorted(demangle.languages())
 #: without saying anything after it.
 UNREADABLE = ["", "x", "not_a_symbol_at_all", "\x00", "￾￿", "?" * 40, "_Z", "$s", "@@@"]
 
+#: One readable name per scheme, from its own conformance corpus. Used to check that
+#: every style is accepted on a name the scheme actually reads rather than on one it
+#: hands back untouched.
+STYLE_SAMPLES = {
+    "ada": "yz__qrs",
+    "codewarrior": "__dt__6CActorFv",
+    "d": "_D5mypkg5mymod5Point4normMFZi",
+    "delphi": "@$beql$qrx5_GUIDt1",
+    "gnuv2": "AddAlignment__9ivTSolverUiP12ivInteractorP7ivTGlue",
+    "go": "example.com/corpus/v2%2e5.Closure",
+    "itanium": "_Z1fv",
+    "jni": "Java_java_lang_System_arraycopy__Ljava_lang_Object_2ILjava_lang_Object_2II",
+    "msvc": "?foo@@YAXI@Z",
+    "nim": "DefaultRandSeed__pureZrandom_13",
+    "objc": "._OBJC_CLASS_A_B209",
+    "pascal": "A52_$$_A52_DECODER_READ$PA52_DECODER$POINTER$LONGINT$$LONGINT",
+    "rust": "_RINvCsdEttCVZFADF_8features10apply_hrtbNCNvB2_8exercise0EB2_",
+    "swift": "$S18resilient_protocol21ResilientBaseProtocolTL",
+}
+
 #: The one intentional divergence, and the reason it is one.
 #:
 #: For every other scheme, "the answer equals the input" means the name was refused. Ada
@@ -106,9 +126,13 @@ class TestEverySchemeKeepsTheSameContract:
                 assert demangle.demangleb(payload, language=language) == payload
 
     def test_every_style_is_accepted(self, language, subtests):
+        # One name per scheme that the scheme actually reads. Demangling `_Z1fv`
+        # under every language only exercises Itanium: the rest hand it back
+        # untouched, so a style the scheme rejects would never be noticed.
+        sample = STYLE_SAMPLES[language]
         for style in demangle.styles():
             with subtests.test(style=style):
-                demangle.demangle("_Z1fv", language=language, style=style)
+                assert demangle.demangle(sample, language=language, style=style) != sample
 
 
 def test_the_bytes_path_answers_what_the_text_path_answers():

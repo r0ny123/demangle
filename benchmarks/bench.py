@@ -170,13 +170,15 @@ def benchmarks():
     # shapes per name.
     itanium = corpus_names("itanium-real-world.txt")
 
-    # Every corpus, not a couple of small ones. The earlier selection was 887 names --
-    # about 40KB of text and a few hundred KB of cache entries -- which fits in L2 on any
-    # machine this runs on. That flatters the whole measurement: it is the shape of a
-    # microbenchmark, not of a tool walking a symbol table, where the working set is tens
-    # of thousands of distinct names and nothing stays resident. Taking everything in the
-    # conformance directory gives ~14,000 names across all four schemes.
-    everything = corpus_names(
+    # A representative subset across four schemes, not a couple of small ones. The
+    # earlier selection was 887 names -- about 40KB of text and a few hundred KB of
+    # cache entries -- which fits in L2 on any machine this runs on. That flatters
+    # the whole measurement: it is the shape of a microbenchmark, not of a tool
+    # walking a symbol table, where the working set is tens of thousands of distinct
+    # names and nothing stays resident. These seven files give ~14,000 names; the
+    # conformance directory holds more, but widening this set means re-recording
+    # the baseline, so that is a deliberate change rather than a drive-by.
+    sampled = corpus_names(
         "itanium-real-world.txt",
         "itanium-libstdcxx.txt",
         "itanium-regressions.txt",
@@ -185,16 +187,16 @@ def benchmarks():
         "rust-toolchain.txt",
         "go-real-world.txt",
     )
-    negatives = [f"not_a_mangled_symbol_{index}" for index in range(len(everything))]
+    negatives = [f"not_a_mangled_symbol_{index}" for index in range(len(sampled))]
 
     def cold():
         demangle.cache_clear()
-        for name in everything:
+        for name in sampled:
             demangle.demangle(name)
 
     def warm():
         for _ in range(3):
-            for name in everything:
+            for name in sampled:
                 demangle.demangle(name)
 
     def negative():
@@ -225,8 +227,8 @@ def benchmarks():
         parsed.append(count)
 
     return parsed, [
-        ("cold", cold, len(everything)),
-        ("warm", warm, len(everything) * 3),
+        ("cold", cold, len(sampled)),
+        ("warm", warm, len(sampled) * 3),
         ("negative", negative, len(negatives)),
         ("structured", structured, len(itanium) * structured_passes),
     ]
@@ -338,7 +340,7 @@ def main():
     if arguments.check:
         if not BASELINE.exists():
             print("\nno baseline recorded; run with --save first")
-            return 0
+            return 1
         baseline = json.loads(BASELINE.read_text())
         structured = results.get("structured", {})
         # Two guards, and the first is the one that matters. `parsed` must equal the
@@ -385,7 +387,7 @@ def main():
 
         def over_tolerance(measured, name):
             if name not in baseline:
-                return False
+                return True
             key = figure(measured, name)
             if key not in baseline[name]:
                 # An older baseline carries only `normalised`. Fall back to it rather
@@ -393,6 +395,10 @@ def main():
                 key = "normalised"
             return measured[name][key] > baseline[name][key] * TOLERANCE
 
+        unknown = [name for name in results if name != "calibration" and name not in baseline]
+        if unknown:
+            print(f"\nno baseline for {', '.join(sorted(unknown))}; re-record it with --save")
+            return 1
         suspects = [name for name in results if name != "calibration" and over_tolerance(results, name)]
         if suspects:
             # Measure again before reporting. The normalised figures carry more spread on

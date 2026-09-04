@@ -38,6 +38,11 @@ def imports_of(path):
     `demangle.schemes.msvc` and can be compared on path segments. Comparing the raw
     `"..msvc"` on substrings let the most obvious cross-scheme import -- a top-level
     one -- walk straight through the rule meant to forbid it.
+
+    A `from` import also records the name behind the `import`, so
+    `from demangle.core import spelling` comes back as both `demangle.core` and
+    `demangle.core.spelling`. Without the second entry a rule watching for
+    `core.spelling` never sees that spelling of the import.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     package = ["demangle", *path.relative_to(SOURCE).parts[:-1]]
@@ -48,9 +53,12 @@ def imports_of(path):
         elif isinstance(node, ast.ImportFrom):
             if node.level:
                 base = package[: len(package) - node.level + 1]
-                found.append(".".join([*base, node.module] if node.module else base))
+                module = ".".join([*base, node.module] if node.module else base)
             else:
-                found.append(node.module or "")
+                module = node.module or ""
+            found.append(module)
+            if module:
+                found.extend(f"{module}.{alias.name}" for alias in node.names if alias.name != "*")
     return found
 
 
@@ -80,25 +88,53 @@ def python_files(subdirectory):
     return sorted((SOURCE / subdirectory).rglob("*.py"))
 
 
+def _is_top_level_import(path, name):
+    """Whether `name` is imported at the top level of `path`.
+
+    `core/style.py` may name scheme option objects inside a function body, where
+    the import stays lazy and cycle-free. A top-level import there would be a real
+    layering inversion, so the rule checks those and excuses only the lazy ones.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    package = ["demangle", *path.relative_to(SOURCE).parts[:-1]]
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            if any(alias.name == name or name.startswith(alias.name + ".") for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                base = package[: len(package) - node.level + 1]
+                module = ".".join([*base, node.module] if node.module else base)
+            else:
+                module = node.module or ""
+            candidates = [module, *(f"{module}.{a.name}" for a in node.names if a.name != "*")]
+            if name in candidates:
+                return True
+    return False
+
+
 class TestLayering:
     def test_core_never_imports_a_scheme(self):
         """`core` is the contract; a dependency on any scheme inverts the layering.
 
         The one exception is `style`, which names the built-in option objects inside a
-        function body so the import stays lazy and cycle-free.
+        function body so the import stays lazy and cycle-free. Only a top-level import
+        there counts; anything deeper is the lazy form the layering allows.
         """
         offenders = []
         for path in python_files("core"):
-            if path.name == "style.py":
-                continue
             for name in imports_of(path):
-                if "schemes" in name:
-                    offenders.append(f"{path.name} imports {name}")
+                if "schemes" not in name:
+                    continue
+                if path.name == "style.py" and not _is_top_level_import(path, name):
+                    continue
+                offenders.append(f"{path.name} imports {name}")
         assert offenders == []
 
     def test_schemes_never_import_each_other(self):
         """A scheme must be replaceable without disturbing its neighbours."""
-        schemes = {"itanium", "msvc", "rust"}
+        schemes = {path.name for path in (SOURCE / "schemes").iterdir() if (path / "__init__.py").is_file()}
+        assert len(schemes) > 1, "no schemes found; this test would prove nothing"
         offenders = []
         for scheme in schemes:
             for path in python_files(f"schemes/{scheme}"):
@@ -139,6 +175,18 @@ class TestLayering:
             if name.endswith("core.spelling")
         ]
         assert offenders == []
+
+    def test_the_spelling_rule_would_actually_catch_a_plain_core_import(self):
+        """`from demangle.core import spelling` names only `demangle.core` as a module."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            scheme = Path(directory) / "demangle" / "schemes" / "rust"
+            scheme.mkdir(parents=True)
+            offender = scheme / "leaky.py"
+            offender.write_text("from demangle.core import spelling\n")
+            resolved = imports_of_at(offender, Path(directory) / "demangle")
+        assert "demangle.core.spelling" in resolved
 
     def test_no_third_party_imports(self):
         """The dependency-free promise, checked rather than asserted in a README.
@@ -224,6 +272,7 @@ class TestPluginContract:
 
             registry._plugins.pop("toy", None)
             registry._ordered = None
+            registry._by_first = None
             demangle.cache_clear()
 
 
