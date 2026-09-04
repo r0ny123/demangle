@@ -624,7 +624,10 @@ class _Demangler:
         Only the storage class tells the two apart, and it comes after the whole name, so
         this walks a throwaway cursor to it and reports what it found.
         """
-        probe = _Demangler("?" + self.text[self.pos :])
+        probe = _Demangler("?" + self.text[self.pos :], options=self.options)
+        probe.max_depth = self.max_depth
+        probe.max_render = self.max_render
+        probe.depth = self.depth
         probe.nested = True
         try:
             probe.expect("?")
@@ -650,6 +653,8 @@ class _Demangler:
             # the "?" this name would open with was spent on the code that introduced it,
             # so it is read over a copy that has one
             inner = _Demangler("?" + self.text[self.pos :], options=options)
+        inner.max_depth = self.max_depth
+        inner.max_render = self.max_render
         inner.nested = True
         inner.name_backrefs = self.name_backrefs
         inner.arg_backrefs = self.arg_backrefs
@@ -947,6 +952,8 @@ class _Demangler:
         count = self.dimension()
         if count == 0:
             raise _Bail
+        if self.depth + count > self.max_depth:
+            raise _LimitHit("recursion depth", self.max_depth)
         # an extent of nothing is spelled with nothing: "$$BY0A@H" is "int[]"
         extents = [self.dimension() for _ in range(count)]
         self.array_element_depth += 1
