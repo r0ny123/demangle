@@ -486,6 +486,41 @@ class TestRefusesRatherThanGuesses:
                 assert demangle.demangle(mangled) == mangled
 
 
+class TestNumbersAsTheReferenceReadsThem:
+    """A run of digits is read into the reference's own number type, and what does not
+    fit it is what the reference does with it -- not `int()`'s 4,300-digit cap, which
+    raised a `ValueError` out of `demangle_strict`, nor `str()`'s, which raised one out
+    of the printer.
+    """
+
+    def test_a_number_the_new_mangling_cannot_hold_refuses_the_name(self):
+        """`demangleNatural` answers "no number" the moment the next digit would overflow
+        an `int`, leaving that digit unread, and no production takes a digit. So eleven
+        ones is refused, and so is a run past `int()`'s own cap -- where the cap used
+        to read `$sS<4301 ones>i` as `Swift.Int`, the digits taken for an absent repeat
+        count.
+        """
+        from demangle.core.errors import ParseError
+
+        for digits in (10, 11, 4301):
+            with pytest.raises(ParseError):
+                demangle.demangle_strict("$sS" + "1" * digits + "i", language="swift")
+        with pytest.raises(ParseError):
+            demangle.demangle_strict("$s" + "9" * 5000, language="swift")
+        assert demangle.demangle_strict("$sS1i", language="swift") == "Swift.Int"
+
+    def test_the_old_mangling_wraps_at_sixty_four_bits_as_the_reference_does(self):
+        """Pinned by the reference's own suite: `_Ttu4222222222222222222222222_rW_2T_2TJ_`
+        reads as the signature its low 64 bits count out. A closure's number is then
+        printed through `(int)`, and a negative one not at all.
+        """
+        read = lambda name: demangle.demangle_strict(name, language="swift")  # noqa: E731
+        assert read("_TF3fooU" + "9" * 25 + "_Si") == "closure #1241513985 : Swift.Int in foo"
+        assert read("_TF3fooU" + "9" * 5000 + "_Si") == "closure #1 : Swift.Int in foo"
+        assert read("_TF3fooU2147483646_Si") == "closure # : Swift.Int in foo"
+        assert read("_TF3fooU1_Si") == "closure #3 : Swift.Int in foo"
+
+
 class TestTheCursorNeverGoesBackwardsOverACharacterItDidNotRead:
     """`push_back` has to be the exact inverse of `next_char`, including at the end.
 

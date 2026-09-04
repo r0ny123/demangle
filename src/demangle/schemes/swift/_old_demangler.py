@@ -177,6 +177,10 @@ _BOUND_GENERIC_KINDS = {
 }
 
 
+#: `Node::IndexType`, the reference's number type: unsigned, 64 bits, and allowed to wrap.
+_UINT64_MASK = (1 << 64) - 1
+
+
 class OldDemangler:
     """The reference's `OldDemangler`. `None` means failure, as `nullptr` does there."""
 
@@ -196,15 +200,16 @@ class OldDemangler:
         if not ("0" <= char <= "9"):
             return None
         number = ord(char) - ord("0")
-        digits = 1
         while True:
             char = reader.peek()
             if not ("0" <= char <= "9"):
                 return number
-            digits += 1
-            if digits > 4300:
-                return None
-            number = 10 * number + (ord(char) - ord("0"))
+            # `Node::IndexType` is 64 bits unsigned and the reference lets it wrap -- and
+            # its own test suite pins that: `_Ttu4222222222222222222222222_rW_2T_2TJ_`
+            # reads as the generic signature its low 64 bits count out. A Python `int`
+            # would grow without bound instead, and `str()` of one past 4,300 digits
+            # raises, which is how this used to escape as a `ValueError`.
+            number = (10 * number + (ord(char) - ord("0"))) & _UINT64_MASK
             reader.next()
 
     def _index(self):
@@ -215,7 +220,8 @@ class OldDemangler:
         number = self._natural()
         if number is None or not reader.next_if("_"):
             return None
-        return number + 1
+        # `natural++`, in the same 64 bits.
+        return (number + 1) & _UINT64_MASK
 
     def _index_as_node(self, kind="Number"):
         found = self._index()
