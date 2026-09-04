@@ -199,6 +199,14 @@ class TestSafety:
         for mangled, _ in ROWS:
             assert isinstance(demangle.demangle(mangled), str)
 
+    @pytest.mark.parametrize("value", [".", "go:.", "type:.", "a/b.", ".foo"])
+    def test_an_empty_package_or_name_is_refused(self, value):
+        """`.` used to read as the empty string and `go:.` as `go:`: a dot dropped, not
+        a name read. Only a generated symbol may go without a package."""
+        with pytest.raises(DemanglingError):
+            parse_go_symbol(value)
+        assert demangle.demangle(value, language="go") == value
+
 
 class TestOutputIsAlwaysText:
     """A result `demangle()` returns must be a string a caller can write out.

@@ -67,6 +67,11 @@ class TestTheFormsClangWrites:
             ("_OBJC_InstanceMethods_Object", "instance method list for Object"),
             ("_OBJC_METH_VAR_NAME_12", "method variable name #12"),
             ("__start___objc_selectors", "start of the Objective-C selectors section"),
+            # `CodeGenFunction::EmitBlockLiteral` and `buildBlockDescriptor`.
+            ("__block_literal_global", "global block literal"),
+            ("__block_literal_global.1", "global block literal #1"),
+            ("__block_descriptor", "block descriptor"),
+            ("__block_descriptor_32_e5_v8?0l8", "block descriptor"),
         ],
     )
     def test_reading(self, mangled, expected):
@@ -174,6 +179,12 @@ class TestRegisteredAsALanguage:
     def test_naming_the_language_works(self):
         assert demangle.demangle("_i_NSString__length", language="objc") == "-[NSString length]"
         assert demangle.demangle("_i_NSString__length", language="objective-c") == "-[NSString length]"
+
+    def test_the_block_labels_are_claimed_unasked(self):
+        """`parse` read these; the detector's screen never mentioned them, so
+        auto-detection handed back unchanged what `language="objc"` read."""
+        assert demangle.demangle("__block_literal_global") == "global block literal"
+        assert demangle.demangle("__block_descriptor_32_e5_v8?0l8") == "block descriptor"
 
     def test_it_does_not_claim_another_scheme_s_names(self):
         assert demangle.detect("_ZNSt6vectorIiE9push_backERKi") == "itanium"
