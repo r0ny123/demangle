@@ -457,18 +457,14 @@ def test_gnu_shortfalls_are_only_the_known_reference_divergences():
     assert failing == GNU_DIVERGENCES
 
 
-@pytest.mark.parametrize(
-    "corpus",
-    [
-        "itanium-real-world.txt",
-        "msvc-llvm-corpus.txt",
-        "msvc-clang.txt",
-        "itanium-libstdcxx.txt",
-        "rust-real-world.txt",
-        "rust-toolchain.txt",
-        "objc-real-world.txt",
-    ],
-)
+def _every_corpus():
+    """Every conformance file, so a corpus added later is covered without an edit."""
+    names = {path.name for path in CONFORMANCE.glob("*.txt")}
+    names.update(path.name.removesuffix(".gz") for path in CONFORMANCE.glob("*.txt.gz"))
+    return sorted(names)
+
+
+@pytest.mark.parametrize("corpus", _every_corpus())
 def test_best_effort_never_raises_on_any_corpus_name(corpus):
     """Whatever the corpus holds, `demangle()` answers rather than raising."""
     for mangled, _ in load_corpus(corpus):
@@ -487,11 +483,6 @@ def test_llvm_undname_loses_a_vftable_base_path_and_we_do_not():
     # a base path element must change the answer, or the demangler is losing the element.
     family = ["??_7A@B@@6BC@D@@@", "??_7A@B@@6BC@D@@E@F@@@", "??_7A@B@@6BC@D@@E@F@@G@H@@@"]
     assert len({demangle.demangle(name) for name in family}) == len(family)
-
-
-def _every_corpus():
-    """Every conformance file, so a corpus added later is covered without an edit."""
-    return sorted(path.name for path in CONFORMANCE.glob("*.txt"))
 
 
 @pytest.mark.parametrize("style", demangle.styles())
