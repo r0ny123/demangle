@@ -2127,21 +2127,28 @@ def gnu_special(work, cur, declp):
             elif code == "t":
                 success = demangle_template(work, cur, declp, None, 1, 1)
             else:
+                n = None
                 if _isdigit(code):
                     n = consume_count(cur)
                     # A too-large count is a `.<digits>` static local marker rather than
                     # a length; declare victory rather than trying to read that many.
+                    # The reference's `break` leaves only the `switch`: the count is
+                    # dropped, the loop goes on, and whatever follows is read as the
+                    # next piece of the name -- `_vt.6i` is `i virtual table`. Leaving
+                    # the loop here left the `i` for the caller, which read it as a
+                    # parameter list and spelled ` virtual table(int)`.
                     if n > len(cur.rest()):
                         success = 1
-                        break
-                    if n == -1:
+                        n = None
+                    elif n == -1:
                         success = 0
                         break
                 else:
                     n = 0
                     while cur.i + n < len(s) and s[cur.i + n] not in CPLUS_MARKERS:
                         n += 1
-                declp.append(cur.take(n))
+                if n is not None:
+                    declp.append(cur.take(n))
 
             marker = _find_marker(s, cur.i)
             if success and (marker is None or marker == cur.i):

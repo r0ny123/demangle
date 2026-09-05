@@ -194,7 +194,15 @@ All notable changes to this project are recorded here. The format follows
   follows, and the bound had let the greedy reading fail, be put back, and the name
   read. One accept rule: `parseFunctionType` steps over a `v` wherever it stands among
   a function type's parameters, `int (*)(int)` for `PFiivE`, where `c++filt` and this
-  spell the `void` that is written. The remaining
+  spell the `void` that is written. Draws thirty-three to thirty-eight added two: a
+  pre-Itanium virtual table whose class count is larger than what remains, `_vt.6i`,
+  is `i virtual table` -- `gnu_special`'s `break` on a too-large count leaves only the
+  `switch`, and what follows is the next piece of the name -- where leaving the whole
+  loop here handed the `i` to the caller as a parameter list, ` virtual table(int)`;
+  and a D symbol argument whose last component is anonymous takes its type as the
+  symbol's own and spells nothing for it, as a whole symbol already did, where
+  `mangled_symbol` spelled `reserveNoSync(ulong)` for a `core.internal.gc` mutant the
+  reference spells `reserveNoSync`. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in

@@ -708,7 +708,15 @@ class _Parser:
         self._in_symbol_argument = True
         self._suffix_modifiers = True
         try:
-            return ".".join(self.qualified_name()) + self.trailing_type()
+            path = ".".join(self.qualified_name())
+            # As in `parse`: a type after an anonymous last component belongs to that
+            # component, which the reference does not spell, so neither is the type.
+            # `dlang_parse_qualified` steps past the `0` and `dlang_parse_mangle` reads
+            # the type as the symbol's own, printing nothing for it: `foo.bar` for
+            # `_D3foo3bar0FNbmZm`, as an argument just as at the top.
+            anonymous_last = self._last_component_anonymous
+            trailing = self.trailing_type()
+            return path if anonymous_last else path + trailing
         finally:
             self._suffix_modifiers = outer_suffix
             self._in_symbol_argument = outer

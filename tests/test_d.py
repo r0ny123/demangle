@@ -1200,3 +1200,24 @@ class TestATemplateBodyIsReadAgainstTheWholeName:
 
     def test_a_length_that_does_not_match_still_refuses(self):
         assert demangle.demangle("_D8demangle12__T4testTaZv", language="d") == "_D8demangle12__T4testTaZv"
+
+
+class TestAnAnonymousLastComponentInsideAnArgument:
+    """The type after an anonymous last component belongs to that component, which the
+    reference does not spell, so neither is the type: `dlang_parse_qualified` steps past
+    the `0` and `dlang_parse_mangle` reads the type as the symbol's own and prints
+    nothing for it. `parse` knew this for a whole symbol -- `foo.bar` for
+    `_D3foo3bar0FNbmZm` -- and `mangled_symbol` did not, so the same symbol as a
+    template argument spelled `foo.bar(ulong)`. A mutant of a `core.internal.gc`
+    symbol, `tools/mutate.py --scheme d --seed 38`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D8demangle__T4testS_D3foo3bar0FNbmZmZv", "demangle.test!(foo.bar)"),
+            ("_D8demangle__T4testS_D3foo3barFNbmZmZv", "demangle.test!(foo.bar(ulong))"),
+            ("_D3foo3bar0FNbmZm", "foo.bar"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected

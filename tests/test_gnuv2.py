@@ -445,3 +445,27 @@ class TestWhatAskingTheReferenceAboutRefusalsFound:
         assert demangle.demangle(mangled, language="gnuv2") == mangled
         assert demangle.demangle(mangled[:-1], language="gnuv2").startswith("foo<")
         assert demangle.demangle(mangled + "v", language="gnuv2").startswith("void foo<")
+
+
+class TestAVirtualTableWithACountTooLarge:
+    """`gnu_special` reads a virtual table's class as a run of counted pieces, and a
+    count larger than what remains is a `.<digits>` static-local marker to it: the
+    reference's `break` leaves only the `switch`, the count is dropped, and what follows
+    is read as the next piece, so `_vt.6i` is `i virtual table`. Leaving the whole loop
+    here left the `i` for the caller, which read it as a parameter list and spelled
+    ` virtual table(int)` -- a blank class and a signature a table does not have.
+    `tools/mutate.py --seed 35`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_vt.6i", "i virtual table"),
+            ("_vt.7foo", "foo virtual table"),
+            ("_vt.1i", "i virtual table"),
+            ("_vt.3foo", "foo virtual table"),
+            ("_vt.3foo1i", "fooi virtual table"),
+            ("__vt_3foo", "foo virtual table"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, language="gnuv2") == expected
