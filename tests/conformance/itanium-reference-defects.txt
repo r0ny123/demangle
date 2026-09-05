@@ -5,7 +5,7 @@
 # a source in tools/corpus_sources/reference_defects/: it is compiled with the compiler
 # named on the entry, the symbol is read out of the object file with `nm`, and the
 # spelling is what that source says the symbol's type is. Two more come from the general
-# corpus sources named on them, and four are symbols out of shipped libraries, where the
+# corpus sources named on them, and five are symbols out of shipped libraries, where the
 # declaration is the library's own header or its published signature and the reading is
 # spelled out in the entry's comment. That is the only ground truth a demangler has, and
 # it is what settles a split between references.
@@ -147,3 +147,16 @@ _Z9half_moreIiEv1IIXdvplstT_Li1ELi2EEE	void half_more<int>(I<(sizeof (int) + 1) 
 # prints the closure, and so does this. The same defect as member_template_lambda.cpp,
 # in a name every program that formats a string carries.
 _ZNSt16basic_format_argISt20basic_format_contextINSt8__format10_Sink_iterIcEEcEE8_M_visitIZNS1_19_Formatting_scannerIS3_cE13_M_format_argEmEUlRT_E_EEDcOS9_NS1_6_Arg_tE	decltype(auto) std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char>>::_M_visit<std::__format::_Formatting_scanner<std::__format::_Sink_iter<char>, char>::_M_format_arg(unsigned long)::'lambda'(auto&)>(std::__format::_Formatting_scanner<std::__format::_Sink_iter<char>, char>::_M_format_arg(unsigned long)::'lambda'(auto&)&&, std::__format::_Arg_t)
+#
+# libstdc++ 13's <format> again, compiled by clang++ 18.1.3 this time, from any program
+# that formats a double: `template <class C, class F> static void
+# __formatter_fp<char>::_S_resize_and_overwrite(basic_string<C>&, size_t, F)`,
+# instantiated over the closure `format<double, _Sink_iter<char>>` declares. The
+# closure is a local entity, its enclosing function's signature contributes a `T_`
+# entry to the table -- `double`, the `T_` of `format` -- and the parameter
+# `basic_string<C>&` is then written as `SA_`, the same entry, which under
+# `_S_resize_and_overwrite`'s own arguments is `char`. llvm-cxxfilt 18.1.3 and 20.1.2
+# print `basic_string<double, char_traits<double>, allocator<double>>&`, a type
+# libstdc++ does not instantiate, and the closure parameter `S7_` as `_Sink_iter<char>`.
+# GNU c++filt 2.42 prints the declaration, and so does this.
+_ZNSt8__format14__formatter_fpIcE23_S_resize_and_overwriteIcZNKS1_6formatIdNS_10_Sink_iterIcEEEENSt20basic_format_contextIT0_cE8iteratorET_RS8_EUlPcmE_EEvRNSt7__cxx1112basic_stringISA_St11char_traitsISA_ESaISA_EEEmS7_	void std::__format::__formatter_fp<char>::_S_resize_and_overwrite<char, std::basic_format_context<std::__format::_Sink_iter<char>, char>::iterator std::__format::__formatter_fp<char>::format<double, std::__format::_Sink_iter<char>>(double, std::basic_format_context<std::__format::_Sink_iter<char>, char>&) const::'lambda'(char*, unsigned long)>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>&, unsigned long, std::basic_format_context<std::__format::_Sink_iter<char>, char>::iterator std::__format::__formatter_fp<char>::format<double, std::__format::_Sink_iter<char>>(double, std::basic_format_context<std::__format::_Sink_iter<char>, char>&) const::'lambda'(char*, unsigned long))

@@ -318,7 +318,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
-| Names a reference reads wrongly ✱ | the declaration | **17 / 17** |
+| Names a reference reads wrongly ✱ | the declaration | **18 / 18** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |

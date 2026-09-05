@@ -101,7 +101,19 @@ All notable changes to this project are recorded here. The format follows
   both styles, a `Dp` expansion over an empty pack inside a *type's* argument list was
   dropped only when written `J E`: `1AIDpT_T0_E` over an empty `T_` spelled `A<, int>`
   where llvm-cxxfilt prints `A<int>`.
-- **One more reference defect, from libstdc++'s `<format>`.** g++ 13 writes
+- **An argument pack written `I <template-arg>* E`.** The form g++ wrote for a pack
+  under `-fabi-version` 2 through 5, the default of GCC 3.4 through 4.9, and still
+  writes as a compatibility alias beside the `J` form when asked for those versions:
+  `_Z1fIIicEEvDpT_` beside `_Z1fIJicEEvDpT_`. Nothing else that stands where an
+  argument does begins with `I`; libiberty reads the two alike, `llvm-cxxfilt` 18
+  and 20 refuse the older, and this refused it too. Binaries built by those
+  compilers are still in service, and now read.
+- **Two more reference defects, from libstdc++'s `<format>`.** Compiled by Clang 18
+  from any program that formats a double, `__formatter_fp::_S_resize_and_overwrite`'s
+  `basic_string<C>&` parameter is a back reference to the `T_` entry the enclosing
+  `format<double>` signature made, which is `char` under the function's own
+  arguments; llvm-cxxfilt 18 and 20 print `basic_string<double>&`, a type libstdc++
+  does not instantiate. And g++ 13 writes
   `basic_format_arg::_M_visit`'s `Visitor&&` parameter as a back reference to the
   closure type it is instantiated over, and llvm-cxxfilt 18 and 20 resolve it to the
   closure's own `auto`, printing a parameter `auto&&` that no declaration has -- the

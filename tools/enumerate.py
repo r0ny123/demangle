@@ -308,6 +308,10 @@ ACCEPTED = {
         # Or the old form of `sr` that g++ still writes and `llvm-cxxfilt` refuses,
         # which `c++filt` reads as this does. See `_OLD_SR_FORM`.
         or (first is None and _OLD_SR_FORM.search(name) is not None)
+        # Or an argument pack written `I <template-arg>* E`, g++'s form under
+        # `-fabi-version` 2 through 5, which `c++filt` reads and `llvm-cxxfilt` refuses.
+        # See `_OLD_PACK`.
+        or (first is None and _OLD_PACK.search(name) is not None)
         # Or a braced initialiser after a new-expression's type, which both compilers
         # write and `llvm-cxxfilt` refuses. See `_BRACED_NEW`.
         or (first is None and _BRACED_NEW.search(name) is not None)
@@ -634,6 +638,13 @@ _AHEAD_PATTERNS = (
 #: refuse all three; libiberty reads them, the plain one by reading the whole name
 #: again when the modern grammar fails, and so does this. See the parser.
 _OLD_SR_FORM = re.compile(r"sr(?:N?St|N?\d)")
+
+#: `I <template-arg>* E` where an argument stands: an argument pack in the form g++ wrote
+#: under `-fabi-version` 2 through 5 -- the default of GCC 3.4 through 4.9 -- and still
+#: writes as a compatibility alias beside the `J` form when asked for those versions.
+#: libiberty reads it; `llvm-cxxfilt` 18 and 20 refuse the name. Two `I`s in a row is
+#: the shape, since nothing else that can follow an opening `I` begins with one.
+_OLD_PACK = re.compile(r"II")
 
 #: `nw <expression>* _ <type> il <expression>* E`: a new-expression initialised with
 #: braces, `new T{t}`, which g++ 13 and Clang 18 both write this way. The ABI grammar has

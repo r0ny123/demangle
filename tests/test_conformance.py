@@ -57,8 +57,10 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #: llvm-cxxfilt 18 and 20 print `new T()` as `new T`, and `(sizeof(T) + 1) / 2` as
 #: `sizeof (int) + 1 / 2`, and each pair is two different expressions. The seventeenth
 #: is the closure defect again, in libstdc++ 13's `<format>`: a name every program that
-#: calls `std::format` carries.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 17, 17
+#: calls `std::format` carries. The eighteenth is the same header compiled by Clang,
+#: where the entry resolves to `double` and the parameter comes out
+#: `basic_string<double>&`, a type libstdc++ does not instantiate.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 18, 18
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are

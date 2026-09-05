@@ -613,3 +613,35 @@ class TestAPointerToAMemberOfArrayType:
     def test_both_styles(self, mangled, llvm, gnu):
         assert demangle.demangle_strict(mangled) == llvm
         assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+
+class TestAnArgumentPackWrittenWithI:
+    """`I <template-arg>* E` where an argument stands is an argument pack: the form g++
+    wrote under `-fabi-version` 2 through 5, the default of GCC 3.4 through 4.9, and
+    still writes as a compatibility alias beside the `J` form when asked for those
+    versions -- `_Z1fIIicEEvDpT_` and `_Z1fIJicEEvDpT_` both, for `f(1, 'c')` over
+    `template <class... T> void f(T...)`. libiberty reads `I` and `J` alike;
+    `llvm-cxxfilt` 18 and 20 refuse the older form. Every spelling here is `c++filt`
+    2.42's under the gnu style, and the `J` form's under the llvm style."""
+
+    @pytest.mark.parametrize(
+        "mangled, llvm, gnu",
+        [
+            ("_Z1fIIicEEvDpT_", "void f<int, char>(int, char)", "void f<int, char>(int, char)"),
+            ("_Z1fIIiEEvDpT_", "void f<int>(int)", "void f<int>(int)"),
+            ("_Z1fIIEEvv", "void f<>()", "void f<>()"),
+            ("_Z1fIiIicEEvT_DpT0_", "void f<int, int, char>(int, int, char)", "void f<int, int, char>(int, int, char)"),
+            ("_Z1fIIicEEvPFvDpT_E", "void f<int, char>(void (*)(int, char))", "void f<int, char>(void (*)(int, char))"),
+            (
+                "_Z2f1IIicEEDTcl1gspfp_EEDpT_",
+                "decltype(g(fp...)) f1<int, char>(int, char)",
+                "decltype (g({parm#1}...)) f1<int, char>(int, char)",
+            ),
+        ],
+    )
+    def test_both_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled) == llvm
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+    def test_the_j_form_reads_the_same(self):
+        assert demangle.demangle_strict("_Z1fIJicEEvDpT_") == demangle.demangle_strict("_Z1fIIicEEvDpT_")

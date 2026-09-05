@@ -3198,6 +3198,13 @@ class ItaniumParser:
         <template-arg> ::= <type> | X <expression> E | <expr-primary> | J <template-arg>* E
         ```
 
+        An argument pack is also read from `I <template-arg>* E`: the form g++ wrote for
+        one under `-fabi-version` 2 through 5, the default of GCC 3.4 through 4.9, and
+        still writes as a compatibility alias beside the `J` form when asked for those
+        versions. Nothing else can stand where an argument does and begin with `I`, so
+        there is nothing to tell it from; libiberty's `d_template_arg` reads `I` and
+        `J` alike, and `llvm-cxxfilt` refuses the older one.
+
         Returns `(handle, is_empty_pack)`. The handle is None for a
         <template-param-decl>, which declares a parameter rather than supplying one.
 
@@ -3279,7 +3286,7 @@ class ItaniumParser:
         if char == "L":
             return builder.raw(self.expr_primary()), False
 
-        if char == "J":
+        if char in ("J", "I"):
             reader.take()
             members = []
             while True:
