@@ -1208,3 +1208,35 @@ class TestOneElementQualifierAtATime(unittest.TestCase):
 
     def test_one_still_reads(self):
         self.assertEqual(demangle_msvc_symbol("?f@@YAXAEAY111$$CBH@Z"), "void __cdecl f(int const (&)[2][2])")
+
+
+class TestAPointerToAMemberOfArrayType(unittest.TestCase):
+    """`PEQA@@Y03H` is a pointer to a member of `A` whose type is `int[4]`, and the
+    declarator an array brackets is the member pointer's: `int (A::*)[4]`. The array's
+    renderer bracketed a declarator it could see opened with `*` or `&`, and `A::*`
+    opens with the owner's name, so this wrote `int A::*[4]` -- an array of pointers to
+    member, a different type. Every spelling here is `llvm-undname` 18's; the first was
+    compiled by Clang 18 for the MSVC target from `int (A::*)[sizeof(T)]`."""
+
+    CASES = (
+        ("??$a8@H@@YAXPEQA@@Y03H@Z", "void __cdecl a8<int>(int (A::*)[4])"),
+        ("?f@@YAXPEQA@@Y03H@Z", "void __cdecl f(int (A::*)[4])"),
+        ("?f@@YAXPEQA@@Y03Y02H@Z", "void __cdecl f(int (A::*)[4][3])"),
+        ("?f@@YAXQEQA@@Y03H@Z", "void __cdecl f(int (A::*const)[4])"),
+        ("?f@@YAXPEQA@@Y03PEAH@Z", "void __cdecl f(int *(A::*)[4])"),
+        ("?f@@YAXPEAPEQA@@Y03H@Z", "void __cdecl f(int (A::**)[4])"),
+        ("?f@@YAXAEAPEQA@@Y03H@Z", "void __cdecl f(int (A::*&)[4])"),
+        ("?f@@YAXPEQA@@Y03P6AHH@Z@Z", "void __cdecl f(int (__cdecl *(A::*)[4])(int))"),
+        ("?f@@YAXPEQA@@Y03UB@@@Z", "void __cdecl f(struct B (A::*)[4])"),
+        ("?f@@YAXPEQA@@Y03P8A@@EAAHXZ@Z", "void __cdecl f(int (__cdecl A::*(A::*)[4])(void))"),
+        # A pointer and a reference to an array, and a pointer to a member that is not
+        # an array, are unchanged.
+        ("?f@@YAXPEAY03H@Z", "void __cdecl f(int (*)[4])"),
+        ("?f@@YAXAEAY03H@Z", "void __cdecl f(int (&)[4])"),
+        ("?f@@YAXPEQA@@PEAH@Z", "void __cdecl f(int *A::*)"),
+    )
+
+    def test_the_member_pointer_is_bracketed(self):
+        for mangled, expected in self.CASES:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)

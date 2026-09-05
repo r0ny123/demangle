@@ -163,7 +163,15 @@ class Declaration(_Spelled):
         return (self.declarator, self.type)
 
 
-def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OPTIONS, member_cv="", as_pointee=False):
+def render(
+    node,
+    declarator="",
+    declarator_is_function=False,
+    options=DEFAULT_OPTIONS,
+    member_cv="",
+    as_pointee=False,
+    sigil=False,
+):
     """Spell a type around a declarator, the way C nests one inside the other.
 
     A pointer or array binds to the declarator built so far, and a name therefore ends up
@@ -173,6 +181,10 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
     own function type and stops there: a parameter, a template argument and a variable's
     pointee are all rendered with the defaults, which is what the reference does and why
     `--no-calling-convention` leaves `int (__cdecl *)(int)` alone in a parameter list.
+
+    `sigil` says the declarator opens with an indirection's, which an array has to
+    bracket and cannot always see in the text: `*` and `&` it can, `A::*` it cannot,
+    since a qualified data name opens the same way. `int (A::*)[4]`, not `int A::*[4]`.
     """
     kind = node.kind
     if kind == "raw":
@@ -193,9 +205,9 @@ def render(node, declarator="", declarator_is_function=False, options=DEFAULT_OP
         # Whatever this points at is being written as a *pointee*, which is what decides
         # where a function's calling convention goes. Said here, where it is known,
         # rather than guessed from the declarator's text further down.
-        return render(node.inner, token + separator + declarator, options=options, as_pointee=True)
+        return render(node.inner, token + separator + declarator, options=options, as_pointee=True, sigil=True)
     if kind == "array":
-        if declarator.startswith(("*", "&")):
+        if sigil or declarator.startswith(("*", "&")):
             declarator = f"({declarator})"
         return render(node.inner, f"{declarator}[{node.dimension}]", options=options)
     if kind == "declaration":

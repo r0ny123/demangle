@@ -90,6 +90,12 @@ All notable changes to this project are recorded here. The format follows
   compiler's name right. A new option, `gnu_unresolved_scope_substitution`, on in the
   gnu style, counts as g++ and `c++filt` do; the default counts as the ABI, Clang and
   `llvm-cxxfilt` do.
+- **MSVC: a pointer to a member whose type is an array.** `PEQA@@Y03H` is a pointer to
+  a member of `A` of type `int[4]`, `int (A::*)[4]`; this wrote `int A::*[4]`, an array
+  of pointers to member, because the array's renderer bracketed a declarator it could
+  see opened with `*` or `&` and `A::*` opens with the owner's name. Compiled by Clang
+  18 for the MSVC target from `int (A::*)[sizeof(T)]`, and read by `llvm-undname` as
+  it is now read here.
 - **A `>` inside a template argument list, and four more of `llvm-cxxfilt`'s
   brackets.** `BinaryExpr::printLeft` wraps a `>` or `>>` that stands inside an
   argument list with no bracket yet opened round it, so it cannot be read as the end
