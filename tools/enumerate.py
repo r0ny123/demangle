@@ -302,6 +302,11 @@ ACCEPTED = {
         # Or qualifiers before a function type out of order or repeated, which every
         # implementation spells its own way. See `_MISORDERED_FUNCTION_QUALIFIERS`.
         or (first is not None and _MISORDERED_FUNCTION_QUALIFIERS.search(name) is not None)
+        # Or a `v` among a function *type*'s parameters, which `parseFunctionType`
+        # steps over wherever it stands -- `PFiivE` is `int (*)(int)` to it -- where
+        # `c++filt` and this spell the `void` that is written. No compiler writes one
+        # anywhere but alone.
+        or _llvm_skips_a_void_parameter(ours, first)
         # Or a name neither tool read whole, because it splits its input on a space, a
         # bracket or a sign before demangling. See `_CLI_SPLITS`.
         or (first is None and second[0] is None and _CLI_SPLITS.search(name) is not None)
@@ -610,6 +615,11 @@ _MEMBER_POINTER_LETTERS = re.compile(r"[PQRS][EFGHI]*([QRST])[A-Za-z0-9_$@?]*?@@
 
 def _strip_qualifiers(text):
     return re.sub(r"\b(?:const|volatile) ", "", text).replace(" ", "")
+
+
+def _llvm_skips_a_void_parameter(ours, first):
+    """Whether `first` is `ours` with a `void` parameter dropped from a list."""
+    return first is not None and first != ours and re.sub(r"\bvoid, |, void\b", "", ours) == first
 
 
 def _undname_keeps_one_member_pointer_qualifier(name, ours, first):

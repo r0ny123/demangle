@@ -1161,3 +1161,42 @@ class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
             demangle.demangle("_D8demangle__T4testS_D6symbol3foo3bariZv", language="d")
             == "demangle.test!(symbol.foo.bar)"
         )
+
+
+class TestATemplateBodyIsReadAgainstTheWholeName:
+    """`dlang_parse_template` reads a length-prefixed template body against the whole
+    of what remains and compares what it consumed with the length afterwards, refusing
+    the name on a mismatch. Bounding the body first read a mutant of
+    `demangle.fn!(sym, val("null"))` where the reference refuses it: inside the body,
+    `sym` is followed by a `V` that opens a function type whose parameter list happens
+    to run to a `Z` far past the body -- `56` and then fifty-six characters -- and the
+    reference reads that greedily, as it reads any scope inside a type, then finds the
+    `v` after it is no template argument. Found with an instrumented build of
+    libiberty's own source; `tools/mutate.py --seed 28`."""
+
+    def test_the_greedy_reading_runs_past_the_body_and_the_name_is_refused(self):
+        mangled = "_D8demangle32__T2fnTS3symVS3valS1a4_6e756c6cZ3fun13__T8positionZ13__T8confusesZ8demangle4testMOxFZv"
+        assert demangle.demangle(mangled, language="d") == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # One character more after the body and the digits no longer line up: the
+            # greedy reading fails, is put back, and the name reads.
+            (
+                "_D8demangle32__T2fnTS3symVS3valS1a4_6e756c6cZ3fun13__T8positionZ13__T8confusesZ9demangle24testMOxFZv",
+                'demangle.fn!(sym, val("null")).fun.position!().confuses!().demangle2.test() shared const',
+            ),
+            (
+                "_D8demangle32__T2fnTS3symVS3valS1a4_6e756c6cZ3fun13__T8positionZ13__T8confusesZ8demangleFDFxaZvZv",
+                'demangle.fn!(sym, val("null")).fun.position!().confuses!().demangle(void(const(char)) delegate)',
+            ),
+            ("_D8demangle11__T4testTaZv", "demangle.test!(char)"),
+            ("_D4main3__TFZv", "main.__T()"),
+        ],
+    )
+    def test_the_rest_is_unchanged(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_length_that_does_not_match_still_refuses(self):
+        assert demangle.demangle("_D8demangle12__T4testTaZv", language="d") == "_D8demangle12__T4testTaZv"

@@ -561,8 +561,15 @@ class _Parser:
         # `demangle.test!(char)`, and this is the largest single group of disagreements
         # with libiberty's corpus.
         #
-        # Bounded by the length prefix, so a malformed body cannot read past its own
-        # identifier: the cursor is put back and the raw text used if it does not parse.
+        # Not bounded by the length prefix while it is read: `dlang_parse_template`
+        # reads the body against the whole of what remains and compares what it
+        # consumed with the length afterwards, refusing the name on a mismatch. Bounding
+        # it first read a mutant of `demangle.fn!(sym, val("null"))` where the reference
+        # refuses it: inside the body, `sym` is followed by a `V` that opens a function
+        # type whose parameter list happens to run to a `Z` far past the body, and the
+        # reference reads that greedily, as it reads any scope inside a type, and then
+        # finds the `v` after it is no template argument. Under the bound the greedy
+        # reading failed at the body's end, was put back, and the name read.
         text = reader.text[start : start + length]
         # Five is the shortest a template instance can be -- `__T`, a one-digit length,
         # a one-character name, and the closing `Z` make six, and `dlang_identifier`
@@ -570,25 +577,14 @@ class _Parser:
         # reference reads `_D4main3__TFZv` as `main.__T()`, and trying the template
         # grammar on it first refused the name.
         if text.startswith(("__T", "__U")) and length >= 5:
-            saved, saved_end = reader.pos, reader.end
-            reader.end = start + length
-            try:
-                spelled = self.template_instance()
-                if reader.pos == start + length:
-                    reader.end = saved_end
-                    reader.pos = start + length
-                    return spelled
-            except _Exhausted:
-                raise
-            except DemangleFailure:
-                pass
-            finally:
-                reader.end = saved_end
-            reader.pos = saved
-            # A body that opens `__T` and does not parse is a malformed template, not an
-            # identifier that happens to look like one: the reference refuses the whole
-            # name rather than printing the mangling back inside a path.
-            raise DemangleFailure("malformed template instance")
+            spelled = self.template_instance()
+            if reader.pos != start + length:
+                # A body that opens `__T` and does not parse to exactly its length is a
+                # malformed template, not an identifier that happens to look like one:
+                # the reference refuses the whole name rather than printing the
+                # mangling back inside a path.
+                raise DemangleFailure("malformed template instance")
+            return spelled
         reader.pos = start + length
         return text
 

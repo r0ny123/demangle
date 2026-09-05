@@ -185,7 +185,16 @@ All notable changes to this project are recorded here. The format follows
   symbol name after the prefix at all, so `S_DaZv` is refused where it spelled an empty
   argument. One accept rule: qualifiers before a function type out of the ABI's order
   or repeated, `KV` and `VKK`, which no compiler writes and the three implementations
-  spell three ways. The remaining
+  spell three ways. Draws twenty-seven to thirty added one, found with an instrumented
+  build of libiberty's own source: a length-prefixed D template body is read against
+  the whole of what remains and its length checked afterwards, as `dlang_parse_template`
+  does, where this bounded the body first -- on a mutant of `demangle.fn!(sym,
+  val("null"))` the reference reads `sym` greedily as a nested function whose parameter
+  list runs fifty-six characters past the body, then refuses the name at the `v` that
+  follows, and the bound had let the greedy reading fail, be put back, and the name
+  read. One accept rule: `parseFunctionType` steps over a `v` wherever it stands among
+  a function type's parameters, `int (*)(int)` for `PFiivE`, where `c++filt` and this
+  spell the `void` that is written. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
