@@ -965,7 +965,23 @@ class _Parser:
                     # read a target inside a mutated name's digits as anonymous and went
                     # on, spelling `..length` where the reference refuses the name.
                     reader.pos += 1
-                resolved = self.symbol_name()
+                if reader.peek() == "0":
+                    resolved = self.symbol_name()
+                else:
+                    # `dlang_symbol_backref` is `dlang_number` and then `dlang_lname` --
+                    # a length and that many characters, spelled as they stand, with
+                    # only the constructor and destructor renames. A target whose body
+                    # happens to be a template instance, `13__T4testThTuZ`, is the
+                    # identifier `__T4testThTuZ` to it, where `symbol_name` read the
+                    # template and spelled `test!(ubyte, wchar)` twice over. No
+                    # compiler points a back reference at one; the reference's reading
+                    # is the one followed.
+                    length = reader.number()
+                    start = reader.pos
+                    if start + length > reader.end:
+                        raise DemangleFailure("identifier runs past the end of the name")
+                    reader.pos = start + length
+                    resolved = self._spelled_component(reader.text[start : start + length])
             finally:
                 reader.depth -= 1
         finally:

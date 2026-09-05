@@ -1339,24 +1339,13 @@ class ItaniumParser:
                 self._prefix_bare = None
                 return False, module
 
-            if char == "Q":
-                # A C++20 requires-clause, `Q <constraint-expression>`. It constrains the
-                # template but is not part of its name, and neither reference demangler
-                # prints it -- so it is parsed for its side effects on the substitution
-                # table and otherwise discarded. Newer than the grammar snapshot in
-                # docs/specs/.
-                reader.take()
-                outer_constraint = self._in_constraint
-                outer_naming = self._naming
-                self._in_constraint = True
-                self._naming = False
-                try:
-                    self.expression()
-                finally:
-                    self._in_constraint = outer_constraint
-                    self._naming = outer_naming
-                    self._prefix_bare = None
-                return False, module
+            # A requires-clause has two places in the grammar, an argument list's
+            # `I ... Q <constraint> E` and an encoding's, after the parameters; a
+            # <nested-name> has none. This once read one between two components and
+            # threw it away, so `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE` came back
+            # `llvm::(anonymous namespace)::U` with the clause gone, for a name both
+            # references refuse. `Q` now falls through to `unqualified_name`, which
+            # has no reading for it.
 
         component = self.unqualified_name(scope=parts, module=module)
         parts.append(component)
@@ -3071,8 +3060,8 @@ class ItaniumParser:
                 finally:
                     self._depth = depth - 1
                 if argument is None:
-                    # A <template-param-decl>: it declares a parameter rather than
-                    # supplying an argument, and neither prints nor occupies a slot.
+                    # A <template-param-decl> or a requires-clause: neither prints nor
+                    # occupies a slot.
                     continue
                 trailing_empty_pack = is_empty_pack
                 if not is_empty_pack:
@@ -3111,7 +3100,13 @@ class ItaniumParser:
         char = ahead[:1]
 
         if ahead in _PARAMETER_DECLARATIONS:
+            # A declaration qualifies the argument after it: `parseTemplateArg` reads
+            # the declaration and then an argument as one `TemplateParamQualifiedArg`,
+            # so a list ending on one, `ITyE`, is refused by `llvm-cxxfilt` where this
+            # read `unary<>`. The argument itself is read on the next turn of the loop.
             self.template_param_decl()
+            if reader.peek() == "E":
+                raise ParseError(self._mangled, reader.pos, "a template parameter declaration with no argument")
             return None, False
 
         if char == "Q":

@@ -1247,3 +1247,47 @@ class TestAnObjectiveCMethodAsALocalScope:
                 [tool, "--no-strip-underscore"], input=self.LOCAL_SCOPE + "\n", capture_output=True, text=True
             ).stdout.strip()
             assert answer == self.LOCAL_SCOPE, f"{tool} now reads it; the accept rule needs re-examining"
+
+
+class TestADeclarationInsideAnArgumentListQualifiesAnArgument:
+    """`<template-arg> ::= <template-param-decl> <template-arg>`: `parseTemplateArg`
+    reads the declaration and then an argument as one `TemplateParamQualifiedArg`. A
+    list ending on the declaration, `ITyE`, is refused by `llvm-cxxfilt` 18 and 20 where
+    this read `unary<>` -- and `Str<>` for a `cv` inside a decltype. `tools/mutate.py
+    --seed 20`."""
+
+    @pytest.mark.parametrize(
+        "mangled", ["_Z1fIJifcEEvDp5unaryITyE", "_Z1fIcEvDTcv3StrITyELA6_KcEE", "_Z1f5unaryITk4TrueE"]
+    )
+    def test_a_list_ending_on_a_declaration_is_refused(self, mangled):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [("_Z1f5unaryITyiE", "f(unary<int>)"), ("_Z1f5unaryITk4TrueiE", "f(unary<int>)")],
+    )
+    def test_a_qualified_argument_still_reads(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+
+class TestARequiresClauseHasNoPlaceInsideANestedName:
+    """The grammar puts a requires-clause in two places: an argument list's
+    `I ... Q <constraint> E` and an encoding's, after the parameters. A <nested-name>
+    has none, and `llvm-cxxfilt` refuses `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE`
+    where this read the clause between two components, threw it away, and answered
+    `llvm::(anonymous namespace)::U`. `tools/mutate.py --seed 20`."""
+
+    def test_the_clause_between_two_components_is_refused(self):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict("_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE", language="itanium")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZN5test21jIvQ4TrueITL0__EEEvz", "void test2::j<void>(...)"),
+            ("_ZN5test21hIvEEvzQ4TrueITL0__E", "void test2::h<void>(...) requires True<TL0_>"),
+        ],
+    )
+    def test_the_two_places_it_belongs_still_read(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected

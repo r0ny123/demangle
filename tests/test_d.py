@@ -1084,3 +1084,30 @@ class TestABackReferenceIntoADigitRun:
 
     def test_a_lone_zero_is_still_the_empty_identifier(self):
         assert demangle.demangle("_D1a0Qb1ci", language="d") == "a..c"
+
+
+class TestABackReferenceReadsAPlainIdentifier:
+    """`dlang_symbol_backref` is `dlang_number` and then `dlang_lname`: a length and
+    that many characters spelled as they stand, with only the constructor and
+    destructor renames. A target whose body happens to be a template instance,
+    `13__T4testThTuZ`, is the identifier `__T4testThTuZ` to it, where `symbol_name`
+    read the template and spelled `test!(ubyte, wchar)` twice over. No compiler points
+    a back reference at one. `tools/mutate.py --seed 21`."""
+
+    def test_a_template_instance_body_is_spelled_as_it_stands(self):
+        assert (
+            demangle.demangle("_D8demangle13__T4testThTuZQpFNaNbNiNfwZh", language="d")
+            == "demangle.test!(ubyte, wchar).__T4testThTuZ(dchar)"
+        )
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D3std3foo__TQhTiZQmv", "std.foo.foo!(int).foo"),
+            ("_D3foo6__ctorFSQjZv", "foo.this(this)"),
+            ("_D3foo6__dtorFSQjZv", "foo.~this(~this)"),
+            ("_D1a0Qb1ci", "a..c"),
+        ],
+    )
+    def test_the_rest_is_unchanged(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected

@@ -594,7 +594,7 @@ _CROSS_SCOPE_BACK_REFERENCE = re.compile(r"Z\d+\w*?I[^Z]*?E[^Z]*?Z[^Z]*?S\d*_")
 
 #: `P`, extension qualifiers, a member qualifier letter (`Q`/`R`/`S`/`T`), the class,
 #: then the pointee's own pointer letter (`P`/`Q`/`R`/`S`) and a function. See the rule.
-_MEMBER_POINTER_LETTERS = re.compile(r"P[EFGHI]*([QRST])[A-Za-z0-9_$@?]*?@@[EFGHI]*([PQRS])6")
+_MEMBER_POINTER_LETTERS = re.compile(r"[PQRS][EFGHI]*([QRST])[A-Za-z0-9_$@?]*?@@[EFGHI]*([PQRS])6")
 
 
 def _strip_qualifiers(text):
@@ -638,7 +638,7 @@ def _spelled_as_a_string(ours, first):
 
 def _llvm_left_a_lambda_parameter_unresolved(ours, first):
     """Whether `first` is `ours` with `auto` or `$T<n>` where `ours` names a type."""
-    if first is None or first == ours or "'lambda'" not in first:
+    if first is None or first == ours or "'lambda" not in first:
         return False
     pieces = re.split(r"\bauto\b|\$T\d*", first)
     if len(pieces) == 1:

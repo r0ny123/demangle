@@ -166,7 +166,15 @@ All notable changes to this project are recorded here. The format follows
   name that only `c++filt` reads, on a name it refuses for another reason; a back
   reference after a `_BitInt`, which the two sides count differently; and an MSVC member
   pointer whose two qualifier letters a mutant set apart, where `llvm-undname` keeps
-  one and this keeps both -- clang-cl writes them alike. The remaining
+  one and this keeps both -- clang-cl writes them alike. Draws nineteen to twenty-two
+  added three: a template parameter declaration inside an argument list qualifies the
+  argument after it, and a list ending on one, `ITyE`, is refused as `llvm-cxxfilt`
+  refuses it, where this read `unary<>`; a requires-clause has no place inside a
+  nested name, and `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE` is refused where this
+  read the clause between two components and threw it away; and a D back reference
+  reads a plain identifier at its target, as `dlang_symbol_backref` does, so a target
+  whose body is a template instance is spelled as it stands rather than read as the
+  template. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
