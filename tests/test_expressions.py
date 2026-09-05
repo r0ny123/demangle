@@ -496,6 +496,96 @@ class TestStillRefusesWhatItShould:
         assert demangle.demangle_strict(mangled, language="itanium") == expected
 
 
+class TestAVendorExtendedTypeTakesOneTypeArgument:
+    """`u <source-name> I <type> E`, as `llvm-cxxfilt` reads it: a type transformation
+    over one type, spelled as a call. The ABI writes `[<template-args>]`, but no compiler
+    emits anything else there, `llvm-cxxfilt` refuses `u7__decayIllE` outright and
+    `c++filt` 2.42 refuses the whole form. Reading a full argument list spelled
+    `__decay(long, long, ...)` for a name neither reads; `tools/mutate.py --seed 3`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z2f5IiEvu7__decayIlE", "void f5<int>(__decay(long))"),
+            ("_Z1fu3fooIiE", "f(foo(int))"),
+            ("_Z1fu3fooIiES_", "f(foo(int), foo(int))"),
+            ("_Z1fu3foo", "f(foo)"),
+        ],
+    )
+    def test_one_type(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z2f5IiEvu7__decayIllE", "_Z1fu3fooIiiE", "_Z1fu3fooILi1EE"])
+    def test_anything_else_is_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+
+class TestAFloatingPointLiteral:
+    """`L <d|e|f> <hex> E`: the value's bytes in hex, most significant first.
+
+    `llvm-cxxfilt` decodes them and prints the number with glibc's `%a`; `c++filt`
+    brackets the hex after the type. This printed `(double)4048f5c28f5c28f6` in both
+    styles -- neither reference's spelling -- and no conformance corpus carries one,
+    because the test suites the corpora come from predate floating-point template
+    arguments. The llvm spellings here are `llvm-cxxfilt` 18's on x86-64, and the
+    printer is checked against it over 4,580 random and boundary values.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fILd4048f5c28f5c28f6EEvv", "void f<0x1.8f5c28f5c28f6p+5>()"),
+            ("_Z1fILd3ff0000000000000EEvv", "void f<0x1p+0>()"),
+            ("_Z1fILd0000000000000000EEvv", "void f<0x0p+0>()"),
+            ("_Z1fILd8000000000000000EEvv", "void f<-0x0p+0>()"),
+            ("_Z1fILd000fffffffffffffEEvv", "void f<0x0.fffffffffffffp-1022>()"),
+            ("_Z1fILdfff0000000000000EEvv", "void f<-inf>()"),
+            ("_Z1fILd7ff8000000000000EEvv", "void f<nan>()"),
+            ("_Z1fILf40490fdbEEvv", "void f<0x1.921fb6p+1f>()"),
+            # A subnormal float is a normal double once promoted.
+            ("_Z1fILf00000001EEvv", "void f<0x1p-149f>()"),
+            ("_Z1fILfffc00000EEvv", "void f<-nanf>()"),
+            # The x87 format keeps its integer bit, and glibc prints the top four bits of
+            # the mantissa as the leading digit rather than normalising.
+            ("_Z1fILe3fff8000000000000000EEvv", "void f<0x8p-3L>()"),
+            ("_Z1fILe4000c8f5c28f5c28f5c3EEvv", "void f<0xc.8f5c28f5c28f5c3p-2L>()"),
+            ("_Z1fILe00000000000000000001EEvv", "void f<0x0.000000000000001p-16385L>()"),
+            ("_Z1fILe00018000000000000000EEvv", "void f<0x8p-16385L>()"),
+            ("_Z1fILe7fff8000000000000000EEvv", "void f<infL>()"),
+            # A set exponent with the integer bit clear is an encoding no operation
+            # produces, and glibc prints it as a NaN; so is the pseudo-infinity.
+            ("_Z1fILe40004000000000000000EEvv", "void f<nanL>()"),
+            ("_Z1fILe7fff0000000000000000EEvv", "void f<nanL>()"),
+            # A long double the width of a double, and the IEEE quad.
+            ("_Z1fILe3ff0000000000000EEvv", "void f<0x1p+0L>()"),
+            ("_Z1fILe3fff0000000000000000000000000000EEvv", "void f<0x1p+0L>()"),
+            ("_Z1fILe00000000000000000000000000000001EEvv", "void f<0x0.0000000000000000000000000001p-16382L>()"),
+        ],
+    )
+    def test_the_llvm_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fILd4048f5c28f5c28f6EEvv", "void f<(double)[4048f5c28f5c28f6]>()"),
+            ("_Z1fILf40490fdbEEvv", "void f<(float)[40490fdb]>()"),
+            ("_Z1fILe3fff8000000000000000EEvv", "void f<(long double)[3fff8000000000000000]>()"),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+    @pytest.mark.parametrize(
+        "mangled", ["_Z1fILdi7EEvv", "_Z1fILd4048EEvv", "_Z1fILf4049EEvv", "_Z1fILe4049EEvv", "_Z1fILfzzzzzzzzEEvv"]
+    )
+    def test_the_wrong_width_is_refused_in_every_style(self, mangled):
+        """`llvm-cxxfilt` refuses these; `c++filt` brackets any run of characters. A
+        style chooses a spelling, never whether a name reads, so both refuse."""
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
+
+
 class TestOperatorNamesAsCallees:
     """`on <operator-name>` -- a callee named by the operator it is.
 
@@ -799,18 +889,43 @@ class TestTheNameAConstructorRepeats:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            ("_ZNv13fooC1Ev", "operator foo::operator foo()"),
-            ("_ZNv13fooD1Ev", "operator foo::~operator foo()"),
+            ("_ZNv13fooC1Ev", "operator foo::()"),
+            ("_ZNv13fooD1Ev", "operator foo::~()"),
         ],
     )
-    def test_a_vendor_extended_operator_names_the_class_in_full(self, mangled, expected):
-        """`v <digit> <source-name>` as the class, where all three readings differ.
+    def test_a_vendor_extended_operator_has_no_name_to_repeat(self, mangled, expected):
+        """`v <digit> <source-name>` as the class, which no compiler writes.
 
         `llvm-cxxfilt` 18.1.3 writes no name at all -- `operator foo::()` and
-        `operator foo::~()` -- and GNU `c++filt` 2.42 drops the `operator` and writes
-        `operator foo::foo()`. Both name something other than the class in scope. This
-        repeats the name the encoding gives, which is what a constructor spells."""
+        `operator foo::~()` -- because it holds a vendor extended operator in the same
+        node as a conversion operator, and that node has no base name to repeat. GNU
+        `c++filt` 2.42 drops the `operator` and writes `operator foo::foo()`. This
+        followed neither and repeated the name in full, a third reading of a name that
+        has no declaration; it follows `llvm-cxxfilt` now, as the conversion operator
+        does -- see `TestAConversionOperatorHasNoNameToRepeat`."""
         assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+
+class TestAConversionOperatorHasNoNameToRepeat:
+    """`CtorDtorName` prints the scope's `getBaseName()`, which a conversion operator
+    leaves empty: `llvm-cxxfilt` spells `_ZN1AcviD0Ev` as `A::operator int::~()`. No
+    compiler writes one, and `~operator int()` was a third reading beside the two
+    references' -- `c++filt` writes the type's own name. `tools/mutate.py --seed 2`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZN1AcviD0Ev", "A::operator int::~()"),
+            ("_ZN1AcviC2Ev", "A::operator int::()"),
+            ("_ZN1AcviIiED0Ev", "A::operator int<int>::~()"),
+            ("_ZNStcvtD1Ev", "std::operator unsigned short::~()"),
+            # Any other operator name is repeated in full, as before.
+            ("_ZNplD0Ev", "operator+::~operator+()"),
+            ("_ZNplC1Ev", "operator+::operator+()"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
 
 
 class TestAFriendDeclaredInsideItsClass:

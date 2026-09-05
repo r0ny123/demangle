@@ -65,6 +65,47 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **What the second and third mutation draws found.** The gate stood at zero on its
+  pinned draw; `--seed 2` and `--seed 3`, 20,000 mutants each, reported twelve
+  divergences, six of them this library's. D: a scope's `M` modifiers were read under
+  the type rule, so `MxxF` spelled `foo() const const.bar()` where the reference refuses
+  the second `x` as it does on a symbol's own `this`; a digit after a path was handed
+  back to whatever came next when the component it opened did not parse, so
+  `VE3foo3bar42Z` read `42` as an old-style bare value where `dlang_symbol_name_p` makes
+  it a component and the name fails; and a one-character symbol argument in the older
+  form, `S1i`, had its `1` taken for a length and was refused. Itanium: a lambda
+  signature with no parameter types, `UlE_`, read as a closure where `<parameter type>+`
+  needs the `v`; a vendor extended type read a full template argument list where
+  `llvm-cxxfilt` reads exactly one type and spells it as a call, so `u7__decayIllE`
+  came back `__decay(long, long)` for a name both references refuse; and a constructor
+  or destructor scoped by a conversion operator repeated the operator's name, where
+  `llvm-cxxfilt` prints `A::operator int::~()` because the operator has none to repeat.
+  Three more came out once those were fixed and the draws re-run: a D compiler scope
+  `__S<n>` was skipped and then anything allowed after it, where `dlang_identifier`
+  reads the next identifier there and then, so `_D8demangle4mainFZ4__S1xi` spelled
+  `demangle.main()` with the `xi` as its type; a D delegate's back reference was
+  resolved as any type, where `dlang_type_backref` reads a function type at the target,
+  so a mutant of a `std.regex` symbol spelled `real delegate*`; and a vendor extended
+  operator, `v <digit> <source-name>`, is the same node as a conversion operator to
+  `llvm-cxxfilt` and has no base name for a constructor to repeat either. The remaining
+  divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
+  substituted parameter to `auto` where the specialisation says `int`, recorded already
+  in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
+  `tools/enumerate.py`, and libiberty reading D names whose template arguments end with
+  the name.
+- **Itanium: a floating-point literal is spelled the way each reference spells it.**
+  `L <d|e|f> <hex> E` carries the value's bytes, and this printed them as they stood
+  after the type -- `(double)4048f5c28f5c28f6` -- in both styles, which is neither
+  `llvm-cxxfilt`'s `0x1.8f5c28f5c28f6p+5` nor `c++filt`'s `(double)[4048f5c28f5c28f6]`,
+  on a shape C++20 puts in ordinary names. No conformance corpus had one. The llvm style
+  now decodes the value and prints it as glibc's `%a` does, `f` after a float and `L`
+  after a long double, with the x87 extended format's own rules -- the top four bits of
+  the mantissa as the leading digit, `0x8p-3L` for `1.0L`, NaN for an integer bit clear
+  under a set exponent -- checked against `llvm-cxxfilt` 18 over 4,580 random and
+  boundary values; the IEEE quad follows glibc's `ldbl-128` printer, which no reference
+  here can confirm. The GNU style brackets the hex. A literal of the wrong width or
+  with a character that is not a hex digit is refused in both styles, as `llvm-cxxfilt`
+  refuses it; `c++filt` brackets anything.
 - **D: two shapes the grammar admits and the reference reads were refused.** A
   length-prefixed identifier opening on `__T` was tried as a template instance whatever
   its length, and refused when the body did not parse; `dlang_identifier` tries the

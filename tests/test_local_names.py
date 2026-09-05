@@ -66,3 +66,21 @@ def test_the_option_is_what_selects_it():
 def test_the_other_two_forms_are_unchanged():
     assert demangle.demangle_strict("_ZZ1fvE1x") == "f()::x"
     assert demangle.demangle_strict("_ZZ1fvEs") == "f()::string literal"
+
+
+class TestALambdaSignatureIsNotEmpty:
+    """`<lambda-sig> ::= <template-param-decl>* [Q <constraint>] <parameter type>+`: a
+    lambda taking nothing is written with `v`, and `UlE_` is not a closure. Both
+    references refuse it; spelling `()` from the empty list read a closure into names
+    neither reads. Found by `tools/mutate.py --seed 2` and `--seed 3`."""
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["_ZNKUlE_clEv", "_ZNKUlE0_clEv", "_ZN1S1fILb1EEEv1XILUlE_EE", "_ZNKUlTyQ1CIT_EE_clEv"],
+    )
+    def test_no_parameter_types_is_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+    def test_the_void_form_still_reads(self):
+        assert demangle.demangle("_ZNKUlvE_clEv") == "'lambda'()::operator()() const"
+        assert demangle.demangle("_ZN1S1fILb1EEEv1XILUlvE_EE") == "void S::f<true>(X<[](){...}>)"

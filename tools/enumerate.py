@@ -246,6 +246,13 @@ ACCEPTED = {
         or (first is None and _ANONYMOUS_MEMBER.search(name) is not None)
     ),
     "itanium": lambda name, ours, first, second: (
+        # `llvm-cxxfilt` resolving a generic lambda's substituted parameter to the
+        # `auto` (or `$T`) it was declared with where the specialisation binds a type --
+        # the defect `tests/conformance/itanium-reference-defects.txt` records, reached
+        # here whenever a mutant moves a substitution onto such an entry. Accepted only
+        # where the two spellings differ in nothing else.
+        _llvm_left_a_lambda_parameter_unresolved(ours, first)
+        or
         # `llvm-cxxfilt` refuses a parameter list whose first type is a literal `void`
         # followed by anything -- its leading `void` means "empty list, and nothing may
         # follow it". `c++filt` reads those, so following LLVM would mean refusing a
@@ -503,6 +510,16 @@ _METATYPE_PARAMS_REMOVED = re.compile(r"T[gGB]m\d")
 
 #: The type codes neither shipped reference reads yet.
 _AHEAD_OF_THE_REFERENCES = ("DA", "DR", "DS", "Dk", "DK", "Dy")
+
+
+def _llvm_left_a_lambda_parameter_unresolved(ours, first):
+    """Whether `first` is `ours` with `auto` or `$T<n>` where `ours` names a type."""
+    if first is None or first == ours or "'lambda'" not in first:
+        return False
+    pieces = re.split(r"\bauto\b|\$T\d*", first)
+    if len(pieces) == 1:
+        return False
+    return re.fullmatch(".+?".join(re.escape(piece) for piece in pieces), ours) is not None
 
 
 def _newer_than_the_references(mangled):

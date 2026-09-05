@@ -481,22 +481,42 @@ class _Parser:
             except DemangleFailure:
                 # `Q` opens both an identifier back reference and a *type* back
                 # reference, and only position tells them apart. One that does not
-                # resolve to an identifier is the symbol's own type starting, so the
-                # path ends here.
+                # point at a length-prefixed identifier is the symbol's own type
+                # starting, so the path ends here.
+                #
+                # Nothing else is put back. `dlang_symbol_name_p` says a digit or a
+                # `__T` *is* the next component, and `dlang_parse_qualified` has no
+                # second reading for one that does not parse -- the name fails. Backing
+                # out instead handed the digits to whatever came next: the `42` of
+                # `VE3foo3bar42Z` was read as an old-style bare integer value and the
+                # name spelled `test!(42)`, where the reference refuses it and a
+                # compiler writes `i42`.
+                if self.reader.text[saved] != "Q" or self._back_reference_targets_identifier(saved):
+                    raise
                 self.reader.pos, self.reader.depth = saved, saved_depth
                 break
+            if self.reader.text[saved] in DIGITS and _ANONYMOUS.fullmatch(component):
+                # A `__S<n>` is a compiler scope -- a fake parent that makes a name
+                # unique -- and the reference writes nothing for it. `dlang_identifier`
+                # steps over it and reads the next identifier there and then: nothing
+                # else may follow, not a scope type and not the end of the name.
+                # `_D8demangle4mainFZ4__S1xi` is refused, where reading the `xi` as the
+                # symbol's type spelled `demangle.main()`. Only the length-prefixed form
+                # is skipped; `__S` alone and `__S1a` are ordinary names, and so is a
+                # `__S1` reached through a back reference, which `dlang_symbol_backref`
+                # spells as it stands.
+                self._last_component_anonymous = False
+                if not self._opens_symbol_name():
+                    raise DemangleFailure("a compiler scope with nothing after it")
+                continue
             # A scope's own function type *is* spelled -- a symbol inside a function is
             # written `enclosing(params).inner` -- so the parameters come back here rather
             # than being discarded.
             spelled = self._spelled_component(component) + self.scope_type()
-            # A zero-length component is anonymous and a `__S<n>` one is a compiler
-            # scope; the reference writes neither, and writing an empty one gives
-            # `demangle..test` rather than `demangle.test`. `__S` alone and `__S1a` are
-            # ordinary names and are kept -- and so is a `__S<n>` that carries a scope
-            # type of its own, because dropping it would drop that scope's parameters
-            # with it and no name recorded here does that.
+            # A zero-length component is anonymous and the reference writes nothing for
+            # it; writing an empty one gives `demangle..test` rather than `demangle.test`.
             self._last_component_anonymous = anonymous
-            if spelled and not _ANONYMOUS.fullmatch(spelled):
+            if spelled:
                 parts.append(spelled)
         return parts
 
@@ -800,8 +820,15 @@ class _Parser:
         try:
             reader.pos, reader.end = start, end
             self._in_symbol_argument = True
+            # `dlang_template_symbol_param` parses the region only where it opens on a
+            # digit or on `_D`; anything else is left standing and the length does not
+            # match. Without the test, `S1i` -- a one-character name `i` in the older
+            # form -- had the `1` taken for a length and the `i` for a symbol's type,
+            # and the argument the reference spells `i` was refused.
             if reader.starts_with("_D"):
                 reader.pos += 2
+            elif reader.peek() not in DIGITS:
+                return False
             self.qualified_name()
             if reader.pos < end:
                 self.trailing_type()
@@ -851,6 +878,25 @@ class _Parser:
                 reader.pos, reader.depth = saved, saved_depth
             self._starts_symbol[key] = answer
         return answer
+
+    def _back_reference_target(self, at):
+        """Where the `Q` at `at` points, or None if it points outside the name."""
+        reader = self.reader
+        saved = reader.pos
+        reader.pos = at + 1
+        try:
+            distance = _back_reference_number(reader)
+        except DemangleFailure:
+            return None
+        finally:
+            reader.pos = saved
+        target = at - distance
+        return target if 0 <= target < at else None
+
+    def _back_reference_targets_identifier(self, at):
+        """`dlang_symbol_name_p` on a `Q` at `at`: whether it points at a digit."""
+        target = self._back_reference_target(at)
+        return target is not None and self.reader.text[target] in DIGITS
 
     def identifier_back_reference(self):
         reader = self.reader
@@ -915,7 +961,11 @@ class _Parser:
             modifiers = []
             if reader.peek() == "M":
                 reader.pos += 1
-                modifiers = self.type_modifiers()
+                # The `this` rule, not the type rule: `dlang_parse_qualified` calls
+                # `dlang_type_modifiers` here too, so `MxxF` is refused on the second `x`
+                # as it is on a symbol's own `this`. Reading the run as a type spelled
+                # `foo() const const.bar()` for a name the reference refuses.
+                modifiers = self.this_modifiers()
             if reader.peek() not in CALLING_CONVENTIONS:
                 raise DemangleFailure("not a scope")
             _, attributes, parameters, _ = self.function_type(returns=False)
@@ -1194,7 +1244,14 @@ class _Parser:
             modifiers = self.this_modifiers()
             if reader.peek() == "Q":
                 # The function type is a back reference: `MxDQsm` is a delegate whose
-                # signature was written earlier in the name.
+                # signature was written earlier in the name. `dlang_type_backref` is
+                # called with `is_function` set and reads a *function type* at the
+                # target, so a `Q` pointing at anything else fails the name. Resolving
+                # it as a type spelled `real delegate*` for `PDQg` where the reference
+                # refuses.
+                target = self._back_reference_target(reader.pos)
+                if target is None or reader.text[target] not in CALLING_CONVENTIONS:
+                    raise DemangleFailure("a delegate's back reference does not point at a function type")
                 inner = self.type_back_reference()
                 spelled = inner.removesuffix(" function")
                 return self._cap(" ".join(["", spelled, "delegate", *modifiers]).strip())

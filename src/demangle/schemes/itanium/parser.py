@@ -16,6 +16,7 @@ A transcription of the productions is vendored at docs/specs/itanium-grammar.txt
 """
 
 import re
+import struct
 
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
@@ -92,6 +93,79 @@ _COMMA_BINDING = PRECEDENCE["cm"]
 
 #: `Ts`, `Tu` and `Te` name a dependent type with the keyword the writer used.
 _ELABORATED_KEYWORDS = {"s": "struct", "u": "union", "e": "enum"}
+
+#: How many hex digits a floating-point literal of each type may carry. A long double is
+#: whatever the target's is: a double on 32-bit ARM, the 80-bit x87 format on x86, the
+#: IEEE quad on AArch64, RISC-V and the rest.
+_FLOAT_WIDTHS = {"float": (8,), "double": (16,), "long double": (16, 20, 32)}
+_HEX = re.compile(r"[0-9a-fA-F]+")
+
+
+def _c_hex_float(kind, value):
+    """The number as glibc's `%a` prints it, which is what `llvm-cxxfilt` shows.
+
+    Every rule here is measured against `llvm-cxxfilt` 18 on x86-64 rather than taken
+    from the C standard, because `%a` leaves the leading digit and the exponent's
+    normalisation to the implementation and glibc's choices are what the reference
+    prints. Normal numbers are `0x1.<fraction>p<exponent>` with trailing zeros dropped
+    and the point with them, so `0x1p+0`; subnormals keep the `0x0.` and the smallest
+    exponent; zero is `0x0p+0`, signed; infinity and NaN are the words, signed. A float
+    is promoted to double first -- a subnormal float is a normal double, so `00000001`
+    is `0x1p-149f` -- and `f` follows; `L` follows a long double.
+
+    The x87 extended format keeps its integer bit in the mantissa, and glibc prints
+    that mantissa's top four bits as the leading digit rather than normalising: `1.0L`
+    is `0x8p-3L`, `3.14L` is `0xc.8f5c28f5c28f5c3p-2L`, a denormal is
+    `0x0.000000000000001p-16385L`, an exponent field of zero prints as one would, and
+    an integer bit clear under any other exponent -- an encoding no operation produces
+    -- is a NaN. Checked against the reference over 4,580 random and boundary values.
+    The IEEE quad follows the double's shape with 28 fraction digits and the exponent
+    bias of 16383; no reference on this machine reads one, so that rule is glibc's
+    `ldbl-128` printer read rather than measured.
+    """
+    bits = int(value, 16)
+    if kind == "float":
+        # Exact: every float is a double.
+        bits = int.from_bytes(struct.pack(">d", struct.unpack(">f", bits.to_bytes(4, "big"))[0]), "big")
+        return _c_hex_binary(bits, 11, 52) + "f"
+    if kind == "double" or len(value) == 16:
+        return _c_hex_binary(bits, 11, 52) + ("" if kind == "double" else "L")
+    if len(value) == 32:
+        return _c_hex_binary(bits, 15, 112) + "L"
+    # The x87 extended format: a sign, fifteen exponent bits, then a 64-bit mantissa
+    # whose top bit is the integer bit.
+    sign = "-" if bits >> 79 else ""
+    exponent = (bits >> 64) & 0x7FFF
+    mantissa = bits & ((1 << 64) - 1)
+    if exponent == 0x7FFF:
+        # Infinity is the integer bit alone; anything else under this exponent is a
+        # NaN, the pseudo-infinity with the integer bit clear included.
+        return sign + ("inf" if mantissa == 1 << 63 else "nan") + "L"
+    if exponent == 0 and mantissa == 0:
+        return f"{sign}0x0p+0L"
+    if exponent and not mantissa >> 63:
+        # An "unnormal": a set exponent with the integer bit clear, which no operation
+        # produces and the hardware treats as invalid. glibc prints it as a NaN.
+        return f"{sign}nanL"
+    fraction = f"{mantissa & ((1 << 60) - 1):015x}".rstrip("0")
+    return f"{sign}0x{mantissa >> 60:x}{'.' + fraction if fraction else ''}p{max(exponent, 1) - 16386:+d}L"
+
+
+def _c_hex_binary(bits, exponent_bits, fraction_bits):
+    """`%a` for an IEEE binary format with a hidden integer bit: a sign bit, then
+    `exponent_bits` of biased exponent, then `fraction_bits` of fraction."""
+    sign = "-" if bits >> (exponent_bits + fraction_bits) else ""
+    exponent = (bits >> fraction_bits) & ((1 << exponent_bits) - 1)
+    mantissa = bits & ((1 << fraction_bits) - 1)
+    if exponent == (1 << exponent_bits) - 1:
+        return sign + ("inf" if mantissa == 0 else "nan")
+    if exponent == 0 and mantissa == 0:
+        return f"{sign}0x0p+0"
+    fraction = f"{mantissa:0{fraction_bits // 4}x}".rstrip("0")
+    leading = "1" if exponent else "0"
+    bias = (1 << (exponent_bits - 1)) - 1
+    return f"{sign}0x{leading}{'.' + fraction if fraction else ''}p{max(exponent, 1) - bias:+d}"
+
 
 #: What a `<template-param>` index looks like where an elaborated specifier would have a
 #: name: `Ts0_` is the pack marker, `TsN...E` is `struct ...`.
@@ -253,6 +327,7 @@ class ItaniumParser:
     __slots__ = (
         "_abbrev",
         "_abbrev_expanded",
+        "_component_is_conversion",
         "_ctor_dtor",
         "_deferred",
         "_depth",
@@ -279,6 +354,7 @@ class ItaniumParser:
         "_pending_conversion",
         "_precedence",
         "_prefix_bare",
+        "_prefix_bare_is_conversion",
         "_prefix_ended_on",
         "_prefixes",
         "_productions",
@@ -359,6 +435,10 @@ class ItaniumParser:
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
         self._ctor_dtor = False
+        # Whether the <unqualified-name> just read was a conversion operator, and whether
+        # the component `_prefix_bare` holds is one; see `enclosing_class_name`.
+        self._component_is_conversion = False
+        self._prefix_bare_is_conversion = False
         # True while reading the name of the entity being declared, false once its
         # signature begins. Only a name's own template arguments become the `T_` scope;
         # a `basic_string<T_, T0_, T1_>` mentioned in a parameter list must resolve
@@ -1155,11 +1235,13 @@ class ItaniumParser:
                 # Captured before the arguments are read: an argument may be a nested
                 # name of its own, and reading it moves `_prefix_bare` on.
                 bare = parts[-1]
+                bare_is_conversion = self._prefix_bare_is_conversion
                 arguments = self.template_arguments(install_scope=True)
                 angle_space = not self._trailing_empty_pack
                 if pending is not None:
                     bare = parts[-1] = builder.name(self._reread_conversion(pending))
                 self._prefix_bare = bare
+                self._prefix_bare_is_conversion = bare_is_conversion
                 parts[-1] = builder.template(parts[-1], arguments, angle_space)
                 combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
                 # Only an *interior* <template-prefix> <template-args> is a separate
@@ -1215,6 +1297,7 @@ class ItaniumParser:
         component = self.unqualified_name(scope=parts, module=module)
         parts.append(component)
         self._prefix_bare = component
+        self._prefix_bare_is_conversion = self._component_is_conversion
         if reader.peek() != "E":
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
             self.subs.remember(self._spend_prefix(combined), "prefix")
@@ -1369,6 +1452,7 @@ class ItaniumParser:
         """
         reader = self.reader
         builder = self.builder
+        self._component_is_conversion = False
         char = reader.peek()
         if char == "W":
             module = self.module_name(module)
@@ -1441,6 +1525,10 @@ class ItaniumParser:
             name = self.unnamed_type_name()
             return builder.name(self._befriended(builder.spell(name))) if friend else name
 
+        # A vendor extended operator, `v <digit> <source-name>`, is a
+        # `ConversionOperatorType` to `llvm-cxxfilt` as well; see `enclosing_class_name`.
+        code = reader.peek2()
+        self._component_is_conversion = code == "cv" or (code[:1] == "v" and code[1:2].isdigit())
         spelled = self._in_module(self.operator_name(), module) + self.abi_tags()
         operator = builder.name(self._befriended(spelled) if friend else spelled)
         if reader.peek() != "I":
@@ -1502,6 +1590,12 @@ class ItaniumParser:
         if not scope:
             raise ParseError(self._mangled, self.reader.pos, "constructor outside any class scope")
         bare = self._prefix_bare
+        if bare is not None and self._prefix_bare_is_conversion:
+            # A conversion operator has no name to repeat. `CtorDtorName` prints the
+            # scope's `getBaseName()`, which a `ConversionOperatorType` leaves empty, so
+            # `llvm-cxxfilt` spells `_ZN1AcviD0Ev` as `A::operator int::~()`. Nothing a
+            # compiler writes; spelling `~operator int()` was a third reading of it.
+            return ""
         if bare is not None:
             # The component as it was read, before the arguments a `<template-args>` may
             # have attached to it. Searching the *spelling* for a `<` instead cut every
@@ -1682,12 +1776,19 @@ class ItaniumParser:
                         raise ParseError(self._mangled, reader.pos, "unterminated lambda signature")
                     if reader.eat("Q"):
                         # A trailing requires-clause, after the parameters.
+                        if not parameters:
+                            raise ParseError(self._mangled, reader.pos, "a lambda signature with no parameter types")
                         trailing = self.builder.spell(self.constraint_expression())
                         reader.expect("E")
                         return self._closure(
                             declarations, constraint, parameters, f" requires {trailing}", lambda_expression
                         )
                     parameters.append(self.builder.spell(self.type_()))
+                if not parameters:
+                    # `<parameter type>+`: a lambda taking nothing is written `v`, and
+                    # `UlE_` is not a closure. Both references refuse it; spelling `()`
+                    # from the empty list read `_ZNKUlE_clEv` as a lambda's call operator.
+                    raise ParseError(self._mangled, reader.pos, "a lambda signature with no parameter types")
             finally:
                 self._reading_closure_signature = was_reading_closure
                 self._parameter_counts = saved_counts
@@ -2252,12 +2353,15 @@ class ItaniumParser:
             # type transformations (`__add_pointer(int)`) all reach a mangled name.
             reader.pos += 1
             spelled = self.source_name()
-            if reader.peek() == "I":
-                rendered = ", ".join([builder.spell(argument) for argument in self.template_arguments()])
-                # A transformation is spelled as a call, a vendor *type* as a template.
-                # Clang writes `__add_pointer(int)` and `__uuidof(T)`, both of which are
-                # named with a leading double underscore; anything else keeps `<...>`.
-                spelled = f"{spelled}({rendered})" if spelled.startswith("__") else spelled + self._angled(rendered)
+            if reader.eat("I"):
+                # The ABI writes `[<template-args>]`, but what a compiler emits here is
+                # a type transformation over one type -- `__add_pointer(int)`,
+                # `__decay(T)`, `__uuidof(T)` -- and `llvm-cxxfilt` reads exactly that:
+                # `u <source-name> I <type> E`, and refuses `u7__decayIllE` outright.
+                # `c++filt` 2.42 refuses the whole form. Reading a full argument list
+                # here spelled `__decay(long, long, ...)` for a name neither reads.
+                spelled = f"{spelled}({builder.spell(self.type_())})"
+                reader.expect("E")
             return subs.remember(builder.raw(spelled), "type")
 
         if char == "C" or char == "G":
@@ -2986,6 +3090,8 @@ class ItaniumParser:
         # the two characters written rather than by what they spell: `LSt9nullptr_tE`
         # names the same type the long way round and both references refuse it.
         wrote_nullptr = reader.peek2() == "Dn"
+        # Decided by the type code, not the spelling: a class called `float` is not one.
+        wrote_float = reader.peek() in ("d", "e", "f")
         kind = self.type_()
         spelling = builder.spell(kind)
         if was_array and reader.eat("E"):
@@ -3010,7 +3116,31 @@ class ItaniumParser:
                 raise ParseError(self._mangled, reader.pos, "unterminated literal")
             reader.take()
         value = reader.text[start : reader.pos - 1]
+        if wrote_float:
+            return self.spell_float_literal(spelling, value)
         return self.spell_literal(spelling, value)
+
+    def spell_float_literal(self, kind, value):
+        """`L <d|e|f> <hex> E`: the value's bytes, most significant first, in hex.
+
+        `llvm-cxxfilt` decodes them and prints the number with C's `%a`, `f` after a
+        float and `L` after a long double; `c++filt` writes the hex as it stands, in
+        brackets after the type: `(double)[4048f5c28f5c28f6]`. Each spelling here is one
+        of those.
+
+        The width is the type's: eight digits for a float and sixteen for a double, and
+        for a long double whichever the target has -- sixteen where it is a double,
+        twenty for the x87 extended format, thirty-two for the IEEE quad. `llvm-cxxfilt`
+        insists on the width of the machine it runs on and refuses the rest; `c++filt`
+        brackets any run of characters at all. Neither is a reading of `Ld4048E`, which
+        is no value, so the width has to be one of those and every character a hex digit.
+        """
+        widths = _FLOAT_WIDTHS[kind]
+        if len(value) not in widths or not _HEX.fullmatch(value):
+            raise ParseError(self._mangled, self.reader.pos, "a floating-point literal of the wrong width")
+        if self.options.gnu_expression_spelling:
+            return f"({kind})[{value}]"
+        return _c_hex_float(kind, value)
 
     def _entity_operand(self, operator):
         """GNU's spelling of an embedded `<mangled-name>` under a unary operator.

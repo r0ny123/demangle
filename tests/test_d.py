@@ -878,3 +878,87 @@ class TestWhatAskingTheReferenceAboutRefusalsFound:
         assert demangle.demangle(mangled, language="d") == mangled
         with pytest.raises(DemangleFailure):
             parse_d_symbol(mangled)
+
+
+class TestWhatTheSecondAndThirdDrawsFound:
+    """`tools/mutate.py --seed 2` and `--seed 3`, 20,000 mutants each, over the parser as
+    it stood after the pinned draw stood at zero. Three shapes this read and the
+    reference refuses, each settled against `d-demangle.c`."""
+
+    @pytest.mark.parametrize(
+        "mangled", ["_D4main3fooMxxFZ3barFZv", "_D4main3fooMxOFZ3barFZv", "_D4main3fooMxyFZ3barFZv"]
+    )
+    def test_a_scope_this_parameter_follows_the_this_rule(self, mangled):
+        """`dlang_parse_qualified` reads a scope's `M` modifiers with `dlang_type_modifiers`,
+        the rule under which `x` and `y` come last and once. The scope path read them
+        as a type's run and spelled `foo() const const.bar()`."""
+        assert demangle.demangle(mangled, language="d") == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D4main3fooMOxFZ3barFZv", "main.foo() shared const.bar()"),
+            ("_D4main3fooMNgNgFZ3barFZv", "main.foo() inout inout.bar()"),
+            ("_D4main3fooMOOFZ3barFZv", "main.foo() shared shared.bar()"),
+        ],
+    )
+    def test_what_the_this_rule_admits_on_a_scope(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_digit_after_a_path_is_the_next_component_and_nothing_else(self):
+        """`dlang_symbol_name_p` says a digit opens a component, and a component that
+        does not parse fails the name. Backing out and reading the digits as an old-style
+        bare integer value spelled `test!(42)` for a name the reference refuses; the value
+        a compiler writes carries its type, `i42`."""
+        assert (
+            demangle.demangle("_D8demangle__T4testVE3foo3bar42Zv", language="d") == "_D8demangle__T4testVE3foo3bar42Zv"
+        )
+        assert demangle.demangle("_D8demangle__T4testVE3foo3bari42Zv", language="d") == "demangle.test!(42)"
+        # The bounded form of the same: `2Zv` opens a component that runs past the
+        # template's length, and the whole instance is malformed.
+        name = "_D8demangle28__T4testVS8demangle1S2Si1i2Zv"
+        assert demangle.demangle(name, language="d") == name
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D8demangle__T4testS1iZv", "demangle.test!(i)"),
+            ("_D8demangle__T4testS1aZv", "demangle.test!(a)"),
+            ("_D8demangle__T4testS6symbolZv", "demangle.test!(symbol)"),
+            ("_D8demangle__T4testS116symbol3fooZv", "demangle.test!(symbol.foo)"),
+        ],
+    )
+    def test_a_one_character_symbol_argument_in_the_older_form(self, mangled, expected):
+        """`dlang_template_symbol_param` tries a length only where the region after it
+        opens on a digit or `_D`. `S1i` had its `1` taken for a length and its `i` for a
+        type, and the argument the reference spells `i` was refused."""
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize("mangled", ["_D8demangle4mainFZ4__S1xi", "_D8demangle4mainFZ4__S1FZ1xi", "_D4main4__S1Z"])
+    def test_a_compiler_scope_is_followed_by_the_next_component_at_once(self, mangled):
+        """`dlang_identifier` steps over a `__S<n>` and reads the next identifier there
+        and then -- not a scope type, not the symbol's type and not the end of the name.
+        `_D8demangle4mainFZ4__S1xi` read `demangle.main()` with the `xi` as its type,
+        where the reference refuses."""
+        assert demangle.demangle(mangled, language="d") == mangled
+        assert demangle.demangle("_D8demangle4mainFZ4__S11xi", language="d") == "demangle.main().x"
+
+    def test_a_delegate_back_reference_points_at_a_function_type(self):
+        """`dlang_type_backref` with `is_function` set reads a function type at the
+        target and nothing else. `PDQg` in a mutant of a real `std.regex` symbol points
+        at a struct type, which this resolved and spelled `real delegate*` where the
+        reference refuses."""
+        assert demangle.demangle("_D4main3fooFFZvDQeZv", language="d") == "main.foo(void() function, void() delegate)"
+        assert demangle.demangle("_D4main3fooFFZvPDQfZv", language="d") == "main.foo(void() function, void() delegate*)"
+        for mangled in ("_D4main3fooFDQbZv", "_D4main3fooFFZvDQdZv"):
+            assert demangle.demangle(mangled, language="d") == mangled
+        seed = (
+            "_D3std5regex8internal8thompson__T11ThompsonOpsTCQBuQBtQBqQBk__T15ThompsonMatcherTaTSQDeQDdQDa2ir"
+            "__T14BackLooperImplTSQElQEkQEhQBh__T5InputTaZQjZQBtZQDhTSQFvQFuQFrQFl__TQEbTaTQDnZQEl5StateHVbi0Z"
+            "__T2opVEQHrQHqQHnQEn2IRi162ZQzFNaNbNiNeQHdPQDgZb"
+        )
+        assert demangle.demangle(seed, language="d").endswith(
+            ".op!(162).op(std.regex.internal.thompson.ThompsonMatcher!(char, std.regex.internal.ir.BackLooperImpl!(std.regex.internal.ir.Input!(char).Input).BackLooperImpl).ThompsonMatcher, std.regex.internal.thompson.ThompsonMatcher!(char, std.regex.internal.ir.BackLooperImpl!(std.regex.internal.ir.Input!(char).Input).BackLooperImpl).ThompsonMatcher.State*)"
+        )
+        mutant = seed.replace("PQDgZb", "PDQgZb")
+        assert demangle.demangle(mutant, language="d") == mutant

@@ -43,7 +43,9 @@ class ItaniumOptions:
     -- they are printing the same expression. GNU writes `decltype ({parm#1}+{parm#1})`
     where LLVM writes `decltype(fp + fp)`: a space after the keyword, no spaces around
     binary operators, function parameters numbered from one, and a call's callee
-    parenthesised.
+    parenthesised. A floating-point literal is the hex the name carries, in brackets
+    after the type -- `(double)[4048f5c28f5c28f6]` -- where LLVM decodes it and prints
+    `0x1.8f5c28f5c28f6p+5`.
     """
 
     symbolic_constraint_parameters: bool = True
