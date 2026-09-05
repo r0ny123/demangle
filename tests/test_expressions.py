@@ -695,6 +695,65 @@ class TestASpecialisationTakesNoFurtherArguments:
         assert demangle.demangle(mangled) == expected
 
 
+class TestAFunctionParameterEndsInAnUnderscore:
+    """`fp <top-level CV-qualifiers> [<number>] _`, and `fL <level> p` the same. The
+    qualifiers are read and dropped as `parseFunctionParam` drops them, so `fpK_` is
+    `fp` -- which this refused -- and the `_` is not optional: `fp` alone read as a
+    parameter spelled `decltype(fp == nullptr)` for `DTeqfpLDnEE`, which both
+    references refuse. `tools/mutate.py --seed 10`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fDTfp_E", "f(decltype(fp))"),
+            ("_Z1fDTfp1_E", "f(decltype(fp1))"),
+            ("_Z1fDTfpK_E", "f(decltype(fp))"),
+            ("_Z1fDTfL1p_E", "f(decltype(fp))"),
+            ("_Z1fDTfL1pK2_E", "f(decltype(fp2))"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z1fDTfpE", "_Z1fDTfL1pE", "_Z1fIiEDTeqfpLDnEEPT_"])
+    def test_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+
+class TestARequiresClauseConstrainsArguments:
+    """`I <template-arg>+ [Q <constraint>] E`: a list of nothing but a clause is not one.
+    `llvm-cxxfilt` refuses `_ZN5test21jIQ4TrueITL0__EEEvz`, which this spelled
+    `test2::j<>`. `tools/mutate.py --seed 9`."""
+
+    def test_refused(self):
+        assert demangle.demangle("_ZN5test21jIQ4TrueITL0__EEEvz") == "_ZN5test21jIQ4TrueITL0__EEEvz"
+
+    def test_with_an_argument(self):
+        assert demangle.demangle("_ZN5test21jIiQ4TrueITL0__EEEvz") == "void test2::j<int>(...)"
+
+
+class TestTheExplicitObjectMarkerBelongsToTheEntity:
+    """`N H <prefix> <unqualified-name> E`: the `H` says the function's first parameter
+    is its explicit object parameter -- and only for the entity's own name.
+    `parseNestedName` takes it in a type as well and does nothing with it; read in a
+    template argument, it put `this` on the parameter list of the function the
+    argument belonged to. `tools/mutate.py --seed 9`."""
+
+    def test_in_the_entitys_name(self):
+        assert demangle.demangle("_ZNH1A1fERKi") == "A::f(this int const&)"
+
+    def test_in_a_template_argument(self):
+        mangled = (
+            "_ZN4llvm8DenseMapIjPNS_11ImutAVLTreeINS_16ImutKeyValueInfoIPKN5clang4ento10SymbolDataENS_12ImmutableSet"
+            "IPNS_6APSIntENS_17ImutContainerInfoISA_EEEEEEEENS_12DenseMapInfoIjEENHS_ISG_EEE16InsertIntoBucketERKjRKSG_PSt4pair"
+        )
+        spelled = demangle.demangle(mangled)
+        assert spelled.endswith(
+            "::InsertIntoBucket(unsigned int const&, llvm::ImutAVLTree<llvm::ImutKeyValueInfo<clang::ento::SymbolData const*, llvm::ImmutableSet<llvm::APSInt*, llvm::ImutContainerInfo<llvm::APSInt*>>>>* const&, std::pair*)"
+        )
+        assert "this " not in spelled
+
+
 class TestOperatorNamesAsCallees:
     """`on <operator-name>` -- a callee named by the operator it is.
 

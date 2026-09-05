@@ -139,3 +139,32 @@ class TestAStructuredBindingNamesSomething:
     def test_the_spelling(self):
         assert demangle.demangle("_ZDC1a1bE") == "[a, b]"
         assert demangle.demangle("_ZN1ADC1aEE") == "A::[a]"
+
+
+class TestAnObjectNameIsNotAnEncoding:
+    """`GV`, `TH`, `TW` and `GR` take an <object name>: data, with no function type after
+    a local entity. `parseSpecialName` reads the name and returns, and both references
+    refuse what is left over; read through the same path as a function's own local
+    name, `_ZGVZ1fvE1gv` came back `guard variable for f()::g()`, a guard for a function.
+    `tools/mutate.py --seed 9` and `--seed 10`."""
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["_ZGVZ1fvE1gv", "_ZGVZ1fvE1gi", "_ZTHZ1fvE1gv", "_ZGVZ8getMutexvE12HandlesMuttex", "_ZGRZ1fvE1gvE"],
+    )
+    def test_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZGVZ1fvE1g", "guard variable for f()::g"),
+            ("_ZGVZ1fvE1g_0", "guard variable for f()::g"),
+            ("_ZGVZN1A1fEvE1x", "guard variable for A::f()::x"),
+            ("_ZGRZ1fvE1g_", "reference temporary for f()::g"),
+            # A function's own local name still carries its signature.
+            ("_ZZ1fvE1gv", "f()::g()"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected

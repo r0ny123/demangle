@@ -1196,3 +1196,15 @@ class MsvcReferenceCorpusTestSuite(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOneElementQualifierAtATime(unittest.TestCase):
+    """`$$C` qualifies an array element once; a second in a row is not a type.
+    `llvm-undname` refuses `?f@@YAXAEAY111$$CB$$CBH@Z`, which folding the two read as
+    `int const (&)[2][2]`. `tools/mutate.py --seed 9`."""
+
+    def test_refused(self):
+        self.assertEqual(demangle_msvc_symbol("?f@@YAXAEAY111$$CB$$CBH@Z"), "?f@@YAXAEAY111$$CB$$CBH@Z")
+
+    def test_one_still_reads(self):
+        self.assertEqual(demangle_msvc_symbol("?f@@YAXAEAY111$$CBH@Z"), "void __cdecl f(int const (&)[2][2])")

@@ -337,6 +337,7 @@ class ItaniumParser:
         "_expansion_handles",
         "_explicit_object",
         "_in_constraint",
+        "_in_special_name",
         "_mangled",
         "_max_depth",
         "_max_output",
@@ -438,6 +439,10 @@ class ItaniumParser:
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
         self._ctor_dtor = False
+        # True while a special name's <object name> is being read: a local entity there
+        # is data, and the function type that may follow one elsewhere belongs to no
+        # encoding here. See `local_name`.
+        self._in_special_name = False
         # Whether the <unqualified-name> just read has no base name for a constructor
         # or destructor to repeat, and whether the component `_prefix_bare` holds is
         # one; see `enclosing_class_name`.
@@ -858,7 +863,7 @@ class ItaniumParser:
         if code == "GR":
             # GR <object name> _  /  GR <object name> <seq-id> _
             reader.pos += 2
-            inner = self.name()[0]
+            inner = self._object_name()
             # A seq-id numbers the temporary when a scope has more than one. Where
             # there is none there is no `_` either, and demanding one refused
             # `_ZGRZN1N1gEvE1a`.
@@ -873,7 +878,7 @@ class ItaniumParser:
             # and TW take an <object name> -- data only, with no function type and no
             # nested special name -- and `encoding()` accepted both, reading guard
             # variables for functions nobody declared.
-            inner = self.encoding() if code == "GA" else self.name()[0]
+            inner = self.encoding() if code == "GA" else self._object_name()
             return self.builder.special(self._encoding_special_label(code), inner)
 
         if code == "GT":
@@ -1120,7 +1125,13 @@ class ItaniumParser:
         if reader.peek() == "H":
             # Licensed by `peek`: the character it just returned is the one consumed.
             reader.pos += 1
-            self._explicit_object = True
+            # The marker says the function's first parameter is its explicit object
+            # parameter, and it means that for the entity's own name only:
+            # `parseNestedName` takes `H` in a type as well and does nothing with it.
+            # Read in a template argument, it put `this` on the parameter list of
+            # whatever function the argument belonged to.
+            if not as_type:
+                self._explicit_object = True
         else:
             quals = self.cv_qualifiers()
             char = reader.peek()
@@ -1352,6 +1363,21 @@ class ItaniumParser:
             self.subs.remember(self._spend_prefix(combined), "prefix")
         return False, ""
 
+    def _object_name(self):
+        """A special name's <object name>: a <name>, with nothing of a function about it.
+
+        `GV`, `TH`, `TW` and `GR` name data. Read through `name()` alone, a local entity
+        there took a function type after it -- `_ZGVZ1fvE1gv` came back `guard variable
+        for f()::g()`, a guard for a function -- where `parseSpecialName` reads the
+        name and returns, and both references refuse the leftover.
+        """
+        outer = self._in_special_name
+        self._in_special_name = True
+        try:
+            return self.name()[0]
+        finally:
+            self._in_special_name = outer
+
     def local_name(self, as_type=False):
         """<local-name> ::= Z <function encoding> E <entity name> [<discriminator>]
         | Z <function encoding> E s [<discriminator>]
@@ -1396,7 +1422,12 @@ class ItaniumParser:
                 if self.options.gnu_default_argument_scope:
                     parts.insert(1, builder.raw(f"{{default arg#{argument + 1}}}"))
                 combined = builder.qualified(parts)
-                if not entity_is_type and not reader.eof and reader.peek() not in ("E", "_"):
+                if (
+                    not entity_is_type
+                    and not self._in_special_name
+                    and not reader.eof
+                    and reader.peek() not in ("E", "_")
+                ):
                     combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             finally:
                 self._naming = outer_naming
@@ -1425,6 +1456,7 @@ class ItaniumParser:
             combined = builder.qualified([outer, inner])
             if (
                 not entity_is_type
+                and not self._in_special_name
                 and not reader.eof
                 and reader.peek() not in ("E", "_")
                 and not self._at_bare_discriminator()
@@ -2996,6 +3028,7 @@ class ItaniumParser:
         self._naming = False
         arguments = []
         trailing_empty_pack = False
+        seen = False
         try:
             while True:
                 char = reader.peek()
@@ -3004,6 +3037,13 @@ class ItaniumParser:
                     break
                 if not char:
                     raise ParseError(self._mangled, reader.pos, "unterminated template argument list")
+                if char == "Q" and not seen:
+                    # `I <template-arg>+ [Q <constraint>] E`: the clause constrains
+                    # arguments, and a list of nothing but a clause is not one.
+                    # `llvm-cxxfilt` refuses `_ZN5test21jIQ4TrueITL0__EEEvz`; this
+                    # spelled `test2::j<>`.
+                    raise ParseError(self._mangled, reader.pos, "a requires-clause with no template arguments")
+                seen = True
                 depth = self._depth = self._depth + 1
                 if depth > self._max_depth:
                     raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
@@ -3557,6 +3597,22 @@ class ItaniumParser:
         """
         return self.builder.spell(self.expression())
 
+    def _function_parameter(self):
+        """The rest of `fp` or `fL <level> p`: `<top-level CV-qualifiers> [<number>] _`.
+
+        The qualifiers are read and dropped, as `parseFunctionParam` drops them -- both
+        references spell `fpK_` as `fp`. The `_` is not optional: `fp` alone is not a
+        parameter, and reading it as one spelled `decltype(fp == nullptr)` for
+        `DTeqfpLDnEE`, which both references refuse.
+        """
+        reader = self.reader
+        while reader.peek() in ("r", "V", "K"):
+            reader.take()
+        index = reader.digits() if reader.peek() in DIGITS else ""
+        reader.expect("_")
+        self._precedence = SIMPLE_PRECEDENCE
+        return self.builder.raw(self._spell_parameter(index))
+
     def _spell_parameter(self, index):
         """A reference to a function parameter, `fp_` / `fp0_` / `fpT_`."""
         if self.options.gnu_expression_spelling:
@@ -3772,20 +3828,14 @@ class ItaniumParser:
                 self._precedence = SIMPLE_PRECEDENCE
                 return builder.raw("this")
             reader.pos += 2
-            index = reader.digits() if reader.peek() in DIGITS else ""
-            reader.eat("_")
-            self._precedence = SIMPLE_PRECEDENCE
-            return builder.raw(self._spell_parameter(index))
+            return self._function_parameter()
         if pair == "fL" and reader.ahead(2) in DIGITS:
             # `fL <number> p ...` is a parameter of an enclosing function; `fL` followed
             # by an operator code is a left fold with an initialiser, read below.
             reader.pos += 2
             reader.digits()
-            reader.eat("p")
-            index = reader.digits() if reader.peek() in DIGITS else ""
-            reader.eat("_")
-            self._precedence = SIMPLE_PRECEDENCE
-            return builder.raw(self._spell_parameter(index))
+            reader.expect("p")
+            return self._function_parameter()
 
         if pair == "sr":
             text = self.unresolved_name()

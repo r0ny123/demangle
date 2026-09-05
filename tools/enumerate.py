@@ -258,6 +258,14 @@ ACCEPTED = {
         # here whenever a mutant moves a substitution onto such an entry. Accepted only
         # where the two spellings differ in nothing else.
         _llvm_left_a_lambda_parameter_unresolved(ours, first)
+        # Or both references resolving a `<template-param>` in the substitution table to
+        # the argument bound where the entry was made rather than where the back
+        # reference is read -- the defect `tests/conformance/itanium-reference-defects.txt`
+        # records for `insort` and `prepare_execution` -- reached where a mutant reads
+        # under one local function's template scope an entry made under another's.
+        # Accepted only where both references read the name; they spell it under their
+        # own styles, so they are not asked to agree with each other.
+        or (first is not None and second[0] is not None and _CROSS_SCOPE_BACK_REFERENCE.search(name) is not None)
         or
         # `llvm-cxxfilt` refuses a parameter list whose first type is a literal `void`
         # followed by anything -- its leading `void` means "empty list, and nothing may
@@ -529,6 +537,10 @@ _AHEAD_PATTERNS = (re.compile(r"cp(?=\d|on|dn|sr|gs)"), re.compile(r"Tk\d"))
 
 
 _QUALIFIED_ARRAY_ELEMENT = re.compile(r"Y[0-9A-P@]*\$\$C[BCD]")
+
+#: A local name inside a template function's encoding, then another local name reading
+#: a back reference: `Z1fIiE...E...Z1gIdE...S2_...E`. See the `itanium` rule.
+_CROSS_SCOPE_BACK_REFERENCE = re.compile(r"Z\d+\w*?I[^Z]*?E[^Z]*?Z[^Z]*?S\d*_")
 
 
 def _undname_drops_array_element_qualifiers(name, ours, first):

@@ -123,7 +123,17 @@ All notable changes to this project are recorded here. The format follows
   refuses the result; `llvm-cxxfilt` 20 reads `cp` calls and a template parameter
   inside a constrained parameter declaration exactly as this does where 18 refuses;
   and `llvm-undname` drops the qualifier from an array element in a variable's type
-  that it prints in a parameter's. The remaining
+  that it prints in a parameter's. Draws nine and ten added six: a special name's local
+  entity -- `GV`, `TH`, `TW`, `GR` -- took a function type after it, so `_ZGVZ1fvE1gv`
+  was a guard variable for a function, where `parseSpecialName` reads an <object name>
+  and returns; a requires-clause with no template arguments before it spelled `j<>`;
+  `fp` with no `_` read as a parameter, and `fpK_`, a qualified one, was refused; the
+  explicit object marker `H` in a nested name read as a type put `this` on the
+  parameters of the function the type belonged to; and MSVC's `$$C` twice in a row on
+  an array element was folded into one where `llvm-undname` refuses it. One more accept
+  rule: both references resolving a substitution-table entry made under one local
+  function's template scope to that scope's argument where a mutant reads it under
+  another's, the `insort` defect the reference-defects corpus records. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in

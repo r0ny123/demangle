@@ -1063,6 +1063,11 @@ class _Demangler:
             extra = _CV_QUALS.get(self.take())
             if extra is None:
                 raise _Bail
+            if self.text.startswith("$$C", self.pos):
+                # One `$$C` qualifies the element; a second in a row is not a type.
+                # `llvm-undname` refuses `?f@@YAXAEAY111$$CB$$CBH@Z`; folding the two
+                # read it as `int const (&)[2][2]`.
+                raise _Bail
             return self.type(merge_qualifiers(extra, quals))
         if kind == "T":
             self.simple = False
