@@ -46,6 +46,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Swift: six node kinds this demangler produced were not counted as contexts, so a
+  descriptor or a thunk over one of them refused the name.** `CONTEXT_KINDS` is the
+  reference's `CONTEXT_NODE` list and was six short of its 52: the borrow, mutate,
+  yielding-borrow and yielding-mutate accessors, the isolated deallocator and the
+  property-wrapped field init accessor. `$s4main1xSivy` read as `main.x.yielding_borrow`
+  while `$s4main1xSivyTq`, the method descriptor for it, came back unread -- and the
+  same for its property descriptor, dispatch thunk and coro function pointer, and for a
+  Foundation symbol out of the real-world corpus's own shape. The set is the
+  reference's now, pinned at 52, with a reference-verified vector for each of the six.
+  Found by putting the names this library refuses to the reference.
+
 - **MSVC: a parameter list that is nothing but the ellipsis is read.** `void f(...)` is
   C++, and clang writes it `?f@@YAXZZ` for this target -- the `Z` that marks a variadic
   list standing with no parameter in front of it; `??0P@ns@@QEAA@ZZ` is a constructor

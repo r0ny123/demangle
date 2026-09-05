@@ -486,6 +486,56 @@ class TestRefusesRatherThanGuesses:
                 assert demangle.demangle(mangled) == mangled
 
 
+class TestEveryContextNodeIsAContext:
+    """`CONTEXT_KINDS` is the reference's `CONTEXT_NODE` list, and was six short.
+
+    The four borrow and mutate accessors, the isolated deallocator and the
+    property-wrapped field init accessor are kinds this demangler produced but did not
+    count as contexts, so a descriptor or a thunk over one of them popped nothing and the
+    name was refused: `$s4main1xSivy` read as `main.x.yielding_borrow` while `...vyTq`,
+    its method descriptor, came back unread. Found by putting the names this library
+    refuses to the reference. Every expectation below is `swift-demangle`'s own.
+    """
+
+    def test_the_set_is_the_references_fifty_two(self):
+        from demangle.schemes.swift._node import CONTEXT_KINDS
+
+        assert len(CONTEXT_KINDS - {"BuiltinTupleType"}) == 52
+        assert {
+            "BorrowAccessor",
+            "MutateAccessor",
+            "YieldingBorrowAccessor",
+            "YieldingMutateAccessor",
+            "IsolatedDeallocator",
+            "PropertyWrappedFieldInitAccessor",
+        } <= CONTEXT_KINDS
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("$s4main1xSivyTq", "method descriptor for main.x.yielding_borrow : Swift.Int"),
+            ("$s4main1xSivbTq", "method descriptor for main.x.borrow : Swift.Int"),
+            ("$s4main1xSivxTq", "method descriptor for main.x.yielding_mutate : Swift.Int"),
+            ("$s4main1xSivzTq", "method descriptor for main.x.mutate : Swift.Int"),
+            ("$s4main1xSivyMV", "property descriptor for main.x.yielding_borrow : Swift.Int"),
+            ("$s4main1xSivyTwc", "coro function pointer to main.x.yielding_borrow : Swift.Int"),
+            (
+                "$s10Foundation5TimerC5_fireyyACcvbTq",
+                "method descriptor for Foundation.Timer._fire.borrow : (Foundation.Timer) -> ()",
+            ),
+            ("$s4main1CCfZTq", "method descriptor for main.C.__isolated_deallocating_deinit"),
+            ("$s4main1CCfZTj", "dispatch thunk of main.C.__isolated_deallocating_deinit"),
+            (
+                "$s4main1SV1xSivpfFTq",
+                "method descriptor for property wrapped field init accessor of main.S.x : Swift.Int",
+            ),
+        ],
+    )
+    def test_a_descriptor_or_thunk_over_each_of_them_reads(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="swift") == expected
+        assert demangle.parse(mangled, language="swift").spell() == expected
+
+
 class TestNumbersAsTheReferenceReadsThem:
     """A run of digits is read into the reference's own number type, and what does not
     fit it is what the reference does with it -- not `int()`'s 4,300-digit cap, which

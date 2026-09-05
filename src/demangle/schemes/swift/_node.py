@@ -425,6 +425,8 @@ CONTEXT_KINDS = frozenset(
     [
         "Allocator",
         "AnonymousContext",
+        "AutoDiffFunction",
+        "BorrowAccessor",
         "Class",
         "Constructor",
         "Deallocator",
@@ -437,21 +439,25 @@ CONTEXT_KINDS = frozenset(
         "Function",
         "Getter",
         "GlobalGetter",
-        "IVarInitializer",
         "IVarDestroyer",
+        "IVarInitializer",
         "ImplicitClosure",
-        "Initializer",
         "InitAccessor",
+        "Initializer",
+        "IsolatedDeallocator",
         "MaterializeForSet",
         "ModifyAccessor",
         "Module",
+        "MutateAccessor",
         "NativeOwningAddressor",
         "NativeOwningMutableAddressor",
         "NativePinningAddressor",
         "NativePinningMutableAddressor",
+        "OpaqueReturnTypeOf",
         "OtherNominalType",
         "OwningAddressor",
         "OwningMutableAddressor",
+        "PropertyWrappedFieldInitAccessor",
         "PropertyWrapperBackingInitializer",
         "PropertyWrapperInitFromProjectedValue",
         "Protocol",
@@ -461,14 +467,14 @@ CONTEXT_KINDS = frozenset(
         "Static",
         "Structure",
         "Subscript",
-        "TypeSymbolicReference",
         "TypeAlias",
+        "TypeSymbolicReference",
         "UnsafeAddressor",
         "UnsafeMutableAddressor",
         "Variable",
         "WillSet",
-        "OpaqueReturnTypeOf",
-        "AutoDiffFunction",
+        "YieldingBorrowAccessor",
+        "YieldingMutateAccessor",
     ]
 )
 
@@ -553,6 +559,13 @@ _REQUIREMENT_KINDS = frozenset(
 )
 
 #: `isContext` also answers yes for `BuiltinTupleType`, which is not a `CONTEXT_NODE`.
+#:
+#: The set above is every `CONTEXT_NODE` in `DemangleNodes.def` at the revision
+#: `tools/swift-demangle-reference/` builds, 52 of them, and `tests/test_swift.py` pins
+#: the count. It was six short: the four borrow and mutate accessors, the isolated
+#: deallocator and the property-wrapped field init accessor -- kinds this demangler
+#: already produced but did not count as contexts, so a descriptor or a thunk over one
+#: of them, `$s4main1xSivyTq`, popped nothing and refused the name.
 CONTEXT_KINDS = CONTEXT_KINDS | {"BuiltinTupleType"}
 
 
