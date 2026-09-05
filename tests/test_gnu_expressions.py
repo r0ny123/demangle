@@ -453,3 +453,51 @@ class TestADesignatedInitialiserUnderTheGnuStyle:
     def test_the_llvm_spelling_is_unchanged(self):
         assert demangle.demangle("_Z1fIXtl1Edi1ndi1mLi42EEEEvv") == "void f<E{.n.m = 42}>()"
         assert demangle.demangle("_Z1fIXtl1EdXLi1ELi3ELi42EEEEvv") == "void f<E{[1 ... 3] = 42}>()"
+
+
+class TestFourMoreSpellingsFromTheGnuPrimaryDraw:
+    """Each is `c++filt`'s, checked against it, and each left llvm-cxxfilt's spelling
+    under the llvm style."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "gnu", "llvm"),
+        [
+            # A comma expression as a template argument is any binary operator to
+            # c++filt, each operand bracketed by kind and nothing round the whole.
+            (
+                "_ZN5Casts8implicitILj4EEEvPN9enable_ifIXcmT_Li4EEvE4typeE",
+                "void Casts::implicit<4u>(enable_if<(4u),(4), void>::type*)",
+                "void Casts::implicit<4u>(enable_if<(4u, 4), void>::type*)",
+            ),
+            # A member with template arguments is a template, not a name, and bracketed.
+            ("_Z1fDTdtfp_1fIiEE", "f(decltype ({parm#1}.(f<int>)))", "f(decltype(fp.f<int>))"),
+            ("_Z1fDTptfp_1fE", "f(decltype ({parm#1}->f))", "f(decltype(fp->f))"),
+            (
+                "_ZN1A1gIiEEDTcldtptfpT1b1fIT_EEEv",
+                "decltype (((this->b).(f<int>))()) A::g<int>()",
+                "decltype(this->b.f<int>()) A::g<int>()",
+            ),
+            # delete's operand is bracketed by kind.
+            (
+                "_ZN2nFIXgsdlLi4EEXdaLi4EEEEvv",
+                "void nF<::delete (4), delete[] (4)>()",
+                "void nF<::delete 4, delete[] 4>()",
+            ),
+            ("_Z1fDTdlfp_E", "f(decltype (delete {parm#1}))", "f(decltype(delete fp))"),
+            ("_Z1fDTdaL_Z1pEE", "f(decltype (delete[] p))", "f(decltype(delete[] p))"),
+            # `d_source_name` takes any of three markers between `_GLOBAL_` and `N`.
+            (
+                "_ZN4llvm12_GLOBAL_.N_1L15EFLAGS_OverlapsE",
+                "llvm::(anonymous namespace)::EFLAGS_Overlaps",
+                "llvm::_GLOBAL_.N_1::EFLAGS_Overlaps",
+            ),
+            (
+                "_ZN4llvm12_GLOBAL_$N_1L15EFLAGS_OverlapsE",
+                "llvm::(anonymous namespace)::EFLAGS_Overlaps",
+                "llvm::_GLOBAL_$N_1::EFLAGS_Overlaps",
+            ),
+        ],
+    )
+    def test_both_styles(self, mangled, gnu, llvm):
+        assert demangle.demangle(mangled, style="gnu") == gnu
+        assert demangle.demangle(mangled) == llvm

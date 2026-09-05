@@ -1736,6 +1736,17 @@ class ItaniumParser:
         if text.startswith("_GLOBAL__N"):
             # The compiler's spelling for an anonymous namespace.
             return "(anonymous namespace)"
+        if (
+            self.options.gnu_expression_spelling
+            and len(text) >= 10
+            and text.startswith("_GLOBAL_")
+            and text[8] in "._$"
+            and text[9] == "N"
+        ):
+            # `d_source_name` takes any of the three markers assemblers have used
+            # between `_GLOBAL_` and the `N` -- `_`, `.` and `$` -- where llvm-cxxfilt
+            # knows the underscore alone and prints the others as written.
+            return "(anonymous namespace)"
         return text
 
     def _identifier(self):
@@ -3159,6 +3170,12 @@ class ItaniumParser:
             # list. Which of the three this is, is decided by the two characters that
             # open the expression, so no lookahead over the parsed shape is needed.
             angled = reader.peek2() in ("gt", "rs", "cm")
+            if self.options.gnu_expression_spelling and angled and reader.peek2() == "cm":
+                # c++filt prints a comma expression as any binary operator, each
+                # operand through `d_print_subexpr`, and wraps nothing round the
+                # whole: `enable_if<(4u),(4), void>`, where llvm-cxxfilt writes
+                # `enable_if<(4u, 4), void>`.
+                angled = False
             expression = self.expression()
             reader.expect("E")
             if angled:
@@ -4128,7 +4145,13 @@ class ItaniumParser:
             # Ordinarily an <unresolved-name>, and the fast path for it is inside
             # `expression`; but the grammar Clang emits allows any expression on the
             # right, and `ptT_Li4E` -- `4u->4` -- is one of those.
-            name = self.expression()
+            if self.options.gnu_expression_spelling:
+                # The member is a `d_print_subexpr` position as well, and a name with
+                # template arguments is a template to it, not a name: `(f<int>)` in
+                # `({parm#1}.(f<int>))`, where a bare `f` stands as it is.
+                name = self._operand(POSTFIX_PRECEDENCE, subexpression=True)
+            else:
+                name = self.expression()
             self._precedence = POSTFIX_PRECEDENCE
             return builder.expression("member", [owner, joiner, name])
 
@@ -4204,7 +4227,9 @@ class ItaniumParser:
         if pair in ("dl", "da"):
             reader.pos += 2
             keyword = "delete" if pair == "dl" else "delete[]"
-            operand = self.expression()
+            # `delete (4)` and `delete {parm#1}`: the operand is a `d_print_subexpr`
+            # position, bracketed by kind, where llvm-cxxfilt writes `delete 4`.
+            operand = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
             self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("delete", [keyword, " ", operand])
 

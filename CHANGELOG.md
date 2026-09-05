@@ -219,6 +219,13 @@ All notable changes to this project are recorded here. The format follows
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
   `tools/enumerate.py`, and libiberty reading D names whose template arguments end with
   the name.
+- **Itanium, gnu style: four more of c++filt's spellings.** A comma expression as a
+  template argument is any binary operator to it, `enable_if<(4u),(4), void>` with
+  nothing round the whole; a member with template arguments is a template, not a name,
+  and bracketed, `{parm#1}.(f<int>)`; `delete`'s operand is bracketed by kind, `delete
+  (4)`; and `d_source_name` takes any of the three markers assemblers have used between
+  `_GLOBAL_` and the `N` of an anonymous namespace. The llvm style keeps llvm-cxxfilt's
+  spelling of each. From the same draw.
 - **Itanium, gnu style: a fold's pack operand and a designated initialiser as c++filt
   writes them.** `d_print_comp` prints a fold's pack operand through `d_print_subexpr`
   like any operand and writes no ellipsis of its own, `((0)+...+(int))` where this
