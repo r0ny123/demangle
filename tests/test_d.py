@@ -1111,3 +1111,53 @@ class TestABackReferenceReadsAPlainIdentifier:
     )
     def test_the_rest_is_unchanged(self, mangled, expected):
         assert demangle.demangle(mangled, language="d") == expected
+
+
+class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
+    """Three more libiberty rules, each reached by a mutant of a real name."""
+
+    @pytest.mark.parametrize("mangled", ["_D8demangle4mainFZ4__S10xi", "_D8demangle4mainFZ4__S1Qji"])
+    def test_a_compiler_scope_is_followed_by_an_identifier_with_a_length(self, mangled):
+        """`dlang_identifier` reads the next identifier straight after a `__S<n>`, and a
+        `0` there is a length of nothing to it -- refused, not the anonymous component
+        the path loop skips. Reading it as anonymous spelled `demangle.main()`."""
+        assert demangle.demangle(mangled, language="d") == mangled
+
+    def test_a_compiler_scope_still_reads_before_a_real_identifier(self):
+        assert demangle.demangle("_D8demangle4mainFZ4__S11xi", language="d") == "demangle.main().x"
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D8demangle32__T4testS20_D6symbol3foo3bar2ZvZv", "demangle.test!(_D6symbol3foo3bar2Zv)"),
+            ("_D8demangle__T4testS20_D6symbol3foo3bar2ZvZv", "demangle.test!(_D6symbol3foo3bar2Zv)"),
+            ("_D8demangle31__T4testS19_D6symbol3foo3barZvZv", "demangle.test!(_D6symbol3foo3barZv)"),
+            ("_D8demangle30__T4testS18_D6symbol3foo3bariZv", "demangle.test!(symbol.foo.bar)"),
+        ],
+    )
+    def test_a_prefixed_symbol_argument_needs_its_type(self, mangled, expected):
+        """`dlang_parse_mangle` is `_D QualifiedName Type` or `_D QualifiedName Z`, the
+        type not optional, so a length-bounded region that is a qualified name and
+        nothing more is not a symbol to `dlang_template_symbol_param` and is spelled as
+        it stands. Reading it as one spelled `symbol.foo.bar.Zv`."""
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_D8demangle__T4testS_DaZv",
+            "_D8demangle__T4testS_D0Zv",
+            "_D4core8internal2gc4impl12conservativeQw3Gcx__T7markAllS_DaZv",
+        ],
+    )
+    def test_a_prefix_with_no_name_after_it_is_refused(self, mangled):
+        """`dlang_template_symbol_param` takes the `_D` form only where a symbol name
+        follows the prefix; otherwise the `_D` is read as a length, which it is not.
+        `S_DaZv` came back as an argument spelling nothing."""
+        assert demangle.demangle(mangled, language="d") == mangled
+
+    def test_the_prefixed_form_still_reads(self):
+        assert (
+            demangle.demangle("_D8demangle__T4testS_D6symbol3foo3bariZv", language="d")
+            == "demangle.test!(symbol.foo.bar)"
+        )

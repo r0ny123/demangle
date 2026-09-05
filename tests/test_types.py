@@ -435,3 +435,27 @@ class TestACvQualifiedFunctionTypeReachedThroughASubstitution:
     def test_the_substitution_spells_what_the_type_spells(self, written_out, abbreviated, expected):
         assert demangle.demangle_strict(written_out, language="itanium") == expected
         assert demangle.demangle_strict(abbreviated, language="itanium") == expected
+
+
+class TestAProtocolIsASourceNameInsideItsQualifier:
+    """`parseQualifiedType` reads the protocol out of `objcproto...` with
+    `parseBareSourceName`: a length and that many characters. `objcproto15` is a length
+    with nothing after it, refused by `llvm-cxxfilt`, where this took the digits for
+    the protocol and spelled `id<15>`; and `objcproto1ABC` is `A`, the rest of the
+    qualifier unread. `tools/mutate.py --seed 23`."""
+
+    @pytest.mark.parametrize("mangled", ["_Z1fPU11objcproto1511objc_object", "_Z1fPU10objcproto011objc_object"])
+    def test_a_length_with_too_little_after_it_is_refused(self, mangled):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fPU11objcproto1A11objc_object", "f(id<A>)"),
+            ("_Z1fPU13objcproto1ABC11objc_object", "f(id<A>)"),
+            ("_Z1fPU12objcproto2AB7NSArray", "f(NSArray<AB>*)"),
+        ],
+    )
+    def test_the_first_length_worth_of_characters_is_the_protocol(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected

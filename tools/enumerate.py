@@ -299,6 +299,9 @@ ACCEPTED = {
         # Or a back reference after a `_BitInt`, which the two sides count differently.
         # See `_BIT_INT`.
         or (first is not None and _BIT_INT.search(name) is not None)
+        # Or qualifiers before a function type out of order or repeated, which every
+        # implementation spells its own way. See `_MISORDERED_FUNCTION_QUALIFIERS`.
+        or (first is not None and _MISORDERED_FUNCTION_QUALIFIERS.search(name) is not None)
         # Or a name neither tool read whole, because it splits its input on a space, a
         # bracket or a sign before demangling. See `_CLI_SPLITS`.
         or (first is None and second[0] is None and _CLI_SPLITS.search(name) is not None)
@@ -530,6 +533,14 @@ _EMPTY_COMPONENT = re.compile(r"\.(?=[.(]|$)")
 
 #: The name `llvm-undname` leaves out of a placement delete closure. See `ACCEPTED`.
 _PLACEMENT_CLOSURE = re.compile(r"`placement delete(\[\])? closure'")
+
+#: Qualifiers before a function type out of the ABI's `r V K` order, or repeated --
+#: `KV`, `VKK` -- which the grammar reads as one qualifier applied to a qualified
+#: function type. No compiler writes them, and the three implementations spell the
+#: result three ways: `c++filt` stacks them in the mangled order after the exception
+#: specification, `llvm-cxxfilt` moves the outer one onto the return type, and this
+#: writes the outer one after the ref-qualifier.
+_MISORDERED_FUNCTION_QUALIFIERS = re.compile(r"(?:KV|VV|KK|rr|Vr|Kr)[rVK]*(?:D[oO].*?E|Dw.*?E|Dx)?F")
 
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
 #: function. The one shape where all three implementations write something different.

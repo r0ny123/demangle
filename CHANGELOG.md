@@ -174,7 +174,18 @@ All notable changes to this project are recorded here. The format follows
   read the clause between two components and threw it away; and a D back reference
   reads a plain identifier at its target, as `dlang_symbol_backref` does, so a target
   whose body is a template instance is spelled as it stands rather than read as the
-  template. The remaining
+  template. Draws twenty-three to twenty-six added four: an Objective-C protocol is a
+  source name inside its `objcproto` qualifier, read as `parseBareSourceName` reads
+  it, so `objcproto15` -- a length with nothing after it -- is refused where this
+  spelled `id<15>`; a D compiler scope `__S<n>` is followed by an identifier with a
+  length, and a `0` there is refused as `dlang_identifier` refuses it rather than
+  skipped as the anonymous component; a D symbol argument in the `_D` form needs its
+  type or its `Z`, as `dlang_parse_mangle` does, so a length-bounded region that is a
+  qualified name and nothing more is spelled as it stands; and the `_D` form needs a
+  symbol name after the prefix at all, so `S_DaZv` is refused where it spelled an empty
+  argument. One accept rule: qualifiers before a function type out of the ABI's order
+  or repeated, `KV` and `VKK`, which no compiler writes and the three implementations
+  spell three ways. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in

@@ -2731,12 +2731,18 @@ class ItaniumParser:
                 # the rewrite is recorded here and done in the `P` branch.
                 # The protocol is itself a length-prefixed name inside the qualifier's:
                 # `11objcproto1A` carries `1A`, which is `A`.
+                # `parseQualifiedType` reads it with `parseBareSourceName` over the
+                # qualifier's remainder: a length and that many characters, and a
+                # length with too few after it -- `objcproto15` -- refuses the name,
+                # where this took the digits for the protocol and spelled `id<15>`.
                 protocol = qualifier[len(_OBJC_PROTOCOL) :]
                 digits = 0
                 while digits < len(protocol) and protocol[digits] in DIGITS:
                     digits += 1
-                if digits and int(protocol[:digits]) == len(protocol) - digits:
-                    protocol = protocol[digits:]
+                length = int(protocol[:digits]) if digits else 0
+                if not length or digits + length > len(protocol):
+                    raise ParseError(self._mangled, reader.pos, "an Objective-C protocol that is not a source name")
+                protocol = protocol[digits : digits + length]
                 spelled = builder.spell(inner)
                 handle = builder.raw(f"{spelled}<{protocol}>")
                 if spelled == _OBJC_OBJECT:

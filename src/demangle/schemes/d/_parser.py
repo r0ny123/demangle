@@ -512,7 +512,9 @@ class _Parser:
                 # `__S1` reached through a back reference, which `dlang_symbol_backref`
                 # spells as it stands.
                 self._last_component_anonymous = False
-                if not self._opens_symbol_name():
+                if not self._opens_symbol_name() or self.reader.peek() == "0":
+                    # `dlang_identifier` there and then: a `0` is a length of nothing
+                    # to it, refused, not the anonymous component the path loop skips.
                     raise DemangleFailure("a compiler scope with nothing after it")
                 continue
             if anonymous:
@@ -638,6 +640,13 @@ class _Parser:
                 # A complete mangled symbol, path *and* type: the `_handle` in
                 # `S_DQBg3net4curl7CurlAPI7_handlePv` is a `void*`, and the `Pv` has to be
                 # consumed even though the reference prints only the path.
+                # `dlang_template_symbol_param` takes the `_D` form only where a symbol
+                # name follows the prefix (`dlang_symbol_name_p`); otherwise the `_D`
+                # is read as a length, which it is not, and the name is refused.
+                # `S_DaZv` came back as an argument spelling nothing.
+                after = reader.text[reader.pos + 2 : reader.pos + 5]
+                if not (after[:1] in DIGITS or after[:1] == "Q" or after in ("__T", "__U")):
+                    raise DemangleFailure("a symbol argument whose `_D` is followed by no name")
                 spelled = self.mangled_symbol()
                 if bounded is not None:
                     reader.pos = bounded
@@ -850,12 +859,25 @@ class _Parser:
             # match. Without the test, `S1i` -- a one-character name `i` in the older
             # form -- had the `1` taken for a length and the `i` for a symbol's type,
             # and the argument the reference spells `i` was refused.
-            if reader.starts_with("_D"):
+            prefixed = reader.starts_with("_D")
+            if prefixed:
                 reader.pos += 2
             elif reader.peek() not in DIGITS:
                 return False
             self.qualified_name()
-            if reader.pos < end:
+            if prefixed:
+                # `dlang_parse_mangle`: `_D QualifiedName Type` or `_D QualifiedName Z`,
+                # and the type is not optional. A region that is a qualified name and
+                # nothing more, `_D6symbol3foo3bar2Zv`, is not a symbol to it, and the
+                # argument is spelled as it stands; reading it as one spelled
+                # `symbol.foo.bar.Zv`.
+                if reader.pos >= end:
+                    return False
+                if reader.peek() == "Z":
+                    reader.pos += 1
+                else:
+                    self.trailing_type()
+            elif reader.pos < end:
                 self.trailing_type()
             return reader.pos == end
         except (DemangleFailure, _Exhausted):
