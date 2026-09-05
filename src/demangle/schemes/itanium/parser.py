@@ -327,13 +327,14 @@ class ItaniumParser:
     __slots__ = (
         "_abbrev",
         "_abbrev_expanded",
-        "_component_is_conversion",
+        "_component_has_no_base_name",
         "_ctor_dtor",
         "_deferred",
         "_depth",
         "_drop_return",
         "_entity_local",
         "_entity_shape",
+        "_expansion_handles",
         "_explicit_object",
         "_in_constraint",
         "_mangled",
@@ -354,8 +355,9 @@ class ItaniumParser:
         "_pending_conversion",
         "_precedence",
         "_prefix_bare",
-        "_prefix_bare_is_conversion",
+        "_prefix_bare_has_no_base_name",
         "_prefix_ended_on",
+        "_prefix_has_args",
         "_prefixes",
         "_productions",
         "_reading_closure_signature",
@@ -367,6 +369,7 @@ class ItaniumParser:
         "_scope_has_pack",
         "_simple_name",
         "_size",
+        "_specialised_handles",
         "_trailing_empty_pack",
         "_try_template_args",
         "builder",
@@ -435,10 +438,21 @@ class ItaniumParser:
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
         self._ctor_dtor = False
-        # Whether the <unqualified-name> just read was a conversion operator, and whether
-        # the component `_prefix_bare` holds is one; see `enclosing_class_name`.
-        self._component_is_conversion = False
-        self._prefix_bare_is_conversion = False
+        # Whether the <unqualified-name> just read has no base name for a constructor
+        # or destructor to repeat, and whether the component `_prefix_bare` holds is
+        # one; see `enclosing_class_name`.
+        self._component_has_no_base_name = False
+        self._prefix_bare_has_no_base_name = False
+        # Whether the last component of the nested name being read carries template
+        # arguments, and the handles of every specialisation entered in the
+        # substitution table -- see the `I` branch of `prefix_component`.
+        self._prefix_has_args = False
+        # Keyed by identity and holding the handle too, so that a handle the parser has
+        # let go of cannot lend its address to a later one.
+        self._specialised_handles = {}
+        # The handles the `Dp` production recorded as expansions, as distinct from the
+        # packs they range over; see `_pack_aware`.
+        self._expansion_handles = {}
         # True while reading the name of the entity being declared, false once its
         # signature begins. Only a name's own template arguments become the `T_` scope;
         # a `basic_string<T_, T0_, T1_>` mentioned in a parameter list must resolve
@@ -947,7 +961,8 @@ class ItaniumParser:
         if char == "S":
             # Either an abbreviation or a back-reference, each of which may be an
             # <unscoped-template-name> that template arguments then attach to.
-            if reader.ahead(1) == "t":
+            candidate = reader.ahead(1) == "t"
+            if candidate:
                 reader.pos += 2
                 inner = self.unqualified_name()
                 base = self.builder.qualified([self.builder.name("std"), inner])
@@ -956,19 +971,28 @@ class ItaniumParser:
                 named = self._module_of(base)
                 if named is not None:
                     base = self.unqualified_name(module=named)
+                    candidate = True
             if reader.peek() == "I":
                 # An <unscoped-template-name> is a substitution candidate in its own
                 # right (5.1.10), recorded before the arguments that specialise it.
                 # Verified against both references: in `_ZSt4sortIPiEvT_S_`, `S_` is
-                # `std::sort`.
-                self.subs.remember(base, "unscoped-template-name")
-                return self.apply_template_args(base), (), "", True
+                # `std::sort`. A <substitution> is not one -- it *is* an entry, or an
+                # abbreviation the encoder never entered -- and recording it again put
+                # `std::basic_string` at `S_` in `_ZSbIw...EC1EOS2_`, where
+                # `llvm-cxxfilt` refuses `_ZSbIwEvS_` outright.
+                if candidate:
+                    self.subs.remember(base, "unscoped-template-name")
+                specialised = self.apply_template_args(base)
+                self._specialised_handles[id(specialised)] = specialised
+                return specialised, (), "", True
             return base, (), "", False
 
         base = self.unqualified_name()
         if reader.peek() == "I":
             self.subs.remember(base, "unscoped-template-name")
-            return self.apply_template_args(base), (), "", True
+            specialised = self.apply_template_args(base)
+            self._specialised_handles[id(specialised)] = specialised
+            return specialised, (), "", True
         return base, (), "", False
 
     def _spend_prefix(self, combined):
@@ -1112,6 +1136,8 @@ class ItaniumParser:
         module = ""
         outer_ctor_dtor = self._ctor_dtor
         self._ctor_dtor = False
+        outer_has_args = self._prefix_has_args
+        self._prefix_has_args = False
         # A nested name inside a template argument reads prefix components of its own.
         # Without this the class name a constructor repeats could be one belonging to an
         # argument -- `A<B::C>::A` would come back as `A<B::C>::C`.
@@ -1168,7 +1194,12 @@ class ItaniumParser:
         finally:
             self._ctor_dtor = outer_ctor_dtor
             self._prefix_bare = outer_bare
+            self._prefix_has_args = outer_has_args
         name = parts[0] if len(parts) == 1 else self.builder.qualified(parts)
+        if is_template:
+            # The enclosing <type> production records this name; a back reference to
+            # it takes no arguments either.
+            self._specialised_handles[id(name)] = name
         return name, quals, ref_qualifier, is_template
 
     def _only_a_base_production(self, parts, what):
@@ -1228,6 +1259,7 @@ class ItaniumParser:
                 self._only_a_base_production(parts, "a substitution")
                 self._prefix_ended_on = "a substitution"
                 self._prefix_bare = None
+                self._prefix_has_args = id(component) in self._specialised_handles
                 parts.append(component)
                 return False, module
 
@@ -1236,19 +1268,30 @@ class ItaniumParser:
                 # just read, and the pair becomes one substitutable component.
                 if not parts:
                     raise ParseError(self._mangled, reader.pos, "template arguments with no name")
+                if self._prefix_has_args:
+                    # A specialisation takes no further arguments: `<template-prefix>`
+                    # names a template, and a name that already carries `<template-args>`
+                    # is not one. `llvm-cxxfilt` refuses `_Z1fN1AIiEIcEE` and
+                    # `_Z1fN1AIiEENS0_IcEE` alike -- "can't have a name with template
+                    # args followed by template args" -- where this spelled
+                    # `A<int><char>`.
+                    raise ParseError(self._mangled, reader.pos, "template arguments on a specialisation")
                 pending = self._conversion_pending()
                 # Captured before the arguments are read: an argument may be a nested
                 # name of its own, and reading it moves `_prefix_bare` on.
                 bare = parts[-1]
-                bare_is_conversion = self._prefix_bare_is_conversion
+                bare_is_conversion = self._prefix_bare_has_no_base_name
                 arguments = self.template_arguments(install_scope=True)
                 angle_space = not self._trailing_empty_pack
                 if pending is not None:
                     bare = parts[-1] = builder.name(self._reread_conversion(pending))
                 self._prefix_bare = bare
-                self._prefix_bare_is_conversion = bare_is_conversion
+                self._prefix_bare_has_no_base_name = bare_is_conversion
                 parts[-1] = builder.template(parts[-1], arguments, angle_space)
                 combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
+                self._prefix_has_args = True
+                self._specialised_handles[id(parts[-1])] = parts[-1]
+                self._specialised_handles[id(combined)] = combined
                 # Only an *interior* <template-prefix> <template-args> is a separate
                 # candidate. When the closing `E` follows, this specialisation is the whole
                 # nested-name, and the enclosing <type> production records it -- recording
@@ -1302,7 +1345,8 @@ class ItaniumParser:
         component = self.unqualified_name(scope=parts, module=module)
         parts.append(component)
         self._prefix_bare = component
-        self._prefix_bare_is_conversion = self._component_is_conversion
+        self._prefix_bare_has_no_base_name = self._component_has_no_base_name
+        self._prefix_has_args = False
         if reader.peek() != "E":
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
             self.subs.remember(self._spend_prefix(combined), "prefix")
@@ -1457,7 +1501,7 @@ class ItaniumParser:
         """
         reader = self.reader
         builder = self.builder
-        self._component_is_conversion = False
+        self._component_has_no_base_name = False
         char = reader.peek()
         if char == "W":
             module = self.module_name(module)
@@ -1505,6 +1549,7 @@ class ItaniumParser:
             # A constructor can be a friend too -- `F C1` -- and the marker used to be
             # read and then dropped, so `_ZN1AFC1Ev` came back as `A::A()`, which is a
             # different declaration from the one the encoding spells.
+            self._component_has_no_base_name = True
             name = self.constructor_name(scope, module)
             return builder.name(self._befriended(builder.spell(name))) if friend else name
 
@@ -1514,6 +1559,7 @@ class ItaniumParser:
                 reader.pos += 2
                 self._ctor_dtor = True
                 spelled = self._in_module("~" + self.enclosing_class_name(scope), module)
+                self._component_has_no_base_name = True
                 return builder.name(self._befriended(spelled) if friend else spelled)
             if following == "C":
                 # A structured binding declaration: DC <source-name>+ E
@@ -1523,17 +1569,24 @@ class ItaniumParser:
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated structured binding")
                     names.append(self.source_name())
+                if not names:
+                    # `<source-name>+`: one at least. Both references refuse `DCE`, and
+                    # spelling `[]` from the empty list read `_ZN1ADCED0Ev`.
+                    raise ParseError(self._mangled, reader.pos, "a structured binding with no names")
+                self._component_has_no_base_name = True
                 spelled = self._in_module("[" + ", ".join(names) + "]", module)
                 return builder.name(self._befriended(spelled) if friend else spelled)
 
         if char == "U":
+            self._component_has_no_base_name = True
             name = self.unnamed_type_name()
             return builder.name(self._befriended(builder.spell(name))) if friend else name
 
         # A vendor extended operator, `v <digit> <source-name>`, is a
-        # `ConversionOperatorType` to `llvm-cxxfilt` as well; see `enclosing_class_name`.
+        # `ConversionOperatorType` to `llvm-cxxfilt`, and a literal operator has no base
+        # name either; see `enclosing_class_name`.
         code = reader.peek2()
-        self._component_is_conversion = code == "cv" or (code[:1] == "v" and code[1:2].isdigit())
+        self._component_has_no_base_name = code in ("cv", "li") or (code[:1] == "v" and code[1:2].isdigit())
         spelled = self._in_module(self.operator_name(), module) + self.abi_tags()
         operator = builder.name(self._befriended(spelled) if friend else spelled)
         if reader.peek() != "I":
@@ -1595,11 +1648,15 @@ class ItaniumParser:
         if not scope:
             raise ParseError(self._mangled, self.reader.pos, "constructor outside any class scope")
         bare = self._prefix_bare
-        if bare is not None and self._prefix_bare_is_conversion:
-            # A conversion operator has no name to repeat. `CtorDtorName` prints the
-            # scope's `getBaseName()`, which a `ConversionOperatorType` leaves empty, so
-            # `llvm-cxxfilt` spells `_ZN1AcviD0Ev` as `A::operator int::~()`. Nothing a
-            # compiler writes; spelling `~operator int()` was a third reading of it.
+        if bare is not None and self._prefix_bare_has_no_base_name:
+            # Some components have no name to repeat. `CtorDtorName` prints the scope's
+            # `getBaseName()`, which only a source name, an ordinary operator and a
+            # nested or tagged name over one define; a conversion or vendor operator, a
+            # literal operator, a constructor or destructor, a closure, an unnamed type
+            # and a structured binding leave it empty, so `llvm-cxxfilt` spells
+            # `_ZN1AcviD0Ev` as `A::operator int::~()` and `_ZN1AD1IiED0Ev` as
+            # `A::~A<int>::~()`. Nothing a compiler writes; repeating the name in full
+            # was a third reading beside the two references'.
             return ""
         if bare is not None:
             # The component as it was read, before the arguments a `<template-args>` may
@@ -1951,13 +2008,26 @@ class ItaniumParser:
             return self._pack_aware(self._reread(index, entry))
         return self._pack_aware(entry)
 
+    def _expansion(self, handle):
+        """Record `handle` as the result of a `Dp`, and return it."""
+        self._expansion_handles[id(handle)] = handle
+        return handle
+
     def _pack_aware(self, handle):
         """Report a pack, and stand in for one of its members while one is being read.
 
         A pack reaches a pattern as a `<template-param>` most of the time, but it can
         also arrive as a back-reference -- `Dp N S3_ 4type E` names its members through
         `S3_` -- and an expansion has to range over it either way.
+
+        An entry that *is* an expansion is not a pack to range over: it spells its
+        members and is otherwise a type like any other, so `Dp S1_` over the entry
+        `DpT_` made is `int, char...` -- the child, then the dots, as
+        `ParameterPackExpansion::printLeft` writes it after the inner expansion has
+        restored the pack context.
         """
+        if id(handle) in self._expansion_handles:
+            return handle
         members = self.builder.members(handle)
         if members is None:
             return handle
@@ -2448,7 +2518,12 @@ class ItaniumParser:
                 arity = self._pack_arity
             finally:
                 self._saw_empty_pack = outer_empty
-                self._saw_pack = outer_pack or self._saw_pack
+                # An expansion consumes its pack: `ParameterPackExpansion::printLeft`
+                # restores the pack context after itself, so an enclosing pattern that
+                # reaches a pack only through an inner expansion has none of its own and
+                # takes the dots -- `DpPFvDpT_E` is `void (*)(int, char)...`. Letting
+                # the inner sighting through made the outer expand instead.
+                self._saw_pack = outer_pack
                 self._pack_arity = outer_arity
             if over_empty:
                 # The pattern ranges over a pack with no members, so it expands to no
@@ -2458,15 +2533,15 @@ class ItaniumParser:
                 #
                 # It is still a <type> and still enters the substitution table: what is
                 # empty is what it expands to, not the production.
-                return self.subs.remember(builder.parameter_pack([]), "type")
+                return self.subs.remember(self._expansion(builder.parameter_pack([])), "type")
             if over_pack and arity and len(builder.members(inner) or ()) != arity:
                 # The pattern is more than a declarator round the parameter -- a
                 # template applied to it, say -- so distributing the members through it
                 # is not something the builders can do to a finished handle. It is read
                 # again, once per member: `Dp unary<T_>` over `{int, float}` is
                 # `unary<int>, unary<float>`, not the single `unary<int, float>`.
-                return self.subs.remember(self._expand_pattern(start, mark, arity), "type")
-            if id(inner) in self._pack_ids or over_pack or self._scope_has_pack:
+                return self.subs.remember(self._expansion(self._expand_pattern(start, mark, arity)), "type")
+            if id(inner) in self._pack_ids or over_pack:
                 # The expansion is a <type> in its own right and is recorded as one,
                 # separately from the type it expands: `Dp R T1_` contributes both the
                 # `R T1_` entry and the expansion's. Both reference demanglers do this,
@@ -2476,9 +2551,17 @@ class ItaniumParser:
                 # already distributed over its members -- so `Dp O T_` over three
                 # arguments arrives as three rvalue references, fully spelled. Expansion
                 # is what those members *are*; an ellipsis would be spelling it twice.
-                return self.subs.remember(inner, "type")
-            # No pack in scope: this is an unexpanded expansion, and the ellipsis is the
-            # whole content of it. GNU brackets the element on the rule it brackets any
+                #
+                # Recorded as a fresh handle rather than as `inner`, which may be the
+                # very pack a `T_` entry resolves to: an expansion and the pack it ranges
+                # over are different things to refer back to.
+                return self.subs.remember(self._expansion(builder.parameter_pack(builder.members(inner))), "type")
+            # No pack in the pattern: this is an unexpanded expansion, and the ellipsis
+            # is the whole content of it -- whatever packs the enclosing template has.
+            # `ParameterPackExpansion::printLeft` prints the child and, finding no pack
+            # in it, the `...`; keying on the scope instead dropped the dots from
+            # `_Z1fIJifcEEvDpC1E`, which both references spell `E complex...`. GNU
+            # brackets the element on the rule it brackets any
             # other operand -- everything but a (possibly qualified) name -- so `Dp i`
             # is `(int)...`. The test is on the spelling, which is all a handle offers:
             # a builtin or a template parameter spells as one identifier too, so those
@@ -3938,7 +4021,8 @@ class ItaniumParser:
                 over_pack = self._saw_pack
                 over_empty = self._saw_empty_pack
             finally:
-                self._saw_pack = outer_pack or self._saw_pack
+                # As for `Dp`: the expansion consumes its pack.
+                self._saw_pack = outer_pack
                 self._saw_empty_pack = outer_empty
             if over_empty:
                 # The pattern ranges over a pack with no members, so it expands to no

@@ -1005,3 +1005,28 @@ class TestWhatTheFourthToSixthDrawsFound:
         assert (
             demangle.demangle("_D4core4sync5mutex5Mutex6unlock0FNeZv", language="d") == "core.sync.mutex.Mutex.unlock"
         )
+
+
+class TestAScopeInsideATypesName:
+    """`dlang_parse_qualified` inside a type: the parameters a component carries are its
+    scope whenever they parse and the name goes on, with no trailing type for them to
+    be instead, and the `this` modifiers are written only for a symbol -- `suffix_modifiers`
+    is 0 for a type's name and a plain symbol argument, 1 for a symbol and a `_D`-prefixed
+    argument. `tools/mutate.py --seed 8` reached the first through a `std.utf` mutant
+    whose struct name ended `byUTF(...)` and was read here with the parameters handed to
+    the enclosing parameter list instead."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D4main3fooFS4main1S3barFZiZv", "main.foo(main.S.bar(), int)"),
+            ("_D4main3fooFS4main1S3barMxFZ1xZv", "main.foo(main.S.bar().x)"),
+            ("_D4main3fooFS4main1S3barMxFZZv", "main.foo(main.S.bar())"),
+            ("_D8demangle__T4testS4main3fooMxFZ3barZv", "demangle.test!(main.foo().bar)"),
+            ("_D8demangle__T4testS_D4main3fooMxFZvZv", "demangle.test!(main.foo() const)"),
+            ("_D8demangle__T4testS_D4main3fooMxFZ3barFZvZv", "demangle.test!(main.foo() const.bar())"),
+            ("_D4main3fooMxFZ3barFZv", "main.foo() const.bar()"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected

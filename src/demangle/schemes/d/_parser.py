@@ -342,6 +342,10 @@ class _Parser:
         # function in the path reads `initializer() const`. Tracked rather than passed
         # down because every production between the two is unaware of it.
         self._in_symbol_argument = False
+        # Whether a type's qualified name, or a `_D`-prefixed symbol argument, is being read;
+        # see `scope_type`.
+        self._in_type_name = False
+        self._suffix_modifiers = True
         self._trailing_had_attributes = True
         # How many back references this name may still follow. A `Q` names an earlier
         # position and is read by parsing that position again, so following one can
@@ -636,12 +640,12 @@ class _Parser:
                 if bounded is not None:
                     reader.pos = bounded
                 return self._cap(spelled)
-            outer = self._in_symbol_argument
-            self._in_symbol_argument = True
+            outer, outer_suffix = self._in_symbol_argument, self._suffix_modifiers
+            self._in_symbol_argument, self._suffix_modifiers = True, False
             try:
                 spelled = ".".join(self.qualified_name())
             finally:
-                self._in_symbol_argument = outer
+                self._in_symbol_argument, self._suffix_modifiers = outer, outer_suffix
             if bounded is not None:
                 reader.pos = bounded
             if not spelled:
@@ -693,10 +697,13 @@ class _Parser:
             raise DemangleFailure("expected a mangled symbol")
         reader.pos += 2
         outer = self._in_symbol_argument
+        outer_suffix = self._suffix_modifiers
         self._in_symbol_argument = True
+        self._suffix_modifiers = True
         try:
             return ".".join(self.qualified_name()) + self.trailing_type()
         finally:
+            self._suffix_modifiers = outer_suffix
             self._in_symbol_argument = outer
 
     def template_value(self, kind, suffix=True, code=""):
@@ -985,22 +992,38 @@ class _Parser:
             if reader.peek() not in CALLING_CONVENTIONS:
                 raise DemangleFailure("not a scope")
             _, attributes, parameters, _ = self.function_type(returns=False)
-            # A full symbol name has to follow, not merely a byte that could open one.
-            # `Qq` opens an identifier back reference *and* a type back reference, so
-            # testing the byte alone made the return type of `rt_linkOption` look like
-            # another path component and took the whole name with it.
-            if not self._opens_symbol_name():
-                raise DemangleFailure("not a scope")
-            after = reader.pos
-            if not self._symbol_name_follows(after):
-                raise DemangleFailure("not a scope")
-            reader.pos = after
+            if self._in_type_name or self._in_symbol_argument:
+                # Inside a type's name or a symbol argument there is no trailing type
+                # for the parameters to be, so `dlang_parse_qualified` keeps them as the
+                # component's scope whenever they parse and the name goes on: the
+                # `QCe` after `QHxFNcQEsZ` in a mutant of `std.utf.byUTF` is the next
+                # parameter of the enclosing function, and the reference spells the
+                # struct `...byUTF(ByCodeUnitImpl)`. Asking for a component to follow
+                # put the function type back and read it as that parameter instead.
+                if reader.pos >= reader.end:
+                    raise DemangleFailure("not a scope")
+            else:
+                # A full symbol name has to follow, not merely a byte that could open
+                # one. `Qq` opens an identifier back reference *and* a type back
+                # reference, so testing the byte alone made the return type of
+                # `rt_linkOption` look like another path component and took the whole
+                # name with it.
+                if not self._opens_symbol_name():
+                    raise DemangleFailure("not a scope")
+                after = reader.pos
+                if not self._symbol_name_follows(after):
+                    raise DemangleFailure("not a scope")
+                reader.pos = after
         except DemangleFailure:
             reader.pos, reader.depth = saved, saved_depth
             return ""
         del saved_depth
         spelled = f"({', '.join(parameters)})"
-        trailing = "" if self._in_symbol_argument else " ".join(modifiers)
+        # `suffix_modifiers`: `dlang_parse_qualified` writes a scope's `this` modifiers
+        # for a symbol and for a `_D`-prefixed symbol argument, which goes through
+        # `dlang_parse_mangle`, and not for a plain symbol argument or a type's name --
+        # `main.S.bar().x` for `S4main1S3barMxFZ1x`, with the `const` left out.
+        trailing = " ".join(modifiers) if self._suffix_modifiers else ""
         self._last_scope_had_attributes = bool(attributes)
         return self._cap(f"{spelled} {trailing}" if trailing else spelled)
 
@@ -1251,7 +1274,12 @@ class _Parser:
             # name the reference does read.
             reader.pos += 1
             before = reader.pos
-            spelled = ".".join(self.qualified_name())
+            outer, outer_suffix = self._in_type_name, self._suffix_modifiers
+            self._in_type_name, self._suffix_modifiers = True, False
+            try:
+                spelled = ".".join(self.qualified_name())
+            finally:
+                self._in_type_name, self._suffix_modifiers = outer, outer_suffix
             if reader.pos == before:
                 raise DemangleFailure(f"a {char!r} type with no qualified name")
             return self._cap(spelled)

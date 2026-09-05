@@ -192,6 +192,12 @@ ACCEPTED = {
             first is not None
             and (
                 ours.replace(" ", "") == first.replace(" ", "")
+                # Or a cv-qualified array element in a variable's type, `Y02$$CBN`,
+                # whose qualifier `llvm-undname` 18 and 20 print inside a parameter and
+                # a pointee -- `double const[3]`, `double const (*)[3]` -- and drop from
+                # the variable itself, `double outer::h[3]`. No compiler writes `$$C`
+                # there; the reading that keeps the qualifier is the consistent one.
+                or _undname_drops_array_element_qualifiers(name, ours, first)
                 # Or a vftable or vbtable base path with more than one element.
                 # `llvm-undname` reads the first element and drops the rest, so
                 # `??_7A@B@@6BC@D@@@`, `...E@F@@@` and `...E@F@@G@H@@@` -- three symbols
@@ -415,7 +421,7 @@ _QUALIFIED_CUSTOM_TYPE = re.compile(r"\?[B-D]\?")
 #: `> >`, `(*)(char *)` and `operator()` are all real, and were all matched by an earlier
 #: draft of this.
 _GNUV2_GAP = re.compile(
-    r"^\s|^::|\(\s|(?<!operator)\(\)|,\s\s|,\s*[,)>]|<>|<\s|::::|::\s|operator \(|operator\s\s|\s\s"
+    r"^\s|^::|\(\s|(?<!operator)\(\)|,\s\s|,\s*[,)>]|<>|<\s|::::|::\s|operator \(|operator\s\s|\s\s|,\.\.\.\)\("
 )
 
 
@@ -508,8 +514,29 @@ _OBJC_METHOD_SCOPE = re.compile(r"Z\d+[-+]\[")
 #: `swift` rule in `ACCEPTED`.
 _METATYPE_PARAMS_REMOVED = re.compile(r"T[gGB]m\d")
 
-#: The type codes neither shipped reference reads yet.
-_AHEAD_OF_THE_REFERENCES = ("DA", "DR", "DS", "Dk", "DK", "Dy")
+#: The type codes neither shipped reference reads yet. `DB` and `DU` are read, but not
+#: as the substitution candidates Clang 18 makes them -- it emits `_Z6myfuncRDB8_S0_`
+#: for `myfunc(_BitInt(8)&, _BitInt(8)&)`, which `llvm-cxxfilt` 18 and 20 and `c++filt`
+#: 2.42 all refuse and this library reads as Clang meant it.
+_AHEAD_OF_THE_REFERENCES = ("DA", "DR", "DS", "Dk", "DK", "Dy", "DB", "DU")
+
+#: Productions neither shipped reference reads that `llvm-cxxfilt` 20 does, spelled as
+#: this library spells them: `cp <base-unresolved-name> <expression>* E`, a call whose
+#: callee is parenthesised, and a template parameter inside a constrained parameter
+#: declaration's concept arguments, `Tk 4True I T_ E`, which 18 gives up on ("we don't
+#: track enclosing template parameter levels well enough").
+_AHEAD_PATTERNS = (re.compile(r"cp(?=\d|on|dn|sr|gs)"), re.compile(r"Tk\d"))
+
+
+_QUALIFIED_ARRAY_ELEMENT = re.compile(r"Y[0-9A-P@]*\$\$C[BCD]")
+
+
+def _undname_drops_array_element_qualifiers(name, ours, first):
+    """Whether `first` is `ours` with the `const`/`volatile` of an array element gone."""
+    if _QUALIFIED_ARRAY_ELEMENT.search(name) is None:
+        return False
+    stripped = re.sub(r" (?:const|volatile)\b", "", ours)
+    return stripped != ours and stripped.replace(" ", "") == first.replace(" ", "")
 
 
 def _llvm_left_a_lambda_parameter_unresolved(ours, first):
@@ -523,7 +550,9 @@ def _llvm_left_a_lambda_parameter_unresolved(ours, first):
 
 
 def _newer_than_the_references(mangled):
-    return any(code in mangled for code in _AHEAD_OF_THE_REFERENCES)
+    return any(code in mangled for code in _AHEAD_OF_THE_REFERENCES) or any(
+        pattern.search(mangled) for pattern in _AHEAD_PATTERNS
+    )
 
 
 def readings(scheme, prefix, alphabet, length, style=None):

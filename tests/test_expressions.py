@@ -610,6 +610,91 @@ class TestALiteralsValueIsANumber:
         assert demangle.demangle(mangled) == mangled
 
 
+class TestAnExpansionWhosePatternNamesNoPack:
+    """`Dp <type>` where the type mentions no pack spells `type...` whatever packs the
+    enclosing template has. `ParameterPackExpansion::printLeft` prints the child and,
+    finding no pack in it, the dots; keying on the enclosing scope dropped them from
+    `_Z1fIJifcEEvDpC1E`, which both references spell `E complex...`.
+    `tools/mutate.py --seed 7`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIJifcEEvDpC1E", "void f<int, float, char>(E complex...)"),
+            ("_Z1fIJifcEEvDpKi", "void f<int, float, char>(int const...)"),
+            ("_Z1fIJEEvDp1A", "void f<>(A...)"),
+            # A pattern over the pack still expands.
+            ("_Z1fIJicEEvDpT_", "void f<int, char>(int, char)"),
+            ("_Z1fIJicEEvDpPT_", "void f<int, char>(int*, char*)"),
+            ("_Z1fIJicEEvDpPFvT_E", "void f<int, char>(void (*)(int), void (*)(char))"),
+            # An inner expansion consumes its pack, and the outer pattern, reaching the
+            # pack only through it, takes the dots: `ParameterPackExpansion::printLeft`
+            # restores the pack context after itself.
+            ("_Z1fIJicEEvDpPFvDpT_E", "void f<int, char>(void (*)(int, char)...)"),
+            ("_Z1fIJicEEvDp1AIDpT_E", "void f<int, char>(A<int, char>...)"),
+            ("_Z1fIJicEEvPFvDpT_EDpS1_", "void f<int, char>(void (*)(int, char), int, char...)"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+
+class TestASpecialisationTakesNoFurtherArguments:
+    """`<template-prefix>` names a template, and a name that already carries
+    `<template-args>` is not one: `llvm-cxxfilt` refuses `_Z1fN1AIiEIcEE` and, through a
+    back reference to the specialisation, `_Z1fN1AIiEENS0_IcEE` -- "can't have a name
+    with template args followed by template args" -- where this spelled `A<int><char>`.
+    `tools/mutate.py --seed 7`."""
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_Z1fN1AIiEIcEE",
+            "_Z1fN1AIiEENS0_IcEE",
+            "_Z1f1AIiEIcE",
+            # Through an unscoped specialisation entered as a type.
+            "_ZN4llvm8DenseMapIjSt6vectorIPKKNS_12MachineInstrESaIS4_EENS_12DenseMapInfoIjEENS7_IS6_EEE5clearEv",
+        ],
+    )
+    def test_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+    def test_an_abbreviation_is_not_a_candidate(self):
+        """`Sa`, `Sb` and the rest are substitutions, not `<unscoped-template-name>`s
+        the encoder entered: `llvm-cxxfilt` refuses `_ZSbIwEvS_`, where recording
+        `std::basic_string` at `S_` read it and shifted every later back reference in
+        `_ZSbIwSt11char_traitsIwESaIwEEC1EOS2_`. `St` with a name is one, as before."""
+        for mangled in ("_ZSbIwEvS_", "_ZSaIwEvS_"):
+            assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle("_Z1fSaIwES_") == "f(std::allocator<wchar_t>, std::allocator<wchar_t>)"
+        assert demangle.demangle("_ZSt4sortIPiEvT_S_") == "void std::sort<int*>(int*, std::sort)"
+        assert demangle.demangle("_Z1f1AIiES_IcES1_") == "f(A<int>, A<char>, A<char>)"
+        assert demangle.demangle("_ZSbIwSt11char_traitsIwESaIwEEC1EOS2_") == (
+            "E complex std::basic_string<wchar_t, std::char_traits<wchar_t>, std::allocator<wchar_t>>(E&&)"
+        )
+
+    def test_a_pack_referred_to_outside_its_expansion_is_a_three_way_disagreement(self):
+        """`_Z1fIJicdEEPPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_` names the pack `T_` through
+        `S6_` outside any `Dp`, which no declaration does. `llvm-cxxfilt` prints a pack
+        so placed as its first member, `c++filt` as its last, and this as all of them;
+        recorded rather than followed, because a pack outside an expansion has no
+        declaration to be right about. `tools/mutate.py --seed 7`."""
+        spelled = demangle.demangle("_Z1fIJicdEEPPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_")
+        assert spelled.endswith("void (**)(int, char, double)..., int*&, char*&, double*&))(int, char, double)")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fN1AIiEENS_IcEE", "f(A<int>, A<char>)"),
+            ("_Z1fN1AIiEE1BIiE", "f(A<int>, B<int>)"),
+            ("_ZN1AIiE1fES0_", "A<int>::f(A<int>)"),
+            ("_ZNSt6vectorIiSaIiEE9push_backERKi", "std::vector<int, std::allocator<int>>::push_back(int const&)"),
+        ],
+    )
+    def test_a_template_name_still_takes_them(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+
 class TestOperatorNamesAsCallees:
     """`on <operator-name>` -- a callee named by the operator it is.
 
@@ -931,10 +1016,14 @@ class TestTheNameAConstructorRepeats:
 
 
 class TestAConversionOperatorHasNoNameToRepeat:
-    """`CtorDtorName` prints the scope's `getBaseName()`, which a conversion operator
-    leaves empty: `llvm-cxxfilt` spells `_ZN1AcviD0Ev` as `A::operator int::~()`. No
-    compiler writes one, and `~operator int()` was a third reading beside the two
-    references' -- `c++filt` writes the type's own name. `tools/mutate.py --seed 2`."""
+    """`CtorDtorName` prints the scope's `getBaseName()`, which only a source name, an
+    ordinary operator and a nested or tagged name over one define. A conversion
+    operator, a vendor or literal operator, a constructor or destructor, a closure, an
+    unnamed type and a structured binding leave it empty, so `llvm-cxxfilt` spells
+    `_ZN1AcviD0Ev` as `A::operator int::~()` and `_ZN1AD1IiED0Ev` as `A::~A<int>::~()`.
+    No compiler writes one, and repeating the name in full was a third reading beside
+    the two references' -- `c++filt` writes the type's own name. `tools/mutate.py
+    --seed 2` and `--seed 8`."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -943,9 +1032,18 @@ class TestAConversionOperatorHasNoNameToRepeat:
             ("_ZN1AcviC2Ev", "A::operator int::()"),
             ("_ZN1AcviIiED0Ev", "A::operator int<int>::~()"),
             ("_ZNStcvtD1Ev", "std::operator unsigned short::~()"),
-            # Any other operator name is repeated in full, as before.
+            ("_ZN1AD1IiED0Ev", "A::~A<int>::~()"),
+            ("_ZN1AC1IiEC1Ev", "A::A<int>::()"),
+            ("_ZNUlvE_C1Ev", "'lambda'()::()"),
+            ("_ZN1AUlvE_D1Ev", "A::'lambda'()::~()"),
+            ("_ZNUt_C1Ev", "'unnamed'::()"),
+            ("_ZNDC1a1bEC1Ev", "[a, b]::()"),
+            ("_ZNli3_kmC1Ev", 'operator"" _km::()'),
+            # Any other operator name, and a class, are repeated in full, as before.
             ("_ZNplD0Ev", "operator+::~operator+()"),
             ("_ZNplC1Ev", "operator+::operator+()"),
+            ("_ZN1A1BC1Ev", "A::B::B()"),
+            ("_ZNSaIcED1Ev", "std::allocator<char>::~allocator()"),
         ],
     )
     def test_the_spelling(self, mangled, expected):

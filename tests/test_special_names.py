@@ -125,3 +125,17 @@ class TestAModuleInitializerNamesItsModule:
 
     def test_no_module_is_refused(self):
         assert demangle.demangle("_ZGI") == "_ZGI"
+
+
+class TestAStructuredBindingNamesSomething:
+    """`DC <source-name>+ E`: one name at least. Both references refuse `DCE`, and
+    spelling `[]` from the empty list read `_ZN12_GLOBAL__N_41ADCED0Ev` as the
+    destructor of a binding of nothing. `tools/mutate.py --seed 8`."""
+
+    def test_refused(self):
+        for mangled in ("_ZDCE", "_ZN12_GLOBAL__N_41ADCED0Ev"):
+            assert demangle.demangle(mangled) == mangled
+
+    def test_the_spelling(self):
+        assert demangle.demangle("_ZDC1a1bE") == "[a, b]"
+        assert demangle.demangle("_ZN1ADC1aEE") == "A::[a]"

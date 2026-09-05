@@ -101,7 +101,29 @@ All notable changes to this project are recorded here. The format follows
   is bracketed like any other operand -- `(a->ua).i`, `({parm#1}()).i` -- where this
   printed it bare; `c++filt` runs it through `d_print_subexpr` as it does a binary
   operator's operands, and reached through a name only `c++filt` reads, the spelling
-  holds for every chained member access. The remaining
+  holds for every chained member access. Draws seven and eight, at 60,000 mutants each,
+  added six more: a pack expansion whose pattern names no pack -- or reaches one only
+  through an inner expansion, which consumes it -- dropped its dots when the enclosing
+  template had a pack, where `ParameterPackExpansion::printLeft` prints the child and
+  then the `...` whatever is in scope, so `DpPFvDpT_E` is `void (*)(int, char)...`; a constructor or destructor scoped by
+  a constructor, destructor, closure, unnamed type, structured binding or literal
+  operator repeated a name `CtorDtorName` has none of, so `_ZN1AD1IiED0Ev` is
+  `A::~A<int>::~()`; a structured binding with no names, `DCE`, spelled `[]`; template
+  arguments after a name that already carries them, `_Z1fN1AIiEIcEE` and through a
+  back reference `_Z1fN1AIiEENS0_IcEE`, spelled `A<int><char>` where `<template-prefix>`
+  names a template and `llvm-cxxfilt` refuses both; an abbreviation with template
+  arguments as a function's own name, `_ZSbIwEvS_`, was entered in the substitution
+  table as an `<unscoped-template-name>`, which `Sb` is not, shifting every later back
+  reference; and in D, the parameters a
+  component carries inside a *type's* name are its scope whenever they parse, with the
+  `this` modifiers left out as `dlang_parse_qualified`'s `suffix_modifiers` leaves
+  them, where asking for a component to follow handed a `std.utf` struct's parameters
+  to the enclosing function's list. Three accept rules record the references' side:
+  Clang 18 makes `_BitInt` a substitution candidate and every shipped reference
+  refuses the result; `llvm-cxxfilt` 20 reads `cp` calls and a template parameter
+  inside a constrained parameter declaration exactly as this does where 18 refuses;
+  and `llvm-undname` drops the qualifier from an array element in a variable's type
+  that it prints in a parameter's. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
