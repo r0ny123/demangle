@@ -90,6 +90,26 @@ All notable changes to this project are recorded here. The format follows
   compiler's name right. A new option, `gnu_unresolved_scope_substitution`, on in the
   gnu style, counts as g++ and `c++filt` do; the default counts as the ABI, Clang and
   `llvm-cxxfilt` do.
+- **A `>` inside a template argument list, and four more of `llvm-cxxfilt`'s
+  brackets.** `BinaryExpr::printLeft` wraps a `>` or `>>` that stands inside an
+  argument list with no bracket yet opened round it, so it cannot be read as the end
+  of the list: `(1 > 0) && true`, `(1 >> 2) == 3`, `1 ? (2 > 3) : 4`. This wrapped one
+  only at the top of the argument, so `enable_if<(N > 0) && C>` came out
+  `N > 0 && C`, with the `>` bare inside the angle brackets. Every bracket a construct
+  opens ends the rule inside it and braces do not, which is what the reference does.
+  With it: `sizeof`, `alignof`, `noexcept`, `new` and `delete` are unary to that
+  printer and bracketed as the operand of anything as tight, `!(sizeof (int))` and
+  `(delete fp).m`, where this left them primary; a fold's pack is printed once per
+  member when the pattern names a pack, `((sizeof (int), sizeof (char)) + ...)`, where
+  this spelled the pattern once with the whole pack inside it; and a subscript's
+  object is a `d_print_subexpr` position under the gnu style, `(1)[...]`. The same
+  probing found that `llvm-cxxfilt` 18 and 20 give `/` the precedence of an
+  assignment, so `(sizeof(T) + 1) / 2` prints there as `sizeof (int) + 1 / 2`, a
+  different expression; this brackets by the precedence `/` has, as `c++filt` does,
+  and the name joins `tests/conformance/itanium-reference-defects.txt` with its
+  source. One spacing rule too: a pointer to a member whose type is an array is
+  `int(A::*) [3]` to llvm-cxxfilt, its `(` straight after the member type where a
+  plain pointer to the same array is `int (*) [3]`; this spaced both.
 - **A pack expansion in an expression lost its dots, or its members.** `sp <expression>`
   tested the *scope* for a pack and, finding one, spelled the pattern once as it stood.
   So `decltype(g(t...))`, which both compilers write as `cl 1g sp fp_ E`, came back

@@ -314,6 +314,8 @@ ACCEPTED = {
         # Or an empty parenthesised initialiser after one, which `llvm-cxxfilt` reads
         # and does not print. See `_VALUE_INIT_NEW`.
         or (first is not None and _VALUE_INIT_NEW.search(name) is not None)
+        # Or a division, which `llvm-cxxfilt` brackets as an assignment. See `_DIVISION`.
+        or (first is not None and "dv" in name and "/" in first and "/" in ours)
         # Or a name neither reads because `llvm-cxxfilt` refuses its `LZ` external name
         # and `c++filt` refuses something else in it. See `_LEGACY_EXTERNAL_NAME`.
         or (first is None and second[0] is None and _LEGACY_EXTERNAL_NAME.search(name) is not None)
@@ -644,6 +646,14 @@ _BRACED_NEW = re.compile(r"n[wa]\w*?_\w*?il")
 #: the other expression. `c++filt` and this print the brackets the name carries. See
 #: `tests/conformance/itanium-reference-defects.txt`.
 _VALUE_INIT_NEW = re.compile(r"n[wa]\w*?_\w*?piE")
+
+#: `_DIVISION`: `dv`, which `llvm-cxxfilt` 18 and 20 carry in their operator table at
+#: the precedence of an assignment, so `(sizeof(T) + 1) / 2` prints as
+#: `sizeof (int) + 1 / 2` -- a different expression -- and `a / b - c` as `(a / b) - c`.
+#: `c++filt` and this bracket by the precedence `/` has. See
+#: `tests/conformance/itanium-reference-defects.txt`. Tested on the text rather than by
+#: a pattern: `dv` is two letters that occur in identifiers too, and a divergence this
+#: rule explains has a `/` on both sides.
 
 #: `L Z <encoding> E` -- an external name with the `_` missing, which G++ once emitted
 #: (libiberty's `d_expr_primary` carries the workaround as "bug 375") and `c++filt`

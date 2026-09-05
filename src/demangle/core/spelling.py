@@ -118,7 +118,7 @@ def _respace_bound(left, right):
     return bound if left.endswith("]") else " " + bound
 
 
-def _wrap(inner, token, ref_kind="", tight_after_star=False):
+def _wrap(inner, token, ref_kind="", tight_after_star=False, tight_before_group=False):
     """Apply a declarator token, parenthesising where precedence demands it.
 
     Without the parentheses `int (*)(char)` would read as `int *(char)`: a function
@@ -133,6 +133,12 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False):
     `&` keeps its space either way: `int (& (*)()) [3]`. An array's group is
     `d_print_array_type`'s, which writes ` (` whatever came before, so a reference to an
     array of pointers stays `tree_node* (&) [3]`.
+
+    `tight_before_group` is llvm-cxxfilt's spacing for a pointer to a member whose type
+    is an array: `PointerToMemberType::printLeft` writes its `(` straight after the
+    member type where `PointerType::printLeft` writes a space first, so
+    `int(A::*) [3]` beside `int (*) [3]`, and `void (*(A::*) [3])()` for an array of
+    function pointers. GNU c++filt spaces both.
     """
     if inner.members is not None:
         # Applying a declarator to a pack applies it to each member.
@@ -142,7 +148,7 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False):
         # A function's left half already ends in the space after its return type; an
         # array's ends in an identifier character and needs one added.
         tight = (" ", "(", "*") if tight_after_star and inner.is_function else (" ", "(")
-        spacer = "" if not left or left.endswith(tight) else " "
+        spacer = "" if tight_before_group or not left or left.endswith(tight) else " "
         # The bound now follows the `)` this closes with, not the element type, so its
         # spacing is decided against that: `int vector[4] (*) [3]`, not `(*)[3]`.
         right = ")" + _respace_bound(")", inner.right) if inner.is_array else ")" + inner.right
@@ -156,7 +162,13 @@ class SpellingBuilder(Builder):
     Stateless, so one instance is shared by every parse rather than allocated per name.
     """
 
-    __slots__ = ("collapse_duplicate_qualifiers", "gnu_clone_suffix", "legacy_angle_spacing", "tight_after_star")
+    __slots__ = (
+        "collapse_duplicate_qualifiers",
+        "gnu_clone_suffix",
+        "legacy_angle_spacing",
+        "tight_after_star",
+        "tight_member_array",
+    )
 
     def __init__(
         self,
@@ -164,6 +176,7 @@ class SpellingBuilder(Builder):
         gnu_clone_suffix=False,
         collapse_duplicate_qualifiers=False,
         tight_after_star=False,
+        tight_member_array=True,
     ):
         #: Write `Foo<Bar<int> >` rather than `Foo<Bar<int>>`. Required before C++11,
         #: when `>>` at the end of a template-id lexed as a right-shift operator. GNU
@@ -181,6 +194,10 @@ class SpellingBuilder(Builder):
         #: declarator group that follows a `*`, which is how GNU c++filt spaces it. See
         #: `_wrap`.
         self.tight_after_star = tight_after_star
+        #: Write `int(A::*) [3]` rather than `int (A::*) [3]`: no space before the group
+        #: of a pointer to a member whose type is an array, which is how llvm-cxxfilt
+        #: spaces it and GNU c++filt does not. See `_wrap`.
+        self.tight_member_array = tight_member_array
         #: Print `int const` where the mangling says `K K i`, rather than llvm-cxxfilt's
         #: `int const const`.
         #:
@@ -313,7 +330,12 @@ class SpellingBuilder(Builder):
             return pack_of(self.member_pointer(owner, member) for member in inner.members)
         token = f"{owner}::*"
         if inner.is_function or inner.is_array:
-            return _wrap(inner, token, tight_after_star=self.tight_after_star)
+            return _wrap(
+                inner,
+                token,
+                tight_after_star=self.tight_after_star,
+                tight_before_group=inner.is_array and self.tight_member_array,
+            )
         # Always spaced, unlike a bare `*`. `int* A::*` needs the gap even though `int*`
         # does not, because `int*A::*` would read as one token; the references agree.
         left = inner.left
@@ -419,5 +441,9 @@ class SpellingBuilder(Builder):
 #: than reaching for these; the API layer selects one per requested style.
 SPELLING_BUILDER = SpellingBuilder()
 LEGACY_SPELLING_BUILDER = SpellingBuilder(
-    legacy_angle_spacing=True, gnu_clone_suffix=True, collapse_duplicate_qualifiers=True, tight_after_star=True
+    legacy_angle_spacing=True,
+    gnu_clone_suffix=True,
+    collapse_duplicate_qualifiers=True,
+    tight_after_star=True,
+    tight_member_array=False,
 )

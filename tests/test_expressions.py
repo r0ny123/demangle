@@ -1481,3 +1481,146 @@ class TestANewExpressionsInitialiser:
     def test_both_styles(self, mangled, llvm, gnu):
         assert demangle.demangle_strict(mangled) == llvm
         assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+
+class TestAGreaterThanInsideATemplateArgumentList:
+    """`BinaryExpr::printLeft` wraps a `>` or `>>` that stands inside a template
+    argument list with no bracket yet opened round it, so it cannot be read as the end
+    of the list: `(1 > 0) && true`, `(1 >> 2) == 3`, `1 ? (2 > 3) : 4`. This wrapped
+    one only at the top of the argument, so `enable_if<(N > 0) && C>` came out
+    `N > 0 && C`. Every bracket a construct opens ends the rule inside it -- a call's
+    arguments, a cast, `sizeof`, the operand brackets an operator earns -- and braces
+    do not. Every spelling here is `llvm-cxxfilt` 18's, and 20 agrees."""
+
+    @pytest.mark.parametrize(
+        "mangled, expected",
+        [
+            ("_Z1fIXaagtLi1ELi0ELb1EEEvv", "void f<(1 > 0) && true>()"),
+            ("_Z1fIXaagtLi1ELi0EgtLi2ELi1EEEvv", "void f<(1 > 0) && (2 > 1)>()"),
+            ("_Z1fIXoogtLi1ELi2EgtLi3ELi4EEEvv", "void f<(1 > 2) || (3 > 4)>()"),
+            ("_Z1fIXeqrsLi1ELi2ELi3EEEvv", "void f<(1 >> 2) == 3>()"),
+            ("_Z3t11IiEv2BoIXeqrsstT_Li1ELi2EEE", "void t11<int>(Bo<(sizeof (int) >> 1) == 2>)"),
+            ("_Z1fIXquLi1EgtLi2ELi3ELi4EEEvv", "void f<1 ? (2 > 3) : 4>()"),
+            ("_Z1fIXqugtLi1ELi2ELi3ELi4EEEvv", "void f<(1 > 2) ? 3 : 4>()"),
+            ("_Z1fIXaSLi1EgtLi2ELi3EEEvv", "void f<1 = (2 > 3)>()"),
+            ("_Z1fIXtwgtLi1ELi2EEEvv", "void f<throw (1 > 2)>()"),
+            ("_Z1fIXspgtLi1ELi2EEEvv", "void f<(1 > 2)...>()"),
+            ("_Z1fIXdlgtLi1ELi2EEEvv", "void f<delete (1 > 2)>()"),
+            # Braces are not a bracket.
+            ("_Z1fIXtl1AgtLi1ELi2EEEEvv", "void f<A{(1 > 2)}>()"),
+            ("_Z1fIXilgtLi1ELi2EEEEvv", "void f<{(1 > 2)}>()"),
+            # The operand brackets an operator earns are, so the `>` is not wrapped
+            # again inside them, and a `>` that is itself an operand wraps once.
+            ("_Z1fIXntaagtLi1ELi0ELi2EEEvv", "void f<!(1 > 0 && 2)>()"),
+            ("_Z1fIXmlaagtLi1ELi2ELi3ELi4EEEvv", "void f<(1 > 2 && 3) * 4>()"),
+            ("_Z1fIXplcmgtLi1ELi2ELi3ELi4EEEvv", "void f<(1 > 2, 3) + 4>()"),
+            ("_Z1fIXplgtLi1ELi2ELi3EEEvv", "void f<(1 > 2) + 3>()"),
+            ("_Z1fIXmlgtLi1ELi2ELi3EEEvv", "void f<(1 > 2) * 3>()"),
+            ("_Z1fIXgtgtLi1ELi2ELi3EEEvv", "void f<(1 > 2 > 3)>()"),
+            ("_Z1fIXcmgtLi1ELi2ELi3EEEvv", "void f<(1 > 2, 3)>()"),
+            # So are the brackets of a call, a cast, `sizeof`, `noexcept`, a subscript,
+            # a new-expression, a fold and a decltype.
+            ("_Z1fIiEv1IIXcl1ggtLi1ELi2EEEE", "void f<int>(I<g(1 > 2)>)"),
+            ("_Z1fIXcvigtLi1ELi2EEEvv", "void f<(int)(1 > 2)>()"),
+            ("_Z1fIXscigtLi1ELi2EEEvv", "void f<static_cast<int>(1 > 2)>()"),
+            ("_Z1fIXszgtLi1ELi2EEEvv", "void f<sizeof (1 > 2)>()"),
+            ("_Z1fIXnxgtLi1ELi2EEEvv", "void f<noexcept (1 > 2)>()"),
+            ("_Z1fIXixLi1EgtLi1ELi2EEEvv", "void f<1[1 > 2]>()"),
+            ("_Z1fIXnw_ipigtLi1ELi2EEEEvv", "void f<new int(1 > 2)>()"),
+            ("_Z1fIXnwgtLi1ELi2E_iEEEvv", "void f<new(1 > 2) int>()"),
+            ("_Z1fIXfLplgtLi1ELi2ELi3EEEvv", "void f<((1 > 2) + ... + (3...))>()"),
+            ("_Z1fIXcvDtgtLi1ELi2EELi3EEEvv", "void f<(decltype(1 > 2))(3)>()"),
+            # A list nested inside the expression is a list of its own.
+            ("_Z1fIiEv1IIXsrT_IXgtLi1ELi2EEE1vEE", "void f<int>(I<int<(1 > 2)>::v>)"),
+        ],
+    )
+    def test_the_llvm_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+
+    def test_outside_a_template_argument_list_nothing_changes(self):
+        assert demangle.demangle_strict("_Z1fIiEDTgtfp_Li1EET_") == "decltype(fp > 1) f<int>(int)"
+        assert demangle.demangle_strict("_Z1fIiEDTaagtfp_Li1ELb1EET_") == "decltype(fp > 1 && true) f<int>(int)"
+
+    def test_the_gnu_spelling_is_unchanged(self):
+        assert demangle.demangle_strict("_Z1fIXaagtLi1ELi0ELb1EEEvv", style="gnu") == "void f<(((1)>(0)))&&(true)>()"
+        assert demangle.demangle_strict("_Z1fIXixLi1EgtLi1ELi2EEEvv", style="gnu") == "void f<(1)[((1)>(2))]>()"
+
+
+class TestSizeofNoexceptAndDeleteAreUnaryOperands:
+    """`sizeof`, `alignof`, `noexcept`, `new` and `delete` are unary to llvm-cxxfilt's
+    printer, and an operand position as tight brackets them: `!(sizeof (int))` and
+    `(sizeof (int)).m`, where `typeid` is postfix and stands bare. This left them
+    primary, `!sizeof (int)`. `_Z3t18IiEv1IIXntstT_EE` was compiled with Clang 18 from
+    `I<!sizeof(T)>`."""
+
+    @pytest.mark.parametrize(
+        "mangled, expected",
+        [
+            ("_Z3t18IiEv1IIXntstT_EE", "void t18<int>(I<!(sizeof (int))>)"),
+            ("_Z1fIiEDTntstT_ET_", "decltype(!(sizeof (int))) f<int>(int)"),
+            ("_Z1fIiEDTdtstT_1mET_", "decltype((sizeof (int)).m) f<int>(int)"),
+            ("_Z1fIiEDTplntstT_Li1EET_", "decltype(!(sizeof (int)) + 1) f<int>(int)"),
+            ("_Z1fIiEDTntnxfp_ET_", "decltype(!(noexcept (fp))) f<int>(int)"),
+            ("_Z1fIiEDTdtnxfp_1mET_", "decltype((noexcept (fp)).m) f<int>(int)"),
+            ("_Z1fIiEDTntazfp_ET_", "decltype(!(alignof (fp))) f<int>(int)"),
+            ("_Z1fIiEDTdtdlfp_1mET_", "decltype((delete fp).m) f<int>(int)"),
+            # Where nothing binds as tight, nothing changes.
+            ("_Z1fIiEDTplstT_Li1EET_", "decltype(sizeof (int) + 1) f<int>(int)"),
+            ("_Z1fIiEDTmlstT_stT_ET_", "decltype(sizeof (int) * sizeof (int)) f<int>(int)"),
+            ("_Z1fIiEDTszstT_ET_", "decltype(sizeof (sizeof (int))) f<int>(int)"),
+            ("_Z1fIiEDTntsZT_ET_", "decltype(!sizeof...(int...)) f<int>(int)"),
+            ("_Z1fIiEDTdttiT_4nameET_", "decltype(typeid (int).name) f<int>(int)"),
+        ],
+    )
+    def test_the_llvm_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+
+
+class TestAFoldsPackIsExpanded:
+    """llvm-cxxfilt prints a fold's pack through `ParameterPackExpansion` inside
+    brackets of its own: the pattern once per member when it names a pack, and the
+    pattern with its ellipsis when it does not. This spelled a pattern that names a
+    pack once, with the whole pack inside it, `(sizeof (int, char)...)`. The first
+    three names were compiled with Clang 18 from `(sizeof(T) + ...)` and its
+    relatives; c++filt spells the pattern once, and the gnu style still does."""
+
+    @pytest.mark.parametrize(
+        "mangled, expected",
+        [
+            ("_Z2t6IJicEEv1IIXfrplstT_EE", "void t6<int, char>(I<((sizeof (int), sizeof (char)) + ...)>)"),
+            ("_Z2t7IJicEEv1IIXflplstT_EE", "void t7<int, char>(I<(... + (sizeof (int), sizeof (char)))>)"),
+            ("_Z2t8IJicEEv1IIXfRplstT_Li1EEE", "void t8<int, char>(I<((sizeof (int), sizeof (char)) + ... + 1)>)"),
+            ("_Z1fIJEEv1IIXfrplstT_EE", "void f<>(I<(() + ...)>)"),
+            ("_Z1fIJicEEv1IIXfrplT_EE", "void f<int, char>(I<((int, char) + ...)>)"),
+            ("_Z1fIJicEEDTfrplfp_EDpT_", "decltype(((fp...) + ...)) f<int, char>(int, char)"),
+            ("_Z1fIJicEEDTfrplszfp_EDpT_", "decltype(((sizeof (fp)...) + ...)) f<int, char>(int, char)"),
+        ],
+    )
+    def test_the_llvm_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+
+    def test_the_gnu_spelling_is_cxxfilts(self):
+        assert demangle.demangle_strict("_Z2t6IJicEEv1IIXfrplstT_EE", style="gnu") == (
+            "void t6<int, char>(I<((sizeof (int, char))+...)>)"
+        )
+
+
+class TestDivisionKeepsItsPrecedence:
+    """llvm-cxxfilt 18 and 20 carry `dv` in their operator table at the precedence of
+    an assignment, so `(sizeof(T) + 1) / 2` -- `_Z9half_moreIiEv1IIXdvplstT_Li1ELi2EEE`,
+    compiled identically by g++ 13 and Clang 18 -- prints there as
+    `sizeof (int) + 1 / 2`, a different expression, and `a / b - c` as `(a / b) - c`.
+    c++filt and this bracket by the precedence `/` has. See
+    `tests/conformance/itanium-reference-defects.txt`."""
+
+    def test_the_sum_it_divides_is_bracketed(self):
+        assert demangle.demangle_strict("_Z9half_moreIiEv1IIXdvplstT_Li1ELi2EEE") == (
+            "void half_more<int>(I<(sizeof (int) + 1) / 2>)"
+        )
+
+    def test_and_nothing_else_is(self):
+        assert (
+            demangle.demangle_strict("_Z7quarterIiEv1IIXdvdvstT_Li2ELi2EEE")
+            == "void quarter<int>(I<sizeof (int) / 2 / 2>)"
+        )
+        assert demangle.demangle_strict("_Z1fIXmidvLi1ELi2ELi3EEEvv") == "void f<1 / 2 - 3>()"

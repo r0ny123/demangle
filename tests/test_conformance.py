@@ -53,9 +53,10 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #: so the next regeneration re-recorded llvm-cxxfilt 18's answer -- which is what the
 #: first regeneration in a while did.
 #:
-#: The fifteenth is a printing defect rather than a substitution one: llvm-cxxfilt 18
-#: and 20 print `new T()` as `new T`, and the two are different expressions.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 15, 15
+#: The fifteenth and sixteenth are printing defects rather than substitution ones:
+#: llvm-cxxfilt 18 and 20 print `new T()` as `new T`, and `(sizeof(T) + 1) / 2` as
+#: `sizeof (int) + 1 / 2`, and each pair is two different expressions.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 16, 16
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are

@@ -571,3 +571,29 @@ class TestAGroupAfterAStarIsTightUnderTheGnuStyle:
     def test_the_two_styles(self, mangled, llvm, gnu):
         assert demangle.demangle(mangled) == llvm
         assert demangle.demangle(mangled, style="gnu") == gnu
+
+
+class TestAPointerToAMemberOfArrayType:
+    """`PointerToMemberType::printLeft` writes its `(` straight after the member type
+    where `PointerType::printLeft` writes a space first, so llvm-cxxfilt spells
+    `int(A::*) [3]` beside `int (*) [3]`; GNU c++filt spaces both. This spaced both
+    under both styles."""
+
+    @pytest.mark.parametrize(
+        "mangled, llvm, gnu",
+        [
+            ("_Z1fM1AA3_i", "f(int(A::*) [3])", "f(int (A::*) [3])"),
+            ("_Z1fM1AA3_A2_i", "f(int(A::*) [3][2])", "f(int (A::*) [3][2])"),
+            ("_Z1fM1AKA3_i", "f(int const(A::*) [3])", "f(int const (A::*) [3])"),
+            ("_Z1fM1AA3_PFvvE", "f(void (*(A::*) [3])())", "f(void (* (A::*) [3])())"),
+            ("_Z1fRM1AA3_i", "f(int(A::*&) [3])", "f(int (A::*&) [3])"),
+            ("_Z1fM1AA3_S_", "f(A(A::*) [3])", "f(A (A::*) [3])"),
+            # A pointer to an array and a pointer to a member function keep their space.
+            ("_Z1fPA3_i", "f(int (*) [3])", "f(int (*) [3])"),
+            ("_Z1fM1AFvvE", "f(void (A::*)())", "f(void (A::*)())"),
+            ("_Z1fM1APA3_i", "f(int (* A::*) [3])", "f(int (* A::*) [3])"),
+        ],
+    )
+    def test_both_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled) == llvm
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu

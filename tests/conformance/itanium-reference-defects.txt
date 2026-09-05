@@ -1,7 +1,7 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Ten of the entries have
+# the expected column is derived from the *declaration* instead. Eleven of the entries have
 # a source in tools/corpus_sources/reference_defects/: it is compiled with the compiler
 # named on the entry, the symbol is read out of the object file with `nm`, and the
 # spelling is what that source says the symbol's type is. Two more come from the general
@@ -128,3 +128,11 @@ _Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_	outer::inner::Holder<
 # nothing for it, `decltype(new int)` -- the other expression. GNU c++filt 2.42 prints
 # the brackets, and so does this.
 _Z10value_initIiEDTnw_T_piEES0_	decltype(new int()) value_init<int>(int)
+#
+# tools/corpus_sources/reference_defects/division.cpp, g++ 13.3.0 and clang++ 18.1.3
+# identically. `I<(sizeof(T) + 1) / 2>`: llvm-cxxfilt 18.1.3 and 20.1.2 carry `dv` in
+# their operator table at the precedence of an assignment, so the sum it divides is not
+# bracketed and the name prints as `sizeof (int) + 1 / 2` -- a different expression.
+# GNU c++filt 2.42 prints `((sizeof (int))+(1))/(2)`, and this brackets by the
+# precedence `/` has.
+_Z9half_moreIiEv1IIXdvplstT_Li1ELi2EEE	void half_more<int>(I<(sizeof (int) + 1) / 2>)

@@ -91,6 +91,21 @@ _BLOCK_INVOKE = re.compile(r"(.*)_block_invoke(?:_\d+|\d*)(?:\..*)?\Z", re.DOTAL
 #: brackets to sit in a comma-separated list.
 _COMMA_BINDING = PRECEDENCE["cm"]
 
+#: The precedence an expression will have, known from the two letters it opens with,
+#: for the operators whose operands are read without brackets of the operator's own.
+#: Everything else -- a name, a literal, a call, a cast -- is absent and decides for
+#: itself. See `_operand`.
+_NOMINAL_PRECEDENCE = {
+    **{code: PRECEDENCE.get(code, 1) for code in INFIX_OPERATORS},
+    **dict.fromkeys(PREFIX_OPERATORS, UNARY_PRECEDENCE),
+    "qu": PRECEDENCE["qu"],
+    "nw": UNARY_PRECEDENCE,
+    "na": UNARY_PRECEDENCE,
+    "dl": UNARY_PRECEDENCE,
+    "da": UNARY_PRECEDENCE,
+    "tw": UNARY_PRECEDENCE,
+}
+
 #: `Ts`, `Tu` and `Te` name a dependent type with the keyword the writer used.
 _ELABORATED_KEYWORDS = {"s": "struct", "u": "union", "e": "enum"}
 
@@ -332,6 +347,7 @@ class ItaniumParser:
         "_abbrev_expanded",
         "_ambiguous_unresolved_name",
         "_argument_constraint",
+        "_bare_angle",
         "_component_has_no_base_name",
         "_conversion_unbound",
         "_ctor_dtor",
@@ -528,6 +544,11 @@ class ItaniumParser:
         self._conversion_unbound = False
         self._ambiguous_unresolved_name = False
         self._old_unresolved_names = False
+        #: True while an expression is being read as a template argument under the
+        #: llvm style and no bracket has opened since: where a `>` would be taken for
+        #: the end of the list, and `BinaryExpr::printLeft` wraps one. See
+        #: `_bracketed_expression`.
+        self._bare_angle = False
         # True while that type is being read for the first time, before the arguments
         # exist. The one place a `<template-param>` may resolve to nothing with no
         # <template-args> in scope at all -- see `bind_template_param`.
@@ -2271,7 +2292,7 @@ class ItaniumParser:
         marker = reader.take()
         if marker not in ("t", "T"):
             raise ParseError(self._mangled, reader.pos, "expected a decltype")
-        expression = self.expression()
+        expression = self._bracketed_expression()
         reader.expect("E")
         keyword = "decltype " if self.options.gnu_expression_spelling else "decltype"
         return self.builder.expression("decltype", [keyword, "(", expression, ")"])
@@ -3214,7 +3235,17 @@ class ItaniumParser:
                 # writes `enable_if<(4u, 4), void>` -- and `>>` stands bare, `f<(1)>>(2)>`.
                 # A `>` is bracketed wherever it is, by its own spelling below.
                 angled = False
-            expression = self.expression()
+            # llvm-cxxfilt brackets a `>` or `>>` wherever it stands inside an argument
+            # list until some bracket has opened round it -- `(1 > 0) && true`,
+            # `1 ? (2 > 3) : 4`, `(1 >> 2) == 3` -- so the argument's expression is
+            # read knowing that, and every construct that brackets what it reads says
+            # so. The wrap made here is a bracket of its own.
+            outer_bare = self._bare_angle
+            self._bare_angle = not angled and not self.options.gnu_expression_spelling
+            try:
+                expression = self.expression()
+            finally:
+                self._bare_angle = outer_bare
             reader.expect("E")
             if angled:
                 expression = builder.expression("paren", ["(", expression, ")"])
@@ -3900,24 +3931,72 @@ class ItaniumParser:
         self._precedence = PRIMARY_PRECEDENCE
         return builder.expression("requires", parts)
 
+    def _expansion_pattern(self):
+        """Read the pattern of a pack expansion in an expression: `sp`, or a fold's pack.
+
+        Under the rule `Dp` reads a type pattern by. A pattern that names a pack -- a
+        `T_` bound to one -- is read again once per member, and what comes back is the
+        members: `sp sc T_ fp_` over `{int, char}` is `static_cast<int>(fp),
+        static_cast<char>(fp)` to both references. Spelling the one reading put the
+        whole pack where each member belongs, `static_cast<int, char>(fp)`, a cast of a
+        kind C++ has not. A pattern that names an empty pack is nothing. A pattern that
+        names no pack is handed back as read, for the caller to write the dots after:
+        they are the expansion of something the name does not carry, a function
+        parameter pack most often, `g(fp...)` -- whatever the scope holds. Testing the
+        scope for a pack, as this once did, dropped the dots from every
+        `decltype(g(t...))`.
+
+        Returns the handle and which of the three it is: `"members"`, `"empty"` or
+        `"pattern"`.
+        """
+        reader = self.reader
+        start = reader.pos
+        mark = self.subs.mark()
+        outer_pack = self._saw_pack
+        outer_empty = self._saw_empty_pack
+        outer_arity = self._pack_arity
+        self._saw_pack = False
+        self._saw_empty_pack = False
+        self._pack_arity = None
+        try:
+            expanded = self.expression()
+            over_pack = self._saw_pack
+            over_empty = self._saw_empty_pack
+            arity = self._pack_arity
+        finally:
+            # As for `Dp`: the expansion consumes its pack.
+            self._saw_pack = outer_pack
+            self._saw_empty_pack = outer_empty
+            self._pack_arity = outer_arity
+        if over_empty:
+            return self.builder.parameter_pack([]), "empty"
+        if over_pack and arity:
+            return self._expand_pattern(start, mark, arity, self.expression), "members"
+        return expanded, "pattern"
+
     def _fold_pack(self):
         """The pack half of a fold expression, bracketed and expanded.
 
-        A pack that is bound prints as its members -- `(1, 2, 3)` -- and one that is not
-        prints with the ellipsis that says it is still a pack: `(y...)`.
+        llvm-cxxfilt prints it through `ParameterPackExpansion` inside brackets of its
+        own: the members when the pattern names a pack, `(sizeof (int), sizeof (char))`
+        for `st T_` over `{int, char}` and `()` over none, and the pattern with the
+        ellipsis that says it is still a pack when it does not, `(fp...)`.
         """
         builder = self.builder
-        expanded = self.expression()
-        if builder.members(expanded) is not None:
-            return builder.expression("paren", ["(", expanded, ")"])
         if self.options.gnu_expression_spelling:
             # `d_print_comp` prints a fold's pack operand as it prints any operand,
             # through `d_print_subexpr`, and writes no ellipsis of its own: `(x+...+y)`
             # for a name and `((0)+...+(int))` for a literal and a parameter bound to
-            # one type, where llvm-cxxfilt writes `(int...)` and refuses the name.
-            if self._precedence < SIMPLE_PRECEDENCE:
+            # one type, where llvm-cxxfilt writes `(int...)` and refuses the name. Nor
+            # does it read the pattern once per member: `sizeof (int, char)` is what it
+            # writes for `st T_` over a pack of two.
+            expanded = self.expression()
+            if builder.members(expanded) is not None or self._precedence < SIMPLE_PRECEDENCE:
                 return builder.expression("paren", ["(", expanded, ")"])
             return expanded
+        expanded, kind = self._expansion_pattern()
+        if kind != "pattern":
+            return builder.expression("paren", ["(", expanded, ")"])
         return builder.expression("paren", ["(", expanded, "...)"])
 
     def _commas(self, items, separator=", "):
@@ -3970,6 +4049,20 @@ class ItaniumParser:
         braced initialiser list and a function parameter. See `SIMPLE_PRECEDENCE`. The
         other callers of this are list elements, which it prints without asking.
         """
+        if self._bare_angle:
+            # Whether this operand will be bracketed is known before it is read, from
+            # the operator it opens with, and llvm-cxxfilt's bracket is a bracket like
+            # any other: a `>` inside `!(1 > 0 && 2)` is not wrapped again. A `>`
+            # itself wraps itself instead and is then primary, which is the same
+            # single pair the reference prints.
+            nominal = _NOMINAL_PRECEDENCE.get(self.reader.peek2())
+            if nominal is not None and nominal < binding:
+                self._bare_angle = False
+                try:
+                    operand = self.expression()
+                finally:
+                    self._bare_angle = True
+                return self.builder.expression("paren", ["(", operand, ")"])
         operand = self.expression()
         if subexpression and self.options.gnu_expression_spelling:
             needed = self._precedence < SIMPLE_PRECEDENCE
@@ -3978,6 +4071,41 @@ class ItaniumParser:
         if needed:
             return self.builder.expression("paren", ["(", operand, ")"])
         return operand
+
+    def _conversion(self, kind):
+        """The operand half of `cv <type> <expression>` or `cv <type> _ <expression>* E`."""
+        reader = self.reader
+        builder = self.builder
+        if reader.eat("_"):
+            arguments = []
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated conversion")
+                arguments.append(self._element())
+            return builder.expression("cast", ["(", kind, ")(", *self._commas(arguments), ")"])
+        if self.options.gnu_expression_spelling:
+            # c++filt prints the operand through `d_print_subexpr`, which brackets by
+            # kind: `(int)x` and `(int){parm#1}` and `(A){1, 2}` for a name, a
+            # parameter and a braced list, `(int)({parm#1}+{parm#1})` and `(int)(1)`
+            # for everything else. Both compilers write `T(t)` as `cvT_fp_`, so the
+            # bare parameter is the common case.
+            return builder.expression("cast", ["(", kind, ")", self._operand(UNARY_PRECEDENCE, subexpression=True)])
+        return builder.expression("cast", ["(", kind, ")(", self._element(), ")"])
+
+    def _bracketed_expression(self):
+        """Read an expression that its construct will print inside brackets of its own.
+
+        A call's arguments, a cast's operand, what `sizeof` measures: inside those a
+        `>` is not the end of any template argument list, and llvm-cxxfilt stops
+        wrapping one. See `_bare_angle`.
+        """
+        if not self._bare_angle:
+            return self.expression()
+        self._bare_angle = False
+        try:
+            return self.expression()
+        finally:
+            self._bare_angle = True
 
     def _callee(self):
         """The thing being called, bracketed on the same rule as any other operand.
@@ -4083,7 +4211,7 @@ class ItaniumParser:
             self._saw_pack = False
             self._pack_arity = None
             try:
-                inner = self.expression() if is_function_param else self.template_param()
+                inner = self._bracketed_expression() if is_function_param else self.template_param()
                 over_pack = self._saw_pack
                 arity = self._pack_arity if over_pack and self._pack_arity is not None else 0
             finally:
@@ -4149,15 +4277,18 @@ class ItaniumParser:
             elif gnu and pair == "nx":
                 # The one c++filt writes with no space and always with brackets:
                 # `noexcept({parm#1})`, where it writes `sizeof {parm#1}`.
-                parts = [keyword + "(", self.expression(), ")"]
+                parts = [keyword + "(", self._bracketed_expression(), ")"]
             elif gnu and pair in ("sz", "az"):
                 # A keyword and then an operand like any other, so the brackets are the
                 # operand's: `sizeof (1)` and `sizeof ({parm#1}())`, but `sizeof
                 # {parm#1}` and `sizeof std::x`.
                 parts = [keyword + " ", self._operand(PRIMARY_PRECEDENCE, subexpression=True)]
             else:
-                parts = [keyword + " (", self.expression(), ")"]
-            self._precedence = PRIMARY_PRECEDENCE
+                parts = [keyword + " (", self._bracketed_expression(), ")"]
+            # `sizeof`, `alignof` and `noexcept` are unary to llvm-cxxfilt's printer and
+            # bracketed as the operand of anything as tight: `!(sizeof (int))` and
+            # `(sizeof (int)).m`, where `typeid` is postfix and stands bare in both.
+            self._precedence = PRIMARY_PRECEDENCE if pair in ("ti", "te") else UNARY_PRECEDENCE
             return builder.expression(form, parts)
 
         if pair == "tr":
@@ -4184,10 +4315,15 @@ class ItaniumParser:
             reader.pos += 2
             target = self._callee()
             arguments = []
-            while not reader.eat("E"):
-                if reader.eof:
-                    raise ParseError(self._mangled, reader.pos, "unterminated call expression")
-                arguments.append(self._element())
+            outer_bare = self._bare_angle
+            self._bare_angle = False
+            try:
+                while not reader.eat("E"):
+                    if reader.eof:
+                        raise ParseError(self._mangled, reader.pos, "unterminated call expression")
+                    arguments.append(self._element())
+            finally:
+                self._bare_angle = outer_bare
             # A call closes with a bracket, so llvm-cxxfilt never brackets one again --
             # `*std::begin(x)`, not `*(std::begin(x))`. GNU does when it is an operand,
             # because a call is not a name.
@@ -4197,22 +4333,12 @@ class ItaniumParser:
         if pair == "cv":
             reader.pos += 2
             kind = self.type_()
-            if reader.eat("_"):
-                arguments = []
-                while not reader.eat("E"):
-                    if reader.eof:
-                        raise ParseError(self._mangled, reader.pos, "unterminated conversion")
-                    arguments.append(self._element())
-                cast = builder.expression("cast", ["(", kind, ")(", *self._commas(arguments), ")"])
-            elif self.options.gnu_expression_spelling:
-                # c++filt prints the operand through `d_print_subexpr`, which brackets
-                # by kind: `(int)x` and `(int){parm#1}` and `(A){1, 2}` for a name, a
-                # parameter and a braced list, `(int)({parm#1}+{parm#1})` and
-                # `(int)(1)` for everything else. Both compilers write `T(t)` as
-                # `cvT_fp_`, so the bare parameter is the common case.
-                cast = builder.expression("cast", ["(", kind, ")", self._operand(UNARY_PRECEDENCE, subexpression=True)])
-            else:
-                cast = builder.expression("cast", ["(", kind, ")(", self._element(), ")"])
+            outer_bare = self._bare_angle
+            self._bare_angle = False
+            try:
+                cast = self._conversion(kind)
+            finally:
+                self._bare_angle = outer_bare
             # A cast binds *looser* than a postfix operator, so it needs brackets when it
             # is the object of one: `((A*)(0))->member`, not `(A*)(0)->member`, which
             # reads as a cast of `0->member`. It looks parenthesised already -- the
@@ -4294,8 +4420,10 @@ class ItaniumParser:
             reader.pos += 2
             # Subscript is the one postfix form the reference brackets against another
             # postfix -- `(fp[fp])[fp]`, but `fp.a.b` and `fp++++` unbracketed.
-            owner = self._operand(PRIMARY_PRECEDENCE)
-            index = self.expression()
+            # The object is a `d_print_subexpr` position to c++filt, `(1)[...]`, and
+            # the index is not.
+            owner = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
+            index = self._bracketed_expression()
             self._precedence = POSTFIX_PRECEDENCE
             return builder.expression("subscript", [owner, "[", index, "]"])
 
@@ -4312,39 +4440,14 @@ class ItaniumParser:
         if pair == "sp":
             # A pack expansion inside an expression, under the same rule as `Dp`.
             reader.pos += 2
-            start = reader.pos
-            mark = self.subs.mark()
-            outer_pack = self._saw_pack
-            outer_empty = self._saw_empty_pack
-            outer_arity = self._pack_arity
-            self._saw_pack = False
-            self._saw_empty_pack = False
-            self._pack_arity = None
-            try:
-                expanded = self.expression()
-                over_pack = self._saw_pack
-                over_empty = self._saw_empty_pack
-                arity = self._pack_arity
-            finally:
-                # As for `Dp`: the expansion consumes its pack.
-                self._saw_pack = outer_pack
-                self._saw_empty_pack = outer_empty
-                self._pack_arity = outer_arity
-            if over_empty:
-                # The pattern ranges over a pack with no members, so it expands to no
-                # arguments at all -- not to one argument with an empty list inside it.
-                # `f(xs...)` over an empty `xs` is `f()`, and this is what makes the
-                # comma before it disappear too; `Dp` does the same in a type list.
+            expanded, kind = self._expansion_pattern()
+            if kind != "pattern":
+                # Its members, or nothing at all: an expansion over an empty pack is no
+                # argument, not one argument with an empty list inside it. `f(xs...)`
+                # over an empty `xs` is `f()`, and this is what makes the comma before
+                # it disappear too; `Dp` does the same in a type list.
                 self._precedence = PRIMARY_PRECEDENCE
-                return builder.parameter_pack([])
-            if over_pack and arity:
-                # The pattern names a pack, so it is read again once per member, as
-                # `Dp` reads a type pattern: `sp sc T_ fp_` over `{int, char}` is
-                # `static_cast<int>(fp), static_cast<char>(fp)` to both references.
-                # Spelling the one reading put the whole pack where each member
-                # belongs, `static_cast<int, char>(fp)`, a cast of a kind C++ has not.
-                self._precedence = PRIMARY_PRECEDENCE
-                return self._expand_pattern(start, mark, arity, self.expression)
+                return expanded
             # A pattern that names no pack is `x...` whatever the scope holds -- the
             # dots are the expansion of something the name does not carry, a function
             # parameter pack most often, `g(fp...)` -- which GNU brackets on the rule it
@@ -4359,18 +4462,23 @@ class ItaniumParser:
         if pair == "nw" or pair == "na":
             reader.pos += 2
             arguments = []
-            while not reader.eat("_"):
-                if reader.eof:
-                    raise ParseError(self._mangled, reader.pos, "unterminated new expression")
-                arguments.append(self.expression())
-            kind = self.type_()
-            keyword = "new" if pair == "nw" else "new[]"
-            gap = " " if self.options.gnu_expression_spelling else ""
-            placement = [gap, "(", *self._commas(arguments), ")"] if arguments else []
+            outer_bare = self._bare_angle
+            self._bare_angle = False
+            try:
+                while not reader.eat("_"):
+                    if reader.eof:
+                        raise ParseError(self._mangled, reader.pos, "unterminated new expression")
+                    arguments.append(self.expression())
+                kind = self.type_()
+                keyword = "new" if pair == "nw" else "new[]"
+                gap = " " if self.options.gnu_expression_spelling else ""
+                placement = [gap, "(", *self._commas(arguments), ")"] if arguments else []
+                parts = [keyword, *placement, " ", kind]
+                if not reader.eat("E"):
+                    parts.append(self.initialiser())
+            finally:
+                self._bare_angle = outer_bare
             self._precedence = UNARY_PRECEDENCE
-            parts = [keyword, *placement, " ", kind]
-            if not reader.eat("E"):
-                parts.append(self.initialiser())
             return builder.expression("new", parts)
 
         if pair in ("dl", "da"):
@@ -4379,13 +4487,14 @@ class ItaniumParser:
             # `delete (4)` and `delete {parm#1}`: the operand is a `d_print_subexpr`
             # position, bracketed by kind, where llvm-cxxfilt writes `delete 4`.
             operand = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
-            self._precedence = PRIMARY_PRECEDENCE
+            # Unary to llvm-cxxfilt's printer, `(delete fp).m`, as `new` is.
+            self._precedence = UNARY_PRECEDENCE
             return builder.expression("delete", [keyword, " ", operand])
 
         if pair in ("dc", "sc", "cc", "rc"):
             reader.pos += 2
             casts = {"dc": "dynamic_cast", "sc": "static_cast", "cc": "const_cast", "rc": "reinterpret_cast"}
-            kind, inner = self.type_(), self.expression()
+            kind, inner = self.type_(), self._bracketed_expression()
             self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("named_cast", [casts[pair], "<", kind, ">(", inner, ")"])
 
@@ -4436,20 +4545,27 @@ class ItaniumParser:
             reader.pos += 2
             left_fold = marker in ("l", "L")
             initialiser = None
+            # Both halves stand inside the fold's own brackets.
+            outer_bare = self._bare_angle
+            self._bare_angle = False
             # The initialiser is an operand of the fold's operator, and GNU c++filt
             # brackets it on the same rule as any other -- by kind, not by precedence --
             # so `fL pl Li9E T_` is `((9)+...+(1, 2))` there and `(9 + ... + (1, 2))`
             # here. Reading it without `subexpression` printed GNU's spacing rule but
             # llvm's brackets, which is neither reference.
-            if marker == "L":
-                # The initialiser comes first for a left fold and second for a right one.
-                initialiser = self._operand(UNARY_PRECEDENCE, subexpression=True)
-                pack = self._fold_pack()
-            elif marker == "R":
-                pack = self._fold_pack()
-                initialiser = self._operand(UNARY_PRECEDENCE, subexpression=True)
-            else:
-                pack = self._fold_pack()
+            try:
+                if marker == "L":
+                    # The initialiser comes first for a left fold and second for a right
+                    # one.
+                    initialiser = self._operand(UNARY_PRECEDENCE, subexpression=True)
+                    pack = self._fold_pack()
+                elif marker == "R":
+                    pack = self._fold_pack()
+                    initialiser = self._operand(UNARY_PRECEDENCE, subexpression=True)
+                else:
+                    pack = self._fold_pack()
+            finally:
+                self._bare_angle = outer_bare
             # GNU writes no spaces around the operator, here as everywhere else in an
             # expression: `(...+(1, 2))`, not `(... + (1, 2))`.
             spelt = INFIX_OPERATORS[code]
@@ -4500,6 +4616,13 @@ class ItaniumParser:
                 # alone, and `((({parm#1}>{parm#1}))+{parm#1})` as an operand.
                 return builder.expression("binary", ["(", left, spelling, right, ")"])
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
+            if self._bare_angle and pair in ("gt", "rs"):
+                # `BinaryExpr::printLeft`'s `ParenAll`: inside a template argument list
+                # with no bracket yet opened, the whole comparison or shift is wrapped
+                # so its `>` cannot be read as the list's end. Wrapped, it is primary,
+                # and an operand position brackets it no further.
+                self._precedence = PRIMARY_PRECEDENCE
+                return builder.expression("binary", ["(", left, gap, spelling, gap, right, ")"])
             return builder.expression("binary", [left, gap, spelling, gap, right])
 
         if pair in ("rq", "rQ"):
