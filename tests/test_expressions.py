@@ -1388,3 +1388,96 @@ class TestTheOldFormOfSrWithAPlainClass:
     def test_a_name_neither_reading_takes_reports_the_first(self):
         with pytest.raises(demangle.ParseError, match="expected a number at offset 23"):
             demangle.demangle_strict("_Z1kIiEDTplsr1A3bazIT_Efp_ES9_")
+
+
+class TestAPackExpansionInAnExpression:
+    """`sp <expression>` under the rule `Dp` reads a type pattern by. A pattern that
+    names a pack -- a `T_` bound to one -- is read once per member, `sp sc T_ fp_` over
+    `{int, char}` being `static_cast<int>(fp), static_cast<char>(fp)`; a pattern that
+    names none is `x...` whatever the scope holds, which is how a function parameter
+    pack is written, `decltype(g(t...))` being `cl 1g sp fp_ E`. This tested the scope
+    for a pack instead of the pattern and, finding one, spelled the pattern once as it
+    stood: the dots gone from every `g(fp...)`, and `static_cast<int, char>(fp)` for the
+    other. Every name here was compiled with g++ 13 and Clang 18 from the source in
+    the comment, and both references print the expected spelling."""
+
+    @pytest.mark.parametrize(
+        "mangled, expected",
+        [
+            # decltype(g(t...))
+            ("_Z2f1IJicEEDTcl1gspfp_EEDpT_", "decltype(g(fp...)) f1<int, char>(int, char)"),
+            ("_Z2f1IJEEDTcl1gspfp_EEDpT_", "decltype(g(fp...)) f1<>()"),
+            # decltype(g((t + 1)...)), decltype(g(sizeof(t)...)), decltype(g(&t...))
+            ("_Z2f2IJicEEDTcl1gspplfp_Li1EEEDpT_", "decltype(g(fp + 1...)) f2<int, char>(int, char)"),
+            ("_Z2f3IJicEEDTcl1gspszfp_EEDpT_", "decltype(g(sizeof (fp)...)) f3<int, char>(int, char)"),
+            ("_Z2f8IJicEEDTcl1gspadfp_EEDpT_", "decltype(g(&fp...)) f8<int, char>(int, char)"),
+            # decltype(g(static_cast<T>(t)...)), decltype(g(T(t)...)), decltype(g(T{}...)),
+            # decltype(g(sizeof(T)...)): the pattern names the pack and expands.
+            (
+                "_Z2f4IJicEEDTcl1gspscT_fp_EEDpS0_",
+                "decltype(g(static_cast<int>(fp), static_cast<char>(fp))) f4<int, char>(int, char)",
+            ),
+            ("_Z2f5IJicEEDTcl1gspcvT_fp_EEDpS0_", "decltype(g((int)(fp), (char)(fp))) f5<int, char>(int, char)"),
+            ("_Z2f6IJicEEDTcl1gsptlT_EEEDpS0_", "decltype(g(int{}, char{})) f6<int, char>(int, char)"),
+            ("_Z2f7IJicEEDTcl1gspstT_EEDpS0_", "decltype(g(sizeof (int), sizeof (char))) f7<int, char>(int, char)"),
+            # An expansion among other arguments, two packs in one pattern, and an
+            # expansion over an empty pack, which is no argument at all.
+            (
+                "_Z1fIJicEEDTcl1gspscT_fp_Li1EEEDpT_",
+                "decltype(g(static_cast<int>(fp), static_cast<char>(fp), 1)) f<int, char>(int, char)",
+            ),
+            (
+                "_Z1fIJicEJfdEEDTcl1gspscT_T0_EEDpT_DpT0_",
+                "decltype(g(static_cast<int>(float), static_cast<char>(double))) "
+                "f<int, char, float, double>(int, char, float, double)",
+            ),
+            ("_Z1fIJEEDTcl1gspscT_fp_EEDpT_", "decltype(g()) f<>()"),
+            # The same shapes in a conversion, a braced initialiser and a member access.
+            ("_Z3q67IJiEEDTcv1Aspfp_EDpT_", "decltype((A)(fp...)) q67<int>(int)"),
+            ("_Z3q68IJiEEDTtl1Aspfp_EEDpT_", "decltype(A{fp...}) q68<int>(int)"),
+            ("_Z1fIJicEEDTcl1gspdtfp_1mEEDpT_", "decltype(g(fp.m...)) f<int, char>(int, char)"),
+            ("_Z1fIJicEEDTcl1gspsrT_1xEEDpT_", "decltype(g(int::x, char::x)) f<int, char>(int, char)"),
+        ],
+    )
+    def test_the_llvm_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+
+    def test_a_scope_with_no_pack_is_unchanged(self):
+        assert demangle.demangle_strict("_Z1fIiEDTcl1gspfp_EET_") == "decltype(g(fp...)) f<int>(int)"
+        assert (
+            demangle.demangle_strict("_Z1fIiEDTcl1gspscT_fp_EET_") == "decltype(g(static_cast<int>(fp)...)) f<int>(int)"
+        )
+
+
+class TestANewExpressionsInitialiser:
+    """`new T{}` and `new T{t}` are written by both compilers as `il <expression>* E`
+    after the type, with no `E` of the new-expression's own -- a form the ABI grammar
+    does not have, libiberty reads, and `llvm-cxxfilt` 18 and 20 refuse. `new T()` is
+    `pi E`, an empty parenthesised initialiser, which `llvm-cxxfilt` reads and prints as
+    `new int`: the other expression, the one that leaves the object indeterminate. See
+    `tests/conformance/itanium-reference-defects.txt`."""
+
+    @pytest.mark.parametrize(
+        "mangled, llvm, gnu",
+        [
+            ("_Z2n4IiEDTnw_T_ilEES0_", "decltype(new int{}) n4<int>(int)", "decltype (new int{}) n4<int>(int)"),
+            (
+                "_Z2n5IiEDTnw_T_ilfp_EES0_",
+                "decltype(new int{fp}) n5<int>(int)",
+                "decltype (new int{{parm#1}}) n5<int>(int)",
+            ),
+            (
+                "_Z1fIiEDTnw_T_ilfp_fp_EES0_",
+                "decltype(new int{fp, fp}) f<int>(int)",
+                "decltype (new int{{parm#1}, {parm#1}}) f<int>(int)",
+            ),
+            (
+                "_Z10value_initIiEDTnw_T_piEES0_",
+                "decltype(new int()) value_init<int>(int)",
+                "decltype (new int()) value_init<int>(int)",
+            ),
+        ],
+    )
+    def test_both_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled) == llvm
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu

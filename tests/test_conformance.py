@@ -52,7 +52,10 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #: in `itanium-real-world.txt` with the corrected spelling and was absent from this file,
 #: so the next regeneration re-recorded llvm-cxxfilt 18's answer -- which is what the
 #: first regeneration in a while did.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 14, 14
+#:
+#: The fifteenth is a printing defect rather than a substitution one: llvm-cxxfilt 18
+#: and 20 print `new T()` as `new T`, and the two are different expressions.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 15, 15
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are

@@ -24,6 +24,7 @@ This directory is deliberately *not* swept by `tools/generate_corpus.py`, which 
 | `member_template_lambda.cpp` | g++ 13.3.0 and clang++ 18.1.3, identically | the same defect the other way round: the closure's own `auto` written as the enclosing template's `T_` entry; llvm-cxxfilt 18 wrong, GNU c++filt 2.42 correct |
 | `prepare_execution.cpp` | g++ 13.3.0 | both references wrong |
 | `auto_marshall.cpp` | clang++ 18.1.3 | llvm-cxxfilt 18 wrong; GNU c++filt 2.42 refuses |
+| `value_init_new.cpp` | g++ 13.3.0 and clang++ 18.1.3, identically | a different defect: llvm-cxxfilt 18 and 20 print `new T()` as `new T`, the expression that does not value-initialise; GNU c++filt 2.42 correct |
 
 Rebuild a symbol with, for example:
 

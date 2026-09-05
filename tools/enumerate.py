@@ -308,6 +308,12 @@ ACCEPTED = {
         # Or the old form of `sr` that g++ still writes and `llvm-cxxfilt` refuses,
         # which `c++filt` reads as this does. See `_OLD_SR_FORM`.
         or (first is None and _OLD_SR_FORM.search(name) is not None)
+        # Or a braced initialiser after a new-expression's type, which both compilers
+        # write and `llvm-cxxfilt` refuses. See `_BRACED_NEW`.
+        or (first is None and _BRACED_NEW.search(name) is not None)
+        # Or an empty parenthesised initialiser after one, which `llvm-cxxfilt` reads
+        # and does not print. See `_VALUE_INIT_NEW`.
+        or (first is not None and _VALUE_INIT_NEW.search(name) is not None)
         # Or a name neither reads because `llvm-cxxfilt` refuses its `LZ` external name
         # and `c++filt` refuses something else in it. See `_LEGACY_EXTERNAL_NAME`.
         or (first is None and second[0] is None and _LEGACY_EXTERNAL_NAME.search(name) is not None)
@@ -626,6 +632,18 @@ _AHEAD_PATTERNS = (
 #: refuse all three; libiberty reads them, the plain one by reading the whole name
 #: again when the modern grammar fails, and so does this. See the parser.
 _OLD_SR_FORM = re.compile(r"sr(?:N?St|N?\d)")
+
+#: `nw <expression>* _ <type> il <expression>* E`: a new-expression initialised with
+#: braces, `new T{t}`, which g++ 13 and Clang 18 both write this way. The ABI grammar has
+#: only `pi`, the parenthesised form; libiberty reads `il` too, `llvm-cxxfilt` 18 and 20
+#: refuse the name, and this reads it as libiberty does.
+_BRACED_NEW = re.compile(r"n[wa]\w*?_\w*?il")
+
+#: `nw <expression>* _ <type> pi E`: `new T()`, value-initialised, which both compilers
+#: write with an empty parenthesised initialiser and `llvm-cxxfilt` prints as `new T`,
+#: the other expression. `c++filt` and this print the brackets the name carries. See
+#: `tests/conformance/itanium-reference-defects.txt`.
+_VALUE_INIT_NEW = re.compile(r"n[wa]\w*?_\w*?piE")
 
 #: `L Z <encoding> E` -- an external name with the `_` missing, which G++ once emitted
 #: (libiberty's `d_expr_primary` carries the workaround as "bug 375") and `c++filt`

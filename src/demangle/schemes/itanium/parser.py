@@ -98,6 +98,9 @@ _ELABORATED_KEYWORDS = {"s": "struct", "u": "union", "e": "enum"}
 #: whatever the target's is: a double on 32-bit ARM, the 80-bit x87 format on x86, the
 #: IEEE quad on AArch64, RISC-V and the rest.
 _FLOAT_WIDTHS = {"float": (8,), "double": (16,), "long double": (16, 20, 32)}
+#: An operator function's name: `operator+`, `operator int`, `operator""_km`, `operator()`.
+_OPERATOR_FUNCTION = re.compile(r"operator(?![A-Za-z0-9_])")
+
 _HEX = re.compile(r"[0-9a-fA-F]+")
 
 
@@ -835,8 +838,10 @@ class ItaniumParser:
             self._argument_constraint = None
         # A function whose declaration is nothing but a name and a parameter list is the
         # one shape GNU prints as `&Name`; everything a `suffix` or a return type adds is
-        # something it would have to drop. See `gnu_entity_operand_spelling`.
-        self._entity_shape = ("function", name if returns is None and not suffix else None)
+        # something it would have to drop. As a callee the name is printed whatever the
+        # declaration adds, with the suffix and bracketed unless it is a plain one. See
+        # `gnu_entity_operand_spelling`.
+        self._entity_shape = ("function", name, returns is None and not suffix, suffix, is_template)
         return builder.function(returns, parameters, suffix, name)
 
     # -- 5.1.4 special names ---------------------------------------------------
@@ -1042,17 +1047,19 @@ class ItaniumParser:
         if self._rework < 0:
             raise LimitExceeded(self._mangled, "output length", self._max_output)
 
-    def _expand_pattern(self, start, mark, arity):
+    def _expand_pattern(self, start, mark, arity, read=None):
         """Read a pack expansion's pattern once per member of the pack it ranges over.
 
         The reader and the substitution table are put back exactly as the first reading
         left them, so a back-reference later in the name still counts what that reading
-        entered and nothing the re-readings did.
+        entered and nothing the re-readings did. `read` is what reads the pattern: a
+        type for `Dp`, an expression for `sp`.
         """
         reader = self.reader
         resume = reader.pos
         recorded = self.subs.capture(mark)
         outer_index = self._pack_index
+        read = read or self.type_
         members = []
         try:
             for index in range(arity):
@@ -1060,7 +1067,7 @@ class ItaniumParser:
                 reader.pos = start
                 self.subs.restore_from(mark, [])
                 self._pack_index = index
-                members.append(self.type_())
+                members.append(read())
                 self._spend_rework(self._productions - spent)
         finally:
             self._pack_index = outer_index
@@ -3386,18 +3393,53 @@ class ItaniumParser:
         self._entity_shape = None
         self._entity_local = False
         text = self.expr_primary()
-        kind, name = self._entity_shape or ("literal", None)
+        shape = self._entity_shape or ("literal", None)
+        kind = shape[0]
         local = self._entity_local
 
         if kind == "literal" or (kind == "data" and not local):
             return text
-        if operator == "&" and kind == "function" and name is not None and not local:
-            spelled = self.builder.spell(name)
+        if operator == "&" and kind == "function" and shape[2] and not local:
+            spelled = self.builder.spell(shape[1])
             # Qualified, which is what tells a member or namespace-scope function from
             # `&(f())`: c++filt prints the name only when it has a scope to print.
             if "::" in spelled:
                 return spelled
         return "(" + text + ")"
+
+    def _entity_callee(self):
+        """GNU's spelling of an embedded `<mangled-name>` that is being called.
+
+        libiberty prints a call whose callee is a typed name -- an encoding with a
+        function type -- through the name alone: "function call used in an expression
+        should not have printed types of the function arguments". So `clL_Z1hiEfp_E` is
+        `h({parm#1})` and `clL_ZN1A1sEiEfp_E` is `A::s({parm#1})`, the parameter types
+        the mangling carries dropped and the name bare, qualified or not. The name goes
+        through `d_print_subexpr` like any operand, so anything that is not a plain name
+        is bracketed: template arguments, `(h<int>)`; the qualifiers of a member, which
+        libiberty attaches to the name, `(A::s const)`; a local entity, `(h()::x)`. A
+        data name is bare and a special name bracketed, as under any other operator.
+        """
+        self._entity_shape = None
+        self._entity_local = False
+        text = self.expr_primary()
+        shape = self._entity_shape or ("literal", None)
+        kind = shape[0]
+        local = self._entity_local
+        if kind == "function":
+            _, name, _, suffix, is_template = shape
+            spelled = self.builder.spell(name) + suffix
+            # An operator function at namespace scope is an operator name, not a name:
+            # `(operator+)({parm#1})`, where `A::operator+` is the qualified name it
+            # makes and stands bare. No identifier begins `operator` followed by
+            # anything but a letter, a digit or an underscore.
+            unqualified_operator = "::" not in spelled and _OPERATOR_FUNCTION.match(spelled) is not None
+            if is_template or suffix or local or unqualified_operator:
+                spelled = "(" + spelled + ")"
+            return self.builder.raw(spelled)
+        if kind == "literal" or (kind == "data" and not local):
+            return self.builder.raw(text)
+        return self.builder.raw("(" + text + ")")
 
     @staticmethod
     def spell_literal(kind, value):
@@ -3688,6 +3730,13 @@ class ItaniumParser:
         ```
         """
         reader = self.reader
+        if reader.peek2() == "il":
+            # `new T{}` and `new T{t}`: both compilers write the braced initialiser as
+            # `il <expression>* E` straight after the type, with no `E` of the
+            # new-expression's own. The ABI grammar has only the parenthesised form;
+            # libiberty reads this one and prints `new int{{parm#1}}`, `llvm-cxxfilt` 18
+            # and 20 refuse the name.
+            return self.expression()
         if not reader.eat("pi"):
             expression = self.expression()
             reader.eat("E")
@@ -3938,6 +3987,9 @@ class ItaniumParser:
         c++filt. Bracketing every callee that was not a plain identifier path was eight
         of the differences from it over libLLVM.
         """
+        reader = self.reader
+        if self.options.gnu_entity_operand_spelling and (reader.startswith("L_Z") or reader.startswith("LZ")):
+            return self._entity_callee()
         target = self.expression()
         if self.options.gnu_expression_spelling and self._precedence < SIMPLE_PRECEDENCE:
             return self.builder.expression("paren", ["(", target, ")"])
@@ -4152,10 +4204,13 @@ class ItaniumParser:
                         raise ParseError(self._mangled, reader.pos, "unterminated conversion")
                     arguments.append(self._element())
                 cast = builder.expression("cast", ["(", kind, ")(", *self._commas(arguments), ")"])
-            elif self.options.gnu_expression_spelling and reader.peek2() == "il":
-                # `cv <type> il ... E` is a braced conversion, and c++filt writes the
-                # braces straight after the type: `(A){1, 2}`, not `(A)({1, 2})`.
-                cast = builder.expression("cast", ["(", kind, ")", self._element()])
+            elif self.options.gnu_expression_spelling:
+                # c++filt prints the operand through `d_print_subexpr`, which brackets
+                # by kind: `(int)x` and `(int){parm#1}` and `(A){1, 2}` for a name, a
+                # parameter and a braced list, `(int)({parm#1}+{parm#1})` and
+                # `(int)(1)` for everything else. Both compilers write `T(t)` as
+                # `cvT_fp_`, so the bare parameter is the common case.
+                cast = builder.expression("cast", ["(", kind, ")", self._operand(UNARY_PRECEDENCE, subexpression=True)])
             else:
                 cast = builder.expression("cast", ["(", kind, ")(", self._element(), ")"])
             # A cast binds *looser* than a postfix operator, so it needs brackets when it
@@ -4257,18 +4312,24 @@ class ItaniumParser:
         if pair == "sp":
             # A pack expansion inside an expression, under the same rule as `Dp`.
             reader.pos += 2
+            start = reader.pos
+            mark = self.subs.mark()
             outer_pack = self._saw_pack
             outer_empty = self._saw_empty_pack
+            outer_arity = self._pack_arity
             self._saw_pack = False
             self._saw_empty_pack = False
+            self._pack_arity = None
             try:
                 expanded = self.expression()
                 over_pack = self._saw_pack
                 over_empty = self._saw_empty_pack
+                arity = self._pack_arity
             finally:
                 # As for `Dp`: the expansion consumes its pack.
                 self._saw_pack = outer_pack
                 self._saw_empty_pack = outer_empty
+                self._pack_arity = outer_arity
             if over_empty:
                 # The pattern ranges over a pack with no members, so it expands to no
                 # arguments at all -- not to one argument with an empty list inside it.
@@ -4276,12 +4337,20 @@ class ItaniumParser:
                 # comma before it disappear too; `Dp` does the same in a type list.
                 self._precedence = PRIMARY_PRECEDENCE
                 return builder.parameter_pack([])
-            if over_pack or self._scope_has_pack:
-                # The expansion *is* its members, so it binds however they do.
-                return expanded
-            # An unexpanded one is `x...`, which GNU brackets on the rule it brackets
-            # any other operand -- everything but a name -- so `(1)...` but
-            # `{parm#1}...`.
+            if over_pack and arity:
+                # The pattern names a pack, so it is read again once per member, as
+                # `Dp` reads a type pattern: `sp sc T_ fp_` over `{int, char}` is
+                # `static_cast<int>(fp), static_cast<char>(fp)` to both references.
+                # Spelling the one reading put the whole pack where each member
+                # belongs, `static_cast<int, char>(fp)`, a cast of a kind C++ has not.
+                self._precedence = PRIMARY_PRECEDENCE
+                return self._expand_pattern(start, mark, arity, self.expression)
+            # A pattern that names no pack is `x...` whatever the scope holds -- the
+            # dots are the expansion of something the name does not carry, a function
+            # parameter pack most often, `g(fp...)` -- which GNU brackets on the rule it
+            # brackets any other operand, everything but a name, so `(1)...` and
+            # `(sizeof {parm#1})...` but `{parm#1}...`. Testing the scope for a pack
+            # here, as this once did, dropped the dots from every `decltype(g(t...))`.
             if self.options.gnu_expression_spelling and self._precedence < SIMPLE_PRECEDENCE:
                 expanded = builder.expression("paren", ["(", expanded, ")"])
             self._precedence = PRIMARY_PRECEDENCE

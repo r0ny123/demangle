@@ -127,6 +127,13 @@ class ItaniumOptions:
     plain data name. So `&A::f` and `&std::f` and `&A::~A`, but `&(f())` for an
     unqualified one, `&(void A::f<int>())` for a template, `&(f()::x)` for a local
     entity and `&(vtable for A)` for a special name.
+
+    A call is the other place one appears, `decltype(h(t))` with `h` resolved --
+    `clL_Z1hiEfp_E`. libiberty prints the callee through its name alone, "function
+    call used in an expression should not have printed types of the function
+    arguments", so c++filt writes `h({parm#1})` and `A::s({parm#1})` where llvm-cxxfilt
+    writes `h(int)(fp)`. The name is an operand and bracketed unless it is a plain
+    one: `(h<int>)({parm#1})`, `(A::s const)({parm#1})`, `(h()::x)({parm#1})`.
     """
 
     gnu_default_argument_scope: bool = False

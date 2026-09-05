@@ -656,3 +656,137 @@ class TestAQualifiedOperatorNameIsAPlainOperand:
     def test_both_styles(self, mangled, gnu, llvm):
         assert demangle.demangle_strict(mangled, style="gnu") == gnu
         assert demangle.demangle_strict(mangled) == llvm
+
+
+class TestAPackExpansionInAnExpressionUnderTheGnuStyle:
+    """The gnu side of `TestAPackExpansionInAnExpression`: an expanded pattern is its
+    members, and an unexpanded one is bracketed by kind, `{parm#1}...` bare and
+    `(sizeof {parm#1})...` not."""
+
+    @pytest.mark.parametrize(
+        "mangled, expected",
+        [
+            ("_Z2f1IJicEEDTcl1gspfp_EEDpT_", "decltype (g({parm#1}...)) f1<int, char>(int, char)"),
+            ("_Z2f2IJicEEDTcl1gspplfp_Li1EEEDpT_", "decltype (g(({parm#1}+(1))...)) f2<int, char>(int, char)"),
+            ("_Z2f3IJicEEDTcl1gspszfp_EEDpT_", "decltype (g((sizeof {parm#1})...)) f3<int, char>(int, char)"),
+            ("_Z2f8IJicEEDTcl1gspadfp_EEDpT_", "decltype (g((&{parm#1})...)) f8<int, char>(int, char)"),
+            (
+                "_Z2f4IJicEEDTcl1gspscT_fp_EEDpS0_",
+                "decltype (g(static_cast<int>({parm#1}), static_cast<char>({parm#1}))) f4<int, char>(int, char)",
+            ),
+            (
+                "_Z2f5IJicEEDTcl1gspcvT_fp_EEDpS0_",
+                "decltype (g((int){parm#1}, (char){parm#1})) f5<int, char>(int, char)",
+            ),
+            ("_Z2f7IJicEEDTcl1gspstT_EEDpS0_", "decltype (g(sizeof (int), sizeof (char))) f7<int, char>(int, char)"),
+            ("_Z3q67IJiEEDTcv1Aspfp_EDpT_", "decltype ((A)({parm#1}...)) q67<int>(int)"),
+            ("_Z1fIJicEEDTcl1gspdtfp_1mEEDpT_", "decltype (g(({parm#1}.m)...)) f<int, char>(int, char)"),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, style="gnu") == expected
+
+
+class TestACastsOperandIsBracketedByKind:
+    """`cv <type> <expression>` prints its operand through `d_print_subexpr`: a name, a
+    parameter or a braced list bare, anything else in brackets. `T(t)` is written
+    `cvT_fp_` by both compilers, so `(int){parm#1}` is the common case, and this
+    bracketed it."""
+
+    @pytest.mark.parametrize(
+        "mangled, expected",
+        [
+            ("_Z1fIiEDTcvT_fp_ES0_", "decltype ((int){parm#1}) f<int>(int)"),
+            ("_Z1fIiEDTcvT_1xES0_", "decltype ((int)x) f<int>(int)"),
+            ("_Z1fIiEDTcvT_srT_1xES0_", "decltype ((int)int::x) f<int>(int)"),
+            ("_Z1fIiEDTcvT_tlT_EES0_", "decltype ((int)int{}) f<int>(int)"),
+            ("_Z1fIiEDTcvT_ilLi1EEES0_", "decltype ((int){1}) f<int>(int)"),
+            ("_Z1fIiEDTcvT_Li1EES0_", "decltype ((int)(1)) f<int>(int)"),
+            ("_Z1fIiEDTcvT_plfp_fp_ES0_", "decltype ((int)({parm#1}+{parm#1})) f<int>(int)"),
+            ("_Z1fIiEDTcvT_ngfp_ES0_", "decltype ((int)(-{parm#1})) f<int>(int)"),
+            ("_Z1fIiEDTcvT_3fooIiEES0_", "decltype ((int)(foo<int>)) f<int>(int)"),
+            ("_Z1fIiEDTdtcvT_fp_1mES0_", "decltype (((int){parm#1}).m) f<int>(int)"),
+            # The list form keeps its brackets, as the braces keep theirs.
+            ("_Z1fIiEDTcvT__fp_fp_EES0_", "decltype ((int)({parm#1}, {parm#1})) f<int>(int)"),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, style="gnu") == expected
+
+    def test_the_llvm_spelling_is_unchanged(self):
+        assert demangle.demangle_strict("_Z1fIiEDTcvT_fp_ES0_") == "decltype((int)(fp)) f<int>(int)"
+
+
+class TestAResolvedCalleeIsPrintedByName:
+    """`decltype(h(t))` with `h` resolved is `clL_Z1hiEfp_E`, the callee an encoding
+    with a function type. libiberty prints such a callee through its name alone --
+    "function call used in an expression should not have printed types of the
+    function arguments" -- and the name as an operand, bracketed unless it is a plain
+    one. The first three names were compiled with g++ 13 and Clang 18."""
+
+    @pytest.mark.parametrize(
+        "mangled, gnu, llvm",
+        [
+            ("_Z2c3IiEDTclL_Z1hiEfp_EET_", "decltype (h({parm#1})) c3<int>(int)", "decltype(h(int)(fp)) c3<int>(int)"),
+            (
+                "_Z2c2IiEDTclL_ZN1A1sEiEfp_EET_",
+                "decltype (A::s({parm#1})) c2<int>(int)",
+                "decltype(A::s(int)(fp)) c2<int>(int)",
+            ),
+            (
+                "_Z2c3IiEDTcladL_Z1hiEfp_EET_",
+                "decltype ((&(h(int)))({parm#1})) c3<int>(int)",
+                "decltype(&h(int)(fp)) c3<int>(int)",
+            ),
+            ("_Z1fIiEDTclL_Z1hiEEET_", "decltype (h()) f<int>(int)", "decltype(h(int)()) f<int>(int)"),
+            (
+                "_Z1fIiEDTclL_ZN1AplERKS_Efp_EET_",
+                "decltype (A::operator+({parm#1})) f<int>(int)",
+                "decltype(A::operator+(f const&)(fp)) f<int>(int)",
+            ),
+            (
+                "_Z1fIiEDTclL_ZN1AC1EvEfp_EET_",
+                "decltype (A::A({parm#1})) f<int>(int)",
+                "decltype(A::A()(fp)) f<int>(int)",
+            ),
+            # Bracketed: template arguments, a member's qualifiers, a local entity, an
+            # operator function at namespace scope.
+            (
+                "_Z1fIiEDTclL_Z1hIiEiT_Efp_EET_",
+                "decltype ((h<int>)({parm#1})) f<int>(int)",
+                "decltype(int h<int>(int)(fp)) f<int>(int)",
+            ),
+            (
+                "_Z1fIiEDTclL_ZNK1A1sEiEfp_EET_",
+                "decltype ((A::s const)({parm#1})) f<int>(int)",
+                "decltype(A::s(int) const(fp)) f<int>(int)",
+            ),
+            (
+                "_Z1fIiEDTclL_ZZ1hvE1xEfp_EET_",
+                "decltype ((h()::x)({parm#1})) f<int>(int)",
+                "decltype(h()::x(fp)) f<int>(int)",
+            ),
+            (
+                "_Z1fIiEDTclL_ZplRK1AS1_Efp_EET_",
+                "decltype ((operator+)({parm#1})) f<int>(int)",
+                "decltype(operator+(A const&, A const)(fp)) f<int>(int)",
+            ),
+            # A data name and a special name, as under any other operator.
+            ("_Z1fIiEDTclL_ZN1A1xEEfp_EET_", "decltype (A::x({parm#1})) f<int>(int)", "decltype(A::x(fp)) f<int>(int)"),
+            (
+                "_Z1fIiEDTclL_ZTV1AEfp_EET_",
+                "decltype ((vtable for A)({parm#1})) f<int>(int)",
+                "decltype(vtable for A(fp)) f<int>(int)",
+            ),
+        ],
+    )
+    def test_both_styles(self, mangled, gnu, llvm):
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+        assert demangle.demangle_strict(mangled) == llvm
+
+    def test_the_option_is_what_selects_it(self):
+        off = demangle.style("gnu", itanium={"gnu_entity_operand_spelling": False})
+        assert (
+            demangle.demangle_strict("_Z2c3IiEDTclL_Z1hiEfp_EET_", style=off)
+            == "decltype ((h(int))({parm#1})) c3<int>(int)"
+        )

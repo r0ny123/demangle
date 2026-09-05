@@ -1,7 +1,7 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Nine of the entries have
+# the expected column is derived from the *declaration* instead. Ten of the entries have
 # a source in tools/corpus_sources/reference_defects/: it is compiled with the compiler
 # named on the entry, the symbol is read out of the object file with `nm`, and the
 # spelling is what that source says the symbol's type is. Two more come from the general
@@ -120,3 +120,11 @@ _ZSt9__find_ifIPKPN4llvm5ValueEN9__gnu_cxx5__ops12_Iter_negateIZNS0_13slpvectori
 # protection this file exists to give was not actually covering it -- which the first
 # regeneration in a while turned up.
 _Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(int)
+#
+# tools/corpus_sources/reference_defects/value_init_new.cpp, g++ 13.3.0 and clang++
+# 18.1.3 identically. `decltype(new T())`: the empty parenthesised initialiser is
+# `pi E`, and it is what tells value-initialisation from `new T`, which leaves the
+# object indeterminate. llvm-cxxfilt 18.1.3 and 20.1.2 read the initialiser and print
+# nothing for it, `decltype(new int)` -- the other expression. GNU c++filt 2.42 prints
+# the brackets, and so does this.
+_Z10value_initIiEDTnw_T_piEES0_	decltype(new int()) value_init<int>(int)

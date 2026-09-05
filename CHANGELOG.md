@@ -90,7 +90,33 @@ All notable changes to this project are recorded here. The format follows
   compiler's name right. A new option, `gnu_unresolved_scope_substitution`, on in the
   gnu style, counts as g++ and `c++filt` do; the default counts as the ABI, Clang and
   `llvm-cxxfilt` do.
-- **Two more `c++filt` operand rules under the gnu style.** A `>` expression is
+- **A pack expansion in an expression lost its dots, or its members.** `sp <expression>`
+  tested the *scope* for a pack and, finding one, spelled the pattern once as it stood.
+  So `decltype(g(t...))`, which both compilers write as `cl 1g sp fp_ E`, came back
+  `decltype(g(fp))` -- the dots gone -- and a pattern that names the pack,
+  `decltype(g(static_cast<T>(t)...))`, came back `static_cast<int, char>(fp)`, a cast
+  of a kind C++ has not, where both references print `static_cast<int>(fp),
+  static_cast<char>(fp)`. The pattern is now read as `Dp` reads a type pattern: once
+  per member when it names a pack, and `x...` when it names none, whatever the scope
+  holds. Every name was compiled with g++ 13 and Clang 18. Neither the corpora nor a
+  machine-wide sweep had a `decltype` of this shape in it, which is how a form this
+  common went unread.
+- **`new T{}` and `new T()`.** Both compilers write a braced new-initialiser as
+  `il <expression>* E` after the type, a form the ABI grammar does not have, libiberty
+  reads and `llvm-cxxfilt` refuses; this refused it too and now reads it, `new int{fp}`.
+  `new T()` is `pi E`, which `llvm-cxxfilt` 18 and 20 read and print as `new int`, the
+  expression that does not value-initialise; this prints the brackets, as `c++filt`
+  does, and the name joins `tests/conformance/itanium-reference-defects.txt` with its
+  source.
+- **Two more `c++filt` operand rules under the gnu style**, and two more after them:
+  the operand of a `cv` cast is printed by kind, `(int){parm#1}` and `(int)x` bare,
+  `(int)({parm#1}+{parm#1})` bracketed, where this bracketed every one; and a call
+  whose callee is an encoding with a function type, `decltype(h(t))` with `h` resolved,
+  prints the callee by name alone -- `h({parm#1})`, `A::s({parm#1})` -- as libiberty
+  does, "function call used in an expression should not have printed types of the
+  function arguments", bracketed when the name is not a plain one: `(h<int>)`,
+  `(A::s const)`, `(h()::x)`, `(operator+)`. This printed the whole declaration in
+  brackets, `(h(int))({parm#1})`. A `>` expression is
   bracketed wherever it stands, not only at the top of a template argument -- libiberty
   wraps it "so that it does not get confused with the '>' which ends the template
   parameters" and does so in a `decltype` too, `decltype (({parm#1}>{parm#1}))`, on
