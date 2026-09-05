@@ -84,3 +84,52 @@ class TestALambdaSignatureIsNotEmpty:
     def test_the_void_form_still_reads(self):
         assert demangle.demangle("_ZNKUlvE_clEv") == "'lambda'()::operator()() const"
         assert demangle.demangle("_ZN1S1fILb1EEEv1XILUlvE_EE") == "void S::f<true>(X<[](){...}>)"
+
+
+class TestAClosuresOwnParameterWrittenAsTheEnclosingTemplatesEntry:
+    """`_ZZN1S1gIiEEvT_ENKUlS1_E_clIiEEDaS1_` is what g++ 13.3.0 and clang++ 18.1.3 both
+    emit for `[](auto x)` inside `S::g<T>`: the closure's `auto` is written as `S1_`, the
+    `T_` entry `g`'s own signature contributed, because both compilers canonicalise a
+    template type parameter by level and index. Read under the closure, the entry is the
+    closure's `auto`, and `operator()<int>` takes `int`. `llvm-cxxfilt` 18 spells the
+    closure `'lambda'(int)` -- what the entry was bound to where it was made -- and
+    `tools/mutate.py --seed 12` reached that reading through a mutant. It was briefly
+    followed here, which turned the two shipped instances (`sortBindings`'s
+    `[](const auto&, const auto&)` in lld, `runDataflowAnalysis`'s `[](auto&)` in
+    clang) into the wrong declaration, and compiling the reduced source settled it: the
+    sources are `tools/corpus_sources/reference_defects/member_template_lambda.cpp`, and
+    `tests/conformance/itanium-reference-defects.txt` pins all four shapes."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            (
+                "_ZZN1S1gIiEEvT_ENKUlS1_E_clIiEEDaS1_",
+                "auto void S::g<int>(int)::'lambda'(auto)::operator()<int>(int) const",
+            ),
+            (
+                "_ZZN1S1gIiEEvT_ENKUliS1_E_clIiEEDaiS1_",
+                "auto void S::g<int>(int)::'lambda'(int, auto)::operator()<int>(int, int) const",
+            ),
+            (
+                "_ZZN1S1gIiEEvT_ENKUlRKS1_E_clIiEEDaS3_",
+                "auto void S::g<int>(int)::'lambda'(auto const&)::operator()<int>(int const&) const",
+            ),
+            (
+                "_ZZ1fIiEvOT_ENKUlS1_DpT0_E_clIiJEEEDaS1_S3_",
+                "auto void f<int>(int&&)::'lambda'(auto&&, auto...)::operator()<int>(int&&) const",
+            ),
+            (
+                "_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_",
+                "void X<void f<int>(int&&)::'lambda'(auto&&, auto...)>::operator()<>()",
+            ),
+        ],
+    )
+    def test_the_closure_takes_auto(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    def test_the_gnu_style_numbers_them_as_gnu_does(self):
+        assert (
+            demangle.demangle("_ZZN1S1gIiEEvT_ENKUliS1_E_clIiEEDaiS1_", style="gnu")
+            == "auto S::g<int>(int)::{lambda(int, auto:1)#1}::operator()<int>(int, int) const"
+        )

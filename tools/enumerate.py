@@ -285,6 +285,12 @@ ACCEPTED = {
         # LLVM 18.1 know none of them, so both hand these back and this library is simply
         # ahead. Anything else both refuse is a defect and is reported.
         or (first is None and second[0] is None and _newer_than_the_references(name))
+        # Or a name neither tool read whole, because it splits its input on a space, a
+        # bracket or a sign before demangling. See `_CLI_SPLITS`.
+        or (first is None and second[0] is None and _CLI_SPLITS.search(name) is not None)
+        # Or a `char` array in a braced initialiser, which this library spells as the
+        # string it is. See `_spelled_as_a_string`.
+        or _spelled_as_a_string(ours, first)
         # Or the same reading with a space `llvm-cxxfilt` does not print. It runs the
         # return type into the name when the return type is an array -- `signed
         # charf<>(signed char) []` for `_Z1fIEA_aa`, a function returning an array,
@@ -513,7 +519,17 @@ _PLACEMENT_CLOSURE = re.compile(r"`placement delete(\[\])? closure'")
 
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
 #: function. The one shape where all three implementations write something different.
-_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVKPRO]*[AF]")
+_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVKPRO]*(?:D[oO].*?E|Dw.*?E|Dx)?[AF]")
+
+#: Characters both reference *tools* split their input on before demangling anything --
+#: a space, a bracket, a `+` or a `-` -- so a name carrying one reaches neither
+#: demangler whole. The demanglers themselves read any byte in a <source-name>, which is
+#: how libcxxabi's own vectors carry `-[Foo bar]` scopes. Their refusal is not evidence.
+_CLI_SPLITS = re.compile(r"[-+\[\] ]")
+
+#: `llvm-cxxfilt`'s spelling of a `char` array in a braced initialiser, whose values
+#: this library joins into the string they spell. See `_spelled_as_a_string`.
+_CHAR_ARRAY = re.compile(r"char \[(\d*)\]\{((?:\(char\)-?\d+(?:, )?)+)\}")
 
 #: An Objective-C method name as a `<local-name>`'s function encoding. See `ACCEPTED`.
 _OBJC_METHOD_SCOPE = re.compile(r"Z\d+[-+]\[")
@@ -549,6 +565,24 @@ def _undname_drops_array_element_qualifiers(name, ours, first):
         return False
     stripped = re.sub(r" (?:const|volatile)\b", "", ours)
     return stripped != ours and stripped.replace(" ", "") == first.replace(" ", "")
+
+
+def _spelled_as_a_string(ours, first):
+    """Whether `first` is `ours` with a string written out as the char array it is.
+
+    `tl A6_c Lc72E Lc101E ...` is `"Hello"` here and `char [6]{(char)72, (char)101,
+    ...}` to both references; one of them is readable, and they say the same thing.
+    Joined with the same spelling function, so the two agree to the escape.
+    """
+    if first is None or "char [" not in first:
+        return False
+    from demangle.schemes.itanium.parser import _string_literal
+
+    def join(match):
+        values = [int(v) for v in re.findall(r"\(char\)(-?\d+)", match.group(2))]
+        return _string_literal(values)
+
+    return re.sub(_CHAR_ARRAY, join, first) == ours
 
 
 def _llvm_left_a_lambda_parameter_unresolved(ours, first):

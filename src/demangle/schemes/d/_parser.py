@@ -137,12 +137,14 @@ RENAMED_COMPONENTS = {
 #: than assumed from the pattern, and it leaves both alone.
 #:
 #: `__postblit` is a quirk worth recording. The reference renames it to `this(this)` only
-#: where the type is exactly a `this` parameter and an empty D-convention signature --
-#: `_D3foo3Bar10__postblitMFZv` is `foo.Bar.this(this)`, and every one of `MFNaZv`,
+#: where the thirteen characters `__postblitMFZ` stand together -- `dlang_lname` matches
+#: them as one thing, wherever in the name they are, and writes no parameter list --
+#: so `_D3foo3Bar10__postblitMFZv` is `foo.Bar.this(this)`, and every one of `MFNaZv`,
 #: `MxFZv`, `MOFZv`, `MUZv`, `MFiZv`, `UZv` and `FZv` is left as `__postblit`, which is
 #: not a distinction the language makes. "No attributes" was the first reading of it and
-#: renamed six shapes the reference does not. Every `__postblit` in the shipped libraries
-#: has attributes, so the real symbols are not renamed either way.
+#: renamed six shapes the reference does not; "the last component" was the second, and
+#: left an interior one as `__postblit()`. See `qualified_name`. Every `__postblit` in
+#: the shipped libraries has attributes, so the real symbols are not renamed either way.
 
 SPECIAL_COMPONENTS = {
     "__init": "initializer for ",
@@ -419,10 +421,6 @@ class _Parser:
         if not path:
             raise DemangleFailure("no qualified name")
         prefix = ""
-        # `__postblit` is renamed by the reference only when the function has no
-        # attributes, so the decision needs the type, which is read after the path.
-        postblit = len(path) > 1 and path[-1] == "__postblit"
-        self._trailing_is_bare_member = False
         if path and path[-1] in SPECIAL_COMPONENTS and reader.peek() == "Z":
             # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type.
             # The `Z` is what *makes* it one, and it is not optional. Eating it only if
@@ -450,11 +448,6 @@ class _Parser:
             # `()` is somewhere else. `c++filt --format=dlang` writes `Mutex.unlock`.
             # Consumed either way -- the check that the whole name was read depends on
             # it -- and only the spelling is dropped.
-            trailing = ""
-        if postblit and self._trailing_is_bare_member:
-            # `this(this)` reads as a declaration already, so the reference writes no
-            # parameter list after it.
-            path[-1] = "this(this)"
             trailing = ""
         return prefix + ".".join(path) + trailing
 
@@ -499,6 +492,15 @@ class _Parser:
                     raise
                 self.reader.pos, self.reader.depth = saved, saved_depth
                 break
+            if component == "__postblit" and self.reader.starts_with("MFZ"):
+                # `dlang_lname` matches the thirteen characters `__postblitMFZ` as one
+                # thing and writes `this(this)` -- no parameter list, and no rename
+                # for any other shape, `MFNaZ` and `FZ` included. Renaming the last
+                # component only left an interior one as `__postblit()`.
+                self.reader.pos += 3
+                self._last_component_anonymous = False
+                parts.append("this(this)")
+                continue
             if self.reader.text[saved] in DIGITS and _ANONYMOUS.fullmatch(component):
                 # A `__S<n>` is a compiler scope -- a fake parent that makes a name
                 # unique -- and the reference writes nothing for it. `dlang_identifier`
@@ -1403,7 +1405,7 @@ class _Parser:
             # that says it is a member function.
             raise DemangleFailure("a `this` parameter with no function type after it")
         if char in CALLING_CONVENTIONS:
-            convention, attributes, parameters, _ = self.function_type(returns=False)
+            _, attributes, parameters, _ = self.function_type(returns=False)
             # `_D QualifiedName Z` -- and the last component of the path may carry a
             # parameter list of its own, so a function's `Z` can be followed by the
             # artificial symbol's `Z` rather than a return type. `dlang_parse_qualified`
@@ -1413,11 +1415,6 @@ class _Parser:
             if not reader.eat("Z"):
                 self.type_()
             self._trailing_had_attributes = bool(attributes)
-            # Whether the whole of it is `this` and `()`: a member function of the D
-            # convention, with no modifiers, no attributes and no parameters. That is
-            # what the reference renames `__postblit` on, and nothing wider -- see
-            # `SPECIAL_COMPONENTS`.
-            self._trailing_is_bare_member = has_this and not (modifiers or attributes or parameters or convention)
             spelled = f"({', '.join(parameters)})"
             trailing = " ".join(modifiers)
             return f"{spelled} {trailing}" if trailing else spelled

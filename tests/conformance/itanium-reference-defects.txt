@@ -1,13 +1,14 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Five of the entries have
+# the expected column is derived from the *declaration* instead. Nine of the entries have
 # a source in tools/corpus_sources/reference_defects/: it is compiled with the compiler
 # named on the entry, the symbol is read out of the object file with `nm`, and the
-# spelling is what that source says the symbol's type is. The other four are symbols out
-# of shipped libraries, where the declaration is the library's own header or its
-# published signature and the reading is spelled out in the entry's comment. That is the
-# only ground truth a demangler has, and it is what settles a split between references.
+# spelling is what that source says the symbol's type is. Two more come from the general
+# corpus sources named on them, and three are symbols out of shipped libraries, where the
+# declaration is the library's own header or its published signature and the reading is
+# spelled out in the entry's comment. That is the only ground truth a demangler has, and
+# it is what settles a split between references.
 #
 # All of these are one defect. A <template-param> is a substitution candidate in its own
 # right (ABI 5.1.10), and the entry it contributes is *the parameter*, not the argument
@@ -34,7 +35,7 @@
 #
 # style: llvm
 #
-# pairs: 10
+# pairs: 14
 #
 # tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
 # `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,
@@ -55,6 +56,22 @@ _ZN2nn6insortIPNS_6UpdateIPNS_2BBEEENS_4WrapIZNS_8legalizeIS3_EEvPNS1_IT_EEEUlRK
 # `operator()<int>` of a generic lambda takes `int`. llvm-cxxfilt 18 prints `auto`; GNU
 # c++filt 2.42 agrees with the declaration.
 _ZZN6modern13genericLambdaEvENKUlT_E_clIiEEDaS0_	auto modern::genericLambda()::'lambda'(auto)::operator()<int>(int) const
+#
+# tools/corpus_sources/reference_defects/member_template_lambda.cpp, g++ 13.3.0 and
+# clang++ 18.1.3 identically. The other direction of the same defect: here it is the
+# *closure's* `auto` that is written as a back reference, `S1_`, to the `T_` entry `g`'s
+# own signature contributed, because both compilers canonicalise a template type
+# parameter by level and index and the closure's implicit parameter is `T_` too. Read
+# under the closure the entry is its `auto`; llvm-cxxfilt 18 prints `int`, what the
+# entry was bound to where it was made, and spells `[](auto x)` as `'lambda'(int)`. GNU
+# c++filt 2.42 agrees with the declaration on all four. `operator()<int>` takes `int`
+# either way, as the entry above says. The libcxxabi corpus has the pack shape as
+# `_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_`, and `tests/test_conformance.py` names it
+# among the nine vectors there that record the reference's own reading.
+_ZZN1S1gIiEEvT_ENKUlS1_E_clIiEEDaS1_	auto void S::g<int>(int)::'lambda'(auto)::operator()<int>(int) const
+_ZZN1S1gIiEEvT_ENKUliS1_E_clIiEEDaiS1_	auto void S::g<int>(int)::'lambda'(int, auto)::operator()<int>(int, int) const
+_ZZN1S1gIiEEvT_ENKUlRKS1_E_clIiEEDaS3_	auto void S::g<int>(int)::'lambda'(auto const&)::operator()<int>(int const&) const
+_ZZ1fIiEvOT_ENKUlS1_DpT0_E_clIiJEEEDaS1_S3_	auto void f<int>(int&&)::'lambda'(auto&&, auto...)::operator()<int>(int&&) const
 #
 # The `Ty` form of the entry above, from tools/corpus_sources/modern.cpp compiled by
 # clang++ 18.1.3: the lambda declares its parameter and `S0_` names it. It left

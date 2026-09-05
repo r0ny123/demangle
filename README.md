@@ -318,7 +318,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **310 / 311** † |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **28 / 28** |
-| Names a reference reads wrongly ✱ | the declaration | **10 / 10** |
+| Names a reference reads wrongly ✱ | the declaration | **14 / 14** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |
@@ -518,10 +518,11 @@ argument bound to it where the entry was made. The mangler canonicalises a templ
 parameter by level and index, so it reuses one entry across two different templates, and
 the two readings differ in any name that mentions a local entity. Freezing it prints a
 type the source disproves: `std::__insertion_sort<llvm::cfg::Update<llvm::BasicBlock*>*, C>`
-taking `llvm::BasicBlock*`, or a generic lambda's `operator()<int>` taking `auto`.
+taking `llvm::BasicBlock*`, a generic lambda's `operator()<int>` taking `auto`, or a
+closure declared `[](auto x)` taking `int`.
 
-Settled against five reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
-in under `tools/corpus_sources/reference_defects/`, and pinned with four shipped symbols
+Settled against six reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
+in under `tools/corpus_sources/reference_defects/`, and pinned with five more symbols
 in `tests/conformance/itanium-reference-defects.txt` — the one corpus here whose expected
 column comes from the declaration rather than from a demangler. `tools/generate_corpus.py`
 excludes those names, so a regeneration cannot record the wrong answer again.

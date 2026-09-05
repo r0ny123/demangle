@@ -609,6 +609,18 @@ class TestALiteralsValueIsANumber:
     def test_anything_else_is_refused(self, mangled):
         assert demangle.demangle(mangled) == mangled
 
+    @pytest.mark.parametrize(
+        ("mangled", "expected"), [("_Z1fILb0EEvv", "void f<false>()"), ("_Z1fILb1EEvv", "void f<true>()")]
+    )
+    def test_a_bool_is_false_or_true(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z1fILb6EEvv", "_Z1fILb01EEvv", "_ZN1S1fILb6EEEv1XILUlvE0_EE"])
+    def test_any_other_bool_value_is_refused(self, mangled):
+        """`Lb6E` was spelled `true`. `llvm-cxxfilt` refuses a bool that is neither `0`
+        nor `1`, and no compiler writes one; `c++filt` prints `(bool)6`. Seed 11."""
+        assert demangle.demangle(mangled) == mangled
+
 
 class TestAnExpansionWhosePatternNamesNoPack:
     """`Dp <type>` where the type mentions no pack spells `type...` whatever packs the
@@ -1072,6 +1084,40 @@ class TestTheNameAConstructorRepeats:
         has no declaration; it follows `llvm-cxxfilt` now, as the conversion operator
         does -- see `TestAConversionOperatorHasNoNameToRepeat`."""
         assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+
+class TestAVendorExpressionsArgumentIsACallsArgument:
+    """`<expression> ::= u <source-name> <template-arg>* E`, spelled as a call. An
+    `X <expression> E` argument was spelled as it is inside `<...>`, where a `>>` or a
+    `>` is bracketed so it cannot close the list, and `__uuidof((HasMember >> member))`
+    came out for Clang's own `_Z15test_uuidofExprI9HasMemberEvDTu8__uuidofXrsT_6memberEEE`.
+    A call's argument needs no such bracket and `llvm-cxxfilt` writes none. Seed 11."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            (
+                "_Z15test_uuidofExprI9HasMemberEvDTu8__uuidofXrsT_6memberEEE",
+                "void test_uuidofExpr<HasMember>(decltype(__uuidof(HasMember >> member)))",
+            ),
+            ("_Z1fIiEDTu3fooXrsT_6memberEEEv", "decltype(foo(int >> member)) f<int>()"),
+            ("_Z1fDTu3fooXplLi1ELi2EEEE", "f(decltype(foo(1 + 2)))"),
+            ("_Z1fDTu3fooXfp_EEE", "f(decltype(foo(fp)))"),
+            ("_Z1fDTu3fooXLi1EEEE", "f(decltype(foo(1)))"),
+            ("_Z1fDTu8__uuidofXplLi1ELi2EEEE", "f(decltype(__uuidof(1 + 2)))"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    def test_the_gnu_style_brackets_every_operand_as_it_always_has(self):
+        assert (
+            demangle.demangle("_Z15test_uuidofExprI9HasMemberEvDTu8__uuidofXrsT_6memberEEE", style="gnu")
+            == "void test_uuidofExpr<HasMember>(decltype (__uuidof((HasMember)>>member)))"
+        )
+
+    def test_an_unterminated_argument_is_refused(self):
+        assert demangle.demangle("_Z1fDTu3fooXiEE") == "_Z1fDTu3fooXiEE"
 
 
 class TestAConversionOperatorHasNoNameToRepeat:

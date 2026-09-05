@@ -1030,3 +1030,32 @@ class TestAScopeInsideATypesName:
     )
     def test_the_spelling(self, mangled, expected):
         assert demangle.demangle(mangled, language="d") == expected
+
+
+class TestAPostblitAnywhereInTheName:
+    """`dlang_lname` matches the thirteen characters `__postblitMFZ` as one thing,
+    wherever in the name they stand, and writes `this(this)` with no parameter list
+    after it. Renaming only the last component left an interior one as `__postblit()`,
+    which `tools/mutate.py --seed 11` found in a `std.digest` mutant. Any other shape
+    -- attributes, modifiers, a parameter -- is left as `__postblit`, as before."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            (
+                "_D8demangle4test10__postblitMFZ3std6digest2md3MD53putMFNaNbNeMAxhXv",
+                "demangle.test.this(this).std.digest.md.MD5.put(scope const(ubyte)[]...)",
+            ),
+            ("_D3foo3Bar10__postblitMFZ3bazMFZv", "foo.Bar.this(this).baz()"),
+            ("_D3foo3Bar10__postblitMxFZ3bazMFZv", "foo.Bar.__postblit() const.baz()"),
+            ("_D3foo3Bar10__postblitMFZv", "foo.Bar.this(this)"),
+            ("_D3foo3Bar10__postblitMFZi", "foo.Bar.this(this)"),
+            ("_D3foo3Bar10__postblitMFNaNbNiNfZv", "foo.Bar.__postblit()"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize("mangled", ["_D3foo3Bar10__postblitMFZ", "_D3foo3Bar10__postblitMFZv3bazMFZv"])
+    def test_what_the_reference_refuses(self, mangled):
+        assert demangle.demangle(mangled, language="d") == mangled

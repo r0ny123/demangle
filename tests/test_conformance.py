@@ -52,7 +52,7 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 28, 28
 #: in `itanium-real-world.txt` with the corrected spelling and was absent from this file,
 #: so the next regeneration re-recorded llvm-cxxfilt 18's answer -- which is what the
 #: first regeneration in a while did.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 10, 10
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 14, 14
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are

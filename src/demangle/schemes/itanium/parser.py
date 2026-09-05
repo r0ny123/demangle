@@ -3254,6 +3254,10 @@ class ItaniumParser:
         reader.digits()
         value = reader.text[start : reader.pos]
         reader.expect("E")
+        if spelling == "bool" and value not in ("0", "1"):
+            # `Lb0E` and `Lb1E` are the two bool literals there are. `llvm-cxxfilt`
+            # refuses `Lb2E`; `c++filt` spells `(bool)2`, a value no bool has.
+            raise ParseError(self._mangled, reader.pos, "a bool literal that is neither 0 nor 1")
         return self.spell_literal(spelling, value)
 
     def spell_float_literal(self, kind, value):
@@ -3321,7 +3325,7 @@ class ItaniumParser:
             # `LDn0E`. The value is written and means nothing; there is one of these.
             return "nullptr"
         if kind == "bool":
-            return {"0": "false", "1": "true"}.get(value, f"(bool){value}")
+            return {"0": "false", "1": "true"}[value]
         if kind == "int":
             return value
         suffixes = {
@@ -3967,6 +3971,10 @@ class ItaniumParser:
                         raise ParseError(self._mangled, reader.pos, "unterminated conversion")
                     arguments.append(self._element())
                 cast = builder.expression("cast", ["(", kind, ")(", *self._commas(arguments), ")"])
+            elif self.options.gnu_expression_spelling and reader.peek2() == "il":
+                # `cv <type> il ... E` is a braced conversion, and c++filt writes the
+                # braces straight after the type: `(A){1, 2}`, not `(A)({1, 2})`.
+                cast = builder.expression("cast", ["(", kind, ")", self._element()])
             else:
                 cast = builder.expression("cast", ["(", kind, ")(", self._element(), ")"])
             # A cast binds *looser* than a postfix operator, so it needs brackets when it
@@ -4326,6 +4334,13 @@ class ItaniumParser:
                 while not reader.eat("E"):
                     if reader.eof:
                         raise ParseError(self._mangled, reader.pos, "unterminated vendor expression")
+                    if reader.eat("X"):
+                        # An expression argument, spelled as a call's argument: the
+                        # brackets a `>>` or a `>` takes inside `<...>` are not needed
+                        # here, and `llvm-cxxfilt` writes `__uuidof(a >> b)`.
+                        arguments.append(self.expression())
+                        reader.expect("E")
+                        continue
                     argument, _ = self.template_arg()
                     if argument is not None:
                         arguments.append(argument)

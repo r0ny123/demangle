@@ -309,6 +309,36 @@ class TestAConstraintParameterUnderTheGnuStyle:
         assert "1234" in gnu  # the nested requirement itself still says what it says
 
 
+class TestAConversionToABracedListUnderTheGnuStyle:
+    """`cv <type> il ... E`, a functional cast of a braced list: `d_print_comp` writes
+    the type in brackets and the list straight after it, `(A){1, 2}`, where the general
+    conversion rule bracketed the operand as well, `(A)({1, 2})`. Reached by
+    `tools/mutate.py --seed 11` through a `test7` vector of libcxxabi's whose
+    `llvm-cxxfilt` spelling, `(test7::C)({1, true})`, is unchanged."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fDTcv1AilLi1ELi2EEE", "f(decltype ((A){1, 2}))"),
+            ("_Z1fDTcv1AilLi1EEE", "f(decltype ((A){1}))"),
+            ("_Z1fDTcv1AilEE", "f(decltype ((A){}))"),
+            (
+                "_ZN5test73fC2IiEEDTcmcvNS_1CEilLi1ELb1EEcvT__EES2_",
+                "decltype (((test7::C){1, true}),((int)())) test7::fC2<int>(int)",
+            ),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+    def test_the_llvm_spelling_is_unchanged(self):
+        assert demangle.demangle("_Z1fDTcv1AilLi1ELi2EEE") == "f(decltype((A)({1, 2})))"
+        assert (
+            demangle.demangle("_ZN5test73fC2IiEEDTcmcvNS_1CEilLi1ELb1EEcvT__EES2_")
+            == "decltype((test7::C)({1, true}), (int)()) test7::fC2<int>(int)"
+        )
+
+
 class TestTheObjectOfAMemberAccessIsAnOperand:
     """`d_print_subexpr` runs over the object of a `.` or `->` as over any operand:
     bracketed unless it is a name, a parameter or an initialiser list. This printed the

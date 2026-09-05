@@ -133,7 +133,28 @@ All notable changes to this project are recorded here. The format follows
   an array element was folded into one where `llvm-undname` refuses it. One more accept
   rule: both references resolving a substitution-table entry made under one local
   function's template scope to that scope's argument where a mutant reads it under
-  another's, the `insort` defect the reference-defects corpus records. The remaining
+  another's, the `insort` defect the reference-defects corpus records. Draws eleven to
+  fourteen added four: a `bool` literal whose value was neither `0` nor `1`, `Lb6E`, was
+  spelled `true` where `llvm-cxxfilt` refuses it; an expression argument to a vendor
+  extended expression was bracketed as it is inside `<...>`, so Clang's own `__uuidof`
+  test symbol came out `__uuidof((HasMember >> member))` where a call's argument takes
+  no bracket; under the GNU style a functional cast of a braced list, `cv1AilLi1ELi2EE`,
+  was `(A)({1, 2})` where `d_print_comp` writes `(A){1, 2}`; and a D `__postblitMFZ`
+  anywhere but last in a name was left as `__postblit()`, where `dlang_lname` matches
+  the thirteen characters as one thing wherever they stand. The same draws reached the
+  recorded-parameter defect from its other side -- `llvm-cxxfilt` spelling a closure's
+  own `auto` as the enclosing template's argument, `'lambda'(int)` for `[](auto x)`
+  inside `S::g<int>` -- and following it turned two shipped lambdas into the wrong
+  declaration before the reduced source, compiled by both g++ 13.3.0 and clang++
+  18.1.3, settled it the way ROADMAP heading 0 already had: four shapes of it are now
+  in `tests/conformance/itanium-reference-defects.txt`, from
+  `tools/corpus_sources/reference_defects/member_template_lambda.cpp`, and the accept
+  rule for a back reference read across two local scopes already covered the shape. Two
+  more accept rules record the references' side: both
+  reference tools split their input on a space, a bracket, a `+` or a `-` before
+  demangling anything, so a name carrying one reaches neither demangler whole; and a
+  `char` array in a braced initialiser, `char [6]{(char)72, (char)101, ...}` to both,
+  is the string it spells here. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
