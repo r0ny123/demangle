@@ -202,7 +202,10 @@ All notable changes to this project are recorded here. The format follows
   and a D symbol argument whose last component is anonymous takes its type as the
   symbol's own and spells nothing for it, as a whole symbol already did, where
   `mangled_symbol` spelled `reserveNoSync(ulong)` for a `core.internal.gc` mutant the
-  reference spells `reserveNoSync`. The remaining
+  reference spells `reserveNoSync`. A gnuv2 draw of 200,000 found the accept rule for
+  the reference's second argument list after an ellipsis blind to a class name with an
+  unbalanced `<` in it, which the rule's template-argument stripper took for a group
+  and removed to the end. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in

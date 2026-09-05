@@ -500,7 +500,13 @@ def _gnuv2_function_name(spelled):
 
 
 def _without_template_arguments(spelled):
-    """`spelled` with every balanced `<...>` group taken out."""
+    """`spelled` with every balanced `<...>` group taken out.
+
+    An unbalanced `<` -- a mutant's class name, `Spec<ow__F7compl`, which the reference
+    reads as any other run of characters -- is not a group, and taking everything after
+    it out hid a second argument list from `_gnuv2_second_list`. The text is returned
+    as it stands when a `<` is never closed.
+    """
     kept = []
     depth = 0
     for character in spelled:
@@ -510,7 +516,7 @@ def _without_template_arguments(spelled):
             depth = max(0, depth - 1)
         elif depth == 0:
             kept.append(character)
-    return "".join(kept)
+    return spelled if depth else "".join(kept)
 
 
 #: The qualifier words MSVC writes after a type, so an answer can be compared against one
