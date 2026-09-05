@@ -154,7 +154,19 @@ All notable changes to this project are recorded here. The format follows
   reference tools split their input on a space, a bracket, a `+` or a `-` before
   demangling anything, so a name carrying one reaches neither demangler whole; and a
   `char` array in a braced initialiser, `char [6]{(char)72, (char)101, ...}` to both,
-  is the string it spells here. The remaining
+  is the string it spells here. Draws fifteen to eighteen, at 60,000 mutants each,
+  added three: the friend marker `F` goes before the internal-linkage `L`, not after,
+  as `parseUnqualifiedName` consumes them, so `_ZN1ALF3fooEv` is refused where it read
+  `A::friend foo()`; a conversion operator whose type ran ahead of arguments that never
+  came, `_Zcv1BIRT_E`, kept the provisional `operator B<auto&>` where both references
+  refuse it; and a D back reference into a digit run stopped at the first `0` and read
+  an anonymous component, where `dlang_symbol_backref` reads the whole run as the
+  length and refuses the overrun. Four more accept rules: `sy`, the C++26 pack-index
+  expression Clang writes and neither shipped `llvm-cxxfilt` reads; the `LZ` external
+  name that only `c++filt` reads, on a name it refuses for another reason; a back
+  reference after a `_BitInt`, which the two sides count differently; and an MSVC member
+  pointer whose two qualifier letters a mutant set apart, where `llvm-undname` keeps
+  one and this keeps both -- clang-cl writes them alike. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in

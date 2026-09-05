@@ -328,6 +328,7 @@ class ItaniumParser:
         "_abbrev",
         "_abbrev_expanded",
         "_component_has_no_base_name",
+        "_conversion_unbound",
         "_ctor_dtor",
         "_deferred",
         "_depth",
@@ -510,6 +511,10 @@ class ItaniumParser:
         # entries there were before it: `(position, mark)`, or None. See
         # `_reread_conversion`.
         self._pending_conversion = None
+        #: Whether the conversion operator's type just read resolved a template
+        #: parameter with nothing in scope -- a spelling that stands only until the
+        #: operator's own arguments bind it. See `_reread_conversion`.
+        self._conversion_unbound = False
         # True while that type is being read for the first time, before the arguments
         # exist. The one place a `<template-param>` may resolve to nothing with no
         # <template-args> in scope at all -- see `bind_template_param`.
@@ -1542,7 +1547,10 @@ class ItaniumParser:
         # already in `parts`, which `qualified` joins with `::`, so the marker decorates
         # the name that follows the last `::` -- see `_befriended` for where it goes.
         friend = False
-        if char == "F" and scope:
+        if char == "F" and scope and not internal:
+            # `F` goes before `L`, not after: `parseUnqualifiedName` consumes the friend
+            # marker and then the internal-linkage one, and `_ZN1ALF3fooEv` is refused
+            # by `llvm-cxxfilt` 18 and 20 where `_ZN1AFL3fooEv` reads.
             # Licensed by `peek`: the character it just returned is the one consumed
             # here, with nothing in between.
             reader.pos += 1
@@ -1626,6 +1634,13 @@ class ItaniumParser:
             # there is nothing to read again. Cleared here rather than left to expire,
             # because the next template argument list in the name is somebody else's.
             self._pending_conversion = None
+            if self._conversion_unbound:
+                # The type ran ahead of arguments that never came: `_Zcv1BIRT_E` names
+                # a parameter nothing in the encoding binds, and both references refuse
+                # it where this spelled `operator B<auto&>`. See `bind_template_param`.
+                raise ParseError(
+                    self._mangled, reader.pos, "a conversion operator's template parameter with no arguments"
+                )
         return operator
 
     def _befriended(self, text):
@@ -1943,6 +1958,7 @@ class ItaniumParser:
             # and `_reread_conversion` throws this spelling away and makes it again once
             # they are. See `bind_template_param`.
             self._reading_conversion_type = True
+            self._conversion_unbound = False
             try:
                 spelled = "operator " + self.builder.spell(self.type_())
             finally:
@@ -2199,6 +2215,9 @@ class ItaniumParser:
             # it, which is what `_reading_conversion_type` marks; `_reread_conversion`
             # discards that spelling and makes it again with them in scope.
             raise ParseError(self._mangled, reader.pos, "template parameter with no arguments in scope")
+        if self._reading_conversion_type and not self._reading_closure_signature:
+            # Provisional: `operator_name` refuses the name if no arguments follow.
+            self._conversion_unbound = True
 
         # Level 0, or a level in scope whose parameter is not. A generic lambda's `auto`
         # parameter is mangled as a reference to a parameter it never declared (ABI

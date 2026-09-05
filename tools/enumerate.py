@@ -198,6 +198,14 @@ ACCEPTED = {
                 # the variable itself, `double outer::h[3]`. No compiler writes `$$C`
                 # there; the reading that keeps the qualifier is the consistent one.
                 or _undname_drops_array_element_qualifiers(name, ours, first)
+                # Or a pointer to a member whose two qualifier letters disagree. A
+                # member pointer states its member's qualifiers twice -- `PESB@@R6AHXZ`
+                # is `S`, a volatile member, and `R`, a volatile pointer, for
+                # `int (__cdecl *volatile B::*)(void)`, as clang-cl writes it -- and a
+                # mutant that changes one leaves two answers. `llvm-undname` keeps the
+                # member's and drops the pointer's; this keeps both. No compiler
+                # writes them apart.
+                or _undname_keeps_one_member_pointer_qualifier(name, ours, first)
                 # Or a vftable or vbtable base path with more than one element.
                 # `llvm-undname` reads the first element and drops the rest, so
                 # `??_7A@B@@6BC@D@@@`, `...E@F@@@` and `...E@F@@G@H@@@` -- three symbols
@@ -285,6 +293,12 @@ ACCEPTED = {
         # LLVM 18.1 know none of them, so both hand these back and this library is simply
         # ahead. Anything else both refuse is a defect and is reported.
         or (first is None and second[0] is None and _newer_than_the_references(name))
+        # Or a name neither reads because `llvm-cxxfilt` refuses its `LZ` external name
+        # and `c++filt` refuses something else in it. See `_LEGACY_EXTERNAL_NAME`.
+        or (first is None and second[0] is None and _LEGACY_EXTERNAL_NAME.search(name) is not None)
+        # Or a back reference after a `_BitInt`, which the two sides count differently.
+        # See `_BIT_INT`.
+        or (first is not None and _BIT_INT.search(name) is not None)
         # Or a name neither tool read whole, because it splits its input on a space, a
         # bracket or a sign before demangling. See `_CLI_SPLITS`.
         or (first is None and second[0] is None and _CLI_SPLITS.search(name) is not None)
@@ -549,7 +563,26 @@ _AHEAD_OF_THE_REFERENCES = ("DA", "DR", "DS", "Dk", "DK", "Dy", "DB", "DU")
 #: callee is parenthesised, and a template parameter inside a constrained parameter
 #: declaration's concept arguments, `Tk 4True I T_ E`, which 18 gives up on ("we don't
 #: track enclosing template parameter levels well enough").
-_AHEAD_PATTERNS = (re.compile(r"cp(?=\d|on|dn|sr|gs)"), re.compile(r"Tk\d"))
+_AHEAD_PATTERNS = (
+    re.compile(r"cp(?=\d|on|dn|sr|gs)"),
+    re.compile(r"Tk\d"),
+    # `sy <pack reference> <expression>`, a C++26 pack-index expression, which Clang's
+    # `mangleExpression` writes for `PackIndexingExpr` and neither shipped
+    # `llvm-cxxfilt` reads (the type form, `Dy`, is in the list above).
+    re.compile(r"sy(?:T[L\d_]|f[pL])"),
+)
+
+#: `L Z <encoding> E` -- an external name with the `_` missing, which G++ once emitted
+#: (libiberty's `d_expr_primary` carries the workaround as "bug 375") and `c++filt`
+#: reads where `llvm-cxxfilt` refuses. A name that both refuse and carries one is
+#: refused by `llvm-cxxfilt` for this and by `c++filt` for something else.
+_LEGACY_EXTERNAL_NAME = re.compile(r"LZ\d")
+
+#: A `_BitInt` with a width or a parameter: Clang 18 makes it a substitution candidate
+#: and this library records it; `llvm-cxxfilt` reads `DB` without recording it, so every
+#: later back reference in the name resolves one entry apart. `_Z6myfuncRDB8_S_` is
+#: `myfunc(_BitInt(8)&, _BitInt(8))` here and `..., _BitInt(8)&)` there.
+_BIT_INT = re.compile(r"D[BU](?:\d+_|T)")
 
 
 _QUALIFIED_ARRAY_ELEMENT = re.compile(r"Y[0-9A-P@]*\$\$C[BCD]")
@@ -557,6 +590,24 @@ _QUALIFIED_ARRAY_ELEMENT = re.compile(r"Y[0-9A-P@]*\$\$C[BCD]")
 #: A local name inside a template function's encoding, then another local name reading
 #: a back reference: `Z1fIiE...E...Z1gIdE...S2_...E`. See the `itanium` rule.
 _CROSS_SCOPE_BACK_REFERENCE = re.compile(r"Z\d+\w*?I[^Z]*?E[^Z]*?Z[^Z]*?S\d*_")
+
+
+#: `P`, extension qualifiers, a member qualifier letter (`Q`/`R`/`S`/`T`), the class,
+#: then the pointee's own pointer letter (`P`/`Q`/`R`/`S`) and a function. See the rule.
+_MEMBER_POINTER_LETTERS = re.compile(r"P[EFGHI]*([QRST])[A-Za-z0-9_$@?]*?@@[EFGHI]*([PQRS])6")
+
+
+def _strip_qualifiers(text):
+    return re.sub(r"\b(?:const|volatile) ", "", text).replace(" ", "")
+
+
+def _undname_keeps_one_member_pointer_qualifier(name, ours, first):
+    """Whether `ours` and `first` differ only in the qualifiers of a member pointer whose
+    member letter and pointer letter disagree."""
+    found = _MEMBER_POINTER_LETTERS.search(name)
+    if found is None or "QRST".index(found.group(1)) == "PQRS".index(found.group(2)):
+        return False
+    return ours != first and _strip_qualifiers(ours) == _strip_qualifiers(first)
 
 
 def _undname_drops_array_element_qualifiers(name, ours, first):

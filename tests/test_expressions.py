@@ -423,7 +423,27 @@ class TestStillRefusesWhatItShould:
         """
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled, language="itanium")
-        assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize("mangled", ["_Zcv1BIRT_E", "_Zcv1BIRT_Ev", "_ZcvT_", "_ZN1AcvT_Ev"])
+    def test_a_conversion_operator_needs_the_arguments_its_type_ran_ahead_of(self, mangled):
+        """The conversion operator's reading is provisional: `_reread_conversion` makes
+        it again once the arguments bind it. When none follow, nothing ever will, and
+        both references refuse the name where this spelled `operator B<auto&>`.
+        `tools/mutate.py --seed 18`."""
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZcvT_IiE", "operator int<int>"),
+            ("_Zcv1BIRT_EIiEv", "operator B<int&><int>()"),
+            ("_ZN1AcvPT_IcEEv", "A::operator char*<char>()"),
+            ("_ZN1AIiEcvT_Ev", "A<int>::operator int()"),
+        ],
+    )
+    def test_a_conversion_operator_whose_arguments_come_still_reads(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
 
     def test_a_generic_lambdas_invented_parameter_still_reaches_the_fallback(self):
         """The other side: `Ul T_ E` has a level, and `auto` is the right answer there."""
@@ -1187,6 +1207,15 @@ class TestAFriendDeclaredInsideItsClass:
     def test_the_marker_needs_a_class_to_be_a_friend_of(self):
         """`F` outside a nested name is a type letter, not a friend marker."""
         assert demangle.demangle_strict("_Z1fFvvE", language="itanium") == "f(void ())"
+
+    @pytest.mark.parametrize("mangled", ["_ZN1ALF3fooEv", "_ZN5cluleInfoELFD0Ev", "_ZN1ALFC1Ev"])
+    def test_the_marker_goes_before_the_internal_linkage_one(self, mangled):
+        """`parseUnqualifiedName` consumes `F` and then `L`, in that order, and
+        `llvm-cxxfilt` 18 and 20 refuse `LF` where `FL` reads. Reading the marker after
+        `L` spelled `A::friend foo()` for a name neither reference reads.
+        `tools/mutate.py --seed 15` and `--seed 16`."""
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
 
 
 class TestAnObjectiveCMethodAsALocalScope:

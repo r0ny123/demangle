@@ -1059,3 +1059,28 @@ class TestAPostblitAnywhereInTheName:
     @pytest.mark.parametrize("mangled", ["_D3foo3Bar10__postblitMFZ", "_D3foo3Bar10__postblitMFZv3bazMFZv"])
     def test_what_the_reference_refuses(self, mangled):
         assert demangle.demangle(mangled, language="d") == mangled
+
+
+class TestABackReferenceIntoADigitRun:
+    """`dlang_symbol_backref` reads the length at the target with `dlang_number`, which
+    takes the whole digit run: `06289` is a length of 6289, and `01a` is `a`. Only a
+    lone `0` is the empty identifier. Stopping at the first `0` read a target inside a
+    mutated name's own digits as an anonymous component and went on, spelling
+    `..length` and `.array.Appender` where the reference refuses the name.
+    `tools/mutate.py --seed 15` and `--seed 17`."""
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_D202TypeInfo_S3std6random__T21MersenneTwisterEngineTmVmi64Vmi312Vmi156Vmi31VmN5403634167711393303"
+            "Vmi29Vmi6148914691236517205Vmi17Vmi8202884508482404352Vmi37VmN22706289tiArrayTSQzQx__T9BitPackedTk"
+            "Vmi12ZQsTtZQBs__T6lengthVmi1ZQmMxFNaNbNdNiNfZm",
+            "_D3std6digest__T13WrapperDigestTSQBfQBe3crc__T3CRCVki64VmN3932672073523589310ZQBgZ__T14formattedWrite"
+            "VAyaa15_20253032643a253032643a25303264TSQCy5array__T8AppenderTQCjZQoTxhTxhTxhZQDqFNaNfKQBwxhxhxhZk",
+        ],
+    )
+    def test_a_length_that_overruns_is_refused(self, mangled):
+        assert demangle.demangle(mangled, language="d") == mangled
+
+    def test_a_lone_zero_is_still_the_empty_identifier(self):
+        assert demangle.demangle("_D1a0Qb1ci", language="d") == "a..c"

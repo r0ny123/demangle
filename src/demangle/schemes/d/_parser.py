@@ -957,6 +957,14 @@ class _Parser:
                     # instance named twice. 56 of the 119 shapes the mutation fuzzer had
                     # this scheme reading and the reference refusing were this one.
                     raise DemangleFailure("a back reference to something that is not an identifier")
+                while reader.peek() == "0" and reader.text[reader.pos + 1 : reader.pos + 2] in DIGITS:
+                    # `dlang_symbol_backref` reads the length with `dlang_number`, which
+                    # takes the whole digit run: `06289` is a length of 6289 and `01a` is
+                    # `a`. Only a lone `0` is the empty identifier, which `symbol_name`
+                    # reads as the anonymous component it is. Stopping at the first `0`
+                    # read a target inside a mutated name's digits as anonymous and went
+                    # on, spelling `..length` where the reference refuses the name.
+                    reader.pos += 1
                 resolved = self.symbol_name()
             finally:
                 reader.depth -= 1
