@@ -187,6 +187,15 @@ class ItaniumOptions:
     False (the default) drops every one, as llvm-cxxfilt does. True keeps c++filt's.
     """
 
+    gnu_objc_protocol_spelling: bool = False
+    """Spell an Objective-C protocol qualifier as the vendor qualifier it is written as.
+
+    `PU13objcproto3Bar11objc_object` is `id<Bar>` to llvm-cxxfilt, and `Foo<Bar>*` for
+    a class; GNU c++filt knows nothing of the convention and prints the qualifier as it
+    prints any vendor qualifier, after the type: `objc_object objcproto3Bar*` and
+    `Foo objcproto3Bar*`. False (the default) gives the former, True the latter.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -212,4 +221,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_friend_spelling=True,
     gnu_unresolved_scope_substitution=True,
     gnu_empty_pack_spelling=True,
+    gnu_objc_protocol_spelling=True,
 )

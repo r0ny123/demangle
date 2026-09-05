@@ -645,3 +645,28 @@ class TestAnArgumentPackWrittenWithI:
 
     def test_the_j_form_reads_the_same(self):
         assert demangle.demangle_strict("_Z1fIJicEEvDpT_") == demangle.demangle_strict("_Z1fIIicEEvDpT_")
+
+
+class TestAnObjectiveCProtocolUnderTheGnuStyle:
+    """GNU c++filt knows nothing of the `objcproto` convention and prints the qualifier
+    as it prints any vendor qualifier, after the type: `objc_object objcproto3Bar*`
+    where llvm-cxxfilt writes `id<Bar>`. The names were compiled by Clang 18 from
+    Objective-C++ `id<Bar>` and `Foo<Bar>*` parameters."""
+
+    @pytest.mark.parametrize(
+        "mangled, gnu, llvm",
+        [
+            ("_Z1fPU13objcproto3Bar11objc_object", "f(objc_object objcproto3Bar*)", "f(id<Bar>)"),
+            ("_Z1fPU13objcproto3Bar3Foo", "f(Foo objcproto3Bar*)", "f(Foo<Bar>*)"),
+            ("_Z1fU11objcproto1A11objc_object", "f(objc_object objcproto1A)", "f(objc_object<A>)"),
+        ],
+    )
+    def test_both_styles(self, mangled, gnu, llvm):
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+        assert demangle.demangle_strict(mangled) == llvm
+
+    def test_the_option_is_what_selects_it(self):
+        on = demangle.style("llvm", itanium={"gnu_objc_protocol_spelling": True})
+        assert (
+            demangle.demangle_strict("_Z1fPU13objcproto3Bar11objc_object", style=on) == "f(objc_object objcproto3Bar*)"
+        )

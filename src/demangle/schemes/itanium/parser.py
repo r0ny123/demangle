@@ -2808,10 +2808,11 @@ class ItaniumParser:
                 arguments = self.template_arguments()
                 qualifier += self._angled(", ".join([builder.spell(argument) for argument in arguments]))
             inner = self.qualified_type()
-            if qualifier.startswith(_OBJC_PROTOCOL):
+            if qualifier.startswith(_OBJC_PROTOCOL) and not self.options.gnu_objc_protocol_spelling:
                 # `U <n>objcproto<protocol> <type>` is an Objective-C type conforming to
-                # a protocol, and the references write it in angle brackets:
-                # `NSArray<A>`, not `NSArray objcproto1A`. A qualified `objc_object` is
+                # a protocol, and llvm-cxxfilt writes it in angle brackets:
+                # `NSArray<A>`, not the `NSArray objcproto1A` c++filt prints -- see
+                # `gnu_objc_protocol_spelling`. A qualified `objc_object` is
                 # written `id<A>` once a pointer is applied to it -- and only then, so
                 # the rewrite is recorded here and done in the `P` branch.
                 # The protocol is itself a length-prefixed name inside the qualifier's:

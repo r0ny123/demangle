@@ -101,6 +101,12 @@ All notable changes to this project are recorded here. The format follows
   both styles, a `Dp` expansion over an empty pack inside a *type's* argument list was
   dropped only when written `J E`: `1AIDpT_T0_E` over an empty `T_` spelled `A<, int>`
   where llvm-cxxfilt prints `A<int>`.
+- **An Objective-C protocol qualifier under the gnu style.** GNU c++filt prints
+  `objcproto3Bar` as it prints any vendor qualifier, after the type --
+  `objc_object objcproto3Bar*` -- where llvm-cxxfilt writes `id<Bar>`; the gnu style
+  wrote the latter. A new option, `gnu_objc_protocol_spelling`, on in the gnu style,
+  prints c++filt's. Found by compiling Objective-C++ with Clang 18 and reading every
+  symbol through both references.
 - **An argument pack written `I <template-arg>* E`.** The form g++ wrote for a pack
   under `-fabi-version` 2 through 5, the default of GCC 3.4 through 4.9, and still
   writes as a compatibility alias beside the `J` form when asked for those versions:
