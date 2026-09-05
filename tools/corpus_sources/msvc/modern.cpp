@@ -142,4 +142,17 @@ int Sub::operator[](int a, int) const { return a; }
 int Sub::operator()(int a) { return a; }
 #endif
 
+// A parameter list that is nothing but the ellipsis. `void f(...)` is C++, and this
+// target writes it `?only_variadic@hard@@YAXZZ`: the `Z` that marks a variadic list with
+// no parameter in front of it. Refused here once, on the belief that the marker needs
+// one; the constructor and the method are the same shape in a member's encoding.
+void only_variadic(...) {}
+int only_variadic_int(...) { return 0; }
+struct Variadic {
+  Variadic(...);
+  int method(...) const;
+};
+Variadic::Variadic(...) {}
+int Variadic::method(...) const { return 0; }
+
 }  // namespace hard

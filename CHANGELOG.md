@@ -46,6 +46,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a parameter list that is nothing but the ellipsis is read.** `void f(...)` is
+  C++, and clang writes it `?f@@YAXZZ` for this target -- the `Z` that marks a variadic
+  list standing with no parameter in front of it; `??0P@ns@@QEAA@ZZ` is a constructor
+  taking one and `?method@Variadic@hard@@QEBAHZZ` a method. All three were refused, and
+  `tests/test_msvc.py` pinned the refusal as intended, on the belief that the marker
+  needs a parameter to mark. Found by putting the names this library refuses to the
+  reference -- the one direction the fuzzers cannot see -- and settled by compiling the
+  four declarations: they are in `tools/corpus_sources/msvc/modern.cpp` now, and
+  `msvc-clang.txt` is 160 of 160.
+
 - **Itanium: an unexpanded pack expansion over a declarator type puts its ellipsis after
   the whole type, as the reference does.** `ParameterPackExpansion` prints its child --
   both halves of a declarator -- and then the dots, so llvm-cxxfilt spells `_Z1fDpFvvEv`

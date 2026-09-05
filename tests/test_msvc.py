@@ -31,6 +31,13 @@ DEMANGLED = [
     ("?h2@@3QBHB", "int const *const h2"),
     ("?mbb@S@@QAEX_N0@Z", "public: void __thiscall S::mbb(bool, bool)"),
     ("?f@@YAXHZZ", "void __cdecl f(int, ...)"),
+    # `void f(...)`: the ellipsis is the whole list. clang writes exactly this for the
+    # MSVC target, and the reference reads it; a `Z` with nothing in front of it used to
+    # be refused here as a marker with no parameter to mark.
+    ("?f@@YAXZZ", "void __cdecl f(...)"),
+    ("?g@@YAHZZ", "int __cdecl g(...)"),
+    ("??0P@ns@@QEAA@ZZ", "public: __cdecl ns::P::P(...)"),
+    ("??BQ@ns@@QEBAHZZ", "public: int __cdecl ns::Q::operator int(...) const"),
     # the declarator cases: a name or a further pointer belongs inside its own type
     ("?j@@3P6GHCE@ZA", "int (__stdcall *j)(signed char, unsigned char)"),
     ("?g@@3PAP6AHXZA", "int (__cdecl **g)(void)"),
@@ -91,7 +98,6 @@ DECLINED = [
     "?g@@YAXPAUS@@PA1@Z",  # argument back-reference past the end of the table
     "?g@@YAX0@Z",  # argument back-reference with nothing recorded yet
     "?f@@YAXPAHPB0@Z",  # a qualifier in front of a back-reference, which MSVC does not form
-    "?f@@YAXZZ",  # variadic marker with no parameter before it
     "?f@@YAX_",  # truncated extended type
     # a parameter list is closed by the throw specification, so a name that stops before it
     # is truncated however plausible the prefix looks

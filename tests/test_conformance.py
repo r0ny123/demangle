@@ -30,7 +30,7 @@ MSVC_TOTAL, MSVC_EXACT = 609, 609
 #: variable refused outright, `operator<=>` and `operator co_await` missing from the
 #: table, the `_E` that ends a `noexcept` signature where a `Z` ends every other one, and
 #: a deduced return type written as a back reference to an earlier one.
-MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 156, 156
+MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 160, 160
 
 #: The names in that run `llvm-undname` reads wrongly: `_L` and `_M`, which are
 #: `__int128` and `unsigned __int128` and which `demanglePrimitiveType` has no case for,

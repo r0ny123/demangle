@@ -1287,8 +1287,11 @@ class _Demangler:
             if self.eat("@"):
                 break
             if self.peek() == "Z":
-                if not params:
-                    raise _Bail
+                # A list that is nothing but the ellipsis is `void f(...)`, which is C++
+                # and which clang writes as `?f@@YAXZZ` for this target -- `??0P@@QEAA@ZZ`
+                # for a constructor taking one. This refused a `Z` with no parameter in
+                # front of it, on the belief that the marker needs one; the compiler says
+                # otherwise, and so does the reference.
                 self.take()
                 params.append(_ELLIPSIS)
                 break

@@ -8,7 +8,7 @@
 #
 # reference: Ubuntu LLVM version 18.1.3   Optimized build.
 # compiled by: clang++ --target=x86_64-pc-windows-msvc: Ubuntu clang version 18.1.3 (1ubuntu1)
-# standards: c++17, c++20, c++23
+# standards: c++11, c++14, c++17, c++20, c++23
 # optimisation: -O0, -O2
 #
 ?$TSS0@?1??guarded@ns@@YAHXZ@4HA	int `int __cdecl ns::guarded(void)'::`2'::$TSS0
@@ -22,6 +22,7 @@
 ??0Other@ns@@QEAA@XZ	public: __cdecl ns::Other::Other(void)
 ??0Thrower@ns@@QEAA@XZ	public: __cdecl ns::Thrower::Thrower(void)
 ??0TlsCtor@hard@@QEAA@XZ	public: __cdecl hard::TlsCtor::TlsCtor(void)
+??0Variadic@hard@@QEAA@ZZ	public: __cdecl hard::Variadic::Variadic(...)
 ??0VirtBase@ns@@QEAA@XZ	public: __cdecl ns::VirtBase::VirtBase(void)
 ??1Base@ns@@UEAA@XZ	public: virtual __cdecl ns::Base::~Base(void)
 ??1Derived@ns@@UEAA@XZ	public: virtual __cdecl ns::Derived::~Derived(void)
@@ -132,11 +133,14 @@
 ?make_other@ns@@YAPEAUOther@1@XZ	struct ns::Other * __cdecl ns::make_other(void)
 ?make_virt@ns@@YAPEAUVirtBase@1@XZ	struct ns::VirtBase * __cdecl ns::make_virt(void)
 ?makes_temporary@ns@@YAHXZ	int __cdecl ns::makes_temporary(void)
+?method@Variadic@hard@@QEBAHZZ	public: int __cdecl hard::Variadic::method(...) const
 ?n@?1??counter@WithStatics@ns@@SAHXZ@4HA	int `public: static int __cdecl ns::WithStatics::counter(void)'::`2'::n
 ?nested_lambdas@hard@@YAHXZ	int __cdecl hard::nested_lambdas(void)
 ?noexcept_fn@hard@@YAHH@Z	int __cdecl hard::noexcept_fn(int)
 ?o@Derived@ns@@UEAAHXZ	public: virtual int __cdecl ns::Derived::o(void)
 ?o@Other@ns@@UEAAHXZ	public: virtual int __cdecl ns::Other::o(void)
+?only_variadic@hard@@YAXZZ	void __cdecl hard::only_variadic(...)
+?only_variadic_int@hard@@YAHZZ	int __cdecl hard::only_variadic_int(...)
 ?r1@Q@ns@@QEBAAEAY03$$CBDXZ	public: char const (& __cdecl ns::Q::r1(void) const)[4]
 ?r2@Q@ns@@QECAPEAY03$$CBDXZ	public: char const (* __cdecl ns::Q::r2(void) volatile)[4]
 ?r3@Q@ns@@QEBAP6AHH@ZXZ	public: int (__cdecl * __cdecl ns::Q::r3(void) const)(int)
