@@ -1,38 +1,38 @@
 {
   "cold": {
-    "names": 14076,
-    "seconds": 0.571865,
-    "per_second": 24614,
-    "microseconds_each": 40.627,
-    "normalised": 1480.942,
-    "relative_to_pivot": 96.2466
+    "names": 14078,
+    "seconds": 0.688586,
+    "per_second": 20445,
+    "microseconds_each": 48.912,
+    "normalised": 1208.919,
+    "relative_to_pivot": 77.5086
   },
   "warm": {
-    "names": 42228,
-    "seconds": 0.017825,
-    "per_second": 2368991,
-    "microseconds_each": 0.422,
-    "normalised": 15.387
+    "names": 42234,
+    "seconds": 0.026652,
+    "per_second": 1584626,
+    "microseconds_each": 0.631,
+    "normalised": 15.597
   },
   "negative": {
-    "names": 14076,
-    "seconds": 0.030058,
-    "per_second": 468289,
-    "microseconds_each": 2.135,
-    "normalised": 77.84,
-    "relative_to_pivot": 5.0588
+    "names": 14078,
+    "seconds": 0.033366,
+    "per_second": 421929,
+    "microseconds_each": 2.37,
+    "normalised": 58.579,
+    "relative_to_pivot": 3.7557
   },
   "structured": {
     "names": 636,
-    "seconds": 0.033285,
-    "per_second": 19107,
-    "microseconds_each": 52.336,
+    "seconds": 0.037055,
+    "per_second": 17164,
+    "microseconds_each": 58.263,
     "parsed": 636,
-    "normalised": 1907.723,
-    "relative_to_pivot": 123.9831
+    "normalised": 1440.024,
+    "relative_to_pivot": 92.3256
   },
   "calibration": {
-    "seconds": 0.027433,
+    "seconds": 0.040459,
     "rounds": 200000
   }
 }

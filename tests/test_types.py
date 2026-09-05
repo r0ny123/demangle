@@ -459,3 +459,72 @@ class TestAProtocolIsASourceNameInsideItsQualifier:
     )
     def test_the_first_length_worth_of_characters_is_the_protocol(self, mangled, expected):
         assert demangle.demangle(mangled) == expected
+
+
+class TestAVectorDimensionIsANumberToCxxfilt:
+    """`d_vector_type` reads the dimension with `d_number` and prints the value, so
+    `Dv07_b` is `__vector(7)` under the gnu style. An array bound is printed as written
+    by both references, `[07]`, and stays so. `llvm-cxxfilt` refuses a vector dimension
+    that does not open on 1-9; the llvm style prints the digits it read. Found by the
+    `types` job of `tools/mutate.py`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            ("Dv07_b", "bool vector[07]", "bool __vector(7)"),
+            ("Dv7_b", "bool vector[7]", "bool __vector(7)"),
+            ("Dv0_b", "bool vector[0]", "bool __vector(0)"),
+            ("A07_i", "int [07]", "int [07]"),
+        ],
+    )
+    def test_the_two_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle_type(mangled, language="itanium") == llvm
+        assert demangle.demangle_type(mangled, language="itanium", style="gnu") == gnu
+
+
+class TestAVectorsSizeAndElementAsTheCompilersWriteThem:
+    """Two shapes the ABI text does not have. Clang writes a dependent size with no
+    underscore before it, `Dv <expression> _ <type>` -- `mangleType` for a
+    `DependentSizedExtVectorType` is `Out << "Dv"; mangleExpression(Size); Out << '_'`
+    -- and emits `_Z1gILi2EEvDvmlT_Li4E_i` for `template <int N> void g(int
+    __attribute__((vector_size(N * 4))))`; `llvm-cxxfilt` reads that and `c++filt`
+    refuses it, while the ABI's own `Dv _ <expression> _ <type>` is what `c++filt`
+    reads and `llvm-cxxfilt` refuses. This read only the second, and refused a symbol
+    clang++ 18.1.3 emits. And AltiVec's `__vector pixel` is `Dv <number> _ p`, a `p`
+    where the element type would be: clang++ 18.1.3 writes `_Z1hDv8_p` for
+    `void h(__vector pixel)`, which `llvm-cxxfilt` spells `pixel vector[8]`. Found by
+    the `types` job of `tools/mutate.py --refusals`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            ("DvLi4E_i", "int vector[4]", "int __vector(4)"),
+            ("Dv_Li4E_i", "int vector[4]", "int __vector(4)"),
+            ("Dv4_i", "int vector[4]", "int __vector(4)"),
+            ("Dv4_p", "pixel vector[4]", "pixel __vector(4)"),
+            ("Dv8_p", "pixel vector[8]", "pixel __vector(8)"),
+            ("Dv4_b", "bool vector[4]", "bool __vector(4)"),
+        ],
+    )
+    def test_as_a_type(self, mangled, llvm, gnu):
+        assert demangle.demangle_type(mangled, language="itanium") == llvm
+        assert demangle.demangle_type(mangled, language="itanium", style="gnu") == gnu
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            ("_Z1gILi2EEvDvmlT_Li4E_i", "void g<2>(int vector[2 * 4])", "void g<2>(int __vector((2)*(4)))"),
+            ("_Z1hDv8_p", "h(pixel vector[8])", "h(pixel __vector(8))"),
+            ("_Z1bDv4_b", "b(bool vector[4])", "b(bool __vector(4))"),
+            ("_ZN1SILi16EE1sEDv4_i", "S<16>::s(int vector[4])", "S<16>::s(int __vector(4))"),
+        ],
+    )
+    def test_as_a_symbol(self, mangled, llvm, gnu):
+        assert demangle.demangle(mangled) == llvm
+        assert demangle.demangle(mangled, style="gnu") == gnu
+
+    def test_a_dimensionless_vector_is_llvm_cxxfilts_own(self):
+        """`Dv_ <type>` with no expression at all is `int vector[]` to `llvm-cxxfilt` and
+        nothing to the ABI, to clang's mangler or to `c++filt`."""
+        with pytest.raises(DemanglingError):
+            demangle.demangle_type("Dv_i", language="itanium")

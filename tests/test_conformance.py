@@ -39,7 +39,7 @@ MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 160, 160
 #: above.
 MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 4, 4
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
-REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 28, 28
+REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 
 #: Names on which a reference demangler is *wrong*, so the expected column is derived
 #: from the declaration rather than recorded from a demangler. See the file's header, and

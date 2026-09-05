@@ -6,10 +6,11 @@
 # cv-qualified function types and embedded mangled names; <unresolved-name>;
 # <template-param-decl>; empty and multi-member packs; local names used as types;
 # multi-dimensional arrays; operator precedence in expressions; abbreviations scoping a
-# constructor; and the thread-local special names.
+# constructor; the thread-local special names; and a vector's dependent size and pixel
+# element, from clang++ 18.1.3 over the sources named in tests/test_types.py.
 #
 # reference: llvm-cxxfilt Ubuntu LLVM version 18.1.3   Optimized build.
-# pairs: 27
+# pairs: 30
 _Z1fIXaantLb1ELb0EEEvv	void f<!true && false>()
 _Z1fIXmlplLi1ELi2ELi3EEEvv	void f<(1 + 2) * 3>()
 _Z1fIXntntLb1EEEvv	void f<!(!true)>()
@@ -38,3 +39,5 @@ _ZNSt8_Rb_treeIPKN4llvm10sampleprof21ProfiledCallGraphEdgeES4_St9_IdentityIS4_EZ
 _ZTHN4llvm8parallel11threadIndexE	thread-local initialization routine for llvm::parallel::threadIndex
 _ZTWN4llvm8parallel11threadIndexE	thread-local wrapper routine for llvm::parallel::threadIndex
 _Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES5_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(outer::inner::Holder<int, 3>)
+_Z1gILi2EEvDvmlT_Li4E_i	void g<2>(int vector[2 * 4])
+_Z1hDv8_p	h(pixel vector[8])

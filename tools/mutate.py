@@ -106,9 +106,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from enumerate import ACCEPTED, JOBS, reference_answers
-
-import demangle
+from enumerate import ACCEPTED, JOBS, library_reading, reference_answers
 
 CONFORMANCE = Path(__file__).resolve().parent.parent / "tests" / "conformance"
 
@@ -128,6 +126,7 @@ SEEDS = {
         ],
         "_Z",
     ),
+    "types": (["itanium-types.txt", "itanium-types-llvm.txt"], ""),
     "rust": (["rust-real-world.txt", "rust-toolchain.txt"], "_R"),
     "d": (["d-real-world.txt", "d-libiberty.txt"], "_D"),
     "ada": (["ada-libiberty.txt"], ""),
@@ -257,7 +256,7 @@ def readings(scheme, names, style=None):
     found = {}
     for name in names:
         with contextlib.suppress(Exception):
-            found[name] = demangle.demangle_strict(name, language=scheme, style=style)
+            found[name] = library_reading(scheme, name, style)
     return found
 
 

@@ -317,7 +317,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **310 / 311** † |
-| Regression corpus | `llvm-cxxfilt` 18.1.3 | **28 / 28** |
+| Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
 | Names a reference reads wrongly ✱ | the declaration | **14 / 14** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |

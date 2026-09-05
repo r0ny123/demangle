@@ -142,6 +142,7 @@ because agreeing with one build of one reference is not the same as being right.
 python tools/mutate.py                  # the pinned draw, which is what CI runs
 python tools/mutate.py --count 200000   # more mutants per scheme
 python tools/mutate.py --seed 7         # a different draw; the default draw is fixed
+python tools/mutate.py --scheme types   # bare <type> encodings, through demangle_type
 ```
 
 Enumeration counts *short* strings, which is the wrong length for everything that only

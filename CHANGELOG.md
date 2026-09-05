@@ -8,6 +8,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **A `types` job in `tools/enumerate.py` and `tools/mutate.py`.** Bare `<type>`
+  encodings go through `demangle_type`, a different entry point from the one every
+  other job exercises, and had no fuzz job of their own: the mutator seeded from the
+  two type corpora but read every mutant as a symbol, where a bare type is refused
+  before the type grammar is reached. The job reads them as types and asks
+  `llvm-cxxfilt --types` and `c++filt -t`, under the Itanium accept rules and one more
+  for a vendor extended qualifier over a function type, which the three
+  implementations place three ways. Its first 120,000 mutants found one spelling, below.
 - **`tools/mutate.py --refusals`: the other direction.** The gate puts to the reference
   only the mutants this library *reads*, so a name it refused and the reference read was
   invisible to it -- and the last three defects found here (MSVC's ellipsis-only
@@ -211,6 +219,23 @@ All notable changes to this project are recorded here. The format follows
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
   `tools/enumerate.py`, and libiberty reading D names whose template arguments end with
   the name.
+- **Itanium: a vector's size and element as the compilers write them.** Clang writes a
+  dependent size with no underscore before it, `Dv <expression> _ <type>` -- its
+  `mangleType` for a `DependentSizedExtVectorType` is `Out << "Dv";
+  mangleExpression(Size); Out << '_'` -- and emits `_Z1gILi2EEvDvmlT_Li4E_i` for
+  `template <int N> void g(int __attribute__((vector_size(N * 4))))`. This read only the
+  ABI text's `Dv _ <expression> _ <type>`, which is what `c++filt` reads and
+  `llvm-cxxfilt` refuses, and refused a symbol clang++ 18.1.3 emits; both forms are
+  read now, `int vector[2 * 4]` as `llvm-cxxfilt` spells it. And AltiVec's `__vector
+  pixel` is `Dv <number> _ p`, a `p` where the element type would be -- `_Z1hDv8_p` for
+  `void h(__vector pixel)` -- which was refused as an unknown type code and is `pixel
+  vector[8]`. Found by asking `llvm-cxxfilt --types` about the bare types the new
+  `types` job refuses.
+- **Itanium, gnu style: a vector dimension is a number.** `d_vector_type` reads it with
+  `d_number` and prints the value, so `Dv07_b` is `bool __vector(7)`; this printed the
+  digits as written, `__vector(07)`, which is what both references do for an array
+  bound and neither does here. Found by the `types` job above; no compiler writes a
+  leading zero.
 - **Itanium: a floating-point literal is spelled the way each reference spells it.**
   `L <d|e|f> <hex> E` carries the value's bytes, and this printed them as they stood
   after the type -- `(double)4048f5c28f5c28f6` -- in both styles, which is neither

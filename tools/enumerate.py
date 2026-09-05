@@ -108,6 +108,18 @@ JOBS = {
             ("_ZN", "1aIiTLES_EKPRDv"),
         ],
     ),
+    # Bare `<type>` encodings, the `demangle_type` entry point, against each reference's
+    # own type mode. The alphabet is the type grammar's: pointers and references, the
+    # qualifiers, a function, `D` for the extended codes, a source name, a template
+    # parameter and a substitution.
+    "types": (
+        "llvm-cxxfilt --types",
+        "c++filt -t",
+        [
+            ("", "iPRKVOFvEDA1aTLS_"),
+            ("P", "iPRKVOFvEDA1aTLS_"),
+        ],
+    ),
     "rust": (
         _rust_reference(),
         None,
@@ -428,6 +440,12 @@ ACCEPTED = {
             or _gnuv2_function_name(ours).startswith(_gnuv2_function_name(first) + "__")
         )
     ),
+    # A bare type is read under every Itanium rule, and one more: a vendor extended
+    # qualifier over a function type, which the three implementations place three ways.
+    "types": lambda name, ours, first, second: (
+        ACCEPTED["itanium"](name, ours, first, second)
+        or (first is not None and second[0] is not None and _VENDOR_QUALIFIED_FUNCTION.search(name) is not None)
+    ),
     "swift": lambda name, ours, first, second: (
         (first is None and _METATYPE_PARAMS_REMOVED.search(name) is not None)
         # Or an extended existential shape, where `NodePrinter` reads the node one child
@@ -551,11 +569,15 @@ _PLACEMENT_CLOSURE = re.compile(r"`placement delete(\[\])? closure'")
 #: result three ways: `c++filt` stacks them in the mangled order after the exception
 #: specification, `llvm-cxxfilt` moves the outer one onto the return type, and this
 #: writes the outer one after the ref-qualifier.
-_MISORDERED_FUNCTION_QUALIFIERS = re.compile(r"(?:KV|VV|KK|rr|Vr|Kr)[rVK]*(?:D[oO].*?E|Dw.*?E|Dx)?F")
+_MISORDERED_FUNCTION_QUALIFIERS = re.compile(r"(?:KV|VV|KK|rr|Vr|Kr)[rVK]*(?:Do|DO.*?E|Dw.*?E|Dx)?F")
+
+#: A vendor extended qualifier, `U <source-name>`, applied to a function type: the same
+#: three-way shape as the imaginary declarator below, which no compiler writes.
+_VENDOR_QUALIFIED_FUNCTION = re.compile(r"U\d+[A-Za-z_][A-Za-z0-9_$.]*?[rVK]*(?:Do|DO.*?E|Dw.*?E|Dx)?F")
 
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
 #: function. The one shape where all three implementations write something different.
-_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVKPRO]*(?:D[oO].*?E|Dw.*?E|Dx)?[AF]")
+_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVKPRO]*(?:Do|DO.*?E|Dw.*?E|Dx)?[AF]")
 
 #: Characters both reference *tools* split their input on before demangling anything --
 #: a space, a bracket, a `+` or a `-` -- so a name carrying one reaches neither
@@ -693,8 +715,15 @@ def readings(scheme, prefix, alphabet, length, style=None):
             name = prefix + "".join(tail)
             # Any failure means "not read", which is the answer this is asking for.
             with contextlib.suppress(Exception):
-                found[name] = demangle.demangle_strict(name, language=scheme, style=style)
+                found[name] = library_reading(scheme, name, style)
     return found
+
+
+def library_reading(scheme, name, style=None):
+    """What this library says about `name` under `scheme`'s entry point, or raises."""
+    if scheme == "types":
+        return demangle.demangle_type(name, language="itanium", style=style)
+    return demangle.demangle_strict(name, language=scheme, style=style)
 
 
 def _capped_at(memory):

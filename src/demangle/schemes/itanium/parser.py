@@ -2665,15 +2665,36 @@ class ItaniumParser:
         return f"{prefix}{integer}{'_Accum' if kind == 'DA' else '_Fract'}"
 
     def vector_type(self):
-        """<type> ::= Dv <number> _ <type> | Dv _ <expression> _ <type>"""
+        """<type> ::= Dv <number> _ <type> | Dv _ <expression> _ <type>
+
+        And two shapes the ABI text does not have. Clang writes a dependent size with
+        no underscore before it, `Dv <expression> _ <type>` -- `mangleType` for a
+        `DependentSizedExtVectorType` is `Out << "Dv"; mangleExpression(Size); Out <<
+        '_'` -- which is what `llvm-cxxfilt` reads and `c++filt` refuses; the form with
+        the underscore is what `c++filt` reads and `llvm-cxxfilt` refuses. Both are
+        read. And AltiVec's `__vector pixel` is `Dv <number> _ p`, a `p` where the
+        element type would be; `Dv4_b` is `__vector bool` to the mangler and `bool` to
+        every demangler, so it is left as the type letter it also is.
+        """
         reader = self.reader
         reader.expect("Dv")
-        size = self.expression_text() if reader.eat("_") else reader.digits()
+        if reader.eat("_"):
+            size = self.expression_text()
+        elif reader.peek() in DIGITS:
+            size = reader.digits()
+        else:
+            size = self.expression_text()
         reader.expect("_")
-        inner = self.type_()
-        spelled = self.builder.spell(inner)
+        if reader.eat("p"):
+            spelled = "pixel"
+        else:
+            inner = self.type_()
+            spelled = self.builder.spell(inner)
         if self.options.gnu_vector_spelling:
-            return self.builder.raw(f"{spelled} __vector({size})")
+            # `d_vector_type` reads the dimension with `d_number` and prints the value,
+            # so `Dv07_b` is `__vector(7)`; `llvm-cxxfilt` prints the digits as written
+            # for an array and refuses a vector dimension that does not open on 1-9.
+            return self.builder.raw(f"{spelled} __vector({int(size) if size.isdigit() else size})")
         return self.builder.raw(f"{spelled} vector[{size}]")
 
     def class_enum_type(self):
