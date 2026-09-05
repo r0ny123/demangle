@@ -428,3 +428,20 @@ class TestBounds:
     def test_the_empty_name_is_refused(self):
         with pytest.raises(DemanglingError):
             demangle.demangle_strict("", language="gnuv2")
+
+
+class TestWhatAskingTheReferenceAboutRefusalsFound:
+    """`tools/mutate.py --refusals` over 3,000 mutants: what libiberty reads that this
+    refuses. All of it is libiberty spelling a gap round something it should have refused
+    -- the shapes `ACCEPTED["gnuv2"]` in `tools/enumerate.py` names -- but for one."""
+
+    @pytest.mark.parametrize("mangled", ["foo__H1Zi_X01i_", "foo__H1Zt2TA2ZiZt4N__A1im9_X01i_"])
+    def test_a_return_type_marker_with_nothing_after_it_is_refused(self, mangled):
+        """A template function's arguments end in `_` and the return type; here the name
+        ends at the `_`. `demangle_signature` steps over it and `do_type` on nothing
+        succeeds, so libiberty prints `foo<int>(int, int)` with no return type -- the
+        spelling of the name one character shorter. That name reads here; this one does
+        not, because the marker promises a type."""
+        assert demangle.demangle(mangled, language="gnuv2") == mangled
+        assert demangle.demangle(mangled[:-1], language="gnuv2").startswith("foo<")
+        assert demangle.demangle(mangled + "v", language="gnuv2").startswith("void foo<")

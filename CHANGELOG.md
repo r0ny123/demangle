@@ -8,6 +8,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **`tools/mutate.py --refusals`: the other direction.** The gate puts to the reference
+  only the mutants this library *reads*, so a name it refused and the reference read was
+  invisible to it -- and the last three defects found here (MSVC's ellipsis-only
+  parameter list, Swift's six uncounted context kinds, and the two D shapes below) were
+  all of that kind, found by asking the question by hand. The mode asks it for every
+  scheme with a reference: what the reference says about each refused mutant, printed
+  as a list to triage rather than a count to pin, because most of what comes back is the
+  reference reading past its grammar and the rest is a defect. It runs each batch under
+  a memory cap and a timeout, because binutils' D demangler takes gigabytes on a mutant
+  whose back references chain, which this library refuses in milliseconds at its
+  substitution limit. Everything it reports over the pinned draw and does not find is
+  now pinned in the schemes' tests as a refusal with the reference's reason: libiberty's
+  three D leniencies, its empty return-type marker after a pre-Itanium template
+  function, and the Swift reference reading `$sS` as `Swift.String` because
+  `pushBack` steps back over a `nextChar` that did not advance at the end of the name.
+  `llvm-undname`'s 124 are its known leniencies -- trailing input ignored, unknown
+  letters in calling-convention and qualifier positions, `?` inside identifiers,
+  `<>`, structors with return types -- and `c++filt --format=gnat`'s bracketed
+  answers are read as the refusals they are.
 - **A reference for pre-Itanium C++, built from source.** Nothing current reads one of
   these names: binutils 2.42's `c++filt` offers no `--format=gnu`, `lucid`, `arm` or
   `hp`, and GCC 9 removed the demangler from libiberty, so every claim about the scheme

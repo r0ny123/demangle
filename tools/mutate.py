@@ -28,6 +28,20 @@ Usage
     tools/mutate.py --count 200000         more mutants per scheme (default 50000)
     tools/mutate.py --seed 7               a different draw; the default draw is fixed
 
+`--refusals` looks the other way. The comparison above only ever sees a name this library
+*reads*: a name it refuses and the reference reads never enters it, so a gap here is
+invisible to it by construction. This mode puts the refused mutants to the reference and
+prints what it says about them. It is a triage list and not a gate -- everything on it is
+either a gap here or the reference reading junk it should have refused, and telling the
+two apart is a person's job with the reference's source open. Its first run found a
+parameter list that is nothing but the ellipsis (`?f@@YAXZZ`, which clang emits) refused
+by the MSVC scheme, and six node kinds the Swift scheme produced but did not count as
+contexts, so that a descriptor over any of them refused the name; its second, two D
+shapes the grammar admits. What it reports and does not find is pinned in the schemes'
+tests as refusals, each with the reference's reason.
+
+    tools/mutate.py --refusals --scheme msvc --show 100
+
 Exit status is non-zero unless the divergence count is exactly `--expect`, which is 0 by
 default -- so this gates a commit in both directions, like the conformance corpora do: a
 new divergence fails, and so does a stale pin after one is fixed. The number is a
@@ -86,6 +100,7 @@ import gzip
 import random
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -246,6 +261,65 @@ def readings(scheme, names, style=None):
     return found
 
 
+def ask_tolerantly(tool, names, batch):
+    """`reference_answers`, for names that may take the reference down.
+
+    The gate only ever puts names this library reads to the reference, and those have
+    never killed one. The refused ones are another matter: Swift's own demangler aborts
+    on some of them, and a process that dies mid-batch answers nothing for any name in
+    it. So a batch that comes back short is split and asked again, down to the one name
+    that did it, which is recorded as `None` like a refusal.
+
+    Binutils' D demangler is the other failure mode: a mutant whose back references
+    chain takes it into gigabytes of expansion and never returns, while this library
+    refuses the same name in milliseconds at its substitution limit. So every batch
+    runs under a memory cap and a timeout, and one that trips either is split the
+    same way.
+    """
+    answers = {}
+    for start in range(0, len(names), batch):
+        chunk = names[start : start + batch]
+        try:
+            answers.update(reference_answers(tool, chunk, timeout=60 + len(chunk) // 100, memory=1 << 30))
+        except (SystemExit, subprocess.TimeoutExpired):
+            if len(chunk) == 1:
+                answers[chunk[0]] = None
+            else:
+                half = len(chunk) // 2
+                answers.update(ask_tolerantly(tool, chunk[:half], batch))
+                answers.update(ask_tolerantly(tool, chunk[half:], batch))
+    return answers
+
+
+def refusals(scheme, count, seed, show, batch):
+    """What the reference says about the mutants this library refuses. Never fails."""
+    tool, _, _ = JOBS[scheme]
+    if shutil.which(tool.split()[0]) is None:
+        print(f"{scheme}: {tool.split()[0]} not on PATH, skipped")
+        return
+    mutants, seed_count = draw(scheme, count, seed)
+    if not mutants:
+        print(f"{scheme:8} no seeds")
+        return
+    refused = sorted(mutants - set(readings(scheme, mutants)))
+    theirs = ask_tolerantly(tool, refused, batch)
+    # `c++filt --format=gnat` does not echo what it cannot read: it writes the name
+    # inside `<...>`, which is its refusal and not a reading.
+    read = [
+        (name, answer)
+        for name, answer in theirs.items()
+        if answer is not None and not (scheme == "ada" and answer.startswith("<") and answer.endswith(">"))
+    ]
+    who = Path(tool.split()[0]).name
+    print(
+        f"{scheme:8} {seed_count:>6} seeds, {count:>7} mutants,"
+        f" {len(refused):>7} refused here, {len(read)} read by {who}"
+    )
+    for name, answer in sorted(read)[:show]:
+        print(f"   {name}\n     {who:14} {answer}")
+    sys.stdout.flush()
+
+
 def run(scheme, count, seed, quiet, show, batch):
     tool, second_tool, _ = JOBS[scheme]
     if shutil.which(tool.split()[0]) is None:
@@ -339,12 +413,22 @@ def main(argv=None):
     parser.add_argument("--batch", type=int, default=20000, help="names per reference process")
     parser.add_argument("--quiet", action="store_true", help="counts only")
     parser.add_argument(
+        "--refusals",
+        action="store_true",
+        help="the other direction: what the reference says about the mutants this library refuses; a list, not a gate",
+    )
+    parser.add_argument(
         "--expect",
         type=int,
         default=0,
         help="the divergence count to pin, for this --seed and --count (default 0)",
     )
     args = parser.parse_args(argv)
+
+    if args.refusals:
+        for scheme in args.scheme or sorted(SEEDS):
+            refusals(scheme, args.count, args.seed, args.show, args.batch)
+        return 0
 
     total = 0
     for scheme in args.scheme or sorted(SEEDS):

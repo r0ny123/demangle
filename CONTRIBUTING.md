@@ -157,6 +157,25 @@ the grammar's cheap corners, which is where a substitution table gets corrupted 
 than merely emptied. The draw is seeded, so a failure reproduces exactly.
 
 ```console
+python tools/mutate.py --refusals              # what the reference reads that this refuses
+python tools/mutate.py --refusals --scheme d --count 20000 --show 40
+```
+
+The gate compares only the mutants this library *reads*, so a name it refuses and the
+reference reads never reaches it. `--refusals` asks that question: every refused mutant
+goes to the reference, and what it read comes back as a list. It is a list and not a
+gate on purpose. Most of what it reports is a reference reading past its grammar --
+libiberty's D demangler is content with a static array whose bound has no digits, and
+with a template argument list that ends with the name rather than with `Z` -- and the
+rest is a defect: MSVC's ellipsis-only parameter list, Swift's six uncounted context
+kinds and two D shapes came out of it. A refused name can also take a reference down --
+Swift's own demangler aborts on some, and binutils' D demangler expands a chain of back
+references into gigabytes -- so each batch runs under a memory cap and a timeout, and a
+batch that dies is split until the one name that did it is found and recorded as a
+refusal. Triage what it prints against the reference's source: a reading the grammar
+does not admit is pinned as a refusal in the scheme's tests, and one it does is a fix.
+
+```console
 python tools/invariants.py                # the same mutants, put to the library itself
 python tools/invariants.py --corpus swift # one corpus
 ```

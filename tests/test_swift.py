@@ -485,6 +485,16 @@ class TestRefusesRatherThanGuesses:
             with subtests.test(name=mangled):
                 assert demangle.demangle(mangled) == mangled
 
+    @pytest.mark.parametrize("mangled", ["$sS", "$s1a1bS", "$sSayxSicigS"])
+    def test_a_bare_s_at_the_end_of_the_name_is_not_a_string(self, mangled):
+        """The reference answers `Swift.String` for `$sS`, and it is a defect in the
+        reference: `demangleStandardSubstitution` calls `nextChar`, which returns 0 at
+        the end without moving, and then `pushBack`, which moves back regardless -- so
+        the `S` that opened the substitution is read a second time, as the type. Found by
+        `tools/mutate.py --refusals`; refused here, as `$sSS` is the string."""
+        assert demangle.demangle(mangled, language="swift") == mangled
+        assert demangle.demangle("$sSS", language="swift") == "Swift.String"
+
 
 class TestEveryContextNodeIsAContext:
     """`CONTEXT_KINDS` is the reference's `CONTEXT_NODE` list, and was six short.

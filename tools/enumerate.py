@@ -527,7 +527,23 @@ def readings(scheme, prefix, alphabet, length, style=None):
     return found
 
 
-def reference_answers(tool, names):
+def _capped_at(memory):
+    """A `preexec_fn` that caps the child's address space at `memory` bytes.
+
+    Only `mutate.py --refusals` asks for it: binutils' D demangler expands a mutant's
+    back references without bound and takes gigabytes before it gives up, which the
+    gate never sees because this library refuses such names in milliseconds.
+    """
+
+    def cap():
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+
+    return cap
+
+
+def reference_answers(tool, names, timeout=None, memory=None):
     """What `tool` says about each name, or None where it refuses.
 
     `llvm-undname` writes blank-line-separated records to stdout -- the echoed input,
@@ -544,7 +560,14 @@ def reference_answers(tool, names):
     they cannot read it, which is the same thing said differently.
     """
     command = tool.split()
-    proc = subprocess.run(command, input="\n".join(names) + "\n", capture_output=True, text=True, timeout=3600)
+    proc = subprocess.run(
+        command,
+        input="\n".join(names) + "\n",
+        capture_output=True,
+        text=True,
+        timeout=3600 if timeout is None else timeout,
+        preexec_fn=None if memory is None else _capped_at(memory),
+    )
     lines = proc.stdout.split("\n")
     if command[0].endswith("undname"):
         answers, record = {}, []
