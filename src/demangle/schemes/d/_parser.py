@@ -509,15 +509,25 @@ class _Parser:
                 if not self._opens_symbol_name():
                     raise DemangleFailure("a compiler scope with nothing after it")
                 continue
+            if anonymous:
+                # A literal `0` is skipped whole. `dlang_parse_qualified` `continue`s past
+                # it, which steps over the "consume the encoded arguments" every other
+                # component goes through: a function type after it is the symbol's own,
+                # never a scope's, so `_D1a0FZ1bi` is refused where reading `FZ` as the
+                # anonymous component's scope spelled `a.().b`. See `parse` for what
+                # becomes of the type.
+                self._last_component_anonymous = True
+                continue
             # A scope's own function type *is* spelled -- a symbol inside a function is
             # written `enclosing(params).inner` -- so the parameters come back here rather
             # than being discarded.
             spelled = self._spelled_component(component) + self.scope_type()
-            # A zero-length component is anonymous and the reference writes nothing for
-            # it; writing an empty one gives `demangle..test` rather than `demangle.test`.
-            self._last_component_anonymous = anonymous
-            if spelled:
-                parts.append(spelled)
+            # A back reference that resolves to an anonymous component is not skipped:
+            # `dlang_symbol_backref` reads a zero-length name and appends nothing, and
+            # the `.` before the next component is written all the same. So the slot is
+            # kept, and `_D1a0Qb1ci` is `a..c`; dropping it spelled `a.c`.
+            self._last_component_anonymous = False
+            parts.append(spelled)
         return parts
 
     def symbol_name(self):
@@ -582,6 +592,10 @@ class _Parser:
         """`__T <LName> <TemplateArgs>* Z`, spelled `name!(argument, ...)`."""
         reader = self.reader
         reader.pos += 3
+        if reader.peek() == "0":
+            # `dlang_parse_template` refuses a template whose name is the anonymous `0`;
+            # reading one spelled `!()` for `_D5__T0Zv`.
+            raise DemangleFailure("a template instance with no name")
         name = self._spelled_component(self.symbol_name())
         arguments = []
         while not reader.eat("Z"):
@@ -727,10 +741,12 @@ class _Parser:
                     for _ in range(count)
                 )
                 return "[" + ", ".join(pairs) + "]"
-            element = kind.removesuffix("[]") if kind else None
-            # No literal suffix inside an array: the reference writes `[104, 1281]`, not
-            # `[104uL, 1281uL]`, even though each element is a `ulong`.
-            return "[" + ", ".join(self.template_value(element, suffix=False) for _ in range(count)) + "]"
+            # An element carries no type of its own: `dlang_parse_arrayliteral` reads
+            # each value with no type at all, so the reference writes `[104, 1281]` for
+            # a `ulong[]` -- no `uL` -- and `[0, 1]` for a `bool[]` and `[65, 66]` for a
+            # `char[]`. Spelling the elements as the element type wrote `[false, true]`
+            # and `['A', 'B']`.
+            return "[" + ", ".join(self.template_value(None, suffix=False) for _ in range(count)) + "]"
         if char == "f":
             # A function literal: a whole mangled symbol standing where a value was
             # expected, which is how a lambda reaches a struct's field.

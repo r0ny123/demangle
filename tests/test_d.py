@@ -962,3 +962,46 @@ class TestWhatTheSecondAndThirdDrawsFound:
         )
         mutant = seed.replace("PQDgZb", "PDQgZb")
         assert demangle.demangle(mutant, language="d") == mutant
+
+
+class TestWhatTheFourthToSixthDrawsFound:
+    """`tools/mutate.py --seed 4`, `5` and `6`, 20,000 mutants each: four more shapes
+    this read and `c++filt --format=dlang` refuses or spells otherwise, each settled
+    against `d-demangle.c`."""
+
+    def test_a_back_reference_to_an_anonymous_component_keeps_its_slot(self):
+        """`dlang_symbol_backref` reads a zero-length name and appends nothing, and the
+        `.` before the next component is written all the same: `a..c`. A literal `0` is
+        skipped whole, as before."""
+        assert demangle.demangle("_D1a0Qb1ci", language="d") == "a..c"
+        assert demangle.demangle("_D1a1b0Qb1ci", language="d") == "a.b..c"
+        assert demangle.demangle("_D1a1b0i", language="d") == "a.b"
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_D8demangle__T4testVAbA2i0i1Zv", "demangle.test!([0, 1])"),
+            ("_D8demangle__T4testVAaA2i65i66Zv", "demangle.test!([65, 66])"),
+            ("_D8demangle__T4testVAmA2i1i2Zv", "demangle.test!([1, 2])"),
+        ],
+    )
+    def test_an_array_literal_spells_its_elements_untyped(self, mangled, expected):
+        """`dlang_parse_arrayliteral` reads each value with no type: no `uL` on a
+        `ulong`, and no `true` or `'A'` either, where this wrote `[false, true]`."""
+        assert demangle.demangle(mangled, language="d") == expected
+
+    @pytest.mark.parametrize("mangled", ["_D5__T0Zv", "_D__T0Zv", "_D8demangle__T0Zv"])
+    def test_a_template_instance_named_by_the_anonymous_zero_is_refused(self, mangled):
+        """`dlang_parse_template` refuses `__T0`; this spelled `!()`."""
+        assert demangle.demangle(mangled, language="d") == mangled
+
+    def test_no_scope_type_follows_a_literal_anonymous_component(self):
+        """`dlang_parse_qualified` `continue`s past a `0`, stepping over the parameters
+        every other component may carry, so a function type after it is the symbol's
+        own and nothing may follow it. `_D1a0FZ1bi` read `a.().b`."""
+        for mangled in ("_D1a0FZ1bi", "_D1a1b0FZ1ci"):
+            assert demangle.demangle(mangled, language="d") == mangled
+        assert demangle.demangle("_D1a0FZv", language="d") == "a"
+        assert (
+            demangle.demangle("_D4core4sync5mutex5Mutex6unlock0FNeZv", language="d") == "core.sync.mutex.Mutex.unlock"
+        )

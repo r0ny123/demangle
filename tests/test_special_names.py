@@ -112,3 +112,16 @@ def test_a_special_name_over_an_encoding_is_still_bounded():
     """`GA` takes an <encoding>, which may be another special name: `_ZGAGAGA...`."""
     with pytest.raises(LimitExceeded):
         demangle.demangle_strict("_Z" + "GA" * 4000 + "1x")
+
+
+class TestAModuleInitializerNamesItsModule:
+    """`GI <module-name>`: the name is not optional. `parseModuleNameOpt` reads none
+    and `llvm-cxxfilt` refuses `_ZGI`, where this spelled `initializer for module `
+    with nothing after it. `tools/mutate.py --seed 4`."""
+
+    def test_the_spelling(self):
+        assert demangle.demangle("_ZGIW1a") == "initializer for module a"
+        assert demangle.demangle("_ZGIW1aWP1b") == "initializer for module a:b"
+
+    def test_no_module_is_refused(self):
+        assert demangle.demangle("_ZGI") == "_ZGI"

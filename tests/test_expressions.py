@@ -586,6 +586,30 @@ class TestAFloatingPointLiteral:
         assert demangle.demangle(mangled, style="gnu") == mangled
 
 
+class TestALiteralsValueIsANumber:
+    """`L <type> <value number> E`: digits, with `n` in front of a negative value.
+    Taking whatever stood before the `E` read `Li4JE` as `4J` and `LinE` as `-`, which
+    is what `c++filt` prints and `llvm-cxxfilt` refuses; neither is a number.
+    `tools/mutate.py --seed 6`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fILi4EEvv", "void f<4>()"),
+            ("_Z1fILin4EEvv", "void f<-4>()"),
+            ("_Z1fILi04EEvv", "void f<04>()"),
+            ("_Z1fIL4Enum1EEvv", "void f<(Enum)1>()"),
+            ("_Z1fIXtl1Edi1nLi4EEEEvv", "void f<E{.n = 4}>()"),
+        ],
+    )
+    def test_a_number(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z1fILi4JEEvv", "_Z1fILinEEvv", "_Z1fIXtl1Edi1nLi4JEEEEvv", "_Z1fILi4xEEvv"])
+    def test_anything_else_is_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+
+
 class TestOperatorNamesAsCallees:
     """`on <operator-name>` -- a callee named by the operator it is.
 

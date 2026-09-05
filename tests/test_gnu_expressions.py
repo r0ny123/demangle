@@ -307,3 +307,30 @@ class TestAConstraintParameterUnderTheGnuStyle:
         assert "typename int; typename X<int>; typename X<int>::type; typename X<int>;" in gnu
         assert "requires SmallerThan<int, 256>;" in gnu
         assert "1234" in gnu  # the nested requirement itself still says what it says
+
+
+class TestTheObjectOfAMemberAccessIsAnOperand:
+    """`d_print_subexpr` runs over the object of a `.` or `->` as over any operand:
+    bracketed unless it is a name, a parameter or an initialiser list. This printed the
+    object without asking and wrote `a->ua.i` where `c++filt` writes `(a->ua).i`;
+    `tools/mutate.py --seed 6` reached it through a name only `c++filt` reads."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fDTdtL_Z1aE1iE", "f(decltype (a.i))"),
+            ("_Z1fDTdtfp_1iE", "f(decltype ({parm#1}.i))"),
+            ("_Z1fDTdtptL_Z1aE2ua1iE", "f(decltype ((a->ua).i))"),
+            ("_Z1fDTptdtL_Z1aE2ua1iE", "f(decltype ((a.ua)->i))"),
+            ("_Z1fDTdtdtdtL_Z1aE1b1c1dE", "f(decltype (((a.b).c).d))"),
+            ("_Z1fDTdtdtfp_1i1jE", "f(decltype (({parm#1}.i).j))"),
+            ("_Z1fDTdtclfp_E1iE", "f(decltype (({parm#1}()).i))"),
+            ("_Z1fDTdtixfp_Li0E1iE", "f(decltype (({parm#1}[0]).i))"),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+    def test_the_llvm_spelling_is_unchanged(self):
+        assert demangle.demangle("_Z1fDTdtdtdtL_Z1aE1b1c1dE") == "f(decltype(a.b.c.d))"
+        assert demangle.demangle("_Z1fDTdtclfp_E1iE") == "f(decltype(fp().i))"

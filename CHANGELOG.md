@@ -87,7 +87,21 @@ All notable changes to this project are recorded here. The format follows
   resolved as any type, where `dlang_type_backref` reads a function type at the target,
   so a mutant of a `std.regex` symbol spelled `real delegate*`; and a vendor extended
   operator, `v <digit> <source-name>`, is the same node as a conversion operator to
-  `llvm-cxxfilt` and has no base name for a constructor to repeat either. The remaining
+  `llvm-cxxfilt` and has no base name for a constructor to repeat either. Draws four to
+  six added six: a D back reference to an anonymous component dropped its slot, where
+  `dlang_symbol_backref` appends nothing and the `.` is written all the same, so
+  `_D1a0Qb1ci` is `a..c`; an array literal's elements were spelled as the element type,
+  `[false, true]`, where `dlang_parse_arrayliteral` reads each value untyped and the
+  reference writes `[0, 1]`; a template instance named by the anonymous `0` spelled
+  `!()` where `dlang_parse_template` refuses it; a function type after a literal `0` was
+  read as that component's scope, `a.().b`, where `dlang_parse_qualified` steps past a
+  `0` without reading one; an Itanium module initializer with no module, `_ZGI`, spelled
+  `initializer for module ` with nothing after it; and a literal whose value was not a
+  number, `Li4JE`, was spelled `4J`. And in the GNU style, the object of a `.` or `->`
+  is bracketed like any other operand -- `(a->ua).i`, `({parm#1}()).i` -- where this
+  printed it bare; `c++filt` runs it through `d_print_subexpr` as it does a binary
+  operator's operands, and reached through a name only `c++filt` reads, the spelling
+  holds for every chained member access. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in

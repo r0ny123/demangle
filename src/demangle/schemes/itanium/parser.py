@@ -823,7 +823,12 @@ class ItaniumParser:
         if code == "GI":
             # <special-name> ::= GI <module-name>
             reader.pos += 2
-            return self.builder.special("initializer for module ", self.builder.raw(self.module_name()))
+            module = self.module_name()
+            if not module:
+                # The module name is not optional: `parseModuleNameOpt` reads none and
+                # the special name is refused. `_ZGI` spelled `initializer for module `.
+                raise ParseError(self._mangled, reader.pos, "a module initializer with no module")
+            return self.builder.special("initializer for module ", self.builder.raw(module))
 
         if code == "TA":
             # <special-name> ::= TA <template-arg>
@@ -3111,13 +3116,21 @@ class ItaniumParser:
             return spelling if self.options.gnu_nullptr_spelling else "nullptr"
 
         start = reader.pos
-        while not reader.eat("E"):
-            if reader.eof:
-                raise ParseError(self._mangled, reader.pos, "unterminated literal")
-            reader.take()
-        value = reader.text[start : reader.pos - 1]
         if wrote_float:
-            return self.spell_float_literal(spelling, value)
+            while not reader.eat("E"):
+                if reader.eof:
+                    raise ParseError(self._mangled, reader.pos, "unterminated literal")
+                reader.take()
+            return self.spell_float_literal(spelling, reader.text[start : reader.pos - 1])
+        # `<value number>`: digits, with an `n` in front of a negative one. Taking
+        # whatever stood before the `E` read `Li4JE` as the value `4J` and `LinE` as `-`,
+        # which is what `c++filt` does and `llvm-cxxfilt` refuses; neither is a number.
+        reader.eat("n")
+        if reader.peek() not in DIGITS:
+            raise ParseError(self._mangled, reader.pos, "a literal whose value is not a number")
+        reader.digits()
+        value = reader.text[start : reader.pos]
+        reader.expect("E")
         return self.spell_literal(spelling, value)
 
     def spell_float_literal(self, kind, value):
@@ -3604,8 +3617,7 @@ class ItaniumParser:
         -- the operands of a unary, binary or ternary operator, and a call's callee --
         where it brackets by *kind* rather than by precedence: everything but a name, a
         braced initialiser list and a function parameter. See `SIMPLE_PRECEDENCE`. The
-        other callers of this are list elements and the object of a member access, which
-        it prints without asking.
+        other callers of this are list elements, which it prints without asking.
         """
         operand = self.expression()
         if subexpression and self.options.gnu_expression_spelling:
@@ -3882,7 +3894,11 @@ class ItaniumParser:
         if pair in ("dt", "pt"):
             # <expression> ::= dt <expression> <unresolved-name>  (and `pt` for `->`)
             reader.pos += 2
-            owner = self._operand(POSTFIX_PRECEDENCE)
+            # The object is a `d_print_subexpr` position too: c++filt writes
+            # `((a->ua).i)`, `(({parm#1}()).i)` and `(({parm#1}[0]).i)`, and only a name
+            # or a parameter stands unbracketed -- `{parm#1}.i`. Printing it without
+            # asking wrote `a->ua.i` in the GNU style for a name it reads otherwise.
+            owner = self._operand(POSTFIX_PRECEDENCE, subexpression=True)
             joiner = "." if pair == "dt" else "->"
             # Ordinarily an <unresolved-name>, and the fast path for it is inside
             # `expression`; but the grammar Clang emits allows any expression on the
