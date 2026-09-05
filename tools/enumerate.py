@@ -620,10 +620,12 @@ _AHEAD_PATTERNS = (
 )
 
 #: `sr <type> <unqualified-name>`, the form of `sr` the ABI had before the
-#: <unresolved-name> productions and g++ still writes, with a `std::` type where the
-#: modern grammar allows only a parameter, a decltype or a substitution. `llvm-cxxfilt`
-#: 18 and 20 refuse it; libiberty reads it, and so does this. See the parser.
-_OLD_SR_FORM = re.compile(r"srSt\d")
+#: <unresolved-name> productions and g++ 13 still writes for every member of a class
+#: that is not itself dependent: a plain class, `sr1A3bazIT_E`, a nested one,
+#: `srN1A1B1CIT_EE1w`, or a `std::` one, `srSt1AIT_E5value`. `llvm-cxxfilt` 18 and 20
+#: refuse all three; libiberty reads them, the plain one by reading the whole name
+#: again when the modern grammar fails, and so does this. See the parser.
+_OLD_SR_FORM = re.compile(r"sr(?:N?St|N?\d)")
 
 #: `L Z <encoding> E` -- an external name with the `_` missing, which G++ once emitted
 #: (libiberty's `d_expr_primary` carries the workaround as "bug 375") and `c++filt`

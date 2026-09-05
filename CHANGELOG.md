@@ -73,6 +73,34 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **The old `sr <type> <name>` form g++ still writes, and the numbering it counts by.**
+  `decltype(A::baz<T> + t)` compiled with g++ 13 is `_Z1kIiEDTplsr1A3bazIT_Efp_ES1_`:
+  the pre-2009 unresolved-name production, a complete class type and then a member,
+  where Clang writes `sr1AE3bazIT_E` with the modern grammar's `E`. The letters also
+  open the modern form's list of qualifier levels, and that reading can run on past
+  the `sr` before anything refuses it, so the name is now read the way libiberty's
+  `d_unresolved_name` reads it: the modern way first, and the whole name again the old
+  way when that fails. The nested shapes, `srN1A1B1CIT_EE1w` and `srNSt2myIiE...`,
+  which the modern grammar cannot read at all, read as the nested-name type they are.
+  Every one of these was refused before, by this library and by `llvm-cxxfilt` 18 and
+  20 alike; `c++filt` reads them all, and now so does this, back references included.
+  The same probing found that g++ records the scope of a modern `srN T_ 3foo E` as a
+  substitution and Clang does not, so a back reference written after it names one
+  entry apart under the two compilers, and neither reference reads the other
+  compiler's name right. A new option, `gnu_unresolved_scope_substitution`, on in the
+  gnu style, counts as g++ and `c++filt` do; the default counts as the ABI, Clang and
+  `llvm-cxxfilt` do.
+- **Two more `c++filt` operand rules under the gnu style.** A `>` expression is
+  bracketed wherever it stands, not only at the top of a template argument -- libiberty
+  wraps it "so that it does not get confused with the '>' which ends the template
+  parameters" and does so in a `decltype` too, `decltype (({parm#1}>{parm#1}))`, on
+  top of whatever brackets its position earns -- while a `>>` at the top of a template
+  argument stands bare, `f<(1)>>(2)>`, where this bracketed it. And an operator name
+  under an `sr` scope is a qualified name and so a plain operand, `&A::operator&`, where
+  this bracketed it as it does the unqualified `&(operator&)`; template arguments
+  make it a template-id and bracket it again. Compiled from `decltype(&T::operator&)`
+  by both g++ 13 and Clang 18, so a real shape, and read wrongly under the gnu style
+  since the style existed.
 - **What the second and third mutation draws found.** The gate stood at zero on its
   pinned draw; `--seed 2` and `--seed 3`, 20,000 mutants each, reported twelve
   divergences, six of them this library's. D: a scope's `M` modifiers were read under

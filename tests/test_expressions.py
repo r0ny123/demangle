@@ -1331,3 +1331,60 @@ class TestTheOldFormOfSrThatGccStillWrites:
     def test_the_modern_forms_are_unchanged(self):
         assert demangle.demangle("_Z1fIiEvDTsrT_5valueE") == "void f<int>(decltype(int::value))"
         assert demangle.demangle("_Z1fIiEvDTsrNT_1BE5valueE") == "void f<int>(decltype(int::B::value))"
+
+
+class TestTheOldFormOfSrWithAPlainClass:
+    """g++ 13 writes the old form for every member of a class that is not itself
+    dependent: `decltype(A::baz<T> + t)` is `sr 1A 3baz IT_E`, where Clang writes
+    `sr 1A E 3baz IT_E` with the modern grammar's `E`. The letters are ambiguous -- under
+    the modern grammar they open a list of qualifier levels -- and the modern reading
+    can run on past the `sr` before anything refuses it, so this reads as libiberty's
+    `d_unresolved_name` does: the modern way first, and the whole name again the old way
+    when that fails. Every name here was compiled with g++ 13 and read through
+    `c++filt` 2.42; `llvm-cxxfilt` 18 and 20 refuse all of them. The numbering is the
+    compiler's: the type records itself and its arguments record theirs, which is why
+    `S1_` after `sr1A3bazIT_E` is `int` and not `A`."""
+
+    @pytest.mark.parametrize(
+        "mangled, expected",
+        [
+            # `decltype(A::baz<T> + t)`, with `A` written again as `S0_` and `int` as `S1_`.
+            ("_Z1kIiEDTplsr1A3bazIT_Efp_ES1_S0_Pi", "decltype(A::baz<int> + fp) k<int>(int, A, int*)"),
+            # The modern reading takes the decltype's `E` as the end of the levels and
+            # fails on the `S1_` after it, not on the `sr`.
+            ("_Z2k6IiEDtsr1A3bazIPT_EES1_", "decltype(A::baz<int*>) k6<int>(int)"),
+            ("_Z3f13IiEDTadsr1A3bazIT_EES1_", "decltype(&A::baz<int>) f13<int>(int)"),
+            # `t.A::v`: a member access whose member is written the old way.
+            ("_Z3f11I1DEDtdtfp_sr1A1vET_", "decltype(fp.A::v) f11<D>(D)"),
+            # The nested-name shape, a class holding a dependent member: the scope is one
+            # type, recorded level by level, so `S3_` is `int` and `S4_` is `C<int>`.
+            ("_Z2j4IiEDTplsrN1A1B1CIT_EE1wfp_ES3_S4_", "decltype(A::B::C<int>::w + fp) j4<int>(int, A::B::C<int>)"),
+            ("_Z2h4IiEDTplsrNSt2myIiE2inIT_EE1wfp_ES3_", "decltype(std::my<int>::in<int>::w + fp) h4<int>(int)"),
+            # Two old-form names in one, the second through a substitution.
+            ("_Z2k2IiEDTplsr1A3bazIT_EsrS0_3bazIS1_EES1_", "decltype(A::baz<int> + A::baz<int>) k2<int>(int)"),
+        ],
+    )
+    def test_the_gcc_names_read(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+
+    def test_the_gnu_style_reads_them_as_cxxfilt(self):
+        assert demangle.demangle_strict("_Z1kIiEDTplsr1A3bazIT_Efp_ES1_S0_Pi", style="gnu") == (
+            "decltype ((A::baz<int>)+{parm#1}) k<int>(int, A, int*)"
+        )
+        assert (
+            demangle.demangle_strict("_Z2k6IiEDtsr1A3bazIPT_EES1_", style="gnu")
+            == "decltype (A::baz<int*>) k6<int>(int)"
+        )
+
+    def test_the_modern_reading_comes_first(self):
+        # `sr 1A 3baz E 1v` reads as qualifier levels, which record nothing: `S0_` is
+        # the decltype, as it is to both references.
+        assert demangle.demangle_strict("_Z1fIiEDTsr1A3bazE1vES0_") == "decltype(A::baz::v) f<int>(decltype(A::baz::v))"
+        # Clang's form of the same member is unchanged.
+        assert demangle.demangle_strict("_Z1kIiEDTplsr1AE3bazIT_Efp_ES0_1APi") == (
+            "decltype(A::baz<int> + fp) k<int>(int, A, int*)"
+        )
+
+    def test_a_name_neither_reading_takes_reports_the_first(self):
+        with pytest.raises(demangle.ParseError, match="expected a number at offset 23"):
+            demangle.demangle_strict("_Z1kIiEDTplsr1A3bazIT_Efp_ES9_")

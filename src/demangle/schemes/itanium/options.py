@@ -148,6 +148,23 @@ class ItaniumOptions:
     the name and its ABI tags but before its template arguments -- `A::f[friend]<int>`.
     """
 
+    gnu_unresolved_scope_substitution: bool = False
+    """Record the scope of an `srN` unresolved name as a substitution, the way g++ does.
+
+    `srN T_ 3foo E 1v` is `T::foo::v`. The ABI says the qualifier levels of an
+    unresolved name are not substitution candidates, Clang writes names that way, and
+    llvm-cxxfilt reads them that way: `T` is recorded, `T::foo` is not. g++ mangles the
+    scope as a nested-name *type* and records it, so the parameter after
+    `decltype(T::foo::v + 1)` in `_Z2e1I1QEDTplsrNT_3fooE1vLi1EES1_S2_` is `S2_`,
+    `Q::foo`, where Clang writes it out again as `NS1_3fooE`. GNU c++filt reads every
+    `srN` as a type and so numbers as g++ does.
+
+    Neither reader can be right for both compilers: a back-reference written after the
+    scope counts one entry more under g++ than under Clang. False (the default) reads
+    as the ABI and llvm-cxxfilt do, and takes `S2_` in the g++ name above to be the
+    `decltype` itself. True reads as c++filt does.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -171,4 +188,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_entity_operand_spelling=True,
     gnu_default_argument_scope=True,
     gnu_friend_spelling=True,
+    gnu_unresolved_scope_substitution=True,
 )

@@ -533,3 +533,126 @@ class TestAnArgumentListsRequiresClauseUnderTheGnuStyle:
     def test_both_styles(self, mangled, gnu, llvm):
         assert demangle.demangle(mangled, style="gnu") == gnu
         assert demangle.demangle(mangled) == llvm
+
+
+class TestTheScopeOfAnSrNNameIsASubstitutionToGcc:
+    """`srN T_ 3foo E 1v` is `T::foo::v`. The ABI says qualifier levels are not
+    substitution candidates and Clang writes names that way; g++ mangles the scope as
+    a nested-name type and records it, so after `decltype(T::foo::v + 1)` it writes
+    the parameter `typename T::foo` as `S2_` where Clang writes `NS1_3fooE`. GNU
+    c++filt reads every `srN` as a type and numbers as g++ does; llvm-cxxfilt numbers
+    as Clang does, and takes g++'s `S2_` to be the decltype. Both names here were
+    compiled from the same source, one with each compiler."""
+
+    GCC = "_Z2e1I1QEDTplsrNT_3fooE1vLi1EES1_S2_"
+    CLANG = "_Z2e1I1QEDTplsrNT_3fooE1vLi1EES1_NS1_3fooE"
+
+    def test_the_gnu_style_numbers_as_gcc(self):
+        assert demangle.demangle_strict(self.GCC, style="gnu") == "decltype (Q::foo::v+(1)) e1<Q>(Q, Q::foo)"
+        assert demangle.demangle_strict(self.CLANG, style="gnu") == "decltype (Q::foo::v+(1)) e1<Q>(Q, Q::foo)"
+
+    def test_the_llvm_style_numbers_as_clang(self):
+        assert demangle.demangle_strict(self.CLANG) == "decltype(Q::foo::v + 1) e1<Q>(Q, Q::foo)"
+        assert demangle.demangle_strict(self.GCC) == "decltype(Q::foo::v + 1) e1<Q>(Q, decltype(Q::foo::v + 1))"
+
+    def test_the_option_is_what_selects_it(self):
+        on = demangle.style("llvm", itanium={"gnu_unresolved_scope_substitution": True})
+        assert demangle.demangle_strict(self.GCC, style=on) == "decltype(Q::foo::v + 1) e1<Q>(Q, Q::foo)"
+        off = demangle.style("gnu", itanium={"gnu_unresolved_scope_substitution": False})
+        assert demangle.demangle_strict(self.GCC, style=off) == (
+            "decltype (Q::foo::v+(1)) e1<Q>(Q, decltype (Q::foo::v+(1)))"
+        )
+
+    def test_a_substituted_scope_with_arguments(self):
+        # `srN S2_ IPS3_E E 1w`: the scope `A::B::C<int*>` is `S6_` to g++.
+        mangled = "_Z2j6IiEDTplsrN1A1B1CIT_EE1wsrNS2_IPS3_EE1wES3_S6_"
+        assert demangle.demangle_strict(mangled, style="gnu") == (
+            "decltype (A::B::C<int>::w+A::B::C<int*>::w) j6<int>(int, A::B::C<int*>)"
+        )
+
+
+class TestAGreaterThanIsBracketedWhereverItStands:
+    """libiberty's `d_print_comp` wraps "an expression which uses the greater-than
+    operator in an extra layer of parens so that it does not get confused with the '>'
+    which ends the template parameters" -- wherever it stands, not only inside an
+    argument list, and on top of whatever brackets its position earns. `>>` gets no
+    such layer, so at the top of a template argument it stands bare where this used
+    to bracket it. Every spelling here is `c++filt` 2.42's."""
+
+    @pytest.mark.parametrize(
+        "mangled, gnu, llvm",
+        [
+            ("_Z1fIiEDTgtfp_fp_ET_", "decltype (({parm#1}>{parm#1})) f<int>(int)", "decltype(fp > fp) f<int>(int)"),
+            (
+                "_Z1fIiEDTplgtfp_fp_fp_ET_",
+                "decltype ((({parm#1}>{parm#1}))+{parm#1}) f<int>(int)",
+                "decltype((fp > fp) + fp) f<int>(int)",
+            ),
+            (
+                "_Z1fIiEDTplfp_gtfp_fp_ET_",
+                "decltype ({parm#1}+(({parm#1}>{parm#1}))) f<int>(int)",
+                "decltype(fp + (fp > fp)) f<int>(int)",
+            ),
+            ("_Z1fIXgtLi1ELi2EEEvv", "void f<((1)>(2))>()", "void f<(1 > 2)>()"),
+            ("_Z1fIXplgtLi1ELi2ELi3EEEvv", "void f<(((1)>(2)))+(3)>()", "void f<(1 > 2) + 3>()"),
+            ("_Z1fIXgtgtLi1ELi2ELi3EEEvv", "void f<((((1)>(2)))>(3))>()", "void f<(1 > 2 > 3)>()"),
+            (
+                "_Z1fIiEDTclgtfp_fp_EET_",
+                "decltype ((({parm#1}>{parm#1}))()) f<int>(int)",
+                # llvm-cxxfilt's own spelling of a bracketed callee, which is no
+                # bracket at all.
+                "decltype(fp > fp()) f<int>(int)",
+            ),
+            ("_Z1fIXrsLi1ELi2EEEvv", "void f<(1)>>(2)>()", "void f<(1 >> 2)>()"),
+            ("_Z1fIiEDTrsfp_fp_ET_", "decltype ({parm#1}>>{parm#1}) f<int>(int)", "decltype(fp >> fp) f<int>(int)"),
+            ("_Z1fIXcmgtLi1ELi2ELi3EEEvv", "void f<(((1)>(2))),(3)>()", "void f<(1 > 2, 3)>()"),
+        ],
+    )
+    def test_both_styles(self, mangled, gnu, llvm):
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+        assert demangle.demangle_strict(mangled) == llvm
+
+
+class TestAQualifiedOperatorNameIsAPlainOperand:
+    """`d_print_subexpr` brackets everything but a name, a qualified name, a function
+    parameter and an initialiser list. `sr T_ on an` is the qualified name `A::operator&`
+    and stands bare under `&`, as a callee and after `.`; the same operator unqualified
+    is an operator and is bracketed, and with template arguments it is a template-id
+    and is bracketed again. `_Z1mI1AEDTadsrT_onanES1_` is `decltype(&T::operator&)`
+    compiled by both g++ 13 and Clang 18."""
+
+    @pytest.mark.parametrize(
+        "mangled, gnu, llvm",
+        [
+            ("_Z1mI1AEDTadsrT_onanES1_", "decltype (&A::operator&) m<A>(A)", "decltype(&A::operator&) m<A>(A)"),
+            ("_Z1mI1AEDTadsrT_anES1_", "decltype (&A::operator&) m<A>(A)", "decltype(&A::operator&) m<A>(A)"),
+            (
+                "_Z1mI1AEDTadsrNT_1BEonanES1_",
+                "decltype (&A::B::operator&) m<A>(A)",
+                "decltype(&A::B::operator&) m<A>(A)",
+            ),
+            (
+                "_Z1mI1AEDTclsrT_onanfp_EES1_",
+                "decltype (A::operator&({parm#1})) m<A>(A)",
+                "decltype(A::operator&(fp)) m<A>(A)",
+            ),
+            (
+                "_Z1mI1AEDTdtfp_srT_onanES1_",
+                "decltype ({parm#1}.A::operator&) m<A>(A)",
+                "decltype(fp.A::operator&) m<A>(A)",
+            ),
+            (
+                "_Z1mI1AEDTadsrT_onanIiEES1_",
+                "decltype (&(A::operator&<int>)) m<A>(A)",
+                "decltype(&A::operator&<int>) m<A>(A)",
+            ),
+            (
+                "_Z1mI1AEDTadonanES1_",
+                "decltype (&(operator&)) m<A>(decltype (&(operator&)))",
+                "decltype(&operator&) m<A>(decltype(&operator&))",
+            ),
+        ],
+    )
+    def test_both_styles(self, mangled, gnu, llvm):
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+        assert demangle.demangle_strict(mangled) == llvm

@@ -327,6 +327,7 @@ class ItaniumParser:
     __slots__ = (
         "_abbrev",
         "_abbrev_expanded",
+        "_ambiguous_unresolved_name",
         "_argument_constraint",
         "_component_has_no_base_name",
         "_conversion_unbound",
@@ -349,6 +350,7 @@ class ItaniumParser:
         "_no_return_type",
         "_objc_ids",
         "_objc_protocols",
+        "_old_unresolved_names",
         "_pack_arity",
         "_pack_ids",
         "_pack_index",
@@ -521,6 +523,8 @@ class ItaniumParser:
         #: parameter with nothing in scope -- a spelling that stands only until the
         #: operator's own arguments bind it. See `_reread_conversion`.
         self._conversion_unbound = False
+        self._ambiguous_unresolved_name = False
+        self._old_unresolved_names = False
         # True while that type is being read for the first time, before the arguments
         # exist. The one place a `<template-param>` may resolve to nothing with no
         # <template-args> in scope at all -- see `bind_template_param`.
@@ -3196,11 +3200,12 @@ class ItaniumParser:
             # list. Which of the three this is, is decided by the two characters that
             # open the expression, so no lookahead over the parsed shape is needed.
             angled = reader.peek2() in ("gt", "rs", "cm")
-            if self.options.gnu_expression_spelling and angled and reader.peek2() == "cm":
-                # c++filt prints a comma expression as any binary operator, each
-                # operand through `d_print_subexpr`, and wraps nothing round the
-                # whole: `enable_if<(4u),(4), void>`, where llvm-cxxfilt writes
-                # `enable_if<(4u, 4), void>`.
+            if self.options.gnu_expression_spelling:
+                # c++filt wraps nothing round an argument's expression: a comma
+                # expression prints as any binary operator, each operand through
+                # `d_print_subexpr` -- `enable_if<(4u),(4), void>`, where llvm-cxxfilt
+                # writes `enable_if<(4u, 4), void>` -- and `>>` stands bare, `f<(1)>>(2)>`.
+                # A `>` is bracketed wherever it is, by its own spelling below.
                 angled = False
             expression = self.expression()
             reader.expect("E")
@@ -3459,7 +3464,18 @@ class ItaniumParser:
             return text
 
         levels = []
-        if reader.eat("N"):
+        if reader.peek() == "N" and (
+            reader.ahead(1) in DIGITS or reader.startswith("NSt") or self.options.gnu_unresolved_scope_substitution
+        ):
+            # `sr N <prefix>+ E <name>`: the nested-name shape of the old form (below),
+            # which g++ 13 writes for a class scope that is not itself dependent but
+            # holds a dependent member -- `A::B::C<T>::w` is `srN1A1B1CIT_EE1w` and
+            # `std::my<T>::in<T>::w` is `srNSt2myIT_E2inIS1_EE1w`, the whole scope one
+            # nested-name *type*, recorded like one. The modern `srN` opens with an
+            # <unresolved-type>, which begins with neither a digit nor `St`; GNU
+            # c++filt reads every `srN` this way, and the option says when to follow it.
+            levels.append(self.builder.spell(self.type_()))
+        elif reader.eat("N"):
             levels.append(self._unresolved_head())
             # `*` and not `+`: the ABI writes one or more levels here, but Clang emits
             # `srN <type> <template-args> E` with none of them -- the arguments are the
@@ -3469,10 +3485,7 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
                 levels.append(self.simple_id())
         elif reader.peek() in DIGITS:
-            while not reader.eat("E"):
-                if reader.eof:
-                    raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
-                levels.append(self.simple_id())
+            self._qualifier_levels(levels)
         elif reader.startswith("St") and reader.ahead(2) in DIGITS:
             # The form the ABI had before the <unresolved-name> productions, and the one
             # g++ still writes: `sr <type> <unqualified-name>`, with a complete type --
@@ -3489,11 +3502,43 @@ class ItaniumParser:
         else:
             levels.append(self._unresolved_head())
 
-        levels.append(self.base_unresolved_name())
+        levels.append(self.base_unresolved_name(qualified=True))
         if prefix:
             # `::x` is rooted at global scope, which c++filt brackets as an operand.
             self._simple_name = False
         return prefix + "::".join(levels)
+
+    def _qualifier_levels(self, levels):
+        """`<unresolved-qualifier-level>+ E`, or the old form the same letters spell.
+
+        `sr 1A 3baz IT_E ...` is ambiguous. Under the modern grammar it opens a list of
+        qualifier levels, `A::baz<T>::...`, that runs to an `E`. Under the grammar the
+        ABI had before the <unresolved-name> productions it is `sr <type> <name>`, the
+        class `A` and the member `baz<T>`, with no `E` at all -- and that is what g++
+        13 still writes for every member of a class that is not itself dependent:
+        `decltype(A::baz<T> + t)` is `_Z1kIiEDTplsr1A3bazIT_Efp_ES1_`, where Clang
+        writes `sr1AE3bazIT_E`. libiberty's `d_unresolved_name` says the same and
+        reads the name twice, modern first and old if the whole then fails, because
+        the modern reading can run on past the `sr` before anything refuses it --
+        `sr1A3bazIT_EE` closes a `decltype` with the `E` the levels took, and it is
+        the substitution after that which has nothing to name. `llvm-cxxfilt` 18 and
+        20 refuse the old form outright.
+
+        So this reads the modern way and notes that it did; `parse` reads the whole
+        name again with `_old_unresolved_names` set if that reading fails. The
+        numbering follows either reading: the levels record nothing, the type records
+        itself and whatever its arguments record, which is where g++ counts `S1_`
+        from.
+        """
+        reader = self.reader
+        if self._old_unresolved_names:
+            levels.append(self.builder.spell(self.type_()))
+            return
+        self._ambiguous_unresolved_name = True
+        while not reader.eat("E"):
+            if reader.eof:
+                raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
+            levels.append(self.simple_id())
 
     def _unresolved_head(self):
         """`<unresolved-type> [<template-args>]`, which both `sr` forms open with.
@@ -3559,9 +3604,12 @@ class ItaniumParser:
             rendered += " "
         return f"<{rendered}>"
 
-    def base_unresolved_name(self):
+    def base_unresolved_name(self, qualified=False):
         """<base-unresolved-name> ::= <simple-id> | on <operator-name> [<template-args>]
         | dn <destructor-name>
+
+        `qualified` says an `sr` scope precedes it, which is what decides whether an
+        operator name is a plain operand -- see below.
         """
         reader = self.reader
         if reader.peek() in DIGITS:
@@ -3580,9 +3628,15 @@ class ItaniumParser:
         # so, and the reference reads the operator code either way.
         reader.eat("on")
         text = self.operator_name()
+        # c++filt's `d_print_subexpr` brackets everything but a name, a qualified name,
+        # a parameter and an initialiser list. An operator name on its own is none of
+        # those, `&(operator&)`; under an `sr` scope it is the qualified name the scope
+        # makes of it, `&A::operator&`, unless arguments follow and make it a
+        # template-id instead, `&(A::operator&<int>)`.
+        simple = qualified and reader.peek() != "I"
         if reader.peek() == "I":
             text += self.spelled_template_arguments()
-        self._simple_name = False
+        self._simple_name = simple
         return text
 
     def destructor_name(self):
@@ -4368,6 +4422,14 @@ class ItaniumParser:
                 separator = "," if self.options.gnu_expression_spelling else ", "
                 return builder.expression("comma", [left, separator, right])
             self._precedence = binding
+            if pair == "gt" and self.options.gnu_expression_spelling:
+                # libiberty's `d_print_comp` wraps "an expression which uses the
+                # greater-than operator in an extra layer of parens so that it does
+                # not get confused with the '>' which ends the template parameters"
+                # -- wherever it stands, not only inside an argument list, and on top
+                # of whatever brackets its position earns: `decltype (({parm#1}>{parm#1}))`
+                # alone, and `((({parm#1}>{parm#1}))+{parm#1})` as an operand.
+                return builder.expression("binary", ["(", left, spelling, right, ")"])
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
             return builder.expression("binary", [left, gap, spelling, gap, right])
 
@@ -4502,8 +4564,27 @@ class ItaniumParser:
 
 
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
-    """Parse an Itanium mangled name into `builder`, returning its handle."""
-    return ItaniumParser(mangled, builder, limits, options).parse()
+    """Parse an Itanium mangled name into `builder`, returning its handle.
+
+    Read twice when the first reading took an `sr` the modern way and then failed:
+    the second reads every ambiguous `sr` as the old `sr <type> <name>` that g++ 13
+    still writes -- see `_qualifier_levels`. That is libiberty's `unresolved_name_state`
+    exactly, a whole-name retry, so a name that reads either way reads as the
+    reference reads it. A name that reads neither way reports the first reading's
+    error, which is the one the modern grammar gives.
+    """
+    parser = ItaniumParser(mangled, builder, limits, options)
+    try:
+        return parser.parse()
+    except ParseError as error:
+        if isinstance(error, LimitExceeded) or not parser._ambiguous_unresolved_name:
+            raise
+        retry = ItaniumParser(mangled, builder, limits, options)
+        retry._old_unresolved_names = True
+        try:
+            return retry.parse()
+        except ParseError:
+            raise error from None
 
 
 def parse_type(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
