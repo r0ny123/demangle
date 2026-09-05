@@ -101,6 +101,16 @@ All notable changes to this project are recorded here. The format follows
   both styles, a `Dp` expansion over an empty pack inside a *type's* argument list was
   dropped only when written `J E`: `1AIDpT_T0_E` over an empty `T_` spelled `A<, int>`
   where llvm-cxxfilt prints `A<int>`.
+- **A guard variable, TLS routine or reference temporary for a static inside a lambda
+  lost the `const` of the lambda's call operator.** `_ZGVZZN1A1fEvENKUlvE_clEvE1y`
+  came back `guard variable for A::f()::'lambda'()::operator()()::y`. The special
+  name's object takes no signature, and the flag that says so was left set while the
+  object's enclosing function was read -- a whole encoding, and here one holding a
+  local name of its own, which then took no signature either and had it read back
+  around it with no qualifiers to put on it. Found in the static archives of an
+  Ubuntu 24.04 box, where every `static` inside a lambda inside a member function has
+  one. With it, `c++filt`'s numbering of a reference temporary under the gnu style,
+  `reference temporary #0 for`.
 - **An Objective-C protocol qualifier under the gnu style.** GNU c++filt prints
   `objcproto3Bar` as it prints any vendor qualifier, after the type --
   `objc_object objcproto3Bar*` -- where llvm-cxxfilt writes `id<Bar>`; the gnu style

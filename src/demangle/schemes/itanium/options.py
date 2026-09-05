@@ -108,7 +108,9 @@ class ItaniumOptions:
     False gives llvm-cxxfilt's `thread-local initialization routine for x` and
     `thread-local wrapper routine for x`; True gives GNU's `TLS init function for x` and
     `TLS wrapper function for x`. They name the same entity. Only `TH` and `TW` differ:
-    every other special name is spelled identically by both references.
+    every other special name is spelled identically by both references. It also numbers
+    a reference temporary by its seq-id, `reference temporary #0 for f()::x`, where
+    llvm-cxxfilt writes `reference temporary for f()::x`.
     """
 
     gnu_entity_operand_spelling: bool = False

@@ -923,9 +923,14 @@ class ItaniumParser:
             # A seq-id numbers the temporary when a scope has more than one. Where
             # there is none there is no `_` either, and demanding one refused
             # `_ZGRZN1N1gEvE1a`.
+            label = self._encoding_special_label("GR")
             if not reader.eof:
-                reader.seq_id()
-            return self.builder.special(self._encoding_special_label("GR"), inner)
+                index = reader.seq_id()
+                if self.options.gnu_special_name_spelling:
+                    # c++filt numbers the temporary by its seq-id, `reference temporary
+                    # #0 for f()::x` for `_ZGRZ1fvE1x_`; llvm-cxxfilt does not.
+                    label = f"reference temporary #{index} for "
+            return self.builder.special(label, inner)
 
         if code in SPECIAL_ENCODING_NAMES:
             reader.pos += 2
@@ -1447,9 +1452,18 @@ class ItaniumParser:
         self._drop_return = not self.options.local_name_return_type
         self._no_return_type = False
         self._explicit_object = False
+        # The enclosing function is a whole encoding, never the object a special name
+        # is about: whatever `_in_special_name` says holds for the entity after the
+        # `E`, not for this. Left set, a local name nested inside it -- the lambda in
+        # `_ZGVZZN1A1fEvENKUlvE_clEvE1y` -- took no signature of its own, and the
+        # `encoding` around it read the signature back with no qualifiers to put on it:
+        # `guard variable for A::f()::'lambda'()::operator()()::y`, the `const` gone.
+        outer_special = self._in_special_name
+        self._in_special_name = False
         try:
             outer = self.encoding()
         finally:
+            self._in_special_name = outer_special
             self._drop_return = outer_drop_return
             self._no_return_type = outer_no_return_type
             self._explicit_object = outer_explicit_object

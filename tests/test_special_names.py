@@ -27,7 +27,9 @@ SPECIAL_NAMES = [
     ("_ZTI1A", "typeinfo for A", "typeinfo for A", "both"),
     ("_ZTS1A", "typeinfo name for A", "typeinfo name for A", "both"),
     ("_ZGV1x", "guard variable for x", "guard variable for x", "both"),
-    ("_ZGR1x0_", "reference temporary for x", "reference temporary for x", "llvm; c++filt refuses"),
+    # c++filt refuses this one but numbers the temporary by its seq-id where it reads
+    # one, `_ZGRZ1fvE1x_` being `reference temporary #0 for f()::x`.
+    ("_ZGR1x0_", "reference temporary for x", "reference temporary #1 for x", "llvm; c++filt refuses"),
     ("_ZTC1A0_1B", "construction vtable for B-in-A", "construction vtable for B-in-A", "both"),
     ("_ZThn8_N1A1fEv", "non-virtual thunk to A::f()", "non-virtual thunk to A::f()", "both"),
     ("_ZTv0_n24_N1A1fEv", "virtual thunk to A::f()", "virtual thunk to A::f()", "both"),
@@ -75,7 +77,7 @@ def test_both_styles(mangled, llvm, gnu, note):
 def test_the_two_styles_differ_exactly_where_the_references_do():
     """A guard on the option: adding a divergence must be deliberate, not incidental."""
     differ = {name for name, llvm, gnu, _ in SPECIAL_NAMES if llvm != gnu}
-    assert differ == {"_ZTH1x", "_ZTW1x"}
+    assert differ == {"_ZTH1x", "_ZTW1x", "_ZGR1x0_"}
 
 
 class TestStillRefused:
@@ -168,3 +170,45 @@ class TestAnObjectNameIsNotAnEncoding:
     )
     def test_the_spelling(self, mangled, expected):
         assert demangle.demangle(mangled) == expected
+
+
+class TestAnObjectNamesEnclosingFunctionIsAWholeEncoding:
+    """`_ZGVZZN1A1fEvENKUlvE_clEvE1y`: a guard variable for a static inside a lambda's
+    call operator, itself inside `A::f()`. `_in_special_name` says the special name's
+    object takes no signature, and it was left set while the object's *enclosing
+    function* was read -- a whole encoding, and here one holding a local name of its
+    own. That inner local name then took no signature either, and the encoding around
+    it read the signature back with no qualifiers to put on it: the `const` of
+    `operator()` went missing. Every archive on an Ubuntu 24.04 box carries the
+    shape; `llvm-cxxfilt` 18 and `c++filt` 2.42 agree on every spelling here."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZGVZZN1A1fEvENKUlvE_clEvE1y", "guard variable for A::f()::'lambda'()::operator()() const::y"),
+            ("_ZGVZZN1A1fEvENK1B1gEvE1y", "guard variable for A::f()::B::g() const::y"),
+            ("_ZGVZZN1A1fEvENKR1B1gEvE1y", "guard variable for A::f()::B::g() const &::y"),
+            ("_ZTHZZN1A1fEvENK1B1gEvE1y", "thread-local initialization routine for A::f()::B::g() const::y"),
+            (
+                "_ZTWZZ1fIiEvT_ENKUlvE_clEvE1x",
+                "thread-local wrapper routine for void f<int>(int)::'lambda'()::operator()() const::x",
+            ),
+            ("_ZGRZZN1A1fEvENKUlvE_clEvE1y_", "reference temporary for A::f()::'lambda'()::operator()() const::y"),
+            (
+                "_ZGVZZZN1A1fEvENKUlvE_clEvENKUlvE_clEvE1z",
+                "guard variable for A::f()::'lambda'()::operator()() const::'lambda'()::operator()() const::z",
+            ),
+            # The object itself still takes no signature.
+            ("_ZGVZZ1fvE1gvE1x", "guard variable for f()::g()::x"),
+        ],
+    )
+    def test_the_qualifiers_stay(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+
+    def test_a_guard_for_a_function_is_still_refused(self):
+        assert demangle.demangle("_ZGVZ1fvE1gv") == "_ZGVZ1fvE1gv"
+
+    def test_cxxfilt_numbers_a_reference_temporary(self):
+        assert demangle.demangle_strict("_ZGRZ1fvE1x_", style="gnu") == "reference temporary #0 for f()::x"
+        assert demangle.demangle_strict("_ZGRZ1fvE1x0_", style="gnu") == "reference temporary #1 for f()::x"
+        assert demangle.demangle_strict("_ZGRZ1fvE1x_") == "reference temporary for f()::x"
