@@ -327,6 +327,7 @@ class ItaniumParser:
     __slots__ = (
         "_abbrev",
         "_abbrev_expanded",
+        "_argument_constraint",
         "_component_has_no_base_name",
         "_conversion_unbound",
         "_ctor_dtor",
@@ -511,6 +512,11 @@ class ItaniumParser:
         # entries there were before it: `(position, mark)`, or None. See
         # `_reread_conversion`.
         self._pending_conversion = None
+        #: The requires-clause read inside the entity's own template argument list, `I
+        #: ... Q <constraint> E`, spelled, under the gnu style -- c++filt prints it after
+        #: the parameters, `void f<int>(int) requires C<int>`, where llvm-cxxfilt prints
+        #: nothing for it. None where there was none or the style is not GNU's.
+        self._argument_constraint = None
         #: Whether the conversion operator's type just read resolved a template
         #: parameter with nothing in scope -- a spelling that stands only until the
         #: operator's own arguments bind it. See `_reread_conversion`.
@@ -814,6 +820,15 @@ class ItaniumParser:
         if reader.eat("Q"):
             # The requires-clause closes the declaration, after the qualifiers.
             suffix += " requires " + builder.spell(self.constraint_expression())
+        if self._argument_constraint is not None:
+            # And c++filt writes the argument list's clause after that one:
+            # `requires D<int> requires C<int>` for `IiQ1CIT_EE ... Q1DIT_E`. Only where
+            # the list was the function's own: a class template's clause on a member
+            # with no arguments of its own is a name c++filt refuses, and the member's
+            # declaration is not where that clause belongs.
+            if is_template:
+                suffix += " requires " + self._argument_constraint
+            self._argument_constraint = None
         # A function whose declaration is nothing but a name and a parameter list is the
         # one shape GNU prints as `&Name`; everything a `suffix` or a return type adds is
         # something it would have to drop. See `gnu_entity_operand_spelling`.
@@ -3075,6 +3090,11 @@ class ItaniumParser:
         arguments = []
         trailing_empty_pack = False
         seen = False
+        # A clause read here belongs to the entity only when this list is the entity's
+        # own; one inside a parameter's type is that type's, and c++filt refuses the
+        # name outright rather than print it.
+        outer_constraint = self._argument_constraint
+        self._argument_constraint = None
         try:
             while True:
                 char = reader.peek()
@@ -3110,6 +3130,7 @@ class ItaniumParser:
             self._naming = was_naming
             if not install_scope:
                 self._scope_has_pack = outer_has_pack
+                self._argument_constraint = outer_constraint
         self._trailing_empty_pack = trailing_empty_pack
         return arguments
 
@@ -3149,17 +3170,22 @@ class ItaniumParser:
 
         if char == "Q":
             # A requires-clause closing out an argument list. Parsed for its effect on
-            # the substitution table; neither reference prints it.
+            # the substitution table; llvm-cxxfilt does not print it, and c++filt prints
+            # it after the parameters of the function whose arguments these are, with
+            # the parameters bound: `void f<int>(int) requires C<int>`. Kept for that,
+            # under the gnu style; `template_arguments` decides whose list this was.
             reader.take()
             outer_constraint = self._in_constraint
             outer_naming = self._naming
             self._in_constraint = True
             self._naming = False
             try:
-                self.expression()
+                constraint = self.expression()
             finally:
                 self._in_constraint = outer_constraint
                 self._naming = outer_naming
+            if self.options.gnu_expression_spelling:
+                self._argument_constraint = builder.spell(constraint)
             return None, False
 
         if char == "X":

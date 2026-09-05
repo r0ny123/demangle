@@ -316,7 +316,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | MSVC — the mask bits `llvm-undname` has no flag for ※ | `dbghelp.dll` 10.0.26100.8328 | **1064 / 1064** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
-| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **310 / 311** † |
+| Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
 | Names a reference reads wrongly ✱ | the declaration | **14 / 14** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
@@ -505,12 +505,6 @@ intact and nothing in the toolchain decodes one. So the check is a property inst
 re-escaping a decoded package path must reproduce the bytes the linker wrote, where the
 escaping is a transcription of Go's own `objabi.PathToPrefix`. It is verified over every
 symbol in the shipped toolchain binaries, not just the recorded sample.
-
-† The one shortfall is not ours to fix: inside a requires-clause the two reference
-implementations disagree with *each other* about what belongs in the substitution table —
-not about how to spell it — and matching both would mean two incompatible parses of the
-same bytes. It is pinned by name. A second used to be here and turned out to be ours; see
-✱.
 
 ✱ **Where following a reference would be the defect.** A `<template-param>` recorded as a
 substitution candidate — and any component built over one — is the *parameter*, not the

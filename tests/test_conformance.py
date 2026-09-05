@@ -18,7 +18,7 @@ from .conftest import CONFORMANCE, load_corpus
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42 on the checked-in corpora.
 ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT = 318, 318
-ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 311, 310
+ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT = 311, 311
 MSVC_TOTAL, MSVC_EXACT = 609, 609
 
 #: Real compiler output for the MS ABI: `tools/corpus_sources/msvc/msvc.cpp` through
@@ -270,9 +270,11 @@ UNDNAME_INERT_BITS = {
 }
 
 GNU_DIVERGENCES = [
-    # Inside a requires-clause, llvm records the template parameter symbolically (`T`)
-    # and GNU records the argument bound to it.
-    "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
+    # Empty. The last name here was `modern::measured`, whose template argument list
+    # carries a requires-clause: c++filt prints it after the parameters and this printed
+    # nothing for it. Inside the clause llvm-cxxfilt spells the template parameter
+    # symbolically, `T`, and GNU spells the argument bound to it; each style follows
+    # its own reference, and both are exact.
 ]
 
 # One name left this list rather than being traded away:

@@ -501,3 +501,35 @@ class TestFourMoreSpellingsFromTheGnuPrimaryDraw:
     def test_both_styles(self, mangled, gnu, llvm):
         assert demangle.demangle(mangled, style="gnu") == gnu
         assert demangle.demangle(mangled) == llvm
+
+
+class TestAnArgumentListsRequiresClauseUnderTheGnuStyle:
+    """`I ... Q <constraint> E` on the entity's own template arguments: `llvm-cxxfilt`
+    prints nothing for it, and `c++filt` prints it after the parameters with the
+    arguments bound, `void f<int>(int) requires C<int>` -- and after the encoding's own
+    clause where both are present. This printed nothing under both styles, which was
+    the one name short in the purpose-built gnu corpus: `modern::measured`, whose
+    constraint is `Sized<std::__cxx11::basic_string<...>>`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "gnu", "llvm"),
+        [
+            ("_Z1fIiQ1CIT_EEvT_", "void f<int>(int) requires C<int>", "void f<int>(int)"),
+            ("_Z1fIiQaa1CIT_E1DIT_EEvT_", "void f<int>(int) requires (C<int>)&&(D<int>)", "void f<int>(int)"),
+            (
+                "_Z1fIJicEQ1CIDpT_EEvDpT_",
+                "void f<int, char>(int, char) requires C<int, char>",
+                "void f<int, char>(int, char)",
+            ),
+            (
+                "_Z1fIiQ1CIT_EEvT_Q1DIT_E",
+                "void f<int>(int) requires D<int> requires C<int>",
+                "void f<int>(int) requires D<T>",
+            ),
+            # A clause inside a parameter's type is that type's; c++filt refuses the name.
+            ("_Z1f1XIiQ1CIT_EE", "f(X<int>)", "f(X<int>)"),
+        ],
+    )
+    def test_both_styles(self, mangled, gnu, llvm):
+        assert demangle.demangle(mangled, style="gnu") == gnu
+        assert demangle.demangle(mangled) == llvm

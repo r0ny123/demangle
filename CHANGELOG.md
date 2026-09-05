@@ -219,6 +219,13 @@ All notable changes to this project are recorded here. The format follows
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
   `tools/enumerate.py`, and libiberty reading D names whose template arguments end with
   the name.
+- **Itanium, gnu style: a template argument list's requires-clause is printed.**
+  `I ... Q <constraint> E` on the function's own arguments: `llvm-cxxfilt` prints
+  nothing for it, and `c++filt` prints it after the parameters with the arguments bound,
+  `void f<int>(int) requires C<int>`, after the encoding's own clause where both are
+  present. This printed nothing under both styles, which was the one name short in the
+  purpose-built gnu corpus -- `modern::measured`, pinned as a reference divergence
+  that was not one. The corpus is **311 / 311**.
 - **Itanium, gnu style: four more of c++filt's spellings.** A comma expression as a
   template argument is any binary operator to it, `enable_if<(4u),(4), void>` with
   nothing round the whole; a member with template arguments is a template, not a name,

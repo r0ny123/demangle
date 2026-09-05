@@ -173,11 +173,11 @@ REFERENCE_LOSES_INFORMATION = {
 #: `itanium-reference-defects.txt` with the declaration as its expected column, which is
 #: the stronger of the two: an excused name is one nothing checks, and that one is
 #: checked. A name cannot be both, and `tests/test_architecture.py` says so.
-KNOWN_DIVERGENCES = {
-    # The pinned GNU divergence: inside a requires-clause the references disagree with
-    # each other about substitution table contents, not about spelling.
-    "_ZN6modern8measuredINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEQ5SizedIT_EEEmRKS7_",
-}
+#: Empty. The last name here was `modern::measured`, whose template argument list
+#: carries a requires-clause that c++filt prints after the parameters and this once
+#: printed nothing for; it is read as each reference reads it now, and the set has to
+#: equal `GNU_DIVERGENCES` in `tests/test_conformance.py`.
+KNOWN_DIVERGENCES: set[str] = set()
 
 
 def load_corpus(path):
