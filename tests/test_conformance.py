@@ -55,8 +55,10 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #:
 #: The fifteenth and sixteenth are printing defects rather than substitution ones:
 #: llvm-cxxfilt 18 and 20 print `new T()` as `new T`, and `(sizeof(T) + 1) / 2` as
-#: `sizeof (int) + 1 / 2`, and each pair is two different expressions.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 16, 16
+#: `sizeof (int) + 1 / 2`, and each pair is two different expressions. The seventeenth
+#: is the closure defect again, in libstdc++ 13's `<format>`: a name every program that
+#: calls `std::format` carries.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 17, 17
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are

@@ -90,6 +90,13 @@ All notable changes to this project are recorded here. The format follows
   compiler's name right. A new option, `gnu_unresolved_scope_substitution`, on in the
   gnu style, counts as g++ and `c++filt` do; the default counts as the ABI, Clang and
   `llvm-cxxfilt` do.
+- **One more reference defect, from libstdc++'s `<format>`.** g++ 13 writes
+  `basic_format_arg::_M_visit`'s `Visitor&&` parameter as a back reference to the
+  closure type it is instantiated over, and llvm-cxxfilt 18 and 20 resolve it to the
+  closure's own `auto`, printing a parameter `auto&&` that no declaration has -- the
+  member_template_lambda defect again, in a name every program that calls
+  `std::format` carries. `c++filt` and this print the closure. Pinned in
+  `tests/conformance/itanium-reference-defects.txt`.
 - **MSVC: a pointer to a member whose type is an array.** `PEQA@@Y03H` is a pointer to
   a member of `A` of type `int[4]`, `int (A::*)[4]`; this wrote `int A::*[4]`, an array
   of pointers to member, because the array's renderer bracketed a declarator it could

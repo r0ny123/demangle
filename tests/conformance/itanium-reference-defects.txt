@@ -5,7 +5,7 @@
 # a source in tools/corpus_sources/reference_defects/: it is compiled with the compiler
 # named on the entry, the symbol is read out of the object file with `nm`, and the
 # spelling is what that source says the symbol's type is. Two more come from the general
-# corpus sources named on them, and three are symbols out of shipped libraries, where the
+# corpus sources named on them, and four are symbols out of shipped libraries, where the
 # declaration is the library's own header or its published signature and the reading is
 # spelled out in the entry's comment. That is the only ground truth a demangler has, and
 # it is what settles a split between references.
@@ -136,3 +136,14 @@ _Z10value_initIiEDTnw_T_piEES0_	decltype(new int()) value_init<int>(int)
 # GNU c++filt 2.42 prints `((sizeof (int))+(1))/(2)`, and this brackets by the
 # precedence `/` has.
 _Z9half_moreIiEv1IIXdvplstT_Li1ELi2EEE	void half_more<int>(I<(sizeof (int) + 1) / 2>)
+#
+# libstdc++ 13's <format>, compiled by g++ 13.3.0 from any program that calls
+# `std::format`: `template <class Visitor> decltype(auto) basic_format_arg::_M_visit(
+# Visitor&& vis, _Arg_t)` instantiated over the closure `_M_format_arg` declares as
+# `[&](auto& arg)`. The closure's `auto` is written as `UlRT_E_`, and the parameter
+# `Visitor&&` as `OS9_` -- the closure type, which is what the template argument is.
+# llvm-cxxfilt 18.1.3 and 20.1.2 resolve `S9_` to the closure's `auto` and print the
+# parameter as `auto&&`: a parameter of a type no declaration has. GNU c++filt 2.42
+# prints the closure, and so does this. The same defect as member_template_lambda.cpp,
+# in a name every program that formats a string carries.
+_ZNSt16basic_format_argISt20basic_format_contextINSt8__format10_Sink_iterIcEEcEE8_M_visitIZNS1_19_Formatting_scannerIS3_cE13_M_format_argEmEUlRT_E_EEDcOS9_NS1_6_Arg_tE	decltype(auto) std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char>>::_M_visit<std::__format::_Formatting_scanner<std::__format::_Sink_iter<char>, char>::_M_format_arg(unsigned long)::'lambda'(auto&)>(std::__format::_Formatting_scanner<std::__format::_Sink_iter<char>, char>::_M_format_arg(unsigned long)::'lambda'(auto&)&&, std::__format::_Arg_t)

@@ -253,6 +253,22 @@ class TestAnInheritingConstructorCarriesAVariant:
     def test_the_five_still_read(self, mangled):
         assert demangle.demangle_strict(mangled, language="itanium") == "B::B(int)"
 
+    def test_the_constructor_is_the_derived_classs_under_both_styles(self):
+        """libiberty reads the base type after `CI` through `cplus_demangle_type`, which
+        leaves the base's last component as `di->last_name`, and names the constructor
+        from that: `c++filt` 2.42 spells g++'s
+        `_ZNSt15__uniq_ptr_dataI1KSt14default_deleteIS0_ELb1ELb1EECI1St15__uniq_ptr_implIS0_S2_EEPS0_`
+        as `__uniq_ptr_data<...>::__uniq_ptr_impl(K*)`. An inheriting constructor is a
+        constructor of the derived class, which is what llvm-cxxfilt prints and what the
+        gnu style prints too: a name is not a spelling."""
+        mangled = "_ZNSt15__uniq_ptr_dataI1KSt14default_deleteIS0_ELb1ELb1EECI1St15__uniq_ptr_implIS0_S2_EEPS0_"
+        assert demangle.demangle_strict(mangled) == (
+            "std::__uniq_ptr_data<K, std::default_delete<K>, true, true>::__uniq_ptr_data(K*)"
+        )
+        assert demangle.demangle_strict(mangled, style="gnu") == (
+            "std::__uniq_ptr_data<K, std::default_delete<K>, true, true>::__uniq_ptr_data(K*)"
+        )
+
 
 class TestWhatIsRefused:
     def test_an_empty_encoding_is_not_a_type(self):
