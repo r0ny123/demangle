@@ -305,6 +305,9 @@ ACCEPTED = {
         # LLVM 18.1 know none of them, so both hand these back and this library is simply
         # ahead. Anything else both refuse is a defect and is reported.
         or (first is None and second[0] is None and _newer_than_the_references(name))
+        # Or the old form of `sr` that g++ still writes and `llvm-cxxfilt` refuses,
+        # which `c++filt` reads as this does. See `_OLD_SR_FORM`.
+        or (first is None and _OLD_SR_FORM.search(name) is not None)
         # Or a name neither reads because `llvm-cxxfilt` refuses its `LZ` external name
         # and `c++filt` refuses something else in it. See `_LEGACY_EXTERNAL_NAME`.
         or (first is None and second[0] is None and _LEGACY_EXTERNAL_NAME.search(name) is not None)
@@ -615,6 +618,12 @@ _AHEAD_PATTERNS = (
     # `llvm-cxxfilt` reads (the type form, `Dy`, is in the list above).
     re.compile(r"sy(?:T[L\d_]|f[pL])"),
 )
+
+#: `sr <type> <unqualified-name>`, the form of `sr` the ABI had before the
+#: <unresolved-name> productions and g++ still writes, with a `std::` type where the
+#: modern grammar allows only a parameter, a decltype or a substitution. `llvm-cxxfilt`
+#: 18 and 20 refuse it; libiberty reads it, and so does this. See the parser.
+_OLD_SR_FORM = re.compile(r"srSt\d")
 
 #: `L Z <encoding> E` -- an external name with the `_` missing, which G++ once emitted
 #: (libiberty's `d_expr_primary` carries the workaround as "bug 375") and `c++filt`

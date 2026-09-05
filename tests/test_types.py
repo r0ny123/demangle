@@ -528,3 +528,46 @@ class TestAVectorsSizeAndElementAsTheCompilersWriteThem:
         nothing to the ABI, to clang's mangler or to `c++filt`."""
         with pytest.raises(DemanglingError):
             demangle.demangle_type("Dv_i", language="itanium")
+
+
+class TestAGroupAfterAStarIsTightUnderTheGnuStyle:
+    """`d_print_function_type` writes the space before a declarator group's `(` unless
+    the last character printed is `(` or `*`, so a pointer to a function returning a
+    pointer to a function is `void (*(*)())()` to `c++filt` and `void (* (*)())()` to
+    `llvm-cxxfilt`; a `&` keeps its space either way. This printed llvm-cxxfilt's
+    spacing under both styles, which a sweep of every Itanium symbol on the machine in
+    the gnu style turned up on Skia's `VulkanWindowContext` constructor."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            ("_Z1fPFPFvvEvE", "f(void (* (*)())())", "f(void (*(*)())())"),
+            ("_Z1fPFPFPFvvEvEvE", "f(void (* (* (*)())())())", "f(void (*(*(*)())())())"),
+            ("_Z1fPFPA3_ivE", "f(int (* (*)()) [3])", "f(int (*(*)()) [3])"),
+            ("_Z1fPFM1SFvvEvE", "f(void (S::* (*)())())", "f(void (S::*(*)())())"),
+            ("_Z1fPFRA3_ivE", "f(int (& (*)()) [3])", "f(int (& (*)()) [3])"),
+            ("_Z1fPFPivE", "f(int* (*)())", "f(int* (*)())"),
+            # An array's group is `d_print_array_type`'s, spaced whatever came before.
+            ("_Z1fRA3_Pi", "f(int* (&) [3])", "f(int* (&) [3])"),
+            ("_Z1fPA3_Pi", "f(int* (*) [3])", "f(int* (*) [3])"),
+            (
+                "_Z33can_interpret_as_conditional_op_pP6gimplePP9tree_nodeP9tree_codeRA3_S2_S3_",
+                "can_interpret_as_conditional_op_p(gimple*, tree_node**, tree_code*, tree_node* (&) [3], tree_node**)",
+                "can_interpret_as_conditional_op_p(gimple*, tree_node**, tree_code*, tree_node* (&) [3], tree_node**)",
+            ),
+            ("_Z1fPPFvvE", "f(void (**)())", "f(void (**)())"),
+            (
+                "_ZN6sk_app19VulkanWindowContextC1ERKNS_13DisplayParamsESt8functionIFP14VkSurfaceKHR_TP12VkInstance_TEES4_"
+                "IFbS8_P18VkPhysicalDevice_TjEEPFPFvvES8_PKcE",
+                "sk_app::VulkanWindowContext::VulkanWindowContext(sk_app::DisplayParams const&, "
+                "std::function<VkSurfaceKHR_T* (VkInstance_T*)>, std::function<bool (VkInstance_T*, VkPhysicalDevice_T*, "
+                "unsigned int)>, void (* (*)(VkInstance_T*, char const*))())",
+                "sk_app::VulkanWindowContext::VulkanWindowContext(sk_app::DisplayParams const&, "
+                "std::function<VkSurfaceKHR_T* (VkInstance_T*)>, std::function<bool (VkInstance_T*, VkPhysicalDevice_T*, "
+                "unsigned int)>, void (*(*)(VkInstance_T*, char const*))())",
+            ),
+        ],
+    )
+    def test_the_two_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle(mangled) == llvm
+        assert demangle.demangle(mangled, style="gnu") == gnu

@@ -1291,3 +1291,43 @@ class TestARequiresClauseHasNoPlaceInsideANestedName:
     )
     def test_the_two_places_it_belongs_still_read(self, mangled, expected):
         assert demangle.demangle(mangled) == expected
+
+
+class TestTheOldFormOfSrThatGccStillWrites:
+    """`sr <type> <unqualified-name>`, the production the ABI had before the
+    <unresolved-name> forms, with a complete type where the modern grammar allows only
+    a parameter, a decltype or a substitution. g++ still writes it, and libstdc++ ships
+    it in `std::__copy_move_a1`'s return type -- `srSt23__is_random_access_iterIT0_...E
+    7__valueE` -- sixteen symbols on one Ubuntu 24.04 machine. libiberty's
+    `d_expression_1` reads `sr` that way, `cplus_demangle_type` and then
+    `d_unqualified_name`; `llvm-cxxfilt` 18 and 20 refuse every one of them. `St`
+    followed by a name has no reading under the modern grammar, so the old one is the
+    only reading it can have, and the substitution table comes out as libiberty's: the
+    sixteen match `c++filt` byte for byte, back references included."""
+
+    NAME = (
+        "_ZSt14__copy_move_a1ILb0EPiiEN9__gnu_cxx11__enable_ifIXsrSt23__is_random_access_iterIT0_"
+        "NSt15iterator_traitsIS4_E17iterator_categoryEE7__valueESt15_Deque_iteratorIT1_RSA_PSA_EE6__typeES4_S4_SD_"
+    )
+
+    def test_the_gnu_spelling_is_cxxfilts(self):
+        assert demangle.demangle(self.NAME, style="gnu") == (
+            "__gnu_cxx::__enable_if<std::__is_random_access_iter<int*, std::iterator_traits<int*>::iterator_category>"
+            "::__value, std::_Deque_iterator<int, int&, int*> >::__type std::__copy_move_a1<false, int*, int>"
+            "(int*, int*, std::_Deque_iterator<int, int&, int*>)"
+        )
+
+    def test_the_llvm_spelling_follows(self):
+        assert demangle.demangle(self.NAME) == (
+            "__gnu_cxx::__enable_if<std::__is_random_access_iter<int*, std::iterator_traits<int*>::iterator_category>"
+            "::__value, std::_Deque_iterator<int, int&, int*>>::__type std::__copy_move_a1<false, int*, int>"
+            "(int*, int*, std::_Deque_iterator<int, int&, int*>)"
+        )
+
+    def test_a_reduced_shape(self):
+        assert demangle.demangle("_Z1fIiEvDTsrSt1AIT_E5valueE") == "void f<int>(decltype(std::A<int>::value))"
+        assert demangle.demangle("_Z1fIiEvDTsrSt1AIT_E5valueIcEE") == "void f<int>(decltype(std::A<int>::value<char>))"
+
+    def test_the_modern_forms_are_unchanged(self):
+        assert demangle.demangle("_Z1fIiEvDTsrT_5valueE") == "void f<int>(decltype(int::value))"
+        assert demangle.demangle("_Z1fIiEvDTsrNT_1BE5valueE") == "void f<int>(decltype(int::B::value))"

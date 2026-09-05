@@ -3430,6 +3430,19 @@ class ItaniumParser:
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
                 levels.append(self.simple_id())
+        elif reader.startswith("St") and reader.ahead(2) in DIGITS:
+            # The form the ABI had before the <unresolved-name> productions, and the one
+            # g++ still writes: `sr <type> <unqualified-name>`, with a complete type --
+            # here `std::` and a name and its arguments -- where the modern grammar's
+            # <unresolved-type> is a parameter, a decltype or a substitution alone.
+            # libiberty's `d_expression_1` reads `sr` that way, `cplus_demangle_type`
+            # and then `d_unqualified_name`, and libstdc++ ships the shape in
+            # `std::__copy_move_a1`'s `__enable_if<__is_random_access_iter<...>::__value,
+            # ...>` -- `srSt23__is_random_access_iterIT0_...E7__valueE`, sixteen names
+            # on one machine -- which `llvm-cxxfilt` 18 and 20 refuse
+            # outright. `St` followed by a name has no reading under the modern
+            # grammar, so the old one is the only reading it can have.
+            levels.append(self.builder.spell(self.type_()))
         else:
             levels.append(self._unresolved_head())
 

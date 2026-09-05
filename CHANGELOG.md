@@ -219,6 +219,25 @@ All notable changes to this project are recorded here. The format follows
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
   `tools/enumerate.py`, and libiberty reading D names whose template arguments end with
   the name.
+- **Itanium, gnu style: no space before a declarator group after a `*`.**
+  `d_print_function_type` writes the space before a group's `(` unless the last
+  character printed is `(` or `*`, so a pointer to a function returning a pointer to a
+  function is `void (*(*)())()` to `c++filt` and `void (* (*)())()` to `llvm-cxxfilt`,
+  and a `&` keeps its space either way. This printed llvm-cxxfilt's spacing under both
+  styles. Found on Skia's `VulkanWindowContext` constructor by the same gnu-style
+  sweep, which now agrees with `c++filt` on every name both read but the three
+  `_Prepare_execution` names the reference-defects corpus settles.
+- **Itanium: the old form of `sr` that g++ still writes.** `sr <type>
+  <unqualified-name>`, the production the ABI had before the `<unresolved-name>` forms,
+  takes a complete type where the modern grammar allows only a template parameter, a
+  decltype or a substitution. libstdc++ ships it in `std::__copy_move_a1`'s return type,
+  `srSt23__is_random_access_iterIT0_...E7__valueE` -- sixteen symbols on one Ubuntu
+  24.04 machine, which `llvm-cxxfilt` 18 and 20 refuse and this refused with them.
+  libiberty's `d_expression_1` reads `sr` as `cplus_demangle_type` and then
+  `d_unqualified_name`, and `St` followed by a name has no other reading, so that is the
+  reading now; the sixteen match `c++filt` byte for byte, back references included.
+  Found by sweeping every Itanium symbol on the machine in the gnu style, which had
+  only ever been swept in the llvm one.
 - **Itanium: a vector's size and element as the compilers write them.** Clang writes a
   dependent size with no underscore before it, `Dv <expression> _ <type>` -- its
   `mangleType` for a `DependentSizedExtVectorType` is `Out << "Dv";

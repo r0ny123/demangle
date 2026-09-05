@@ -118,22 +118,31 @@ def _respace_bound(left, right):
     return bound if left.endswith("]") else " " + bound
 
 
-def _wrap(inner, token, ref_kind=""):
+def _wrap(inner, token, ref_kind="", tight_after_star=False):
     """Apply a declarator token, parenthesising where precedence demands it.
 
     Without the parentheses `int (*)(char)` would read as `int *(char)`: a function
     returning a pointer, which is a different type. The rule is that a declarator
     binding tighter than the one already applied needs grouping, and function and array
     types are precisely the cases where one already has been.
+
+    `tight_after_star` is GNU c++filt's spacing for a function's group that follows a
+    `*`: `d_print_function_type` writes the space before its `(` unless the last
+    character printed is `(` or `*`, so a pointer to a function returning a pointer to
+    a function is `void (*(*)())()` to it and `void (* (*)())()` to llvm-cxxfilt, and a
+    `&` keeps its space either way: `int (& (*)()) [3]`. An array's group is
+    `d_print_array_type`'s, which writes ` (` whatever came before, so a reference to an
+    array of pointers stays `tree_node* (&) [3]`.
     """
     if inner.members is not None:
         # Applying a declarator to a pack applies it to each member.
-        return pack_of(_wrap(member, token) for member in inner.members)
+        return pack_of(_wrap(member, token, tight_after_star=tight_after_star) for member in inner.members)
     if inner.is_function or inner.is_array:
         left = inner.left
         # A function's left half already ends in the space after its return type; an
         # array's ends in an identifier character and needs one added.
-        spacer = "" if not left or left.endswith((" ", "(")) else " "
+        tight = (" ", "(", "*") if tight_after_star and inner.is_function else (" ", "(")
+        spacer = "" if not left or left.endswith(tight) else " "
         # The bound now follows the `)` this closes with, not the element type, so its
         # spacing is decided against that: `int vector[4] (*) [3]`, not `(*)[3]`.
         right = ")" + _respace_bound(")", inner.right) if inner.is_array else ")" + inner.right
@@ -147,9 +156,15 @@ class SpellingBuilder(Builder):
     Stateless, so one instance is shared by every parse rather than allocated per name.
     """
 
-    __slots__ = ("collapse_duplicate_qualifiers", "gnu_clone_suffix", "legacy_angle_spacing")
+    __slots__ = ("collapse_duplicate_qualifiers", "gnu_clone_suffix", "legacy_angle_spacing", "tight_after_star")
 
-    def __init__(self, legacy_angle_spacing=False, gnu_clone_suffix=False, collapse_duplicate_qualifiers=False):
+    def __init__(
+        self,
+        legacy_angle_spacing=False,
+        gnu_clone_suffix=False,
+        collapse_duplicate_qualifiers=False,
+        tight_after_star=False,
+    ):
         #: Write `Foo<Bar<int> >` rather than `Foo<Bar<int>>`. Required before C++11,
         #: when `>>` at the end of a template-id lexed as a right-shift operator. GNU
         #: c++filt still prints it; llvm-cxxfilt does not. Neither is wrong.
@@ -162,6 +177,10 @@ class SpellingBuilder(Builder):
         #: Write a clone suffix as `[clone .cold]` rather than `(.cold)`. GNU c++filt
         #: does the former, llvm-cxxfilt the latter.
         self.gnu_clone_suffix = gnu_clone_suffix
+        #: Write `void (*(*)())()` rather than `void (* (*)())()`: no space before a
+        #: declarator group that follows a `*`, which is how GNU c++filt spaces it. See
+        #: `_wrap`.
+        self.tight_after_star = tight_after_star
         #: Print `int const` where the mangling says `K K i`, rather than llvm-cxxfilt's
         #: `int const const`.
         #:
@@ -253,7 +272,7 @@ class SpellingBuilder(Builder):
     # -- declarators -----------------------------------------------------------
 
     def pointer(self, inner):
-        return _wrap(inner, "*")
+        return _wrap(inner, "*", tight_after_star=self.tight_after_star)
 
     def parameter_pack(self, members):
         return pack_of(members)
@@ -269,7 +288,7 @@ class SpellingBuilder(Builder):
             return inner
         if inner.ref_kind == "&&":
             return Spelling(inner.left[:-1], inner.right, ref_kind="&")
-        return _wrap(inner, "&", ref_kind="&")
+        return _wrap(inner, "&", ref_kind="&", tight_after_star=self.tight_after_star)
 
     def rvalue_reference(self, inner):
         # `T& &&` collapses to `T&`; only `T&& &&` stays an rvalue reference.
@@ -277,7 +296,7 @@ class SpellingBuilder(Builder):
             return pack_of(self.rvalue_reference(member) for member in inner.members)
         if inner.ref_kind:
             return inner
-        return _wrap(inner, "&&", ref_kind="&&")
+        return _wrap(inner, "&&", ref_kind="&&", tight_after_star=self.tight_after_star)
 
     def member_pointer(self, owner, inner):
         # `int Foo::*` needs the separating space that `int (Foo::*)()` does not: in the
@@ -294,7 +313,7 @@ class SpellingBuilder(Builder):
             return pack_of(self.member_pointer(owner, member) for member in inner.members)
         token = f"{owner}::*"
         if inner.is_function or inner.is_array:
-            return _wrap(inner, token)
+            return _wrap(inner, token, tight_after_star=self.tight_after_star)
         # Always spaced, unlike a bare `*`. `int* A::*` needs the gap even though `int*`
         # does not, because `int*A::*` would read as one token; the references agree.
         left = inner.left
@@ -400,5 +419,5 @@ class SpellingBuilder(Builder):
 #: than reaching for these; the API layer selects one per requested style.
 SPELLING_BUILDER = SpellingBuilder()
 LEGACY_SPELLING_BUILDER = SpellingBuilder(
-    legacy_angle_spacing=True, gnu_clone_suffix=True, collapse_duplicate_qualifiers=True
+    legacy_angle_spacing=True, gnu_clone_suffix=True, collapse_duplicate_qualifiers=True, tight_after_star=True
 )
