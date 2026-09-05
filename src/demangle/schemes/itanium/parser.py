@@ -360,6 +360,7 @@ class ItaniumParser:
         "_explicit_object",
         "_in_constraint",
         "_in_special_name",
+        "_last_source_name",
         "_mangled",
         "_max_depth",
         "_max_output",
@@ -470,6 +471,10 @@ class ItaniumParser:
         # or destructor to repeat, and whether the component `_prefix_bare` holds is
         # one; see `enclosing_class_name`.
         self._component_has_no_base_name = False
+        #: The last <source-name> read, template arguments aside: libiberty's
+        #: `di->last_name`, which is what c++filt names a constructor or destructor
+        #: after when the scope itself has no name to repeat. See `enclosing_class_name`.
+        self._last_source_name = ""
         self._prefix_bare_has_no_base_name = False
         # Whether the last component of the nested name being read carries template
         # arguments, and the handles of every specialisation entered in the
@@ -1674,8 +1679,11 @@ class ItaniumParser:
                 return builder.name(self._befriended(spelled) if friend else spelled)
 
         if char == "U":
-            self._component_has_no_base_name = True
             name = self.unnamed_type_name()
+            # Set *after* the closure's signature is read: a parameter type in it that
+            # is a name of its own clears the flag, and `_ZN1AUlN1XEE_D1Ev` came back
+            # `A::'lambda'(X)::~'lambda'(X)()` where llvm-cxxfilt prints `~()`.
+            self._component_has_no_base_name = True
             return builder.name(self._befriended(builder.spell(name))) if friend else name
 
         # A vendor extended operator, `v <digit> <source-name>`, is a
@@ -1758,9 +1766,12 @@ class ItaniumParser:
             # literal operator, a constructor or destructor, a closure, an unnamed type
             # and a structured binding leave it empty, so `llvm-cxxfilt` spells
             # `_ZN1AcviD0Ev` as `A::operator int::~()` and `_ZN1AD1IiED0Ev` as
-            # `A::~A<int>::~()`. Nothing a compiler writes; repeating the name in full
-            # was a third reading beside the two references'.
-            return ""
+            # `A::~A<int>::~()`. Repeating the name in full was a third reading beside
+            # the two references'. libiberty names the constructor after the last
+            # <source-name> it read, template arguments aside -- `A::{unnamed
+            # type#1}::~A()`, and `~vector()` for one inside `std::vector<X>` -- which
+            # ICU ships in `MicroProps::{unnamed type#1}::~MicroProps()`.
+            return self._last_source_name if self.options.gnu_closure_spelling else ""
         if bare is not None:
             # The component as it was read, before the arguments a `<template-args>` may
             # have attached to it. Searching the *spelling* for a `<` instead cut every
@@ -1798,6 +1809,7 @@ class ItaniumParser:
         """
         reader = self.reader
         length, text = reader.length_prefixed()
+        self._last_source_name = text
         if length <= 0:
             raise ParseError(self._mangled, reader.pos, "source name of non-positive length")
         if text.startswith("_GLOBAL__N"):
@@ -2967,6 +2979,10 @@ class ItaniumParser:
             # came back here as `void f<void>(void (*)())`.
             parameters = []
         written = "".join([f" {qualifier}" for qualifier in cv_qualifiers])
+        if self.options.gnu_exception_spec_first:
+            # c++filt writes the exception specification before the qualifiers,
+            # `void (A::*)() noexcept const &`; llvm-cxxfilt writes it last.
+            return builder.function(returns, parameters, exception_spec + written + suffix)
         return builder.function(returns, parameters, written + suffix + exception_spec)
 
     def array_type(self):
@@ -3152,6 +3168,10 @@ class ItaniumParser:
         arguments = []
         empties = []
         keep_empty = self.options.gnu_empty_pack_spelling
+        # "Preserve the last name we saw -- don't let the template arguments clobber
+        # it", as `d_template_args_1` puts it: the constructor of `A<X>::{unnamed
+        # type#1}` is `A`, not `X`.
+        last_source_name = self._last_source_name
         trailing_empty_pack = False
         seen = False
         # A clause read here belongs to the entity only when this list is the entity's
@@ -3193,6 +3213,7 @@ class ItaniumParser:
                     self.targs.add(argument)
         finally:
             self._naming = was_naming
+            self._last_source_name = last_source_name
             if not install_scope:
                 self._scope_has_pack = outer_has_pack
                 self._argument_constraint = outer_constraint

@@ -101,6 +101,16 @@ All notable changes to this project are recorded here. The format follows
   both styles, a `Dp` expansion over an empty pack inside a *type's* argument list was
   dropped only when written `J E`: `1AIDpT_T0_E` over an empty `T_` spelled `A<, int>`
   where llvm-cxxfilt prints `A<int>`.
+- **A closure with a class parameter named its own destructor after itself.**
+  `_ZN1AUlN1XEE_D1Ev` came back `A::'lambda'(X)::~'lambda'(X)()`, where llvm-cxxfilt
+  prints `~()`: reading the parameter type cleared the note that the scope has no
+  name to repeat. Under the gnu style, a constructor or destructor of a closure or
+  unnamed type is now named as libiberty names it, after the last source name read,
+  `A::{unnamed type#1}::~A()` and ICU's `MicroProps::{unnamed type#1}::~MicroProps()`;
+  and a function type's exception specification comes before its qualifiers,
+  `void (A::*)() noexcept const &`, under a new option `gnu_exception_spec_first`,
+  which libstdc++ 13's `<chrono>` ships in every `time_zone` sort. Both from the same
+  archive sweep.
 - **A guard variable, TLS routine or reference temporary for a static inside a lambda
   lost the `const` of the lambda's call operator.** `_ZGVZZN1A1fEvENKUlvE_clEvE1y`
   came back `guard variable for A::f()::'lambda'()::operator()()::y`. The special

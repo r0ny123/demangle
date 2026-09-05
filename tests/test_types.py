@@ -670,3 +670,75 @@ class TestAnObjectiveCProtocolUnderTheGnuStyle:
         assert (
             demangle.demangle_strict("_Z1fPU13objcproto3Bar11objc_object", style=on) == "f(objc_object objcproto3Bar*)"
         )
+
+
+class TestAConstructorOfAnUnnamedType:
+    """A closure or unnamed type has no name for its constructor or destructor to
+    repeat. llvm-cxxfilt prints none, `A::'unnamed'::~()`; libiberty names it after the
+    last source name it read, template arguments aside, so c++filt prints
+    `A::{unnamed type#1}::~A()` and `std::vector<X>::{unnamed type#1}::~vector()`, and
+    ICU ships `MicroProps::{unnamed type#1}::~MicroProps()`. A parameter type inside
+    the closure's signature is a name of its own, and reading it used to clear the
+    flag that says the scope has none: `_ZN1AUlN1XEE_D1Ev` came back
+    `A::'lambda'(X)::~'lambda'(X)()`."""
+
+    @pytest.mark.parametrize(
+        "mangled, llvm, gnu",
+        [
+            ("_ZN1AUt_D1Ev", "A::'unnamed'::~()", "A::{unnamed type#1}::~A()"),
+            ("_ZN1AUt_C1Ev", "A::'unnamed'::()", "A::{unnamed type#1}::A()"),
+            ("_ZN1AUt0_C2Ev", "A::'unnamed0'::()", "A::{unnamed type#2}::A()"),
+            ("_ZN1A1BUt_D1Ev", "A::B::'unnamed'::~()", "A::B::{unnamed type#1}::~B()"),
+            ("_ZN1AUlvE_D1Ev", "A::'lambda'()::~()", "A::{lambda()#1}::~A()"),
+            ("_ZN1AUlN1XEE_D1Ev", "A::'lambda'(X)::~()", "A::{lambda(X)#1}::~X()"),
+            ("_ZN1AI1XEUt_D1Ev", "A<X>::'unnamed'::~()", "A<X>::{unnamed type#1}::~A()"),
+            (
+                "_ZNSt6vectorI1XEUt_D1Ev",
+                "std::vector<X>::'unnamed'::~()",
+                "std::vector<X>::{unnamed type#1}::~vector()",
+            ),
+            (
+                "_ZN6icu_746number4impl10MicroPropsUt_D1Ev",
+                "icu_74::number::impl::MicroProps::'unnamed'::~()",
+                "icu_74::number::impl::MicroProps::{unnamed type#1}::~MicroProps()",
+            ),
+            ("_ZN1AcviD0Ev", "A::operator int::~()", "A::operator int::~A()"),
+            # A named scope after the unnamed one is its own name.
+            ("_ZN1AUt_1BD1Ev", "A::'unnamed'::B::~B()", "A::{unnamed type#1}::B::~B()"),
+        ],
+    )
+    def test_both_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled) == llvm
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+
+class TestAnExceptionSpecificationComesFirstToCxxfilt:
+    """c++filt writes a function type's exception specification before its qualifiers,
+    `void (A::*)() noexcept const &`; llvm-cxxfilt writes it last. libstdc++ 13's
+    `<chrono>` ships the member pointer `KDoF...E` in every `time_zone` sort."""
+
+    @pytest.mark.parametrize(
+        "mangled, llvm, gnu",
+        [
+            ("_Z1fM1AKDoFvvE", "f(void (A::*)() const noexcept)", "f(void (A::*)() noexcept const)"),
+            ("_Z1fM1AKDoFvvRE", "f(void (A::*)() const & noexcept)", "f(void (A::*)() noexcept const &)"),
+            ("_Z1fM1AVKDoFvvE", "f(void (A::*)() const volatile noexcept)", "f(void (A::*)() noexcept const volatile)"),
+            ("_Z1fM1AKDwiEFvvE", "f(void (A::*)() const throw(int))", "f(void (A::*)() throw(int) const)"),
+            ("_Z1fM1AKDOLi1EEFvvE", "f(void (A::*)() const noexcept(1))", "f(void (A::*)() noexcept(1) const)"),
+            (
+                "_Z1fM1AKDxFvvRE",
+                "f(void (A::*)() const & transaction_safe)",
+                "f(void (A::*)() transaction_safe const &)",
+            ),
+            ("_Z1fPKDoFvvE", "f(void (*)() const noexcept)", "f(void (*)() noexcept const)"),
+            ("_Z1fM1ADoFvvRE", "f(void (A::*)() & noexcept)", "f(void (A::*)() noexcept &)"),
+            ("_Z1fM1ADoFvvE", "f(void (A::*)() noexcept)", "f(void (A::*)() noexcept)"),
+        ],
+    )
+    def test_both_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled) == llvm
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+
+    def test_the_option_is_what_selects_it(self):
+        on = demangle.style("llvm", itanium={"gnu_exception_spec_first": True})
+        assert demangle.demangle_strict("_Z1fM1AKDoFvvE", style=on) == "f(void (A::*)() noexcept const)"

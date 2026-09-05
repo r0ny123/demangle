@@ -34,6 +34,11 @@ class ItaniumOptions:
     llvm-cxxfilt spells every one of them `auto`, and GNU spells them `auto:1` and
     `auto:2` by index -- so `Ul T0_ T_ E` is `{lambda(auto:2, auto:1)#1}`. The number is
     the only thing that tells two of them apart.
+
+    It also names a constructor or destructor of a closure or unnamed type the way
+    libiberty does, after the last source name it read: `A::{unnamed type#1}::~A()`,
+    where llvm-cxxfilt writes `A::'unnamed'::~()` because the type has no name to
+    repeat. ICU ships the shape in `MicroProps::{unnamed type#1}::~MicroProps()`.
     """
 
     gnu_expression_spelling: bool = False
@@ -189,6 +194,16 @@ class ItaniumOptions:
     False (the default) drops every one, as llvm-cxxfilt does. True keeps c++filt's.
     """
 
+    gnu_exception_spec_first: bool = False
+    """Write a function type's exception specification before its qualifiers.
+
+    `M1AKDoFvvRE` is `void (A::*)() const & noexcept` to llvm-cxxfilt and
+    `void (A::*)() noexcept const &` to GNU c++filt, which prints the specification --
+    `noexcept`, `noexcept(...)`, `throw(...)`, `transaction_safe` -- first. Neither
+    order is the one C++ declares them in for a member function. False (the default)
+    gives llvm-cxxfilt's, True c++filt's.
+    """
+
     gnu_objc_protocol_spelling: bool = False
     """Spell an Objective-C protocol qualifier as the vendor qualifier it is written as.
 
@@ -224,4 +239,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_unresolved_scope_substitution=True,
     gnu_empty_pack_spelling=True,
     gnu_objc_protocol_spelling=True,
+    gnu_exception_spec_first=True,
 )
