@@ -87,9 +87,9 @@ OPERANDS = [
     # bracketed. The last is an expansion with no pack in it, bracketed the same way.
     ("awLi1E", "co_await 1", "co_await (1)"),
     ("awfp_", "co_await fp", "co_await {parm#1}"),
-    # c++filt prints `0` for this one: it counts the pack behind a `sizeof...` and a
-    # function parameter has no pack to count, so the column is the operand it names.
-    ("sZfp_", "sizeof... (fp)", "sizeof... ({parm#1})"),
+    # c++filt does not print `sizeof...` at all: it prints the length of the pack it
+    # finds behind it, and a function parameter has no pack to count.
+    ("sZfp_", "sizeof... (fp)", "0"),
     ("twfp_", "throw fp", "throw {parm#1}"),
     ("twsr3stdE1x", "throw std::x", "throw std::x"),
     ("twLi1E", "throw 1", "throw (1)"),
@@ -364,3 +364,41 @@ class TestTheObjectOfAMemberAccessIsAnOperand:
     def test_the_llvm_spelling_is_unchanged(self):
         assert demangle.demangle("_Z1fDTdtdtdtL_Z1aE1b1c1dE") == "f(decltype(a.b.c.d))"
         assert demangle.demangle("_Z1fDTdtclfp_E1iE") == "f(decltype(fp().i))"
+
+
+class TestSizeofDotDotDotIsANumberToCxxfilt:
+    """`d_print_comp` does not print `sizeof...` at all. For `sZ` it prints
+    `d_pack_length` of what `d_find_pack` finds -- the number of members when the
+    parameter is bound to a pack, 0 for anything else, a function parameter and an empty
+    pack included -- and for `sP` the argument count with expansions counted by their
+    members. `llvm-cxxfilt` spells the operator and its operands, `sizeof...(int, char)`,
+    which this wrote under both styles. Found by a gnu-primary mutation draw, on a
+    libcxxabi vector the gnu style had never been asked about."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIJicEEv1XIXsZT_EE", "void f<int, char>(X<2>)"),
+            ("_Z1fIJicEEvDTsZT_E", "void f<int, char>(decltype (2))"),
+            ("_Z2f0IJfdEEv1XIXsZT_EJDpRT_EE", "void f0<float, double>(X<2, float&, double&>)"),
+            ("_Z2f0IJEEv1XIXsZT_EJDpRT_EE", "void f0<>(X<0>)"),
+            ("_Z1fIiEvDTsZT_E", "void f<int>(decltype (0))"),
+            ("_Z1fIJicEEvDpT_DTsZfp_E", "void f<int, char>(int, char, decltype (0))"),
+            ("_Z1fIJicEEv1XIXsPDpT_EEE", "void f<int, char>(X<2>)"),
+            ("_Z1fIJicEEv1XIXsPDpT_iEEE", "void f<int, char>(X<3>)"),
+            ("_Z1fIJicEEv1XIXsPEEE", "void f<int, char>(X<0>)"),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIJicEEv1XIXsZT_EE", "void f<int, char>(X<sizeof...(int, char)>)"),
+            ("_Z1fIJicEEv1XIXsPDpT_iEEE", "void f<int, char>(X<sizeof... (int, char, int)>)"),
+            ("_Z1fIJicEEvDpT_DTsZfp_E", "void f<int, char>(int, char, decltype(sizeof... (fp)))"),
+        ],
+    )
+    def test_the_llvm_spelling_is_unchanged(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected

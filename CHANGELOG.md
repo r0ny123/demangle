@@ -219,6 +219,13 @@ All notable changes to this project are recorded here. The format follows
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
   `tools/enumerate.py`, and libiberty reading D names whose template arguments end with
   the name.
+- **Itanium, gnu style: `sizeof...` is a number.** `d_print_comp` does not print the
+  operator at all: for `sZ` it prints the length of the pack the parameter is bound to,
+  0 for anything else, and for `sP` the argument count with expansions counted by their
+  members, so `X<2>` and `decltype (0)` where `llvm-cxxfilt` -- and this, under both
+  styles -- spells `sizeof...(int, char)`. Found by a gnu-primary mutation draw, which
+  had never been run: the gnu style was compared only inside the llvm-oriented accept
+  rules, on a libcxxabi vector the gnu corpus does not carry.
 - **Itanium, gnu style: no space before a declarator group after a `*`.**
   `d_print_function_type` writes the space before a group's `(` unless the last
   character printed is `(` or `*`, so a pointer to a function returning a pointer to a

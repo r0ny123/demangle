@@ -3921,14 +3921,27 @@ class ItaniumParser:
             )
             outer_index = self._pack_index
             outer_pack = self._saw_pack
+            outer_arity = self._pack_arity
             self._pack_index = None
             self._saw_pack = False
+            self._pack_arity = None
             try:
                 inner = self.expression() if is_function_param else self.template_param()
                 over_pack = self._saw_pack
+                arity = self._pack_arity if over_pack and self._pack_arity is not None else 0
             finally:
                 self._pack_index = outer_index
                 self._saw_pack = outer_pack or self._saw_pack
+                self._pack_arity = outer_arity
+            if self.options.gnu_expression_spelling:
+                # `d_print_comp` does not print `sizeof...` at all: for `sZ` it prints
+                # `d_pack_length` of what `d_find_pack` finds, which is the number of
+                # members when the parameter is bound to a pack and 0 for anything
+                # else -- a parameter bound to one type, a function parameter, an empty
+                # pack. So `X<2>` for `sZT_` under `<int, char>`, and `decltype (0)`
+                # for `sZfp_`.
+                self._precedence = PRIMARY_PRECEDENCE
+                return builder.expression("sizeof_pack", [str(arity)])
             if is_function_param:
                 # A function parameter is wrapped as it stands, with a space and no
                 # ellipsis: `sizeof... (fp)`, which is how llvm-cxxfilt spells it.
@@ -3954,9 +3967,18 @@ class ItaniumParser:
                 argument, _ = self.template_arg()
                 if argument is not None:
                     members.append(argument)
+            self._precedence = PRIMARY_PRECEDENCE
+            if self.options.gnu_expression_spelling:
+                # `d_args_length`: the number of arguments, an expansion counting the
+                # members of the pack it expands. `X<3>` for `sP Dp T_ i E` under
+                # `<int, char>`, where llvm-cxxfilt writes `sizeof... (int, char, int)`.
+                count = 0
+                for member in members:
+                    expanded = builder.members(member)
+                    count += len(expanded) if expanded is not None else 1
+                return builder.expression("sizeof_pack", [str(count)])
             # `sZ` writes `sizeof...(`; `sP`, over a captured pack, writes it with a
             # space. Both references agree, and it is the only thing separating them.
-            self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("sizeof_pack", ["sizeof... (", *self._commas(members), ")"])
         if pair in ("st", "sz", "at", "az", "ti", "te", "nx"):
             # `sizeof (int)`, `alignof (x)`, `typeid (T)`, `noexcept (x)`. Each closes
