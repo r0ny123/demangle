@@ -526,7 +526,12 @@ class _Parser:
         # Bounded by the length prefix, so a malformed body cannot read past its own
         # identifier: the cursor is put back and the raw text used if it does not parse.
         text = reader.text[start : start + length]
-        if text.startswith(("__T", "__U")):
+        # Five is the shortest a template instance can be -- `__T`, a one-digit length,
+        # a one-character name, and the closing `Z` make six, and `dlang_identifier`
+        # settles for `len >= 5`. Under that, `__T` is a name like any other: the
+        # reference reads `_D4main3__TFZv` as `main.__T()`, and trying the template
+        # grammar on it first refused the name.
+        if text.startswith(("__T", "__U")) and length >= 5:
             saved, saved_end = reader.pos, reader.end
             reader.end = start + length
             try:
@@ -1297,7 +1302,15 @@ class _Parser:
             # that says it is a member function.
             raise DemangleFailure("a `this` parameter with no function type after it")
         if char in CALLING_CONVENTIONS:
-            convention, attributes, parameters, _ = self.function_type()
+            convention, attributes, parameters, _ = self.function_type(returns=False)
+            # `_D QualifiedName Z` -- and the last component of the path may carry a
+            # parameter list of its own, so a function's `Z` can be followed by the
+            # artificial symbol's `Z` rather than a return type. `dlang_parse_qualified`
+            # reads the parameters, `dlang_parse_mangle` takes the `Z`, and c++filt
+            # spells `_D4main3fooFZZ` as `main.foo()`. Reading a return type there
+            # refused it. The return type itself is never printed, only consumed.
+            if not reader.eat("Z"):
+                self.type_()
             self._trailing_had_attributes = bool(attributes)
             # Whether the whole of it is `this` and `()`: a member function of the D
             # convention, with no modifiers, no attributes and no parameters. That is

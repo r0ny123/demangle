@@ -803,3 +803,78 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
         assert demangle.demangle(mutant, language="d") == "a.___dgliteral1"
         seed = "_D1a13__dgliteral10MFNaNbNiNfZAxa"
         assert demangle.demangle(seed, language="d") == "a.__dgliteral10()"
+
+
+class TestWhatAskingTheReferenceAboutRefusalsFound:
+    """`tools/mutate.py --refusals`: the mutants this scheme refuses that c++filt reads.
+
+    The gate only ever puts names this scheme *reads* to the reference, so a name it
+    refused and the reference read was invisible to it. Asked the other way round over
+    20,000 mutants, seventeen came back read. Two were this scheme's, and are fixed; the
+    rest are libiberty reading past the grammar, and are pinned here as refusals so a
+    change to either side shows up.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `dlang_identifier` tries the template grammar only on a length-prefixed
+            # identifier of five or more characters. Under that `__T` is a name.
+            ("_D4main3__TFZv", "main.__T()"),
+            ("_D4main4__TaFZv", "main.__Ta()"),
+            # The mutant: `8demanle1`, then `3__T`, then `test` with a Pascal-convention
+            # parameter list.
+            ("_D8demanle13__T4testVPinZv", "demanle1.__T.test(int*, typeof(null))"),
+        ],
+    )
+    def test_a_short_identifier_opening_on___T_is_a_name_not_a_template(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_five_character_template_body_still_has_to_close(self):
+        """Five is where the template grammar starts, and `__T1aZ` is six: with the `Z`
+        outside the counted body the length mismatches, and both sides refuse."""
+        name = "_D4main5__T1aZFZv"
+        assert demangle.demangle(name, language="d") == name
+        assert demangle.demangle("_D4main6__T1aZFZv", language="d") == "main.a!()()"
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `_D QualifiedName Z`, where the path's last component carries its own
+            # parameter list: the function's `Z` and then the artificial symbol's.
+            ("_D4main3fooFZZ", "main.foo()"),
+            ("_D4main3fooMFZZ", "main.foo()"),
+            ("_D4main3fooFZ3barFZZ", "main.foo().bar()"),
+            ("_D3std4math12trigonometry4asinFNaNbNiNfdZZ", "std.math.trigonometry.asin(double)"),
+        ],
+    )
+    def test_a_parameter_list_may_be_followed_by_the_artificial_z(self, mangled, expected):
+        assert demangle.demangle(mangled, language="d") == expected
+
+    def test_a_parameter_list_at_the_end_of_the_name_is_still_refused(self):
+        """No return type and no `Z` either: `dlang_parse_qualified` backtracks on the
+        end of the name and the reference refuses it, as before."""
+        name = "_D4main3fooFZ"
+        assert demangle.demangle(name, language="d") == name
+
+    @pytest.mark.parametrize(
+        ("mangled", "reference"),
+        [
+            # `dlang_type`'s `G` arm counts digits and is content with none, so a static
+            # array with no bound prints as a dynamic one.
+            ("_D8demangle4testFGiZv", "demangle.test(int[])"),
+            ("_D8demangle4testFNhGfZv", "demangle.test(__vector(float[]))"),
+            # `dlang_parse_real` reads the exponent's digits the same way.
+            ("_D8demangle17__T4testVde0A8PZv", "demangle.test!(0x0.A8p)"),
+            ("_D8demangle18__T4testVde0A8PNZv", "demangle.test!(0x0.A8p-)"),
+            # `dlang_template_args` returns at the end of the name as readily as at `Z`,
+            # so a template instance cut off mid-argument is whole to it.
+            ("_D4main1xS4main__T3barTi", "main.x"),
+        ],
+    )
+    def test_what_the_reference_reads_past_the_grammar_stays_refused(self, mangled, reference):
+        """`reference` is what `c++filt --format=dlang` 2.42 answers; the grammar gives
+        each of these a number it does not have."""
+        assert demangle.demangle(mangled, language="d") == mangled
+        with pytest.raises(DemangleFailure):
+            parse_d_symbol(mangled)

@@ -46,6 +46,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: two shapes the grammar admits and the reference reads were refused.** A
+  length-prefixed identifier opening on `__T` was tried as a template instance whatever
+  its length, and refused when the body did not parse; `dlang_identifier` tries the
+  template grammar only from five characters, so `_D4main3__TFZv` is `main.__T()`. And a
+  path whose last component carries a parameter list may be followed by the artificial
+  symbol's `Z` rather than a return type -- `_D QualifiedName Z` -- so `_D4main3fooFZZ`
+  is `main.foo()`; reading a return type there refused it. Both came out of
+  `--refusals` over 20,000 D mutants, with what else it reported pinned as refusals:
+  `dlang_type`'s `G` arm and `dlang_parse_real`'s exponent both count digits and settle
+  for none, and `dlang_template_args` returns at the end of the name as readily as at a
+  `Z`.
 - **Swift: six node kinds this demangler produced were not counted as contexts, so a
   descriptor or a thunk over one of them refused the name.** `CONTEXT_KINDS` is the
   reference's `CONTEXT_NODE` list and was six short of its 52: the borrow, mutate,
