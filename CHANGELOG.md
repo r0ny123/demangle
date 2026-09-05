@@ -219,6 +219,12 @@ All notable changes to this project are recorded here. The format follows
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
   `tools/enumerate.py`, and libiberty reading D names whose template arguments end with
   the name.
+- **Itanium, gnu style: a fold's pack operand and a designated initialiser as c++filt
+  writes them.** `d_print_comp` prints a fold's pack operand through `d_print_subexpr`
+  like any operand and writes no ellipsis of its own, `((0)+...+(int))` where this
+  wrote llvm-cxxfilt's `(int...)`; and a designated initialiser is `.n=(42)`, no spaces
+  round the `=` and the value bracketed by kind, where this wrote `.n = 42` under both
+  styles. Both from the same gnu-primary draw.
 - **Itanium, gnu style: `sizeof...` is a number.** `d_print_comp` does not print the
   operator at all: for `sZ` it prints the length of the pack the parameter is bound to,
   0 for anything else, and for `sP` the argument count with expansions counted by their

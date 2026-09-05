@@ -402,3 +402,54 @@ class TestSizeofDotDotDotIsANumberToCxxfilt:
     )
     def test_the_llvm_spelling_is_unchanged(self, mangled, expected):
         assert demangle.demangle(mangled) == expected
+
+
+class TestAFoldsPackOperandUnderTheGnuStyle:
+    """`d_print_comp` prints a fold's pack operand through `d_print_subexpr` like any
+    operand and writes no ellipsis of its own: `(x+...+y)` for a name, `((0)+...+(int))`
+    for a literal and a parameter bound to one type. This wrote `(y...)` and
+    `(int...)`, llvm-cxxfilt's spelling for the one-type case; llvm-cxxfilt refuses
+    the fold with no pack at all. A gnu-primary mutation draw."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIXfLpl1x1yEEvvv", "void f<(x+...+y)>(void, void)"),
+            ("_Z1fIXfLplLi1ELi2EEEvvv", "void f<((1)+...+(2))>(void, void)"),
+            ("_Z1fIiEvDTfLplLi0ET_E", "void f<int>(decltype (((0)+...+(int))))"),
+            ("_Z1fIiEvDTflplT_E", "void f<int>(decltype ((...+(int))))"),
+            ("_Z1fIJicEEvDTfLplLi0ET_E", "void f<int, char>(decltype (((0)+...+(int, char))))"),
+            ("_Z1fIJicEEvDTflplT_E", "void f<int, char>(decltype ((...+(int, char))))"),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+    def test_the_llvm_spelling_is_unchanged(self):
+        assert demangle.demangle("_Z1fIiEvDTfLplLi0ET_E") == "void f<int>(decltype((0 + ... + (int...))))"
+        assert demangle.demangle("_Z1fIJicEEvDTflplT_E") == "void f<int, char>(decltype((... + (int, char))))"
+
+
+class TestADesignatedInitialiserUnderTheGnuStyle:
+    """`.n=(42)`, `.n=x`, `[1]=(42)`, `[1 ... 3]=(42)`, `.n.m=(42)`: no spaces round
+    the `=`, and the value an operand `d_print_subexpr` brackets by kind. This wrote
+    llvm-cxxfilt's `.n = 42` under both styles. A gnu-primary mutation draw, on the
+    libcxxabi vector `_Z1fIXtl1Edi1nLi4EEEEvv`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIXtl1Edi1nLi42EEEEvv", "void f<E{.n=(42)}>()"),
+            ("_Z1fIXtl1Edi1nL_Z1xEEEEvv", "void f<E{.n=x}>()"),
+            ("_Z1fIXtl1EdxLi1ELi42EEEEvv", "void f<E{[1]=(42)}>()"),
+            ("_Z1fIXtl1EdXLi1ELi3ELi42EEEEvv", "void f<E{[1 ... 3]=(42)}>()"),
+            ("_Z1fIXtl1Edi1ndi1mLi42EEEEvv", "void f<E{.n.m=(42)}>()"),
+            ("_Z1fIXtl1Edi1ntl1FLi1EEEEEvv", "void f<E{.n=F{1}}>()"),
+        ],
+    )
+    def test_the_gnu_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+    def test_the_llvm_spelling_is_unchanged(self):
+        assert demangle.demangle("_Z1fIXtl1Edi1ndi1mLi42EEEEvv") == "void f<E{.n.m = 42}>()"
+        assert demangle.demangle("_Z1fIXtl1EdXLi1ELi3ELi42EEEEvv") == "void f<E{[1 ... 3] = 42}>()"

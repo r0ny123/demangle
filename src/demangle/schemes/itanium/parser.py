@@ -3764,6 +3764,14 @@ class ItaniumParser:
         expanded = self.expression()
         if builder.members(expanded) is not None:
             return builder.expression("paren", ["(", expanded, ")"])
+        if self.options.gnu_expression_spelling:
+            # `d_print_comp` prints a fold's pack operand as it prints any operand,
+            # through `d_print_subexpr`, and writes no ellipsis of its own: `(x+...+y)`
+            # for a name and `((0)+...+(int))` for a literal and a parameter bound to
+            # one type, where llvm-cxxfilt writes `(int...)` and refuses the name.
+            if self._precedence < SIMPLE_PRECEDENCE:
+                return builder.expression("paren", ["(", expanded, ")"])
+            return expanded
         return builder.expression("paren", ["(", expanded, "...)"])
 
     def _commas(self, items, separator=", "):
@@ -4333,6 +4341,14 @@ class ItaniumParser:
             else:
                 designator = ["[", self.expression(), " ... ", self.expression(), "]"]
             nested = reader.peek2() in ("di", "dx", "dX")
+            if self.options.gnu_expression_spelling:
+                # `.n=(42)`, `.n=x`, `[1]=(42)`: no spaces round the `=`, and the value
+                # is an operand `d_print_subexpr` brackets by kind -- a literal, but not
+                # a name or a braced list.
+                # A chained designator is not an operand; only the innermost value is.
+                value = self.expression() if nested else self._operand(PRIMARY_PRECEDENCE, subexpression=True)
+                self._precedence = PRIMARY_PRECEDENCE
+                return builder.expression("designator", [*designator, *([] if nested else ["="]), value])
             value = self.expression()
             self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("designator", [*designator, *([] if nested else [" = "]), value])
