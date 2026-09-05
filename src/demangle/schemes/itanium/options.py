@@ -172,6 +172,21 @@ class ItaniumOptions:
     `decltype` itself. True reads as c++filt does.
     """
 
+    gnu_empty_pack_spelling: bool = False
+    """Print an expansion over an empty pack as an empty entry, the way GNU c++filt does.
+
+    `std::thread::thread<F, Args...>` instantiated with no arguments is
+    `_ZNSt6threadC1IZ4mainEUlvE_JEvEEOT_DpOT0_`, and every program that starts a thread
+    on a no-argument callable carries it. llvm-cxxfilt drops the empty pack from the
+    list, `thread<main::'lambda'(), void>`; c++filt prints what it expands to, which
+    is nothing, and keeps the comma: `thread<main::{lambda()#1}, , void>`. It does the
+    same in a parameter list, `f(, int)`, and in a call's arguments, `g(, int)` --
+    every comma-separated list -- and drops the empty entries at the *end* of a list,
+    so `f<int, JE>` is `f<int>` there as here.
+
+    False (the default) drops every one, as llvm-cxxfilt does. True keeps c++filt's.
+    """
+
     local_name_return_type: bool = True
     """Show the return type of the function enclosing a local name.
 
@@ -196,4 +211,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_default_argument_scope=True,
     gnu_friend_spelling=True,
     gnu_unresolved_scope_substitution=True,
+    gnu_empty_pack_spelling=True,
 )

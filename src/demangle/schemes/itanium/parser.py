@@ -795,6 +795,7 @@ class ItaniumParser:
             # read, because it cannot be recovered afterwards: a `T_` bound to `void`
             # spells `void` too, and that is not the same thing.
             wrote_void = False
+            keep_empty = self.options.gnu_empty_pack_spelling
             while not reader.eof and reader.peek() not in ("E", ".", "Q"):
                 if not read:
                     wrote_void = reader.peek() == "v"
@@ -803,12 +804,17 @@ class ItaniumParser:
                 if _drops_out(builder, parameter):
                     # An expansion over an empty pack. It is not a parameter, so it is
                     # not the explicit object parameter either -- the marker waits for
-                    # the first type that stays.
+                    # the first type that stays. c++filt prints it as an empty entry
+                    # all the same, `f(, int)`, unless it ends the list.
+                    if keep_empty:
+                        parameters.append(parameter)
                     continue
                 if explicit_object:
                     explicit_object = False
                     parameter = builder.raw("this " + builder.spell(parameter))
                 parameters.append(parameter)
+            if keep_empty:
+                self._drop_trailing_empties(parameters)
             if not read:
                 # `<signature type>+` is one or more, and the reference reads it as a
                 # do-while for that reason. A template specialisation spends its first
@@ -2926,6 +2932,15 @@ class ItaniumParser:
             if not _drops_out(builder, parameter):
                 parameters.append(parameter)
                 written_void.append(wrote_void)
+            elif self.options.gnu_empty_pack_spelling:
+                # See `bare_function_type`: an empty entry to c++filt, unless it ends
+                # the list. It is not a `void` written.
+                parameters.append(parameter)
+                written_void.append(False)
+        if self.options.gnu_empty_pack_spelling:
+            while parameters and _drops_out(builder, parameters[-1]):
+                parameters.pop()
+                written_void.pop()
 
         if parameters and all(written_void):
             # As above, and for the same reason -- but counted the way this production's
@@ -3120,6 +3135,8 @@ class ItaniumParser:
         was_naming = self._naming
         self._naming = False
         arguments = []
+        empties = []
+        keep_empty = self.options.gnu_empty_pack_spelling
         trailing_empty_pack = False
         seen = False
         # A clause read here belongs to the entity only when this list is the entity's
@@ -3154,8 +3171,9 @@ class ItaniumParser:
                     # occupies a slot.
                     continue
                 trailing_empty_pack = is_empty_pack
-                if not is_empty_pack:
+                if not is_empty_pack or keep_empty:
                     arguments.append(argument)
+                    empties.append(is_empty_pack)
                 if install_scope:
                     self.targs.add(argument)
         finally:
@@ -3163,6 +3181,13 @@ class ItaniumParser:
             if not install_scope:
                 self._scope_has_pack = outer_has_pack
                 self._argument_constraint = outer_constraint
+        if keep_empty:
+            # c++filt prints an empty pack as an empty argument and keeps the comma,
+            # `thread<main::{lambda()#1}, , void>`, and drops the empty ones at the end
+            # of the list: `f<int, JE>` is `f<int>`. See `gnu_empty_pack_spelling`.
+            while empties and empties[-1]:
+                arguments.pop()
+                empties.pop()
         self._trailing_empty_pack = trailing_empty_pack
         return arguments
 
@@ -3283,8 +3308,11 @@ class ItaniumParser:
 
         argument = self.type_()
         # An expansion over an empty pack spells nothing and occupies no argument slot,
-        # the same as an empty `J E` pack does.
-        return argument, id(argument) in self._pack_ids and not builder.spell(argument)
+        # the same as an empty `J E` pack does. Asked of the handle's members rather
+        # than of the pack table: the `Dp` handler records its result as an expansion,
+        # not a pack, and testing the table left `A<, int>` for `1AIDpT_T0_E` over an
+        # empty `T_` where llvm-cxxfilt prints `A<int>`.
+        return argument, builder.members(argument) is not None and not builder.spell(argument)
 
     # -- 5.1.6.1 literals ------------------------------------------------------
 
@@ -4011,6 +4039,12 @@ class ItaniumParser:
         """
         builder = self.builder
         parts = []
+        keep_empty = self.options.gnu_empty_pack_spelling
+        if keep_empty:
+            # c++filt keeps the empty entries and their separators, `g(, int)`, and
+            # drops those at the end. See `gnu_empty_pack_spelling`.
+            items = list(items)
+            self._drop_trailing_empties(items)
         for item in items:
             # `size` is O(1) and `spell` is not, and this runs over every argument list
             # in every expression: rendering each one to ask whether it is empty made
@@ -4019,14 +4053,23 @@ class ItaniumParser:
             # gives; only a *pack* can be non-zero in size and still spell nothing --
             # one holding another empty pack -- and asking whether a handle is a pack is
             # itself O(1).
-            if builder.size(item) == 0:
-                continue
-            if builder.members(item) is not None and not builder.spell(item):
-                continue
+            if not keep_empty:
+                if builder.size(item) == 0:
+                    continue
+                if builder.members(item) is not None and not builder.spell(item):
+                    continue
             if parts:
                 parts.append(separator)
             parts.append(item)
         return parts
+
+    def _drop_trailing_empties(self, items):
+        """Take the expansions over empty packs off the end of a list, in place."""
+        builder = self.builder
+        while items and (
+            builder.size(items[-1]) == 0 or (builder.members(items[-1]) is not None and not builder.spell(items[-1]))
+        ):
+            items.pop()
 
     def _element(self):
         """One member of a comma-separated list, bracketed if it is a comma expression.

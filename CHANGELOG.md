@@ -90,6 +90,17 @@ All notable changes to this project are recorded here. The format follows
   compiler's name right. A new option, `gnu_unresolved_scope_substitution`, on in the
   gnu style, counts as g++ and `c++filt` do; the default counts as the ABI, Clang and
   `llvm-cxxfilt` do.
+- **An empty pack is an empty entry to `c++filt`, and an expansion over one inside a
+  type's argument list was not dropped.** `std::thread::thread<F, Args...>` with no
+  arguments is `_ZNSt6threadC1IZ4mainEUlvE_JEvEEOT_DpOT0_`, in every program that
+  starts a thread on a no-argument callable, and `c++filt` spells it
+  `thread<main::{lambda()#1}, , void>`: what the pack expands to, which is nothing, and
+  the comma kept -- in every comma-separated list, a parameter list and a call's
+  arguments included, with the empty entries at the end of a list dropped. A new
+  option, `gnu_empty_pack_spelling`, on in the gnu style, prints it that way. Under
+  both styles, a `Dp` expansion over an empty pack inside a *type's* argument list was
+  dropped only when written `J E`: `1AIDpT_T0_E` over an empty `T_` spelled `A<, int>`
+  where llvm-cxxfilt prints `A<int>`.
 - **One more reference defect, from libstdc++'s `<format>`.** g++ 13 writes
   `basic_format_arg::_M_visit`'s `Visitor&&` parameter as a back reference to the
   closure type it is instantiated over, and llvm-cxxfilt 18 and 20 resolve it to the

@@ -790,3 +790,60 @@ class TestAResolvedCalleeIsPrintedByName:
             demangle.demangle_strict("_Z2c3IiEDTclL_Z1hiEfp_EET_", style=off)
             == "decltype ((h(int))({parm#1})) c3<int>(int)"
         )
+
+
+class TestAnEmptyPackIsAnEmptyEntryToCxxfilt:
+    """c++filt prints what an empty pack expands to, which is nothing, and keeps the
+    comma: `std::thread::thread<main::{lambda()#1}, , void>`, a name every program that
+    starts a thread on a no-argument callable carries, compiled by g++ 13. It does the
+    same in every comma-separated list -- a parameter list, a call's arguments, a
+    braced initialiser, a new-expression's -- and drops the empty entries at the end of
+    a list, so `f<int, JE>` is `f<int>`. llvm-cxxfilt drops every one, and so does the
+    llvm style. See `gnu_empty_pack_spelling`."""
+
+    @pytest.mark.parametrize(
+        "mangled, gnu, llvm",
+        [
+            (
+                "_ZNSt6threadC1IZ4mainEUlvE_JEvEEOT_DpOT0_",
+                "std::thread::thread<main::{lambda()#1}, , void>(main::{lambda()#1}&&)",
+                "std::thread::thread<main::'lambda'(), void>(main::'lambda'()&&)",
+            ),
+            ("_Z1fIJEiEvv", "void f<, int>()", "void f<int>()"),
+            ("_Z1fIiJEiEvv", "void f<int, , int>()", "void f<int, int>()"),
+            ("_Z1fIJEJEiEvv", "void f<, , int>()", "void f<int>()"),
+            # Trailing empty entries go, however many.
+            ("_Z1fIiJEEvv", "void f<int>()", "void f<int>()"),
+            ("_Z1fIiJEJEEvv", "void f<int>()", "void f<int>()"),
+            ("_Z1fIJEJEEvv", "void f<>()", "void f<>()"),
+            # A parameter list, in the encoding and in a function type.
+            ("_Z1fIJEiEvDpT_T0_", "void f<, int>(, int)", "void f<int>(int)"),
+            ("_Z1fIJEiEvT0_DpT_", "void f<, int>(int)", "void f<int>(int)"),
+            ("_Z1fIJEiEvPFvDpT_T0_E", "void f<, int>(void (*)(, int))", "void f<int>(void (*)(int))"),
+            ("_Z1fIJEiEvPFvT0_DpT_E", "void f<, int>(void (*)(int))", "void f<int>(void (*)(int))"),
+            # A call, a braced initialiser, a new-expression.
+            ("_Z1fIJEiEDTcl1gspT_T0_EEDpT_T0_", "decltype (g(, int)) f<, int>(, int)", "decltype(g(int)) f<int>(int)"),
+            ("_Z1fIJEiEDTcl1gspT_EEDpT_T0_", "decltype (g()) f<, int>(, int)", "decltype(g()) f<int>(int)"),
+            ("_Z1fIJEiEDTtl1AspT_T0_EEDpT_T0_", "decltype (A{, int}) f<, int>(, int)", "decltype(A{int}) f<int>(int)"),
+            (
+                "_Z1fIJEiEDTnw_T0_pispT_T0_EEDpT_T0_",
+                "decltype (new int(, int)) f<, int>(, int)",
+                "decltype(new int(int)) f<int>(int)",
+            ),
+            # An expansion inside a type's argument list, which the llvm style dropped
+            # only when it was written `J E`: `1AIDpT_T0_E` over an empty `T_` spelled
+            # `A<, int>` and `A<int, >` there, where llvm-cxxfilt prints `A<int>`.
+            ("_Z1fIJEiEv1AIDpT_T0_E", "void f<, int>(A<, int>)", "void f<int>(A<int>)"),
+            ("_Z1fIJEiEv1AIT0_DpT_E", "void f<, int>(A<int>)", "void f<int>(A<int>)"),
+            ("_Z1fIJEiEv1AIDpT_E", "void f<, int>(A<>)", "void f<int>(A<>)"),
+        ],
+    )
+    def test_both_styles(self, mangled, gnu, llvm):
+        assert demangle.demangle_strict(mangled, style="gnu") == gnu
+        assert demangle.demangle_strict(mangled) == llvm
+
+    def test_the_option_is_what_selects_it(self):
+        off = demangle.style("gnu", itanium={"gnu_empty_pack_spelling": False})
+        assert demangle.demangle_strict("_Z1fIJEiEvDpT_T0_", style=off) == "void f<int>(int)"
+        on = demangle.style("llvm", itanium={"gnu_empty_pack_spelling": True})
+        assert demangle.demangle_strict("_Z1fIJEiEvDpT_T0_", style=on) == "void f<, int>(, int)"

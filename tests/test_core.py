@@ -137,11 +137,20 @@ class TestTheTwoBuildersAgreeAboutPacks:
             assert len(builder.members(pack)) == 3
             assert builder.spell(pack) == "int, char, double"
 
-    @pytest.mark.parametrize("style", ["llvm", "gnu"])
-    def test_the_name_that_found_it(self, style):
+    @pytest.mark.parametrize(
+        "style, expected",
+        [
+            ("llvm", "void f<int>(int, nn::Up)"),
+            # c++filt refuses the name, so this is what its rule for an empty pack --
+            # an empty entry, comma kept -- gives for a pack that holds an empty one:
+            # it spells nothing, and is one. See `gnu_empty_pack_spelling`.
+            ("gnu", "void f<, , int>(int, , nn::Up)"),
+        ],
+    )
+    def test_the_name_that_found_it(self, style, expected):
         name = "_Z1fIJEJT_EiEviT0_N2nn2UpE"
-        assert demangle.demangle_strict(name, style=style) == "void f<int>(int, nn::Up)"
-        assert demangle.parse(name, style=style).spell(style=style) == "void f<int>(int, nn::Up)"
+        assert demangle.demangle_strict(name, style=style) == expected
+        assert demangle.parse(name, style=style).spell(style=style) == expected
 
 
 class TestEveryDeclaratorDistributesOverAPack:
