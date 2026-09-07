@@ -296,6 +296,7 @@ class TestAnImportedDescriptor:
             ("$sSHMp", "SH"),  # already a type: `SHP` is nothing
             ("$sScAMp", "ScA"),
             ("$s5SwiftMXM", "5Swift"),
+            ("$s4main1fQryFQOMQ", "4main1fQryFQO"),  # an opaque type descriptor
             ("$sSiN", None),  # a metadata symbol, not a descriptor
             ("$sMn", None),
             ("_ZN4demo5PointE", None),
@@ -333,6 +334,38 @@ class TestAnImportedDescriptor:
         assert ContextResolver(image).fragment(0x1020) == "4demo5OuterV5InnerV"
 
 
+class TestADescriptorTheWalkCannotSpell:
+    """A type declared in an extension has the extension descriptor for its parent, and
+    an opaque type descriptor has no name: the walk declines both. The symbol the image
+    defines at that address is the fragment, when the image kept its symbols."""
+
+    def build(self, symbols):
+        import struct
+
+        blob = bytearray(0x100)
+        blob[0x80:0x89] = b"Encoding\0"
+        # extension: kind 1, no parent read; struct: kind 17, parent the extension
+        struct.pack_into("<Ii", blob, 0x10, 0x01, 0)
+        struct.pack_into("<Iii", blob, 0x20, 0x11, 0x10 - 0x24, 0x80 - 0x28)
+        return ContextResolver(Image([(0x1000, bytes(blob))], symbols=symbols))
+
+    def test_the_symbol_stands_in_for_the_walk(self):
+        resolver = self.build({0x1020: "$sSS20FoundationEssentialsE8EncodingVMn"})
+        assert resolver.fragment(0x1020) == "SS20FoundationEssentialsE8EncodingV"
+        spelled = demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: resolver.fragment(0x1020))
+        assert spelled == "(extension in FoundationEssentials):Swift.String.Encoding"
+
+    def test_without_a_symbol_the_walk_still_declines(self):
+        assert self.build({}).fragment(0x1020) is None
+
+    def test_an_opaque_type_descriptor_is_its_declaration(self):
+        """A real typeref shape: the descriptor, then `y_Qo_`, the opaque type's index."""
+        resolver = self.build({0x1020: "$s4main1fQryFQOMQ"})
+        raw = bytes.fromhex("0200000000795f516f5f")
+        spelled = demangle_symbolic(raw, lambda ref, at: resolver.fragment(0x1020))
+        assert spelled == "<<opaque return type of main.f() -> some>>.0"
+
+
 class TestReadingAnElfImage:
     """A shared object assembled by hand: one `PT_LOAD`, one `PT_DYNAMIC`, and a
     relocation table holding a `RELATIVE` entry, a `GLOB_DAT` against a symbol the file
@@ -344,9 +377,14 @@ class TestReadingAnElfImage:
         # Layout, all in one segment at virtual 0x1000 = file offset 0:
         #   0x000 ELF header, 0x040 two program headers
         #   0x100 dynamic section, 0x180 .rela.dyn (three entries)
-        #   0x200 .dynsym (two entries: null, one symbol), 0x240 .dynstr
+        #   0x200 .dynsym (three entries: null, a defined symbol, an import), 0x260 .dynstr
         #   0x300 three pointer slots
-        data = bytearray(0x400)
+        #   0x380 three section headers: null, .dynsym, .dynstr
+        data = bytearray(0x480)
+        struct.pack_into("<Q", data, 0x28, 0x380)  # e_shoff
+        struct.pack_into("<HH", data, 0x3A, 0x40, 3)  # e_shentsize, e_shnum
+        struct.pack_into("<IIQQQQIIQQ", data, 0x3C0, 0, 11, 0, 0x1200, 0x200, 3 * 24, 2, 0, 8, 24)
+        struct.pack_into("<IIQQQQIIQQ", data, 0x400, 0, 3, 0, 0x1260, 0x260, 0x40, 0, 0, 1, 0)
         data[0:4] = b"\x7fELF"
         data[4] = 2  # 64-bit
         data[5] = 1  # little-endian
@@ -355,16 +393,16 @@ class TestReadingAnElfImage:
         struct.pack_into("<H", data, 0x36, 0x38)  # e_phentsize
         struct.pack_into("<H", data, 0x38, 2)  # e_phnum
         # PT_LOAD: offset 0, vaddr 0x1000, filesz 0x400
-        struct.pack_into("<IIQQQQQQ", data, 0x40, 1, 5, 0, 0x1000, 0x1000, 0x400, 0x400, 0x1000)
+        struct.pack_into("<IIQQQQQQ", data, 0x40, 1, 5, 0, 0x1000, 0x1000, 0x480, 0x480, 0x1000)
         # PT_DYNAMIC: offset 0x100, vaddr 0x1100, filesz 0x80
         struct.pack_into("<IIQQQQQQ", data, 0x78, 2, 6, 0x100, 0x1100, 0x1100, 0x80, 0x80, 8)
-        dynamic = [(7, 0x1180), (8, 3 * 24), (9, 24), (6, 0x1200), (11, 24), (5, 0x1240), (0, 0)]
+        dynamic = [(7, 0x1180), (8, 3 * 24), (9, 24), (6, 0x1200), (11, 24), (5, 0x1260), (0, 0)]
         for index, (tag, value) in enumerate(dynamic):
             struct.pack_into("<QQ", data, 0x100 + 16 * index, tag, value)
         # symbol 1: `$s4demo5OuterVMn`, defined at 0x1020; symbol 2: imported
-        data[0x240 : 0x240 + 1] = b"\0"
-        data[0x241 : 0x241 + 17] = b"$s4demo5OuterVMn\0"
-        data[0x252 : 0x252 + 12] = b"$ss5ErrorMp\0"
+        data[0x260 : 0x260 + 1] = b"\0"
+        data[0x261 : 0x261 + 17] = b"$s4demo5OuterVMn\0"
+        data[0x272 : 0x272 + 12] = b"$ss5ErrorMp\0"
         struct.pack_into("<IBBHQQ", data, 0x200 + 24, 1, 0x12, 0, 7, 0x1020, 0)
         struct.pack_into("<IBBHQQ", data, 0x200 + 48, 0x12, 0x12, 0, 0, 0, 0)
         # relocations: RELATIVE at 0x1300 with addend 0x1234; GLOB_DAT at 0x1308 against
@@ -385,6 +423,9 @@ class TestReadingAnElfImage:
         assert image.read(0x1310, 8) == bytes(8)
         assert image.imports == {0x1310: "$ss5ErrorMp"}
 
+    def test_the_defined_descriptor_symbols_are_read_from_the_section_headers(self):
+        assert self.build().symbols == {0x1020: "$s4demo5OuterVMn"}
+
     def test_an_image_without_a_dynamic_section_has_no_imports(self):
         import struct
 
@@ -398,4 +439,5 @@ class TestReadingAnElfImage:
         struct.pack_into("<IIQQQQQQ", data, 0x40, 1, 5, 0, 0x1000, 0x1000, 0x80, 0x80, 0x1000)
         image = elf_image(bytes(data))
         assert image.imports == {}
+        assert image.symbols == {}
         assert image.read(0x1000, 4) == b"\x7fELF"

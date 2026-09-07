@@ -83,13 +83,20 @@ All notable changes to this project are recorded here. The format follows
   descriptor's symbol *is* the context's mangling with a suffix: `$s4demo5PointVMn` is
   `4demo5PointV`, `$ss5ErrorMp` is `s5ErrorP` with the protocol letter put back, and a
   parent the walk reaches through such a slot stands where the walk would have gone on.
-  Over the 6.1.2 runtime's 29 libraries, 3,526 indirect references -- a third of all
-  the typerefs holding a reference -- had come back empty; 71 still do, and the typerefs
-  that resolve end to end go from 2,936 to 6,677: 6,506 spell exactly what the
-  reference spells for the spliced-in form,
-  and the other 171 are forms the reference cannot be given at all, because splicing a
-  fragment into a name shifts its substitution indices and word substitutions -- each
-  checked by hand to be the splice and not the reading.
+  Where the walk over the descriptors declines -- a type declared in an extension,
+  whose parent is the extension descriptor; an opaque type descriptor, which has no
+  name and is spelled by the declaration it belongs to, `$s4main1fQryFQOMQ` -- the
+  symbol the image defines at that address is the fragment: `Image.symbols`, read from
+  `.dynsym` and `.symtab` through the section headers, since the second is not loaded
+  and holds the descriptors of `internal` types the first does not. The walk still
+  comes first, because it is what a stripped image has left. Over the 6.1.2 runtime's
+  29 libraries, 3,526 indirect references -- a third of all the typerefs holding a
+  reference -- had come back empty, and 620 direct ones declined; 11 remain, none of
+  them a name, and the typerefs that resolve end to end go from 2,936 to 7,071: 6,811
+  spell exactly what the reference spells for the spliced-in form,
+  and the other 260 are forms the reference cannot be given at all, because splicing a
+  fragment into a name shifts the substitution indices and word substitutions around
+  it -- each checked by hand to be the splice and not the reading.
 - **Swift: an anonymous context spells as the runtime spells it.** The scope of a type
   declared inside a function is a descriptor with no name, and the walk declined it.
   The runtime's `_buildDemanglingForContext` names it "by its pointer identity", as

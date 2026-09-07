@@ -71,9 +71,9 @@ class Image:
     `read`, and everything else here works unchanged.
     """
 
-    __slots__ = ("_segments", "imports")
+    __slots__ = ("_segments", "imports", "symbols")
 
-    def __init__(self, segments, imports=None):
+    def __init__(self, segments, imports=None, symbols=None):
         #: `(address, bytes)` pairs, in no particular order. Overlaps are the caller's
         #: business; the first that contains an address answers for it.
         self._segments = tuple(segments)
@@ -82,6 +82,12 @@ class Image:
         #: but a descriptor's symbol carries its mangled name -- `$s4demo5PointVMn` --
         #: which is all a resolver wants from it. Empty for an image nothing imports into.
         self.imports = dict(imports or {})
+        #: The descriptor symbols the image defines, by address: what the walk falls
+        #: back on for a descriptor it cannot spell from the layout alone -- a type
+        #: declared in an extension, whose parent is the extension descriptor, or an
+        #: opaque type descriptor, which has no name and is spelled by the declaration
+        #: it belongs to. Empty for a stripped image, where the walk is all there is.
+        self.symbols = dict(symbols or {})
 
     def read(self, address, length):
         """`length` bytes at virtual `address`, or None if they are not all mapped."""
@@ -157,7 +163,7 @@ def elf_image(data):
         vaddr = _U64.unpack_from(data, at + 0x10)[0]
         segments.append((vaddr, bytearray(data[offset : offset + filesz])))
     imports = _apply_dynamic_relocations(data, segments, dynamic) if dynamic else {}
-    return Image([(vaddr, bytes(blob)) for vaddr, blob in segments], imports)
+    return Image([(vaddr, bytes(blob)) for vaddr, blob in segments], imports, _defined_descriptors(data))
 
 
 #: Relocation types by `e_machine`: `(RELATIVE, GLOB_DAT, ABS64)`. The first fills a slot
@@ -242,9 +248,60 @@ def _apply_dynamic_relocations(data, segments, dynamic):
     return imports
 
 
+def _defined_descriptors(data):
+    """The descriptor symbols an ELF file defines, by address.
+
+    Read from the section headers rather than the dynamic section, because `.symtab`
+    is not loaded and holds what `.dynsym` does not: the descriptors of `internal`
+    types, which are not exported. A file with no section headers, or one stripped of
+    both tables, gives an empty map, and the walk is on its own.
+    """
+    if len(data) < 0x40:
+        return {}
+    table_offset = _U64.unpack_from(data, 0x28)[0]
+    entry_size = _U16.unpack_from(data, 0x3A)[0]
+    count = _U16.unpack_from(data, 0x3C)[0]
+    if not table_offset or entry_size < 0x40:
+        return {}
+    headers = []
+    for index in range(count):
+        at = table_offset + index * entry_size
+        if at + 0x40 > len(data):
+            break
+        kind = _U32.unpack_from(data, at + 0x04)[0]
+        offset = _U64.unpack_from(data, at + 0x18)[0]
+        size = _U64.unpack_from(data, at + 0x20)[0]
+        link = _U32.unpack_from(data, at + 0x28)[0]
+        symbol_size = _U64.unpack_from(data, at + 0x38)[0]
+        headers.append((kind, offset, size, link, symbol_size))
+    symbols = {}
+    for kind, offset, size, link, symbol_size in headers:
+        if kind not in (11, 2) or link >= len(headers):  # SHT_DYNSYM, SHT_SYMTAB
+            continue
+        symbol_size = symbol_size or 24
+        _, strings_offset, strings_size, _, _ = headers[link]
+        strings = data[strings_offset : strings_offset + strings_size]
+        table = data[offset : offset + size]
+        for at in range(0, len(table) - symbol_size + 1, symbol_size):
+            st_shndx = _U16.unpack_from(table, at + 6)[0]
+            st_value = _U64.unpack_from(table, at + 8)[0]
+            if not st_shndx or not st_value or st_value in symbols:
+                continue
+            st_name = _U32.unpack_from(table, at)[0]
+            stop = strings.find(b"\0", st_name)
+            if stop <= st_name or strings[st_name : st_name + 2] not in (b"$s", b"$S", b"_$"):
+                continue
+            name = strings[st_name:stop].decode("latin-1")
+            if _fragment_from_symbol(name) is not None:
+                symbols[st_value] = name
+    return symbols
+
+
 #: The descriptor symbols whose name is a context's own mangling with a suffix: a
-#: nominal type descriptor, a protocol descriptor, a module descriptor.
-_DESCRIPTOR_SUFFIXES = ("Mn", "Mp", "MXM")
+#: nominal type descriptor, a protocol descriptor, a module descriptor, an opaque
+#: type descriptor -- `$s4main1fQryFQOMQ`, whose context is `4main1fQryFQO`, the
+#: opaque result of `main.f()`.
+_DESCRIPTOR_SUFFIXES = ("Mn", "Mp", "MXM", "MQ")
 
 #: A protocol the standard library abbreviates to a letter -- `SH` for `Swift.Hashable`,
 #: `ScA` for `_Concurrency.Actor` -- which is already a type on its own.
@@ -366,7 +423,22 @@ class ContextResolver:
         return _fragment_from_symbol(symbol) if symbol else None
 
     def fragment(self, descriptor):
-        """The mangled fragment naming the context descriptor at `descriptor`."""
+        """The mangled fragment naming the context descriptor at `descriptor`.
+
+        The walk over the descriptors comes first, because it needs nothing but the
+        layout and is what a stripped image still has. Where it declines -- a type
+        declared in an extension, whose parent is an extension descriptor; an opaque
+        type descriptor, which has no name of its own -- the symbol the image defines
+        at that address is the fragment, when the image kept its symbols.
+        """
+        found = self._walk(descriptor)
+        if found is not None:
+            return found
+        symbols = getattr(self._image, "symbols", None)
+        symbol = symbols.get(descriptor) if symbols else None
+        return _fragment_from_symbol(symbol) if symbol else None
+
+    def _walk(self, descriptor):
         chain = []
         seen = set()
         at = descriptor
