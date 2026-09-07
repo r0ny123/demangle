@@ -1912,11 +1912,15 @@ for _kind, _lead in (("AutoDiffFunction", ""), ("AutoDiffDerivativeVTableThunk",
                 signature = node.child(at)
                 break
             self.print(node.child(at), depth + 1)
+        # `ShortenThunk` ends the derivative at the function it is of; the simplified
+        # spelling of every derivative in the 6.1.2 runtime stops there.
+        if not self.options.shorten_thunk:
+            return None
         self.write(" with respect to parameters ")
         self.print(parameters, depth + 1)
         self.write(" and results ")
         self.print(results, depth + 1)
-        if signature is not None:
+        if signature is not None and self.options.display_where_clauses:
             self.write(" with ")
             self.print(signature, depth + 1)
         return None
@@ -1932,6 +1936,12 @@ def _print_auto_diff_self_reordering(self, node, depth, as_prefix_context):
     at += 1
     to_type = node.child(at)
     at += 1
+    if not self.options.shorten_thunk:
+        # The short form is the thunk's source type alone: not its kind, not what it
+        # reorders to.
+        self.write("for ")
+        self.print(from_type, depth + 1)
+        return None
     signature = None
     if node.child(at).kind == "DependentGenericSignature":
         signature = node.child(at)
@@ -1972,6 +1982,8 @@ def _print_auto_diff_subset(self, node, depth, as_prefix_context):
     else:
         for each in range(at):
             self.print(node.child(each), depth + 1)
+    if not self.options.shorten_thunk:
+        return None
     self.write(" with respect to parameters ")
     self.print(parameters, depth + 1)
     self.write(" and results ")

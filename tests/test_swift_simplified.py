@@ -95,6 +95,35 @@ class TestWhatEachFlagDoes:
                 "destroy value witness for foo.bar",
                 "destroy for bar",
             ),
+            # `ShortenThunk` reaches the three autodiff kinds too, which the vectors never
+            # showed: a derivative stops at the function it is of, a subset-parameters
+            # thunk at what it thunks, and a self-reordering thunk keeps its source type
+            # alone. The 6.1.2 runtime's 310 differentiable symbols all spell so.
+            (
+                "shorten_thunk",
+                "$sSdyS2dcfCTJfSUpSr",
+                "forward-mode derivative of Swift.Double.init(Swift.Double) -> Swift.Double"
+                " with respect to parameters {0} and results {0}",
+                "forward-mode derivative of Double.init(_:)",
+            ),
+            (
+                "shorten_thunk",
+                "$s4main1fyS2fFTJSpSpSrSUSP",
+                "autodiff subset parameters thunk for pullback from main.f(Swift.Float) -> Swift.Float"
+                " with respect to parameters {0} and results {0} to parameters {0, 2}",
+                "autodiff subset parameters thunk for pullback from f(_:)",
+            ),
+            (
+                "shorten_thunk",
+                "$ss5SIMD2VyxGxIeglr_ACxIeglr_SBRzs10SIMDScalarRz16_Differentiation14DifferentiableRz"
+                "13TangentVectorAeFPQzRszlTJOpTA",
+                "partial apply forwarder for autodiff self-reordering reabstraction thunk for pullback"
+                "<A where A: Swift.BinaryFloatingPoint, A: Swift.SIMDScalar, A: _Differentiation.Differentiable,"
+                " A == A._Differentiation.Differentiable.TangentVector>  from @escaping @callee_guaranteed"
+                " (@inout Swift.SIMD2<A>) -> (@out A) to @escaping @callee_guaranteed (@inout Swift.SIMD2<A>) -> (@out A)",
+                "partial apply for autodiff self-reordering reabstraction thunk for @escaping @callee_guaranteed"
+                " (@inout SIMD2<A>) -> (@out A)",
+            ),
         ],
     )
     def test_a_flag_changes_exactly_what_it_says(self, field, mangled, full, simplified):
@@ -103,6 +132,27 @@ class TestWhatEachFlagDoes:
         # ...and the bundle without this one field leaves that piece in.
         kept = demangle.style("llvm", swift={field: True})
         assert demangle.demangle(mangled, style=kept) == full
+
+    def test_a_derivatives_where_clause_is_gated_on_its_own(self):
+        """`if (optionalGenSig && Options.DisplayWhereClauses)`: the ` with <...>` a
+        derivative ends in is the generic signature it was differentiated under, and it
+        goes with the where clauses, not with the thunk shortening."""
+        name = "$s5Glibc3fmayxx_xxtSFRzlFSFRz16_Differentiation14DifferentiableRz13TangentVectorAcDPQzRszlTJfSSSpSr"
+        assert demangle.demangle(name) == (
+            "forward-mode derivative of Glibc.fma<A where A: Swift.FloatingPoint>(A, A, A) -> A"
+            " with respect to parameters {0, 1, 2} and results {0}"
+            " with <A where A: Swift.FloatingPoint, A: _Differentiation.Differentiable,"
+            " A == A._Differentiation.Differentiable.TangentVector>"
+        )
+        no_where = demangle.style("llvm", swift={"display_where_clauses": False})
+        assert demangle.demangle(name, style=no_where) == (
+            "forward-mode derivative of Glibc.fma<A>(A, A, A) -> A with respect to parameters {0, 1, 2} and results {0}"
+        )
+        short = demangle.style("llvm", swift={"shorten_thunk": False})
+        assert (
+            demangle.demangle(name, style=short)
+            == "forward-mode derivative of Glibc.fma<A where A: Swift.FloatingPoint>(A, A, A) -> A"
+        )
 
     def test_the_default_is_the_toolchains_own_spelling(self):
         """Every field is True by default, so the 8,494-name corpus is untouched."""

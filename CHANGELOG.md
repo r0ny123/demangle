@@ -93,6 +93,12 @@ All notable changes to this project are recorded here. The format follows
     eighty-six specialisations in Foundation and the string-processing runtime spell it
     so. `SwiftOptions` gains `synthesize_sugar_on_types`, on by default as the tool has
     it, and the payload is printed with it off.
+  And under `--simplified`, where the same 135,492 names went through the reference
+  a second time, `ShortenThunk` reaches the three autodiff kinds the 217 vectors never
+  showed: a derivative stops at the function it is of, a subset-parameters thunk at
+  what it thunks, and a self-reordering thunk keeps its source type alone; the ` with
+  <...>` a derivative ends in goes with `DisplayWhereClauses`. All 310 differentiable
+  symbols in the runtime were spelled in full.
   The one name left is the extended-existential-shape defect the reference-defects
   corpus already pins, now with a fifth row: the shape over a constrained existential
   that FoundationEssentials ships. The D runtime (16,333 names) and the GNAT Ada runtime
