@@ -46,7 +46,13 @@ def detect(name):
     `_T` covers Swift 3 as well as `_T0`; the two are different grammars and
     `demangle_symbol` dispatches between them, but from the outside they are one scheme.
     """
-    return bool(name) and (name.startswith(MANGLING_PREFIXES) or name.startswith(("_T", "__T")))
+    if not name:
+        return False
+    if name.startswith("__"):
+        # The Mach-O form: one underscore more than the compiler wrote, which
+        # `swift-demangle` takes off before reading. `__$s` is `_$s`, itself a prefix.
+        name = name[1:]
+    return name.startswith(MANGLING_PREFIXES) or name.startswith("_T")
 
 
 def _wants_structure(builder):
@@ -66,8 +72,14 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
+    # A Mach-O symbol table carries one more leading underscore than the compiler
+    # wrote, so `__T04demo5PointVMn`, `__$s...` and `__TtC...` are `_T0...`, `_$s...`
+    # and `_TtC...` -- and `swift-demangle` strips exactly one underscore from a name
+    # that opens with two before reading it. `_$s` needs no such help: the compiler's
+    # own prefix for a Mach-O symbol is listed as a prefix in its own right.
+    name = mangled[1:] if mangled.startswith("__") else mangled
     try:
-        root = demangle_symbol(mangled)
+        root = demangle_symbol(name)
     except RecursionError as error:
         raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
     return _finish(mangled, root, builder, limits, options)

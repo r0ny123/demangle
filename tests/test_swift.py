@@ -734,3 +734,34 @@ class TestRegisteredAsALanguage:
     def test_it_does_not_claim_another_scheme_s_names(self):
         assert demangle.demangle("_Z1fv") == "f()"
         assert demangle.demangle("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E") == ("core::fmt::Formatter::pad")
+
+
+class TestTheMachOUnderscore:
+    """A Mach-O symbol table carries one more leading underscore than the compiler
+    wrote. `swift-demangle` strips exactly one from a name that opens with two before
+    reading it, so a Swift 4 `_T0` symbol comes off a macOS binary as `__T0...` and
+    still reads; this read only the forms whose extra underscore the prefix table
+    happened to list. Every expected value below is `swift-demangle`'s.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("__T04demo5PointVMn", "nominal type descriptor for demo.Point"),
+            ("__$s4demo5PointVMn", "nominal type descriptor for demo.Point"),
+            ("__$S4demo5PointVMn", "nominal type descriptor for demo.Point"),
+            ("__TtC4demo5Point", "demo.Point"),
+            # The single-underscore forms are the compiler's own and unchanged.
+            ("_T04demo5PointVMn", "nominal type descriptor for demo.Point"),
+            ("_$s4demo5PointVMn", "nominal type descriptor for demo.Point"),
+        ],
+    )
+    def test_one_underscore_comes_off(self, mangled, expected):
+        assert detect(mangled)
+        assert demangle.demangle(mangled) == expected
+        assert demangle.demangle_strict(mangled, language="swift") == expected
+
+    def test_only_one_comes_off(self):
+        """`___T0` is not a name: two underscores more than the compiler wrote."""
+        assert not detect("___T04demo5PointVMn")
+        assert demangle.demangle("___T04demo5PointVMn") == "___T04demo5PointVMn"

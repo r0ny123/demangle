@@ -73,6 +73,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Swift: the Mach-O underscore on every prefix.** A Mach-O symbol table carries one
+  more leading underscore than the compiler wrote, and `swift-demangle` strips exactly
+  one from a name that opens with two before reading it. This read `_$s` and `_$S`,
+  which the prefix table lists in their own right, and refused the rest: a Swift 4
+  `_T0` symbol off a macOS binary, `__T04demo5PointVMn`, and the Swift 3 `__TtC...`
+  form. Every prefix now takes the underscore, and `___T0` -- two more than the
+  compiler wrote -- is still not a name. Found asking, after the Homebrew bottles, what
+  else a Mach-O symbol table does to a name.
 - **Itanium: Apple's clang counts an undeduced `auto` as a substitution candidate.**
   The ABI leaves builtin types out of the substitution table, and GCC and upstream clang
   leave `auto` out with them; Clang through 6.0 counted an undeduced `auto` by
