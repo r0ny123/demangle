@@ -864,15 +864,20 @@ def reference_answers(tool, names, timeout=None, memory=None):
     they cannot read it, which is the same thing said differently.
     """
     command = tool.split()
+    # Bytes rather than text mode, because text mode translates newlines: libiberty
+    # spells a template argument of type `char` as the raw byte, so `foo__H1c13_v` is
+    # `foo<'\r'>(void)` with a carriage return in it, and under `text=True` that came
+    # back as a line break and threw every answer after it out of step with its name.
+    # The reference and this library agree byte for byte on the raw form; a byte that is
+    # not UTF-8 is kept as a lone surrogate so the comparison sees it rather than a crash.
     proc = subprocess.run(
         command,
-        input="\n".join(names) + "\n",
+        input=("\n".join(names) + "\n").encode("utf-8", "surrogateescape"),
         capture_output=True,
-        text=True,
         timeout=3600 if timeout is None else timeout,
         preexec_fn=None if memory is None else _capped_at(memory),
     )
-    lines = proc.stdout.split("\n")
+    lines = proc.stdout.decode("utf-8", "surrogateescape").split("\n")
     if command[0].endswith("undname"):
         answers, record = {}, []
         for line in [*lines, ""]:

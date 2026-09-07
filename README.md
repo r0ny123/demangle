@@ -394,7 +394,15 @@ in place of a type the image already describes, so reading one needs the image:
 one. Each reference resolves to a descriptor; the check is that the symbol the *linker*
 put at that address demangles to the same name, with `swift-demangle` reading both sides.
 Splicing each resolved fragment back in gives a self-contained name the reference can
-read, and it agrees with our spelling on 4,799 of 4,799.
+read, and it agrees with our spelling on 4,799 of 4,799. A shared object's *indirect*
+references point at pointer slots the loader fills, so `resolve.elf_image` applies the
+dynamic relocations first and answers a slot filled from another image by the symbol's
+own name, which is the mangling a descriptor's symbol carries; an anonymous context, the
+scope of a type declared inside a function, is spelled `(unknown context at $<address>)`
+as the runtime spells it. Over the 6.1.2 runtime that resolves 6,677 typerefs: 6,506
+spell what the reference spells for the spliced form, and the other 171 are names the
+reference cannot be given, because a fragment spliced into a name shifts the
+substitution indices and word substitutions around it — checked one by one.
 
 ⁂ Objective-C has no reference demangler, and barely a mangling: what there is comes from
 the compiler rather than the language, so the rules are transcribed from clang's
@@ -584,9 +592,10 @@ Run live against the reference, not replayed.
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
+| Swift 6.1.2 runtime typerefs, resolved through the dynamic relocations ✻ | 6,677 | 6,506 agree; 171 unspliceable |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 1,340,000 real symbols. Every row is exact except the seven marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
+About 1,340,000 real symbols. Every row is exact except the seven marked and the 6.1.2 typeref row, whose 171 are names the reference cannot be handed at all (✻), and on the seven every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks

@@ -73,6 +73,51 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Swift: a shared object's indirect symbolic references, read off the disk.** An
+  indirect reference points at a pointer slot the loader fills, and in a file the slot
+  holds zero with a `.rela.dyn` entry saying what goes there. `resolve.elf_image` now
+  applies the three relocation kinds that need no other image -- `RELATIVE`, and
+  `GLOB_DAT`/`ABS64` against a symbol the file defines -- and records, by slot, the
+  symbol each remaining one would be filled from: `Image.imports`. A slot the loader
+  would fill from another image is answered from that symbol's own name, because a
+  descriptor's symbol *is* the context's mangling with a suffix: `$s4demo5PointVMn` is
+  `4demo5PointV`, `$ss5ErrorMp` is `s5ErrorP` with the protocol letter put back, and a
+  parent the walk reaches through such a slot stands where the walk would have gone on.
+  Over the 6.1.2 runtime's 29 libraries, 3,526 indirect references -- a third of all
+  the typerefs holding a reference -- had come back empty; 71 still do, and the typerefs
+  that resolve end to end go from 2,936 to 6,677: 6,506 spell exactly what the
+  reference spells for the spliced-in form,
+  and the other 171 are forms the reference cannot be given at all, because splicing a
+  fragment into a name shifts its substitution indices and word substitutions -- each
+  checked by hand to be the splice and not the reading.
+- **Swift: an anonymous context spells as the runtime spells it.** The scope of a type
+  declared inside a function is a descriptor with no name, and the walk declined it.
+  The runtime's `_buildDemanglingForContext` names it "by its pointer identity", as
+  `(unknown context at $<hex>)`, and so does the resolver now, writing the
+  anonymous-context production `<parent> <identifier> y XZ` with the descriptor's
+  virtual address -- `Testing.(unknown context at $16150c).FilterItem` reads as the
+  reference reads the same fragment. A bound generic under one of these, `LockedState<()>
+  .(unknown context at $5084e8)._Buffer`, is a name the reference text demangler
+  refuses -- `demangleBoundGenericArgs` takes the context's first child for its parent,
+  which for this kind is the identifier -- and the runtime's builder gives an anonymous
+  context no arguments of its own; this follows the runtime, handing the list on to the
+  enclosing type. That is also what the mangler wrote: one list per declaration.
+- **Swift: a property-wrapped field's init accessor declares no generic parameters.**
+  The reference's `nodeConsumesGenericArgs` lists `PropertyWrappedFieldInitAccessor`
+  beside the backing initialiser and the init-from-projected-value; this library's copy
+  of the list lacked it, so a bound generic declared inside one --
+  `$s4main1SV1xSivpfF5InnerL_VySS_SiGD` -- took the outer argument list for the
+  accessor, found nothing a bound generic can be made of, and refused. Found reading the
+  reference's list line by line against ours.
+- **Five more accept rules in `tools/enumerate.py`, from a ten-fold mutation draw.**
+  `tools/mutate.py --count 200000` over two fresh seeds found seven divergences the
+  gate's draw had not: five D names carrying the `NkM` this now reads and `c++filt`
+  refuses; a pointer to member whose class is a function type, `MFivOE`, which the
+  three implementations read three ways; a pack named outside any expansion, where
+  they disagree by how many members they spell; a function returning a function, which
+  GNU refuses and LLVM reads; and `sizeof...` over a pack a mutation had corrupted.
+  None is a declaration, and each rule says why the reference's answer is not
+  evidence. Both draws now come back clean, as the gate's does.
 - **Swift: the whole 6.1.2 toolchain runtime, read against the reference.** Every
   symbol the 29 libraries a Swift toolchain ships define -- 135,492 of them, against
   48,368 from the 5.10 runtime the corpora were drawn from -- put to the reference built

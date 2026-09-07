@@ -16,7 +16,7 @@ import pathlib
 import pytest
 
 from demangle.schemes.swift import demangle_symbolic
-from demangle.schemes.swift.resolve import ContextResolver, Image
+from demangle.schemes.swift.resolve import ContextResolver, Image, _fragment_from_symbol, elf_image
 from demangle.schemes.swift.symbolic import (
     CONTEXT,
     DIRECT,
@@ -225,3 +225,177 @@ class TestTheImageResolver:
 
     def test_an_unmapped_address_declines(self):
         assert self.build().fragment(0xDEAD) is None
+
+
+class TestAnAnonymousContext:
+    """A type declared inside a function has for its context a descriptor that names
+    nothing. The runtime's `_buildDemanglingForContext` spells it by its pointer
+    identity, `(unknown context at $<hex>)`, and gives it no generic arguments of its
+    own; the same here, with the descriptor's virtual address.
+    """
+
+    def build(self):
+        import struct
+
+        blob = bytearray(0x100)
+        strings = 0x80
+
+        def put(at, values):
+            blob[at : at + 4 * len(values)] = b"".join(struct.pack("<i", v) for v in values)
+
+        blob[strings : strings + 5] = b"demo\0"
+        blob[strings + 5 : strings + 11] = b"Point\0"
+        put(0x10, [0x00000000, 0, strings - (0x10 + 8)])
+        # anonymous: flags kind 2, parent the module, no name
+        put(0x30, [0x00000002, 0x10 - (0x30 + 4)])
+        put(0x20, [0x00000011, 0x30 - (0x20 + 4), (strings + 5) - (0x20 + 8)])
+        return ContextResolver(Image([(0x1000, bytes(blob))]))
+
+    def test_the_fragment_is_the_anonymous_context_production(self):
+        assert self.build().fragment(0x1020) == "4demo5$1030yXZ5PointV"
+
+    def test_it_spells_as_the_runtime_spells_it(self):
+        """`$s4demo5$1030yXZ5PointVD` is what `swift-demangle` prints for the fragment."""
+        resolver = self.build()
+        spelled = demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: resolver.fragment(0x1020))
+        assert spelled == "demo.(unknown context at $1030).Point"
+
+    def test_generic_arguments_pass_through_it_to_the_enclosing_type(self):
+        """A real typeref from the 6.1.2 runtime: `_Buffer`, declared inside a method of
+        the generic `LockedState<State>`, bound with `State = ()`. The mangling carries
+        two lists, one per declaration, and an anonymous context is not one: the
+        reference text demangler takes its identifier for its parent and refuses, while
+        the runtime's builder hands the arguments on to `LockedState`.
+        """
+        fragment = "20FoundationEssentials11LockedStateV7$5084e8yXZ7_BufferC"
+        spelled = demangle_symbolic(bytes.fromhex("02494a0a007979745f47"), lambda ref, at: fragment)
+        assert spelled == "FoundationEssentials.LockedState<()>.(unknown context at $5084e8)._Buffer"
+
+    def test_a_module_takes_no_arguments(self):
+        """Nothing outside the anonymous context can take them, so the name is refused
+        as the reference refuses it."""
+        assert (
+            demangle_symbolic(bytes.fromhex("02494a0a007979745f47"), lambda ref, at: "4demo5$1018yXZ7_BufferC") is None
+        )
+
+
+class TestAnImportedDescriptor:
+    """A shared object's indirect references point at pointer slots the loader fills, and
+    a slot filled from *another* image holds nothing in the file. The relocation names
+    the symbol, and a descriptor's symbol is its own mangling with a suffix."""
+
+    @pytest.mark.parametrize(
+        ("symbol", "fragment"),
+        [
+            ("$s4demo5PointVMn", "4demo5PointV"),
+            ("_$s4demo5PointVMn", "4demo5PointV"),  # Mach-O's leading underscore
+            ("$s4demo5PointVMn@@SWIFT_6", "4demo5PointV"),  # a symbol version
+            ("$sSSMn", "SS"),
+            ("$ss5ErrorMp", "s5ErrorP"),  # a protocol needs its letter put back
+            ("$s20FoundationEssentials11FormatStyleMp", "20FoundationEssentials11FormatStyleP"),
+            ("$sSHMp", "SH"),  # already a type: `SHP` is nothing
+            ("$sScAMp", "ScA"),
+            ("$s5SwiftMXM", "5Swift"),
+            ("$sSiN", None),  # a metadata symbol, not a descriptor
+            ("$sMn", None),
+            ("_ZN4demo5PointE", None),
+        ],
+    )
+    def test_the_fragment_a_symbol_carries(self, symbol, fragment):
+        assert _fragment_from_symbol(symbol) == fragment
+
+    def test_an_empty_slot_is_answered_by_its_import(self):
+        # An indirect reference whose target slot holds zero; the import names it.
+        blob = bytes(0x20)
+        image = Image([(0x1000, blob)], imports={0x1010: "$ss5ErrorMp"})
+        resolver = ContextResolver(image)
+        # kind 2: indirect context; the offset field sits at 1, the slot 0x1010 is
+        # 0x0F past it.
+        raw = b"\x02\x0f\x00\x00\x00_p"
+        assert demangle_symbolic(raw, lambda ref, at: resolver(ref, 0x1001 + ref.at - 1)) == "Swift.Error"
+
+    def test_an_empty_slot_with_no_import_declines(self):
+        resolver = ContextResolver(Image([(0x1000, bytes(0x20))]))
+        assert demangle_symbolic(b"\x02\x0f\x00\x00\x00_p", lambda ref, at: resolver(ref, 0x1001)) is None
+
+    def test_an_imported_parent_stands_where_the_walk_would_have_gone_on(self):
+        """A nested type whose enclosing type lives in another image: the chain stops
+        at a parent slot the loader would fill, and the import's mangling is the parent's.
+        """
+        import struct
+
+        blob = bytearray(0x100)
+        blob[0x80:0x86] = b"Inner\0"
+        # struct: kind 17, parent an *indirect* relative pointer (low bit) to the slot at
+        # 0x40, which holds zero; name at 0x80
+        blob[0x20:0x2C] = b"".join(struct.pack("<i", v) for v in [0x11, (0x40 - 0x24) | 1, 0x80 - 0x28])
+        image = Image([(0x1000, bytes(blob))], imports={0x1040: "$s4demo5OuterVMn"})
+        assert ContextResolver(image).fragment(0x1020) == "4demo5OuterV5InnerV"
+
+
+class TestReadingAnElfImage:
+    """A shared object assembled by hand: one `PT_LOAD`, one `PT_DYNAMIC`, and a
+    relocation table holding a `RELATIVE` entry, a `GLOB_DAT` against a symbol the file
+    defines, and one against a symbol it imports."""
+
+    def build(self):
+        import struct
+
+        # Layout, all in one segment at virtual 0x1000 = file offset 0:
+        #   0x000 ELF header, 0x040 two program headers
+        #   0x100 dynamic section, 0x180 .rela.dyn (three entries)
+        #   0x200 .dynsym (two entries: null, one symbol), 0x240 .dynstr
+        #   0x300 three pointer slots
+        data = bytearray(0x400)
+        data[0:4] = b"\x7fELF"
+        data[4] = 2  # 64-bit
+        data[5] = 1  # little-endian
+        struct.pack_into("<H", data, 0x12, 62)  # x86-64
+        struct.pack_into("<Q", data, 0x20, 0x40)  # e_phoff
+        struct.pack_into("<H", data, 0x36, 0x38)  # e_phentsize
+        struct.pack_into("<H", data, 0x38, 2)  # e_phnum
+        # PT_LOAD: offset 0, vaddr 0x1000, filesz 0x400
+        struct.pack_into("<IIQQQQQQ", data, 0x40, 1, 5, 0, 0x1000, 0x1000, 0x400, 0x400, 0x1000)
+        # PT_DYNAMIC: offset 0x100, vaddr 0x1100, filesz 0x80
+        struct.pack_into("<IIQQQQQQ", data, 0x78, 2, 6, 0x100, 0x1100, 0x1100, 0x80, 0x80, 8)
+        dynamic = [(7, 0x1180), (8, 3 * 24), (9, 24), (6, 0x1200), (11, 24), (5, 0x1240), (0, 0)]
+        for index, (tag, value) in enumerate(dynamic):
+            struct.pack_into("<QQ", data, 0x100 + 16 * index, tag, value)
+        # symbol 1: `$s4demo5OuterVMn`, defined at 0x1020; symbol 2: imported
+        data[0x240 : 0x240 + 1] = b"\0"
+        data[0x241 : 0x241 + 17] = b"$s4demo5OuterVMn\0"
+        data[0x252 : 0x252 + 12] = b"$ss5ErrorMp\0"
+        struct.pack_into("<IBBHQQ", data, 0x200 + 24, 1, 0x12, 0, 7, 0x1020, 0)
+        struct.pack_into("<IBBHQQ", data, 0x200 + 48, 0x12, 0x12, 0, 0, 0, 0)
+        # relocations: RELATIVE at 0x1300 with addend 0x1234; GLOB_DAT at 0x1308 against
+        # symbol 1; GLOB_DAT at 0x1310 against symbol 2
+        struct.pack_into("<QQq", data, 0x180, 0x1300, 8, 0x1234)
+        struct.pack_into("<QQq", data, 0x198, 0x1308, (1 << 32) | 6, 0)
+        struct.pack_into("<QQq", data, 0x1B0, 0x1310, (2 << 32) | 6, 0)
+        return elf_image(bytes(data))
+
+    def test_a_relative_slot_takes_its_addend(self):
+        assert self.build().read(0x1300, 8) == (0x1234).to_bytes(8, "little")
+
+    def test_a_slot_against_a_defined_symbol_takes_its_address(self):
+        assert self.build().read(0x1308, 8) == (0x1020).to_bytes(8, "little")
+
+    def test_a_slot_against_an_import_stays_empty_and_is_named(self):
+        image = self.build()
+        assert image.read(0x1310, 8) == bytes(8)
+        assert image.imports == {0x1310: "$ss5ErrorMp"}
+
+    def test_an_image_without_a_dynamic_section_has_no_imports(self):
+        import struct
+
+        data = bytearray(0x80)
+        data[0:4] = b"\x7fELF"
+        data[4] = 2
+        data[5] = 1
+        struct.pack_into("<Q", data, 0x20, 0x40)
+        struct.pack_into("<H", data, 0x36, 0x38)
+        struct.pack_into("<H", data, 0x38, 1)
+        struct.pack_into("<IIQQQQQQ", data, 0x40, 1, 5, 0, 0x1000, 0x1000, 0x80, 0x80, 0x1000)
+        image = elf_image(bytes(data))
+        assert image.imports == {}
+        assert image.read(0x1000, 4) == b"\x7fELF"

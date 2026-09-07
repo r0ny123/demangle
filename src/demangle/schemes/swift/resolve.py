@@ -24,6 +24,7 @@ whole of it. The check that it is right is that the fragment demangles to the sa
 the type carries in the symbol table.
 """
 
+import re
 import struct
 
 from .symbolic import CONTEXT, DIRECT, INDIRECT
@@ -44,6 +45,8 @@ _MODULE = 0
 _MODULE_LETTER = ""
 _EXTENSION = 1
 _ANONYMOUS = 2
+#: Stands for "this component is an anonymous context" in a built chain; see `fragment`.
+_ANONYMOUS_MARK = "XZ"
 _PROTOCOL = 3
 
 #: Type kinds, and the letter each is written with in a mangled name.
@@ -68,12 +71,17 @@ class Image:
     `read`, and everything else here works unchanged.
     """
 
-    __slots__ = ("_segments",)
+    __slots__ = ("_segments", "imports")
 
-    def __init__(self, segments):
+    def __init__(self, segments, imports=None):
         #: `(address, bytes)` pairs, in no particular order. Overlaps are the caller's
         #: business; the first that contains an address answers for it.
         self._segments = tuple(segments)
+        #: Pointer slots the loader would fill from *another* image, by address, each
+        #: naming the symbol it would be filled from. A file cannot hold the address,
+        #: but a descriptor's symbol carries its mangled name -- `$s4demo5PointVMn` --
+        #: which is all a resolver wants from it. Empty for an image nothing imports into.
+        self.imports = dict(imports or {})
 
     def read(self, address, length):
         """`length` bytes at virtual `address`, or None if they are not all mapped."""
@@ -131,6 +139,7 @@ def elf_image(data):
     entry_size = _field(_U16, data, 0x36, "the program header entry size")
     count = _field(_U16, data, 0x38, "the program header count")
     segments = []
+    dynamic = None
     for index in range(count):
         at = program_offset + index * entry_size
         # A header the file is too short to hold ends the walk rather than raising: a
@@ -138,13 +147,137 @@ def elf_image(data):
         # answering from the segments that *are* there is more useful than refusing.
         if at + 0x38 > len(data):
             break
-        if _U32.unpack_from(data, at)[0] != 1:  # PT_LOAD
-            continue
+        kind = _U32.unpack_from(data, at)[0]
         offset = _U64.unpack_from(data, at + 0x08)[0]
-        vaddr = _U64.unpack_from(data, at + 0x10)[0]
         filesz = _U64.unpack_from(data, at + 0x20)[0]
-        segments.append((vaddr, data[offset : offset + filesz]))
-    return Image(segments)
+        if kind == 2:  # PT_DYNAMIC
+            dynamic = data[offset : offset + filesz]
+        if kind != 1:  # PT_LOAD
+            continue
+        vaddr = _U64.unpack_from(data, at + 0x10)[0]
+        segments.append((vaddr, bytearray(data[offset : offset + filesz])))
+    imports = _apply_dynamic_relocations(data, segments, dynamic) if dynamic else {}
+    return Image([(vaddr, bytes(blob)) for vaddr, blob in segments], imports)
+
+
+#: Relocation types by `e_machine`: `(RELATIVE, GLOB_DAT, ABS64)`. The first fills a slot
+#: with its addend; the other two fill it with a symbol's address, which the file holds
+#: when the symbol is defined in it and does not when it is imported.
+_RELOCATIONS_BY_MACHINE = {62: (8, 6, 1), 183: (1027, 1025, 257)}  # x86-64, AArch64
+
+
+def _segment_slice(segments, address, length):
+    """The segment and offset holding `length` bytes at `address`, or None."""
+    for vaddr, blob in segments:
+        offset = address - vaddr
+        if offset >= 0 and offset + length <= len(blob):
+            return blob, offset
+    return None
+
+
+def _apply_dynamic_relocations(data, segments, dynamic):
+    """Fill in the pointer slots the loader would fill, and name the ones it cannot.
+
+    An *indirect* symbolic reference points at a pointer to its descriptor, and in a
+    shared object that pointer is not in the file: the slot holds zero and an entry in
+    `.rela.dyn` says what the loader writes there. Read off the disk, every such
+    reference came back unresolved -- 3,526 of the Swift 6.1.2 runtime's typerefs, a
+    third of those holding a reference at all. This walks `DT_RELA` and does what the
+    loader does for the three kinds that need no other image: a `RELATIVE` slot takes
+    its addend, and a slot relocated by a symbol the file defines takes that symbol's
+    address. A slot relocated by a symbol the file *imports* is returned by address with
+    the symbol's name, because the name is a mangled fragment in its own right.
+    """
+    machine = _U16.unpack_from(data, 0x12)[0]
+    kinds = _RELOCATIONS_BY_MACHINE.get(machine)
+    if kinds is None:
+        return {}
+    relative, glob_dat, abs64 = kinds
+    tags = {}
+    for at in range(0, len(dynamic) - 15, 16):
+        tag = _U64.unpack_from(dynamic, at)[0]
+        if tag == 0:  # DT_NULL
+            break
+        tags.setdefault(tag, _U64.unpack_from(dynamic, at + 8)[0])
+    # DT_RELA 7, DT_RELASZ 8, DT_RELAENT 9; DT_SYMTAB 6, DT_SYMENT 11; DT_STRTAB 5
+    if 7 not in tags or 8 not in tags:
+        return {}
+    entry = tags.get(9) or 24
+    table = _segment_slice(segments, tags[7], tags[8])
+    if table is None:
+        return {}
+    symbols = _segment_slice(segments, tags[6], 0) if 6 in tags else None
+    strings = _segment_slice(segments, tags[5], 0) if 5 in tags else None
+    symbol_size = tags.get(11) or 24
+    imports = {}
+    blob, start = table
+    for at in range(start, start + tags[8] - entry + 1, entry):
+        r_offset = _U64.unpack_from(blob, at)[0]
+        r_info = _U64.unpack_from(blob, at + 8)[0]
+        addend = _U64.unpack_from(blob, at + 16)[0]
+        kind = r_info & 0xFFFFFFFF
+        if kind == relative:
+            value = addend
+        elif kind in (glob_dat, abs64) and symbols is not None and strings is not None:
+            index = r_info >> 32
+            symbol = symbols[1] + index * symbol_size
+            if symbol + symbol_size > len(symbols[0]):
+                continue
+            st_name = _U32.unpack_from(symbols[0], symbol)[0]
+            st_shndx = _U16.unpack_from(symbols[0], symbol + 6)[0]
+            st_value = _U64.unpack_from(symbols[0], symbol + 8)[0]
+            if st_shndx != 0 and st_value:
+                value = (st_value + addend) & 0xFFFFFFFFFFFFFFFF
+            else:
+                if addend == 0:
+                    stop = strings[0].find(b"\0", strings[1] + st_name)
+                    if stop > 0:
+                        imports[r_offset] = strings[0][strings[1] + st_name : stop].decode("latin-1")
+                continue
+        else:
+            continue
+        slot = _segment_slice(segments, r_offset, 8)
+        if slot is not None:
+            slot[0][slot[1] : slot[1] + 8] = _U64.pack(value)
+    return imports
+
+
+#: The descriptor symbols whose name is a context's own mangling with a suffix: a
+#: nominal type descriptor, a protocol descriptor, a module descriptor.
+_DESCRIPTOR_SUFFIXES = ("Mn", "Mp", "MXM")
+
+#: A protocol the standard library abbreviates to a letter -- `SH` for `Swift.Hashable`,
+#: `ScA` for `_Concurrency.Actor` -- which is already a type on its own.
+_STANDARD_PROTOCOL = re.compile(r"Sc?[A-Za-z]")
+
+
+def _fragment_from_symbol(symbol):
+    """The mangled fragment a descriptor's symbol name carries, or None.
+
+    `$s4demo5PointVMn` names the nominal type descriptor of `demo.Point`, and
+    `4demo5PointV` is what a reference to it stands for. Only the three descriptor
+    kinds a context can be are read; a symbol version and Mach-O's leading underscore
+    are stripped first.
+
+    A protocol descriptor's name has no type letter of its own -- `$ss5ErrorMp` is
+    `s5Error`, a module and an identifier -- so the letter is put back: `s5ErrorP` is
+    the protocol as a type, which is what the `_p` or `Qz` that follows a reference to
+    one expects to find. Not for a protocol the standard library abbreviates, `$sSHMp`:
+    `SH` is a type already, and `SHP` is nothing.
+    """
+    name = symbol.split("@", 1)[0]
+    if name.startswith("_$"):
+        name = name[1:]
+    if not name.startswith(("$s", "$S")):
+        return None
+    body = name[2:]
+    for suffix in _DESCRIPTOR_SUFFIXES:
+        if body.endswith(suffix) and len(body) > len(suffix):
+            fragment = body[: -len(suffix)]
+            if suffix == "Mp" and not _STANDARD_PROTOCOL.fullmatch(fragment):
+                fragment += "P"
+            return fragment
+    return None
 
 
 #: Smallest a load command can be: the command word and its size. A command claiming
@@ -213,18 +346,31 @@ class ContextResolver:
             raw = self._image.read(target, self._pointer_size)
             if raw is None:
                 return None
+            slot = target
             target = int.from_bytes(raw, "little")
             if not target:
-                return None
+                # An empty slot is one the loader fills from another image; the symbol
+                # it fills it from names the descriptor, and so the fragment.
+                imported = self._imported(slot)
+                return imported
         elif reference.directness != DIRECT:
             return None
         return self.fragment(target)
+
+    def _imported(self, slot):
+        """The fragment for a pointer slot an import would fill, or None."""
+        imports = getattr(self._image, "imports", None)
+        if not imports:
+            return None
+        symbol = imports.get(slot)
+        return _fragment_from_symbol(symbol) if symbol else None
 
     def fragment(self, descriptor):
         """The mangled fragment naming the context descriptor at `descriptor`."""
         chain = []
         seen = set()
         at = descriptor
+        prefix = None
         while at:
             if at in seen:
                 # A parent chain that loops is a corrupt image, not a name.
@@ -235,6 +381,19 @@ class ContextResolver:
                 return None
             (flags,) = _U32.unpack_from(header, 0)
             kind = flags & 0x1F
+            if kind == _ANONYMOUS:
+                # An anonymous context: the scope of a type declared inside a function
+                # or a closure. Its descriptor names nothing, and the runtime's
+                # `_buildDemanglingForContext` spells it "by its pointer identity":
+                # `(unknown context at $<address>)`, the address in hex. The same here,
+                # with the descriptor's virtual address, which is what the runtime's
+                # is short of relocation -- and the one thing the file can say about
+                # a context it was not given a name for.
+                chain.append((_ANONYMOUS_MARK, f"${at:x}".encode("ascii")))
+                at, prefix = self._parent(at + 4)
+                if prefix is not None:
+                    break
+                continue
             identity = self._identity(at + 8, header[8:12], flags)
             if identity is None:
                 return None
@@ -246,23 +405,29 @@ class ContextResolver:
                 # A protocol descriptor's name is never followed by import info, and its
                 # own letter is `P`.
                 chain.append(("P", name))
-                at = self._parent(at + 4)
+                at, prefix = self._parent(at + 4)
+                if prefix is not None:
+                    break
                 continue
             letter = _TYPE_ALIAS if namespace == _C_TYPE_DEFINITION else _TYPE_LETTERS.get(kind)
             if letter is None:
-                # An extension or an anonymous context. Each has a spelling of its own
-                # that this does not write, and writing the wrong one would be worse
-                # than declining: an extension's is its extended type, which is itself a
-                # mangled name that would have to be read out of the descriptor.
+                # An extension, or a kind this does not know. An extension's spelling is
+                # its extended type, which is itself a mangled name that would have to
+                # be read out of the descriptor -- references and all -- and writing
+                # the wrong one would be worse than declining.
                 return None
             chain.append((letter, name))
-            at = self._parent(at + 4)
+            at, prefix = self._parent(at + 4)
+            if prefix is not None:
+                break
         else:
             return None
 
-        if not chain or chain[-1][0] != _MODULE_LETTER:
+        if prefix is None and (not chain or chain[-1][0] != _MODULE_LETTER):
             return None
-        pieces = []
+        # A parent the loader would fill in from another image: its symbol's own
+        # mangling stands where the walk would have gone on.
+        pieces = [prefix] if prefix else []
         for letter, name in reversed(chain):
             if not name.isascii():
                 # Swift spells a non-ASCII identifier in punycode, and the descriptor
@@ -270,7 +435,12 @@ class ContextResolver:
                 # would be a mangling nothing can read back, so decline instead.
                 return None
             pieces.append(f"{len(name)}{name.decode('ascii')}")
-            if letter != _MODULE_LETTER:
+            if letter == _ANONYMOUS_MARK:
+                # `<context> <identifier> <empty type list> XZ`, the anonymous-context
+                # production, with the generic arguments the runtime would collect left
+                # empty: a file has none to collect.
+                pieces.append("yXZ")
+            elif letter != _MODULE_LETTER:
                 pieces.append(letter)
         return "".join(pieces)
 
@@ -311,17 +481,25 @@ class ContextResolver:
         return name, namespace
 
     def _parent(self, address):
-        """Follow a relative *indirectable* pointer: the low bit says which it is."""
+        """Follow a relative *indirectable* pointer: the low bit says which it is.
+
+        Returns `(address, None)` for a parent in this image, `(None, fragment)` for one
+        the loader would import -- the symbol's mangling is the parent's -- and
+        `(None, None)` for one that cannot be followed.
+        """
         raw = self._image.read(address, 4)
         if raw is None:
-            return None
+            return None, None
         (offset,) = _I32.unpack_from(raw, 0)
         if offset == 0:
-            return None
+            return None, None
         if offset & 1:
             target = address + (offset & ~1)
             pointer = self._image.read(target, self._pointer_size)
             if pointer is None:
-                return None
-            return int.from_bytes(pointer, "little") or None
-        return address + offset
+                return None, None
+            parent = int.from_bytes(pointer, "little")
+            if parent:
+                return parent, None
+            return None, self._imported(target)
+        return address + offset, None

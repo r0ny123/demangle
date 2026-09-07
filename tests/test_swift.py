@@ -596,6 +596,19 @@ class TestEveryContextNodeIsAContext:
         assert demangle.demangle_strict(mangled, language="swift") == expected
         assert demangle.parse(mangled, language="swift").spell() == expected
 
+    def test_the_init_accessor_declares_no_generic_parameters(self):
+        """The reference's `nodeConsumesGenericArgs` lists it beside the backing
+        initialiser and the init-from-projected-value: a bound generic declared inside
+        one hands its outer argument list on to the enclosing type. It was missing from
+        this library's copy of the list, so the accessor took the list itself and, being
+        nothing a bound generic can be made of, refused the name.
+        """
+        for letter in "FWP":
+            mangled = f"$s4main1SV1xSivpf{letter}5InnerL_VySS_SiGD"
+            assert demangle.demangle_strict(mangled, language="swift").endswith(
+                "of main.S<Swift.String>.x : Swift.Int<Swift.Int>"
+            )
+
 
 class TestNumbersAsTheReferenceReadsThem:
     """A run of digits is read into the reference's own number type, and what does not

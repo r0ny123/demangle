@@ -253,8 +253,7 @@ def replay(paths, style, language, show, quiet, overrides=True):
 def live(names, tool, style, language, show):
     if not shutil.which(tool):
         sys.exit(f"reference tool {tool!r} not installed")
-    result = subprocess.run([tool], input="\n".join(names), capture_output=True, text=True)
-    expected = result.stdout.splitlines()
+    expected = _lines_from(subprocess.run([tool], input=_as_input(names), capture_output=True).stdout)
     if len(expected) != len(names):
         sys.exit("reference tool returned a different number of lines than it was given")
 
@@ -272,6 +271,25 @@ def live(names, tool, style, language, show):
     readable = sum(1 for m, r in zip(names, expected, strict=True) if r != m)
     print(f"\n{readable - disagreements}/{readable} agree with {tool}")
     return 0 if disagreements == 0 else 1
+
+
+def _as_input(names):
+    return ("\n".join(names) + "\n").encode("utf-8", "surrogateescape")
+
+
+def _lines_from(stdout):
+    """One entry per newline, and *only* per newline.
+
+    Bytes rather than text mode, and `split` rather than `splitlines`, because each of
+    those breaks a line on more than `\n`: text mode turns a carriage return into a line
+    break, and `splitlines` breaks on a form feed or a vertical tab too. A pre-Itanium
+    template argument of type `char` is spelled as the raw byte -- `foo<'\r'>(void)` --
+    so either would put every answer after it out of step with its name.
+    """
+    lines = stdout.decode("utf-8", "surrogateescape").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
 
 
 def _one_line_per_name(tool, lines, count):
@@ -316,8 +334,8 @@ def cross(names, tools, style, language, show):
 
     outputs, styles = {}, {}
     for tool, tool_style in parsed:
-        result = subprocess.run([tool], input="\n".join(names) + "\n", capture_output=True, text=True)
-        outputs[tool] = _one_line_per_name(tool, result.stdout.splitlines(), len(names))
+        result = subprocess.run([tool], input=_as_input(names), capture_output=True)
+        outputs[tool] = _one_line_per_name(tool, _lines_from(result.stdout), len(names))
         styles[tool] = tool_style
     order = [tool for tool, _ in parsed]
 

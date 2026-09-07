@@ -1162,6 +1162,20 @@ class Demangler:
 
         if not nominal.children:
             return None
+        if nominal.kind == "AnonymousContext":
+            # The scope of a type declared inside a function, reached through a
+            # symbolic reference. The reference stops here: it takes the context's
+            # first child for its parent, which for this kind is the identifier, and
+            # refuses. The runtime's own builder, `_buildDemanglingForContext`, gives
+            # an anonymous context no generic arguments of its own -- they belong to
+            # whatever encloses it -- and that is what the mangler wrote: one list per
+            # declaration, and this is not one. So the arguments pass through to the
+            # parent, which is the second child, and `LockedState<()>.(unknown context
+            # at $5084e8)._Buffer` is spelled as the runtime would spell it.
+            bound_parent = self.demangle_bound_generic_args(nominal.child(1), lists, at)
+            if bound_parent is None:
+                return None
+            return self.with_children(nominal.kind, nominal.first, bound_parent, *nominal.children[2:])
         context = nominal.first
         consumes = nominal.kind not in _DOES_NOT_CONSUME_GENERIC_ARGS
         args = lists[at]
@@ -2625,6 +2639,7 @@ _DOES_NOT_CONSUME_GENERIC_ARGS = frozenset(
         "DefaultArgumentInitializer",
         "Initializer",
         "PropertyWrapperBackingInitializer",
+        "PropertyWrappedFieldInitAccessor",
         "PropertyWrapperInitFromProjectedValue",
         "Static",
     ]
