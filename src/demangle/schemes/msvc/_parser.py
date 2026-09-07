@@ -1711,16 +1711,19 @@ class _Demangler:
             if not is_vcall:
                 raise _Bail
             slot = self.templateInteger()
-            # the slot is the whole of it: neither the qualifier nor the convention may be
-            # anything else, so "$B7DA" and "$B7FAA" are not names
+            # After the slot, one `A` -- the reference consumes it as a literal, so
+            # `$B7DA` and `$B7FAA` are not names -- and then a calling convention, read
+            # as any function's is: `$B7AE` is a `__thiscall` vcall thunk, which is what
+            # a 32-bit build writes for every one of them. This took the convention for a
+            # second literal `A` and refused every vcall thunk Boost's x86 libraries hold.
             self.expect("A")
-            self.expect("A")
+            convention = self.callingConvention()
             if not self.nested and not self.eof():
                 raise _Bail
-            # The convention is fixed rather than read, but it is still a convention, so
-            # both the flag for one and the flag for every Microsoft keyword drop it:
-            # `[thunk]: Base::`vcall'{8, {flat}}`.
-            convention = self.options.keyword("__cdecl") if self.options.calling_convention else ""
+            # It is the declaration's own convention, so the flag for one drops it as
+            # the flag for every Microsoft keyword does: `[thunk]: Base::`vcall'{8, {flat}}`.
+            if not self.options.calling_convention:
+                convention = ""
             convention = f"{convention} " if convention else ""
             return Raw(f"[thunk]: {convention}{name}{{{slot}, {{flat}}}}")
         if code == "R":

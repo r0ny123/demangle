@@ -1392,6 +1392,31 @@ class MsvcBoostBuildTestSuite(unittest.TestCase):
             with self.subTest(mangled=name):
                 self.assertEqual(demangle.demangle(name, language="msvc"), name)
 
+    def test_a_vcall_thunk_carries_a_calling_convention(self):
+        """`??_9C@@$B<slot>A<convention>`: after the slot, a literal `A` and then a
+        convention read as any function's is. A 32-bit build writes `E`, `__thiscall`,
+        for every one of them, and this took that letter for a second literal `A` --
+        `demangleVcallThunkNode` consumes one `A` and then `demangleCallingConvention`
+        -- so the three in Boost's x86 test framework were refused.
+        """
+        cases = [
+            (
+                "??_9test_observer@unit_test@boost@@$BA@AE",
+                "[thunk]: __thiscall boost::unit_test::test_observer::`vcall'{0, {flat}}",
+            ),
+            ("??_9A@@$B7AE", "[thunk]: __thiscall A::`vcall'{8, {flat}}"),
+            ("??_9A@@$B7AA", "[thunk]: __cdecl A::`vcall'{8, {flat}}"),
+            ("??_9A@@$B7AQ", "[thunk]: __vectorcall A::`vcall'{8, {flat}}"),
+            # A convention the reference spells with nothing at all.
+            ("??_9A@@$B7AZ", "[thunk]: A::`vcall'{8, {flat}}"),
+        ]
+        for mangled, expected in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+        for name in ("??_9A@@$B7DA", "??_9A@@$B7FAA", "??_9A@@$B7A", "??_9A@@$B7AEX"):
+            with self.subTest(mangled=name):
+                self.assertEqual(demangle.demangle(name, language="msvc"), name)
+
     def test_a_hashed_name_is_still_a_scope(self):
         """`??@<hash>@` is a decorated name too long for the linker, replaced by its
         MD5, and nothing of the original is in the symbol: the spelling is the name

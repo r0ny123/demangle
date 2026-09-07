@@ -73,6 +73,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a vcall thunk's calling convention.** `??_9C@@$B<slot>A<convention>`: after
+  the slot the reference consumes one literal `A` and then reads a calling convention
+  the way it reads any function's. This took the convention for a second literal `A`,
+  which only ever matched `__cdecl`, so a 32-bit build's vcall thunks -- `__thiscall`,
+  every one of them -- were refused. Found in the second batch of Boost 1.84's NuGet
+  packages, seventeen more `boost_*-vc143` libraries with 23,340 names the first twelve
+  had not: three of them are the vcall thunks of `boost::unit_test`'s observer and
+  fixture classes, compiled for x86. With those, all 122,162 names the twenty-nine
+  packages define that the reference reads are read the same here.
 - **MSVC: a deduced return type, and a hashed name as a scope.** Boost 1.84's twelve
   `boost_*-vc143` NuGet packages define 98,822 decorated names, the first MSVC 14.3
   output put to this scheme after the LLVM release's. Two shapes were new. `?A_P` and
