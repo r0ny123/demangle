@@ -68,7 +68,7 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #: calls `std::format` carries. The eighteenth is the same header compiled by Clang,
 #: where the entry resolves to `double` and the parameter comes out
 #: `basic_string<double>&`, a type libstdc++ does not instantiate.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 20, 20
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 21, 21
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are
