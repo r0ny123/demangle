@@ -73,6 +73,22 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a spelling wider than eight times its name.** The rendered result is bounded
+  relative to the name as well as absolutely, because a back-reference is two characters
+  standing for a whole rendered type and a name can be built whose spelling doubles at
+  every level. The relative bound stood at eight times the name, and a compiler passes
+  it: over 1,025,085 decorated names from LLVM, Boost, ITK, OpenCV and Qt the widest
+  spelling is twelve times its name -- `std::_Iterator012<...>::operator=`, 188
+  characters whose six `U32@`s each stand for a 200-character `std::pair` -- and 80 pass
+  eight, every one refused, among them the cleanup-block variables inside such functions,
+  `?dtor$0@?0??...@4HA`. The bound is thirty-two times now, still under `max_output`.
+  Found in 471,881 names from the ITK 5.0, OpenCV 5, Qt 5.9, libzmq 4.3, leveldb and
+  restbed NuGet packages, the largest MSVC sweep yet: with the bound moved, every name
+  the reference reads is read the same here, the exceptions being what this refuses by
+  policy -- 3,662 run-time-check data symbols, `$rtcFrameData`, `$rtcName$N` and
+  `$rtcVarDesc` after a function's whole name, which the reference reads as the
+  function -- and 155 `$initializer$` variables the reference misreads, taking the
+  identifier's first letter for an operator code.
 - **MSVC: a vcall thunk's calling convention.** `??_9C@@$B<slot>A<convention>`: after
   the slot the reference consumes one literal `A` and then reads a calling convention
   the way it reads any function's. This took the convention for a second literal `A`,

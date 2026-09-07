@@ -1451,3 +1451,47 @@ class MsvcBoostBuildTestSuite(unittest.TestCase):
             demangle.demangle("?x@?1???@0186a6a6b637290d321170469f0c2292@4HA", language="msvc"),
             "?x@?1???@0186a6a6b637290d321170469f0c2292@4HA",
         )
+
+
+class MsvcSpellingWiderThanEightTimesItsNameTestSuite(unittest.TestCase):
+    """The rendered result was bounded at eight times the name's length, and a name a
+    compiler writes can pass that: a back-reference is two characters standing for a
+    whole rendered type. Over 1,025,085 names from LLVM, Boost, ITK, OpenCV and Qt the
+    widest is twelve times, and 80 pass eight; every one was refused. The bound is now
+    thirty-two times, still under the absolute `max_output`.
+    """
+
+    NAME = (
+        "??4?$_Iterator012@Ubidirectional_iterator_tag@std@@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@"
+        "V?$allocator@D@2@@std@@V12@@2@HPBU32@ABU32@U_Iterator_base12@2@@std@@QAEAAU01@ABU01@@Z"
+    )
+
+    def test_the_widest_real_spelling_reads(self):
+        """From OpenCV 5's static libraries, x86: 188 characters whose spelling is 2,217,
+        as `llvm-undname` prints it -- six `U32@`s, each a 200-character `std::pair`."""
+        spelled = demangle_msvc_symbol(self.NAME)
+        self.assertEqual(len(spelled), 2217)
+        self.assertTrue(spelled.startswith("public: struct std::_Iterator012<struct std::bidirectional_iterator_tag, "))
+        self.assertTrue(spelled.endswith("struct std::_Iterator_base12> const &)"))
+        self.assertEqual(
+            spelled.count("class std::basic_string<char, struct std::char_traits<char>, class std::allocator<char>>"),
+            18,
+        )
+
+    def test_a_cleanup_block_inside_such_a_function_reads_too(self):
+        """`?dtor$0@?0??<function>@4HA`, which read for a short function and was refused
+        for a long one, its scope being the whole spelling of that function."""
+        self.assertEqual(demangle_msvc_symbol("?dtor$0@?0??f@@YAXXZ@4HA"), "int `void __cdecl f(void)'::`1'::dtor$0")
+        nested = demangle_msvc_symbol("?dtor$0@?0?" + self.NAME + "@4HA")
+        self.assertTrue(nested.startswith("int `public: struct _Iterator012<struct std::bidirectional_iterator_tag, "))
+        self.assertTrue(nested.endswith("'::`1'::dtor$0"))
+
+    def test_the_bound_still_holds(self):
+        """A spelling that doubles at every level is stopped by the relative bound
+        before the absolute one, and the name is refused rather than printed in part."""
+        from demangle.core.errors import LimitExceeded
+
+        # each level names a class whose two arguments are the previous level, twice
+        name = "?x@@3V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$B@HH@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@A"
+        with self.assertRaises(LimitExceeded):
+            demangle.demangle_strict(name, language="msvc")

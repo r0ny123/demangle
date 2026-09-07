@@ -425,7 +425,15 @@ class _Demangler:
         # interpreter frames and letting a caller past it would make the answer depend
         # on how deep its own stack already was. A caller may only tighten.
         self.max_depth = min(limits.max_depth, self.MAX_DEPTH)
-        self.max_render = min(limits.max_output, 8 * len(mangled) + 256)
+        # The rendered result is bounded relative to the name as well as absolutely,
+        # because a back-reference costs two characters and stands for a whole rendered
+        # type, so a name can be built whose spelling doubles at every nesting level. Real
+        # names do grow that way, though not far: over 1,025,085 decorated names from
+        # LLVM, Boost, ITK, OpenCV and Qt, the widest spelling is twelve times its name --
+        # `std::_Iterator012<...>::operator=`, whose six `U32@`s each stand for a
+        # 200-character pair -- and 80 pass eight times, which is where this bound stood
+        # and refused all 80. Thirty-two times is well clear of what a compiler writes.
+        self.max_render = min(limits.max_output, 32 * len(mangled) + 256)
 
     def eof(self):
         return self.pos >= len(self.text)

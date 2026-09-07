@@ -546,12 +546,20 @@ shape above, where the declaration in libstdc++'s own header says this is right 
 is not — so what is left is not a gap. `c++filt` refuses 673 of those 217,730 outright,
 and this reads 457 of them.
 
-⁑ 436,545 of the 436,644 read exactly as `llvm-undname` reads them, and none reads
-differently. Of the 99 left, 91 are MD5-hashed names, which both hand back as they
-stand; one runs past this library's output bound; six are local statics carrying a
-`.0`-style suffix, which the reference reads by stopping where the name ends and
-saying nothing about the rest -- it reads `?x@@3HAjunk` as `int x` -- and this
-refuses rather than drop; and one is a `?filt$0` exception-filter name both hand back.
+⁑ 436,546 of the 436,644 read exactly as `llvm-undname` reads them, and none reads
+differently. Of the 98 left, 91 are MD5-hashed names, which both hand back as they
+stand; six are local statics carrying a `.0`-style suffix, which the reference reads by
+stopping where the name ends and saying nothing about the rest -- it reads `?x@@3HAjunk`
+as `int x` -- and this refuses rather than drop; and one is a `?filt$0` exception-filter
+name both hand back.
+Of the 471,881 from ITK, OpenCV, Qt 5, libzmq, leveldb and restbed, 467,844 read exactly
+and none differently; 151 carry the deduced return type the release refuses; 3,662 are a
+debug build's run-time-check data, `$rtcFrameData`, `$rtcName$N` and `$rtcVarDesc` after
+a function's whole decorated name, which the reference reads as the function and this
+refuses rather than drop, as with `.0`; 155 are `$initializer$` variables the reference
+misreads -- `??ALL$initializer$@DataSpace@H5@@...` comes back as
+`H5::DataSpace::LL$initializer$::operator[]`, the identifier's first letter taken for an
+operator code -- and this refuses; and 67 are MD5-hashed names.
 Of Boost's 122,162, 116,870 read exactly as `llvm-undname` reads them and none reads
 differently; 722 carry a deduced return type, `?A_P` for `auto` and `?A_T` for
 `decltype(auto)`, which the release refuses and LLVM's main branch reads as this does;
@@ -596,6 +604,7 @@ Run live against the reference, not replayed.
 | LDC 1.40 runtime (D 2.110 frontend), the names `c++filt` reads | 15,350 | **100%** |
 | LLVM 18.1.8 Windows release, every static library (MSVC) | 436,644 | **100%** ⁑ |
 | Boost 1.84, twenty-nine `boost_*-vc143` NuGet packages (MSVC 14.3, x64 and x86) | 122,162 | **100%** ⁑ |
+| ITK 5.0, OpenCV 5, Qt 5.9, libzmq 4.3, leveldb and restbed, NuGet packages (MSVC 2017 to 2022) | 471,881 | **100%** ⁑ |
 | 46 C++ development packages' static libraries (libc++, Boost, Abseil, gRPC, RocksDB, Cap'n Proto...) ✱ | 109,606 | **74 differ** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
@@ -604,7 +613,7 @@ Run live against the reference, not replayed.
 | KDE 2.2.2, omniORB 3.0.4, gtkmm 1.2 and libstdc++ 2.10, as gcc 2.95 mangled them (pre-Itanium), against libiberty | 56,347 | **396 differ** ✶ |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 1,517,000 real symbols. Every row is exact except the eight marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the eight every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the 396 ✶, all one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
+About 1,989,000 real symbols. Every row is exact except the eight marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the eight every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the 396 ✶, all one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
