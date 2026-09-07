@@ -197,7 +197,13 @@ def render(
         # and "enum <unnamed-type-*"
         tail = node.text[-1:]
         sigil = declarator.startswith(("*", "&"))
-        abuts = sigil and not (tail == ">" or (tail.isascii() and tail.isalnum()))
+        # `decltype(auto)` ends in a bracket that closes a keyword, not a declarator,
+        # and takes the space a word does: `decltype(auto) *f`. LLVM's main branch,
+        # which reads the type, looks only at the last character and writes
+        # `decltype(auto)*f` -- and `decltype(auto)f` for a variable with no sigil at
+        # all, which is not a declaration.
+        word = tail == ">" or (tail.isascii() and tail.isalnum()) or node.text.endswith(_KEYWORDS_ENDING_IN_A_BRACKET)
+        abuts = sigil and not word
         return node.text + ("" if abuts else " ") + declarator
     if kind == "indirection":
         token = node.sigil + " ".join(ordered_qualifiers(node.qualifiers))
@@ -281,6 +287,10 @@ def render(
         declarator = f"{convention} {declarator}" if declarator else convention
     inner = f"{declarator}({params}){member_cv}"
     return inner if suppressed else render(node.returns, inner, True, options)
+
+
+#: Type names that end in `)` and are still one word.
+_KEYWORDS_ENDING_IN_A_BRACKET = ("decltype(auto)",)
 
 
 def _spaced_off_the_sigil(node, declarator, declarator_is_function, options):

@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 
+import demangle
 from demangle.schemes.msvc._parser import demangle_msvc_symbol, parse_msvc_type
 from demangle.schemes.msvc.nodes import render
 
@@ -1344,3 +1345,84 @@ class MsvcWindowsBuildTestSuite(unittest.TestCase):
         for mangled, expected in cases:
             with self.subTest(mangled=mangled):
                 self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+
+class MsvcBoostBuildTestSuite(unittest.TestCase):
+    """What Boost 1.84's MSVC 14.3 libraries write that the LLVM release did not.
+
+    98,822 decorated names from the twelve `boost_*-vc143` NuGet packages, put to
+    `llvm-undname` 18 and to LLVM's main branch. The release refuses a deduced return
+    type; main reads it, and the expected values are what main prints.
+    """
+
+    def test_a_deduced_return_type(self):
+        """`?A_P` is `auto` and `?A_T` is `decltype(auto)`, after the calling convention
+        where a return type goes: a function declared with one and not yet defined, so
+        the compiler had nothing to write but the keyword. `_P` and `_T` are types in
+        their own right too -- clang writes a dependent `auto` that way anywhere -- so
+        `$$QA_P` is `auto &&`.
+        """
+        cases = [
+            (
+                "??$_Get_unwrapped@AAPAD@std@@YA?A_TAAPAD@Z",
+                "decltype(auto) __cdecl std::_Get_unwrapped<char *&>(char *&)",
+            ),
+            (
+                "??$_Idl_distance@PADPAD@std@@YA?A_PABQAD0@Z",
+                "auto __cdecl std::_Idl_distance<char *, char *>(char *const &, char *const &)",
+            ),
+            (
+                "??$_Tuple_get@$0A@$$QAH@std@@YA$$QA_P$$QAV?$tuple@$$QAH@0@@Z",
+                "auto && __cdecl std::_Tuple_get<0, int &&>(class std::tuple<int &&> &&)",
+            ),
+            ("?f@@YA?A_PXZ", "auto __cdecl f(void)"),
+            ("?f@@YA?A_TXZ", "decltype(auto) __cdecl f(void)"),
+            ("?f@@0_PA", "private: static auto f"),
+            # `decltype(auto)` ends in a bracket and is still one word, so a declarator
+            # is spaced off it as off `int`. LLVM's main branch looks at the last
+            # character alone and writes `decltype(auto)f` and `decltype(auto)*f`.
+            ("?f@@3_TA", "decltype(auto) f"),
+            ("?f@@3PEA_TEA", "decltype(auto) *f"),
+            ("?f@@YAXPEA_T@Z", "void __cdecl f(decltype(auto) *)"),
+        ]
+        for mangled, expected in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+        for name in ("?f@@YA?A_XXZ", "?f@@YA?A_"):
+            with self.subTest(mangled=name):
+                self.assertEqual(demangle.demangle(name, language="msvc"), name)
+
+    def test_a_hashed_name_is_still_a_scope(self):
+        """`??@<hash>@` is a decorated name too long for the linker, replaced by its
+        MD5, and nothing of the original is in the symbol: the spelling is the name
+        itself, as the reference prints it. A hashed *function* is still a scope, and
+        409 of Boost's names are a catch block's variable inside one; the reference
+        spells the scope the way it spells the name, and this read only a hash that
+        opened the whole symbol.
+        """
+        cases = [
+            (
+                "?catch$0@?0???@3ddba3124f25df6569f8c4db1b2c5f5c@@4HA",
+                "int `??@3ddba3124f25df6569f8c4db1b2c5f5c@'::`1'::catch$0",
+            ),
+            # The one thing that may follow the hash and still belong to it, inside a
+            # scope as at the top: the complete object locator's tag.
+            (
+                "?x@?1???@0186a6a6b637290d321170469f0c2292@??_R4@@4HA",
+                "int `??@0186a6a6b637290d321170469f0c2292@??_R4@'::`2'::x",
+            ),
+            # A hashed symbol as a template argument's address.
+            (
+                "??$f@$1??@0186a6a6b637290d321170469f0c2292@@@YAXXZ",
+                "void __cdecl f<&??@0186a6a6b637290d321170469f0c2292@>(void)",
+            ),
+            ("??@0186a6a6b637290d321170469f0c2292@??_R4@", "??@0186a6a6b637290d321170469f0c2292@??_R4@"),
+        ]
+        for mangled, expected in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+        # A hash with no closing `@` is not a name.
+        self.assertEqual(
+            demangle.demangle("?x@?1???@0186a6a6b637290d321170469f0c2292@4HA", language="msvc"),
+            "?x@?1???@0186a6a6b637290d321170469f0c2292@4HA",
+        )

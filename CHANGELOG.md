@@ -73,6 +73,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a deduced return type, and a hashed name as a scope.** Boost 1.84's twelve
+  `boost_*-vc143` NuGet packages define 98,822 decorated names, the first MSVC 14.3
+  output put to this scheme after the LLVM release's. Two shapes were new. `?A_P` and
+  `?A_T` where a return type goes are `auto` and `decltype(auto)`: a function declared
+  with one and not yet defined, so the compiler had nothing to write but the keyword;
+  `_P` and `_T` are types anywhere, so `$$QA_P` is `auto &&`. `llvm-undname` 18 refuses
+  all 606 of them; LLVM's main branch reads them, and its spellings are the ones here,
+  checked against a build of that branch. And `??@<hash>@`, a name too long for the
+  linker and replaced by its MD5, was read only when it opened the whole symbol: a
+  hashed *function* is still a scope, and 409 of Boost's names are a catch block's
+  variable inside one, `` int `??@3ddba3124f25df6569f8c4db1b2c5f5c@'::`1'::catch$0 ``,
+  which the reference has always spelled. With both, every one of the 98,822 that the
+  reference reads is read the same here. The same build of LLVM's main branch over
+  the 436,644 names of the Windows release found no name that the release and the
+  branch spell differently.
 - **Pre-Itanium C++: a thunk with a positive delta.** gcc 2.95's `make_thunk` writes
   `__thunk_<n>_` for a delta of zero or less and `__thunk_n<n>_` for a positive one,
   and the second form was refused. libiberty refuses it too, in its way: `gnu_special`

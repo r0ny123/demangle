@@ -249,6 +249,11 @@ ACCEPTED = {
         # and `_M` for `unsigned __int128`, and `demanglePrimitiveType` has neither.
         # Checked by compiling one rather than read off a table.
         or (first is None and ("__int128" in ours))
+        # Or a deduced type, `_P` for `auto` and `_T` for `decltype(auto)`, which MSVC
+        # 14.3 writes for a function declared with one and not yet defined -- 606 of
+        # Boost 1.84's symbols -- and `llvm-undname` 18 cannot read. LLVM's main branch
+        # reads both, and this spells them as it does.
+        or (first is None and _DEDUCED_TYPE.search(name) is not None and _DEDUCED_WORD.search(ours) is not None)
     ),
     # `c++filt --format=dlang` writes a path separator for a component that spells
     # nothing. An anonymous component and a `__S<n>` compiler scope are left out of the
@@ -753,6 +758,10 @@ def _strip_qualifiers(text):
 def _llvm_skips_a_void_parameter(ours, first):
     """Whether `first` is `ours` with a `void` parameter dropped from a list."""
     return first is not None and first != ours and re.sub(r"\bvoid, |, void\b", "", ours) == first
+
+
+_DEDUCED_TYPE = re.compile(r"_[PT]")
+_DEDUCED_WORD = re.compile(r"\bauto\b")
 
 
 def _undname_keeps_one_member_pointer_qualifier(name, ours, first):

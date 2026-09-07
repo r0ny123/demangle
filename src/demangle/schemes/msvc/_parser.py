@@ -42,8 +42,15 @@ _EXTENDED_TYPES = {
     "L": "__int128",
     "M": "unsigned __int128",
     "N": "bool",
+    # A return type the compiler was left to deduce, as MSVC writes it for a function
+    # declared `auto f()` or `decltype(auto) f()` whose definition is not yet seen --
+    # `?A_P` and `?A_T` after the calling convention -- and as clang writes a dependent
+    # `auto` anywhere a type goes. llvm-undname 18 refuses both; LLVM's main branch
+    # reads them, and these are its spellings.
+    "P": "auto",
     "Q": "char8_t",
     "S": "char16_t",
+    "T": "decltype(auto)",
     "U": "char32_t",
     "W": "wchar_t",
 }
@@ -702,6 +709,27 @@ class _Demangler:
         rendered = render(inner.parse(), options=options)
         self.pos = inner.pos if leading_question else self.pos + inner.pos - 1
         return rendered
+
+    def md5Name(self):
+        """`??@<hash>@`: a decorated name too long for the linker, replaced by its MD5.
+
+        Nothing of the original is in the symbol, so the spelling is the name itself,
+        up to the `@` that closes the hash -- and `??_R4@` after it, the one thing the
+        reference keeps: a complete object locator's tag, which for a hashed name is
+        written after the hash rather than before it. Read here rather than only at the
+        top of a name because a hashed function is still a scope: `?catch$0@?0???@<hash>@@4HA`
+        is a catch block's variable inside one, `` `??@<hash>@'::`1'::catch$0 ``, which
+        409 of Boost 1.84's symbols are.
+        """
+        end = self.text.find("@", self.pos + 2)
+        if end < 0:
+            raise _Bail
+        name = self.text[self.pos - 1 : end + 1]
+        self.pos = end + 1
+        if self.text.startswith("??_R4@", self.pos):
+            name += "??_R4@"
+            self.pos += 6
+        return Raw(name)
 
     def anonymousNamespace(self):
         """The unnamed namespace of one translation unit: "?A" and an optional discriminator.
@@ -1428,6 +1456,8 @@ class _Demangler:
 
     def parse(self):
         self.expect("?")
+        if self.text.startswith("?@", self.pos):
+            return self.md5Name()
         # "$$J0" marks a name that was mangled although it is extern "C".
         # `demangleFunctionEncoding` consumes the four characters as one literal, so the
         # digit is part of the marker rather than a field: `$$J3` and `$$J4` are not
