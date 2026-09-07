@@ -406,6 +406,17 @@ spliced form, and the other 260 are names the reference cannot be given, because
 fragment spliced into a name shifts the substitution indices and word substitutions
 around it — checked one by one.
 
+✚ Apple's clang numbers the substitution table by a rule no other compiler uses: an
+undeduced `auto` return type, `Da`, is a candidate -- Clang 6.0's accident, kept by
+Apple's fork in every version since -- so every back-reference after one is one higher
+than GCC or upstream clang would write, and llvm-cxxfilt and c++filt read every such
+Mach-O name by the wrong entries. Of the 17,310 names carrying a `Da` in the bottles,
+2,300 overrun the table under the common rule and 6,385 come back as a plausible wrong
+declaration; this reads a `__Z` name by Apple's rule, retries the other when a
+back-reference overruns, and takes `ItaniumOptions.undeduced_auto_substitution` to
+force either. Checked against clang 18 under `-fclang-abi-compat=6`, which writes the
+same numbering, and against upstream clang targeting Darwin, which does not.
+
 ⁂ Objective-C has no reference demangler, and barely a mangling: what there is comes from
 the compiler rather than the language, so the rules are transcribed from clang's
 `Mangle.cpp`, `CGObjCMac.cpp` and `CGObjCGNU.cpp`. The expected column is not this
@@ -611,7 +622,7 @@ Run live against the reference, not replayed.
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Swift 6.1.2 runtime typerefs, resolved through the dynamic relocations and symbols ✻ | 7,071 | 6,811 agree; 260 unspliceable |
 | KDE 2.2.2, omniORB 3.0.4, gtkmm 1.2 and libstdc++ 2.10, as gcc 2.95 mangled them (pre-Itanium), against libiberty | 56,347 | **396 differ** ✶ |
-| Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU and glog (Apple clang, Mach-O) ✱ | 97,661 | **7,660 differ** |
+| Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU and glog (Apple clang, Mach-O) ✱ ✚ | 97,661 | **7,660 differ**, and 8,685 both references misread ✚ |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
 About 2,087,000 real symbols. Every row is exact except the nine marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the nine every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the 396 ✶, all one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++, the 74 in the development packages and the 7,660 in the Homebrew bottles -- 7,573 of them one generic lambda in ceres's `ParallelInvoke`, whose `auto&` both references resolve to the enclosing template's argument -- are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.

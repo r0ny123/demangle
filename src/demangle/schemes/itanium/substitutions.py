@@ -17,6 +17,13 @@ Reference: Itanium C++ ABI section 5.1.10, "Compression".
 
 from ...core.errors import LimitExceeded, ParseError
 
+
+class SubstitutionOverrun(ParseError):
+    """A `S<n>_` past the end of the table: the name was numbered by a rule this reading
+    did not apply, or it is not a name. `parse` retries the one rule that is known to
+    differ between compilers before giving up; see `ItaniumOptions.undeduced_auto_substitution`."""
+
+
 #: Section 5.1.10: "Each non-terminal in the grammar above for which <substitution>
 #: appears on the right-hand side is both a source of future substitutions and a
 #: candidate for being substituted." Enumerated here so the parser's `remember()` calls
@@ -215,7 +222,7 @@ class SubstitutionTable:
     def lookup(self, index):
         """Resolve `S<index>_`."""
         if index < 0 or index >= len(self._entries):
-            raise ParseError(
+            raise SubstitutionOverrun(
                 self._mangled, None, f"substitution S{index}_ refers past the {len(self._entries)} known entries"
             )
         return self._entries[index]

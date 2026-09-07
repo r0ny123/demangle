@@ -317,6 +317,12 @@ ACCEPTED = {
         # Or the old form of `sr` that g++ still writes and `llvm-cxxfilt` refuses,
         # which `c++filt` reads as this does. See `_OLD_SR_FORM`.
         or (first is None and _OLD_SR_FORM.search(name) is not None)
+        # Or a name both references refuse for a back-reference past the table that
+        # reads under Apple's rule, where an undeduced `auto` is a substitution
+        # candidate -- `_Z1fDaS_` is `f(auto, auto)` to Apple's clang, and to this on
+        # the retry `ItaniumOptions.undeduced_auto_substitution` describes. Neither
+        # reference knows the rule, so their refusal is not evidence about the name.
+        or (first is None and second[0] is None and _UNDEDUCED_AUTO.search(name) is not None)
         # Or an argument pack written `I <template-arg>* E`, g++'s form under
         # `-fabi-version` 2 through 5, which `c++filt` reads and `llvm-cxxfilt` refuses.
         # See `_OLD_PACK`.
@@ -761,6 +767,7 @@ def _llvm_skips_a_void_parameter(ours, first):
 
 
 _DEDUCED_TYPE = re.compile(r"_[PT]")
+_UNDEDUCED_AUTO = re.compile(r"D[ac]")
 _DEDUCED_WORD = re.compile(r"\bauto\b")
 
 

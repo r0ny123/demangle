@@ -73,6 +73,28 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: Apple's clang counts an undeduced `auto` as a substitution candidate.**
+  The ABI leaves builtin types out of the substitution table, and GCC and upstream clang
+  leave `auto` out with them; Clang through 6.0 counted an undeduced `auto` by
+  accident -- `isTypeSubstitutable` in ItaniumMangle.cpp says so, and
+  `-fclang-abi-compat=6` still does -- and Apple's clang has kept that rule in every
+  version since, so every `S<n>_` after a deduced return type in a Mach-O symbol is one
+  higher than anything else would write. Read by the common rule, such a name resolves
+  its back-references to the wrong entries. Found by putting the Homebrew bottles of
+  Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU and glog -- 108,839 Mach-O
+  symbols -- to `llvm-cxxfilt` and `c++filt`: of the 17,310 carrying a `Da`, 2,300 were
+  refused with a back-reference past the table, by this and by both references, and
+  under Apple's rule every one of them reads and none stops reading; 6,385 more read
+  differently under the two rules, and the common one had been giving a plausible
+  wrong declaration -- `basic_string_view<char, ParentNameQuery::char_traits<char>>`
+  for protobuf's `FindNestedSymbol`, whose second parameter is `absl::string_view`.
+  Checked by compiling the shape with clang 18 under both settings, and against
+  upstream clang 18 targeting `arm64-apple-darwin`, which writes the common numbering:
+  the rule is Apple's fork's, not the platform's. `ItaniumOptions.undeduced_auto_substitution`
+  chooses; left to itself, a name with the Mach-O underscore, `__Z...`, is read by
+  Apple's rule and a bare `_Z...` by everyone else's, and a name whose back-references
+  run past the table under one rule is read again under the other. Neither reference
+  reads any of these names correctly.
 - **MSVC: a spelling wider than eight times its name.** The rendered result is bounded
   relative to the name as well as absolutely, because a back-reference is two characters
   standing for a whole rendered type and a name can be built whose spelling doubles at

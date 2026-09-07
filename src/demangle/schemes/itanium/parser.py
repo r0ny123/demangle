@@ -25,6 +25,7 @@ from .options import DEFAULT_OPTIONS
 from .substitutions import (
     DeferredProduction,
     ParameterReference,
+    SubstitutionOverrun,
     SubstitutionTable,
     TemplateArgumentTable,
 )
@@ -347,6 +348,7 @@ class ItaniumParser:
         "_abbrev_expanded",
         "_ambiguous_unresolved_name",
         "_argument_constraint",
+        "_auto_substitutes",
         "_bare_angle",
         "_component_has_no_base_name",
         "_conversion_unbound",
@@ -410,6 +412,11 @@ class ItaniumParser:
             raise LimitExceeded(mangled, "input length", limits.max_input)
         self._mangled = mangled
         self.options = options
+        #: Whether `Da` and `Dc` enter the substitution table; see
+        #: `ItaniumOptions.undeduced_auto_substitution`. Decided by the name's form when
+        #: the option leaves it open: the Mach-O underscore means Apple's clang.
+        auto_rule = options.undeduced_auto_substitution
+        self._auto_substitutes = mangled.startswith("__Z") if auto_rule is None else auto_rule
         expanded = STD_ABBREVIATIONS_EXPANDED_GNU if options.expand_std_abbreviations else STD_ABBREVIATIONS_EXPANDED
         self._entity_shape = None
         self._simple_name = False
@@ -2619,6 +2626,11 @@ class ItaniumParser:
                 return self.subs.remember(builder.raw(f"{EXTENDED_BUILTIN_TYPES[pair]}({width})"), "type")
             if pair == "Dn" and self.options.gnu_nullptr_spelling:
                 return builder.builtin("decltype(nullptr)")
+            if self._auto_substitutes and pair in _UNDEDUCED_AUTO:
+                # Apple's clang counts an undeduced `auto` among the candidates, as
+                # Clang 6.0 did; nothing else does. See
+                # `ItaniumOptions.undeduced_auto_substitution`.
+                return self.subs.remember(builder.builtin(EXTENDED_BUILTIN_TYPES[pair]), "type")
             return builder.builtin(EXTENDED_BUILTIN_TYPES[pair])
 
         if pair == "DF":
@@ -4867,6 +4879,11 @@ class ItaniumParser:
         raise ParseError(self._mangled, reader.pos, "unrecognised expression")
 
 
+#: The two spellings of an undeduced placeholder type, which Apple's clang counts as
+#: substitution candidates and no other compiler does.
+_UNDEDUCED_AUTO = ("Da", "Dc")
+
+
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """Parse an Itanium mangled name into `builder`, returning its handle.
 
@@ -4876,12 +4893,31 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     exactly, a whole-name retry, so a name that reads either way reads as the
     reference reads it. A name that reads neither way reports the first reading's
     error, which is the one the modern grammar gives.
+
+    Read twice, too, when a back-reference ran past the substitution table and the name
+    carries an undeduced `auto`: the table was numbered by the other of the two rules
+    compilers apply to that type -- see `ItaniumOptions.undeduced_auto_substitution` --
+    and the second reading applies it. Only where the option left the rule to the name's
+    form; a caller who chose one is not second-guessed.
     """
     parser = ItaniumParser(mangled, builder, limits, options)
     try:
         return parser.parse()
     except ParseError as error:
-        if isinstance(error, LimitExceeded) or not parser._ambiguous_unresolved_name:
+        if isinstance(error, LimitExceeded):
+            raise
+        if (
+            isinstance(error, SubstitutionOverrun)
+            and options.undeduced_auto_substitution is None
+            and any(pair in mangled for pair in _UNDEDUCED_AUTO)
+        ):
+            retry = ItaniumParser(mangled, builder, limits, options)
+            retry._auto_substitutes = not parser._auto_substitutes
+            try:
+                return retry.parse()
+            except ParseError:
+                raise error from None
+        if not parser._ambiguous_unresolved_name:
             raise
         retry = ItaniumParser(mangled, builder, limits, options)
         retry._old_unresolved_names = True

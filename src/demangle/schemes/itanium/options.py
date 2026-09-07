@@ -67,6 +67,31 @@ class ItaniumOptions:
     read at all.
     """
 
+    undeduced_auto_substitution: bool | None = None
+    """Count an undeduced `auto` -- `Da`, and `decltype(auto)`, `Dc` -- as a substitution
+    candidate, the way Apple's clang does.
+
+    Not a spelling but a numbering, and the one place two compilers number the same
+    name differently. The ABI leaves builtin types out of the substitution table, and
+    GCC and upstream clang leave `auto` out with them; Clang through 6.0 counted an
+    undeduced `auto` by accident, `-fclang-abi-compat=6` still does, and Apple's clang
+    has kept that rule in every version since, so every `S<n>_` after a deduced return
+    type in a Mach-O symbol is one higher than GCC or upstream clang would write. Read
+    by the wrong rule, such a name resolves its back-references to the wrong entries:
+    of the 17,310 names carrying a `Da` in Homebrew's bottles of Boost, folly, protobuf,
+    ceres and the rest, 6,385 come back as a plausible-looking wrong declaration and
+    2,300 refuse, under llvm-cxxfilt and c++filt alike.
+
+    None, the default, decides by the symbol's form: a name with the extra leading
+    underscore a Mach-O symbol table carries, `__Z...`, is read by Apple's rule, and a
+    bare `_Z...` by everyone else's -- and either way a name whose back-references run
+    past the table under one rule is read again under the other, since that is the one
+    rule known to move them. True or False forces a rule and skips the retry. Nothing in
+    the name itself says which compiler wrote it, so a Mach-O name from upstream clang
+    with a back-reference in range under both rules is read by Apple's; set False for
+    those.
+    """
+
     gnu_nullptr_spelling: bool = False
     """Spell `Dn` as `decltype(nullptr)` rather than `std::nullptr_t`.
 
