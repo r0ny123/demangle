@@ -318,7 +318,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
-| Names a reference reads wrongly ✱ | the declaration | **18 / 18** |
+| Names a reference reads wrongly ✱ | the declaration | **20 / 20** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |
@@ -611,9 +611,10 @@ Run live against the reference, not replayed.
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Swift 6.1.2 runtime typerefs, resolved through the dynamic relocations and symbols ✻ | 7,071 | 6,811 agree; 260 unspliceable |
 | KDE 2.2.2, omniORB 3.0.4, gtkmm 1.2 and libstdc++ 2.10, as gcc 2.95 mangled them (pre-Itanium), against libiberty | 56,347 | **396 differ** ✶ |
+| Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU and glog (Apple clang, Mach-O) ✱ | 97,661 | **7,660 differ** |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 1,989,000 real symbols. Every row is exact except the eight marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the eight every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the 396 ✶, all one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
+About 2,087,000 real symbols. Every row is exact except the nine marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the nine every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the 396 ✶, all one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++, the 74 in the development packages and the 7,660 in the Homebrew bottles -- 7,573 of them one generic lambda in ceres's `ParallelInvoke`, whose `auto&` both references resolve to the enclosing template's argument -- are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
