@@ -1172,12 +1172,23 @@ class _Parser:
         """
         reader = self.reader
         storage = []
-        if reader.peek() == "M":
-            reader.pos += 1
-            storage.append("scope")
-        if reader.starts_with("Nk"):
-            reader.pos += 2
-            storage.append("return")
+        if reader.starts_with("NkM"):
+            # `return scope`, written in that order. DMD 2.104 began writing `Nk` ahead
+            # of the `M` for a `return scope` parameter, and libiberty -- which reads
+            # `M` then `Nk` and nothing else -- refuses every function the LDC 1.40
+            # runtime declares with one, 766 of its 16,197 symbols. D's own
+            # `core.demangle` reads both orders and spells this one `return scope`,
+            # which is what is followed here; the `M`-first order still reads as
+            # libiberty reads it.
+            reader.pos += 3
+            storage.extend(("return", "scope"))
+        else:
+            if reader.peek() == "M":
+                reader.pos += 1
+                storage.append("scope")
+            if reader.starts_with("Nk"):
+                reader.pos += 2
+                storage.append("return")
         char = reader.peek()
         if char in ("I", "J", "K", "L"):
             reader.pos += 1

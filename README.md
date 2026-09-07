@@ -536,6 +536,13 @@ shape above, where the declaration in libstdc++'s own header says this is right 
 is not — so what is left is not a gap. `c++filt` refuses 673 of those 217,730 outright,
 and this reads 457 of them.
 
+⁑ 436,545 of the 436,644 read exactly as `llvm-undname` reads them, and none reads
+differently. Of the 99 left, 91 are MD5-hashed names, which both hand back as they
+stand; one runs past this library's output bound; six are local statics carrying a
+`.0`-style suffix, which the reference reads by stopping where the name ends and
+saying nothing about the rest -- it reads `?x@@3HAjunk` as `int x` -- and this
+refuses rather than drop; and one is a `?filt$0` exception-filter name both hand back.
+
 Five differences used to be listed here and are now reproduced: `&A::f` inside a template
 argument, which GNU prints without the parameter list the mangling carries; the
 `{default arg#1}` scope of an entity declared in a default argument; a generic lambda's
@@ -571,12 +578,14 @@ Run live against the reference, not replayed.
 | Free Pascal runtime and packages § | 236,570 | **100%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
 | `libgnat` + `libgnarl` (Ada), against `c++filt --format=gnat` | 11,237 | **100%** |
+| LDC 1.40 runtime (D 2.110 frontend), the names `c++filt` reads | 15,350 | **100%** |
+| LLVM 18.1.8 Windows release, every static library (MSVC) | 436,644 | **100%** ⁑ |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 780,000 real symbols. Every row is exact except the six marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ are the template-parameter rebinding `_Prepare_execution` shows, in the constructor's own name and in the `ArrayRefView` lambdas, where `c++filt` agrees with this.
+About 1,230,000 real symbols. Every row is exact except the six marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ are the template-parameter rebinding `_Prepare_execution` shows, in the constructor's own name and in the `ArrayRefView` lambdas, where `c++filt` agrees with this.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks

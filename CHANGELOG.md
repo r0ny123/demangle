@@ -103,6 +103,43 @@ All notable changes to this project are recorded here. The format follows
   corpus already pins, now with a fifth row: the shape over a constrained existential
   that FoundationEssentials ships. The D runtime (16,333 names) and the GNAT Ada runtime
   (11,237) were swept the same way against `c++filt` and read identically.
+- **MSVC: the LLVM 18.1.8 Windows release, all 436,644 of its decorated names.** The
+  largest MSVC-mangled body this library has been put to, read against `llvm-undname`;
+  four things it wrote that nothing here had seen:
+  - A conversion operator may be a template: `??$?BU...@@` is `operator<A, B> T`, the
+    type still read from the return slot and the arguments between the word and it.
+    clangd's `LSPBinder` declares one and every lambda inside it names it as a scope,
+    456 symbols, all refused.
+  - A pointer to member as a template argument under multiple, virtual or unspecified
+    inheritance -- `$H`, `$I`, `$J`, a function name and one to three offsets, and the
+    data-member forms `$F` and `$G` with offsets alone -- spelled bracketed as the
+    reference spells them, `{public: void __cdecl S::g(void), 4}`. clang writes one for
+    every `filtered_decl_iterator<ObjCMethodDecl, &isClassMethod>`: 186 symbols.
+  - A letter escape in a string literal: `?A` through `?Z` are 0xC1 through 0xDA and
+    `?a` through `?z` 0xE1 through 0xFA, `demangleCharLiteral`'s two tables, where
+    UTF-8 text lands. 34 literals.
+  - A function type standing as a template argument inside the *return type* of a
+    pointed-to function loses its calling convention -- `std::function<void (void)>
+    (__cdecl *)(void)` -- because `PointerTypeNode::outputPre` prints its pointee under
+    `OF_NoCallingConvention` and the flag reaches everything in the return type; the
+    same argument in the parameter list keeps it. 123 callback pointers.
+  What is left is the 91 MD5-hashed names both hand back, one name past the output
+  bound, six local statics carrying a `.0`-style suffix -- the reference reads any
+  trailing text as nothing, `?x@@3HAjunk` as `int x`, which is not followed -- and one
+  `?filt$0` exception-filter name both hand back. Every other name reads as the
+  reference reads it, including the template names a back-reference reaches again,
+  which `memorizeIdentifier` records rendered with its default flags: a convention a
+  pointer's return type dropped comes back in a parameter, and one under a pointer
+  inside the recorded name stays dropped.
+- **D: `return scope`, written return first.** DMD 2.104 began writing `Nk` ahead of
+  the `M` for a `return scope` parameter, and libiberty -- which reads `M` then `Nk`
+  and nothing else -- refuses every function the LDC 1.40 runtime declares with one:
+  766 of its 16,197 symbols. D's own `core.demangle`, built here from the LDC
+  distribution as a second reference, reads both orders and spells this one `return
+  scope`; every one of the 766 now reads the way it spells them, the rest of the LDC
+  runtime reading exactly as `c++filt --format=dlang` does. What it still refuses is
+  the 35 nested functions whose `this` is followed by a back reference to their type,
+  which libiberty refuses and `core.demangle` spells as a variable.
 - **Itanium: two shapes from the Swift toolchain's own C++.** The 6.1.2 toolchain's
   `swift-frontend`, `liblldb`, `libsourcekitdInProc` and the sanitizer runtimes define
   185,532 symbols no library swept here before, built by Swift's clang 17 fork; put to

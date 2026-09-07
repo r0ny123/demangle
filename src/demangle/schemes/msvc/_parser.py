@@ -151,6 +151,10 @@ _GUARDS = {"B": "`local static guard'", "__J": "`local static thread guard'"}
 #: The operators written with the `??__` prefix rather than a single code.
 _DOUBLE_UNDERSCORE_OPERATORS = {"L": "operator co_await", "M": "operator<=>"}
 # what a string literal's escapes stand for, and how the reference spells a byte back
+#: Brackets a bare function type's calling convention inside a rendered template name
+#: until the name is used; see `_Demangler._conventionsResolved`.
+_CONVENTION_MARK = "\x00"
+
 _LITERAL_ESCAPES = {
     "0": ",",
     "1": "/",
@@ -162,6 +166,12 @@ _LITERAL_ESCAPES = {
     "7": "\t",
     "8": "'",
     "9": "-",
+    # A letter stands for a byte past 0x7F: `?A` through `?Z` are 0xC1 through 0xDA and
+    # `?a` through `?z` are 0xE1 through 0xFA, `demangleCharLiteral`'s two tables. UTF-8
+    # text lands here -- `"\xC3\xB4"`, an `o` with a circumflex, is `?C?$LE` -- and 34
+    # literals in the LLVM 18.1.8 Windows build were refused for the letter.
+    **{chr(65 + at): chr(0xC1 + at) for at in range(26)},
+    **{chr(97 + at): chr(0xE1 + at) for at in range(26)},
 }
 _LITERAL_SPELLINGS = {
     0x00: "\\0",
@@ -313,8 +323,14 @@ class _Conversion:
     """A conversion operator, whose name is the type it converts to.
 
     That type is written in the return slot, which is read long after the name, so the
-    spelling is finished once the signature has been.
+    spelling is finished once the signature has been. It may be a template -- a
+    conversion function template, `??$?BU...@@`, `operator<A, B> T` -- in which case the
+    arguments go between the word and the type, which is where the reference's
+    `ConversionOperatorIdentifierNode` writes them.
     """
+
+    def __init__(self, arguments=""):
+        self.arguments = arguments
 
 
 class _Structor:
@@ -384,6 +400,14 @@ class _Demangler:
         self.requires_signature = False
         self.nested = False
         self.pointee_depth = 0
+        #: How many return types of pointed-to functions the cursor stands inside. The
+        #: reference prints a function pointer's pointee with `OF_NoCallingConvention`,
+        #: a flag that reaches everything inside the *return type* -- so a function type
+        #: written as a template argument there, `class std::function<void (void)>`, loses
+        #: its `__cdecl`, while the same argument in the parameter list keeps it. 123 names
+        #: in the LLVM 18.1.8 Windows build are spelled so, all `std::function` or
+        #: `unique_function` arguments in the return type of a callback pointer.
+        self.in_pointee_return = 0
         self.array_element_depth = 0
         # set only while the next type read stands directly as a template argument
         self.at_argument = False
@@ -520,17 +544,32 @@ class _Demangler:
                     if isinstance(operator, _Structor):
                         # a constructor may be a template too, and its arguments follow the
                         # class name it borrows rather than replacing it
-                        arguments = self.templateInstantiation(operator="")
+                        arguments = self._conventionsResolved(self.templateInstantiation(operator=""))
                         return _Structor(operator.is_destructor, arguments), "func"
+                    if isinstance(operator, _Conversion):
+                        # So may a conversion operator: `??$?BU...@@` is `operator<A, B> T`,
+                        # with the type still read from the return slot. clangd's
+                        # `LSPBinder` has one, and every lambda declared inside it names
+                        # it as a scope -- 456 symbols in the LLVM 18.1.8 Windows build.
+                        arguments = self._conventionsResolved(self.templateInstantiation(operator=""))
+                        return _Conversion(arguments), "func"
                     if not isinstance(operator, str):
                         raise _Bail
+                base = self.in_pointee_return
                 rendered = self.templateInstantiation(operator=operator)
                 if not is_symbol_name:
                     # the symbol's own template name is the one exception the mangler makes:
                     # it is not recorded, so "??$f@H@N@@YAXV0@@Z" resolves 0 to N, not to
                     # f<int>. A template met anywhere else is recorded like any other name.
-                    self.rememberName(rendered)
-                return rendered, "func" if operator else None
+                    # `memorizeIdentifier` renders the name with `OF_Default` and records
+                    # the *string*, so a back-reference to it spells every convention
+                    # whatever place it is reached from.
+                    self.rememberName(self._conventionsResolved(rendered, base=base))
+                if self.template_depth:
+                    # Inside another template's argument list the marks are left for the
+                    # outermost name to resolve: that is the one recorded and used.
+                    return rendered, "func" if operator else None
+                return self._conventionsResolved(rendered), "func" if operator else None
             if is_symbol_name:
                 # "??A" here is operator[], not the namespace below: only a symbol's own
                 # name may be an operator, and a namespace can only qualify it
@@ -854,6 +893,7 @@ class _Demangler:
             scopes.append(self.nameFragment(False)[0])
         scopes.reverse()
         if isinstance(first, _Conversion):
+            self.conversion_arguments = first.arguments
             return "::".join([*scopes, "\0conversion\0"]), False, special_form
         if isinstance(first, _Structor):
             if not scopes:
@@ -1003,6 +1043,23 @@ class _Demangler:
             prefix = "&" if self.take() == "1" else ""
             self.simple = False
             return Raw(prefix + self.nestedSymbol())
+        if self.peek() in ("H", "I", "J", "F", "G") and self.template_depth:
+            # A pointer to member under an inheritance model that needs more than an
+            # address: `H` multiple, `I` virtual and `J` unspecified inheritance carry a
+            # function's name and one, two or three offsets after it; `F` and `G` are the
+            # data-member forms, offsets alone. The reference brackets the lot --
+            # `{public: void __cdecl S::g(void), 4}`, `{4, 0}` -- and clang writes the
+            # first for every `filtered_decl_iterator<ObjCMethodDecl, &isClassMethod>`
+            # and `LazyOffsetPtr<Decl, unsigned int, &ExternalASTSource::GetExternalDecl>`
+            # in its own Windows build: 186 symbols there were refused for it.
+            kind = self.take()
+            parts = []
+            if kind in ("H", "I", "J") and self.peek() == "?":
+                parts.append(self.nestedSymbol())
+            for _ in range({"H": 1, "I": 2, "J": 3, "F": 2, "G": 3}[kind]):
+                parts.append(self.templateInteger())
+            self.simple = False
+            return Raw("{" + ", ".join(parts) + "}")
         if self.peek() == "0":
             if not at_argument:
                 # an integer is an argument, not a type: it stands where an argument stands
@@ -1126,7 +1183,11 @@ class _Demangler:
             if modified:
                 raise _Bail
             convention = self.callingConvention()
-            returns = self.returnType()
+            self.in_pointee_return += 1
+            try:
+                returns = self.returnType()
+            finally:
+                self.in_pointee_return -= 1
             # a parameter of this function type is a whole-argument position again, so a
             # back-reference is legal there even when the function type is itself a pointee
             saved_pointee_depth = self.pointee_depth
@@ -1179,7 +1240,11 @@ class _Demangler:
         owner = self.qualifiedName()[0]
         member_cv = self.memberQualifiers()
         convention = self.callingConvention()
-        returns = self.returnType()
+        self.in_pointee_return += 1
+        try:
+            returns = self.returnType()
+        finally:
+            self.in_pointee_return -= 1
         saved_pointee_depth = self.pointee_depth
         self.pointee_depth = 0
         try:
@@ -1189,6 +1254,42 @@ class _Demangler:
         member_cv += self.throwSpecification()
         self.simple = False
         return Indirection(f"{owner}::{token}", own_quals, FunctionType(convention, params, returns, member_cv))
+
+    def _conventionsResolved(self, text, base=None):
+        """Spell, or drop, every marked calling convention in a rendered template name.
+
+        The reference prints a function pointer's pointee under `OF_NoCallingConvention`,
+        a flag that reaches everything inside the *return type*: a function type standing
+        as a template argument there is `void (void)`, and the same argument in the
+        pointer's parameter list is `void __cdecl(void)`. Its `memorizeIdentifier`
+        renders a template name with the default flags and records the string, so a
+        name reached again through a back-reference is spelled as if it stood nowhere
+        in particular -- which still drops the conventions under pointers *inside* the
+        name, because those pointers print their own return types the same way.
+
+        This renders names to text as it reads them, so each mark carries how many
+        pointed-to return types its function type stood inside, and a name is resolved
+        twice. For display, at the outermost template name, only a mark at depth zero
+        is spelled. For the record, at every template name, a mark is spelled when its
+        depth is `base` -- the depth the name itself was read at -- and dropped when
+        it is deeper, since that pointer is part of the name. 123 callback pointers in
+        the LLVM 18.1.8 Windows build carry the first shape and thirteen names reach
+        one of them again through a back-reference, from inside a return type and out.
+        """
+        if _CONVENTION_MARK not in text:
+            return text
+        parts = text.split(_CONVENTION_MARK)
+        keep_at = 0 if base is None else base
+        out = []
+        # Marks come in pairs: even parts are text, odd are a depth, `:` and a convention.
+        for at, part in enumerate(parts):
+            if at % 2 == 0:
+                out.append(part)
+                continue
+            depth, _, convention = part.partition(":")
+            if int(depth) == keep_at:
+                out.append(convention)
+        return "".join(out)
 
     def functionTypeArgument(self):
         """A function type written as a template argument: "$$A6", or "$$A8" with a qualifier.
@@ -1206,6 +1307,14 @@ class _Demangler:
         else:
             self.expect("6")
         convention = self.callingConvention()
+        if self.template_depth:
+            # Marked rather than spelled, with the depth of pointed-to return types
+            # this stands inside: whether a place prints the convention depends on
+            # that depth relative to the template name being spelled, and the name is
+            # spelled twice -- once here and once for the back-references to it. See
+            # `_conventionsResolved`. As a parameter in its own right -- `$$A6` stands
+            # there too -- the type is rendered once, where it is, and is spelled plainly.
+            convention = f"{_CONVENTION_MARK}{self.in_pointee_return}:{convention}{_CONVENTION_MARK}"
         returns = self.returnType()
         params = self.parameters()
         member_cv += self.throwSpecification()
@@ -1665,7 +1774,7 @@ class _Demangler:
         if "\0conversion\0" in name:
             if returns is None:
                 raise _Bail
-            name = name.replace("\0conversion\0", f"operator {self.rendered(returns)}")
+            name = name.replace("\0conversion\0", f"operator{self.conversion_arguments} {self.rendered(returns)}")
         signature = FunctionType(convention, params, returns)
         trailing = self.member_cv if access and not is_static else ""
         if returns is not None:

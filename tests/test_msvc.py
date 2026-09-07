@@ -575,14 +575,11 @@ COMPLETING_DECLINED = [
     "??__EFoo@@3HA",  # what runs code takes a signature, never a storage class
     "??_C@_12ABCDEFGH@hi?$AA@",  # a wide literal is two bytes to the character, so never an odd count
     "??_C@_02ABCDEFGH@h?$Qi?$AA@",  # a byte is written as two nibbles from "A" to "P"
-    "??_C@_02ABCDEFGH@h?zi?$AA@",  # and an escape names one of ten characters
     "??_C@_02ABCDEFGH@hi?$AA@X",  # and nothing follows the literal
     # The reference decodes a narrow literal into a fixed 128-byte buffer and refuses a
     # name that would run past it. 129 bytes is the first that does.
     "??_C@_0IC@ABCDEFGH@" + "a" * 129 + "@",
     "??_9Base@@$RB7AA",  # a thunk through a virtual base names an access this does not
-    # a conversion operator is named by its return, which a template argument list displaces
-    "??$?BH@S@@QEAAAEAU0@H@Z",
     "??_7Base@@3HA",  # a vftable is written with its own storage class and no other
     "??__EFoo@@51",  # and what runs code takes no storage class at all, guard or otherwise
 ]
@@ -1238,5 +1235,112 @@ class TestAPointerToAMemberOfArrayType(unittest.TestCase):
 
     def test_the_member_pointer_is_bracketed(self):
         for mangled, expected in self.CASES:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+
+class MsvcWindowsBuildTestSuite(unittest.TestCase):
+    """Four shapes the LLVM 18.1.8 Windows release wrote that nothing here had seen.
+
+    436,644 decorated names from its static libraries, put to `llvm-undname` 18.1.3;
+    every expected value below is what it printed.
+    """
+
+    def test_a_conversion_operator_may_be_a_template(self):
+        """`??$?B<args>@`: `operator<A, B> T`, the type still read from the return slot,
+        the arguments between the word and the type as `ConversionOperatorIdentifierNode`
+        writes them. clangd's `LSPBinder::UntypedOutgoingMethod` declares one, and every
+        lambda inside it names it as a scope -- 456 symbols."""
+        self.assertEqual(
+            demangle_msvc_symbol("??$?BH@S@@QEAAHXZ"),
+            "public: int __cdecl S::operator<int> int(void)",
+        )
+        self.assertEqual(
+            demangle_msvc_symbol("??$?BUA@@UB@@@S@@QEBA?AV?$V@H@@XZ"),
+            "public: class V<int> __cdecl S::operator<struct A, struct B> class V<int>(void) const",
+        )
+        # Pinned as a refusal until the Windows build showed the shape is real.
+        self.assertEqual(
+            demangle_msvc_symbol("??$?BH@S@@QEAAAEAU0@H@Z"),
+            "public: struct S & __cdecl S::operator<int> struct S &(int)",
+        )
+
+    def test_a_member_pointer_argument_under_a_wider_inheritance_model(self):
+        """`$H`, `$I` and `$J` name a function and carry one, two and three offsets;
+        `$F` and `$G` are the data-member forms with offsets alone. Bracketed, with the
+        offsets after the name. clang writes `$H` for every
+        `filtered_decl_iterator<ObjCMethodDecl, &isClassMethod>` -- 186 symbols."""
+        cases = [
+            ("?f@@YAXV?$X@$H?g@S@@QEAAXXZ3@@@Z", "void __cdecl f(class X<{public: void __cdecl S::g(void), 4}>)"),
+            ("?f@@YAXV?$X@$H3@@@Z", "void __cdecl f(class X<{4}>)"),
+            (
+                "?f@@YAXV?$X@$I?g@S@@QEAAXXZ3A@@@@Z",
+                "void __cdecl f(class X<{public: void __cdecl S::g(void), 4, 0}>)",
+            ),
+            (
+                "?f@@YAXV?$X@$J?g@S@@QEAAXXZ3A@?1@@@Z",
+                "void __cdecl f(class X<{public: void __cdecl S::g(void), 4, 0, -2}>)",
+            ),
+            ("?f@@YAXV?$X@$F3A@@@@Z", "void __cdecl f(class X<{4, 0}>)"),
+            ("?f@@YAXV?$X@$G3A@?1@@@Z", "void __cdecl f(class X<{4, 0, -2}>)"),
+            # A vcall thunk stands where the function would: clang's LazyOffsetPtr.
+            (
+                "?f@@YAXV?$X@$H??_9S@@$B7AAA@@@@Z",
+                "void __cdecl f(class X<{[thunk]: __cdecl S::`vcall'{8, {flat}}, 0}>)",
+            ),
+        ]
+        for mangled, expected in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_a_letter_escape_in_a_string_literal(self):
+        """`?A` through `?Z` are 0xC1 through 0xDA and `?a` through `?z` 0xE1 through
+        0xFA: `demangleCharLiteral`'s two tables, which UTF-8 text lands in. Only the
+        digit escapes were read, and 34 literals were refused for a letter."""
+        self.assertEqual(demangle_msvc_symbol("??_C@_02BDPOGFEI@?C?$LE?$AA@"), '"\\xC3\\xB4"')
+        self.assertEqual(demangle_msvc_symbol("??_C@_02ABCDEFGH@?A?Z?$AA@"), '"\\xC1\\xDA"')
+        self.assertEqual(demangle_msvc_symbol("??_C@_02ABCDEFGH@?a?z?$AA@"), '"\\xE1\\xFA"')
+
+    def test_a_function_type_in_a_pointed_to_functions_return_type_has_no_convention(self):
+        """`PointerTypeNode::outputPre` prints its pointee with `OF_NoCallingConvention`,
+        a flag that reaches everything inside the return type -- so `std::function<void
+        (void)>` there, and `std::function<void __cdecl(void)>` in the parameter list
+        of the same pointer, or as a return type the declaration's own. 123 callback
+        pointers in the build are spelled so."""
+        cases = [
+            (
+                "?f@@YAXP6A?AV?$function@$$A6AXXZ@std@@XZ@Z",
+                "void __cdecl f(class std::function<void (void)> (__cdecl *)(void))",
+            ),
+            (
+                "?f@@YAXP8C@@EAA?AV?$function@$$A6AXXZ@std@@XZ@Z",
+                "void __cdecl f(class std::function<void (void)> (__cdecl C::*)(void))",
+            ),
+            (
+                "?x@@3P6A?AV?$function@$$A6AXXZ@std@@XZEA",
+                "class std::function<void (void)> (__cdecl *x)(void)",
+            ),
+            (
+                "?f@@YAXP6AXV?$function@$$A6AXXZ@std@@@Z@Z",
+                "void __cdecl f(void (__cdecl *)(class std::function<void __cdecl(void)>))",
+            ),
+            (
+                "?f@@YA?AV?$function@$$A6AXXZ@std@@XZ",
+                "class std::function<void __cdecl(void)> __cdecl f(void)",
+            ),
+            # A back-reference spells the recorded name, which `memorizeIdentifier`
+            # rendered with the default flags: the convention comes back in a parameter,
+            # and a pointer *inside* the recorded name still drops it in its own return.
+            (
+                "?f@@YAXP6A?AV?$function@$$A6AXXZ@std@@XZV1@@Z",
+                "void __cdecl f(class std::function<void (void)> (__cdecl *)(void), class function<void __cdecl(void)>)",
+            ),
+            (
+                "?f@@YAXV?$X@P6A?AV?$function@$$A6AXXZ@std@@XZ@@V1@@Z",
+                "void __cdecl f(class X<class std::function<void (void)> (__cdecl *)(void)>,"
+                " class X<class std::function<void (void)> (__cdecl *)(void)>)",
+            ),
+        ]
+        for mangled, expected in cases:
             with self.subTest(mangled=mangled):
                 self.assertEqual(demangle_msvc_symbol(mangled), expected)

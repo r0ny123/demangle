@@ -151,22 +151,43 @@ class TestSafety:
             "_D4testFNkNkfZv",
             "_D4testFIJfZv",  # two of the four that are mutually exclusive
             "_D4testFKIfZv",  # and out of order
-            "_D4testFNkMfZv",  # `return` before `scope`
+            "_D4testFNkMMfZv",  # `return scope` and then `scope` again
+            "_D4testFNkMNkfZv",  # `return scope` and then `return` again
             "_D4testFIKKfZv",  # `in ref` with a second `ref`
         ],
     )
     def test_a_parameter_reads_its_storage_classes_in_order_and_once_each(self, value):
-        """`[M] [Nk] [I[K] | J | K | L] <Type>` is a sequence, not a set.
+        """`[NkM | [M] [Nk]] [I[K] | J | K | L] <Type>` is a sequence, not a set.
 
         `dlang_function_args` reads each of these once and in this order and then reads
         the type. Written as a loop here, it took any order and any number: `FMMfZv`
         came back as `(scope scope float)` and `FIJfZv` as `(in out float)`, neither of
-        which is a parameter anything can declare, and `FNkMfZv` reordered `return
-        scope` out of the order the encoding puts it in. `c++filt --format=dlang`
-        (binutils 2.42) hands every one of these back.
+        which is a parameter anything can declare. `c++filt --format=dlang` (binutils
+        2.42) hands every one of these back.
         """
         with pytest.raises(DemangleFailure):
             parse_d_symbol(value)
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("_D4testFNkMfZv", "test(return scope float)"),
+            ("_D4testFNkMJfZv", "test(return scope out float)"),
+            ("_D4testFNkMKfZv", "test(return scope ref float)"),
+            # A real one: `rt.lifetime.__arrayStart` in the LDC 1.40 runtime.
+            (
+                "_D2rt8lifetime12__arrayStartFNaNbNkMS4core6memory8BlkInfo_ZPv",
+                "rt.lifetime.__arrayStart(return scope core.memory.BlkInfo_)",
+            ),
+        ],
+    )
+    def test_return_scope_written_return_first(self, value, expected):
+        """`NkM`: `return scope`, in that order. DMD 2.104 began writing `Nk` ahead of
+        the `M`, libiberty reads `M` then `Nk` and refuses this, and 766 of the LDC 1.40
+        runtime's 16,197 symbols carry it. D's own `core.demangle` reads both orders and
+        spells this one `return scope`; every one of those 766 reads here the way it
+        spells them."""
+        assert parse_d_symbol(value).text == expected
 
     @pytest.mark.parametrize(
         ("value", "expected"),
