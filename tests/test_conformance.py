@@ -192,14 +192,16 @@ DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT = 53, 53
 #: rather than here or by tools/differential.py.
 GNUV2_TOTAL, GNUV2_EXACT = 1324, 1324
 
-#: Pre-Itanium C++ from shipped binaries: every fourth defined dynamic symbol of Debian
-#: woody's kdelibs3 2.2.2 and gcc 2.95.4's libstdc++ 2.10, plus every thunk, against
-#: libiberty's `cplus_demangle` under the `gnu` style. The 25,272 names those libraries
-#: define agree with the reference on all but one, `__thunk_n8_...`, a thunk with a
-#: positive delta, which gcc 2.95 wrote with an `n` and libiberty reads as a method
-#: named `n8_setInstance`; tests/test_gnuv2.py pins that one against the compiler's
-#: own `make_thunk`, and the corpus leaves it out.
-GNUV2_REAL_WORLD_TOTAL, GNUV2_REAL_WORLD_EXACT = 6802, 6802
+#: Pre-Itanium C++ from shipped binaries, all gcc 2.95's output for Debian woody: every
+#: fourth defined dynamic symbol of kdelibs3 2.2.2 and libstdc++ 2.10, every eighth of
+#: kdebase 2.2.2, omniORB 3.0.4, kchart 1.1.1, gtkmm 1.2.10, libsigc++ 1.0.4 and
+#: libxml++ 1.0.4, plus every thunk, against libiberty's `cplus_demangle` under the
+#: `gnu` style. The 56,347 names those libraries define agree with the reference on all
+#: but 396, every one a thunk with a positive delta, `__thunk_n8_...`, which gcc 2.95
+#: wrote with an `n` and libiberty reads as a method named `n8_setInstance`;
+#: tests/test_gnuv2.py pins the form against the compiler's own `make_thunk`, and the
+#: corpus leaves those out.
+GNUV2_REAL_WORLD_TOTAL, GNUV2_REAL_WORLD_EXACT = 12661, 12661
 
 #: Metrowerks CodeWarrior, against `encounter/cwdemangle`'s own test module. libiberty
 #: never read this mangling, so that tool -- the one decompilation projects for GameCube

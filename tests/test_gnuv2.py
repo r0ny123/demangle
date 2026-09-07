@@ -235,8 +235,9 @@ class TestWhatItRefusesToClaim:
     def test_a_thunk_with_a_positive_delta_is_written_with_an_n(self):
         """gcc 2.95's `make_thunk` writes `__thunk_%d_` for a delta of zero or less
         and `__thunk_n%d_` for a positive one, so `__thunk_n8_` is a delta of 8. It is
-        the one form in 25,272 names from KDE 2.2.2 and libstdc++ 2.10 that libiberty
-        does not read: `gnu_special` steps past `__thunk_` before finding no digit,
+        the one form, 396 times over, in 56,347 names from KDE 2.2.2, omniORB 3.0.4 and
+        the rest of Debian woody's C++ that libiberty does not read: `gnu_special`
+        steps past `__thunk_` before finding no digit,
         and `demangle_prefix` then reads the rest as a method,
         `KParts::PartBase::n8_setInstance(KInstance *)`. The compiler's own naming is
         the authority on what the compiler wrote; a name with no digits after the `n`

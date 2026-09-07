@@ -78,12 +78,13 @@ All notable changes to this project are recorded here. The format follows
   and the second form was refused. libiberty refuses it too, in its way: `gnu_special`
   steps past `__thunk_` before finding no digit, and `demangle_prefix` then reads what
   is left as a method, so `__thunk_n8_setInstance__Q26KParts8PartBaseP9KInstance` is
-  `KParts::PartBase::n8_setInstance(KInstance *)` to it. It is the one name in 25,272
-  that KDE 2.2.2's 53 libraries and gcc 2.95.4's libstdc++ define -- the first real
-  gcc 2.95 output put to this scheme, from Debian woody -- where the two part, and it
-  now reads `virtual function thunk (delta:8) for KParts::PartBase::setInstance(KInstance *)`,
-  the compiler's own naming being the authority on what the compiler wrote. A quarter
-  of those names and every thunk are `tests/conformance/gnuv2-real-world.txt`.
+  `KParts::PartBase::n8_setInstance(KInstance *)` to it. It is the one form, 396
+  times over, in the 56,347 names that Debian woody's KDE 2.2.2, kdebase, omniORB
+  3.0.4, kchart, gtkmm 1.2, libsigc++, libxml++ and gcc 2.95.4's libstdc++ define --
+  the first real gcc 2.95 output put to this scheme -- where the two part, and it now
+  reads `virtual function thunk (delta:8) for KParts::PartBase::setInstance(KInstance *)`,
+  the compiler's own naming being the authority on what the compiler wrote. 12,661 of
+  those names, every thunk among them, are `tests/conformance/gnuv2-real-world.txt`.
 - **Swift: a shared object's indirect symbolic references, read off the disk.** An
   indirect reference points at a pointer slot the loader fills, and in a file the slot
   holds zero with a `.rela.dyn` entry saying what goes there. `resolve.elf_image` now
