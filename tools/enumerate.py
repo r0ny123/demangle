@@ -270,6 +270,10 @@ ACCEPTED = {
         # the `0` inside an identifier, and both references agree on them -- so it is
         # reachable only by mutation. See `tests/test_d.py`.
         or (first is None and _ANONYMOUS_MEMBER.search(name) is not None)
+        # Or a `return scope` parameter written return first, `NkM`, which DMD 2.104
+        # began writing and libiberty -- `M` then `Nk` and nothing else -- refuses. Read
+        # here as D's own `core.demangle` reads it; see `tests/test_d.py`.
+        or (first is None and "NkM" in name)
     ),
     "itanium": lambda name, ours, first, second: (
         # `llvm-cxxfilt` resolving a generic lambda's substituted parameter to the
@@ -421,6 +425,32 @@ ACCEPTED = {
             and first is not None
             and _without_qualifiers(first) == _without_qualifiers(ours)
         )
+        # Or a pointer to member whose class is a function type, which is not a type at
+        # all and which the three implementations read three ways.
+        or (
+            first is not None
+            and second[0] is not None
+            and first != second[0]
+            and _MEMBER_OF_A_FUNCTION_TYPE.search(name) is not None
+        )
+        # Or a pack named outside any expansion -- `T_` for a pack with no `Dp`, which no
+        # declaration does. `llvm-cxxfilt` prints such a pack as its first member,
+        # `c++filt` as its last, and this as all of them, recorded in
+        # `tests/test_expressions.py` rather than followed; accepted only where the two
+        # references disagree with each other as well, which is the signature of a
+        # shape with no answer to be right about.
+        or (
+            first is not None
+            and second[0] is not None
+            and first != second[0]
+            and _DECLARES_A_PACK.search(name) is not None
+        )
+        # Or a function returning a function, which is not a type, read by LLVM alone.
+        or (second[0] is None and _FUNCTION_RETURNING_A_FUNCTION.search(name) is not None)
+        # Or `sizeof...` over expansions of a pack a mutation has corrupted: LLVM refuses
+        # the name and GNU counts the corrupted pack's members its own way -- `[6]`
+        # against `[7]` here -- with no declaration behind either count.
+        or (first is None and _SIZEOF_PACKS.search(name) is not None)
     ),
     # `Tg` is a generic specialization and the `m` after it is `MetatypeParamsRemoved`,
     # a flag 5.10.1's `demangleSpecAttributes` reads and current `main` -- which is what
@@ -578,6 +608,24 @@ def _without_qualifiers(text):
 
 #: The anonymous `<SymbolName>` `0`, then the `M` member-function form. See `ACCEPTED`.
 _ANONYMOUS_MEMBER = re.compile(r"0M[A-Za-z]{0,6}F")
+
+#: A pointer to member whose *class* is a function type: `M` and then, where a class type
+#: must stand, `F` -- or a cv-qualified `F`. No declaration has one, and the three
+#: implementations agree on nothing about it: `_Z1fM1XMFivOEMS_FOKivEMS_VFS3_RS2_E` is
+#: `int () &&::*` to LLVM. See `ACCEPTED`.
+_MEMBER_OF_A_FUNCTION_TYPE = re.compile(r"M[rVK]*F")
+
+#: A template argument pack, `IJ`, in a name that is not reading one of the packs the
+#: rules above explain. See `ACCEPTED`: a pack named outside any expansion.
+_DECLARES_A_PACK = re.compile(r"IJ")
+
+#: A function type whose return type is a function type, `FFvvE`: not a type C++ has, and
+#: read two ways by the two that read it -- `void  (**)()() volatile` to LLVM for
+#: `PPVFFvvEE`, refused by GNU. See `ACCEPTED`.
+_FUNCTION_RETURNING_A_FUNCTION = re.compile(r"F[rVK]*F")
+
+#: `sP`, `sizeof...` over a list of expansions. See `ACCEPTED`.
+_SIZEOF_PACKS = re.compile(r"sP")
 
 #: A path separator with nothing before the next one, the parameter list, or the end.
 _EMPTY_COMPONENT = re.compile(r"\.(?=[.(]|$)")
