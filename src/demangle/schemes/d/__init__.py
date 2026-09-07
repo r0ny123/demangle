@@ -38,9 +38,22 @@ def detect(name):
     no path and no type, and the digit rule turned it away -- so the one symbol every D
     programme has was the one this scheme did not claim.
     """
+    name = _without_the_mach_o_underscore(name)
     if not name or not name.startswith("_D"):
         return False
     return name == _MAIN or (len(name) > 2 and "0" <= name[2] <= "9")
+
+
+def _without_the_mach_o_underscore(name):
+    """`__D...` as `_D...`: the one underscore a Mach-O symbol table adds.
+
+    LDC on macOS writes the same `_D` names as everywhere else, and the linker puts a
+    leading underscore on every symbol, so `nm` shows `__D4test3fooFZv`. GNU `c++filt
+    --format=dlang -_` reads it as `test.foo()` and `__Dmain` as `D main`; `ddemangle`,
+    which never sees a symbol table, does not. Exactly one comes off, as the Itanium and
+    Swift readers here take it off their own prefixes, and `___D` stays what it is.
+    """
+    return name[1:] if name.startswith("__D") else name
 
 
 def _wants_structure(builder):
@@ -55,8 +68,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     """Parse a D mangled name into `builder`."""
     if not mangled:
         raise NotMangledError(mangled, "empty name")
+    original, mangled = mangled, _without_the_mach_o_underscore(mangled)
     if not mangled.startswith("_D"):
-        raise NotMangledError(mangled, "not a D mangled name")
+        raise NotMangledError(original, "not a D mangled name")
     if mangled == _MAIN:
         # The one name with no path and no type: D's entry point, which the runtime calls
         # and the compiler does not mangle like anything else. The reference spells it

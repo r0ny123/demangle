@@ -73,6 +73,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: the Mach-O underscore.** LDC on macOS writes the same `_D` names as everywhere
+  else, and the linker puts a leading underscore on every symbol, so `nm` shows
+  `__D4test3fooFZv`; this refused it. GNU `c++filt --format=dlang -_` strips one and
+  reads it, and so does this now, `__Dmain` included. The same question asked of every
+  scheme a Mach-O symbol table can hold: Itanium and Rust already took the underscore
+  off, Swift and D did not.
 - **Swift: the Mach-O underscore on every prefix.** A Mach-O symbol table carries one
   more leading underscore than the compiler wrote, and `swift-demangle` strips exactly
   one from a name that opens with two before reading it. This read `_$s` and `_$S`,

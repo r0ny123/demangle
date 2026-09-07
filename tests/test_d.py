@@ -1242,3 +1242,32 @@ class TestAnAnonymousLastComponentInsideAnArgument:
     )
     def test_the_spelling(self, mangled, expected):
         assert demangle.demangle(mangled, language="d") == expected
+
+
+class TestTheMachOUnderscore:
+    """LDC on macOS writes the same `_D` names as everywhere else, and the linker puts a
+    leading underscore on every symbol, so `nm` shows `__D4test3fooFZv`. GNU `c++filt
+    --format=dlang -_` strips one and reads it; `ddemangle` refuses it, never having
+    seen a symbol table. One comes off here, as for an Itanium or Swift name."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("__D4test3fooFZv", "test.foo()"),
+            ("__Dmain", "D main"),
+            ("_D4test3fooFZv", "test.foo()"),
+        ],
+    )
+    def test_one_underscore_comes_off(self, mangled, expected):
+        from demangle.schemes.d import detect
+
+        assert detect(mangled)
+        assert demangle.demangle(mangled) == expected
+        assert demangle.demangle_strict(mangled, language="d") == expected
+
+    def test_only_one_comes_off(self):
+        from demangle.schemes.d import detect
+
+        assert not detect("___D4test3fooFZv")
+        assert demangle.demangle("___D4test3fooFZv") == "___D4test3fooFZv"
+        assert demangle.demangle("__D") == "__D"
