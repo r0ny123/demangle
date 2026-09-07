@@ -36,8 +36,16 @@ MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 160, 160
 #: `__int128` and `unsigned __int128` and which `demanglePrimitiveType` has no case for,
 #: and a qualifier in front of a deduced return type, which `CustomTypeNode::outputPre`
 #: drops. Their expected column is the declaration in the source, as for the Itanium file
-#: above.
-MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 4, 4
+#: above. Then three from Boost 1.84's MSVC build: `?A_P` and `?A_T`, `auto` and
+#: `decltype(auto)` as a return type, which the release refuses and LLVM's main branch
+#: reads; the expected column is the STL declaration, and main's spelling agrees.
+MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 7, 7
+
+#: Boost 1.84's twenty-nine `boost_*-vc143` NuGet packages, x64 and x86: every twentieth
+#: of the 122,162 names `llvm-undname` 18 reads, every vcall thunk, and ten catch-block
+#: variables inside MD5-hashed functions. Two shapes the LLVM release's x64 build never
+#: wrote.
+MSVC_BOOST_TOTAL, MSVC_BOOST_EXACT = 5843, 5843
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 
@@ -384,6 +392,12 @@ def test_msvc_matches_llvm_undname_on_real_compiler_output():
     """See `MSVC_CLANG_TOTAL`. Names a compiler wrote, not vectors somebody chose."""
     total, exact = _score("msvc-clang.txt", "llvm", language="msvc")
     assert (total, exact) == (MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT)
+
+
+def test_msvc_matches_llvm_undname_on_boost():
+    """See `MSVC_BOOST_TOTAL`."""
+    total, exact = _score("msvc-boost.txt", "llvm", language="msvc")
+    assert (total, exact) == (MSVC_BOOST_TOTAL, MSVC_BOOST_EXACT)
 
 
 def test_msvc_reads_what_its_reference_cannot():

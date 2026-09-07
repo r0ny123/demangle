@@ -52,6 +52,7 @@ CORPUS_SETTINGS = {
     "msvc-llvm-corpus.txt": {"language": "msvc"},
     "msvc-clang.txt": {"language": "msvc"},
     "msvc-reference-defects.txt": {"language": "msvc"},
+    "msvc-boost.txt": {"language": "msvc"},
     # Auto-detection would work on all four, but naming the language keeps the file
     # scored as the Swift corpus it is rather than as a test of the detector.
     "swift-reference-defects.txt": {"language": "swift"},
