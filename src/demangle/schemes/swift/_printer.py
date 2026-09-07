@@ -23,7 +23,7 @@ toolchain's is not useful, and every one of them changes the answer.
 
 from ._demangler import _VALUE_WITNESS_NAMES, STDLIB_NAME, demangle_symbol
 from ._old_demangler import demangle_old_symbol
-from .options import DEFAULT_OPTIONS
+from .options import DEFAULT_OPTIONS, SwiftOptions
 
 __all__ = ["print_root"]
 
@@ -166,6 +166,12 @@ def generic_parameter_name(depth, index):
     return "".join(name)
 
 
+#: What `demangleSymbolAsString(text)` prints with: the struct's own defaults, which
+#: differ from the tool's in one flag -- no sugar. So a propagated function is spelled
+#: `Swift.Optional<Swift.String>` inside a name whose own types say `Swift.String?`.
+_PAYLOAD_OPTIONS = SwiftOptions(synthesize_sugar_on_types=False)
+
+
 def _demangle_either(text):
     """A specialisation's payload is itself a mangled name, and not always a current one:
     a Swift 3 symbol's payload is Swift 3 too. The reference reaches both through one
@@ -174,6 +180,11 @@ def _demangle_either(text):
     if found is None:
         found = demangle_old_symbol(text)
     return found
+
+
+def _spell_payload(text):
+    """`demangleSymbolAsString(text)`, falling back to the text itself as the reference does."""
+    return print_root(_demangle_either(text), _PAYLOAD_OPTIONS) or text
 
 
 def _quoted(text):
@@ -344,7 +355,7 @@ class Printer:
     def print_bound_generic(self, node, depth):
         if len(node.children) < 2:
             return
-        if len(node.children) != 2 or node.kind == "BoundGenericClass":
+        if len(node.children) != 2 or node.kind == "BoundGenericClass" or not self.options.synthesize_sugar_on_types:
             self.print_bound_generic_no_sugar(node, depth)
             return
         if node.kind == "BoundGenericProtocol":
@@ -771,7 +782,7 @@ class Printer:
             if kind in (_PARAM_CONSTANT_PROP_FUNCTION, _PARAM_CONSTANT_PROP_GLOBAL):
                 # The operand is itself a mangled name; the reference demangles it and
                 # falls back to the raw text when it cannot.
-                self.write(print_root(_demangle_either(child.text)) or child.text)
+                self.write(_spell_payload(child.text))
             elif kind == _PARAM_CONSTANT_PROP_STRING and child.text and child.text.startswith("_"):
                 # `_` escapes a string constant that would otherwise start with a digit.
                 self.write(child.text[1:])
@@ -1645,7 +1656,7 @@ def _print_param_payload(self, node, depth, as_prefix_context):
     if node.text is None:
         self.write(str(node.index))
         return None
-    self.write(print_root(_demangle_either(node.text)) or node.text)
+    self.write(_spell_payload(node.text))
     return None
 
 

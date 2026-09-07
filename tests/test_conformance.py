@@ -161,7 +161,7 @@ SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 514, 514
 #: existential shape case, which reads the node one child too high and spells the type as
 #: `<null node pointer>`. The expected column is what the demangling tree says instead;
 #: see the file's own header.
-SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT = 4, 4
+SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT = 5, 5
 
 #: Objective-C. No reference demangler exists, so the expected column is what the
 #: *declaration* said: every symbol here was emitted by clang 18.1.3 for Objective-C this

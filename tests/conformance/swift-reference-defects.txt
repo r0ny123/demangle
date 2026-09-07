@@ -32,3 +32,9 @@ $sSiXg	existential shape for any Swift.Int
 $s4main1PPXg	existential shape for any main.P
 $sSSXg	existential shape for any Swift.String
 $sSaySiGXg	existential shape for any [Swift.Int]
+# The one a shipped runtime carries -- Swift 6.1.2's FoundationEssentials: a shape over
+# a constrained existential, with a generic signature (`XG`) and made uniquable (`Mq`).
+# The reference prints the type in the signature's place and `<null node pointer>` for
+# the type. The `any` is doubled because the printer writes one ahead of every shape's
+# type and a constrained existential spells its own; that is what the tree says.
+$sl20FoundationEssentials27StandardPredicateExpression_px6OutputRts_XPXGMq	uniquable existential shape for <A> any any FoundationEssentials.StandardPredicateExpression<Self.Output == A>

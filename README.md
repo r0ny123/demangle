@@ -329,7 +329,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
 | Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` ✤ | **217 / 217** |
-| Swift names the reference reads wrongly ✤ | the demangling tree | **4 / 4** |
+| Swift names the reference reads wrongly ✤ | the demangling tree | **5 / 5** |
 | Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
 | Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
 | CodeWarrior — the reference's own vectors ✧ | `cwdemangle` 1.0 | **47 / 47** |
@@ -565,15 +565,17 @@ Run live against the reference, not replayed.
 | `libLLVM.so.18.1`, gnu style | 44,093 | **100%** ‖ |
 | Every shared library Ubuntu 24.04 ships, llvm style ✱ | 217,409 | **322 differ** |
 | Swift runtime + Foundation | 48,368 | **100%** |
+| Swift 6.1.2 toolchain, all 29 runtime libraries ✤ | 135,492 | **1 differ** |
 | Nim standard library routine names ¶ | 5,946 | **99.87%** |
 | Free Pascal runtime and packages § | 236,570 | **100%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
+| `libgnat` + `libgnarl` (Ada), against `c++filt --format=gnat` | 11,237 | **100%** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 460,000 real symbols. Every row is exact except the four marked, and on those every difference is a name a reference reads wrongly (✱) or a spelling policy still short of `c++filt` (‖) — both accounted for below, name by name.
+About 600,000 real symbols. Every row is exact except the five marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift toolchain row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks

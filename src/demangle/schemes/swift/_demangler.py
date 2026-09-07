@@ -119,6 +119,7 @@ CONCURRENCY_TYPES = {
     "f": ("Protocol", "SerialExecutor"),
     "G": ("Structure", "TaskGroup"),
     "g": ("Structure", "ThrowingTaskGroup"),
+    "h": ("Protocol", "TaskExecutor"),
     "I": ("Protocol", "AsyncIteratorProtocol"),
     "i": ("Protocol", "AsyncSequence"),
     "J": ("Structure", "UnownedJob"),
@@ -538,10 +539,11 @@ class Demangler:
                 return self.push_multi_substitutions(repeat, ord(char) - ord("A"))
             if char == "_":
                 # The number was an index, not a count. 27 rather than 26 because the
-                # single-letter form already covers 0-25.
-                if repeat is None:
-                    return None
-                at = repeat + 27
+                # single-letter form already covers 0-25 -- and a bare `A_` is index 26,
+                # the reference's `-1 + 27`: the first one past the letters, written with
+                # no digits at all. Refusing it lost every name with twenty-seven
+                # substitutions in play, which a closure nested three deep reaches.
+                at = (-1 if repeat is None else repeat) + 27
                 if at >= len(self.substitutions):
                     return None
                 return self.substitutions[at]

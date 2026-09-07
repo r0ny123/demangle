@@ -19,6 +19,18 @@ __all__ = ["DEFAULT_OPTIONS", "SIMPLIFIED_OPTIONS", "SwiftOptions"]
 class SwiftOptions:
     """Which parts of a Swift name to print."""
 
+    synthesize_sugar_on_types: bool = True
+    """Spell `Swift.Optional<T>` as `T?`, `Swift.Array<T>` as `[T]`, and the dictionary
+    and inline-array forms with them.
+
+    `SynthesizeSugarOnTypes`. The struct's own default is off; `swift-demangle` turns it
+    on unless given `--disable-sugar`, and so does this, because the tool's output is
+    what a reader has seen. Off is still reachable, and the printer itself needs it: a
+    specialisation's propagated function is a mangled name the reference demangles
+    again with the struct's defaults, so *that* one comes out unsugared inside a name
+    that is otherwise sugared.
+    """
+
     display_module_names: bool = True
     """Qualify a name with the module that declares it: `Swift.Int`, not `Int`.
 

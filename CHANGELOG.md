@@ -73,6 +73,30 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Swift: the whole 6.1.2 toolchain runtime, read against the reference.** Every
+  symbol the 29 libraries a Swift toolchain ships define -- 135,492 of them, against
+  48,368 from the 5.10 runtime the corpora were drawn from -- put to the reference built
+  from source, and three things it read that this refused or spelled differently:
+  - `Sch` is `Swift.TaskExecutor`, added to `StandardTypesMangling.def` with Swift 6.0's
+    task executors and the one letter the concurrency table here lacked. Thirty names,
+    `globalConcurrentExecutor` and `withTaskExecutorPreference` among them, were refused
+    for it.
+  - A bare `A_` names the twenty-seventh substitution. `demangleMultiSubstitutions`
+    reaches `_` with its repeat count still `-1` and adds 27, so no digits means index
+    26; this required the digits and refused the name. Thirty-six names, each a closure
+    nested deep enough in a function with enough labelled parameters to have that many
+    substitutions in play.
+  - A propagated function's own name is demangled again through
+    `demangleSymbolAsString(text)`, which prints with the struct's defaults -- and the
+    one flag `swift-demangle` changes is sugar. So inside a name whose own types say
+    `Swift.String?`, the propagated function says `Swift.Optional<Swift.String>`, and
+    eighty-six specialisations in Foundation and the string-processing runtime spell it
+    so. `SwiftOptions` gains `synthesize_sugar_on_types`, on by default as the tool has
+    it, and the payload is printed with it off.
+  The one name left is the extended-existential-shape defect the reference-defects
+  corpus already pins, now with a fifth row: the shape over a constrained existential
+  that FoundationEssentials ships. The D runtime (16,333 names) and the GNAT Ada runtime
+  (11,237) were swept the same way against `c++filt` and read identically.
 - **The old `sr <type> <name>` form g++ still writes, and the numbering it counts by.**
   `decltype(A::baz<T> + t)` compiled with g++ 13 is `_Z1kIiEDTplsr1A3bazIT_Efp_ES1_`:
   the pre-2009 unresolved-name production, a complete class type and then a member,

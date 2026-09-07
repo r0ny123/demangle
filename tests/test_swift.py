@@ -23,7 +23,7 @@ import pytest
 
 import demangle
 from demangle.core.errors import DemanglingError
-from demangle.schemes.swift import detect
+from demangle.schemes.swift import SwiftOptions, detect
 from demangle.schemes.swift._demangler import Demangler, demangle_symbol
 from demangle.schemes.swift._printer import print_root
 
@@ -258,6 +258,47 @@ class TestWhatSwiftAddedAfterThisWasWritten:
         assert spell("$s$n3_SSBVSgD") == "Builtin.FixedArray<-4, Swift.String>?"
         assert spell("$sSiBWSgD") == "Builtin.Borrow<Swift.Int>?"
 
+    def test_the_task_executor_protocol(self):
+        """`Sch`, added to `StandardTypesMangling.def` with Swift 6.0's task executors.
+        Nothing the 5.10 runtime shipped carried it; the 6.1.2 runtime's
+        `globalConcurrentExecutor` does, and the table here was one letter short."""
+        assert spell("$sSchD") == "Swift.TaskExecutor"
+        assert (
+            demangle.demangle("$ss24globalConcurrentExecutorSch_pvg", language="swift")
+            == "Swift.globalConcurrentExecutor.getter : Swift.TaskExecutor"
+        )
+
+    def test_a_bare_underscore_names_the_twenty_seventh_substitution(self):
+        """`A_` is `demangleMultiSubstitutions` with its repeat count still `-1`: index
+        `-1 + 27`, the first past the single letters, written with no digits at all.
+        Requiring the digits refused every name with twenty-seven substitutions in play,
+        which a closure three deep in a function with eight labelled parameters
+        reaches. Twenty-seven struct parameters get there too; the expected column is
+        the reference's."""
+        prefix = "$s4main1fyyAA1AV_" + "".join(f"AA1{letter}V" for letter in "BCDEFGHIJKLMNOPQRSTUVWXYZa")
+        listed = ", ".join(f"main.{letter}" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        assert demangle.demangle(prefix + "A_tF", language="swift") == f"main.f({listed}, M: main.a) -> ()"
+        assert (
+            demangle.demangle(prefix + "AA1bVA0_tF", language="swift")
+            == f"main.f({listed}, main.a, main.b, main.M) -> ()"
+        )
+
+    def test_a_propagated_functions_types_are_not_sugared(self):
+        """`printNextParamChildNode` demangles a propagated function's name again through
+        `demangleSymbolAsString(text)` -- the struct's own defaults, where
+        `SynthesizeSugarOnTypes` is off -- so its `Optional` is spelled in full inside a
+        name whose own types are sugared. Eighty-six names in the 6.1.2 runtime carry
+        one."""
+        name = "$sSPys4Int8VGSpyABGSgs5Error_pIgydzo_AcEsAF_pIegyrzo_TR017$sSo6strdupySpys4A13VGSgSPyACGFTOTf3nnpf_n"
+        assert demangle.demangle(name, language="swift") == (
+            "function signature specialization <Arg[2] = [Constant Propagated Function : @nonobjc "
+            "__C.strdup(Swift.UnsafePointer<Swift.Int8>) -> Swift.Optional<Swift.UnsafeMutablePointer<Swift.Int8>>]>"
+            " of reabstraction thunk helper from @callee_guaranteed (@unowned Swift.UnsafePointer<Swift.Int8>)"
+            " -> (@unowned Swift.UnsafeMutablePointer<Swift.Int8>?, @error @owned Swift.Error) to @escaping"
+            " @callee_guaranteed (@unowned Swift.UnsafePointer<Swift.Int8>)"
+            " -> (@out Swift.UnsafeMutablePointer<Swift.Int8>?, @error @owned Swift.Error)"
+        )
+
 
 class TestAgainstSwiftsOwnCorpus:
     """`test/Demangle/Inputs/manglings.txt` from the swiftlang/swift repository.
@@ -395,6 +436,16 @@ class TestGrammarFacts:
         assert spell("$sSaySiGD") == "[Swift.Int]"
         assert spell("$sSDySSSiGD") == "[Swift.String : Swift.Int]"
         assert spell("$sSiSgD") == "Swift.Int?"
+
+    def test_and_the_structs_default_is_still_reachable(self):
+        """What the reference's library entry point prints, for a caller who wants it,
+        and what the printer itself uses for a specialisation's propagated function."""
+        plain = SwiftOptions(synthesize_sugar_on_types=False)
+        assert print_root(demangle_symbol("$sSaySiGD"), plain) == "Swift.Array<Swift.Int>"
+        assert print_root(demangle_symbol("$sSDySSSiGD"), plain) == "Swift.Dictionary<Swift.String, Swift.Int>"
+        assert print_root(demangle_symbol("$sSiSgD"), plain) == "Swift.Optional<Swift.Int>"
+        # A class is never sugared, and the explicit sugar nodes -- `XSq` -- always are.
+        assert print_root(demangle_symbol("$sSiXSqD"), plain) == "Swift.Int?"
 
     def test_a_symbol_may_name_several_things(self):
         text = spell("$s10Foundation10CocoaErrorV4CodeVSQAAMc")
