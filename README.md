@@ -566,6 +566,7 @@ Run live against the reference, not replayed.
 | Every shared library Ubuntu 24.04 ships, llvm style ✱ | 217,409 | **322 differ** |
 | Swift runtime + Foundation | 48,368 | **100%** |
 | Swift 6.1.2 toolchain, all 29 runtime libraries ✤ | 135,492 | **1 differ** |
+| Swift 6.1.2 toolchain C++ (`swift-frontend`, `liblldb`, `libsourcekitdInProc`), names not in the rows above ✱ | 185,532 | **62 differ** |
 | Nim standard library routine names ¶ | 5,946 | **99.87%** |
 | Free Pascal runtime and packages § | 236,570 | **100%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
@@ -575,7 +576,7 @@ Run live against the reference, not replayed.
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 600,000 real symbols. Every row is exact except the five marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift toolchain row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name.
+About 780,000 real symbols. Every row is exact except the six marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ are the template-parameter rebinding `_Prepare_execution` shows, in the constructor's own name and in the `ArrayRefView` lambdas, where `c++filt` agrees with this.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks

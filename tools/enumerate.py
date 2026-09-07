@@ -407,8 +407,9 @@ ACCEPTED = {
         # space -- and refused by GNU. `const const` on a function type is not a
         # declaration either.
         or (name.count("K") + name.count("V") > 1 and "F" in name and second[0] is None)
-        # Or a cv-qualified function type reached through a <substitution>, where each
-        # reference contradicts its own answer for the same type written out. `_Z1fKFvvE`
+        # Or a cv-qualified function type reached through a <substitution> or a
+        # <template-param>, where each reference contradicts its own answer for the
+        # same type written out. `_Z1fKFvvE`
         # is `f(void () const)` to both; `_Z1fFvvEKS_` is `f(void (), void  const())` to
         # LLVM -- the qualifier moved into the declarator, with a doubled space -- and
         # `f(void (), void ( const)())` to GNU. This spells the substituted type the way
@@ -557,7 +558,13 @@ def _without_template_arguments(spelled):
 _MSVC_QUALIFIER_WORDS = re.compile(r" (?:const|volatile)\b")
 
 #: A CV-qualifier applied directly to a `<substitution>`. See `ACCEPTED`.
-_QUALIFIED_SUBSTITUTION = re.compile(r"[rVK]S")
+#: A qualifier applied to a <substitution> or to a <template-param>: either may stand
+#: for a function type, which both references then qualify differently from the same
+#: type written out. `_Z1fIJFivEEEvDpRKT_` -- `const T&` over a pack holding a function
+#: type, which lldb's instrumentation really writes -- is `f<int ()>(int  const(&)())` to
+#: LLVM and `f<int ()>(int ( const&)())` to GNU, against `int (&)() const` from both for
+#: `_Z1fRKFivE`.
+_QUALIFIED_SUBSTITUTION = re.compile(r"[rVK](?:S|T\d*_)")
 
 #: Every word that spells a qualifier, and the reference sigils, so two answers can be
 #: compared for "differs in nothing else".

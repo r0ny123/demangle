@@ -1492,7 +1492,7 @@ class ItaniumParser:
                     not entity_is_type
                     and not self._in_special_name
                     and not reader.eof
-                    and reader.peek() not in ("E", "_")
+                    and reader.peek() not in ("E", "_", ".")
                 ):
                     combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
             finally:
@@ -1520,11 +1520,15 @@ class ItaniumParser:
             # lambda's `operator()` reads `auto f()::'lambda'<...>::operator()(...)` and
             # not `f()::auto 'lambda'...`.
             combined = builder.qualified([outer, inner])
+            # A `.` is a clone suffix -- `f()::x.0`, the copy of a local static the
+            # optimiser split -- and belongs to `parse`, not to a signature. Without
+            # the test, `_ZZ1fvE1x.0` read `.0` as the entity's parameters and the
+            # name was refused; with a discriminator ahead of the dot it never was.
             if (
                 not entity_is_type
                 and not self._in_special_name
                 and not reader.eof
-                and reader.peek() not in ("E", "_")
+                and reader.peek() not in ("E", "_", ".")
                 and not self._at_bare_discriminator()
             ):
                 combined = self.bare_function_type(combined, quals, ref_qualifier, is_template)
@@ -3385,7 +3389,19 @@ class ItaniumParser:
             local = reader.peek() == "Z"
             was_naming = self._naming
             outer_scope = self.targs.snapshot()
+            # What `local_name` decided about the *enclosing* function's return type
+            # is not about this one. Left set, a local name's function whose template
+            # argument names another function -- `f<h()>()::{lambda()#1}` -- spent the
+            # decision here: the embedded `h` lost its return type and the enclosing `f`
+            # kept the one c++filt drops. Cleared for the embedded encoding, which is
+            # spelled as a whole name, and put back for the enclosing one.
+            outer_drop_return = self._drop_return
+            outer_no_return_type = self._no_return_type
+            outer_explicit_object = self._explicit_object
             self._naming = True
+            self._drop_return = False
+            self._no_return_type = False
+            self._explicit_object = False
             try:
                 handle = self.encoding()
             finally:
@@ -3395,6 +3411,9 @@ class ItaniumParser:
                 # resolving against the wrong argument list.
                 self._naming = was_naming
                 self.targs.restore(outer_scope)
+                self._drop_return = outer_drop_return
+                self._no_return_type = outer_no_return_type
+                self._explicit_object = outer_explicit_object
             reader.expect("E")
             self._entity_local = local
             return builder.spell(handle)

@@ -133,3 +133,41 @@ class TestAClosuresOwnParameterWrittenAsTheEnclosingTemplatesEntry:
             demangle.demangle("_ZZN1S1gIiEEvT_ENKUliS1_E_clIiEEDaiS1_", style="gnu")
             == "auto S::g<int>(int)::{lambda(int, auto:1)#1}::operator()<int>(int, int) const"
         )
+
+
+def test_a_clone_suffix_may_follow_the_entity_directly():
+    """`_ZZ1fvE1x.0`: a local static the optimiser copied, with nothing between the
+    entity's name and the dot. The dot is where `parse` picks the suffix up, but the
+    local name saw a character that was not `E`, `_` or the end and read `.0` as the
+    entity's signature, so the name was refused. With a discriminator ahead of it --
+    `_ZZ1fvE1x_0.0` -- it never was. llvm-cxxfilt reads both; c++filt refuses both,
+    so the gnu column is this library's own clone spelling."""
+    assert demangle.demangle_strict("_ZZ1fvE1x.0", style="llvm") == "f()::x (.0)"
+    assert demangle.demangle_strict("_ZZ1fvE1x.0", style="gnu") == "f()::x [clone .0]"
+    assert demangle.demangle_strict("_ZZ1fvE1x_0.0", style="llvm") == "f()::x (.0)"
+    # Seven of these in the Swift 6.1.2 toolchain's `swift-frontend`, all clang's.
+    mangled = "_ZZN5clang6driver13getDriverModeEN4llvm9StringRefENS1_8ArrayRefIPKcEEE7OptName.1"
+    assert demangle.demangle_strict(mangled, style="llvm") == (
+        "clang::driver::getDriverMode(llvm::StringRef, llvm::ArrayRef<char const*>)::OptName (.1)"
+    )
+
+
+def test_an_embedded_encoding_keeps_its_own_return_type_under_gnu():
+    """`L_Z <encoding> E` inside the enclosing function's template arguments is a whole
+    name of its own, and c++filt spells it as one: `f<int h<int>()>()` drops `f`'s return
+    type, as it does for every function a local name is scoped by, and keeps `h`'s.
+    The decision `local_name` made for `f` was being spent on `h` instead -- `h` lost
+    its type and `f` kept one. `_Iter_comp_iter<...reversePathSortedFilenames<...>...>`
+    in the Swift 6.1.2 toolchain's `swift-frontend` is eight names of this shape."""
+    mangled = "_Z1gIZL1fIL_Z1hIiEivEEivEUlvE_EvT_"
+    assert demangle.demangle_strict(mangled, style="gnu") == (
+        "void g<f<int h<int>()>()::{lambda()#1}>(f<int h<int>()>()::{lambda()#1})"
+    )
+    assert demangle.demangle_strict(mangled, style="llvm") == (
+        "void g<int f<int h<int>()>()::'lambda'()>(int f<int h<int>()>()::'lambda'())"
+    )
+    assert demangle.demangle_strict("_ZZ1fIL_Z1hIiEivEEivE1x", style="gnu") == "f<int h<int>()>()::x"
+    # An address-of over the embedded name goes the same way.
+    assert demangle.demangle_strict("_Z1gIZ1fIXadL_Z1hIiEivEEEivEUlvE_EvT_", style="gnu") == (
+        "void g<f<&(int h<int>())>()::{lambda()#1}>(f<&(int h<int>())>()::{lambda()#1})"
+    )

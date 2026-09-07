@@ -103,6 +103,28 @@ All notable changes to this project are recorded here. The format follows
   corpus already pins, now with a fifth row: the shape over a constrained existential
   that FoundationEssentials ships. The D runtime (16,333 names) and the GNAT Ada runtime
   (11,237) were swept the same way against `c++filt` and read identically.
+- **Itanium: two shapes from the Swift toolchain's own C++.** The 6.1.2 toolchain's
+  `swift-frontend`, `liblldb`, `libsourcekitdInProc` and the sanitizer runtimes define
+  185,532 symbols no library swept here before, built by Swift's clang 17 fork; put to
+  both references, two things this got wrong:
+  - A clone suffix directly after a local entity -- `_ZZ1fvE1x.0`, a local static the
+    optimiser copied, seven of them in clang's driver -- was read as the entity's
+    signature and refused. The local name now stops at the dot as it stops at `E`,
+    and `parse` picks the suffix up: `f()::x (.0)`. c++filt refuses these.
+  - Under the gnu style, an `L_Z <encoding> E` inside the enclosing function's template
+    arguments spent the return-type decision `local_name` had made for the enclosing
+    function: `f<int h<int>()>()::{lambda()#1}` came out as `int f<h<int>()>()::...`,
+    the embedded name stripped and the enclosing one kept. The embedded encoding is a
+    whole name and is spelled as one, and the decision is put back for the function
+    it was about. Eight names, all `_Iter_comp_iter` over a lambda in
+    `reversePathSortedFilenames`.
+  What is left over those symbols is the template-parameter rebinding both references
+  share (`_Prepare_execution` and the `ArrayRefView` lambdas, where c++filt agrees with
+  this), c++filt's refusal of a 1,605-character `std::variant` return type, and a
+  `const T&` over a pack holding a function type, which the two references spell two
+  ways against their own `int (&)() const` for the same type written out; the
+  enumerate accept rule for a qualified substitution now covers a qualified template
+  parameter too.
 - **The old `sr <type> <name>` form g++ still writes, and the numbering it counts by.**
   `decltype(A::baz<T> + t)` compiled with g++ 13 is `_Z1kIiEDTplsr1A3bazIT_Efp_ES1_`:
   the pre-2009 unresolved-name production, a complete class type and then a member,
