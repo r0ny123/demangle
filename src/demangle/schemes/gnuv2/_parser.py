@@ -2202,6 +2202,16 @@ def gnu_special(work, cur, declp):
 
     if rest.startswith("__thunk_"):
         cur.advance(8)
+        # gcc 2.95's `make_thunk` writes the delta's magnitude, with an `n` in front
+        # when it is positive: `__thunk_8_` is a delta of -8 and `__thunk_n8_` one of
+        # 8. libiberty reads only the first form, and having stepped past `__thunk_`
+        # before finding no digit, it reads the rest as a method: `__thunk_n8_
+        # setInstance__Q26KParts8PartBaseP9KInstance`, from KDE 2.2.2, is
+        # `KParts::PartBase::n8_setInstance(KInstance *)` to it. The compiler's own
+        # naming is the authority on what the compiler wrote.
+        positive = cur.at() == "n"
+        if positive:
+            cur.advance()
         delta = consume_count(cur)
         if delta == -1 or cur.at() != "_":
             _refuse_special("a thunk with no delta")
@@ -2209,7 +2219,7 @@ def gnu_special(work, cur, declp):
         method = _demangle_nested(work, cur.rest())
         if method is None:
             _refuse_special("a thunk whose method does not read")
-        phrase = f"virtual function thunk (delta:{-delta}) for "
+        phrase = f"virtual function thunk (delta:{delta if positive else -delta}) for "
         declp.append(phrase)
         declp.append(method)
         work.special = phrase

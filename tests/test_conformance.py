@@ -192,6 +192,15 @@ DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT = 53, 53
 #: rather than here or by tools/differential.py.
 GNUV2_TOTAL, GNUV2_EXACT = 1324, 1324
 
+#: Pre-Itanium C++ from shipped binaries: every fourth defined dynamic symbol of Debian
+#: woody's kdelibs3 2.2.2 and gcc 2.95.4's libstdc++ 2.10, plus every thunk, against
+#: libiberty's `cplus_demangle` under the `gnu` style. The 25,272 names those libraries
+#: define agree with the reference on all but one, `__thunk_n8_...`, a thunk with a
+#: positive delta, which gcc 2.95 wrote with an `n` and libiberty reads as a method
+#: named `n8_setInstance`; tests/test_gnuv2.py pins that one against the compiler's
+#: own `make_thunk`, and the corpus leaves it out.
+GNUV2_REAL_WORLD_TOTAL, GNUV2_REAL_WORLD_EXACT = 6802, 6802
+
 #: Metrowerks CodeWarrior, against `encounter/cwdemangle`'s own test module. libiberty
 #: never read this mangling, so that tool -- the one decompilation projects for GameCube
 #: and Wii titles run -- is the reference there is. The options are a column, so it is
@@ -313,6 +322,12 @@ def test_itanium_matches_llvm_cxxfilt():
 def test_itanium_matches_gnu_cxxfilt():
     total, exact = _score("itanium-real-world-gnu.txt", "gnu")
     assert (total, exact) == (ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT)
+
+
+def test_gnuv2_matches_libiberty_on_kde2():
+    """See `GNUV2_REAL_WORLD_TOTAL` for what this does and does not establish."""
+    total, exact = _score("gnuv2-real-world.txt", "llvm", language="gnuv2")
+    assert (total, exact) == (GNUV2_REAL_WORLD_TOTAL, GNUV2_REAL_WORLD_EXACT)
 
 
 def test_jni_corpus():

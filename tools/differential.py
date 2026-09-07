@@ -65,6 +65,10 @@ CORPUS_SETTINGS = {
     # are distinctive -- but so the file is scored as the D corpus rather than as a
     # test of the detector.
     "d-libiberty.txt": {"language": "d"},
+    # Pre-Itanium names carry no marker of their own, so detection is held to a
+    # deliberately narrow claim (see tests/test_gnuv2.py); a caller who knows the
+    # binary's compiler names the language, and so does the replay.
+    "gnuv2-real-world.txt": {"language": "gnuv2"},
 }
 
 #: Files in `tests/conformance/` that are not mangled-name corpora at all. The refusal

@@ -232,6 +232,28 @@ class TestWhatItRefusesToClaim:
             == "virtual function thunk (delta:-8) for ostream::~ostream(void)"
         )
 
+    def test_a_thunk_with_a_positive_delta_is_written_with_an_n(self):
+        """gcc 2.95's `make_thunk` writes `__thunk_%d_` for a delta of zero or less
+        and `__thunk_n%d_` for a positive one, so `__thunk_n8_` is a delta of 8. It is
+        the one form in 25,272 names from KDE 2.2.2 and libstdc++ 2.10 that libiberty
+        does not read: `gnu_special` steps past `__thunk_` before finding no digit,
+        and `demangle_prefix` then reads the rest as a method,
+        `KParts::PartBase::n8_setInstance(KInstance *)`. The compiler's own naming is
+        the authority on what the compiler wrote; a name with no digits after the `n`
+        is still refused.
+        """
+        assert (
+            demangle.demangle("__thunk_n8_setInstance__Q26KParts8PartBaseP9KInstance", language="gnuv2")
+            == "virtual function thunk (delta:8) for KParts::PartBase::setInstance(KInstance *)"
+        )
+        assert (
+            demangle.demangle("__thunk_8_setInstance__Q26KParts8PartBaseP9KInstance", language="gnuv2")
+            == "virtual function thunk (delta:-8) for KParts::PartBase::setInstance(KInstance *)"
+        )
+        for name in ("__thunk_n_foo__1Ai", "__thunk_nn8_foo__1Ai", "__thunk_n8foo__1Ai"):
+            with pytest.raises(DemanglingError):
+                demangle.demangle_strict(name, language="gnuv2")
+
     def test_void_alone_is_still_a_parameter_list(self):
         """The rule is `void` *among others*; on its own it is how the grammar says ()."""
         assert gnuv2.detect("f__Fv")

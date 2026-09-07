@@ -595,9 +595,10 @@ Run live against the reference, not replayed.
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Swift 6.1.2 runtime typerefs, resolved through the dynamic relocations and symbols ✻ | 7,071 | 6,811 agree; 260 unspliceable |
+| KDE 2.2.2 and libstdc++ 2.10, as gcc 2.95 mangled them (pre-Itanium), against libiberty | 25,272 | **1 differ** ✶ |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 1,340,000 real symbols. Every row is exact except the seven marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the seven every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
+About 1,365,000 real symbols. Every row is exact except the eight marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the eight every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the one ✶, a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries a quarter of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
