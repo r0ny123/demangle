@@ -103,6 +103,17 @@ All notable changes to this project are recorded here. The format follows
   corpus already pins, now with a fifth row: the shape over a constrained existential
   that FoundationEssentials ships. The D runtime (16,333 names) and the GNAT Ada runtime
   (11,237) were swept the same way against `c++filt` and read identically.
+- **Itanium: a destructor's ABI tags.** `<ctor-dtor-name> [<abi-tags>]`: libc++ 18
+  tags its destructors -- `~shared_ptr[abi:ne180100]`, the `_LIBCPP_HIDE_FROM_ABI`
+  mark every member carries -- and the constructor's branch read the tags where the
+  destructor's did not, so nine destructors in `libc++.a` were refused. Found by
+  reading the static libraries of 46 C++ development packages Ubuntu 24.04 ships --
+  libc++, libstdc++'s static and experimental archives, Boost, Abseil, Protobuf, gRPC,
+  RocksDB, Cap'n Proto, Botan and the rest -- 109,606 symbols no library here carried,
+  against both references. What is left over them is 74 names of the template-parameter
+  rebinding the reference-defects corpus pins, `std::call_once` and Cap'n Proto's
+  `kj::evalNow` lambdas, where this spells the parameter the header declares. OpenJDK
+  21's 1,036 JNI native-method symbols read too.
 - **MSVC: the LLVM 18.1.8 Windows release, all 436,644 of its decorated names.** The
   largest MSVC-mangled body this library has been put to, read against `llvm-undname`;
   four things it wrote that nothing here had seen:

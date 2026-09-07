@@ -580,12 +580,13 @@ Run live against the reference, not replayed.
 | `libgnat` + `libgnarl` (Ada), against `c++filt --format=gnat` | 11,237 | **100%** |
 | LDC 1.40 runtime (D 2.110 frontend), the names `c++filt` reads | 15,350 | **100%** |
 | LLVM 18.1.8 Windows release, every static library (MSVC) | 436,644 | **100%** ⁑ |
+| 46 C++ development packages' static libraries (libc++, Boost, Abseil, gRPC, RocksDB, Cap'n Proto...) ✱ | 109,606 | **74 differ** |
 | Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
 | Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
 | Swift metadata symbolic references ✻ | 4,528 | **100%** |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
-About 1,230,000 real symbols. Every row is exact except the six marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ are the template-parameter rebinding `_Prepare_execution` shows, in the constructor's own name and in the `ArrayRefView` lambdas, where `c++filt` agrees with this.
+About 1,340,000 real symbols. Every row is exact except the seven marked, and on those every difference is a name a reference reads wrongly (✱, and the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++ and the 74 in the development packages are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks

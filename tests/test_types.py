@@ -270,6 +270,38 @@ class TestAnInheritingConstructorCarriesAVariant:
         )
 
 
+class TestAStructorMayCarryAbiTags:
+    """`<ctor-dtor-name> [<abi-tags>]`.
+
+    libc++ 18 tags its destructors -- the `[abi:ne180100]` every `_LIBCPP_HIDE_FROM_ABI`
+    member carries -- and the constructor's branch read the tags where the destructor's
+    did not, so nine destructors in `libc++.a` were refused. Both references read all of
+    these and spell them alike.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZN1AD2B3tagEv", "A::~A[abi:tag]()"),
+            ("_ZN1AD0B3tagB4tag2Ev", "A::~A[abi:tag][abi:tag2]()"),
+            ("_ZN1AC1B3tagEv", "A::A[abi:tag]()"),
+            (
+                "_ZNSt3__111unique_lockINS_12shared_mutexEED2B8ne180100Ev",
+                "std::__1::unique_lock<std::__1::shared_mutex>::~unique_lock[abi:ne180100]()",
+            ),
+        ],
+    )
+    def test_the_tags_follow_the_name(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+        assert demangle.demangle_strict(mangled, style="gnu") == expected
+
+    def test_after_an_inheriting_constructors_base_the_tags_are_the_bases(self):
+        """`CI2 1A B3tag`: the `B3tag` is read as the base type's own tag, since a
+        `<source-name>` takes tags, and the constructor is left plain -- which is how
+        llvm-cxxfilt reads it."""
+        assert demangle.demangle_strict("_ZN1BCI21AB3tagEi", language="itanium") == "B::B(int)"
+
+
 class TestWhatIsRefused:
     def test_an_empty_encoding_is_not_a_type(self):
         with pytest.raises(NotMangledError):

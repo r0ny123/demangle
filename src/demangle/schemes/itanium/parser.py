@@ -1664,6 +1664,11 @@ class ItaniumParser:
                 reader.pos += 2
                 self._ctor_dtor = True
                 spelled = self._in_module("~" + self.enclosing_class_name(scope), module)
+                # `<ctor-dtor-name> [<abi-tags>]`: libc++ 18 tags its destructors --
+                # `~shared_ptr[abi:ne180100]()`, `D2B8ne180100` -- and the constructor
+                # branch already read them where the destructor's did not.
+                if reader.peek() == "B":
+                    spelled += self.abi_tags()
                 self._component_has_no_base_name = True
                 return builder.name(self._befriended(spelled) if friend else spelled)
             if following == "C":
@@ -1744,9 +1749,11 @@ class ItaniumParser:
             # The class name is read off the scope *before* the base type, which is a
             # <type> and may itself be a nested name -- reading it first would leave the
             # base's own last component standing where the class should be.
-            name = self.builder.name(self._in_module(self.enclosing_class_name(scope), module))
+            spelled = self._in_module(self.enclosing_class_name(scope), module)
             self.type_()
-            return name
+            if reader.peek() == "B":
+                spelled += self.abi_tags()
+            return self.builder.name(spelled)
         marker = reader.take()
         if marker not in CONSTRUCTOR_KINDS:
             raise ParseError(self._mangled, reader.pos, f"unknown constructor variant {marker!r}")
