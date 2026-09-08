@@ -137,6 +137,28 @@ class TestTheStyles:
         assert demangle.demangle(mangled, language="gnuv2", style=plain) == "foo(char *)"
 
 
+class TestAnItaniumPrefixIsNeverClaimed:
+    """The Itanium reader is offered every `_Z` and `__Z` name first; one it refuses
+    was offered on down the list, and a Mach-O `__Z` name is full of the `__` this
+    grammar reads as a separator. `__ZNKSt3__110__function6__funcI...`, refused by the
+    Itanium reader under a forced numbering rule, read as the method `__ZNKSt3` of a
+    class named after the rest of it."""
+
+    def test_a_mach_o_itanium_name_the_itanium_reader_refuses_comes_back_as_itself(self):
+        from demangle.schemes.gnuv2 import detect
+
+        name = (
+            "__ZNKSt3__110__function6__funcIN14duckdb_httplib7Request20is_connection_closedMUlvE_E"
+            "NS_9allocatorIS4_EEFbvEE11target_typeEv"
+        )
+        assert detect(name) is False
+        # Under the ABI's closure rule, forced, `S4_` is the member `is_connection_closed`
+        # standing as a type, and the Itanium reader refuses the name; see
+        # `tests/test_itanium_closure_prefix.py`. Nothing else may then read it.
+        forced = demangle.style("llvm", itanium={"closure_prefix_substitution": True})
+        assert demangle.demangle(name, style=forced) == name
+
+
 class TestWhatItRefusesToClaim:
     """The number that decides whether this is safe to have registered at all."""
 

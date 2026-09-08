@@ -242,6 +242,13 @@ def detect(name, style="gnu"):
     # states; the rest of it only runs for a name that passed this.
     if "__" not in name and not (name[:1] == "_" and ("$" in name or "." in name)):
         return False
+    if name.startswith(("_Z", "__Z")):
+        # Itanium's own prefix, and the Mach-O form of it. The Itanium reader is
+        # offered every such name first; one it refuses is offered on down the list,
+        # and a `__Z` name is full of the `__` this grammar reads as a separator:
+        # `__ZNKSt3__110__function6__funcI...` read as the method `__ZNKSt3` of a
+        # class named after the rest of it. No g++ 2.x name opens with `_Z`.
+        return False
     if len(name) > _DETECT_MAX or not _screen(name):
         return False
     symbol = _reads(name, style)

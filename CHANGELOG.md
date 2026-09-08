@@ -101,6 +101,13 @@ All notable changes to this project are recorded here. The format follows
   the abbreviation, saw the `L`, and spelled `std::istream::~istream()`. Nothing
   writes the marker there and `c++filt` refuses it. `tools/enumerate.py --length 6`,
   the one unexplained name under `_ZN`.
+- **Pre-Itanium C++: a `_Z` or `__Z` name is never claimed.** The Itanium reader is
+  offered every such name first, and one it refuses was offered on down the list,
+  where a Mach-O `__Z` name -- full of the `__` this grammar takes for a separator --
+  could read as a method named `__ZNKSt3` of a class named after the rest of it. No
+  g++ 2.x name opens with `_Z`. Seen once, on a name the Itanium reader refused under
+  a forced numbering rule; none of the 600,000 real names it refuses in the symbol
+  lists on this box was claimed, and now none can be.
 - **MSVC: a free or static function's `noexcept` was read and then dropped.** `_E`
   stands in place of the `Z` that ends a signature, and `?f@@YAXX_E` is
   `void __cdecl f(void) noexcept` to the reference; this kept the specification with
