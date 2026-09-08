@@ -272,3 +272,12 @@ class TestBounds:
     def test_the_empty_name_is_refused(self):
         with pytest.raises(DemanglingError):
             demangle.demangle_strict("", language="ada")
+
+
+class TestAdaRealWorld:
+    def test_every_vector_matches_the_reference(self, subtests):
+        rows = load_corpus("ada-real-world.txt")
+        assert len(rows) == 1438
+        for mangled, expected in rows:
+            with subtests.test(mangled=mangled):
+                assert demangle.demangle(mangled) == expected

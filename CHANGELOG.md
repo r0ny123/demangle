@@ -20,6 +20,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Ada: real-world corpus and generator from the GNAT runtime.**
+  `tools/generate_ada_corpus.py` extracts Ada mangled symbols from `libgnat`
+  and `libgnarl`, verifies them against GNU binutils' `c++filt --format=gnat`,
+  and samples `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact
+  match under auto-detection).
 - **`tools/sweep_rust_chars.py`: every Unicode scalar value as a Rust `char`
   const.** `escape_debug` follows CPython's `unicodedata` tables, rustc-demangle
   its own; the gap moves as either side updates. The tool builds the 1,112,064

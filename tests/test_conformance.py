@@ -232,6 +232,10 @@ ADA_TOTAL, ADA_EXACT = 34, 34
 #: see tests/test_ada.py -- so they are read on request and not by guess.
 ADA_AUTODETECTED = 29
 
+#: Real compiler output for Ada/GNAT: symbols from the shipped libgnat and libgnarl,
+#: scored against `c++filt --format=gnat`. Sampled by tools/generate_ada_corpus.py.
+ADA_REAL_WORLD_TOTAL, ADA_REAL_WORLD_EXACT = 1438, 1438
+
 # The GNU shortfalls are not ours to fix: in each, the two references disagree about
 # what goes in the substitution table, not about how to spell it. Matching both would
 # mean two incompatible parses of the same bytes, so we follow LLVM and pin the
@@ -482,6 +486,12 @@ def test_delphi_constructs_absent_from_the_export_tables():
     """See `DELPHI_CONSTRUCT_TOTAL` for what this does and does not establish."""
     total, exact = _score("delphi-constructs.txt", "llvm")
     assert (total, exact) == (DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT)
+
+
+def test_ada_matches_gnu_gnat_demangler():
+    """See `ADA_REAL_WORLD_TOTAL`."""
+    total, exact = _score("ada-real-world.txt", "llvm")
+    assert (total, exact) == (ADA_REAL_WORLD_TOTAL, ADA_REAL_WORLD_EXACT)
 
 
 def test_gnu_shortfalls_are_only_the_known_reference_divergences():
