@@ -117,7 +117,13 @@ _FLOAT_WIDTHS = {"float": (8,), "double": (16,), "long double": (16, 20, 32)}
 #: An operator function's name: `operator+`, `operator int`, `operator""_km`, `operator()`.
 _OPERATOR_FUNCTION = re.compile(r"operator(?![A-Za-z0-9_])")
 
-_HEX = re.compile(r"[0-9a-fA-F]+")
+#: The digits of a floating-point literal. The ABI says "a sequence of lowercase
+#: hexadecimal digits", and LLVM's demangler at its main branch refuses anything else;
+#: 18.1 took `std::isxdigit` for the test and then subtracted `'a'` regardless, so
+#: `Lf3F800000E` came back `0x1p-64f` there -- a wrong value, not a refusal. No compiler
+#: writes an uppercase digit, and reading one as its value would be answering a name
+#: the reference calls malformed.
+_HEX = re.compile(r"[0-9a-f]+")
 
 
 def _c_hex_float(kind, value):
@@ -3509,7 +3515,8 @@ class ItaniumParser:
         twenty for the x87 extended format, thirty-two for the IEEE quad. `llvm-cxxfilt`
         insists on the width of the machine it runs on and refuses the rest; `c++filt`
         brackets any run of characters at all. Neither is a reading of `Ld4048E`, which
-        is no value, so the width has to be one of those and every character a hex digit.
+        is no value, so the width has to be one of those and every character a hex digit
+        -- a lowercase one, as the ABI says and as LLVM's main branch requires.
         """
         widths = _FLOAT_WIDTHS[kind]
         if len(value) not in widths or not _HEX.fullmatch(value):

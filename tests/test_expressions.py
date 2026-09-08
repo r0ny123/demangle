@@ -605,6 +605,17 @@ class TestAFloatingPointLiteral:
         assert demangle.demangle(mangled) == mangled
         assert demangle.demangle(mangled, style="gnu") == mangled
 
+    @pytest.mark.parametrize(
+        "mangled", ["_Z1fILf3F800000EEvv", "_Z1fILd3FF0000000000000EEvv", "_Z1fILdABCDEF0123456789EEvv"]
+    )
+    def test_an_uppercase_digit_is_refused(self, mangled):
+        """The ABI says lowercase, and LLVM's main branch refuses anything else. 18.1
+        tested with `isxdigit` and then subtracted `'a'` regardless, so `3F800000` came
+        back `0x1p-64f` there -- and this read it as `0x1p+0f`, a value no compiler wrote
+        under a name none writes. `c++filt` brackets the digits as they stand."""
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
+
 
 class TestALiteralsValueIsANumber:
     """`L <type> <value number> E`: digits, with `n` in front of a negative value.

@@ -73,6 +73,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: an uppercase digit in a floating-point literal was read as its value.**
+  `_Z1fILf3F800000EEvv` came back `void f<0x1p+0f>()`. The ABI says the digits are
+  lowercase, no compiler writes them otherwise, and LLVM's demangler at its main branch
+  refuses the name; 18.1 tests the digit with `isxdigit` and then subtracts `'a'`
+  regardless, so it answers `0x1p-64f`, a wrong value rather than a refusal, and the
+  two never agreed on such a name. Found by reading the diff of `ItaniumDemangle.h`
+  between the copy this was measured against and main; the rest of that diff --
+  `DF16b`, the N1169 fixed-point types, `_BitInt` as a substitution candidate, `Dy` and
+  `sy` pack indexing, `__alloc_token_` -- this already read, and every row of
+  libcxxabi's `DemangleTestCases.inc` at main that is not commented out is in the
+  corpus and holds. Refused now, under both styles.
 - **MSVC: a wide string literal with more characters than its declared length was read
   as one of the strings it might have meant.** `??_C@_1K@...@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@`
   declares ten bytes and writes twelve, and came back `L"hell\0"`; four declared bytes
