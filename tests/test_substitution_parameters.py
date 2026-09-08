@@ -258,6 +258,42 @@ class TestPacks:
         assert demangle.demangle_strict("_Z1fIJfdEEvT_") == "void f<float, double>(float, double)"
 
 
+class TestAReferenceOverAPackReturnCollapsesOnEveryMember:
+    """A function type whose return is `R Dp ...`. llvm-cxxfilt prints the outer
+    reference only on the last member of the expansion, stacking a second `&`
+    instead of collapsing: `_Z1fIJicdEEPFvDpT_EFRDpRPS0_E` is
+    `int*&, char*&, double*& ()` here and `int*&, char*&, double*&& ()` there.
+    c++filt refuses. A declarator over a pack applies to every member, and `R`
+    over `T&` is `T&`. No compiler writes a function that returns a pack. The
+    corpus neighbour with `v` where `R` is still agrees with both references.
+    `tools/mutate.py --seed 19`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            (
+                "_Z1fIJicdEEPFvDpT_EPFRDpRPS0_ES8_S1_DpS4_S6_",
+                "void (*f<int, char, double>(int*&, char*&, double*& (*)(), "
+                "int*&, char*&, double*& (), int, char, double, int*, char*, double*, "
+                "int*&, char*&, double*&))(int, char, double)",
+            ),
+            (
+                "_Z1fIJicdEEPFvDpT_EFRDpRPS0_E",
+                "void (*f<int, char, double>(int*&, char*&, double*& ()))(int, char, double)",
+            ),
+            (
+                "_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_",
+                "void (*f<int, char, double>(void (*)(int*&, char*&, double*&), "
+                "void (*)(int*&, char*&, double*&), int, char, double, int*, char*, double*, "
+                "int*&, char*&, double*&))(int, char, double)",
+            ),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+
 def test_a_table_rejects_a_production_the_abi_does_not_call_a_candidate():
     """Unchanged by deferral: the guard is on the production, not on what is stored."""
     table = SubstitutionTable("_Z1fv")

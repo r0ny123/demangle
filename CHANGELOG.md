@@ -87,6 +87,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **tools: llvm-cxxfilt stacking a reference on a pack return.**
+  `_Z1fIJicdEEPFvDpT_EPFRDpRPS0_ES8_S1_DpS4_S6_` is a mutant of
+  libcxxabi's pack-expansion vector with `R` where the inner `v` was:
+  a function whose return is `R Dp RPS0_`. This prints
+  `int*&, char*&, double*& (*)()`; llvm-cxxfilt prints `double*&&`
+  on the last member, stacking a second `&` instead of collapsing.
+  c++filt refuses. `R` over `T&` is `T&`, and a declarator over a
+  pack applies to every member. No compiler writes a function that
+  returns a pack. The corpus neighbour still agrees.
+  `tools/mutate.py --seed 19`.
 - **tools: a nested I-pack expansion llvm-cxxfilt refuses.**
   `_ZN1Scv7MuncherIJDpPT_EEIJIivEA_iEEEv` is
   `S::operator Muncher<int*, void*, int (*) []><int, void, int []>()`

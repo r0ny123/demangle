@@ -362,6 +362,19 @@ ACCEPTED = {
         # the inner one's `()` and this before it, the same placement the two give a
         # function returning an array. See `_QUALIFIED_FUNCTION_RETURNING_A_FUNCTION`.
         or (first is not None and _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION.search(first) is not None)
+        # Or a function type whose return is a reference to a pack expansion.
+        # llvm-cxxfilt prints the outer `R`/`O` only on the last member --
+        # `_Z1fIJicdEEPFvDpT_EFRDpRPS0_E` is `int*&, char*&, double*& ()` here
+        # and `int*&, char*&, double*&& ()` there -- stacking a second `&`
+        # instead of collapsing. c++filt refuses. A declarator over a pack
+        # applies to every member, and `R` over `T&` is `T&`. No compiler
+        # writes a function that returns a pack. `tools/mutate.py --seed 19`.
+        or (
+            first is not None
+            and second[0] is None
+            and _FUNCTION_RETURNING_A_REFERENCED_EXPANSION.search(name) is not None
+            and ours.replace("&", "") == first.replace("&", "")
+        )
         # Or a function type returning an array, which C++ has not. The types job
         # already accepts the bare encodings `KFA_iE` / `FA_iRE`; length six under
         # `_Z1f` reaches them as a parameter -- `_Z1fKFA_iE` is `f(int () const [])`
@@ -606,6 +619,10 @@ ACCEPTED = {
 #: `llvm-cxxfilt`'s spelling of a cv- or ref-qualified function type returning a
 #: function type: the qualifier after the inner `()`. See `ACCEPTED`.
 _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION = re.compile(r"\)\(\) (?:const|volatile|&)")
+
+#: A function type whose return is a reference to a pack expansion: `FRDp` / `FODp`.
+#: See `ACCEPTED`.
+_FUNCTION_RETURNING_A_REFERENCED_EXPANSION = re.compile(r"F[RO]Dp")
 
 #: libiberty's `operator ` with no operator after it: the `__op` conversion-operator
 #: marker taken off a function that is merely called `__op`. See `ACCEPTED`.
