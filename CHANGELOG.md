@@ -82,6 +82,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Pre-Itanium C++: libiberty's empty first argument is a gap, not a
+  declaration.** `__dl__17T5__pt____3fooiRT0iT2iT2` comes back
+  `T5__pt____3fooiRT::operator delete(, int, int, int, int)` from the
+  reference: an argument list that opens with a comma. This reads the
+  identifier, `foo::__dl__17T5__pt__(int, foo &, ...)`. The tool's gap
+  rule already recognised `( const)` and `()`; `(,` is the same empty
+  slot with no space. `tools/mutate.py --seed 9`.
 - **Itanium: a non-UTF-8 byte in a string literal stays escaped, against
   llvm-cxxfilt 21 writing the raw byte.** `Lc208E` is the byte `0xD0`, which is
   not UTF-8 on its own. This prints `\xD0`, the byte the name says; llvm-cxxfilt

@@ -599,16 +599,18 @@ _CUSTOM_TYPE_QUALIFIERS = re.compile(r"(<[^<>]*>)(?: (?:const|volatile))+")
 #: The same qualifier word written twice in a row by `llvm-undname`. See `ACCEPTED`.
 _DOUBLED_QUALIFIER = re.compile(r"\b(const|volatile) \1\b")
 #: A gap where libiberty spelled a component it could not read as nothing: an empty
-#: type slot (`( const)`, `,  (void)`, `( *)`), an empty template argument (`<>`, `< *>`,
-#: `<int, >`), an empty scope (`::::`, `:: `, a leading `::`), an `operator` with no
-#: symbol, an argument list printed in front of the whole declaration, or an argument
-#: list with nothing in it at all -- the grammar writes an empty one as `v`, so `()` is a
-#: list it could not read, except behind `operator`, where it is the call operator.
-#: Checked against every recorded spelling in the corpus, which none of this matches:
-#: `> >`, `(*)(char *)` and `operator()` are all real, and were all matched by an earlier
-#: draft of this.
+#: type slot (`( const)`, `(,`, `,  (void)`, `( *)`), an empty template argument (`<>`,
+#: `< *>`, `<int, >`), an empty scope (`::::`, `:: `, a leading `::`), an `operator`
+#: with no symbol, an argument list printed in front of the whole declaration, or an
+#: argument list with nothing in it at all -- the grammar writes an empty one as `v`,
+#: so `()` is a list it could not read, except behind `operator`, where it is the call
+#: operator. Checked against every recorded spelling in the corpus, which none of this
+#: matches: `> >`, `(*)(char *)` and `operator()` are all real, and were all matched by
+#: an earlier draft of this. `(,` is `tools/mutate.py --seed 9`:
+#: `__dl__17T5__pt____3fooiRT0iT2iT2` comes back
+#: `T5__pt____3fooiRT::operator delete(, int, int, int, int)` there.
 _GNUV2_GAP = re.compile(
-    r"^\s|^::|\(\s|(?<!operator)\(\)|,\s\s|,\s*[,)>]|<>|<\s|::::|::\s|operator \(|operator\s\s|\s\s|,\.\.\.\)\("
+    r"^\s|^::|\(\s|\(,|(?<!operator)\(\)|,\s\s|,\s*[,)>]|<>|<\s|::::|::\s|operator \(|operator\s\s|\s\s|,\.\.\.\)\("
 )
 
 

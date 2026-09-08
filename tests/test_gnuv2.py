@@ -155,6 +155,17 @@ class TestAFunctionCalledOp:
         assert demangle.demangle(mangled, language="gnuv2") == expected
 
 
+class TestLibibertySpellingAnEmptyFirstArgument:
+    """`__dl__17T5__pt____3fooiRT0iT2iT2`: libiberty prints
+    `T5__pt____3fooiRT::operator delete(, int, int, int, int)`, an empty first
+    argument, which is a gap it spelled rather than a declaration. This reads the
+    identifier. `tools/mutate.py --seed 9`."""
+
+    def test_the_identifier_is_what_the_name_says(self):
+        name = "__dl__17T5__pt____3fooiRT0iT2iT2"
+        assert demangle.demangle(name, language="gnuv2") == "foo::__dl__17T5__pt__(int, foo &, int, foo &, int, foo &)"
+
+
 class TestAnItaniumPrefixIsNeverClaimed:
     """The Itanium reader is offered every `_Z` and `__Z` name first; one it refuses
     was offered on down the list, and a Mach-O `__Z` name is full of the `__` this
