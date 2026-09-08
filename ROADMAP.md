@@ -119,8 +119,10 @@ refuses 673 of those 217,730 outright and this reads 457 of them. One name in th
 purpose-built gnu corpus is pinned, for the requires-clause disagreement rather than for
 any of these.
 
-**Nim**: seven shortfalls, that language's own mangling discarding an underscore, listed
-by name in `tests/conformance/nim-lossy.txt`.
+**Nim**: eight shortfalls where the language's own mangling discards an underscore before
+a digit (`len0_16`, `len17_32`, `len33_64` in `pure/hashes.nim`, and five MySQL wrapper
+routines with C-linkage imports), listed and explained in
+`tests/conformance/nim-lossy.txt` and pinned in `tests/test_nim.py`.
 
 ## 0. Where a reference is wrong
 
@@ -309,10 +311,19 @@ each is measured against differs, and the difference is the interesting part:
   argument list, `@LOCAL@`, `$localstatic`, a `__dt` — GNU v2 now refuses rather than
   mis-reads.
 
+  A search for real-world CodeWarrior-built PowerPC ELF or PEF binaries with embedded
+  symbol tables found none to be had: commercial GameCube/Wii titles stripped their
+  symbol tables completely (leaving bare `.dol` executables, whose symbols decompilation
+  projects recover into external map files), while Classic Mac OS PEF binaries stored
+  debugging symbols in external `.xSYM` sidecars rather than in-binary symbol tables.
+  The vectors transcribed from `encounter/cwdemangle` remain the authoritative test set.
+
 - **Ada/GNAT** — *landed*, **34 of 34** against the cases `demangle-expected` marks
-  `--format=gnat`. The last of the pre-Itanium formats libiberty still carries: when the
-  GNU v2, lucid, ARM and HP styles were dropped from the default, `--format=gnat` stayed.
-  The reference is `ada_demangle` in `cplus-dem.c`, with GCC's own `exp_dbug.ads`
+  `--format=gnat`, and **1,438 of 1,438** real-world GNAT runtime symbols from
+  `libgnat`/`libgnarl` extracted via `tools/generate_ada_corpus.py` and scored against
+  `c++filt --format=gnat`. The last of the pre-Itanium formats libiberty still carries:
+  when the GNU v2, lucid, ARM and HP styles were dropped from the default, `--format=gnat`
+  stayed. The reference is `ada_demangle` in `cplus-dem.c`, with GCC's own `exp_dbug.ads`
   documenting the encoding normatively. Narrow but concentrated: avionics, rail, defence.
 
   There are no types in it. An Ada symbol names an entity and stops, which makes the
@@ -348,6 +359,9 @@ The last one before JNI was Delphi:
   `CGObjCMac.cpp` and `CGObjCGNU.cpp`, and checked against what clang emitted for
   declarations this package wrote. The GNU-family method mangling is not injective and
   clang's own source says so; the readings are enumerated rather than guessed at.
+  Block invocations (`___[length]-[Class method]_block_invoke`) follow Clang's
+  `mangleFunctionBlock`; well-formed block invocations are demangled, and mismatched
+  length prefixes are strictly refused.
 - ~~**Swift's symbolic references**~~ — *landed*, with the API that takes the binary too.
   `swift.demangle_symbolic` reads a name as bytes and takes a resolver;
   `resolve.ContextResolver` is one, over an `Image` that `elf_image` or `macho_image`
@@ -630,3 +644,44 @@ which is whether to spell something *differently*.
   upstream's fourteen either match this printer already or change nothing over the 217,
   and a flag no vector exercises is a flag with no reference behind it. Reached as
   `demangle --simplified`, or `style("llvm", swift=SIMPLIFIED_OPTIONS)`.
+
+## 4. Issue #28: Next Steps and Modern Compiler Sweeps
+
+The seed ladder across existing corpora reached saturation (seeds 0 to 32 clean at 200k,
+every corpus exact). Issue #28 mapped out the subsequent stretch of work:
+
+- **Probing schemes with no reference** — *completed for this phase*:
+  - **Ada**: `tools/generate_ada_corpus.py` samples 1,438 real-world symbols from `libgnat`
+    and `libgnarl`, 100% exact against GNU binutils' `c++filt --format=gnat`, seeding the
+    fuzzers with real GNAT runtime names.
+  - **Nim**: The eight lossy names in the standard library where the compiler discards an
+    underscore before a digit were pinned in `tests/conformance/nim-lossy.txt` and verified in
+    `tests/test_nim.py`.
+  - **Objective-C**: Block invocation symbols (`___[length]-[Class method]_block_invoke`)
+    were evaluated against Clang's `mangleFunctionBlock`: well-formed invocations are
+    supported, and length mismatches are refused to prevent false claims.
+  - **CodeWarrior**: A search for CodeWarrior-built PowerPC ELF/PEF binaries with symbol tables
+    confirmed none are available (shipping GameCube/Wii discs stripped symbols into `.dol`
+    executables, and Classic Mac OS PEF binaries stored debug symbols in external `.xSYM`
+    sidecars).
+  - **Free Pascal**: Probed against `ppudump -Va` across all runtime units (4,384 of 4,384
+    symbols matching declared names).
+
+- **Defect investigations from the hunt**:
+  - **D back-reference landing inside an identifier's characters**: *Fixed*. The span of
+    every length-prefixed identifier is recorded and back-reference targets landing strictly
+    inside a span are refused.
+  - **`--refusals` at 200k**: Mutator refusals run across Itanium, MSVC, Swift, D, and
+    GNUv2 at 200,000 mutants to triage cases where references accept corrupted inputs.
+    Divergences were confirmed to be reference leniencies (ignoring invalid identifier
+    characters, dropping trailing garbage, or accepting malformed template names).
+
+- **Future sweeps (Reseeding the fuzzers)**:
+  - *Itanium*: File bank compiled with GCC 14+ / Clang 19+ at `-std=c++26` with C++20 modules
+    (`W` module names, `DF` floats, friend declarations, structured bindings).
+  - *MSVC*: Sweep NuGet packages built with the MSVC 14.4x toolset for modern C++20/23
+    constructs (`$$Q`, lambda numbering, `__int128`).
+  - *Rust v0*: Modern nightly `librustc_driver` or large crates compiled with
+    `-C symbol-mangling-version=v0`.
+  - *Swift / Go*: Sweeps for Swift 6.2 and Go 1.25+ generic shapes and new node kinds.
+
