@@ -24,6 +24,15 @@ class SubstitutionOverrun(ParseError):
     differ between compilers before giving up; see `ItaniumOptions.undeduced_auto_substitution`."""
 
 
+class SubstitutionMisuse(ParseError):
+    """A `S<n>_` naming an entry that cannot stand where it was read: a closure prefix,
+    or a template name with no arguments after it, used as a type. Neither is a type --
+    the one is a variable's name and the other a template's -- so the name was numbered
+    by a rule this reading did not apply, or it is not a name. `parse` retries the one
+    rule known to move a closure prefix's neighbours before giving up; see
+    `ItaniumOptions.closure_prefix_substitution`."""
+
+
 #: Section 5.1.10: "Each non-terminal in the grammar above for which <substitution>
 #: appears on the right-hand side is both a source of future substitutions and a
 #: candidate for being substituted." Enumerated here so the parser's `remember()` calls

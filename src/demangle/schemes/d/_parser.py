@@ -641,7 +641,15 @@ class _Parser:
                 # is read as a length, which it is not, and the name is refused.
                 # `S_DaZv` came back as an argument spelling nothing.
                 after = reader.text[reader.pos + 2 : reader.pos + 5]
-                if not (after[:1] in DIGITS or after[:1] == "Q" or after in ("__T", "__U")):
+                # A back reference counts as a name only where it points at one:
+                # `dlang_symbol_name_p` follows the `Q` and asks for a digit there.
+                # Taking any `Q` read `S_DQiZv` -- a reference into the middle of a
+                # type -- as a symbol argument spelling nothing, `abc!()`, where the
+                # reference refuses the name. Found by mutating real symbols.
+                named = after[:1] in DIGITS or after in ("__T", "__U")
+                if after[:1] == "Q":
+                    named = self._back_reference_targets_identifier(reader.pos + 2)
+                if not named:
                     raise DemangleFailure("a symbol argument whose `_D` is followed by no name")
                 spelled = self.mangled_symbol()
                 if bounded is not None:

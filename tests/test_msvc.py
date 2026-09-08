@@ -483,6 +483,18 @@ THUNKS_AND_ADDRESSES = [
         "??_EDerived@@$4PPPPPPPM@A@EAAPEAXI@Z",
         "[thunk]: public: virtual void * __cdecl Derived::`vector deleting dtor'`vtordisp{-4, 0}'(unsigned int)",
     ),
+    # The reference prints an adjustor's displacement as a 32-bit unsigned value, so a
+    # negative one -- which no compiler writes -- is its two's complement, and negative
+    # zero is zero. This wrote `adjustor{-1}` and `adjustor{-0}`. `tools/mutate.py
+    # --count 200000`; LLVM's main branch spells both the same way.
+    (
+        "??_EDerived@ns@@W?A@EAAPEAXI@Z",
+        "[thunk]: public: virtual void * __cdecl ns::Derived::`vector deleting dtor'`adjustor{0}'(unsigned int)",
+    ),
+    (
+        "??_EDerived@ns@@W?B@EAAPEAXI@Z",
+        "[thunk]: public: virtual void * __cdecl ns::Derived::`vector deleting dtor'`adjustor{4294967295}'(unsigned int)",
+    ),
     # a vcall names no access and carries no parameters
     ("??_9Base@@$B7AA", "[thunk]: __cdecl Base::`vcall'{8, {flat}}"),
 ]

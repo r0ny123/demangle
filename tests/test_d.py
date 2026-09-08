@@ -1169,6 +1169,10 @@ class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
             "_D8demangle__T4testS_DaZv",
             "_D8demangle__T4testS_D0Zv",
             "_D4core8internal2gc4impl12conservativeQw3Gcx__T7markAllS_DaZv",
+            # A back reference counts as a name only where it points at one:
+            # `dlang_symbol_name_p` follows the `Q` and asks for a digit there, and `Qi`
+            # here points into the middle of the name. `S_DQiZv` came back `abc!()`.
+            "_D8demangle__T3abcS_DQiZv",
         ],
     )
     def test_a_prefix_with_no_name_after_it_is_refused(self, mangled):

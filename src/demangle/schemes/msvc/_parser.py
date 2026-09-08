@@ -1830,7 +1830,12 @@ class _Demangler:
             access, is_static, is_virtual = None, False, False
         elif access_char in _ADJUSTOR_ACCESS:
             access, is_static, is_virtual = _ADJUSTOR_ACCESS[access_char]
-            thunk = f"`adjustor{{{self.templateInteger()}}}'"
+            # The reference prints the displacement as a 32-bit unsigned value, so a
+            # negative one -- which no compiler writes -- is its two's complement:
+            # `W?B@` is `adjustor{4294967295}` and `W?A@`, negative zero, `adjustor{0}`,
+            # where this wrote `-1` and `-0`. Found by mutating real symbols; LLVM's
+            # main branch spells both the same way.
+            thunk = f"`adjustor{{{int(self.templateInteger()) & 0xFFFFFFFF}}}'"
             self.member_cv = self.memberQualifiers()
         else:
             entry = _FUNCTION_ACCESS.get(access_char)

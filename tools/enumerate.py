@@ -317,6 +317,11 @@ ACCEPTED = {
         # Or the old form of `sr` that g++ still writes and `llvm-cxxfilt` refuses,
         # which `c++filt` reads as this does. See `_OLD_SR_FORM`.
         or (first is None and _OLD_SR_FORM.search(name) is not None)
+        # Or a name the references number by the ABI's closure-prefix rule and the
+        # common `auto` rule where this, by the name's form or by a retry, applied GCC
+        # 12's or Apple's -- and agrees with them under theirs. See
+        # `_differs_only_by_the_numbering_rule`.
+        or _differs_only_by_the_numbering_rule(name, first, second)
         # Or a name both references refuse for a back-reference past the table that
         # reads under Apple's rule, where an undeduced `auto` is a substitution
         # candidate -- `_Z1fDaS_` is `f(auto, auto)` to Apple's clang, and to this on
@@ -814,6 +819,43 @@ def _llvm_left_a_lambda_parameter_unresolved(ours, first):
     if len(pieces) == 1:
         return False
     return re.fullmatch(".+?".join(re.escape(piece) for piece in pieces), ours) is not None
+
+
+def _differs_only_by_the_numbering_rule(mangled, first, second):
+    """Whether a reference's answer is this library's own reading under that
+    reference's rules -- the ABI's for a closure prefix and the common one for an
+    undeduced `auto` -- so that the two disagree on nothing but which compiler wrote
+    the name.
+
+    A `__Z` name is read here by Apple's clang's rules, a `_Z` name by the ABI's with
+    a retry under the other where a back-reference shows the numbering was wrong; the
+    references know only the ABI's closure rule and the common `auto` rule. Where a
+    reference reads the name, its spelling is compared with this library's under those
+    rules, in the reference's own style. Where this library refuses the name under
+    those rules -- a back-reference landing on the closure prefix, or on a template
+    with no arguments, which the references print regardless -- or where the reference
+    refuses it, the question is whether this library read the name at all, which it
+    then did by the other rule. See `ItaniumOptions.closure_prefix_substitution` and
+    `undeduced_auto_substitution`.
+    """
+    theirs = {"closure_prefix_substitution": True, "undeduced_auto_substitution": False}
+
+    def agrees(style_name, reference):
+        under_theirs = demangle.demangle(mangled, style=demangle.style(style_name, itanium=theirs))
+        if under_theirs == mangled:
+            return demangle.demangle(mangled) != mangled
+        return under_theirs == reference
+
+    if first is not None:
+        return agrees("llvm", first)
+    gnu_reference, _ = second
+    if gnu_reference is not None:
+        return agrees("gnu", gnu_reference)
+    try:
+        demangle.demangle_strict(mangled, style=demangle.style("llvm", itanium=theirs))
+    except demangle.DemanglingError:
+        return demangle.demangle(mangled) != mangled
+    return False
 
 
 def _newer_than_the_references(mangled):

@@ -129,6 +129,30 @@ class TestAModuleInitializerNamesItsModule:
         assert demangle.demangle("_ZGI") == "_ZGI"
 
 
+class TestAConstructorInAModuleRepeatsTheBareName:
+    """`CtorDtorName` prints the scope's `getBaseName()`, and a `ModuleEntity`'s base
+    name is the name inside it: `_ZNW4llvm6ModuleC1Ev` is `Module@llvm::Module()` to
+    both references, where this wrote `Module@llvm::Module@llvm()`. The destructor the
+    same, and the tags a constructor carries of its own stay. `tools/mutate.py
+    --count 200000`."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_ZN1NW4llvm6ModuleC1Ev", "N::Module@llvm::Module()"),
+            ("_ZN1NW4llvm6ModuleD2Ev", "N::Module@llvm::~Module()"),
+            ("_ZNW4llvm3FooB3ABIC1Ev", "Foo@llvm[abi:ABI]::Foo()"),
+            ("_ZNW4llvm3FooC1B3tagEv", "Foo@llvm::Foo[abi:tag]()"),
+            ("_ZNW4llvm3FooD2B3tagEv", "Foo@llvm::~Foo[abi:tag]()"),
+            ("_ZNW4llvmW3sub3FooC1Ev", "Foo@llvm.sub::Foo()"),
+            ("_ZN1NW4llvm6ModuleC1ERKS1_", "N::Module@llvm::Module(N::Module@llvm const&)"),
+        ],
+    )
+    def test_both_styles(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+
 class TestAStructuredBindingNamesSomething:
     """`DC <source-name>+ E`: one name at least. Both references refuse `DCE`, and
     spelling `[]` from the empty list read `_ZN12_GLOBAL__N_41ADCED0Ev` as the

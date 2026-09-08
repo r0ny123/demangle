@@ -68,7 +68,7 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #: calls `std::format` carries. The eighteenth is the same header compiled by Clang,
 #: where the entry resolves to `double` and the parameter comes out
 #: `basic_string<double>&`, a type libstdc++ does not instantiate.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 21, 21
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 29, 29
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are
@@ -682,13 +682,14 @@ class TestAgainstLibcxxabisOwnCorpus:
     #: pass has stopped, which is a regression whatever the total.
     #:
     #: It was lowered once, from 29923, and the reason is in
-    #: `test_the_shortfall_is_fourteen_names_and_this_says_which`: nine vectors record
+    #: `test_the_shortfall_is_fifteen_names_and_this_says_which`: nine vectors record
     #: llvm-cxxfilt's own reading of a `<template-param>` recorded as a substitution
     #: candidate, which `tests/conformance/itanium-reference-defects.txt` establishes
     #: against four compilers' output is wrong. This corpus *is* that demangler's test
     #: file, so where it and the declaration disagree it is the corpus that is the
-    #: record of a defect.
-    EXPECTED_EXACT = 29914
+    #: record of a defect. And once more, from 29914, for a tenth such vector: a name
+    #: numbered by GCC 12's closure-prefix rule, which the vector reads by the ABI's.
+    EXPECTED_EXACT = 29913
 
     def _score(self):
         return sum(
@@ -703,8 +704,8 @@ class TestAgainstLibcxxabisOwnCorpus:
     def test_the_pinned_number_is_still_accurate(self):
         assert self._score() == self.EXPECTED_EXACT
 
-    def test_the_shortfall_is_fourteen_names_and_this_says_which(self):
-        """Fourteen left, in three groups, and none of them is a name read wrongly.
+    def test_the_shortfall_is_fifteen_names_and_this_says_which(self):
+        """Fifteen left, in four groups, and none of them is a name read wrongly.
 
         **Four bare types.** `i`, `PKFvRiE`, `PVFvRmOE` and `PFvRmOE` are `<type>`
         manglings with no `_Z`. They are refused *as symbols* on purpose, as
@@ -740,8 +741,16 @@ class TestAgainstLibcxxabisOwnCorpus:
         `std::once_flag::_Prepare_execution` in the shipped libstdc++, where that
         library's own header settles it against both references.
 
+        **One numbered by GCC 12.** `_ZNK1xMUlTyT_E_clIiEEDaS_` is a lambda in the
+        initializer of a variable `x`, and the vector expects `operator()<int>(x)`: the
+        variable's name as the parameter type. GCC 12 and earlier left the closure
+        prefix `x` out of the substitution table, so its `S_` is the lambda's own `$T`,
+        bound to `int`; see `ItaniumOptions.closure_prefix_substitution` and
+        `tests/test_itanium_closure_prefix.py`. No type is a variable's name, and this
+        answers `operator()<int>(int)`.
+
         This corpus is llvm-cxxfilt's test file, so it cannot be corrected in place: its
-        value is that it is the reference measuring itself. The nine are named here
+        value is that it is the reference measuring itself. The ten are named here
         instead, so that one of them starting to pass is as visible as one of them
         starting to fail.
         """
@@ -758,6 +767,8 @@ class TestAgainstLibcxxabisOwnCorpus:
             # the reference's model of a recorded <template-param>
             "_Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE",
             "_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_",
+            # GCC 12's closure-prefix numbering, read by the ABI's rule
+            "_ZNK1xMUlTyT_E_clIiEEDaS_",
             "_ZZ11inline_funcvENKUlTyTyT_T0_E_clIiiEEDaS_S0_",
             "_ZZ11inline_funcvENKUlTyTyT_T1_T0_E_clIiiiEEDaS_S0_S1_",
             "_ZZ18test_assign_throwsI20small_throws_on_copyLb0EEvvENKUlRNSt3__13anyEOT_E_clIRS0_EEDaS3_S5_",

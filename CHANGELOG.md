@@ -82,6 +82,67 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Four finds from `tools/mutate.py --count 200000`**, four times the draw the gate
+  runs, one per reader:
+  - Itanium: a constructor or destructor of a class declared in a module repeated the
+    module -- `_ZNW4llvm6ModuleC1Ev` was `Module@llvm::Module@llvm()` where both
+    references say `Module@llvm::Module()`, since `CtorDtorName` prints the scope's
+    base name and a `ModuleEntity`'s base name is the name inside it.
+  - Itanium: a new-expression took any expression as its initialiser, answering
+    `new int((int)())` for `nw_icvi_E`; `pi`, the braced form, or the closing `E` are
+    all libiberty and LLVM take, and all this takes now.
+  - MSVC: an adjustor's displacement is printed as a 32-bit unsigned value by the
+    reference, so `W?B@` is `adjustor{4294967295}` and negative zero `adjustor{0}`,
+    where this wrote `-1` and `-0`. No compiler writes either; LLVM's main branch spells
+    both as 18 does.
+  - D: a symbol argument written `_DQ...` counts as a name only where the back reference
+    points at one, which `dlang_symbol_name_p` checks and this did not, so `S_DQiZv`
+    -- a reference into the middle of a type -- came back `abc!()` where the reference
+    refuses.
+- **Itanium: a lambda in a variable's or a member's initializer, as GCC 12 and Apple's
+  clang number it.** The prefix before a closure's `M` -- the `ns::g3` of
+  `ns::g3::'lambda'(...)` -- is a substitution candidate under the ABI, upstream clang
+  and GCC 13 (`-fabi-version=18`); GCC 12 (`-fabi-version=17`) and every version before
+  it wrote the `M` and skipped the entry, and so does Apple's clang in every version,
+  so every back-reference after the lambda's opening in such a name is one lower than
+  the ABI says. GCC 13 still emits the old spelling as an alias beside the new. Read
+  by the ABI's rule, as this and every reference read it, such a name resolves each
+  reference one entry early: `_ZNK2ns2g3MUlNS_3BoxIiEES1_E_clES1_S1_` came back
+  `ns::g3::'lambda'(ns::Box<int>, ns::Box)::operator()(ns::Box, ns::Box) const` from
+  llvm-cxxfilt 18, LLVM's main branch, c++filt 2.42 and this -- `ns::Box` bare, a
+  template with no arguments, as a parameter type -- and a generic one came back
+  `operator()<int>(ns::g1, ns::Box, ns::Box)`, the variable's name as a type. In
+  Homebrew's macOS bottles of Apache Arrow, DuckDB and RocksDB, 663 names read only
+  with the prefix left out and none only with it in; read by the ABI's rule, every one
+  of them put `std::function`'s allocator over the member the lambda initialised
+  rather than over the closure, and RocksDB's `[](const Endpoint&, const Endpoint&)`
+  lost the reference on its second parameter. This reads a `__Z` name by Apple's rule
+  and a `_Z` name by the ABI's, as it already does for Apple's `auto` rule, and where a
+  back-reference then runs past the table or names something no type can be -- the
+  closure prefix itself, or a template with no arguments after it -- reads the name
+  again under the other rule, or under the other pair, since upstream clang targeting
+  Darwin is the opposite of Apple's fork on both. `ItaniumOptions
+  .closure_prefix_substitution` forces either rule. Found by compiling the stress file
+  with g++ 13, which wrote both spellings of every such lambda, and by the retry
+  itself, which turned up the 663; established against `-fabi-version=17` and `18`,
+  against clang 18 targeting Linux and Darwin, against the bottles' symbols and the
+  declarations behind them, and against libcxxabi's own vector
+  `_ZNK1xMUlTyT_E_clIiEEDaS_`, whose expected `operator()<int>(x)` is the same defect.
+  The reference-defects corpus carries six of GCC 12's spellings and two of Apple's
+  with their declarations.
+- **Itanium: a back-reference to a template with no arguments after it, or to a
+  closure prefix, standing as a type, is refused.** The signal above, applied where
+  there is no other rule to try: `_Z1fN2ns3BoxIiEES0_` was `f(ns::Box<int>, ns::Box)`
+  here and in both references, and is not a name. The same signal now serves Apple's
+  `auto` rule as well as the closure-prefix one, since a reference one entry short lands
+  in range far more often than past the end. A bare template is legal in one place, as
+  the argument for a template template parameter, and the check knows it -- which is
+  also its limit, and the limit found a wrong row in this project's own hand-checked
+  corpus: libceres's `__func<..., allocator<SK_>, ...>` from Homebrew's Apple-clang
+  bottle, transcribed without its Mach-O underscore, had been read under the common
+  rule, where `SK_` is `std::__1::allocator` itself, and recorded as
+  `allocator<std::__1::allocator>`, a shape nothing in the grammar calls wrong. It is
+  the closure, as libc++ declares it; the row now carries the underscore that says so.
 - **Itanium: a `long double` template argument from g++ on x86 was read as the wrong
   number.** g++ writes the x87 value at the width of the type, sixteen bytes on x86-64
   and twelve on i386, so `1.5L` is `Le0000000000003fffc000000000000000E`: six bytes of

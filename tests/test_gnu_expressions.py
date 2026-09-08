@@ -739,10 +739,13 @@ class TestAResolvedCalleeIsPrintedByName:
                 "decltype(&h(int)(fp)) c3<int>(int)",
             ),
             ("_Z1fIiEDTclL_Z1hiEEET_", "decltype (h()) f<int>(int)", "decltype(h(int)()) f<int>(int)"),
+            # `S0_` is the `A` the callee's own nested name entered; `S_` would be the
+            # function template `f`, which is nothing a type can be, and that form is
+            # refused now where both references read it as `f const&`.
             (
-                "_Z1fIiEDTclL_ZN1AplERKS_Efp_EET_",
+                "_Z1fIiEDTclL_ZN1AplERKS0_Efp_EET_",
                 "decltype (A::operator+({parm#1})) f<int>(int)",
-                "decltype(A::operator+(f const&)(fp)) f<int>(int)",
+                "decltype(A::operator+(A const&)(fp)) f<int>(int)",
             ),
             (
                 "_Z1fIiEDTclL_ZN1AC1EvEfp_EET_",

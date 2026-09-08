@@ -92,6 +92,41 @@ class ItaniumOptions:
     those.
     """
 
+    closure_prefix_substitution: bool | None = None
+    """Count a closure prefix -- the `ns::g1` of `ns::g1::'lambda'(...)`, a lambda in a
+    variable's or a member's initializer, written `2ns2g1M...` -- as a substitution
+    candidate, the way the ABI says and upstream clang and GCC 13 do.
+
+    The other numbering, and the other place two compilers number the same name
+    differently. GCC through 12 wrote the `M` but never entered the prefix before it in
+    the table (`-fabi-version=17` and below; 18, GCC 13's default, fixed it), and
+    Apple's clang never has: Homebrew's macOS bottles of Apache Arrow, DuckDB and
+    RocksDB carry 663 names that read only with the prefix left out and none that read
+    only with it in, where upstream clang 13 through 18 -- targeting Darwin included --
+    enter it. So every `S<n>_` after the lambda's opening in such a name is one *lower*
+    than the ABI says. Read by the ABI's rule, the back-references resolve one entry
+    early, and what comes out is a lie every demangler tells:
+    `_ZNK2ns2g3MUlNS_3BoxIiEES1_E_clES1_S1_` is `ns::g3::'lambda'(ns::Box<int>,
+    ns::Box<int>)::operator()(ns::Box<int>, ns::Box<int>) const` -- and llvm-cxxfilt 18,
+    LLVM's main branch and c++filt 2.42 all print `ns::Box` bare, a template with no
+    arguments, as the second parameter; RocksDB's `[](const Endpoint&, const Endpoint&)`
+    comes back `(rocksdb::Endpoint const&, rocksdb::Endpoint const)`. GCC 13 still
+    emits the old spelling as an alias beside the new, so a binary built today can
+    carry both.
+
+    None, the default, decides by the symbol's form, as `undeduced_auto_substitution`
+    does: a name with the extra leading underscore a Mach-O symbol table carries,
+    `__Z...`, is read by Apple's rule, and a bare `_Z...` by the ABI's -- and either way
+    a name whose back-references then run past the table, or name something no type
+    can be (the closure prefix itself, or a template with no arguments after it), is
+    read again under the other rule. That catches every misnumbered name whose shifted
+    references land on one of those; a name that reads either way is one the retry
+    never touches. True or False forces a rule and skips the retry: False for an ELF
+    binary known to be GCC 12's or older, True for a Mach-O one known to be upstream
+    clang's, since either's shifted references may land on a type and read as a
+    different type without tripping anything.
+    """
+
     gnu_nullptr_spelling: bool = False
     """Spell `Dn` as `decltype(nullptr)` rather than `std::nullptr_t`.
 

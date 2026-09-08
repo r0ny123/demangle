@@ -31,10 +31,13 @@ VECTORS = [
     # Constructors, destructors and operators are names like any other.
     ("_Z1gI1AIXadL_ZN1AC1EvEEEEvv", "void g<A<&A::A()>>()", "void g<A<&A::A> >()"),
     ("_Z1gI1AIXadL_ZN1AD1EvEEEEvv", "void g<A<&A::~A()>>()", "void g<A<&A::~A> >()"),
-    # `S_` inside the embedded encoding indexes the *enclosing* name's substitution
-    # table -- entry 0 is `g` -- which is why both references print `g&` for it. The
-    # shared table is deliberate; see `expr_primary`.
-    ("_Z1gI1AIXadL_ZN1AplERS_EEEEvv", "void g<A<&A::operator+(g&)>>()", "void g<A<&A::operator+> >()"),
+    # `S1_` inside the embedded encoding indexes the *enclosing* name's substitution
+    # table -- entry 0 is `g`, entry 1 is `A`, entry 2 the `A` the encoding's own
+    # nested name entered -- which is why both references print `A&` for it. The
+    # shared table is deliberate; see `expr_primary`. (Entry 0 is a function
+    # template's name, and `RS_` in its place is refused: no type is that. Both
+    # references print `g&` for it; see `test_a_template_name_is_not_a_type`.)
+    ("_Z1gI1AIXadL_ZN1AplERS1_EEEEvv", "void g<A<&A::operator+(A&)>>()", "void g<A<&A::operator+> >()"),
     # Unqualified: there is no scope to print, so GNU brackets the declaration instead.
     # `N 1f E` is a nested name with one component and counts as unqualified, the same as
     # the bare `_Z1fv` -- both references were asked and both say so.
@@ -86,6 +89,16 @@ def test_each_style_spells_it_the_way_its_reference_does(mangled, llvm, gnu):
 @pytest.mark.parametrize("style", ["llvm", "gnu"])
 def test_the_tree_renders_what_the_text_path_spells(mangled, style):
     assert demangle.parse(mangled, style=style).spell(style=style) == demangle.demangle(mangled, style=style)
+
+
+def test_a_template_name_is_not_a_type():
+    """`S_` in `_Z1gI1AIXadL_ZN1AplERS_EEEEvv` is entry 0 of the shared table, the
+    function template `g`, and `RS_` would make `g&` a parameter type. llvm-cxxfilt
+    prints exactly that and c++filt drops the parameters; this used to print `g&` too.
+    A template with no arguments after it is nothing a type can be, so the name is
+    refused under both styles rather than read as a declaration nothing could have."""
+    assert demangle.demangle("_Z1gI1AIXadL_ZN1AplERS_EEEEvv") == "_Z1gI1AIXadL_ZN1AplERS_EEEEvv"
+    assert demangle.demangle("_Z1gI1AIXadL_ZN1AplERS_EEEEvv", style="gnu") == "_Z1gI1AIXadL_ZN1AplERS_EEEEvv"
 
 
 def test_the_shape_as_it_appears_in_a_shipped_library():

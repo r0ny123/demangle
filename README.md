@@ -318,7 +318,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
-| Names a reference reads wrongly ✱ | the declaration | **21 / 21** |
+| Names a reference reads wrongly ✱ | the declaration | **29 / 29** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |
@@ -413,19 +413,38 @@ than GCC or upstream clang would write, and llvm-cxxfilt and c++filt read every 
 Mach-O name by the wrong entries. Of the 17,310 names carrying a `Da` in the bottles,
 2,300 overrun the table under the common rule and 6,385 come back as a plausible wrong
 declaration; this reads a `__Z` name by Apple's rule, retries the other when a
-back-reference overruns, and takes `ItaniumOptions.undeduced_auto_substitution` to
-force either. Checked against clang 18 under `-fclang-abi-compat=6`, which writes the
+back-reference overruns or names something no type can be, and takes
+`ItaniumOptions.undeduced_auto_substitution` to force either. Checked against clang 18 under `-fclang-abi-compat=6`, which writes the
 same numbering, and against upstream clang targeting Darwin, which does not. Of the
 12,350 names in the bottles where this and `llvm-cxxfilt -_` part, 4,690 are that rule
 and 7,660 the template-parameter rebinding ✱ describes, 7,573 of them one generic lambda
 in ceres; the 67 neither reads are `$tlv$init`, the thread-local initialiser a Mach-O
 linker names after its variable. A second batch of bottles -- Arrow, DuckDB, RocksDB,
 gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python, 295,281 more
-names -- parts from `llvm-cxxfilt -_` on 5,457, every one either that rule or the
-rebinding; Arrow's `VisitVoid` joins the reference-defects corpus, checked against its
-header. 74 are `$tlv$init`, and 22 gRPC promise types spell past the 64K
+names -- parts from `llvm-cxxfilt -_` on 6,134: 677 are Apple's closure-prefix rule,
+described below, and every other one either the `auto` rule or the rebinding; Arrow's
+`VisitVoid` joins the reference-defects corpus, checked against its header, and so do
+a RocksDB and a DuckDB closure under the closure-prefix rule. 74 are `$tlv$init`, and 22 gRPC promise types spell past the 64K
 `Limits.max_output` -- one is 69,094 characters under `RELAXED_LIMITS`, and the
 reference refuses it outright.
+
+The other place two compilers number the same name differently is a lambda in a
+variable's or a member's initializer. Its name goes through the variable --
+`ns::g3::'lambda'(...)`, written `2ns2g3M...` -- and the prefix before that `M` is a
+substitution candidate under the ABI, upstream clang and GCC 13; GCC 12 and every
+version before it wrote the `M` and skipped the entry, and so does Apple's clang in
+every version, so every later back-reference is one lower. GCC 13 still emits the old
+spelling as an alias beside the new. Read by the ABI's rule, such a name's references
+resolve one entry early, and llvm-cxxfilt, LLVM's main branch and c++filt all print
+`operator()(ns::Box, ns::Box)` for a lambda declared over `ns::Box<int>` -- a template
+with no arguments, standing as a type -- and, for the 663 such names in Homebrew's
+bottles of Apache Arrow, DuckDB and RocksDB, `std::function`'s allocator as an allocator
+of the member the lambda initialised. This reads a `__Z` name by Apple's rule and a
+`_Z` name by the ABI's, and where a back-reference then runs past the table or lands on
+something no type can be -- a closure prefix, or a template with no arguments after it
+-- reads the name again under the other; `ItaniumOptions.closure_prefix_substitution`
+forces either. Established against g++ 13 under `-fabi-version=17` and `18`, against
+clang 18 targeting Linux and Darwin, and against the bottles' own symbols.
 
 ⁂ Objective-C has no reference demangler, and barely a mangling: what there is comes from
 the compiler rather than the language, so the rules are transcribed from clang's
@@ -633,7 +652,7 @@ Run live against the reference, not replayed.
 | Swift 6.1.2 runtime typerefs, resolved through the dynamic relocations and symbols ✻ | 7,071 | 6,811 agree; 260 unspliceable |
 | KDE 2.2.2, omniORB 3.0.4, gtkmm 1.2 and libstdc++ 2.10, as gcc 2.95 mangled them (pre-Itanium), against libiberty | 56,347 | **396 differ** ✶ |
 | Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU and glog (Apple clang, Mach-O) ✱ ✚ | 108,839 | **12,350 differ** ✱ ✚ |
-| Homebrew bottles of Arrow, DuckDB, RocksDB, gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python (Apple clang, Mach-O) ✱ ✚ | 295,281 | **5,457 differ** ✱ ✚ |
+| Homebrew bottles of Arrow, DuckDB, RocksDB, gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python (Apple clang, Mach-O) ✱ ✚ | 295,281 | **6,134 differ** ✱ ✚ |
 | Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
 
 About 2,393,000 real symbols. Every row is exact except the ten marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the ten every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the 396 ✶, all one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++, the 74 in the development packages and 7,660 of the 12,350 in the Homebrew bottles -- 7,573 of them one generic lambda in ceres's `ParallelInvoke`, whose `auto&` both references resolve to the enclosing template's argument; the other 4,690 are Apple's `auto` rule, ✚ -- are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.

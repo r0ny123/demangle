@@ -25,6 +25,7 @@ from .options import DEFAULT_OPTIONS
 from .substitutions import (
     DeferredProduction,
     ParameterReference,
+    SubstitutionMisuse,
     SubstitutionOverrun,
     SubstitutionTable,
     TemplateArgumentTable,
@@ -379,6 +380,9 @@ class ItaniumParser:
         "_argument_constraint",
         "_auto_substitutes",
         "_bare_angle",
+        "_closure_prefix_entries",
+        "_closure_prefix_seen",
+        "_closure_prefix_substitutes",
         "_component_has_no_base_name",
         "_conversion_unbound",
         "_ctor_dtor",
@@ -391,6 +395,7 @@ class ItaniumParser:
         "_explicit_object",
         "_in_constraint",
         "_in_special_name",
+        "_last_entry_index",
         "_last_source_name",
         "_mangled",
         "_max_depth",
@@ -426,6 +431,8 @@ class ItaniumParser:
         "_simple_name",
         "_size",
         "_specialised_handles",
+        "_template_name_argument",
+        "_template_name_entries",
         "_trailing_empty_pack",
         "_try_template_args",
         "builder",
@@ -446,6 +453,29 @@ class ItaniumParser:
         #: the option leaves it open: the Mach-O underscore means Apple's clang.
         auto_rule = options.undeduced_auto_substitution
         self._auto_substitutes = mangled.startswith("__Z") if auto_rule is None else auto_rule
+        #: Whether the prefix before a closure's `M` enters the table; see
+        #: `ItaniumOptions.closure_prefix_substitution`. Decided by the name's form when
+        #: the option leaves it open: the Mach-O underscore means Apple's clang, which
+        #: leaves it out, and anything else the ABI's rule; the retry in `parse` tries
+        #: the other.
+        closure_rule = options.closure_prefix_substitution
+        self._closure_prefix_substitutes = not mangled.startswith("__Z") if closure_rule is None else closure_rule
+        #: Whether a closure prefix was read at all, which is what makes the retry worth
+        #: making: the other rule changes nothing else.
+        self._closure_prefix_seen = False
+        #: Table indices of the entries a `<type>` may not name: closure prefixes, and
+        #: template names whose arguments have to follow. Kept here rather than in the
+        #: table because the table holds handles and knows nothing of the grammar.
+        self._closure_prefix_entries = set()
+        self._template_name_entries = set()
+        #: The index the last `S<n>_` named, or None after an abbreviation.
+        self._last_entry_index = None
+        #: Whether the `<type>` about to be read stands directly as a template argument,
+        #: where a template with no arguments *is* something a type position can hold:
+        #: the argument for a template template parameter, `ScalarMemoTable<int,
+        #: HashTable>`, is written as the template's bare name. Set by `template_arg`
+        #: for the one read that follows and cleared by the first `<type>` that looks.
+        self._template_name_argument = False
         expanded = STD_ABBREVIATIONS_EXPANDED_GNU if options.expand_std_abbreviations else STD_ABBREVIATIONS_EXPANDED
         self._entity_shape = None
         self._simple_name = False
@@ -1089,6 +1119,7 @@ class ItaniumParser:
                 # `llvm-cxxfilt` refuses `_ZSbIwEvS_` outright.
                 if candidate:
                     self.subs.remember(base, "unscoped-template-name")
+                    self._note_entry(self._template_name_entries)
                 specialised = self.apply_template_args(base)
                 self._specialised_handles[id(specialised)] = specialised
                 return specialised, (), "", True
@@ -1107,6 +1138,7 @@ class ItaniumParser:
         base = self.unqualified_name()
         if reader.peek() == "I":
             self.subs.remember(base, "unscoped-template-name")
+            self._note_entry(self._template_name_entries)
             specialised = self.apply_template_args(base)
             self._specialised_handles[id(specialised)] = specialised
             return specialised, (), "", True
@@ -1461,10 +1493,32 @@ class ItaniumParser:
         self._prefix_bare = component
         self._prefix_bare_has_no_base_name = self._component_has_no_base_name
         self._prefix_has_args = False
-        if reader.peek() != "E":
+        following = reader.peek()
+        if following != "E":
+            if following == "M":
+                # The prefix of a closure, or of a data member: a candidate under the
+                # ABI and under clang and GCC 13, and not one under GCC 12 and earlier,
+                # which wrote the `M` and skipped the entry. See
+                # `ItaniumOptions.closure_prefix_substitution`.
+                self._closure_prefix_seen = True
+                if not self._closure_prefix_substitutes:
+                    return False, ""
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
             self.subs.remember(self._spend_prefix(combined), "prefix")
+            if following == "M":
+                self._note_entry(self._closure_prefix_entries)
+            elif following == "I":
+                self._note_entry(self._template_name_entries)
         return False, ""
+
+    def _note_entry(self, entries):
+        """Mark the entry just recorded as one of `entries`, where one was recorded.
+
+        Nothing is recorded while a deferred production is re-read, and then there is
+        nothing to mark: the entry that reading contributed was marked the first time.
+        """
+        if self.subs.recording:
+            entries.add(len(self.subs) - 1)
 
     def _object_name(self):
         """A special name's <object name>: a <name>, with nothing of a function about it.
@@ -1701,7 +1755,7 @@ class ItaniumParser:
             # read and then dropped, so `_ZN1AFC1Ev` came back as `A::A()`, which is a
             # different declaration from the one the encoding spells.
             self._component_has_no_base_name = True
-            name = self.constructor_name(scope, module)
+            name = self.constructor_name(scope)
             return builder.name(self._befriended(builder.spell(name))) if friend else name
 
         if char == "D":
@@ -1709,7 +1763,8 @@ class ItaniumParser:
             if following in DESTRUCTOR_KINDS:
                 reader.pos += 2
                 self._ctor_dtor = True
-                spelled = self._in_module("~" + self.enclosing_class_name(scope), module)
+                # The bare class name, with no module attached; see `constructor_name`.
+                spelled = "~" + self.enclosing_class_name(scope)
                 # `<ctor-dtor-name> [<abi-tags>]`: libc++ 18 tags its destructors --
                 # `~shared_ptr[abi:ne180100]()`, `D2B8ne180100` -- and the constructor
                 # branch already read them where the destructor's did not.
@@ -1773,12 +1828,18 @@ class ItaniumParser:
         """
         return text + "[friend]" if self.options.gnu_friend_spelling else "friend " + text
 
-    def constructor_name(self, scope, module=""):
+    def constructor_name(self, scope):
         """A constructor name.
 
         ```
         <ctor-dtor-name> ::= C1 | C2 | C3 | CI1 <base class type> | CI2 <base class type>
         ```
+
+        The class's bare name, with no module attached: `_ZNW4llvm6ModuleC1Ev` is
+        `Module@llvm::Module()` to both references -- `CtorDtorName` prints the scope's
+        `getBaseName()`, and a `ModuleEntity`'s base name is the name inside it -- where
+        this wrote `Module@llvm::Module@llvm()`. The destructor the same. Found by
+        mutating real symbols.
         """
         reader = self.reader
         reader.expect("C")
@@ -1795,7 +1856,7 @@ class ItaniumParser:
             # The class name is read off the scope *before* the base type, which is a
             # <type> and may itself be a nested name -- reading it first would leave the
             # base's own last component standing where the class should be.
-            spelled = self._in_module(self.enclosing_class_name(scope), module)
+            spelled = self.enclosing_class_name(scope)
             self.type_()
             if reader.peek() == "B":
                 spelled += self.abi_tags()
@@ -1803,7 +1864,7 @@ class ItaniumParser:
         marker = reader.take()
         if marker not in CONSTRUCTOR_KINDS:
             raise ParseError(self._mangled, reader.pos, f"unknown constructor variant {marker!r}")
-        return self.builder.name(self._in_module(self.enclosing_class_name(scope), module) + self.abi_tags())
+        return self.builder.name(self.enclosing_class_name(scope) + self.abi_tags())
 
     def enclosing_class_name(self, scope):
         """The bare class name that a constructor or destructor repeats.
@@ -1851,7 +1912,13 @@ class ItaniumParser:
         # `std::allocator` -- and the class name is only its tail, so without this the
         # constructor of `std::allocator<char>` reads `std::allocator<char>::std::allocator`.
         separator = spelled.rfind("::")
-        return spelled[separator + 2 :] if separator >= 0 else spelled
+        spelled = spelled[separator + 2 :] if separator >= 0 else spelled
+        # And the module it was declared in comes off too: a `ModuleEntity`'s base name
+        # is the name inside it, so `_ZNW4llvm6ModuleC1Ev` is `Module@llvm::Module()`
+        # to both references, where this wrote `Module@llvm::Module@llvm()`. No name
+        # a constructor repeats carries an `@` of its own.
+        module = spelled.find("@")
+        return spelled[:module] if module > 0 else spelled
 
     def source_name(self):
         """<source-name> ::= <positive length number> <identifier>"""
@@ -2162,6 +2229,7 @@ class ItaniumParser:
         reader.expect("S")
         code = "S" + reader.peek()
         table = self._abbrev_expanded if expanded else self._abbrev
+        self._last_entry_index = None
         if code in table:
             reader.take()
             tags = self.abi_tags()
@@ -2175,22 +2243,28 @@ class ItaniumParser:
         index = reader.seq_id()
         entry = self.subs.lookup(index)
         kind = type(entry)
-        if kind is ParameterReference:
-            # The entry is the parameter, not what it was bound to where it was
-            # recorded; those differ whenever the back-reference is read under a
-            # different template scope. `bind_template_param` does the pack handling
-            # `_pack_aware` would, so it is not applied twice. See `ParameterReference`.
-            if entry.symbolic is None:
-                return self.bind_template_param(entry.index, entry.level)
-            try:
-                return self.bind_template_param(entry.index, entry.level)
-            except ParseError:
-                return self.builder.raw(entry.symbolic)
-        if kind is DeferredProduction:
-            # The same, for a component built *over* a parameter. See
-            # `DeferredProduction`.
-            return self._pack_aware(self._reread(index, entry))
-        return self._pack_aware(entry)
+        try:
+            if kind is ParameterReference:
+                # The entry is the parameter, not what it was bound to where it was
+                # recorded; those differ whenever the back-reference is read under a
+                # different template scope. `bind_template_param` does the pack handling
+                # `_pack_aware` would, so it is not applied twice. See `ParameterReference`.
+                if entry.symbolic is None:
+                    return self.bind_template_param(entry.index, entry.level)
+                try:
+                    return self.bind_template_param(entry.index, entry.level)
+                except ParseError:
+                    return self.builder.raw(entry.symbolic)
+            if kind is DeferredProduction:
+                # The same, for a component built *over* a parameter. See
+                # `DeferredProduction`.
+                return self._pack_aware(self._reread(index, entry))
+            return self._pack_aware(entry)
+        finally:
+            # Set on the way out, not in: re-reading a deferred production resolves the
+            # back-references inside it through this same method, and the caller asks
+            # about the one it read, not the last one the re-reading did.
+            self._last_entry_index = index
 
     def _expansion(self, handle):
         """Record `handle` as the result of a `Dp`, and return it."""
@@ -2512,6 +2586,26 @@ class ItaniumParser:
                 # abbreviation: the name that follows belongs to it.
                 return subs.remember(self.class_enum_type(), "type")
             component = self.substitution()
+            index = self._last_entry_index
+            as_template_argument = self._template_name_argument
+            self._template_name_argument = False
+            if index is not None and (
+                index in self._closure_prefix_entries
+                or (index in self._template_name_entries and reader.peek() != "I" and not as_template_argument)
+            ):
+                # No type is a variable's name, and no type is a template with no
+                # arguments after it -- a <substitution> is a <type> only through
+                # <class-enum-type>, whose <name> takes a <substitution> only as an
+                # <unscoped-template-name> that <template-args> then complete. The one
+                # place a bare template stands is as the argument for a template
+                # template parameter, which `template_arg` says. Both references print
+                # such an entry regardless: `ns::Box`, bare, where `ns::Box<int>` was
+                # meant. The reading that reaches one has applied the wrong numbering
+                # to a name GCC 12 wrote -- `parse` reads it again under GCC 12's rule
+                # -- or the name is not one.
+                raise SubstitutionMisuse(
+                    self._mangled, reader.pos, f"substitution S{index}_ names nothing a type can be"
+                )
             named = self._module_of(component)
             if named is not None:
                 # `S1_ 1A` is `A@FOO.BAR`: the entry is the module, and the name that
@@ -3411,6 +3505,9 @@ class ItaniumParser:
             # knows that -- it is what flattened them.
             return handle, not builder.spell(handle)
 
+        # A template template argument is the template's bare name, and a back-reference
+        # to one is legal here and nowhere else a <type> is read.
+        self._template_name_argument = char == "S"
         argument = self.type_()
         # An expansion over an empty pack spells nothing and occupies no argument slot,
         # the same as an empty `J E` pack does. Asked of the handle's members rather
@@ -3925,9 +4022,12 @@ class ItaniumParser:
             # and 20 refuse the name.
             return self.expression()
         if not reader.eat("pi"):
-            expression = self.expression()
-            reader.eat("E")
-            return self.builder.expression("initialiser", ["(", expression, ")"])
+            # Nothing else stands here. This read any expression as the initialiser
+            # and answered `new int((int)())` for `nw_icvi_E`, a name both references
+            # refuse: libiberty's `d_expression` and LLVM's `parseNewExpr` take `pi`,
+            # the braced form, or the `E` that closes a new-expression with no
+            # initialiser, and nothing else. Found by mutating real symbols.
+            raise ParseError(self._mangled, reader.pos, "a new-expression's initialiser must be `pi` or `il`")
         arguments = []
         while not reader.eat("E"):
             if reader.eof:
@@ -4946,6 +5046,12 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     compilers apply to that type -- see `ItaniumOptions.undeduced_auto_substitution` --
     and the second reading applies it. Only where the option left the rule to the name's
     form; a caller who chose one is not second-guessed.
+
+    And read twice when a back-reference named a closure prefix, or a template with no
+    arguments, as a type, in a name that has a closure prefix: GCC 12 and earlier left
+    the prefix out of the table, so every reference after it is one entry early -- see
+    `ItaniumOptions.closure_prefix_substitution` -- and the second reading leaves it out
+    too. The same rule about a caller who chose applies.
     """
     parser = ItaniumParser(mangled, builder, limits, options)
     try:
@@ -4953,17 +5059,37 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     except ParseError as error:
         if isinstance(error, LimitExceeded):
             raise
-        if (
-            isinstance(error, SubstitutionOverrun)
-            and options.undeduced_auto_substitution is None
-            and any(pair in mangled for pair in _UNDEDUCED_AUTO)
-        ):
+        # The numbering rules a second reading may apply, in the order they are tried.
+        # A back-reference that ran past the table, or that named something no type
+        # can be, says the table was numbered by a rule this reading did not apply;
+        # each rule below is one a compiler is known to apply, and each is tried only
+        # where the caller left it open and the name can carry it.
+        rules = []
+        if isinstance(error, (SubstitutionOverrun, SubstitutionMisuse)):
+            if options.closure_prefix_substitution is None and parser._closure_prefix_seen:
+                # The other rule for a closure prefix: the ABI's, clang's and GCC 13's
+                # against GCC 12's and Apple clang's, which leave it out of the table.
+                # See `ItaniumOptions.closure_prefix_substitution`.
+                rules.append({"_closure_prefix_substitutes": not parser._closure_prefix_substitutes})
+            if options.undeduced_auto_substitution is None and any(pair in mangled for pair in _UNDEDUCED_AUTO):
+                # The other rule for an undeduced `auto`. See
+                # `ItaniumOptions.undeduced_auto_substitution`. A misuse reaches here
+                # as well as an overrun: a reference one entry short lands in range
+                # more often than past the end, and where it lands on a template name
+                # or a closure prefix the wrong rule shows as plainly as an overrun.
+                rules.append({"_auto_substitutes": not parser._auto_substitutes})
+            if len(rules) == 2:
+                # Both at once: upstream clang targeting Darwin counts the closure
+                # prefix and not the `auto`, the opposite of Apple's fork on both.
+                rules.append({**rules[0], **rules[1]})
+        for overrides in rules:
             retry = ItaniumParser(mangled, builder, limits, options)
-            retry._auto_substitutes = not parser._auto_substitutes
+            for attribute, value in overrides.items():
+                setattr(retry, attribute, value)
             try:
                 return retry.parse()
             except ParseError:
-                raise error from None
+                continue
         if not parser._ambiguous_unresolved_name:
             raise
         retry = ItaniumParser(mangled, builder, limits, options)

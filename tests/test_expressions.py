@@ -827,11 +827,15 @@ class TestASpecialisationTakesNoFurtherArguments:
         """`Sa`, `Sb` and the rest are substitutions, not `<unscoped-template-name>`s
         the encoder entered: `llvm-cxxfilt` refuses `_ZSbIwEvS_`, where recording
         `std::basic_string` at `S_` read it and shifted every later back reference in
-        `_ZSbIwSt11char_traitsIwESaIwEEC1EOS2_`. `St` with a name is one, as before."""
-        for mangled in ("_ZSbIwEvS_", "_ZSaIwEvS_"):
+        `_ZSbIwSt11char_traitsIwESaIwEEC1EOS2_`. `St` with a name is one, as before:
+        `S_` in `_ZSt4sortIPiEvT_S_IcE` is `std::sort`, the template, which a second
+        argument list then specialises -- and bare, with no arguments, it is nothing a
+        type can be, so `_ZSt4sortIPiEvT_S_` is refused where it once read
+        `(int*, std::sort)`."""
+        for mangled in ("_ZSbIwEvS_", "_ZSaIwEvS_", "_ZSt4sortIPiEvT_S_"):
             assert demangle.demangle(mangled) == mangled
         assert demangle.demangle("_Z1fSaIwES_") == "f(std::allocator<wchar_t>, std::allocator<wchar_t>)"
-        assert demangle.demangle("_ZSt4sortIPiEvT_S_") == "void std::sort<int*>(int*, std::sort)"
+        assert demangle.demangle("_ZSt4sortIPiEvT_S_IcE") == "void std::sort<int*>(int*, std::sort<char>)"
         assert demangle.demangle("_Z1f1AIiES_IcES1_") == "f(A<int>, A<char>, A<char>)"
         assert demangle.demangle("_ZSbIwSt11char_traitsIwESaIwEEC1EOS2_") == (
             "E complex std::basic_string<wchar_t, std::char_traits<wchar_t>, std::allocator<wchar_t>>(E&&)"
@@ -1588,6 +1592,17 @@ class TestANewExpressionsInitialiser:
     `pi E`, an empty parenthesised initialiser, which `llvm-cxxfilt` reads and prints as
     `new int`: the other expression, the one that leaves the object indeterminate. See
     `tests/conformance/itanium-reference-defects.txt`."""
+
+    @pytest.mark.parametrize(
+        "mangled", ["_Z1fIiEvDTnw_icvi_EEE", "_ZN5Casts5auto_IiEEvDTnw_DpicvT__EEE", "_Z1fIiEvDTnw_iLi1EEE"]
+    )
+    def test_nothing_else_stands_where_the_initialiser_does(self, mangled):
+        """`pi`, the braced form, or the `E` that closes a new-expression with none:
+        libiberty's `d_expression` and LLVM's `parseNewExpr` take nothing else, and this
+        read any expression there, answering `new int((int)())` for `nw_icvi_E`.
+        `tools/mutate.py --count 200000`."""
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
 
     @pytest.mark.parametrize(
         "mangled, llvm, gnu",
