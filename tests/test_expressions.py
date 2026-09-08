@@ -971,6 +971,12 @@ class TestASpecialisationTakesNoFurtherArguments:
         spelled = demangle.demangle("_Z1fIJicdEEPPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_")
         assert spelled.endswith("void (**)(int, char, double)..., int*&, char*&, double*&))(int, char, double)")
 
+    def test_both_references_printing_the_first_member_is_the_same_shape(self):
+        """`_Z2f3IJifEE3DpPKT_`: `T_` is the pack `JifE` with no `Dp`. Both
+        references print the first member, `int const`; this prints both. No
+        compiler writes it. `tools/mutate.py --seed 10`."""
+        assert demangle.demangle("_Z2f3IJifEE3DpPKT_") == "DpP f3<int, float>(int const, float const)"
+
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [

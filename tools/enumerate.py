@@ -331,8 +331,10 @@ ACCEPTED = {
         or (first is None and _OLD_SR_FORM.search(name) is not None)
         # Or a pack with members standing as a type outside any expansion, an encoding
         # no compiler writes: this reads one type per member, `llvm-cxxfilt` the first
-        # member alone, `c++filt` nothing. See `_uses_a_pack_outside_an_expansion`.
-        or (first is not None and second[0] is None and _uses_a_pack_outside_an_expansion(name))
+        # member alone, `c++filt` nothing -- or, when both print the first member,
+        # `_Z2f3IJifEE3DpPKT_` is `DpP f3<int, float>(int const)` to them and
+        # `(int const, float const)` here. See `_uses_a_pack_outside_an_expansion`.
+        or (first is not None and _uses_a_pack_outside_an_expansion(name) and (second[0] is None or first == second[0]))
         # Or an argument pack in the `I <template-arg>* E` form g++ wrote before `J`,
         # which `llvm-cxxfilt` refuses and `c++filt` reads -- accepted where `c++filt`
         # refuses the name for a reason of its own, since with both references silent

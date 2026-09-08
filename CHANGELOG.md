@@ -82,6 +82,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a pack named outside any expansion, when both references print
+  the first member.** `_Z2f3IJifEE3DpPKT_` is `T_` bound to `JifE` with no
+  `Dp`: this prints `(int const, float const)`, llvm-cxxfilt and c++filt both
+  print `(int const)`. The tool already accepted the shape where they
+  disagree with each other or where c++filt refuses; they can also agree on
+  the first member. No compiler writes it. `tools/mutate.py --seed 10`.
 - **Itanium: a pixel vector of dimension 0 is refused.** `_Z1hDv0_p` is
   AltiVec `__vector pixel` of length 0. llvm-cxxfilt refuses a vector
   dimension that does not open on 1-9 and c++filt refuses `p` altogether,
