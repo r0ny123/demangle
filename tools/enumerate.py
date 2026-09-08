@@ -412,6 +412,13 @@ ACCEPTED = {
         # applied to a pointer or reference *to* a function -- where `llvm-cxxfilt`
         # answers `f(void (* imaginary)`, opening two brackets and closing one. An
         # unbalanced spelling is not a second opinion about anything.
+        #
+        # Length six under `_Z1f` found two more of the same: the declarator named by a
+        # substitution, `_Z1fFiEGS_` / `_Z1fA_iGS_`, which is `GFaE` / `GA_i` with the
+        # function or array written `S_` -- llvm-cxxfilt drops the `()` or `[]` the
+        # same way -- and a member pointer to a function, `_Z1fGMiFiE`, which is `M`
+        # then the class then `F`, so the `F` is not next to the marker.
+        # llvm-cxxfilt opens a parenthesis it does not close, `int (int::* imaginary)`.
         or (_IMAGINARY_DECLARATOR.search(name) is not None and ("imaginary" in ours or "complex" in ours))
         # Or a `char` array in a braced initialiser, which the *installed*
         # `llvm-cxxfilt` spells element by element -- `Hello{char [6]{(char)72, ...}}`
@@ -717,9 +724,10 @@ _VENDOR_QUALIFIED_FUNCTION = re.compile(r"U\d+[A-Za-z_][A-Za-z0-9_$.]*?[rVK]*(?:
 #: Found at length six by `tools/enumerate.py`; nothing at the gate's length reaches it.
 _QUALIFIED_FUNCTION_RETURNING_AN_ARRAY = re.compile(r"(?:^[rVK]+FA_.*E$)|(?:^FA_.*[RO]E$)")
 
-#: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
-#: function. The one shape where all three implementations write something different.
-_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVKPRO]*(?:Do|DO.*?E|Dw.*?E|Dx)?[AF]")
+#: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array, a
+#: function, a substitution that names one, or a member pointer to one. The one shape
+#: where all three implementations write something different.
+_IMAGINARY_DECLARATOR = re.compile(r"[GC][rVKPRO]*(?:Do|DO.*?E|Dw.*?E|Dx)?(?:[AF]|S|M.*?[AF])")
 
 #: Characters both reference *tools* split their input on before demangling anything --
 #: a space, a bracket, a `+` or a `-` -- so a name carrying one reaches neither

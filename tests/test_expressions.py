@@ -807,6 +807,26 @@ class TestAModifierOverAnEmptyPack:
         assert demangle.demangle("_Z1fIJiEPT_E") == "f<int, int*>"
 
 
+class TestImaginaryOverASubstitutedOrMemberPointerDeclarator:
+    """`G` over a substitution that names a function or array, or over a member pointer
+    to a function. llvm-cxxfilt drops the `()` / `[]` or leaves a parenthesis unclosed;
+    `c++filt` refuses. This keeps the declarator, as it does for the written-out
+    `_Z1fGFaE` / `_Z1fGPFvE` shapes the tool already accepts. Found by
+    `tools/enumerate.py --length 6` under `_Z1f`, twenty-four unexplained names."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fFiEGS_", "f(int (), int () imaginary)"),
+            ("_Z1fA_iGS_", "f(int [], int imaginary [])"),
+            ("_Z1fGMiFiE", "f(int (int::* imaginary)())"),
+        ],
+    )
+    def test_the_declarator_is_kept(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+        assert demangle.demangle_strict(mangled, style="gnu") == expected.replace("imaginary", "_Imaginary")
+
+
 class TestAnAbbreviationBeforeAStructorBehindALinkageMarker:
     """`_ZNSiLD1Ev`: an internal-linkage `L` between the abbreviation and its destructor.
     Nothing writes one there; `llvm-cxxfilt` reads it and spells the scope in full, as

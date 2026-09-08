@@ -82,6 +82,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: an imaginary qualifier over a substitution or a member pointer keeps the
+  declarator.** `_Z1fFiEGS_` is `G` over `S_`, and `S_` is the function type `FiE`:
+  llvm-cxxfilt prints `f(int (), int  imaginary)`, the `()` dropped the way it drops
+  them from `_Z1fGFaE`; `_Z1fA_iGS_` loses the `[]` the same way; `_Z1fGMiFiE` --
+  imaginary over a member pointer to a function -- comes back `f(int (int::*
+  imaginary)` with a parenthesis it does not close. `c++filt` refuses all three.
+  This keeps the declarator, as it already did for the written-out `GFaE` / `GPFvE`
+  shapes. Found by `tools/enumerate.py --length 6` under `_Z1f`, twenty-four of the
+  unexplained names.
 - **JNI: a character outside the Basic Multilingual Plane is two escapes, not two
   characters.** `_0XXXX` is one UTF-16 code unit, and javac writes `_0d83d_0de00` for a
   method called `😀`. Taken one escape at a time the pair came out as two lone
