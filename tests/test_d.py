@@ -1107,6 +1107,29 @@ class TestABackReferenceIntoADigitRun:
         assert demangle.demangle("_D1a0Qb1ci", language="d") == "a..c"
 
 
+class TestATypeBackReferenceOnlyReadsBackwards:
+    """`dlang_type_backref` bounds every type back reference by the one being resolved:
+    it must stand before it, so a chain of them walks the name backwards and ends. A
+    scope's function type whose parameter refers back to the enum the scope is part of
+    -- `QBa` at 53 pointing at the `E` at 27, whose spelling reaches 53 again -- was
+    read from inside itself two hundred levels deep, each level's speculative scope type
+    falling back to a plain name only where the depth ran out: two kilobytes of
+    `SocketOption(SocketOption(...` where the reference reads one level and moves on.
+    `tools/mutate.py --seed 5`."""
+
+    MUTANT = "_D3std4conv__T7enumRepTyAaTEQBa6socket12SocketOptionVQBaiX0ZQBuyQBo"
+
+    def test_the_inner_reference_is_refused_and_the_scope_type_given_up(self):
+        assert demangle.demangle(self.MUTANT, language="d") == (
+            "std.conv.enumRep!(immutable(char[]), std.socket.SocketOption(std.socket.SocketOption, int...)).enumRep"
+        )
+
+    def test_a_chain_that_does_walk_backwards_still_reads(self):
+        # `Qb` at 8 points at `i` at 7; `Qc` at 10 points at `Qb` at 8, which is read
+        # under the bound 10 and points further back still.
+        assert demangle.demangle("_D1a1fFiQbQcZv", language="d") == "a.f(int, int, int)"
+
+
 class TestABackReferenceReadsAPlainIdentifier:
     """`dlang_symbol_backref` is `dlang_number` and then `dlang_lname`: a length and
     that many characters spelled as they stand, with only the constructor and

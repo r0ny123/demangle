@@ -407,6 +407,19 @@ class _Parser:
         # finish. A back reference names a position, the grammar at a position is
         # deterministic, so reading it twice can only ever produce the same answer.
         self._resolved = {}
+        # The position of the type back reference being resolved, or the end of the name
+        # when none is: a type back reference may only stand *before* it. `dlang_type_backref`
+        # keeps the same bound in `last_backref`, and it is what makes a chain of them
+        # finite -- each one resolved is read from an earlier position than the last, so
+        # the name is walked backwards and never round. Without it, a type whose spelling
+        # reaches the very `Q` that named it -- the enum at 27 in
+        # `_D3std4conv__T7enumRepTyAaTEQBa6socket12SocketOptionVQBaiX0ZQBuyQBo`, a scope's
+        # function type whose parameter is `QBa`, the reference back to 27 -- was read
+        # again from inside itself, two hundred levels deep, and each level's speculative
+        # scope type fell back to a plain name only where the depth ran out: two
+        # kilobytes of `SocketOption(SocketOption(SocketOption(...` for a mutant the
+        # reference spells in one level.
+        self._last_backref = len(self.reader.text)
         # Whether a whole symbol name starts at a position -- see `_symbol_name_follows`.
         self._starts_symbol = {}
 
@@ -1427,15 +1440,23 @@ class _Parser:
         target = at - distance
         if distance <= 0 or target < 0 or target >= at:
             raise DemangleFailure("type back reference outside the name")
+        if at >= self._last_backref:
+            # Reached from inside the resolution of a back reference that stands at or
+            # before this one: the chain has turned round. See `_last_backref`.
+            raise DemangleFailure("a type back reference read from inside its own target")
         self._follows -= 1
         if self._follows < 0:
             raise _Exhausted
-        key = (target, "type", self._in_symbol_argument)
+        # What a target reads as depends on the bound in force while it is read, so the
+        # bound is part of the key.
+        key = (target, "type", self._in_symbol_argument, self._last_backref)
         found = self._resolved.get(key)
         if found is not None:
             return found[0]
         saved = reader.pos
+        saved_bound = self._last_backref
         reader.pos = target
+        self._last_backref = at
         try:
             if reader.depth > _Reader.MAX_DEPTH:
                 raise DemangleFailure("back reference recursion")
@@ -1446,6 +1467,7 @@ class _Parser:
                 reader.depth -= 1
         finally:
             reader.pos = saved
+            self._last_backref = saved_bound
         self._resolved[key] = (resolved,)
         return resolved
 

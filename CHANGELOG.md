@@ -82,6 +82,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: a type back reference is read only from before the one being resolved.**
+  `dlang_type_backref` bounds each type back reference by the position of the one it
+  is resolving, so a chain of them walks the name backwards and ends. Without the
+  bound, `_D3std4conv__T7enumRepTyAaTEQBa6socket12SocketOptionVQBaiX0ZQBuyQBo` -- a
+  scope's function type whose parameter is `QBa`, pointing at the enum the scope is
+  part of, whose spelling reaches the same `QBa` -- was read from inside itself two
+  hundred levels deep, each level's speculative scope type giving way to a plain name
+  only where the depth ran out: two kilobytes of `SocketOption(SocketOption(...` for a
+  mutant `c++filt` spells `std.socket.SocketOption(std.socket.SocketOption, int...)`
+  in one level, which this now spells too. The bound is part of the memo's key, since
+  what a target reads as depends on it. `tools/mutate.py --seed 5`.
 - **Go: a linker-generated symbol is the linker's text, and a `%` inside a struct tag
   is not an escape.** What follows `go:` or `type:` was read as a package-qualified
   declaration -- the first `.` after the last `/` being the package separator -- and
