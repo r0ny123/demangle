@@ -183,6 +183,14 @@ class TestAConstructorInAModuleRepeatsTheBareName:
             ("_ZNW4llvm3FooD2B3tagEv", "Foo@llvm::~Foo[abi:tag]()"),
             ("_ZNW4llvmW3sub3FooC1Ev", "Foo@llvm.sub::Foo()"),
             ("_ZN1NW4llvm6ModuleC1ERKS1_", "N::Module@llvm::Module(N::Module@llvm const&)"),
+            # A module on the constructor itself, not on the class. llvm-cxxfilt
+            # refuses; c++filt uses the module as the class. The constructor
+            # repeats the prefix, the same as `_ZNStC2Ev`. `tools/mutate.py --seed 20`.
+            ("_ZNStW9rGPRClassC2Ev", "std::std()"),
+            ("_ZNStC2Ev", "std::std()"),
+            ("_ZN1AW9rGPRClassC2Ev", "A::A()"),
+            ("_ZNStW9rGPRClassD2Ev", "std::~std()"),
+            ("_ZNStW9rGPRClass3fooEv", "std::foo@rGPRClass()"),
         ],
     )
     def test_both_styles(self, mangled, expected):

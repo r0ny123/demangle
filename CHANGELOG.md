@@ -87,6 +87,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **tools: llvm-cxxfilt refusing a constructor whose name is a module.**
+  `_ZNStW9rGPRClassC2Ev` is `std::std()` here: `St` is the prefix,
+  `W9rGPRClass` a module on the constructor, `C2` the marker. A
+  constructor repeats the prefix, and `_ZNStC2Ev` is `std::std()` to
+  llvm-cxxfilt too. With the module, llvm-cxxfilt refuses; c++filt
+  prints `std::rGPRClass@rGPRClass()`, using the module as the class.
+  `_ZNW4llvm6ModuleC1Ev` -- the module on the class -- still agrees
+  with both. `tools/mutate.py --seed 20`.
 - **tools: llvm-cxxfilt stacking a reference on a pack return.**
   `_Z1fIJicdEEPFvDpT_EPFRDpRPS0_ES8_S1_DpS4_S6_` is a mutant of
   libcxxabi's pack-expansion vector with `R` where the inner `v` was:

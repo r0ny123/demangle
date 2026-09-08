@@ -357,6 +357,14 @@ ACCEPTED = {
         # is where c++filt does that too. See `_uses_a_legacy_argument_pack`.
         # `tools/mutate.py --seed 18`.
         or (first is None and _uses_a_legacy_argument_pack(name))
+        # Or a constructor or destructor whose unqualified-name is a module then the
+        # marker -- `W9rGPRClassC2` -- with no class source-name between. llvm-cxxfilt
+        # refuses; c++filt uses the module as the class, `std::rGPRClass@rGPRClass()`.
+        # A constructor repeats the prefix: `_ZNStC2Ev` is `std::std()` to llvm-cxxfilt
+        # and to this, and `_ZNW4llvm6ModuleC1Ev` is `Module@llvm::Module()` to all
+        # three. The module on the constructor does not change which class it is.
+        # `tools/mutate.py --seed 20`.
+        or (first is None and _module_on_a_structor(name))
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -623,6 +631,26 @@ _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION = re.compile(r"\)\(\) (?:const|volatile
 #: A function type whose return is a reference to a pack expansion: `FRDp` / `FODp`.
 #: See `ACCEPTED`.
 _FUNCTION_RETURNING_A_REFERENCED_EXPANSION = re.compile(r"F[RO]Dp")
+
+
+def _module_on_a_structor(mangled):
+    """Whether `mangled` has a module name immediately followed by a constructor or
+    destructor marker: `W9rGPRClassC2`, not `W4llvm6ModuleC1`.
+
+    The source-name after `W` is length-prefixed, so `llvm6Module` is not one
+    identifier. llvm-cxxfilt refuses the first shape; it reads the second.
+    """
+    for match in re.finditer(r"WP?(\d+)", mangled):
+        length = int(match.group(1))
+        start = match.end()
+        end = start + length
+        if end >= len(mangled):
+            continue
+        rest = mangled[end:]
+        if rest[0] in "CD" and len(rest) > 1 and rest[1] in "012345":
+            return True
+    return False
+
 
 #: libiberty's `operator ` with no operator after it: the `__op` conversion-operator
 #: marker taken off a function that is merely called `__op`. See `ACCEPTED`.
