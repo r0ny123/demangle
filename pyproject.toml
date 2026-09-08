@@ -69,7 +69,7 @@ test = [
 # its own pull request. `format` is separate so the ruff pin has one home -- the
 # documentation build wants ruff too, to format the signatures it renders.
 format = [
-    "ruff==0.16.5",
+    "ruff==0.16.6",
 ]
 # `test` belongs here: ty checks `tests/` too, and cannot type-check a file whose
 # imports it cannot resolve. Without it the lint job resolves nothing under `tests/`.
