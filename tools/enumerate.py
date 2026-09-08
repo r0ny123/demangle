@@ -347,11 +347,16 @@ ACCEPTED = {
         # `(int const, float const)` here. See `_uses_a_pack_outside_an_expansion`.
         or (first is not None and _uses_a_pack_outside_an_expansion(name) and (second[0] is None or first == second[0]))
         # Or an argument pack in the `I <template-arg>* E` form g++ wrote before `J`,
-        # which `llvm-cxxfilt` refuses and `c++filt` reads -- accepted where `c++filt`
-        # refuses the name for a reason of its own, since with both references silent
-        # the pack is the only thing on this library's side of the disagreement that
-        # is known to be one. See `_uses_a_legacy_argument_pack`.
-        or (first is None and second[0] is None and _uses_a_legacy_argument_pack(name))
+        # which `llvm-cxxfilt` refuses and `c++filt` reads. The `II` regex below is
+        # that pack standing as a template argument; nested inside a `J` pack it is
+        # `JI` and that regex misses it. c++filt then expands a declarator over the
+        # nested pack onto the last member only -- `_Z1fIJIivEEEvDpPT_` is
+        # `(int*, void*)` here and `(int, void*)` there -- because it does not
+        # flatten before applying `P`. A declarator over a pack applies to every
+        # member; the non-nested `IIivE` form, which is what g++ actually wrote,
+        # is where c++filt does that too. See `_uses_a_legacy_argument_pack`.
+        # `tools/mutate.py --seed 18`.
+        or (first is None and _uses_a_legacy_argument_pack(name))
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1002,10 +1007,13 @@ def _uses_a_legacy_argument_pack(mangled):
     """Whether this library's reading of `mangled` took an argument pack from `I ... E`.
 
     The form g++ wrote for a pack under `-fabi-version` 2 through 5 and still writes as
-    a compatibility alias; `llvm-cxxfilt` refuses it and `c++filt` reads it. Where
-    `c++filt` refuses such a name too, it is refusing something else in it -- an
-    `enable_if` attribute, a `T_` with nothing to bind it -- and the pack is not what
-    the two are disagreeing about.
+    a compatibility alias; `llvm-cxxfilt` refuses it and `c++filt` reads it. Nested
+    inside a `J` pack, c++filt also applies a following declarator only to the last
+    member of that nested pack -- `DpPT_` over `JIivE` is `(int, void*)` to it and
+    `(int*, void*)` here. The `II` regex cannot see `JI`. Where `c++filt` refuses
+    such a name too, it is refusing something else in it -- an `enable_if` attribute,
+    a `T_` with nothing to bind it -- and the pack is not what the two are disagreeing
+    about.
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._legacy_pack_used

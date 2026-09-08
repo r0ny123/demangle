@@ -87,6 +87,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **tools: a nested I-pack expansion llvm-cxxfilt refuses.**
+  `_ZN1Scv7MuncherIJDpPT_EEIJIivEA_iEEEv` is
+  `S::operator Muncher<int*, void*, int (*) []><int, void, int []>()`
+  here. llvm-cxxfilt refuses the nested `I` pack; c++filt prints
+  `Muncher<int, void*, int (*) []>` -- the `P` of `DpPT_` landed only
+  on the last member of `IivE`. A declarator over a pack applies to
+  every member, which is also what c++filt does for the non-nested
+  `IIivE` form g++ actually wrote. The tool already accepted llvm's
+  refusal of `II`; `JI` is the same pack inside a `J`.
+  `tools/mutate.py --seed 18`.
 - **D: a `*` in a length-prefixed identifier is refused.** `6En961*` is
   six characters including a star, which is not a D name. The type still
   parsed, so `_D3std6stream9BOMEndianyG5E3std6system6En961*` came back

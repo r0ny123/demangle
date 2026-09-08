@@ -931,6 +931,37 @@ class TestAnExpansionWhosePatternNamesNoPack:
         assert demangle.demangle(mangled) == expected
 
 
+class TestANestedIPackExpandsADeclaratorOntoEveryMember:
+    """`I <template-arg>* E` nested inside a `J` pack. llvm-cxxfilt refuses the
+    I-form; c++filt flattens it and then applies a declarator -- `DpPT_` -- only
+    to the last member of that nested pack, so `_Z1fIJIivEEEvDpPT_` is
+    `void f<int, void>(int, void*)` there and `(int*, void*)` here. A declarator
+    over a pack applies to every member, which is also what c++filt does for the
+    non-nested `IIivE` form g++ actually wrote. No compiler writes an `I` pack
+    inside a `J` pack. `tools/mutate.py --seed 18`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            (
+                "_ZN1Scv7MuncherIJDpPT_EEIJIivEA_iEEEv",
+                "S::operator Muncher<int*, void*, int (*) []><int, void, int []>()",
+            ),
+            ("_Z1fIJIivEA_iEEvDpPT_", "void f<int, void, int []>(int*, void*, int (*) [])"),
+            ("_Z1fIJIivEEEvDpPT_", "void f<int, void>(int*, void*)"),
+            # The non-nested form, which both this and c++filt expand onto every member.
+            ("_Z1fIIivEEvDpPT_", "void f<int, void>(int*, void*)"),
+            # A nested pack of one: c++filt's last-member-only rule agrees.
+            ("_Z1fIJIiEEEvDpPT_", "void f<int>(int*)"),
+            # A J pack of two types, no nested I: llvm-cxxfilt reads this too.
+            ("_Z1fIJivEEvDpPT_", "void f<int, void>(int*, void*)"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+
 class TestASpecialisationTakesNoFurtherArguments:
     """`<template-prefix>` names a template, and a name that already carries
     `<template-args>` is not one: `llvm-cxxfilt` refuses `_Z1fN1AIiEIcEE` and, through a
