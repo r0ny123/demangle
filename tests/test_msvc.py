@@ -1624,3 +1624,20 @@ class MsvcLlvmMainTestSuite(unittest.TestCase):
         for name in ("?Zoo@@3U?$Foo@$1?x@@3HA$1?2@3HA@@A", "?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?2@3HA@@A"):
             with self.subTest(mangled=name):
                 self.assertEqual(demangle.demangle(name, language="msvc"), name)
+
+
+class TestAQualifierOnABackReferencedDeducedReturn(unittest.TestCase):
+    """`?C?4@` is volatile in front of a back reference to `<auto>`. llvm-undname
+    drops the qualifier, as it does for `?B?<auto>@@`. The encoding is kept. Found by
+    `tools/mutate.py --seed 15`.
+    """
+
+    def test_the_volatile_is_kept(self):
+        mangled = "??R<lambda_1>@?0???R<lambda_0>@?0??nested_lambdas@hard@@YAHXZ@QEBA?A?<auto>@@H@Z@QEBA?C?4@H@Z"
+        self.assertEqual(
+            demangle.demangle(mangled, language="msvc"),
+            "public: <auto> volatile __cdecl `public: <auto> __cdecl "
+            "`int __cdecl hard::nested_lambdas(void)'::`1'::<lambda_0>::operator()(int) const'"
+            "::`1'::<lambda_1>::operator()(int) const",
+        )
+        self.assertEqual(demangle.demangle("?f@@YA?C?<auto>@@XZ", language="msvc"), "<auto> volatile __cdecl f(void)")

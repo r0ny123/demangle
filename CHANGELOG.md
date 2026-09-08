@@ -87,6 +87,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a qualifier in front of a back-referenced deduced return is kept.**
+  `?C?4@` is volatile over a back reference to `<auto>`, the same gap
+  `?B?<auto>@@` already named: llvm-undname's `CustomTypeNode` does not
+  print a custom type's qualifiers, so
+  `??R<lambda_1>@...?C?4@H@Z` comes back `<auto>` there and
+  `<auto> volatile` here. The tool accepts the dropped word.
+  `tools/mutate.py --seed 15`.
 - **D: a length-prefixed symbol argument with leftover in the bound is refused.**
   `_D8demangle23__T4testS119symbol3fooZv` is `S11` then `9symbol3foo`:
   nine characters of name and an `o`. The length looked exact because the

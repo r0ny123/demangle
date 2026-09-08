@@ -237,14 +237,17 @@ ACCEPTED = {
                 or _PLACEMENT_CLOSURE.sub("", ours) == first
                 # Or a qualifier in front of a deduced return type. That type is written
                 # `?` and a name -- `?A?<auto>@@` -- and takes a qualifier like any other,
-                # so `const auto f()` is `?B?<auto>@@`. `CustomTypeNode::outputPre` in
-                # LLVM's `MSNodes.cpp` is `Identifier->output(OB, Flags);` and nothing
+                # so `const auto f()` is `?B?<auto>@@`. A later one can be a back
+                # reference to the first, `?C?4@`, which is the same gap: the qualifier
+                # is on the node and the printer writes none of a custom type's.
+                # `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp` is
+                # `Identifier->output(OB, Flags);` and nothing
                 # else, where every other type node's writes its qualifiers first, so
                 # `?A`, `?B`, `?C` and `?D` in front of one all come back spelled the
                 # same. Compiler-emitted and pinned in
                 # `tests/conformance/msvc-reference-defects.txt`; recognised here by
                 # taking the qualifier words back out, so the two answers have to differ
-                # in nothing else.
+                # in nothing else. `tools/mutate.py --seed 15`.
                 or (
                     _QUALIFIED_CUSTOM_TYPE.search(name) is not None
                     and _CUSTOM_TYPE_QUALIFIERS.sub(r"\1", ours) == first
@@ -606,11 +609,12 @@ _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
 
 #: A CV-qualifier code in front of an MSVC custom type -- `?B?<auto>@@`, where `?A` is
 #: the same shape with no qualifier and so no disagreement, or `PB?<decltype-auto>@@`,
-#: a pointer to one. `llvm-undname` reads the qualifier onto the node and its printer
+#: a pointer to one, or `?C?4@`, the same qualifier in front of a back reference to an
+#: earlier `<auto>`. `llvm-undname` reads the qualifier onto the node and its printer
 #: writes none of a custom type's qualifiers, so `<decltype-auto> const *` here is
 #: `<decltype-auto> *` there; other qualifiers in the name are not in question, which
 #: is why only those after the angle brackets are taken off. See `ACCEPTED`.
-_QUALIFIED_CUSTOM_TYPE = re.compile(r"[B-D]\?<")
+_QUALIFIED_CUSTOM_TYPE = re.compile(r"[B-D]\?(?:<|[0-9])")
 _CUSTOM_TYPE_QUALIFIERS = re.compile(r"(<[^<>]*>)(?: (?:const|volatile))+")
 #: The same qualifier word written twice in a row by `llvm-undname`. See `ACCEPTED`.
 _DOUBLED_QUALIFIER = re.compile(r"\b(const|volatile) \1\b")
