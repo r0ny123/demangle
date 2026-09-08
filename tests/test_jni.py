@@ -33,7 +33,10 @@ def mangle(path, signature=None):
         elif char == "[":
             out.append("_3")
         else:
-            out.append(f"_0{ord(char):04x}")
+            # One escape per UTF-16 code unit, which is what javac writes: a character
+            # outside the Basic Multilingual Plane is two of them.
+            units = char.encode("utf-16-be")
+            out.extend(f"_0{int.from_bytes(units[i : i + 2], 'big'):04x}" for i in range(0, len(units), 2))
     encoded = "Java_" + "".join(out)
     return encoded if signature is None else encoded + "__" + mangle(signature)[len("Java_") :]
 
@@ -96,6 +99,13 @@ class TestWhatIsRefused:
             # An overload head that unescapes to `a//b`: the fallback path refused the
             # empty component, the overload loop did not, and `a..b(int)` was read.
             "Java_a__b__I",
+            # A surrogate on its own is not a character, and no Java identifier holds
+            # one: a high surrogate with no low one after it, a low one with nothing
+            # before it, and a high one followed by another escape.
+            "Java_pkg_C_m_0d800",
+            "Java_pkg_C_m_0de00",
+            "Java_pkg_C_m_0de00_0d83d",
+            "Java_pkg_C_m_0d83d_1",
             # Not this scheme at all.
             "JNI_OnLoad",
             "JavaScript_thing",
@@ -113,6 +123,32 @@ class TestWhatIsRefused:
     def test_strict_says_why(self):
         with pytest.raises(DemanglingError):
             demangle.demangle_strict("Java_pkg_C_m__Q", language="jni")
+
+
+class TestACharacterOutsideTheBasicMultilingualPlane:
+    """`_0XXXX` is one UTF-16 code unit, so a supplementary character is two escapes.
+
+    javac writes `_0d83d_0de00` for U+1F600, and taken one escape at a time the pair
+    came out as two lone surrogates -- a string Python will not encode, so a caller
+    writing the result anywhere got a `UnicodeEncodeError` out of `demangle()`.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("Java_a_b_0d83d_0de00", "a.b\U0001f600"),
+            ("Java_a_b__0d83d_0de00", "a.b.\U0001f600"),
+            ("Java_a_b_020000_0d840_0dc00", "a.b\u20000\U00020000"),
+        ],
+    )
+    def test_the_pair_is_one_character(self, name, expected):
+        got = demangle.demangle(name, language="jni")
+        assert got == expected
+        got.encode("utf-8")
+
+    def test_it_re_mangles_as_javac_writes_it(self):
+        assert mangle("a/b\U0001f600") == "Java_a_b_0d83d_0de00"
+        assert unescape("a_b_0d83d_0de00") == "a/b\U0001f600"
 
 
 class TestWhatTheNameDoesNotSay:

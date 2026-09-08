@@ -82,6 +82,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **JNI: a character outside the Basic Multilingual Plane is two escapes, not two
+  characters.** `_0XXXX` is one UTF-16 code unit, and javac writes `_0d83d_0de00` for a
+  method called `😀`. Taken one escape at a time the pair came out as two lone
+  surrogates, a string Python will not encode, so a caller writing the result to a
+  file, a socket or JSON got a `UnicodeEncodeError` out of `demangle()`, which is
+  documented never to raise. The pair is one character now, and a surrogate on its own
+  -- which no Java identifier holds -- refuses the name. Found by hand, probing the
+  scheme's escapes; `tests/test_jni.py`'s encoder now writes UTF-16 units the way javac
+  does, so the round trip covers it.
 - **Itanium: a generic lambda's `auto` is a parameter of the lambda's own level, and
   nothing else's.** ABI 5.1.8 mangles a use of `auto` in a generic lambda's parameter
   list as the artificial template parameter of the lambda's own list. A reference that

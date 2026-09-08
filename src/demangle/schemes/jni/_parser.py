@@ -101,8 +101,32 @@ def unescape(text):
             at += 1
             continue
         simple, hexadecimal = found.groups()
-        out.append(_UNESCAPED[simple] if simple else chr(int(hexadecimal, 16)))
         at = found.end()
+        if simple:
+            out.append(_UNESCAPED[simple])
+            continue
+        unit = int(hexadecimal, 16)
+        if 0xD800 <= unit <= 0xDBFF:
+            # `_0XXXX` is one UTF-16 code unit, and a character outside the Basic
+            # Multilingual Plane -- a CJK Extension B ideograph, an emoji -- is two of
+            # them: javac writes `_0d83d_0de00` for U+1F600. Taken one at a time they
+            # came out as two lone surrogates, a string Python will not encode, so a
+            # caller writing the result to a file, a socket or JSON got a
+            # `UnicodeEncodeError` out of a function documented never to raise.
+            trailing = _ESCAPE.match(text, at)
+            if trailing is None or trailing.group(1) is not None:
+                raise DemangleFailure("a high surrogate with no low surrogate after it")
+            low = int(trailing.group(2), 16)
+            if not 0xDC00 <= low <= 0xDFFF:
+                raise DemangleFailure("a high surrogate with no low surrogate after it")
+            out.append(chr(0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00)))
+            at = trailing.end()
+            continue
+        if 0xDC00 <= unit <= 0xDFFF:
+            # A low surrogate on its own is not a character, and no Java identifier
+            # holds one: `Character.isJavaIdentifierPart` is false for it.
+            raise DemangleFailure("a low surrogate with no high surrogate before it")
+        out.append(chr(unit))
     return "".join(out)
 
 
