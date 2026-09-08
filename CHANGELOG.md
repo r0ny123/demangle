@@ -82,6 +82,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a conversion operator's vtordisp thunk left the name unfilled.** A
+  conversion operator's name is the type it converts to, which is the return slot, and
+  the vtordisp form built its spelling before that slot was read:
+  `??BEDerived@@$4PPPPPPPM@A@EAAPEAXI@Z` came back
+  `EDerived::\0conversion\0`vtordisp{-4, 0}'`, the placeholder and its NULs in the
+  output where `llvm-undname` writes `EDerived::operator void *`vtordisp{-4, 0}'`.
+  The same form with no return type is refused, as the plain conversion operator is.
+  `tools/mutate.py --seed 4`. The same draw put `PB?<decltype-auto>@@` -- a pointer
+  to a const custom type, which no compiler writes -- to `llvm-undname`, whose printer
+  writes none of a custom type's qualifiers; `tools/enumerate.py` accepts that where
+  the qualifier stands after the brackets and the names agree otherwise.
 - **Rust: the `Other_Grapheme_Extend` characters are escaped in a `char` const.**
   `char::escape_debug` escapes a grapheme-extending character so it cannot attach
   itself to the opening quote, and `Grapheme_Extend` is `Mn | Me |

@@ -497,6 +497,17 @@ THUNKS_AND_ADDRESSES = [
     ),
     # a vcall names no access and carries no parameters
     ("??_9Base@@$B7AA", "[thunk]: __cdecl Base::`vcall'{8, {flat}}"),
+    # A conversion operator's name is its return type, and the vtordisp form built its
+    # name without filling that in: `EDerived::\0conversion\0`vtordisp{-4, 0}'`, the
+    # placeholder and its NULs in the output. `tools/mutate.py --seed 4`.
+    (
+        "??BEDerived@@$4PPPPPPPM@A@EAAPEAXI@Z",
+        "[thunk]: public: virtual void * __cdecl EDerived::operator void *`vtordisp{-4, 0}'(unsigned int)",
+    ),
+    (
+        "??BEDerived@@$4PPPPPPPM@A@EAAHXZ",
+        "[thunk]: public: virtual int __cdecl EDerived::operator int`vtordisp{-4, 0}'(void)",
+    ),
 ]
 
 
@@ -574,6 +585,8 @@ COMPLETING_FORMS = [
 
 
 COMPLETING_DECLINED = [
+    # a conversion operator's thunk with no return type has no type to convert to
+    "??BEDerived@@$4PPPPPPPM@A@EAA@XZ",
     "??_R0?AUBase@@@8X",  # a type descriptor ends where it ends
     "??$f@$X@@YAXXZ",  # "$" introduces one of a fixed set, and "X" is not among them
     "??_R2Base@@8X",  # nor does the rest of the RTTI family carry anything after its storage

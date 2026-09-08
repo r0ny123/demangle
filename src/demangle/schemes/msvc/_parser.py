@@ -1810,6 +1810,14 @@ class _Demangler:
         if not self.nested and not self.eof():
             raise _Bail
         written = ", ".join(str(value) for value in displacements)
+        if "\0conversion\0" in name:
+            # A conversion operator's name is the type it converts to, which is the
+            # return slot. `??BEDerived@@$4PPPPPPPM@A@EAAPEAXI@Z` is
+            # `EDerived::operator void *`vtordisp{-4, 0}'` to the reference; the
+            # placeholder `function` fills in was left standing here, NULs and all.
+            if returns is None:
+                raise _Bail
+            name = name.replace("\0conversion\0", f"operator{self.conversion_arguments} {self.rendered(returns)}")
         spelled = f"{name}`{kind}{{{written}}}'"
         signature = FunctionType(convention, params, returns)
         if returns is not None:

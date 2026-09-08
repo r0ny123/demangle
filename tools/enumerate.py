@@ -244,7 +244,10 @@ ACCEPTED = {
                 # `tests/conformance/msvc-reference-defects.txt`; recognised here by
                 # taking the qualifier words back out, so the two answers have to differ
                 # in nothing else.
-                or (_QUALIFIED_CUSTOM_TYPE.search(name) is not None and _MSVC_QUALIFIER_WORDS.sub("", ours) == first)
+                or (
+                    _QUALIFIED_CUSTOM_TYPE.search(name) is not None
+                    and _CUSTOM_TYPE_QUALIFIERS.sub(r"\1", ours) == first
+                )
             )
         )
         # Or `__int128`, which `llvm-undname` 18.1 cannot read and its own compiler
@@ -556,8 +559,13 @@ _GNUV2_EMPTY_OPERATOR = re.compile(r"operator [(<]")
 _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
 
 #: A CV-qualifier code in front of an MSVC custom type -- `?B?<auto>@@`, where `?A` is
-#: the same shape with no qualifier and so no disagreement. See `ACCEPTED`.
-_QUALIFIED_CUSTOM_TYPE = re.compile(r"\?[B-D]\?")
+#: the same shape with no qualifier and so no disagreement, or `PB?<decltype-auto>@@`,
+#: a pointer to one. `llvm-undname` reads the qualifier onto the node and its printer
+#: writes none of a custom type's qualifiers, so `<decltype-auto> const *` here is
+#: `<decltype-auto> *` there; other qualifiers in the name are not in question, which
+#: is why only those after the angle brackets are taken off. See `ACCEPTED`.
+_QUALIFIED_CUSTOM_TYPE = re.compile(r"[B-D]\?<")
+_CUSTOM_TYPE_QUALIFIERS = re.compile(r"(<[^<>]*>)(?: (?:const|volatile))+")
 #: A gap where libiberty spelled a component it could not read as nothing: an empty
 #: type slot (`( const)`, `,  (void)`, `( *)`), an empty template argument (`<>`, `< *>`,
 #: `<int, >`), an empty scope (`::::`, `:: `, a leading `::`), an `operator` with no
@@ -629,10 +637,6 @@ def _without_template_arguments(spelled):
             kept.append(character)
     return spelled if depth else "".join(kept)
 
-
-#: The qualifier words MSVC writes after a type, so an answer can be compared against one
-#: that dropped them. See `ACCEPTED`.
-_MSVC_QUALIFIER_WORDS = re.compile(r" (?:const|volatile)\b")
 
 #: A CV-qualifier applied directly to a `<substitution>`. See `ACCEPTED`.
 #: A qualifier applied to a <substitution> or to a <template-param>: either may stand
