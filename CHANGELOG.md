@@ -87,6 +87,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a requires-clause follows a function-type return.**
+  `_ZN5test21AIiEEF1fEzQ4TrueIT_E` is a function named `test2::A<int>`
+  returning `f ()` and taking `...`, with `requires True<T>`. The
+  clause is a suffix of the declaration, after the whole declarator:
+  `f test2::A<int>(...)() requires True<T>`. It was concatenated
+  before the return type's `()`, so this printed
+  `requires True<T>()`. llvm-cxxfilt puts the `()` first; c++filt
+  refuses. `_Z1fIiEvzQ4TrueIT_E` still agrees.
+  `tools/mutate.py --seed 21`.
 - **tools: llvm-undname's reading of a `$$h` identifier is kept.**
   `?b@FTypeWithQuals@@3U?@YAHXZ@$$h4U<unnamed-type-v>@?1??1@YAHXZ@A`
   is `$$h` in the middle of a local type's name, not a hybrid marker.

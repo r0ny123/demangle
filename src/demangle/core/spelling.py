@@ -370,9 +370,9 @@ class SpellingBuilder(Builder):
 
     def function(self, returns, parameters, suffix="", name=None):
         rendered = ", ".join([parameter.left + parameter.right for parameter in parameters])
-        tail = "(" + rendered + ")" + suffix
+        params = "(" + rendered + ")"
         if returns is None:
-            result = Spelling("", tail, is_function=True)
+            result = Spelling("", params + suffix, is_function=True)
         else:
             # A space after the return type, unless the return type is one that wraps
             # *around* the name -- a pointer to a function or to an array. Those spell
@@ -383,8 +383,19 @@ class SpellingBuilder(Builder):
             # Written as an unconditional `+ " "`, this produced `int (* f<int>())()` and
             # was the largest group of wrong spellings against libcxxabi's corpus.
             left = returns.left
-            joiner = "" if returns.right and left.endswith(("*", "&")) else " "
-            result = Spelling(left + joiner, tail + returns.right, is_function=True)
+            wraps = bool(returns.right)
+            joiner = "" if wraps and left.endswith(("*", "&", "(", " ")) else " "
+            # A function-type return has its `()` in the right half, so the
+            # suffix of *this* function belongs after that: `f name()() requires
+            # C`, not `f name() requires C()`. An array return keeps the
+            # qualifier before the brackets, `int () const []`, and a grouped
+            # wrapping declarator keeps it next to the name, `int (*f() const)()`.
+            # `tools/mutate.py --seed 21`.
+            function_return = wraps and returns.right.lstrip().startswith("(")
+            if function_return:
+                result = Spelling(left + joiner, params + returns.right + suffix, is_function=True)
+            else:
+                result = Spelling(left + joiner, params + suffix + returns.right, is_function=True)
         if name is None:
             return result
         return Spelling(result.spell(str(name)))

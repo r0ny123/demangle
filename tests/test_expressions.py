@@ -1681,6 +1681,31 @@ class TestARequiresClauseHasNoPlaceInsideANestedName:
         assert demangle.demangle(mangled) == expected
 
 
+class TestARequiresClauseFollowsAFunctionTypeReturn:
+    """A function whose return is a function type: `F1fE` is `f ()`. The
+    requires-clause is a suffix of the declaration, after the whole
+    declarator -- `f test2::A<int>(...)() requires True<T>` -- not of the
+    inner `()`. Putting it in the parameter list's tail before
+    `returns.right` spelled `requires True<T>()`. llvm-cxxfilt puts the
+    `()` first; c++filt refuses. `_Z1fIiEvzQ4TrueIT_E` still agrees.
+    `tools/mutate.py --seed 21`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            (
+                "_ZN5test21AIiEEF1fEzQ4TrueIT_E",
+                "f test2::A<int>(...)() requires True<T>",
+            ),
+            ("_ZN5test21AIiEEF1fEz", "f test2::A<int>(...)()"),
+            ("_Z1fIiEvzQ4TrueIT_E", "void f<int>(...) requires True<T>"),
+        ],
+    )
+    def test_the_clause_stands_after_the_inner_list(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+
 class TestTheOldFormOfSrThatGccStillWrites:
     """`sr <type> <unqualified-name>`, the production the ABI had before the
     <unresolved-name> forms, with a complete type where the modern grammar allows only
