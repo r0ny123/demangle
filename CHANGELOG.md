@@ -73,6 +73,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a wide string literal with more characters than its declared length was read
+  as one of the strings it might have meant.** `??_C@_1K@...@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@`
+  declares ten bytes and writes twelve, and came back `L"hell\0"`; four declared bytes
+  over `texx` came back `L"txx"`. Neither is a string a compiler wrote -- a declared
+  length is only shorter than what was written when the name is malformed -- and the
+  reference's own `demangleStringLiteral` at LLVM's main branch refuses the character it
+  runs out of declared bytes before, where 18.1 counted past zero. Found by putting
+  LLVM's `llvm/test/Demangle/invalid-manglings.test` at main to this reader. The names
+  are refused now; a declared length that lands exactly on the last character written
+  still drops it as the terminator, and a longer one is still read as truncated.
 - **MSVC: every form of an `auto` non-type template argument, and a template name
   recorded behind `$1`.** LLVM's own `llvm/test/Demangle/ms-*.test` at its main branch,
   706 checks, put to this reader: four of the fifteen that did not hold were the tests'

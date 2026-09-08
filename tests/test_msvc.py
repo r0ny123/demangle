@@ -513,10 +513,9 @@ COMPLETING_FORMS = [
         "??_C@_1EE@GINHBNC@?$AAa?$AAb?$AAc?$AAd?$AAe?$AAf?$AAg?$AAh?$AAi?$AAj?$AAk?$AAl?$AAm?$AAn?$AAo?$AAp@",
         'L"abcdefghijklmnop"...',
     ),
-    # Where the declared length falls *inside* what was written, the character it lands on
-    # is the one dropped -- not the last. Ten declared bytes over six characters is the
-    # fifth, so "hello\0" comes back as "hell" and the terminator that follows it.
-    ("??_C@_1K@GINHBNC@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@", 'L"hell\\0"'),
+    # Where the declared length falls exactly on the last character written, that one is
+    # the terminator and is dropped; here eight declared bytes over four characters.
+    ("??_C@_17EEHFKJGG@?$AAt?$AAe?$AAx?$AAx@", 'L"tex"'),
     # the rest of the RTTI family names a class, and the descriptor says where the base sits
     ("??_R1A@?0A@EA@Base@@8", "Base::`RTTI Base Class Descriptor at (0, -1, 0, 64)'"),
     ("??_R2Base@@8", "Base::`RTTI Base Class Array'"),
@@ -575,6 +574,16 @@ COMPLETING_DECLINED = [
     "??__Jx@@5?0",
     "??__EFoo@@3HA",  # what runs code takes a signature, never a storage class
     "??_C@_12ABCDEFGH@hi?$AA@",  # a wide literal is two bytes to the character, so never an odd count
+    # A wide literal with more characters than its declared length has room for. The
+    # reference counts the declared length down a character at a time and, since LLVM's
+    # main branch, refuses the character it reaches zero before. 18.1 counted past zero
+    # and answered `L"hell\0"` for ten declared bytes over "hello" and its terminator,
+    # and `L"txx"` for four over "texx" -- strings no compiler wrote, each one of
+    # several the name might have meant.
+    "??_C@_1K@GINHBNC@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@",
+    "??_C@_13EEHFKJGG@?$AAt?$AAe?$AAx?$AAx@",
+    "??_C@_15EEHFKJGG@?$AAt?$AAe?$AAx?$AAx@",
+    "??_C@_11EEHFKJGG@?$AAt?$AAe@",
     "??_C@_02ABCDEFGH@h?$Qi?$AA@",  # a byte is written as two nibbles from "A" to "P"
     "??_C@_02ABCDEFGH@hi?$AA@X",  # and nothing follows the literal
     # The reference decodes a narrow literal into a fixed 128-byte buffer and refuses a

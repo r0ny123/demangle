@@ -1688,6 +1688,16 @@ class _Demangler:
         if wide:
             if length % 2 or len(raw) % 2:
                 raise _Bail
+            if len(raw) > length:
+                # More characters than the declared length has room for. The reference
+                # counts the declared length down two bytes a character and refuses the
+                # character it reaches zero before, since LLVM's main branch; 18.1 kept
+                # counting past zero and answered `L"hell\0"` for ten declared bytes over
+                # "hello" and its terminator -- a string no compiler wrote. A declared
+                # length is only ever shorter than what was written when the name is
+                # malformed, so the name is refused rather than read as one of several
+                # strings it might have meant.
+                raise _Bail
             truncated = length > _LITERAL_MAX_BYTES
             values = [(raw[at] << 8) | raw[at + 1] for at in range(0, len(raw), 2)]
             prefix = "L"
