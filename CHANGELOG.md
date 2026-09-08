@@ -87,6 +87,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Objective-C: `.cxx_destruct` and `.cxx_construct` are selectors.** Clang
+  synthesises `-[Foo .cxx_destruct]` and `-[Foo .cxx_construct]` for a class
+  that has C++ instance variables. The selector opens on a `.`, so it failed
+  the identifier test and the name came back unread -- Apple spelling, GNU
+  `_i_Foo__.cxx_destruct`, and the length-prefixed block invoke. Nothing else
+  clang writes opens a selector that way.
 - **Itanium: a template parameter in a special name is refused.**
   `_ZTVN4llvm17ConstantUniqueMapIcNS_4TypeENT_10UndefValueELb0EEE` is a vtable
   whose third argument is `T_::UndefValue` with `T_` bound to `char` by that
