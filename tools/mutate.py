@@ -373,13 +373,20 @@ def run(scheme, count, seed, quiet, show, batch):
                 # `?$oo_aad@@$$hYAXAEAD@Z` as `public: char && $oo_aad()`, taking the
                 # marker for part of a type.
                 #
-                # A substitute the reference also refuses is not a second opinion:
-                # `$$h` inside an identifier is read as three more characters of it,
-                # and the original answer -- a space `insertSpaceIfNeeded` did not
-                # print -- is the one to compare. Overwriting with None made that a
-                # refusal. `tools/mutate.py --seed 20`.
+                # A substitute the reference also refuses is not a second opinion
+                # where this library too read `$$h` as three more characters of an
+                # identifier: the original answer -- a space `insertSpaceIfNeeded` did
+                # not print -- is the one to compare, and overwriting it with None made
+                # that a refusal. `tools/mutate.py --seed 20`. Where this library took
+                # the marker as the marker, its spelling carries no `$$h`, and the
+                # substitute is the name it read: the reference's refusal of *that* is
+                # the evidence, and goes through the rules about refusals as any other
+                # -- `?foo_pcrcd@@$$hYA_PCRCD@Z` returns `auto`, which `llvm-undname`
+                # 18 cannot read with or without the marker, and its answer about the
+                # marked name, `public: char volatile *volatile *& foo_pcrcd()`, is not
+                # a reading to be held against `auto`. `tools/mutate.py --seed 31`.
                 stand = stand_in.get(substitute)
-                if stand is not None:
+                if stand is not None or "$$h" not in ours[name]:
                     theirs[name] = stand
 
     differ = [
