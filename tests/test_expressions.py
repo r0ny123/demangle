@@ -741,6 +741,13 @@ class TestAStringLiteralArgument:
             ),
             ("_Z1fIXtlA3_cLc200ELc65EEEEvv", 'void f<"\\xC8""A">()'),
             ("_Z1fIXtlA3_cLc255ELc255EEEEvv", 'void f<"\\xFF\\xFF">()'),
+            # A high byte whose `\xHH` is followed by a hex digit: the escape is split
+            # so `e` is not a third digit. llvm-cxxfilt writes the raw `0x9B` byte.
+            # `tools/mutate.py --seed 17`.
+            (
+                "_Z1fIXtl5HellotlA6_cLc155ELc101ELc108ELc108ELc111EEEEEvv",
+                'void f<Hello{"\\x9B""ello"}>()',
+            ),
             # Only `char` is a string: the other character types keep the array form.
             ("_Z1fIXtlA3_iLi104ELi105EEEEvv", "void f<int [3]{104, 105}>()"),
             ("_Z1fIXtlA3_wLw104ELw105EEEEvv", "void f<wchar_t [3]{(wchar_t)104, (wchar_t)105}>()"),

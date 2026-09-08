@@ -409,7 +409,9 @@ ACCEPTED = {
         # Or a byte that is not UTF-8, which this escapes as `\xD0` and llvm-cxxfilt 21
         # writes as the raw byte -- U+DC80..U+DCFF under surrogateescape. The byte is
         # what the name says; emitting it unescaped is not a spelling of a declaration.
-        # `tools/mutate.py --seed 9`. See `_llvm_wrote_a_raw_high_byte`.
+        # `tools/mutate.py --seed 9`. A following hex digit is split the same way
+        # `_string_literal` splits it -- seed 17's `Lc155E` then `e` is `"\x9B""ello"`.
+        # See `_llvm_wrote_a_raw_high_byte`.
         or _llvm_wrote_a_raw_high_byte(ours, first)
         # Or a function type as the target of a cast, where llvm-cxxfilt drops the
         # parameter list and the grouping parenthesis with it: `const_cast<void
@@ -926,7 +928,9 @@ def _llvm_wrote_a_raw_high_byte(ours, first):
     llvm-cxxfilt 21 emits the raw byte of a non-UTF-8 string-literal element; this
     library escapes it, which is what the name says. Recognised by putting the
     escaped form back: a lone surrogate U+DC80..U+DCFF is how a non-UTF-8 byte
-    arrives under `surrogateescape`.
+    arrives under `surrogateescape`. After that, a hex digit following the
+    escape is split the way `_string_literal` splits it -- `\\x9Bello` is
+    `"\\x9B""ello"` here, so that `e` is not a third hex digit.
     """
     if first is None or first == ours:
         return False
@@ -937,7 +941,9 @@ def _llvm_wrote_a_raw_high_byte(ours, first):
             rewritten.append(f"\\x{code - 0xDC00:X}")
         else:
             rewritten.append(character)
-    return "".join(rewritten) == ours
+    text = "".join(rewritten)
+    text = re.sub(r"(\\x[0-9A-Fa-f]{2})(?=[0-9A-Fa-f])", r'\1""', text)
+    return text == ours
 
 
 def _spelled_as_a_string(ours, first):

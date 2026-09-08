@@ -87,6 +87,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **tools: llvm-cxxfilt writing a raw high byte before a hex digit.**
+  `_Z1fIXtl5HellotlA6_cLc155ELc101ELc108ELc108ELc111EEEEEvv` is
+  `Hello{"\x9B""ello"}` here: `155` is the byte `0x9B`, and `e` would
+  otherwise be a third hex digit. llvm-cxxfilt 21 emits the raw byte
+  with no split. The tool already accepted a raw high byte; a following
+  hex digit is the same gap. `tools/mutate.py --seed 17`.
 - **MSVC: a qualifier in front of a back-referenced deduced return is kept.**
   `?C?4@` is volatile over a back reference to `<auto>`, the same gap
   `?B?<auto>@@` already named: llvm-undname's `CustomTypeNode` does not
