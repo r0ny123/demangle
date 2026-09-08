@@ -49,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import demangle
+from demangle.core.decorations import split_decorations
 from demangle.core.errors import DemanglingError
 from demangle.core.spelling import SPELLING_BUILDER
 from demangle.schemes.itanium.parser import ItaniumParser
@@ -327,6 +328,12 @@ ACCEPTED = {
         # no compiler writes: this reads one type per member, `llvm-cxxfilt` the first
         # member alone, `c++filt` nothing. See `_uses_a_pack_outside_an_expansion`.
         or (first is not None and second[0] is None and _uses_a_pack_outside_an_expansion(name))
+        # Or an argument pack in the `I <template-arg>* E` form g++ wrote before `J`,
+        # which `llvm-cxxfilt` refuses and `c++filt` reads -- accepted where `c++filt`
+        # refuses the name for a reason of its own, since with both references silent
+        # the pack is the only thing on this library's side of the disagreement that
+        # is known to be one. See `_uses_a_legacy_argument_pack`.
+        or (first is None and second[0] is None and _uses_a_legacy_argument_pack(name))
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -863,17 +870,41 @@ def _llvm_left_a_lambda_parameter_unresolved(ours, first):
     return re.fullmatch(".+?".join(re.escape(piece) for piece in pieces), ours) is not None
 
 
+def _itanium_parser_after_reading(mangled):
+    """The `ItaniumParser` that read `mangled`, its state intact, or None if none did.
+
+    The parser reads the encoding alone; what a symbol table wrote around it -- an ELF
+    version, a clone suffix -- comes off first, as it does on the library's own path.
+    """
+    encoding, _ = split_decorations(mangled)
+    parser = ItaniumParser(encoding, SPELLING_BUILDER)
+    try:
+        parser.parse()
+    except DemanglingError:
+        return None
+    return parser
+
+
 def _uses_a_pack_outside_an_expansion(mangled):
     """Whether this library's reading of `mangled` put a pack with members where a
     type goes, outside any `Dp` -- `_Z1fIJicEPT_E`, `f<int, char, int*, char*>` here
     and `f<int, char, int*>` to `llvm-cxxfilt`, which prints the first member; both
     are readings of an encoding no compiler writes, and `c++filt` refuses it."""
-    parser = ItaniumParser(mangled, SPELLING_BUILDER)
-    try:
-        parser.parse()
-    except DemanglingError:
-        return False
-    return parser._bare_pack_used
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._bare_pack_used
+
+
+def _uses_a_legacy_argument_pack(mangled):
+    """Whether this library's reading of `mangled` took an argument pack from `I ... E`.
+
+    The form g++ wrote for a pack under `-fabi-version` 2 through 5 and still writes as
+    a compatibility alias; `llvm-cxxfilt` refuses it and `c++filt` reads it. Where
+    `c++filt` refuses such a name too, it is refusing something else in it -- an
+    `enable_if` attribute, a `T_` with nothing to bind it -- and the pack is not what
+    the two are disagreeing about.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._legacy_pack_used
 
 
 def _differs_only_by_the_numbering_rule(mangled, first, second):

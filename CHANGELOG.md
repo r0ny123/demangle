@@ -82,6 +82,22 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a generic lambda's `auto` is a parameter of the lambda's own level, and
+  nothing else's.** ABI 5.1.8 mangles a use of `auto` in a generic lambda's parameter
+  list as the artificial template parameter of the lambda's own list. A reference that
+  found nothing bound was spelled `auto` whatever level it named, so
+  `_Z1fIEvDTLUlT_E_EE` -- `T_`, level 0, `f`'s empty argument list, inside a lambda
+  that stands at level 1 -- read `f<>(decltype([](auto){...}))`, and
+  `_Z1fIiEvDTLUlT0_E_EE`, which asks `f<int>` for a second argument, read the same.
+  `llvm-cxxfilt` refuses both and spells `auto` only for a miss at the lambda's level,
+  `TL0__` under `f<int>` or `T_` where nothing encloses the lambda; this now does the
+  same. What the compilers write is unchanged: g++ and clang mangle the closure passed
+  to `h6(T, T)` as `_Z2h6IZ4use3vEUlT_E_EvS0_S0_`, `S0_` being the entry the lambda's
+  `T_` made, resolved against `h6`'s arguments where it is read. `tools/mutate.py
+  --seed 4`, one of three names, the other two carrying the `I <template-arg>* E`
+  argument pack g++ wrote before `J`, which `llvm-cxxfilt` refuses and `c++filt` reads
+  and which the tool now accepts where `c++filt` refuses the name for a reason of its
+  own.
 - **MSVC: a conversion operator's vtordisp thunk left the name unfilled.** A
   conversion operator's name is the type it converts to, which is the return slot, and
   the vtordisp form built its spelling before that slot was read:

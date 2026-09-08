@@ -381,6 +381,7 @@ class ItaniumParser:
         "_auto_substitutes",
         "_bare_angle",
         "_bare_pack_used",
+        "_closure_level",
         "_closure_prefix_entries",
         "_closure_prefix_seen",
         "_closure_prefix_substitutes",
@@ -398,6 +399,7 @@ class ItaniumParser:
         "_in_special_name",
         "_last_entry_index",
         "_last_source_name",
+        "_legacy_pack_used",
         "_mangled",
         "_max_depth",
         "_max_output",
@@ -639,6 +641,10 @@ class ItaniumParser:
         # declared (ABI 5.1.8), so a `<template-param>` that resolves to nothing is a
         # normal reading *there* and nowhere else -- see `bind_template_param`.
         self._reading_closure_signature = False
+        self._closure_level = None
+        #: Whether an argument pack was read from the pre-`J` form, `I <template-arg>* E`.
+        #: Read by tools/enumerate.py, which knows `llvm-cxxfilt` refuses that form.
+        self._legacy_pack_used = False
         # Whether the last component appended to the <prefix> being read came from a
         # `<substitution>`. The final component of a <nested-name> is an
         # <unqualified-name>, which a substitution is not -- see `nested_name`.
@@ -2094,6 +2100,10 @@ class ItaniumParser:
                 # function's arguments.
                 self.targs.clear()
             declared = []
+            # The level the lambda's own parameters occupy, and the only one a reference
+            # that binds nothing may be an `auto` at. See `bind_template_param`.
+            was_closure_level = self._closure_level
+            self._closure_level = self.targs.depth()
             self.targs.push(declared)
             constraint = ""
             was_reading_closure = self._reading_closure_signature
@@ -2125,6 +2135,7 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "a lambda signature with no parameter types")
             finally:
                 self._reading_closure_signature = was_reading_closure
+                self._closure_level = was_closure_level
                 self._parameter_counts = saved_counts
                 self.targs.restore(saved_scope)
             return self._closure(declarations, constraint, parameters, "", lambda_expression)
@@ -2480,6 +2491,18 @@ class ItaniumParser:
         if self._reading_conversion_type and not self._reading_closure_signature:
             # Provisional: `operator_name` refuses the name if no arguments follow.
             self._conversion_unbound = True
+        elif level != self._closure_level:
+            # A generic lambda's `auto` is a parameter of the lambda's *own* level, ABI
+            # 5.1.8; a reference into another level that is in scope names a parameter
+            # that level does not have. `_Z1fIEvDTLUlT_E_EE` writes `T_` -- level 0,
+            # `f`'s empty list -- inside a lambda that stands at level 1, and
+            # `_Z1fIiEvDTLUlT0_E_EE` asks `f<int>` for a second argument; both read
+            # `(auto)` here, an `auto` the lambda did not declare, and `llvm-cxxfilt`
+            # refuses each. It spells `auto` only where the level is the lambda's, and
+            # so does this.
+            raise ParseError(
+                self._mangled, reader.pos, "template parameter with no argument at a level that is not the lambda's"
+            )
 
         # Level 0, or a level in scope whose parameter is not. A generic lambda's `auto`
         # parameter is mangled as a reference to a parameter it never declared (ABI
@@ -3550,6 +3573,8 @@ class ItaniumParser:
                 if member is not None:
                     members.append(member)
             self._scope_has_pack = True
+            if char == "I":
+                self._legacy_pack_used = True
             handle = builder.parameter_pack(members)
             self._packs.append(handle)
             self._pack_ids.add(id(handle))

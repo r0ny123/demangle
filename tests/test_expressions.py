@@ -1173,6 +1173,74 @@ class TestTemplateParameterLevels:
         )
 
 
+class TestAnAutoBelongsToTheLambdasOwnLevel:
+    """A reference that binds nothing is an `auto` only at the lambda's level.
+
+    ABI 5.1.8: a generic lambda's `auto` parameter is mangled as the artificial template
+    parameter of the lambda's own list. `T_` inside a lambda that stands on top of an
+    enclosing `<template-args>` is level 0, the enclosing list, and where that list has
+    no such argument the reference names nothing: `_Z1fIEvDTLUlT_E_EE` asks `f<>` for an
+    argument and `_Z1fIiEvDTLUlT0_E_EE` asks `f<int>` for a second. Both read `(auto)`
+    here, an `auto` the lambda did not declare; `llvm-cxxfilt` refuses each and spells
+    `auto` only for a miss at the lambda's own level, `TL0__` under `f<int>` or `T_`
+    where nothing encloses the lambda at all. `tools/mutate.py --seed 4`.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_Z1fIEvDTLUlT_E_EE",
+            "_Z1fIiEvDTLUlT0_E_EE",
+            "_ZN1AIiE1fIEEvDTLUlTyTtTyTnTL1__ETL0__T_TL0__E_EE",
+        ],
+    )
+    def test_a_miss_at_an_enclosing_level_is_refused(self, mangled):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled)
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIiEvDTLUlT_E_EE", "void f<int>(decltype([](int){...}))"),
+            ("_Z1fIiEvDTLUlTL0__E_EE", "void f<int>(decltype([](auto){...}))"),
+            ("_Z1fIiEvDTLUlTL0_1_E_EE", "void f<int>(decltype([](auto){...}))"),
+            ("_Z1fiDTLUlT_E_EE", "f(int, decltype([](auto){...}))"),
+            (
+                "_ZN1AIiE1fIcEEvDTLUlTyTtTyTnTL1__ETL0_1_T_TL0__E_EE",
+                "void A<int>::f<char>(decltype([]<typename $T, template<typename $T0, $T0 $N> typename $TT>"
+                "(auto, char, $T){...}))",
+            ),
+        ],
+    )
+    def test_a_miss_at_the_lambdas_level_is_an_auto(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # g++ 13 for `template <class A, class T> void h5(T, T)` and `h6(T, T)`, given
+            # `[](auto x) { return x; }` from `use3()`: the closure's second mention is
+            # `S2_` under `h5<int, ...>` and `S0_` under `h6<...>` -- the entry made for the
+            # lambda's `T_`, which resolves against the enclosing arguments where it is
+            # read, and which `llvm-cxxfilt` spells `auto`.
+            (
+                "_Z2h5IiZ4use3vEUlT_E_EvT0_S2_",
+                "void h5<int, use3()::'lambda'(auto)>(use3()::'lambda'(auto), use3()::'lambda'(auto))",
+            ),
+            (
+                "_Z2h6IZ4use3vEUlT_E_EvS0_S0_",
+                "void h6<use3()::'lambda'(auto)>(use3()::'lambda'(auto), use3()::'lambda'(auto))",
+            ),
+            (
+                "_Z2h5I1QZ4use3vEUlS0_T_E_EvT0_S3_",
+                "void h5<Q, use3()::'lambda'(Q, auto)>(use3()::'lambda'(Q, auto), use3()::'lambda'(Q, auto))",
+            ),
+        ],
+    )
+    def test_what_the_compiler_writes_still_reads(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+
+
 class TestAnExpansionOverAnEmptyPack:
     """`sp` over a pack with no members produces no argument, not an empty one.
 
