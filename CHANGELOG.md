@@ -82,6 +82,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: an octal string escape before a hex digit is split the way a hex
+  escape is.** `"\xF""ello"` was already closed and reopened so `\xF` followed
+  by `e` does not read as `\xFe`. The same split applies after `\0`..`\6`:
+  llvm-cxxfilt prints `"\2""e"`, and `\27` is one character. A mutant of the
+  `Hello{"Hello"}` vector,
+  `_Z1fIXtl5HellotlA6_cLc2ELc101ELc14ELc108ELc111EEEEEvv`, came back
+  `Hello{"\2e\xElo"}` where llvm-cxxfilt writes `Hello{"\2""e\xElo"}`.
+  `tools/mutate.py --seed 8`.
 - **Itanium: a cv- or ref-qualified function type returning an array, as a
   parameter.** The types job already accepted `KFA_iE` / `FA_iRE` as bare encodings,
   where llvm-cxxfilt writes the qualifier after the array's brackets and this before

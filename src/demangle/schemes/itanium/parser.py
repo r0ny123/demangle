@@ -303,7 +303,12 @@ def _string_literal(values):
 
     The one subtlety is `"\xF""ello"`. A hex escape has no length limit in C, so `\xF`
     followed by `e` would read as `\xFe`; the reference closes the string and opens
-    another rather than emit something that means a different thing.
+    another rather than emit something that means a different thing. An octal escape
+    `\0`..`\6` is the same shape: `\27` is one character, and llvm-cxxfilt also
+    splits before a hex letter that would not continue the octal, so `"\2e"` comes
+    back `"\2""e"`. `tools/mutate.py --seed 8` found the split missing, which made
+    `_Z1fIXtl5HellotlA6_cLc2ELc101E...` print `"\2e\xElo"` where the reference
+    prints `"\2""e\xElo"`.
     """
     raw = bytes(value & 0xFF for value in values)
     # A byte that is not part of a UTF-8 sequence comes through as a lone surrogate,
@@ -311,7 +316,7 @@ def _string_literal(values):
     text = raw.decode("utf-8", "surrogateescape")
 
     out = []
-    previous_was_hex_escape = False
+    previous_was_numeric_escape = False
     for character in text:
         code = ord(character)
         if character == '"':
@@ -328,10 +333,12 @@ def _string_literal(values):
             piece = f"\\x{code - 0xDC00:X}"
         else:
             piece = character
-        if previous_was_hex_escape and piece[:1] in _HEX_DIGITS:
+        if previous_was_numeric_escape and piece[:1] in _HEX_DIGITS:
             out.append('""')
         out.append(piece)
-        previous_was_hex_escape = piece.startswith("\\x")
+        previous_was_numeric_escape = piece.startswith("\\x") or (
+            len(piece) == 2 and piece[0] == "\\" and piece[1] in "01234567"
+        )
     return '"' + "".join(out) + '"'
 
 

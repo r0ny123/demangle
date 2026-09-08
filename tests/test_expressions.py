@@ -717,6 +717,14 @@ class TestAStringLiteralArgument:
             ("_Z1fIXtlA3_cLc1ELc2EEEEvv", 'void f<"\\1\\2">()'),
             ("_Z1fIXtlA3_cLc127ELc31EEEEvv", 'void f<"\\x7F\\x1F">()'),
             ("_Z1fIXtlA3_cLc15ELc65EEEEvv", 'void f<"\\xF""A">()'),
+            # An octal escape before a hex digit, the same split. `\2e` is two
+            # characters in C++ -- `e` is not octal -- but llvm-cxxfilt still
+            # writes `"\2""e"`, and `\27` really is one character.
+            ("_Z1fIXtlA3_cLc2ELc101EEEEvv", 'void f<"\\2""e">()'),
+            (
+                "_Z1fIXtl5HellotlA6_cLc2ELc101ELc14ELc108ELc111EEEEEvv",
+                'void f<Hello{"\\2""e\\xElo"}>()',
+            ),
             ("_Z1fIXtlA3_cLc104ELc34ELc92EEEEvv", 'void f<"h\\"\\\\">()'),
             # A nul inside, and one written out where the array had room for it.
             ("_Z1fIXtlA3_cLc104ELc0ELc105EEEEvv", 'void f<"h\\0i">()'),
