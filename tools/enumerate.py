@@ -294,8 +294,15 @@ ACCEPTED = {
         or (first is None and _ANONYMOUS_MEMBER.search(name) is not None)
         # Or a `return scope` parameter written return first, `NkM`, which DMD 2.104
         # began writing and libiberty -- `M` then `Nk` and nothing else -- refuses. Read
-        # here as D's own `core.demangle` reads it; see `tests/test_d.py`.
-        or (first is None and "NkM" in name)
+        # here as D's own `core.demangle` reads it; see `tests/test_d.py`. Where the
+        # parameter sits in the function type that qualifies a function-local symbol,
+        # libiberty does not refuse but backtracks: `dlang_parse_qualified` puts the
+        # position back before the `F` it could not read and stops, and a type back
+        # reference resolved through `dlang_type_backref` keeps whatever was read
+        # before the stop. So a name it does read is this library's with that
+        # parameter list, and the rest of that qualified name, gone. See
+        # `_libiberty_dropped_a_return_scope_qualifier`. `tools/mutate.py --seed 30`.
+        or ("NkM" in name and (first is None or _libiberty_dropped_a_return_scope_qualifier(ours, first)))
         # Or a symbol template argument that opens on a template instance, `S__T`.
         # `TemplateArgX` is `S Number_opt QualifiedName`, and a QualifiedName may be a
         # TemplateInstanceName with no length in front of it. `dlang_template_args`
@@ -1024,6 +1031,32 @@ def _llvm_left_a_lambda_parameter_unresolved(ours, first):
     if len(pieces) == 1:
         return False
     return re.fullmatch(".+?".join(re.escape(piece) for piece in pieces), ours) is not None
+
+
+def _libiberty_dropped_a_return_scope_qualifier(ours, first):
+    """Whether `first` is `ours` with one or more runs cut out, each starting at a `(`
+    and spelling `return scope` somewhere inside it.
+
+    A function-local symbol's qualifier that libiberty could not read is dropped whole:
+    the parameter list from its `(`, and every component after it in the same qualified
+    name, up to wherever the two spellings meet again -- which only trying each end can
+    find, so each is tried. `a.f(return scope int).c.d` cut to `a.f` is the shape;
+    `a.f(int)` cut to `a.f` is not, since nothing in the run was unreadable to it.
+    """
+    if ours == first:
+        return True
+    agree = 0
+    while agree < min(len(ours), len(first)) and ours[agree] == first[agree]:
+        agree += 1
+    for start in range(min(agree, len(ours) - 1), -1, -1):
+        if ours[start] != "(":
+            continue
+        for end in range(start + 1, len(ours) + 1):
+            if "return scope" in ours[start:end] and _libiberty_dropped_a_return_scope_qualifier(
+                ours[end:], first[start:]
+            ):
+                return True
+    return False
 
 
 def _itanium_parser_after_reading(mangled):
