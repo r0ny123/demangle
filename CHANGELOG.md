@@ -6,6 +6,8 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-08
+
 ### Added
 
 - **`tools/sweep_rust_chars.py`: every Unicode scalar value as a Rust `char`
@@ -3574,7 +3576,7 @@ a number can only go up and cannot quietly stop being accurate.
 - `demangle()` output is unchanged for every symbol. This was checked against a snapshot
   taken before the work started, not asserted.
 
-## [0.1.0] -- initial release
+## [0.1.0] - 2026-08-25
 
 First extraction of the demanglers developed inside
 [SMDA](https://github.com/danielplohmann/smda) into a standalone library, rebuilt around
@@ -3620,5 +3622,6 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/r0ny123/demangle/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/r0ny123/demangle/releases/tag/v0.1.0
