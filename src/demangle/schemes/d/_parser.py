@@ -420,6 +420,12 @@ class _Parser:
         # kilobytes of `SocketOption(SocketOption(SocketOption(...` for a mutant the
         # reference spells in one level.
         self._last_backref = len(self.reader.text)
+        # The spans of every LName (start of Number to end of Name) in the symbol.
+        # A back reference targeting strictly inside an LName is refused: no compiler
+        # writes one, and libiberty resolving them turns characters inside an
+        # identifier into types or names.
+        self._lname_spans = []
+        self._backref_inside_lname = False
         # Whether a whole symbol name starts at a position -- see `_symbol_name_follows`.
         self._starts_symbol = {}
 
@@ -563,6 +569,7 @@ class _Parser:
             return ""
         if reader.starts_with("__T") or reader.starts_with("__U"):
             return self.template_instance()
+        lname_start = reader.pos
         length = reader.number()
         start = reader.pos
         if start + length > reader.end:
@@ -605,6 +612,7 @@ class _Parser:
             # `tools/mutate.py --seed 17`.
             raise DemangleFailure("identifier is not a D name")
         reader.pos = start + length
+        self._lname_spans.append((lname_start, reader.pos))
         return text
 
     @staticmethod
@@ -950,6 +958,7 @@ class _Parser:
         if answer is None:
             reader = self.reader
             saved, saved_depth = reader.pos, reader.depth
+            saved_spans = len(self._lname_spans)
             try:
                 self.symbol_name()
                 answer = True
@@ -957,6 +966,7 @@ class _Parser:
                 answer = False
             finally:
                 reader.pos, reader.depth = saved, saved_depth
+                del self._lname_spans[saved_spans:]
             self._starts_symbol[key] = answer
         return answer
 
@@ -974,10 +984,13 @@ class _Parser:
         target = at - distance
         return target if 0 <= target < at else None
 
+    def _is_inside_lname(self, target):
+        return any(s < target < e for s, e in self._lname_spans)
+
     def _back_reference_targets_identifier(self, at):
         """`dlang_symbol_name_p` on a `Q` at `at`: whether it points at a digit."""
         target = self._back_reference_target(at)
-        return target is not None and self.reader.text[target] in DIGITS
+        return target is not None and self.reader.text[target] in DIGITS and not self._is_inside_lname(target)
 
     def identifier_back_reference(self):
         reader = self.reader
@@ -988,6 +1001,9 @@ class _Parser:
         target = at - distance
         if distance <= 0 or target < 0 or target >= at:
             raise DemangleFailure("back reference outside the name")
+        if self._is_inside_lname(target):
+            self._backref_inside_lname = True
+            raise DemangleFailure("back reference targets inside an identifier")
         self._follows -= 1
         if self._follows < 0:
             raise _Exhausted
@@ -1435,7 +1451,7 @@ class _Parser:
             finally:
                 reader.pos = saved
             target = at - distance
-            if distance <= 0 or target < 0 or target >= at:
+            if distance <= 0 or target < 0 or target >= at or self._is_inside_lname(target):
                 return "Q"
             at = target
         return "Q"
@@ -1449,6 +1465,9 @@ class _Parser:
         target = at - distance
         if distance <= 0 or target < 0 or target >= at:
             raise DemangleFailure("type back reference outside the name")
+        if self._is_inside_lname(target):
+            self._backref_inside_lname = True
+            raise DemangleFailure("type back reference targets inside an identifier")
         if at >= self._last_backref:
             # Reached from inside the resolution of a back reference that stands at or
             # before this one: the chain has turned round. See `_last_backref`.

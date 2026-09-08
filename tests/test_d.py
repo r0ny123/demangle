@@ -1155,6 +1155,28 @@ class TestATypeBackReferenceOnlyReadsBackwards:
         assert demangle.demangle("_D1a1fFiQbQcZv", language="d") == "a.f(int, int, int)"
 
 
+class TestABackReferenceInsideAnIdentifierIsRefused:
+    """Seed 30's `_D83TypeInfo_...6__ZQDlFNaNfkbQDkQDnQByZi` has two type back
+    references pointing into the 83-character identifier, and both this library
+    and libiberty resolve them; no compiler writes one. A back reference targeting
+    strictly inside a length-prefixed identifier's span is refused.
+    `tools/mutate.py --seed 30`."""
+
+    MUTANT = (
+        "_D83TypeInfo_S4core8internal5array7casting__T11__ArrayCastTxhTxuZQuFNaNiNeNkMAxhZ5Array"
+        "6__ZQDlFNaNfkbQDkQDnQByZi"
+    )
+
+    def test_a_back_reference_landing_inside_an_identifier_is_refused(self):
+        assert demangle.demangle(self.MUTANT, language="d") == self.MUTANT
+        with pytest.raises(demangle.DemanglingError):
+            demangle.demangle_strict(self.MUTANT, language="d")
+
+    def test_a_back_reference_pointing_at_the_identifier_itself_still_reads(self):
+        # QDl at 91 points at 2, the start of the 83-character identifier.
+        assert demangle.demangle("_D1a1fFiQbZv", language="d") == "a.f(int, int)"
+
+
 class TestABackReferenceReadsAPlainIdentifier:
     """`dlang_symbol_backref` is `dlang_number` and then `dlang_lname`: a length and
     that many characters spelled as they stand, with only the constructor and

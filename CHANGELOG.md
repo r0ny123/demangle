@@ -6,6 +6,16 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **D: a back reference that lands inside an identifier's characters is refused.**
+  `_D83TypeInfo_S4core8internal5array7casting__T11__ArrayCastTxhTxuZQuFNaNiNeNkMAxhZ5Array6__ZQDlFNaNfkbQDkQDnQByZi`
+  has two type back references pointing into the 83-character identifier,
+  and both this library and libiberty resolve them; no compiler writes
+  one. The span of every length-prefixed identifier is now recorded and a
+  back reference target strictly inside a span is refused.
+  `tools/mutate.py --seed 30`.
+
 ## [0.2.0] - 2026-09-08
 
 ### Added

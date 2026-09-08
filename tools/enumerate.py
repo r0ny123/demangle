@@ -52,6 +52,7 @@ import demangle
 from demangle.core.decorations import split_decorations
 from demangle.core.errors import DemanglingError
 from demangle.core.spelling import SPELLING_BUILDER
+from demangle.schemes.d._parser import _Parser as _DParser
 from demangle.schemes.itanium.parser import ItaniumParser
 
 
@@ -311,6 +312,9 @@ ACCEPTED = {
         # reached it, a mutant of the 44-character `testexpansion.s!(...)` instance
         # with `S` where a length `8` was.
         or (first is None and _SYMBOL_ARG_OPENS_ON_A_TEMPLATE.search(name) is not None)
+        # Or a back reference whose target lands strictly inside an identifier's
+        # characters: c++filt resolves it, and no compiler writes one.
+        or (first is not None and _d_back_reference_inside_identifier(name))
     ),
     "itanium": lambda name, ours, first, second: (
         # `llvm-cxxfilt` resolving a generic lambda's substituted parameter to the
@@ -1109,6 +1113,20 @@ def _nests_a_legacy_argument_pack(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._legacy_pack_nested
+
+
+def _d_back_reference_inside_identifier(mangled):
+    """Whether `mangled` contains a back reference targeting strictly inside an LName.
+
+    `_D83TypeInfo_...6__ZQDlFNaNfkbQDkQDnQByZi` has two type back references pointing
+    into the 83-character identifier, and both this library and libiberty resolve
+    them; no compiler writes one. A target strictly inside an LName is refused by this
+    library, while c++filt resolves it.
+    """
+    parser = _DParser(mangled)
+    with contextlib.suppress(Exception):
+        parser.parse()
+    return parser._backref_inside_lname
 
 
 def _differs_only_by_the_numbering_rule(mangled, first, second):
