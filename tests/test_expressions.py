@@ -602,7 +602,7 @@ class TestAFloatingPointLiteral:
             # A long double the width of a double, and the IEEE quad.
             ("_Z1fILe3ff0000000000000EEvv", "void f<0x1p+0L>()"),
             ("_Z1fILe3fff0000000000000000000000000000EEvv", "void f<0x1p+0L>()"),
-            ("_Z1fILe00000000000000000000000000000001EEvv", "void f<0x0.0000000000000000000000000001p-16382L>()"),
+            ("_Z1fILe00000001000000000000000000000000EEvv", "void f<0x0.0001p-16382L>()"),
         ],
     )
     def test_the_llvm_spelling(self, mangled, expected):
@@ -611,16 +611,70 @@ class TestAFloatingPointLiteral:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
+            # g++ on x86-64, `template <long double V> struct LD`: the x87 value in the
+            # low ten bytes of a sixteen-byte `long double`, written most significant
+            # byte first, so six bytes of zero padding lead. Each expected value is what
+            # `printf("%La")` printed for the same literal in the same build.
+            ("_ZN2LDILe0000000000003fffc000000000000000EE1sE", "LD<0xcp-3L>::s"),  # 1.5L
+            ("_ZN2LDILe000000000000c000d000000000000000EE1sE", "LD<-0xdp-2L>::s"),  # -3.25L
+            ("_ZN2LDILe0000000000004000c90fdaa22168c235EE1sE", "LD<0xc.90fdaa22168c235p-2L>::s"),  # pi
+            ("_ZN2LDILe0000000000000c179c3d73864f3805c0EE1sE", "LD<0x9.c3d73864f3805cp-13291L>::s"),  # 1e-4000L
+            ("_ZN2LDILe00000000000000000000000663278e62EE1sE", "LD<0x0.000000663278e62p-16385L>::s"),  # 1e-4940L
+            ("_ZN2LDILe0000000000007fff8000000000000000EE1sE", "LD<infL>::s"),
+            ("_ZN2LDILe000000000000ffff8000000000000000EE1sE", "LD<-infL>::s"),
+            ("_ZN2LDILe00000000000000000000000000000000EE1sE", "LD<0x0p+0L>::s"),
+            ("_ZN2LDILe00000000000080000000000000000000EE1sE", "LD<-0x0p+0L>::s"),
+            # g++ on i386, where the type is twelve bytes: two bytes of padding.
+            ("_ZN2LDILe00003fffc000000000000000EE1sE", "LD<0xcp-3L>::s"),
+            ("_ZN2LDILe0000c000d000000000000000EE1sE", "LD<-0xdp-2L>::s"),
+            # clang++ on either, which writes the ten bytes and nothing else.
+            ("_ZN2LDILe3fffc000000000000000EE1sE", "LD<0xcp-3L>::s"),
+            ("_ZN2LDILec000d000000000000000EE1sE", "LD<-0xdp-2L>::s"),
+        ],
+    )
+    def test_the_x87_format_at_the_width_gplusplus_pads_it_to(self, mangled, expected):
+        """Every one of these names was read off a g++ 13 or clang 18 object file.
+
+        The padded forms read as IEEE quads here -- thirty-two digits is a quad's width
+        too -- and `1.5L` came back `0x0.000000003fffcp-16382L`, a wrong number.
+        `llvm-cxxfilt` on x86-64 refuses them for not being the twenty digits it expects,
+        so the reference never saw the defect; `c++filt` brackets the digits unread. The
+        twelve zero digits that lead every padded x87 value are what tell it from a quad,
+        at the price of one quad: a denormal below 2^-16414, whose leading digits are
+        zero too, now reads as the x87 value it also spells. The quad row in
+        `test_the_llvm_spelling` is a denormal large enough to keep its leading digits.
+        """
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
             ("_Z1fILd4048f5c28f5c28f6EEvv", "void f<(double)[4048f5c28f5c28f6]>()"),
             ("_Z1fILf40490fdbEEvv", "void f<(float)[40490fdb]>()"),
             ("_Z1fILe3fff8000000000000000EEvv", "void f<(long double)[3fff8000000000000000]>()"),
+            # The padded x87 forms are bracketed as written, like everything else.
+            (
+                "_ZN2LDILe0000000000003fffc000000000000000EE1sE",
+                "LD<(long double)[0000000000003fffc000000000000000]>::s",
+            ),
+            ("_ZN2LDILe00003fffc000000000000000EE1sE", "LD<(long double)[00003fffc000000000000000]>::s"),
         ],
     )
     def test_the_gnu_spelling(self, mangled, expected):
         assert demangle.demangle(mangled, style="gnu") == expected
 
     @pytest.mark.parametrize(
-        "mangled", ["_Z1fILdi7EEvv", "_Z1fILd4048EEvv", "_Z1fILf4049EEvv", "_Z1fILe4049EEvv", "_Z1fILfzzzzzzzzEEvv"]
+        "mangled",
+        [
+            "_Z1fILdi7EEvv",
+            "_Z1fILd4048EEvv",
+            "_Z1fILf4049EEvv",
+            "_Z1fILe4049EEvv",
+            "_Z1fILfzzzzzzzzEEvv",
+            # Twenty-four digits are g++'s i386 form and nothing else, and that form
+            # opens with two bytes of zero padding.
+            "_Z1fILe12343fffc000000000000000EEvv",
+        ],
     )
     def test_the_wrong_width_is_refused_in_every_style(self, mangled):
         """`llvm-cxxfilt` refuses these; `c++filt` brackets any run of characters. A
@@ -638,6 +692,50 @@ class TestAFloatingPointLiteral:
         under a name none writes. `c++filt` brackets the digits as they stand."""
         assert demangle.demangle(mangled) == mangled
         assert demangle.demangle(mangled, style="gnu") == mangled
+
+
+class TestAStringLiteralArgument:
+    """A `char` array in a braced initialiser is a string: `tl A3_c Lc104E Lc105E E` is
+    `"hi"`, which is how LLVM's main branch prints it; 18.1 and `c++filt` spell the
+    array, `char [3]{(char)104, (char)105}`. Both say the same thing and one is readable.
+
+    Every g++ and clang++ row was read off an object file: g++ writes the bytes of
+    `"hé"` unsigned, `Lc195ELc169E`, and clang writes them signed, `Lcn61ELcn87E`, and
+    they are the same two bytes.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fIXtlA3_cLc104ELc105EEEEvv", 'void f<"hi">()'),
+            ("_Z1fIXtl2FStlA4_cLc104ELc195ELc169EEEEEvv", 'void f<FS{"hé"}>()'),
+            ("_Z1fIXtl2FStlA4_cLc104ELcn61ELcn87EEEEEvv", 'void f<FS{"hé"}>()'),
+            # The C escapes, the octal digit below them, and the hex escape for the rest
+            # of the control characters -- closed and reopened before a hex digit, so
+            # that `\xF` followed by `A` does not read as `\xFA`.
+            ("_Z1fIXtlA3_cLc104ELc10EEEEvv", 'void f<"h\\n">()'),
+            ("_Z1fIXtlA3_cLc1ELc2EEEEvv", 'void f<"\\1\\2">()'),
+            ("_Z1fIXtlA3_cLc127ELc31EEEEvv", 'void f<"\\x7F\\x1F">()'),
+            ("_Z1fIXtlA3_cLc15ELc65EEEEvv", 'void f<"\\xF""A">()'),
+            ("_Z1fIXtlA3_cLc104ELc34ELc92EEEEvv", 'void f<"h\\"\\\\">()'),
+            # A nul inside, and one written out where the array had room for it.
+            ("_Z1fIXtlA3_cLc104ELc0ELc105EEEEvv", 'void f<"h\\0i">()'),
+            ("_Z1fIXtlA3_cLc104ELc105ELc0EEEEvv", 'void f<"hi\\0">()'),
+            ("_Z1fIXtlA3_cEEEvv", 'void f<"">()'),
+            # A byte that is not UTF-8 is escaped as the byte it is. This came back
+            # `"hÈ"`, a Latin-1 reading of a byte that was never Latin-1.
+            ("_Z1fIXtlA3_cLc104ELc200EEEEvv", 'void f<"h\\xC8">()'),
+            ("_Z1fIXtlA3_cLc200ELc65EEEEvv", 'void f<"\\xC8""A">()'),
+            ("_Z1fIXtlA3_cLc255ELc255EEEEvv", 'void f<"\\xFF\\xFF">()'),
+            # Only `char` is a string: the other character types keep the array form.
+            ("_Z1fIXtlA3_iLi104ELi105EEEEvv", "void f<int [3]{104, 105}>()"),
+            ("_Z1fIXtlA3_wLw104ELw105EEEEvv", "void f<wchar_t [3]{(wchar_t)104, (wchar_t)105}>()"),
+            ("_Z1fIXtlA3_hLh104EEEEvv", "void f<unsigned char [3]{(unsigned char)104}>()"),
+        ],
+    )
+    def test_the_spelling(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+        assert demangle.demangle(mangled, style="gnu") == expected
 
 
 class TestALiteralsValueIsANumber:

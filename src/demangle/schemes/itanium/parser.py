@@ -112,8 +112,10 @@ _ELABORATED_KEYWORDS = {"s": "struct", "u": "union", "e": "enum"}
 
 #: How many hex digits a floating-point literal of each type may carry. A long double is
 #: whatever the target's is: a double on 32-bit ARM, the 80-bit x87 format on x86, the
-#: IEEE quad on AArch64, RISC-V and the rest.
-_FLOAT_WIDTHS = {"float": (8,), "double": (16,), "long double": (16, 20, 32)}
+#: IEEE quad on AArch64, RISC-V and the rest -- and the x87 format is written at the
+#: width of the *type*, which g++ pads: twenty digits from clang, twenty-four from
+#: g++ on i386 (two bytes of padding) and thirty-two from g++ on x86-64 (six bytes).
+_FLOAT_WIDTHS = {"float": (8,), "double": (16,), "long double": (16, 20, 24, 32)}
 #: An operator function's name: `operator+`, `operator int`, `operator""_km`, `operator()`.
 _OPERATOR_FUNCTION = re.compile(r"operator(?![A-Za-z0-9_])")
 
@@ -147,7 +149,24 @@ def _c_hex_float(kind, value):
     The IEEE quad follows the double's shape with 28 fraction digits and the exponent
     bias of 16383; no reference on this machine reads one, so that rule is glibc's
     `ldbl-128` printer read rather than measured.
+
+    Thirty-two digits are a quad *or* the x87 format padded to the sixteen bytes a
+    `long double` occupies on x86-64, which is what g++ writes there: `1.5L` is
+    `0000000000003fffc000000000000000`, the six bytes of padding first because the
+    encoding is most significant byte first. The two are told apart by those twelve
+    zero digits. A quad with them zero is a denormal below 2^-16414, a value no template
+    argument has ever held, while every long double g++ mangles on x86-64 has them; so
+    the x87 reading wins, and the one quad it costs is documented in the tests. Reading
+    the padded form as a quad printed `0x0.000000003fffcp-16382L` for `1.5L` -- a wrong
+    number, where `llvm-cxxfilt` on x86-64 refuses the name for not being the twenty
+    digits it expects and `c++filt` brackets the digits without reading them. g++ on
+    i386 pads to twelve bytes the same way, twenty-four digits with four zeros in front.
     """
+    if kind == "long double" and len(value) == 32 and value.startswith("000000000000"):
+        value = value[12:]
+    elif kind == "long double" and len(value) == 24:
+        # Checked to open with its padding by `spell_float_literal`.
+        value = value[4:]
     bits = int(value, 16)
     if kind == "float":
         # Exact: every float is a double.
@@ -275,18 +294,20 @@ def _string_literal(values):
     of them is readable.
 
     Bytes above 127 are decoded as UTF-8 where they form it, so an emoji in a template
-    argument comes back as itself rather than as four escapes. Where they do not, each
-    byte is escaped on its own.
+    argument comes back as itself rather than as four escapes -- and so does `"hé"`,
+    which g++ mangles as the bytes `Lc195ELc169E` and clang as `Lcn61ELcn87E`, the same
+    two bytes under `char`'s two signednesses. Where they do not form UTF-8, each such
+    byte is escaped on its own, `\xC8`: the byte is what the name says, and the Latin-1
+    character it once decoded to here is not.
 
     The one subtlety is `"\xF""ello"`. A hex escape has no length limit in C, so `\xF`
     followed by `e` would read as `\xFe`; the reference closes the string and opens
     another rather than emit something that means a different thing.
     """
     raw = bytes(value & 0xFF for value in values)
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode("latin-1")
+    # A byte that is not part of a UTF-8 sequence comes through as a lone surrogate,
+    # U+DC80 to U+DCFF, and is escaped below; everything else decoded.
+    text = raw.decode("utf-8", "surrogateescape")
 
     out = []
     previous_was_hex_escape = False
@@ -302,6 +323,8 @@ def _string_literal(values):
             piece = _STRING_ESCAPES[code]
         elif code < 0x20 or code == 0x7F:
             piece = f"\\x{code:X}"
+        elif 0xDC80 <= code <= 0xDCFF:
+            piece = f"\\x{code - 0xDC00:X}"
         else:
             piece = character
         if previous_was_hex_escape and piece[:1] in _HEX_DIGITS:
@@ -3522,15 +3545,22 @@ class ItaniumParser:
 
         The width is the type's: eight digits for a float and sixteen for a double, and
         for a long double whichever the target has -- sixteen where it is a double,
-        twenty for the x87 extended format, thirty-two for the IEEE quad. `llvm-cxxfilt`
-        insists on the width of the machine it runs on and refuses the rest; `c++filt`
-        brackets any run of characters at all. Neither is a reading of `Ld4048E`, which
-        is no value, so the width has to be one of those and every character a hex digit
-        -- a lowercase one, as the ABI says and as LLVM's main branch requires.
+        twenty for the x87 extended format and thirty-two for the IEEE quad, plus the
+        x87 format as g++ pads it to the type's size, twenty-four digits on i386 and
+        thirty-two on x86-64; see `_c_hex_float`. `llvm-cxxfilt` insists on the width
+        of the machine it runs on and refuses the rest; `c++filt` brackets any run of
+        characters at all. Neither is a reading of `Ld4048E`, which is no value, so the
+        width has to be one of those and every character a hex digit -- a lowercase
+        one, as the ABI says and as LLVM's main branch requires.
         """
         widths = _FLOAT_WIDTHS[kind]
         if len(value) not in widths or not _HEX.fullmatch(value):
             raise ParseError(self._mangled, self.reader.pos, "a floating-point literal of the wrong width")
+        if len(value) == 24 and not value.startswith("0000"):
+            # Twenty-four digits are g++'s i386 form and nothing else, and that form
+            # opens with two bytes of zero padding. Refused under both styles: a style
+            # chooses a spelling, never whether a name reads.
+            raise ParseError(self._mangled, self.reader.pos, "a long double of twenty-four digits without its padding")
         if self.options.gnu_expression_spelling:
             return f"({kind})[{value}]"
         return _c_hex_float(kind, value)

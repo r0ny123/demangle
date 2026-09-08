@@ -82,6 +82,27 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a `long double` template argument from g++ on x86 was read as the wrong
+  number.** g++ writes the x87 value at the width of the type, sixteen bytes on x86-64
+  and twelve on i386, so `1.5L` is `Le0000000000003fffc000000000000000E`: six bytes of
+  zero padding first, because the encoding is most significant byte first. Thirty-two
+  digits is also an IEEE quad's width, and that is what this read them as, printing
+  `0x0.000000003fffcp-16382L` -- a wrong number, not a refusal. `llvm-cxxfilt` on
+  x86-64 refuses the name for not being the twenty digits it expects (so the reference
+  never saw the defect, and cannot read its own platform's compiler output here);
+  `c++filt` brackets the digits without reading them. The twelve zero digits that
+  lead every padded x87 value tell it from a quad, at the price of a quad denormal
+  below 2^-16414, which now reads as the x87 value it also spells. The i386 form,
+  twenty-four digits with four zeros in front, reads too. Found by compiling a stress
+  file of modern C++ with g++ 13 and clang 18 and putting every symbol to both
+  references; every expected value is what `printf("%La")` printed for the same
+  literal in the same build.
+- **Itanium: a string-literal template argument that is not UTF-8 came back as
+  Latin-1.** `tlA3_cLc104ELc200EE` spelled `"hÈ"`: the byte `0xC8` is not `È`, and the
+  docstring said each such byte would be escaped. It is now -- `"h\xC8"`, with the
+  `""` break before a following hex digit that the reference writes -- while a
+  sequence that is UTF-8 still decodes, so `"hé"` reads as itself whether g++ wrote its
+  bytes unsigned or clang wrote them signed.
 - **Itanium: a bare substitution was read as a name.** `_ZZ1fPiES_` came back
   `f(int*)::int*` -- a local entity that is a type -- and `_ZZaSFvOEES_`, a fuzzer's
   find recorded in libiberty's own test suite, came back
