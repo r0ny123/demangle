@@ -1271,6 +1271,26 @@ class TestOneElementQualifierAtATime(unittest.TestCase):
         self.assertEqual(demangle_msvc_symbol("?f@@YAXAEAY111$$CBH@Z"), "void __cdecl f(int const (&)[2][2])")
 
 
+class TestDollarCOverAPointerThatIsAlreadyConst(unittest.TestCase):
+    """`$$CB` over `S` -- const over `int *const volatile`. This spells the
+    qualifier once; llvm-undname appends another `const`. No compiler writes
+    `$$C` on a pointer that already carries it. The neighbour without `$$C`
+    still agrees. `tools/mutate.py --seed 23`.
+    """
+
+    def test_the_qualifier_is_not_spelled_twice(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?foo_aay144cbh@@YAXAAY144$$CBSAHH@Z"),
+            "void __cdecl foo_aay144cbh(int *const volatile (&)[5][5], int)",
+        )
+
+    def test_without_dollar_c_the_pointer_still_agrees(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?foo_aay144cbh@@YAXAAY144SAHH@Z"),
+            "void __cdecl foo_aay144cbh(int *const volatile (&)[5][5], int)",
+        )
+
+
 class TestAPointerToAMemberOfArrayType(unittest.TestCase):
     """`PEQA@@Y03H` is a pointer to a member of `A` whose type is `int[4]`, and the
     declarator an array brackets is the member pointer's: `int (A::*)[4]`. The array's

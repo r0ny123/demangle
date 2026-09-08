@@ -255,8 +255,10 @@ ACCEPTED = {
                 # Or a `$$C` qualifier over a pointer that already carries the same one,
                 # `$$CBQAH` -- const over `int *const` -- which no compiler writes: the
                 # reference spells the qualifier twice, `int *const const`, and this
-                # once. Accepted where collapsing the doubled word gives this answer.
-                or (_DOUBLED_QUALIFIER.search(first or "") is not None and _DOUBLED_QUALIFIER.sub(r"\1", first) == ours)
+                # once. `$$CBSAH` is the same over `int *const volatile`, which it
+                # prints `int *const volatile const`. Accepted where collapsing the
+                # extra word gives this answer. `tools/mutate.py --seed 23`.
+                or (first is not None and first != ours and _collapse_doubled_qualifier(first) == ours)
             )
         )
         # Or `__int128`, which `llvm-undname` 18.1 cannot read and its own compiler
@@ -670,6 +672,24 @@ _QUALIFIED_CUSTOM_TYPE = re.compile(r"[B-D]\?(?:<|[0-9])")
 _CUSTOM_TYPE_QUALIFIERS = re.compile(r"(<[^<>]*>)(?: (?:const|volatile))+")
 #: The same qualifier word written twice in a row by `llvm-undname`. See `ACCEPTED`.
 _DOUBLED_QUALIFIER = re.compile(r"\b(const|volatile) \1\b")
+
+
+def _collapse_doubled_qualifier(text):
+    """`text` with a cv-qualifier llvm-undname spelled twice collapsed to one.
+
+    `$$CBQAH` is const over `int *const`, which it prints `int *const const`.
+    `$$CBSAH` is const over `int *const volatile`, which it prints
+    `int *const volatile const` -- the extra word after the pair, not next to
+    the first `const`. Both are the same type spelled once. `tools/mutate.py
+    --seed 23`.
+    """
+    text = _DOUBLED_QUALIFIER.sub(r"\1", text)
+    text = text.replace("const volatile const volatile", "const volatile")
+    text = text.replace("const volatile const", "const volatile")
+    text = text.replace("volatile const volatile", "volatile const")
+    return text
+
+
 #: A gap where libiberty spelled a component it could not read as nothing: an empty
 #: type slot (`( const)`, `(,`, `,  (void)`, `( *)`), an empty template argument (`<>`,
 #: `< *>`, `<int, >`), an empty scope (`::::`, `:: `, a leading `::`), an `operator`

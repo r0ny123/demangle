@@ -87,6 +87,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **tools: llvm-undname repeating const after const volatile.**
+  `?foo_aay144cbh@@YAXAAY144$$CBSAHH@Z` is `$$CB` over `S` -- const
+  over `int *const volatile`. This spells `int *const volatile`;
+  llvm-undname prints `int *const volatile const`. The tool already
+  accepted `int *const const` for `$$CBQAH`; the extra word after the
+  pair is the same gap. `tools/mutate.py --seed 23`.
 - **Itanium: a requires-clause follows a function-type return.**
   `_ZN5test21AIiEEF1fEzQ4TrueIT_E` is a function named `test2::A<int>`
   returning `f ()` and taking `...`, with `requires True<T>`. The
