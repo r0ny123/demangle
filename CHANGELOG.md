@@ -117,6 +117,11 @@ All notable changes to this project are recorded here. The format follows
   a name none writes, spelled as it spells it. Found by `tools/enumerate.py --length 6`,
   which reads 12,204,240 strings under `?f@@` and disagreed with `llvm-undname` on 120
   of the 1,031 it read; the length-4 run the gate makes never reaches the marker.
+- **`tools/mutate.py --seed 1 --count 200000`**, a second draw of the same size,
+  found one more reference leniency and no defect: libiberty takes g++ 2.x's `__op`
+  conversion-operator marker before it looks for the type, so a function merely called
+  `__op` -- `__op__Fi` -- is `operator (int)` to it, an operator converting to nothing,
+  where this reads the identifier. Accepted in the tool and pinned in the tests.
 - **Four finds from `tools/mutate.py --count 200000`**, four times the draw the gate
   runs, one per reader:
   - Itanium: a constructor or destructor of a class declared in a module repeated the

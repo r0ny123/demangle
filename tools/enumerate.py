@@ -494,12 +494,20 @@ ACCEPTED = {
     # guess and reads the split at `__3ios`, `ios::foo__H1Zit(streambuf *)`. Neither is
     # a name a compiler wrote. Recognised by the function's own name: the reference's
     # is a proper prefix of ours, up to a `__`.
+    #
+    # Or a function whose name is `__op` and nothing more. `__op<type>` is how g++ 2.x
+    # writes a conversion operator -- `__opi__3Foo` is `Foo::operator int()` -- and
+    # libiberty takes the marker before it looks for the type, so `__op__Fi`, a
+    # function called `__op`, is `operator (int)` to it: an operator converting to
+    # nothing. This library reads the identifier, `__op(int)`. Recognised by the
+    # reference's empty operator, which no real name spells.
     "gnuv2": lambda name, ours, first, second: (
         first is not None
         and (
             _GNUV2_GAP.search(first) is not None
             or _gnuv2_second_list(first)
             or _gnuv2_function_name(ours).startswith(_gnuv2_function_name(first) + "__")
+            or _GNUV2_EMPTY_OPERATOR.search(first) is not None
         )
     ),
     # A bare type is read under every Itanium rule, and two more: a vendor extended
@@ -523,6 +531,10 @@ ACCEPTED = {
     ),
 }
 
+
+#: libiberty's `operator ` with no operator after it: the `__op` conversion-operator
+#: marker taken off a function that is merely called `__op`. See `ACCEPTED`.
+_GNUV2_EMPTY_OPERATOR = re.compile(r"operator [(<]")
 
 #: An `N` opening a `<nested-name>` with a CV- or ref-qualifier on it. See `ACCEPTED`.
 _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")

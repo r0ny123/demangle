@@ -137,6 +137,24 @@ class TestTheStyles:
         assert demangle.demangle(mangled, language="gnuv2", style=plain) == "foo(char *)"
 
 
+class TestAFunctionCalledOp:
+    """`__op<type>` is the conversion-operator marker -- `__opi__3Foo` is
+    `Foo::operator int()` -- and libiberty takes the marker before it looks for the
+    type, so a function that is merely called `__op` reads as an operator converting to
+    nothing: `operator (int)` for `__op__Fi`. The identifier is what the name says.
+    `tools/mutate.py --seed 1 --count 200000`."""
+
+    def test_the_marker_with_a_type_is_the_operator(self):
+        assert demangle.demangle("__opi__3Foo", language="gnuv2") == "Foo::operator int(void)"
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [("__op__Fi", "__op(int)"), ("__op__3Foo", "Foo::__op(void)")],
+    )
+    def test_the_marker_alone_is_a_name(self, mangled, expected):
+        assert demangle.demangle(mangled, language="gnuv2") == expected
+
+
 class TestAnItaniumPrefixIsNeverClaimed:
     """The Itanium reader is offered every `_Z` and `__Z` name first; one it refuses
     was offered on down the list, and a Mach-O `__Z` name is full of the `__` this
