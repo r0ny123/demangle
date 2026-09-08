@@ -29,7 +29,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._demangler import MANGLING_PREFIXES, demangle_symbol, demangle_type
+from ._demangler import MANGLING_PREFIXES, async_main_entry_point_length, demangle_symbol, demangle_type
 from ._old_demangler import demangle_old_symbol
 from ._printer import print_root
 from .options import DEFAULT_OPTIONS, SIMPLIFIED_OPTIONS, SwiftOptions
@@ -52,6 +52,10 @@ def detect(name):
         # The Mach-O form: one underscore more than the compiler wrote, which
         # `swift-demangle` takes off before reading. `__$s` is `_$s`, itself a prefix.
         name = name[1:]
+    if async_main_entry_point_length(name):
+        # `async_Main`, the one Swift symbol with no prefix: the entry point of an
+        # `async` `@main`, which the reference's `isSwiftSymbol` claims by name.
+        return True
     return name.startswith(MANGLING_PREFIXES) or name.startswith("_T")
 
 
@@ -154,8 +158,10 @@ PLUGIN = LanguagePlugin(
     # `priority` is ascending: *lower is offered first*. After D, before Rust. `$s` and
     # `_T0` collide with nothing; `_$S` collides with Free Pascal, which is offered
     # earlier and wins those.
-    # `$s`, `_$s`, `$S`, `_$S`, `_T0`, `_Tt` and `@__swiftmacro_`.
-    first_characters="$_@",
+    # `$s`, `_$s`, `$S`, `_$S`, `_T0`, `_Tt` and `@__swiftmacro_` -- and `async_Main`,
+    # the entry point of an `async` `@main`, which is the one Swift symbol with no
+    # prefix at all.
+    first_characters="$_@a",
     priority=45,
 )
 

@@ -383,6 +383,7 @@ ALL_KINDS = frozenset(
         "GlobalVariableOnceDeclList",
         "CanonicalPrespecializedGenericTypeCachingOnceToken",
         "AsyncFunctionPointer",
+        "AsyncMainEntryPoint",
         "AutoDiffFunction",
         "AutoDiffFunctionKind",
         "AutoDiffSelfReorderingReabstractionThunk",

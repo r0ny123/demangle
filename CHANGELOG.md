@@ -8,6 +8,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **Swift: the `async_Main` entry point and its funclets.** An `async` `@main` compiles
+  to a symbol called `async_Main`, with no mangling prefix at all, and the funclets
+  split off it carry the ordinary suffixes: `async_MainTY1_`, `async_MainTQ0_`,
+  `async_MainTu`. swiftlang/swift added them to `manglings.txt` after the pinned
+  reference build, which refuses all five rows; `Demangler.cpp` at main stands an
+  `AsyncMainEntryPoint` node in for the name and reads what follows as it reads any
+  symbol, and this does the same, Mach-O underscore included. Found by putting
+  `test/Demangle/Inputs/manglings.txt` at main to the corpus -- the only rows it
+  adds. The plugin now screens on `a` as well as `$`, `_` and `@`.
 - **A `types` job in `tools/enumerate.py` and `tools/mutate.py`.** Bare `<type>`
   encodings go through `demangle_type`, a different entry point from the one every
   other job exercises, and had no fuzz job of their own: the mutator seeded from the

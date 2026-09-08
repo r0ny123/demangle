@@ -765,3 +765,39 @@ class TestTheMachOUnderscore:
         """`___T0` is not a name: two underscores more than the compiler wrote."""
         assert not detect("___T04demo5PointVMn")
         assert demangle.demangle("___T04demo5PointVMn") == "___T04demo5PointVMn"
+
+
+class TestTheAsyncMainEntryPoint:
+    """`async_Main` is the entry point of an `async` `@main`, and the one Swift symbol
+    with no mangling prefix: the name is the whole of it. What makes it a demangler's
+    business is the funclets split off it, which carry the ordinary suffixes --
+    `async_MainTY1_` is a suspend-resume partial function *for* the entry point -- so
+    swiftlang/swift's `Demangler.cpp` stands a node in for the name and reads what
+    follows as it reads any symbol. Every expected value is `test/Demangle/Inputs/
+    manglings.txt` at main, which the pinned reference build predates and refuses.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("async_Main", "async main entry point"),
+            ("async_MainTY1_", "(2) suspend resume partial function for async main entry point"),
+            ("async_MainTQ0_", "(1) await resume partial function for async main entry point"),
+            ("async_MainTu", "async function pointer to async main entry point"),
+            # A Mach-O symbol table's underscore, which the reference takes off here as
+            # it does for `_$s`.
+            ("_async_MainTY1_", "(2) suspend resume partial function for async main entry point"),
+        ],
+    )
+    def test_the_entry_point_and_its_funclets(self, mangled, expected):
+        assert detect(mangled)
+        assert demangle.detect(mangled) == "swift"
+        assert demangle.demangle(mangled) == expected
+        assert demangle.parse(mangled, language="swift").spell() == expected
+
+    @pytest.mark.parametrize("mangled", ["async_MainLoop", "async_main", "Async_Main"])
+    def test_a_name_that_merely_opens_that_way_is_not_read(self, mangled):
+        """The reference claims every `async_Main`-prefixed name and then refuses one
+        whose remainder does not read as a suffix, and so does this: a C function
+        called `async_MainLoop` comes back as itself. The name is case-sensitive."""
+        assert demangle.demangle(mangled) == mangled

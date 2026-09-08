@@ -1156,6 +1156,7 @@ _JUST_TEXT = {
     "VariadicMarker": " variadic-marker ",
     "OpaqueReturnType": "some",
     "AsyncFunctionPointer": "async function pointer to ",
+    "AsyncMainEntryPoint": "async main entry point",
     "HasSymbolQuery": "#_hasSymbol query for ",
     "MergedFunction": "merged ",
     "CoroFunctionPointer": "coro function pointer to ",

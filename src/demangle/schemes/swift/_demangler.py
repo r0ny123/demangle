@@ -204,6 +204,27 @@ def _prefix_length(name):
     return 0
 
 
+#: The symbol the compiler gives an `async` `@main` entry point. It carries no mangling
+#: prefix at all -- the name is the whole of it -- but the funclets split off it do carry
+#: the ordinary suffixes, `async_MainTY1_` and `async_MainTu`, so the reference stands a
+#: node in for the name and reads what follows as it reads any symbol.
+ASYNC_MAIN_ENTRY_POINT_NAME = "async_Main"
+
+
+def async_main_entry_point_length(name):
+    """`getAsyncMainEntryPointNameLength`: how much of `name` is the entry point's name.
+
+    Zero for a name that is not one. A Mach-O symbol table carries one underscore more
+    than the compiler wrote, and the reference takes that into account here as it does
+    for `_$s`.
+    """
+    if name.startswith(ASYNC_MAIN_ENTRY_POINT_NAME):
+        return len(ASYNC_MAIN_ENTRY_POINT_NAME)
+    if name.startswith("_") and name.startswith(ASYNC_MAIN_ENTRY_POINT_NAME, 1):
+        return len(ASYNC_MAIN_ENTRY_POINT_NAME) + 1
+    return 0
+
+
 def _is_old_function_type_mangling(name):
     """Swift 4 put parameter labels inside the argument tuple; Swift 4.2 and later do not.
 
@@ -396,9 +417,18 @@ class Demangler:
         """`demangleSymbol`: read a whole name and assemble the `Global` node."""
         length = _prefix_length(self.text)
         if length == 0:
-            return None
-        self.is_old_function_type_mangling = _is_old_function_type_mangling(self.text)
-        self.pos = length
+            # An `async` `@main` entry point, whose name is not mangled at all. A node
+            # stands in for it so that the funclet suffixes after it read as they do
+            # after any other symbol: `async_MainTY1_` is a suspend-resume partial
+            # function *for* the entry point.
+            length = async_main_entry_point_length(self.text)
+            if length == 0:
+                return None
+            self.pos = length
+            self.push(Node("AsyncMainEntryPoint"))
+        else:
+            self.is_old_function_type_mangling = _is_old_function_type_mangling(self.text)
+            self.pos = length
 
         if not self.parse_and_push():
             return None
