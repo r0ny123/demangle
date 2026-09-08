@@ -87,6 +87,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: llvm-cxxfilt dropping a function type from a cast is a gap.**
+  `_ZN5test21hIPFfvEEEvT_DTccPFDTclfL0p_EEvELi0EE` is
+  `void test2::h<float (*)()>(float (*)(), decltype(const_cast<decltype(fp()) (*)()>(0)))`
+  here. llvm-cxxfilt prints `const_cast<decltype(fp()) (*>(0)` -- the
+  parameter list and the grouping parenthesis gone, which is not a
+  declaration -- and c++filt refuses. `_Z1fDTccPFvvELi0EE` is the same cut
+  on `const_cast<void (*)()>(0)`. The tool accepts the unbalanced spelling.
+  `tools/mutate.py --seed 14`.
 - **Objective-C: `.cxx_destruct` and `.cxx_construct` are selectors.** Clang
   synthesises `-[Foo .cxx_destruct]` and `-[Foo .cxx_construct]` for a class
   that has C++ instance variables. The selector opens on a `.`, so it failed

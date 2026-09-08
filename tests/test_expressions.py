@@ -1966,3 +1966,26 @@ class TestDivisionKeepsItsPrecedence:
             == "void quarter<int>(I<sizeof (int) / 2 / 2>)"
         )
         assert demangle.demangle_strict("_Z1fIXmidvLi1ELi2ELi3EEEvv") == "void f<1 / 2 - 3>()"
+
+
+class TestLlvmDropsACastFunctionType:
+    """llvm-cxxfilt drops the parameter list of a function type that is the target of a
+    cast, and the grouping parenthesis with it: `const_cast<void (*)()>(0)` becomes
+    `const_cast<void (*>(0)`. c++filt prints the list. An unbalanced spelling is not a
+    declaration. `tools/mutate.py --seed 14`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fDTccPFvvELi0EE", "f(decltype(const_cast<void (*)()>(0)))"),
+            ("_Z1fDTccPFiiELi0EE", "f(decltype(const_cast<int (*)(int)>(0)))"),
+            (
+                "_ZN5test21hIPFfvEEEvT_DTccPFDTclfL0p_EEvELi0EE",
+                "void test2::h<float (*)()>(float (*)(), decltype(const_cast<decltype(fp()) (*)()>(0)))",
+            ),
+        ],
+    )
+    def test_the_parameter_list_is_kept(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+        assert demangle.demangle(mangled, style="gnu").count("(") == demangle.demangle(mangled, style="gnu").count(")")

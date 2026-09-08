@@ -408,6 +408,12 @@ ACCEPTED = {
         # what the name says; emitting it unescaped is not a spelling of a declaration.
         # `tools/mutate.py --seed 9`. See `_llvm_wrote_a_raw_high_byte`.
         or _llvm_wrote_a_raw_high_byte(ours, first)
+        # Or a function type as the target of a cast, where llvm-cxxfilt drops the
+        # parameter list and the grouping parenthesis with it: `const_cast<void
+        # (*)()>(0)` becomes `const_cast<void (*>(0)`. c++filt prints the list on the
+        # short names and refuses the nested `decltype(fp())` one. An unbalanced
+        # spelling is not a declaration. `tools/mutate.py --seed 14`.
+        or _llvm_dropped_a_cast_function_type(ours, first)
         # Or the same reading with a space `llvm-cxxfilt` does not print. It runs the
         # return type into the name when the return type is an array -- `signed
         # charf<>(signed char) []` for `_Z1fIEA_aa`, a function returning an array,
@@ -882,6 +888,32 @@ def _undname_drops_array_element_qualifiers(name, ours, first):
         return False
     stripped = re.sub(r" (?:const|volatile)\b", "", ours)
     return stripped != ours and stripped.replace(" ", "") == first.replace(" ", "")
+
+
+#: A C++ cast whose target is a function type. See `_llvm_dropped_a_cast_function_type`.
+_CAST_WITH_ARGUMENT = re.compile(r"((?:const|static|dynamic|reinterpret)_cast)<(.+)>\(([^()]*)\)")
+
+
+def _llvm_dropped_a_cast_function_type(ours, first):
+    """Whether `first` is `ours` with a cast's function-type parameter list cut out.
+
+    llvm-cxxfilt prints `const_cast<void (*>(0)` for `const_cast<void (*)()>(0)`, and
+    the same cut for `(int)`, `(**)()`, `(*&)()`, `(* const)()`. Restricted to the
+    cast's own target so `h<float (*)()>` in the same name is left alone. The grouping
+    parenthesis plus the parameter list sit at the end of the target; a function type
+    not reached through a pointer is ` ()` there instead.
+    """
+    if first is None or first == ours or "cast<" not in first:
+        return False
+
+    def collapse(match):
+        kind, target, argument = match.group(1), match.group(2), match.group(3)
+        cut = re.sub(r"\)\([^()]*\)$", "", target)
+        if cut == target:
+            cut = re.sub(r" \(\)$", " ", target)
+        return f"{kind}<{cut}>({argument})"
+
+    return _CAST_WITH_ARGUMENT.sub(collapse, ours) == first
 
 
 def _llvm_wrote_a_raw_high_byte(ours, first):
