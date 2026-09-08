@@ -258,7 +258,7 @@ class TestAgainstTheCompilersOwnRecord:
                 "Absolute Variable symbol",
                 "Enumeration symbol",
             ):
-                declared.update(m.upper() for m in re.findall(rf"^\s*{kind} (.+)$", out, re.M))
+                declared.update(m.upper().lstrip("$") for m in re.findall(rf"^\s*{kind} (.+)$", out, re.M))
             aliases = [
                 piece.strip()
                 for line in re.findall(r"^\s*(?:Alias names|Mangled name)\s*: (.+)$", out, re.M)

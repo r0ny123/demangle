@@ -129,7 +129,7 @@ SEEDS = {
     "types": (["itanium-types.txt", "itanium-types-llvm.txt"], ""),
     "rust": (["rust-real-world.txt", "rust-toolchain.txt"], "_R"),
     "d": (["d-real-world.txt", "d-libiberty.txt"], "_D"),
-    "ada": (["ada-libiberty.txt"], ""),
+    "ada": (["ada-libiberty.txt", "ada-real-world.txt"], ""),
     "msvc": (["msvc-llvm-corpus.txt", "msvc-arm64ec.txt", "msvc-clang.txt"], "?"),
     # Only the `$s` corpus rows: `swift-real-world.txt` carries both manglings and the
     # prefix a mutant has to keep can only be one of them. `swift-symbolic.txt` is hex
