@@ -733,6 +733,12 @@ class TestAStringLiteralArgument:
             # A byte that is not UTF-8 is escaped as the byte it is. This came back
             # `"hÈ"`, a Latin-1 reading of a byte that was never Latin-1.
             ("_Z1fIXtlA3_cLc104ELc200EEEEvv", 'void f<"h\\xC8">()'),
+            # A high byte that is not UTF-8, inside a longer string. llvm-cxxfilt 21
+            # writes the raw byte; this keeps the escape. `tools/mutate.py --seed 9`.
+            (
+                "_Z1fIXtl5HellotlA6_cLc15ELc101ELc108ELc208ELc111EEEEEvv",
+                'void f<Hello{"\\xF""el\\xD0o"}>()',
+            ),
             ("_Z1fIXtlA3_cLc200ELc65EEEEvv", 'void f<"\\xC8""A">()'),
             ("_Z1fIXtlA3_cLc255ELc255EEEEvv", 'void f<"\\xFF\\xFF">()'),
             # Only `char` is a string: the other character types keep the array form.

@@ -393,6 +393,11 @@ ACCEPTED = {
         # Or a `char` array in a braced initialiser, which this library spells as the
         # string it is. See `_spelled_as_a_string`.
         or _spelled_as_a_string(ours, first)
+        # Or a byte that is not UTF-8, which this escapes as `\xD0` and llvm-cxxfilt 21
+        # writes as the raw byte -- U+DC80..U+DCFF under surrogateescape. The byte is
+        # what the name says; emitting it unescaped is not a spelling of a declaration.
+        # `tools/mutate.py --seed 9`. See `_llvm_wrote_a_raw_high_byte`.
+        or _llvm_wrote_a_raw_high_byte(ours, first)
         # Or the same reading with a space `llvm-cxxfilt` does not print. It runs the
         # return type into the name when the return type is an array -- `signed
         # charf<>(signed char) []` for `_Z1fIEA_aa`, a function returning an array,
@@ -863,6 +868,26 @@ def _undname_drops_array_element_qualifiers(name, ours, first):
         return False
     stripped = re.sub(r" (?:const|volatile)\b", "", ours)
     return stripped != ours and stripped.replace(" ", "") == first.replace(" ", "")
+
+
+def _llvm_wrote_a_raw_high_byte(ours, first):
+    """Whether `first` is `ours` with each `\\xHH` (HH >= 0x80) written as that byte.
+
+    llvm-cxxfilt 21 emits the raw byte of a non-UTF-8 string-literal element; this
+    library escapes it, which is what the name says. Recognised by putting the
+    escaped form back: a lone surrogate U+DC80..U+DCFF is how a non-UTF-8 byte
+    arrives under `surrogateescape`.
+    """
+    if first is None or first == ours:
+        return False
+    rewritten = []
+    for character in first:
+        code = ord(character)
+        if 0xDC80 <= code <= 0xDCFF:
+            rewritten.append(f"\\x{code - 0xDC00:X}")
+        else:
+            rewritten.append(character)
+    return "".join(rewritten) == ours
 
 
 def _spelled_as_a_string(ours, first):

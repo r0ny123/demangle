@@ -82,6 +82,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a non-UTF-8 byte in a string literal stays escaped, against
+  llvm-cxxfilt 21 writing the raw byte.** `Lc208E` is the byte `0xD0`, which is
+  not UTF-8 on its own. This prints `\xD0`, the byte the name says; llvm-cxxfilt
+  21 emits the raw byte into the demangled string, which is not a declaration
+  and which a UTF-8 reader cannot even load. The tool accepts that where
+  replacing each high `\xHH` with the byte reproduces llvm-cxxfilt's answer.
+  `tools/mutate.py --seed 9`.
 - **Itanium: an octal string escape before a hex digit is split the way a hex
   escape is.** `"\xF""ello"` was already closed and reopened so `\xF` followed
   by `e` does not read as `\xFe`. The same split applies after `\0`..`\6`:
