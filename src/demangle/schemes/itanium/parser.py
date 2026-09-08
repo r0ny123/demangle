@@ -3016,6 +3016,14 @@ class ItaniumParser:
             size = self.expression_text()
         reader.expect("_")
         if reader.eat("p"):
+            # AltiVec `__vector pixel`. llvm-cxxfilt refuses a dimension that does
+            # not open on 1-9 and c++filt refuses `p` altogether, so `_Z1hDv0_p`
+            # -- a pixel vector of length 0 -- is unreadable to both and is not a
+            # type a compiler writes. `Dv0_i` is still read: c++filt prints
+            # `__vector(0)` and a style must not decide whether the name parses.
+            # `tools/mutate.py --seed 10`.
+            if size.isdigit() and int(size) == 0:
+                raise ParseError(self._mangled, reader.pos, "a pixel vector of dimension 0")
             spelled = "pixel"
         else:
             inner = self.type_()

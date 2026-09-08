@@ -821,6 +821,25 @@ class TestAModifierOverAnEmptyPack:
         assert demangle.demangle("_Z1fIJiEPT_E") == "f<int, int*>"
 
 
+class TestAPixelVectorOfDimensionZero:
+    """`Dv0_p` is AltiVec `__vector pixel` of length 0. llvm-cxxfilt refuses a
+    dimension that does not open on 1-9 and c++filt refuses `p` altogether, so
+    both hand the name back. A compiler does not write a pixel vector of length
+    0. `Dv0_i` is still read: c++filt prints `__vector(0)`. `tools/mutate.py
+    --seed 10`."""
+
+    def test_refused(self):
+        assert demangle.demangle("_Z1hDv0_p") == "_Z1hDv0_p"
+        assert demangle.demangle("_Z1hDv0_p", style="gnu") == "_Z1hDv0_p"
+
+    def test_a_zero_length_int_vector_is_still_read(self):
+        assert demangle.demangle("_Z1hDv0_i") == "h(int vector[0])"
+        assert demangle.demangle("_Z1hDv0_i", style="gnu") == "h(int __vector(0))"
+
+    def test_a_pixel_vector_of_length_one_is_still_read(self):
+        assert demangle.demangle("_Z1hDv1_p") == "h(pixel vector[1])"
+
+
 class TestAQualifiedFunctionTypeReturningAnArray:
     """`KFA_iE` / `FA_iRE` as a parameter. C++ has no function returning an array;
     llvm-cxxfilt writes the qualifier after the `[]`, this before them, `c++filt`

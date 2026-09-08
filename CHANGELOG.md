@@ -82,6 +82,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a pixel vector of dimension 0 is refused.** `_Z1hDv0_p` is
+  AltiVec `__vector pixel` of length 0. llvm-cxxfilt refuses a vector
+  dimension that does not open on 1-9 and c++filt refuses `p` altogether,
+  so both hand the name back; this printed `h(pixel vector[0])`. A
+  compiler does not write one. `Dv0_i` is still read -- c++filt prints
+  `__vector(0)` -- because a style must not decide whether a name parses.
+  `tools/mutate.py --seed 10`.
 - **Pre-Itanium C++: libiberty's empty first argument is a gap, not a
   declaration.** `__dl__17T5__pt____3fooiRT0iT2iT2` comes back
   `T5__pt____3fooiRT::operator delete(, int, int, int, int)` from the
