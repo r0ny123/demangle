@@ -380,6 +380,7 @@ class ItaniumParser:
         "_argument_constraint",
         "_auto_substitutes",
         "_bare_angle",
+        "_bare_pack_used",
         "_closure_prefix_entries",
         "_closure_prefix_seen",
         "_closure_prefix_substitutes",
@@ -474,6 +475,11 @@ class ItaniumParser:
         #: How many `Dp` patterns are being read for their arity: a modifier over an
         #: empty pack is the pattern's business there, not a refusal's.
         self._reading_pattern = 0
+        #: Whether a pack with members stood as a type outside any expansion -- an
+        #: ill-formed encoding no compiler writes, which this reads as one type per
+        #: member, `llvm-cxxfilt` as the first member and `c++filt` not at all. Read by
+        #: `tools/enumerate.py`, which accepts that disagreement on such a name.
+        self._bare_pack_used = False
         #: Whether the `<type>` about to be read stands directly as a template argument,
         #: where a template with no arguments *is* something a type position can hold:
         #: the argument for a template template parameter, `ScalarMemoTable<int,
@@ -1479,6 +1485,18 @@ class ItaniumParser:
                 # <closure-prefix> / <data-member-prefix> terminator; carries no spelling
                 # of its own. It ends a <prefix>, so an <unqualified-name> still has to
                 # follow before the `E` -- see `nested_name`.
+                if self._prefix_bare is None:
+                    # The prefix before the `M` is a <member source-name> or a
+                    # <template-prefix> <template-args>, spelled where the closure is,
+                    # never a back-reference, `St`, a template parameter or a
+                    # decltype: `parseNestedName` reads each of those and goes round
+                    # again without looking for the `M`, so `llvm-cxxfilt` refuses
+                    # `_ZNStM1xE`. `c++filt` reads it as `std::x`, and so did this --
+                    # and read a mutant of libstdc++'s `codecvt` destructor,
+                    # `_ZNStMcodecvtI...ED2Ev`, as
+                    # `std::operator~::operator*::operator unsigned short<...>::~()`
+                    # where both references refuse. `tools/mutate.py --seed 2`.
+                    raise ParseError(self._mangled, reader.pos, "a data member or closure prefix over no spelled name")
                 reader.take()
                 self._prefix_ended_on = "a data member or closure prefix"
                 self._prefix_bare = None
@@ -2326,6 +2344,8 @@ class ItaniumParser:
             self._pack_arity = len(members)
         if self._pack_index is not None and self._pack_index < len(members):
             return members[self._pack_index]
+        if members and not self._reading_pattern:
+            self._bare_pack_used = True
         return handle
 
     def template_param(self):
@@ -2423,6 +2443,8 @@ class ItaniumParser:
                         self._pack_arity = len(members)
                     if self._pack_index is not None and self._pack_index < len(members):
                         return members[self._pack_index]
+                    if members and not self._reading_pattern:
+                        self._bare_pack_used = True
             return bound
 
         if self._reject_unbound_parameters:

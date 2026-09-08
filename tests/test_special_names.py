@@ -153,6 +153,28 @@ class TestAConstructorInAModuleRepeatsTheBareName:
         assert demangle.demangle(mangled, style="gnu") == expected
 
 
+class TestAClosurePrefixIsSpelledWhereItStands:
+    """The prefix before a closure's or a data member's `M` is a <member source-name>
+    or a <template-prefix> <template-args>, spelled there, never a back-reference or
+    `St`: `parseNestedName` reads either and goes round again without looking for the
+    `M`, so `llvm-cxxfilt` refuses `_ZNStM1xE`. `c++filt` reads it as `std::x`, and so
+    did this -- and read a mutant of libstdc++'s `codecvt` destructor as
+    `std::operator~::operator*::operator unsigned short<...>::~()` where both references
+    refuse. `tools/mutate.py --seed 2 --count 200000`."""
+
+    @pytest.mark.parametrize(
+        "mangled", ["_ZNStM1xE", "_ZN1AS_M1xE", "_ZNStMcodecvtIDiDu11__mbstate_tED2Ev@@GLIBCXX_3.4.26"]
+    )
+    def test_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
+
+    def test_spelled_where_it_stands_it_reads(self):
+        assert demangle.demangle("_ZN1AM1xE") == "A::x"
+        assert demangle.demangle("_ZNSt3fooM1xE") == "std::foo::x"
+        assert demangle.demangle("_ZNSt3fooIiEM1xE") == "std::foo<int>::x"
+
+
 class TestAStructuredBindingNamesSomething:
     """`DC <source-name>+ E`: one name at least. Both references refuse `DCE`, and
     spelling `[]` from the empty list read `_ZN12_GLOBAL__N_41ADCED0Ev` as the

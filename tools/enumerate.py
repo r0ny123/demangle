@@ -49,6 +49,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import demangle
+from demangle.core.errors import DemanglingError
+from demangle.core.spelling import SPELLING_BUILDER
+from demangle.schemes.itanium.parser import ItaniumParser
 
 
 #: Per scheme: the reference to ask, a second opinion where one exists, and the
@@ -317,6 +320,15 @@ ACCEPTED = {
         # Or the old form of `sr` that g++ still writes and `llvm-cxxfilt` refuses,
         # which `c++filt` reads as this does. See `_OLD_SR_FORM`.
         or (first is None and _OLD_SR_FORM.search(name) is not None)
+        # Or a pack with members standing as a type outside any expansion, an encoding
+        # no compiler writes: this reads one type per member, `llvm-cxxfilt` the first
+        # member alone, `c++filt` nothing. See `_uses_a_pack_outside_an_expansion`.
+        or (first is not None and second[0] is None and _uses_a_pack_outside_an_expansion(name))
+        # Or a function type returning a function type, which C++ has not, with a cv-
+        # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
+        # the inner one's `()` and this before it, the same placement the two give a
+        # function returning an array. See `_QUALIFIED_FUNCTION_RETURNING_A_FUNCTION`.
+        or (first is not None and _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION.search(first) is not None)
         # Or a name the references number by the ABI's closure-prefix rule and the
         # common `auto` rule where this, by the name's form or by a retry, applied GCC
         # 12's or Apple's -- and agrees with them under theirs. See
@@ -531,6 +543,10 @@ ACCEPTED = {
     ),
 }
 
+
+#: `llvm-cxxfilt`'s spelling of a cv- or ref-qualified function type returning a
+#: function type: the qualifier after the inner `()`. See `ACCEPTED`.
+_QUALIFIED_FUNCTION_RETURNING_A_FUNCTION = re.compile(r"\)\(\) (?:const|volatile|&)")
 
 #: libiberty's `operator ` with no operator after it: the `__op` conversion-operator
 #: marker taken off a function that is merely called `__op`. See `ACCEPTED`.
@@ -841,6 +857,19 @@ def _llvm_left_a_lambda_parameter_unresolved(ours, first):
     if len(pieces) == 1:
         return False
     return re.fullmatch(".+?".join(re.escape(piece) for piece in pieces), ours) is not None
+
+
+def _uses_a_pack_outside_an_expansion(mangled):
+    """Whether this library's reading of `mangled` put a pack with members where a
+    type goes, outside any `Dp` -- `_Z1fIJicEPT_E`, `f<int, char, int*, char*>` here
+    and `f<int, char, int*>` to `llvm-cxxfilt`, which prints the first member; both
+    are readings of an encoding no compiler writes, and `c++filt` refuses it."""
+    parser = ItaniumParser(mangled, SPELLING_BUILDER)
+    try:
+        parser.parse()
+    except DemanglingError:
+        return False
+    return parser._bare_pack_used
 
 
 def _differs_only_by_the_numbering_rule(mangled, first, second):

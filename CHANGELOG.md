@@ -117,6 +117,19 @@ All notable changes to this project are recorded here. The format follows
   a name none writes, spelled as it spells it. Found by `tools/enumerate.py --length 6`,
   which reads 12,204,240 strings under `?f@@` and disagreed with `llvm-undname` on 120
   of the 1,031 it read; the length-4 run the gate makes never reaches the marker.
+- **Itanium: a data member or closure prefix over a back-reference or `St` is
+  refused.** The prefix before the `M` is a member source name or a specialisation,
+  spelled where the closure is; `llvm-cxxfilt` reads a back-reference or `St` there
+  and goes round again without looking for the `M`, so it refuses `_ZNStM1xE`, which
+  `c++filt` reads as `std::x` and this did too -- and a mutant of libstdc++'s
+  `codecvt` destructor, `_ZNStMcodecvtI...ED2Ev`, read here as
+  `std::operator~::operator*::operator unsigned short<...>::~()` where both references
+  refuse. `tools/mutate.py --seed 2 --count 200000`. The third draw, `--seed 3`,
+  found two reference disagreements over encodings no compiler writes, both now
+  accepted in the tool: a pack with members standing as a type outside any expansion,
+  which this reads as one type per member, `llvm-cxxfilt` as the first member and
+  `c++filt` not at all; and a cv-qualified function type returning a function type,
+  where `llvm-cxxfilt` writes the qualifier after the inner `()` and this before it.
 - **`tools/mutate.py --seed 1 --count 200000`**, a second draw of the same size,
   found one more reference leniency and no defect: libiberty takes g++ 2.x's `__op`
   conversion-operator marker before it looks for the type, so a function merely called
