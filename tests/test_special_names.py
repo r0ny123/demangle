@@ -80,6 +80,43 @@ def test_the_two_styles_differ_exactly_where_the_references_do():
     assert differ == {"_ZTH1x", "_ZTW1x", "_ZGR1x0_"}
 
 
+class TestATemplateParameterInASpecialNameIsRefused:
+    """Both references refuse a special name whose operand names a template parameter,
+    even one bound by that operand's own argument list. `_ZTVN1AIcT_EE` would be
+    `vtable for A<char, char>`; a compiler writes `_ZTVN1AIccEE`. Found by
+    `tools/mutate.py --seed 12`.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_ZTVN1AIcT_EE",
+            "_ZTVN1AIcNT_3fooEEE",
+            "_ZTIN1AIcT_EE",
+            "_ZTSN1AIcT_EE",
+            "_ZTTN1AIcNT_3fooEEE",
+            "_ZGVN1AIcT_EE",
+            "_ZTHN1AIcT_EE",
+            "_ZTWN1AIcT_EE",
+            "_ZTCN1AIcT_EE0_1B",
+            "_ZTVN4llvm17ConstantUniqueMapIcNS_4TypeENT_10UndefValueELb0EEE",
+        ],
+    )
+    def test_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
+
+    def test_the_same_type_as_a_name_is_still_read(self):
+        """llvm-cxxfilt reads these; a style must not decide whether a name parses."""
+        assert demangle.demangle("_ZN1AIcT_EE") == "A<char, char>"
+        assert demangle.demangle("_Z1fIcNT_3fooEE") == "f<char, char::foo>"
+        assert demangle.demangle("_ZN1AIcNT_3fooEE1xE") == "A<char, char::foo>::x"
+
+    def test_a_vtable_with_the_argument_written_as_the_type_is_still_read(self):
+        assert demangle.demangle("_ZTVN1AIccEE") == "vtable for A<char, char>"
+        assert demangle.demangle("_ZTVN1AIcEE") == "vtable for A<char>"
+
+
 class TestStillRefused:
     """Shapes that look like special names and are not.
 

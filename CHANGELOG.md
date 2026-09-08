@@ -87,6 +87,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a template parameter in a special name is refused.**
+  `_ZTVN4llvm17ConstantUniqueMapIcNS_4TypeENT_10UndefValueELb0EEE` is a vtable
+  whose third argument is `T_::UndefValue` with `T_` bound to `char` by that
+  specialisation's own list, and printed as
+  `vtable for llvm::ConstantUniqueMap<char, llvm::Type, char::UndefValue, false>`.
+  llvm-cxxfilt and c++filt both hand the name back. A compiler writes the
+  argument as the type it is -- `_ZTVN1AIccEE` is `vtable for A<char, char>` --
+  because a vtable is emitted for a complete specialisation. The same type as a
+  name, `_ZN1AIcT_EE`, is still read: llvm-cxxfilt prints `A<char, char>`.
+  `tools/mutate.py --seed 12`.
 - **D: a symbol template argument that opens on a template instance is in
   the grammar.** `S__T...` is `S Number_opt QualifiedName` with no number, and
   the qualified name is a template instance. libiberty's `dlang_identifier`

@@ -548,9 +548,11 @@ class ItaniumParser:
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
         self._ctor_dtor = False
-        # True while a special name's <object name> is being read: a local entity there
-        # is data, and the function type that may follow one elsewhere belongs to no
-        # encoding here. See `local_name`.
+        # True while a special name's operand is being read: a local entity there is
+        # data, so the function type that may follow one elsewhere belongs to no
+        # encoding here, and a template parameter is refused -- both references refuse
+        # `_ZTVN1AIcT_EE` even though T_ is bound to `char` by that type's own
+        # argument list. See `local_name` and `bind_template_param`.
         self._in_special_name = False
         # Whether the <unqualified-name> just read has no base name for a constructor
         # or destructor to repeat, and whether the component `_prefix_bare` holds is
@@ -987,7 +989,7 @@ class ItaniumParser:
 
         if code in SPECIAL_TYPE_NAMES:
             reader.pos += 2
-            return self.builder.special(SPECIAL_TYPE_NAMES[code], self.type_())
+            return self.builder.special(SPECIAL_TYPE_NAMES[code], self._special_operand_type())
 
         if code == "GI":
             # <special-name> ::= GI <module-name>
@@ -1052,10 +1054,10 @@ class ItaniumParser:
             # the substitution table as such -- `_ZTCSt9strstream16_Si` uses `Si` for
             # `std::istream` because `St` was recorded reading the first one.
             reader.pos += 2
-            derived = self.type_()
+            derived = self._special_operand_type()
             reader.number()
             reader.expect("_")
-            base = self.type_()
+            base = self._special_operand_type()
             builder = self.builder
             return builder.special(
                 "construction vtable for ",
@@ -1555,6 +1557,19 @@ class ItaniumParser:
         if self.subs.recording:
             entries.add(len(self.subs) - 1)
 
+    def _as_special_operand(self, read):
+        """Run `read` as a special name's operand: data, not a function, and no `T_`."""
+        outer = self._in_special_name
+        self._in_special_name = True
+        try:
+            return read()
+        finally:
+            self._in_special_name = outer
+
+    def _special_operand_type(self):
+        """The `<type>` a `TV`/`TI`/`TS`/`TC` special name operates on."""
+        return self._as_special_operand(self.type_)
+
     def _object_name(self):
         """A special name's <object name>: a <name>, with nothing of a function about it.
 
@@ -1563,12 +1578,7 @@ class ItaniumParser:
         for f()::g()`, a guard for a function -- where `parseSpecialName` reads the
         name and returns, and both references refuse the leftover.
         """
-        outer = self._in_special_name
-        self._in_special_name = True
-        try:
-            return self.name()[0]
-        finally:
-            self._in_special_name = outer
+        return self._as_special_operand(lambda: self.name()[0])
 
     def local_name(self, as_type=False):
         """<local-name> ::= Z <function encoding> E <entity name> [<discriminator>]
@@ -2448,6 +2458,14 @@ class ItaniumParser:
     def bind_template_param(self, index, level=0):
         """What `TL<level>_<index>_` names under the arguments currently in scope."""
         reader = self.reader
+        if self._in_special_name:
+            # Both references refuse a special name whose operand names a template
+            # parameter, even one bound by that operand's own argument list:
+            # `_ZTVN1AIcT_EE` is `vtable for A<char, char>` if T_ is substituted, and
+            # unread to llvm-cxxfilt and c++filt. A compiler writes the argument as
+            # the type it is -- `_ZTVN1AIccEE` -- because a vtable is emitted for a
+            # complete specialisation. `tools/mutate.py --seed 12`.
+            raise ParseError(self._mangled, reader.pos, "a template parameter in a special name")
         self._parameter_uses += 1
         bound = self.targs.lookup(index, level)
         if bound is not None:
