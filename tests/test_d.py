@@ -801,14 +801,20 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
             ("_D1w__T1bS__T1cZZ1xi", "w.b!(c!()).x"),
             ("_D1w__T1bS__T1cTaZZ1xi", "w.b!(c!(char)).x"),
             ("_D1w__T1bS__T1cZ1yZ1xi", "w.b!(c!().y).x"),
+            # The 44-character `testexpansion.s!(...)` instance with `S` where a
+            # length `8` was. `tools/mutate.py --seed 9`.
+            (
+                "_D13testexpansion44__T1sTS13testexpansionS__T1sTiZ1sFiZ6ResultZ1sFS13testexpansion8__T1sTiZ1sFiZ6ResultZ6Result3fooMFNaNfZv",
+                "testexpansion.s!(testexpansion, s!(int).s(int).Result).s(testexpansion.s!(int).s(int).Result).Result.foo()",
+            ),
         ],
     )
     def test_a_symbol_argument_opening_on_a_template_instance(self, mangled, expected):
         """`S <QualifiedName>`, and a `QualifiedName` may open with a template instance.
 
-        `dlang_template_args` has no arm for it and refuses the whole name. Kept out of
-        `tools/enumerate.py`'s accept rules on purpose: the pinned draw never reaches
-        this shape, and a rule that never fires is one nobody would notice going wrong.
+        `dlang_template_args` has no arm for it -- `dlang_identifier` wants a number --
+        and refuses the whole name. The ABI's `S Number_opt QualifiedName` does not
+        require the number. `tools/mutate.py --seed 9` reached it.
         """
         assert demangle.demangle(mangled, language="d") == expected
 

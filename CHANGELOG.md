@@ -87,6 +87,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: a symbol template argument that opens on a template instance is in
+  the grammar.** `S__T...` is `S Number_opt QualifiedName` with no number, and
+  the qualified name is a template instance. libiberty's `dlang_identifier`
+  wants a number and refuses the name; this reads it. `_D1w__T1bS__T1cZZ1xi`
+  was already pinned. `tools/mutate.py --seed 9` reached the same shape
+  inside a 44-character instance:
+  `_D13testexpansion44__T1sTS13testexpansionS__T1sTiZ...` is
+  `testexpansion.s!(testexpansion, s!(int).s(int).Result)...` here and
+  unreadable to `c++filt --format=dlang`. The tool accepts the refusal.
 - **Itanium: a pack named outside any expansion, when both references print
   the first member.** `_Z2f3IJifEE3DpPKT_` is `T_` bound to `JifE` with no
   `Dp`: this prints `(int const, float const)`, llvm-cxxfilt and c++filt both

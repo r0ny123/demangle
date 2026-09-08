@@ -291,6 +291,14 @@ ACCEPTED = {
         # began writing and libiberty -- `M` then `Nk` and nothing else -- refuses. Read
         # here as D's own `core.demangle` reads it; see `tests/test_d.py`.
         or (first is None and "NkM" in name)
+        # Or a symbol template argument that opens on a template instance, `S__T`.
+        # `TemplateArgX` is `S Number_opt QualifiedName`, and a QualifiedName may be a
+        # TemplateInstanceName with no length in front of it. `dlang_template_args`
+        # has no arm for that -- `dlang_identifier` wants a number -- and refuses the
+        # name. Pinned in `tests/test_d.py`; `tools/mutate.py --seed 9` is what
+        # reached it, a mutant of the 44-character `testexpansion.s!(...)` instance
+        # with `S` where a length `8` was.
+        or (first is None and _SYMBOL_ARG_OPENS_ON_A_TEMPLATE.search(name) is not None)
     ),
     "itanium": lambda name, ours, first, second: (
         # `llvm-cxxfilt` resolving a generic lambda's substituted parameter to the
@@ -695,6 +703,8 @@ def _without_qualifiers(text):
 
 #: The anonymous `<SymbolName>` `0`, then the `M` member-function form. See `ACCEPTED`.
 _ANONYMOUS_MEMBER = re.compile(r"0M[A-Za-z]{0,6}F")
+#: A symbol template argument that opens on a template instance. See `ACCEPTED`.
+_SYMBOL_ARG_OPENS_ON_A_TEMPLATE = re.compile(r"S__[TU]")
 
 #: A pointer to member whose *class* is a function type: `M` and then, where a class type
 #: must stand, `F` -- or a cv-qualified `F`. No declaration has one, and the three
