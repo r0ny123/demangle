@@ -249,6 +249,11 @@ ACCEPTED = {
                     _QUALIFIED_CUSTOM_TYPE.search(name) is not None
                     and _CUSTOM_TYPE_QUALIFIERS.sub(r"\1", ours) == first
                 )
+                # Or a `$$C` qualifier over a pointer that already carries the same one,
+                # `$$CBQAH` -- const over `int *const` -- which no compiler writes: the
+                # reference spells the qualifier twice, `int *const const`, and this
+                # once. Accepted where collapsing the doubled word gives this answer.
+                or (_DOUBLED_QUALIFIER.search(first or "") is not None and _DOUBLED_QUALIFIER.sub(r"\1", first) == ours)
             )
         )
         # Or `__int128`, which `llvm-undname` 18.1 cannot read and its own compiler
@@ -573,6 +578,8 @@ _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
 #: is why only those after the angle brackets are taken off. See `ACCEPTED`.
 _QUALIFIED_CUSTOM_TYPE = re.compile(r"[B-D]\?<")
 _CUSTOM_TYPE_QUALIFIERS = re.compile(r"(<[^<>]*>)(?: (?:const|volatile))+")
+#: The same qualifier word written twice in a row by `llvm-undname`. See `ACCEPTED`.
+_DOUBLED_QUALIFIER = re.compile(r"\b(const|volatile) \1\b")
 #: A gap where libiberty spelled a component it could not read as nothing: an empty
 #: type slot (`( const)`, `,  (void)`, `( *)`), an empty template argument (`<>`, `< *>`,
 #: `<int, >`), an empty scope (`::::`, `:: `, a leading `::`), an `operator` with no
