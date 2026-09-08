@@ -598,6 +598,12 @@ class _Parser:
                 # mangling back inside a path.
                 raise DemangleFailure("malformed template instance")
             return spelled
+        if any(char.isascii() and not (char.isalnum() or char == "_") for char in text):
+            # `dlang_lname` copies the bytes, but a `*` in the counted name is not a
+            # D identifier: `_D1aE3foo6En961*` is refused, and so is the seed-17
+            # mutant `_D3std6stream9BOMEndianyG5E3std6system6En961*`.
+            # `tools/mutate.py --seed 17`.
+            raise DemangleFailure("identifier is not a D name")
         reader.pos = start + length
         return text
 

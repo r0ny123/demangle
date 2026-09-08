@@ -87,6 +87,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: a `*` in a length-prefixed identifier is refused.** `6En961*` is
+  six characters including a star, which is not a D name. The type still
+  parsed, so `_D3std6stream9BOMEndianyG5E3std6system6En961*` came back
+  `std.stream.BOMEndian`. libiberty refuses. `_D1aE3foo6En961i` still
+  reads. `tools/mutate.py --seed 17`.
 - **tools: llvm-cxxfilt writing a raw high byte before a hex digit.**
   `_Z1fIXtl5HellotlA6_cLc155ELc101ELc108ELc108ELc111EEEEEvv` is
   `Hello{"\x9B""ello"}` here: `155` is the byte `0x9B`, and `e` would

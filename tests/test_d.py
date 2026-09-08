@@ -969,6 +969,17 @@ class TestWhatTheSecondAndThirdDrawsFound:
         assert demangle.demangle(mangled, language="d") == mangled
         assert demangle.demangle("_D8demangle__T4testS116symbol3fooZv", language="d") == "demangle.test!(symbol.foo)"
 
+    def test_a_star_in_an_identifier_is_refused(self):
+        """`6En961*` is six characters including a `*`, which is not a D name.
+        The type still parsed, so `_D3std6stream9BOMEndianyG5E3std6system6En961*`
+        came back `std.stream.BOMEndian`. libiberty refuses. `tools/mutate.py --seed 17`."""
+        assert demangle.demangle("_D1aE3foo6En961*", language="d") == "_D1aE3foo6En961*"
+        assert demangle.demangle("_D1aE3foo6En961i", language="d") == "a"
+        assert (
+            demangle.demangle("_D3std6stream9BOMEndianyG5E3std6system6En961*", language="d")
+            == "_D3std6stream9BOMEndianyG5E3std6system6En961*"
+        )
+
     @pytest.mark.parametrize("mangled", ["_D8demangle4mainFZ4__S1xi", "_D8demangle4mainFZ4__S1FZ1xi", "_D4main4__S1Z"])
     def test_a_compiler_scope_is_followed_by_the_next_component_at_once(self, mangled):
         """`dlang_identifier` steps over a `__S<n>` and reads the next identifier there
