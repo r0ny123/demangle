@@ -1,6 +1,11 @@
 # Names Nim's own mangling does not preserve. `mangle` drops an underscore that
 # precedes a digit, because it reserves `_<digit>` for its own disambiguation, so
 # `len0_16` and `len016` are written the same way and nothing can tell them apart.
+# Across the 5,946 routine names in Nim 1.6 and 2.2 standard libraries, exactly 8 have
+# this shape: three in pure/hashes.nim (len0_16, len17_32, len33_64) and five in
+# wrappers/mysql.nim (scramble_323, check_scramble_323, get_salt_from_password_323,
+# make_password_from_salt_323, make_scrambled_password_323). The mysql wrappers carry
+# importc so they emit raw C symbols; the hashes helpers emit the symbols below.
 # Recorded here as the mangled name, what the compiler said it was, and what this
 # reads -- so that the shortfall stays visible and counted rather than rounded off.
 len016__pureZhashes_u378	len0_16	len016

@@ -48,6 +48,19 @@ def rows(name, columns):
 ROWS = rows("nim-real-world.txt", 2)
 LOSSES = rows("nim-lossy.txt", 3)
 
+STDLIB_LOSSY_ROUTINES = {
+    # pure/hashes.nim: internal helper procs for FarmHash
+    "len0_16": "len016",
+    "len17_32": "len1732",
+    "len33_64": "len3364",
+    # wrappers/mysql.nim: MySQL 3.23 protocol helpers (imported with importc)
+    "scramble_323": "scramble323",
+    "check_scramble_323": "check_scramble323",
+    "get_salt_from_password_323": "get_salt_from_password323",
+    "make_password_from_salt_323": "make_password_from_salt323",
+    "make_scrambled_password_323": "make_scrambled_password323",
+}
+
 
 class TestConformance:
     def test_the_corpus_is_not_empty(self):
@@ -82,6 +95,17 @@ class TestWhatTheManglingLoses:
         for mangled, _original, read in LOSSES:
             with subtests.test(name=mangled):
                 assert parse_nim_symbol(mangled).name == read
+
+    def test_the_eight_stdlib_routines_whose_underscore_is_dropped(self):
+        """All 8 routine names across both standard libraries (5,946 total routines)
+        that have an underscore before a digit. Nim's mangle() drops the underscore
+        unconditionally, making recovery impossible from the symbol alone.
+        The 3 in hashes.nim are emitted in Nim 2 as symbols in nim-lossy.txt; the 5 in
+        mysql.nim are declared with importc and emit raw C symbols."""
+        assert len(STDLIB_LOSSY_ROUTINES) == 8
+        for original, mangled_name in STDLIB_LOSSY_ROUTINES.items():
+            assert mangle(original) == mangled_name
+            assert unmangle(mangled_name) == mangled_name
 
     def test_and_that_reading_still_re_mangles_correctly(self, subtests):
         """Both names really do mangle to the same symbol; neither reading is wrong."""
