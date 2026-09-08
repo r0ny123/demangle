@@ -82,6 +82,19 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Rust: the `Other_Grapheme_Extend` characters are escaped in a `char` const.**
+  `char::escape_debug` escapes a grapheme-extending character so it cannot attach
+  itself to the opening quote, and `Grapheme_Extend` is `Mn | Me |
+  Other_Grapheme_Extend`; the categories stood in for the first two and the third,
+  which is an explicit list in Unicode's `PropList.txt`, was left out as not worth a
+  table. `_RINvCsdEttCVZFADF_8features10const_charKcddf_EB2_` printed U+0DDF, a
+  Sinhala vowel sign, bare where rustc-demangle writes `'\u{ddf}'`. The list is
+  carried now -- fifty-six code points, found not by copying the property file but by
+  putting all 1,112,064 scalar values to the reference as a `char` const and keeping
+  every one it escapes and the categories do not. What that sweep leaves is the
+  Unicode version gap: 9,906 code points assigned in 16.0 that CPython's 15.1 tables
+  hold unassigned, escaped here and printed there, and U+1171E, which 16.0 moved from
+  `Mn` to `Mc`. `tools/mutate.py --seed 4`.
 - **D: a type back reference is read only from before the one being resolved.**
   `dlang_type_backref` bounds each type back reference by the position of the one it
   is resolving, so a chain of them walks the name backwards and ends. Without the

@@ -31,6 +31,15 @@ EXPECTED = [
     ("c27_", "'\\''"),
     ("ca_", "'\\n'"),
     ("c2202_", "'∂'"),
+    # `escape_debug` escapes a grapheme-extending character so it cannot attach itself
+    # to the quote: a combining mark by category, and the `Other_Grapheme_Extend` list
+    # -- U+0DDF is category `Mc` and U+FF9E is `Lm`, and both printed bare here where
+    # the reference writes the escape. Every scalar value was put to the reference to
+    # find the list; `tools/mutate.py --seed 4` found the first.
+    ("c300_", "'\\u{300}'"),
+    ("cddf_", "'\\u{ddf}'"),
+    ("cff9e_", "'\\u{ff9e}'"),
+    ("c1d165_", "'\\u{1d165}'"),
     # leading zeroes are stripped before the 64-bit width test, so this is not `0x...`
     ("j00000000000000000001_", "1"),
     # ... but a genuine `u128` is echoed as hex rather than rejected

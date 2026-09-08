@@ -331,16 +331,80 @@ class Ident:
 #: codepoints assigned in between; nothing a compiler emits lives in that gap.
 _UNPRINTABLE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp", "Zs"})
 
-#: Categories standing in for the `Grapheme_Extend` property, which `escape_debug`
-#: escapes so that a combining mark cannot silently attach itself to the opening quote.
-#: The real property is `Mn | Me | Other_Grapheme_Extend`, and the last is not derivable
-#: from anything the standard library exposes -- it is an explicit list in Unicode's
-#: `PropList.txt`, most of whose members are category `Mc` (U+09BE BENGALI VOWEL SIGN AA
-#: and U+09D7 among them). Those few print literally here where the reference escapes
-#: them. Carrying a hand-copied Unicode table to close the gap would cost more than it
-#: buys: a `char` or `&str` const holding a bare combining mark is not something a
-#: compiler emits, and a stale table would drift in both directions.
+#: The `Grapheme_Extend` property, which `escape_debug` escapes so that a combining mark
+#: cannot silently attach itself to the opening quote. It is `Mn | Me |
+#: Other_Grapheme_Extend`, and the last is not derivable from anything the standard
+#: library exposes -- it is an explicit list in Unicode's `PropList.txt`, most of whose
+#: members are category `Mc` (U+09BE BENGALI VOWEL SIGN AA and U+09D7 among them) and
+#: two `Lm` (the halfwidth katakana sound marks). So the categories stand in for the
+#: first two and the list is carried for the third. The list is not copied from the
+#: property file: it is every code point rustc-demangle escapes and the two categories
+#: do not, found by putting all 1,112,064 scalar values to the reference as a `char`
+#: const and comparing. What that sweep leaves are the code points assigned after the
+#: Unicode version CPython carries (9,906 under 15.1 against the reference's 16.0),
+#: which this escapes as unassigned where the reference prints them, and U+1171E, which
+#: 16.0 moved from `Mn` to `Mc`; both close with a newer CPython.
 _GRAPHEME_EXTEND_CATEGORIES = frozenset({"Mn", "Me"})
+_OTHER_GRAPHEME_EXTEND = frozenset(
+    [
+        0x09BE,
+        0x09D7,
+        0x0B3E,
+        0x0B57,
+        0x0BBE,
+        0x0BD7,
+        0x0CC0,
+        0x0CC2,
+        0x0CC7,
+        0x0CC8,
+        0x0CCA,
+        0x0CCB,
+        0x0CD5,
+        0x0CD6,
+        0x0D3E,
+        0x0D57,
+        0x0DCF,
+        0x0DDF,
+        0x1715,
+        0x1734,
+        0x1B35,
+        0x1B3B,
+        0x1B3D,
+        0x1B43,
+        0x1B44,
+        0x1BAA,
+        0x1BF2,
+        0x1BF3,
+        0x302E,
+        0x302F,
+        0xA953,
+        0xA9C0,
+        0xFF9E,
+        0xFF9F,
+        0x111C0,
+        0x11235,
+        0x1133E,
+        0x1134D,
+        0x11357,
+        0x114B0,
+        0x114BD,
+        0x115AF,
+        0x116B6,
+        0x11930,
+        0x1193D,
+        0x11F41,
+        0x16FF0,
+        0x16FF1,
+        0x1D165,
+        0x1D166,
+        0x1D16D,
+        0x1D16E,
+        0x1D16F,
+        0x1D170,
+        0x1D171,
+        0x1D172,
+    ]
+)
 
 #: The characters `char::escape_debug` gives a short escape rather than `\u{...}`.
 #: Both quote characters are here because the reference escapes each one inside its own
@@ -370,7 +434,7 @@ def escape_debug(character: str) -> str:
     if short is not None:
         return short
     category = unicodedata.category(character)
-    if category in _GRAPHEME_EXTEND_CATEGORIES:
+    if category in _GRAPHEME_EXTEND_CATEGORIES or ord(character) in _OTHER_GRAPHEME_EXTEND:
         return f"\\u{{{ord(character):x}}}"
     if character != " " and category in _UNPRINTABLE_CATEGORIES:
         return f"\\u{{{ord(character):x}}}"
