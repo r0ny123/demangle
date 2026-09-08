@@ -1495,3 +1495,69 @@ class MsvcSpellingWiderThanEightTimesItsNameTestSuite(unittest.TestCase):
         name = "?x@@3V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$A@V?$B@HH@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@V1@@@A"
         with self.assertRaises(LimitExceeded):
             demangle.demangle_strict(name, language="msvc")
+
+
+class MsvcLlvmMainTestSuite(unittest.TestCase):
+    """LLVM's own `llvm/test/Demangle/ms-*.test` at its main branch, 706 checks, put to
+    this reader. Fifteen did not hold; four were the tests' own trailing junk and
+    whitespace, and eleven were these two things.
+    """
+
+    def test_an_auto_non_type_template_argument_takes_every_form(self):
+        """`$M <type> <nttp>`: after the deduced type comes any form an argument takes,
+        written without its `$` -- an integer, a symbol's address, a pointer to member
+        -- and only the value is spelled. This read the integer form alone.
+        llvm-undname 18 refuses all of them; the expected values are LLVM main's own
+        `ms-auto-templates.test`.
+        """
+        cases = [
+            (
+                "??0?$AutoNTTPClass@$MPEAH1?i@@3HA@@QEAA@XZ",
+                "public: __cdecl AutoNTTPClass<&int i>::AutoNTTPClass<&int i>(void)",
+            ),
+            (
+                "??0?$AutoNTTPClass@$MPEAH1?i@@3HA$MPEAH1?j@@3HA@@QEAA@XZ",
+                "public: __cdecl AutoNTTPClass<&int i, &int j>::AutoNTTPClass<&int i, &int j>(void)",
+            ),
+            (
+                "??0?$AutoNTTPClass@$MP6AHXZ1?Func@@YAHXZ@@QEAA@XZ",
+                "public: __cdecl AutoNTTPClass<&int __cdecl Func(void)>::AutoNTTPClass<&int __cdecl Func(void)>(void)",
+            ),
+            ("??$AutoFunc@$MPEAH1?i@@3HA@@YA?A?<auto>@@XZ", "<auto> __cdecl AutoFunc<&int i>(void)"),
+            (
+                "??0?$AutoNTTPClass@$MP8S@@EAAXXZ1?f@1@QEAAXXZ@@QEAA@XZ",
+                "public: __cdecl AutoNTTPClass<&public: void __cdecl S::f(void)>::AutoNTTPClass<&public: void __cdecl S::f(void)>(void)",
+            ),
+            (
+                "??0?$AutoNTTPClass@$MP8M@@EAAXXZH?f@1@QEAAXXZA@@@QEAA@XZ",
+                "public: __cdecl AutoNTTPClass<{public: void __cdecl M::f(void), 0}>::AutoNTTPClass<{public: void __cdecl M::f(void), 0}>(void)",
+            ),
+            (
+                "??0?$AutoNTTPClass@$MP8V@@EAAXXZI?f@1@QEAAXXZA@A@@@QEAA@XZ",
+                "public: __cdecl AutoNTTPClass<{public: void __cdecl V::f(void), 0, 0}>::AutoNTTPClass<{public: void __cdecl V::f(void), 0, 0}>(void)",
+            ),
+            (
+                "??0?$AutoNTTPClass@$MPEQV@@HFBA@A@@@QEAA@XZ",
+                "public: __cdecl AutoNTTPClass<{16, 0}>::AutoNTTPClass<{16, 0}>(void)",
+            ),
+            # The integer form, which read before.
+            ("??0?$A@$MH0BA@@@QEAA@XZ", "public: __cdecl A<16>::A<16>(void)"),
+        ]
+        for mangled, expected in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_a_symbol_named_as_an_address_has_its_template_name_recorded(self):
+        """`memorizeIdentifier(S->Name->getUnqualifiedIdentifier())` after the symbol
+        behind `$1` is read: for a plain name it changes nothing, since reading the name
+        recorded it, and for a template name it records what a symbol's own template
+        name is otherwise the one exception to. `ms-cxx14.test`'s `Zoo`, which this
+        refused. The record is the reference's, deduplicated: `?2` is still nothing.
+        """
+        self.assertEqual(
+            demangle_msvc_symbol("?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A"), "struct Foo<&int x<int>, &int x<int>> Zoo"
+        )
+        self.assertEqual(demangle_msvc_symbol("?Zoo@@3U?$Foo@$1?x@@3HA$1?1@3HA@@A"), "struct Foo<&int x, &int x> Zoo")
+        for name in ("?Zoo@@3U?$Foo@$1?x@@3HA$1?2@3HA@@A", "?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?2@3HA@@A"):
+            with self.subTest(mangled=name):
+                self.assertEqual(demangle.demangle(name, language="msvc"), name)

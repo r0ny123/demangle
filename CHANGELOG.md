@@ -73,6 +73,19 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: every form of an `auto` non-type template argument, and a template name
+  recorded behind `$1`.** LLVM's own `llvm/test/Demangle/ms-*.test` at its main branch,
+  706 checks, put to this reader: four of the fifteen that did not hold were the tests'
+  own trailing junk and whitespace, and eleven were two things. `$M <type> <nttp>`, an
+  argument declared `auto`, is followed by any form an argument takes, written without
+  its `$` -- an integer, a symbol's address, a pointer to member -- and this read the
+  integer form alone; `AutoNTTPClass<&int i>` and `AutoNTTPClass<{public: void __cdecl
+  M::f(void), 0}>` now read as LLVM main spells them, llvm-undname 18 refusing every
+  one. And the reference memorises the unqualified name of a symbol read behind `$1`
+  once the symbol is read, which for a template name records what a symbol's own
+  template name is otherwise the one exception to: `?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A`
+  is `struct Foo<&int x<int>, &int x<int>> Zoo`, its `?1` the `x<int>` the first
+  argument read, and this refused it.
 - **D: the Mach-O underscore.** LDC on macOS writes the same `_D` names as everywhere
   else, and the linker puts a leading underscore on every symbol, so `nm` shows
   `__D4test3fooFZv`; this refused it. GNU `c++filt --format=dlang -_` strips one and

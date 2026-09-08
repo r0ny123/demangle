@@ -404,6 +404,9 @@ class _Demangler:
         self.simple = True
         self.template_depth = 0
         self.at_symbol_name = True
+        #: The symbol's own unqualified name when it is a template, for `addressArgument`.
+        self.symbol_template_name = None
+        self.last_nested_symbol_template = None
         self.requires_signature = False
         self.nested = False
         self.pointee_depth = 0
@@ -572,6 +575,11 @@ class _Demangler:
                         raise _Bail
                 base = self.in_pointee_return
                 rendered = self.templateInstantiation(operator=operator)
+                if is_symbol_name:
+                    # Kept for the one reader that records it after all: a symbol named
+                    # as a template argument's address, `$1??$x@H@@3HA`, whose `x<int>`
+                    # the reference memorises once the symbol is read -- see `dollarType`.
+                    self.symbol_template_name = self._conventionsResolved(rendered, base=base)
                 if not is_symbol_name:
                     # the symbol's own template name is the one exception the mangler makes:
                     # it is not recorded, so "??$f@H@N@@YAXV0@@Z" resolves 0 to N, not to
@@ -716,7 +724,48 @@ class _Demangler:
         inner.depth = self.depth
         rendered = render(inner.parse(), options=options)
         self.pos = inner.pos if leading_question else self.pos + inner.pos - 1
+        self.last_nested_symbol_template = inner.symbol_template_name
         return rendered
+
+    def addressArgument(self):
+        """`$1` and a decorated name: the address of a symbol as a template argument.
+
+        The symbol is read in this template's back-reference scope, and the reference
+        then memorises its unqualified name -- `memorizeIdentifier(S->Name->
+        getUnqualifiedIdentifier())` -- which for a plain name changes nothing, since
+        reading it recorded it, and for a template name records what a symbol's own
+        template name is otherwise the one exception to: `?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A`
+        is `struct Foo<&int x<int>, &int x<int>> Zoo`, its `?1` the `x<int>` the first
+        argument read. This refused it.
+        """
+        self.simple = False
+        symbol = self.nestedSymbol()
+        if self.last_nested_symbol_template is not None:
+            self.rememberName(self.last_nested_symbol_template)
+        return Raw("&" + symbol)
+
+    def memberPointerArgument(self):
+        """A pointer to member under an inheritance model that needs more than an address.
+
+        `H` multiple, `I` virtual and `J` unspecified inheritance carry a function's name
+        and one, two or three offsets after it; `F` and `G` are the data-member forms,
+        offsets alone. The reference brackets the lot -- `{public: void __cdecl
+        S::g(void), 4}`, `{4, 0}` -- and clang writes the first for every
+        `filtered_decl_iterator<ObjCMethodDecl, &isClassMethod>` and
+        `LazyOffsetPtr<Decl, unsigned int, &ExternalASTSource::GetExternalDecl>` in its
+        own Windows build: 186 symbols there were refused for it. The symbol's
+        unqualified name is memorised as `addressArgument` memorises it.
+        """
+        kind = self.take()
+        parts = []
+        if kind in ("H", "I", "J") and self.peek() == "?":
+            parts.append(self.nestedSymbol())
+            if self.last_nested_symbol_template is not None:
+                self.rememberName(self.last_nested_symbol_template)
+        for _ in range({"H": 1, "I": 2, "J": 3, "F": 2, "G": 3}[kind]):
+            parts.append(self.templateInteger())
+        self.simple = False
+        return Raw("{" + ", ".join(parts) + "}")
 
     def md5Name(self):
         """`??@<hash>@`: a decorated name too long for the linker, replaced by its MD5.
@@ -1076,26 +1125,12 @@ class _Demangler:
             # the address of a symbol, or the symbol itself: what follows is a complete
             # decorated name, read in this template's back-reference scope - which is why
             # "??$f@VBar@@$1?x@0@3HA@@YAXXZ" resolves its 0 to f rather than to Bar
-            prefix = "&" if self.take() == "1" else ""
+            if self.take() == "1":
+                return self.addressArgument()
             self.simple = False
-            return Raw(prefix + self.nestedSymbol())
+            return Raw(self.nestedSymbol())
         if self.peek() in ("H", "I", "J", "F", "G") and self.template_depth:
-            # A pointer to member under an inheritance model that needs more than an
-            # address: `H` multiple, `I` virtual and `J` unspecified inheritance carry a
-            # function's name and one, two or three offsets after it; `F` and `G` are the
-            # data-member forms, offsets alone. The reference brackets the lot --
-            # `{public: void __cdecl S::g(void), 4}`, `{4, 0}` -- and clang writes the
-            # first for every `filtered_decl_iterator<ObjCMethodDecl, &isClassMethod>`
-            # and `LazyOffsetPtr<Decl, unsigned int, &ExternalASTSource::GetExternalDecl>`
-            # in its own Windows build: 186 symbols there were refused for it.
-            kind = self.take()
-            parts = []
-            if kind in ("H", "I", "J") and self.peek() == "?":
-                parts.append(self.nestedSymbol())
-            for _ in range({"H": 1, "I": 2, "J": 3, "F": 2, "G": 3}[kind]):
-                parts.append(self.templateInteger())
-            self.simple = False
-            return Raw("{" + ", ".join(parts) + "}")
+            return self.memberPointerArgument()
         if self.peek() == "0":
             if not at_argument:
                 # an integer is an argument, not a type: it stands where an argument stands
@@ -1105,23 +1140,31 @@ class _Demangler:
             self.simple = False
             return Raw(self.templateInteger())
         if self.peek() == "M":
-            # `$M <type> <integer>`: a non-type template argument declared `auto`. The
-            # type is written so the argument's own type is recoverable, and the
-            # reference spells only the value -- `A<42>` rather than `A<(int)42>`, `A<99>`
-            # for a `char` and `A<1>` for a `bool`. Checked against `llvm-undname` 20,
-            # which reads these; 18 refuses them outright, which is why they are not in
-            # the corpus recorded from it.
+            # `$M <type> <nttp>`: a non-type template argument declared `auto`. The type
+            # is written so the argument's own type is recoverable, and the reference
+            # spells only the value -- `A<42>` rather than `A<(int)42>`, `A<99>` for a
+            # `char` and `A<1>` for a `bool` -- and after the type comes any of the
+            # forms an argument takes, written without the `$` that would otherwise
+            # open it: `0` and an integer, `1` and a symbol's address, `H`/`I`/`J`/`F`/`G`
+            # and a pointer to member, or a type. LLVM's main branch reads all of them,
+            # `AutoNTTPClass<&int i>` and `AutoNTTPClass<{public: void __cdecl M::f(void),
+            # 0}>` among its own tests; llvm-undname 18 refuses every one, which is why
+            # none is in the corpus recorded from it.
             #
             # An argument, not a type: it stands where an argument stands and nowhere a
-            # type may nest, the same as the `$0` it ends with.
+            # type may nest, the same as the `$0` it most often ends with.
             if not at_argument:
                 raise _Bail
             self.take()
             self.type()
-            if not self.eat("0"):
-                raise _Bail
-            self.simple = False
-            return Raw(self.templateInteger())
+            if self.eat("0"):
+                self.simple = False
+                return Raw(self.templateInteger())
+            if self.eat("1"):
+                return self.addressArgument()
+            if self.peek() in ("H", "I", "J", "F", "G"):
+                return self.memberPointerArgument()
+            return self.type(quals)
         if not self.eat("$"):
             raise _Bail
         if self.eat("B"):
