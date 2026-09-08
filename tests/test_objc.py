@@ -41,6 +41,12 @@ class TestTheFormsClangWrites:
             # a method -- `mangleObjCMethodNameAsSourceName` writes the length.
             ("___13-[Root value]_block_invoke", "block #1 in -[Root value]"),
             ("___20-[Root addValue:to:]_block_invoke_2", "block #2 in -[Root addValue:to:]"),
+            # Clang synthesises these for an Objective-C class that has C++ ivars.
+            ("-[Foo .cxx_destruct]", "-[Foo .cxx_destruct]"),
+            ("-[Foo .cxx_construct]", "-[Foo .cxx_construct]"),
+            ("_i_Foo__.cxx_destruct", "-[Foo .cxx_destruct]"),
+            ("_i_Foo__.cxx_construct", "-[Foo .cxx_construct]"),
+            ("___20-[Foo .cxx_destruct]_block_invoke", "block #1 in -[Foo .cxx_destruct]"),
             ("__8_i_K__go_block_invoke", "block #1 in -[K go]"),
             ("___cfunc_block_invoke", "block #1 in cfunc"),
             # `CGObjCMac.cpp`, the non-fragile ABI.
@@ -84,6 +90,14 @@ class TestTheFormsClangWrites:
         assert parse_objc_symbol("___7-[K go]_block_invoke").text == "block #1 in -[K go]"
         with pytest.raises(DemangleFailure):
             parse_objc_symbol("___8-[K go]_block_invoke")
+
+    def test_a_dotted_selector_clang_does_not_write_is_refused(self):
+        """`.cxx_construct` and `.cxx_destruct` are the two; a leading `.` is not a
+        general selector form."""
+        for mangled in ("-[Foo .bar]", "-[Foo .cxx_copy]", "_i_Foo__.bar"):
+            with pytest.raises(DemangleFailure):
+                parse_objc_symbol(mangled)
+            assert demangle.demangle(mangled) == mangled
 
     def test_the_first_block_has_no_number(self):
         """`mangleFunctionBlock` numbers from the second: discriminator 0 is written

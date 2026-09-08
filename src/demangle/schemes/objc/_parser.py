@@ -105,6 +105,11 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: or a single identifier when it takes none.
 _SELECTOR = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*)?(?::(?:[A-Za-z_][A-Za-z0-9_]*)?)*$")
 
+#: Selectors clang writes for the C++ special members it synthesises on an Objective-C
+#: class that has C++ instance variables. They are the only selectors that open on a
+#: `.`, and they take no arguments.
+_CXX_SPECIAL_SELECTORS = frozenset({".cxx_construct", ".cxx_destruct"})
+
 #: `[-+][ClassName(CategoryName) selector]` -- clang's `mangleObjCMethodName` for the
 #: Apple runtimes, which is also what every crash log and debugger shows.
 _APPLE_METHOD = re.compile(r"^([-+])\[([A-Za-z_][A-Za-z0-9_]*)(?:\(([A-Za-z_][A-Za-z0-9_]*)\))? ([^]]*)\]$")
@@ -127,9 +132,13 @@ def _valid_selector(text):
     A selector with arguments ends in `:` and has one colon per argument; a selector
     without takes none. An empty slot is legal -- `:` alone is the selector taking one
     argument and naming nothing -- which is why the slots are optional in the pattern.
+    `.cxx_construct` and `.cxx_destruct` are the two selectors clang writes for the
+    C++ special members it synthesises; they are not identifiers and take no arguments.
     """
     if not text:
         return False
+    if text in _CXX_SPECIAL_SELECTORS:
+        return True
     return bool(_SELECTOR.match(text)) and (":" in text or bool(_IDENTIFIER.match(text)))
 
 
