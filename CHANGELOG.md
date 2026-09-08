@@ -8,6 +8,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- **`tools/sweep_rust_chars.py`: every Unicode scalar value as a Rust `char`
+  const.** `escape_debug` follows CPython's `unicodedata` tables, rustc-demangle
+  its own; the gap moves as either side updates. The tool builds the 1,112,064
+  names, asks `tools/rustc-demangle-reference`, and buckets the differences.
+  Issue #26.
 - **Swift: the `async_Main` entry point and its funclets.** An `async` `@main` compiles
   to a symbol called `async_Main`, with no mangling prefix at all, and the funclets
   split off it carry the ordinary suffixes: `async_MainTY1_`, `async_MainTQ0_`,
