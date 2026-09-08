@@ -87,6 +87,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a module name directly on a constructor or destructor is refused.**
+  `<unqualified-name>` puts `[<module-name>]` on an operator name, a source name or an
+  unnamed type, and not on `<ctor-dtor-name>`: a structor's module is the one on the
+  class's own name, `_ZNW4llvm6ModuleC1Ev`. `_ZNStW9rGPRClassC2Ev` therefore names
+  nothing, and `llvm-cxxfilt`'s `parseUnqualifiedName` refuses a `C` or `D` after a
+  module on exactly that ground. This read it as `std::std()`, the module dropped,
+  and an accept rule had been added to `tools/enumerate.py` on the strength of
+  `c++filt` reading it too -- which it does, as `std::rGPRClass@rGPRClass()`, making
+  the module the class. Neither is a declaration the encoding spells; the rule is gone
+  and the name is refused. In the same pass, the rule for the `I <template-arg>* E`
+  argument pack, which had been widened to ignore `c++filt`'s reading altogether, is
+  back to accepting only where `c++filt` refuses the name or where the pack is nested
+  inside a `J` pack, the one shape on which its reading has no more authority than
+  ours: `c++filt` is the only reference that reads that pack form, and its reading of
+  a well-formed one is a second opinion, not noise.
 - **Itanium: a constructor used as a type does not repeat the outer class.**
   `_ZN4LinkD0ENSbIwSt11char_traitsIwESaIwEEC2Ev` is a destructor of
   `Link` whose first parameter is a constructor of

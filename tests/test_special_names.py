@@ -183,19 +183,24 @@ class TestAConstructorInAModuleRepeatsTheBareName:
             ("_ZNW4llvm3FooD2B3tagEv", "Foo@llvm::~Foo[abi:tag]()"),
             ("_ZNW4llvmW3sub3FooC1Ev", "Foo@llvm.sub::Foo()"),
             ("_ZN1NW4llvm6ModuleC1ERKS1_", "N::Module@llvm::Module(N::Module@llvm const&)"),
-            # A module on the constructor itself, not on the class. llvm-cxxfilt
-            # refuses; c++filt uses the module as the class. The constructor
-            # repeats the prefix, the same as `_ZNStC2Ev`. `tools/mutate.py --seed 20`.
-            ("_ZNStW9rGPRClassC2Ev", "std::std()"),
             ("_ZNStC2Ev", "std::std()"),
-            ("_ZN1AW9rGPRClassC2Ev", "A::A()"),
-            ("_ZNStW9rGPRClassD2Ev", "std::~std()"),
             ("_ZNStW9rGPRClass3fooEv", "std::foo@rGPRClass()"),
         ],
     )
     def test_both_styles(self, mangled, expected):
         assert demangle.demangle(mangled) == expected
         assert demangle.demangle(mangled, style="gnu") == expected
+
+    @pytest.mark.parametrize("mangled", ["_ZNStW9rGPRClassC2Ev", "_ZN1AW9rGPRClassC2Ev", "_ZNStW9rGPRClassD2Ev"])
+    def test_a_module_on_the_structor_itself_is_refused(self, mangled):
+        """The grammar puts `[<module-name>]` on an operator, a source name or an
+        unnamed type, not on `<ctor-dtor-name>`: a structor's module is the one on the
+        class's own name. `parseUnqualifiedName` refuses a `C` or `D` after a module;
+        this read `std::std()` with the module dropped, and c++filt makes the module the
+        class, `std::rGPRClass@rGPRClass()`. `tools/mutate.py --seed 20`."""
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled)
+        assert demangle.demangle(mangled) == mangled
 
 
 class TestAClosurePrefixIsSpelledWhereItStands:

@@ -349,24 +349,16 @@ ACCEPTED = {
         # `(int const, float const)` here. See `_uses_a_pack_outside_an_expansion`.
         or (first is not None and _uses_a_pack_outside_an_expansion(name) and (second[0] is None or first == second[0]))
         # Or an argument pack in the `I <template-arg>* E` form g++ wrote before `J`,
-        # which `llvm-cxxfilt` refuses and `c++filt` reads. The `II` regex below is
-        # that pack standing as a template argument; nested inside a `J` pack it is
-        # `JI` and that regex misses it. c++filt then expands a declarator over the
-        # nested pack onto the last member only -- `_Z1fIJIivEEEvDpPT_` is
-        # `(int*, void*)` here and `(int, void*)` there -- because it does not
-        # flatten before applying `P`. A declarator over a pack applies to every
-        # member; the non-nested `IIivE` form, which is what g++ actually wrote,
-        # is where c++filt does that too. See `_uses_a_legacy_argument_pack`.
-        # `tools/mutate.py --seed 18`.
-        or (first is None and _uses_a_legacy_argument_pack(name))
-        # Or a constructor or destructor whose unqualified-name is a module then the
-        # marker -- `W9rGPRClassC2` -- with no class source-name between. llvm-cxxfilt
-        # refuses; c++filt uses the module as the class, `std::rGPRClass@rGPRClass()`.
-        # A constructor repeats the prefix: `_ZNStC2Ev` is `std::std()` to llvm-cxxfilt
-        # and to this, and `_ZNW4llvm6ModuleC1Ev` is `Module@llvm::Module()` to all
-        # three. The module on the constructor does not change which class it is.
-        # `tools/mutate.py --seed 20`.
-        or (first is None and _module_on_a_structor(name))
+        # which `llvm-cxxfilt` refuses and `c++filt` reads -- accepted where `c++filt`
+        # refuses the name for a reason of its own, since with both references silent
+        # the pack is the only thing on this library's side of the disagreement that
+        # is known to be one; and where the pack is nested inside a `J` pack, `JI`,
+        # a shape no compiler writes, over which c++filt applies a following
+        # declarator to the last member only -- `_Z1fIJIivEEEvDpPT_` is `(int, void*)`
+        # to it and `(int*, void*)` here -- and neither reading has any authority.
+        # c++filt's reading of a non-nested pack is a second opinion and is kept as
+        # one. See `_uses_a_legacy_argument_pack`. `tools/mutate.py --seed 18`.
+        or (first is None and (second[0] is None or "JI" in name) and _uses_a_legacy_argument_pack(name))
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -633,25 +625,6 @@ _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION = re.compile(r"\)\(\) (?:const|volatile
 #: A function type whose return is a reference to a pack expansion: `FRDp` / `FODp`.
 #: See `ACCEPTED`.
 _FUNCTION_RETURNING_A_REFERENCED_EXPANSION = re.compile(r"F[RO]Dp")
-
-
-def _module_on_a_structor(mangled):
-    """Whether `mangled` has a module name immediately followed by a constructor or
-    destructor marker: `W9rGPRClassC2`, not `W4llvm6ModuleC1`.
-
-    The source-name after `W` is length-prefixed, so `llvm6Module` is not one
-    identifier. llvm-cxxfilt refuses the first shape; it reads the second.
-    """
-    for match in re.finditer(r"WP?(\d+)", mangled):
-        length = int(match.group(1))
-        start = match.end()
-        end = start + length
-        if end >= len(mangled):
-            continue
-        rest = mangled[end:]
-        if rest[0] in "CD" and len(rest) > 1 and rest[1] in "012345":
-            return True
-    return False
 
 
 #: libiberty's `operator ` with no operator after it: the `__op` conversion-operator

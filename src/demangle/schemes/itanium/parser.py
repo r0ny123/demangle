@@ -1759,6 +1759,18 @@ class ItaniumParser:
         if char == "W":
             module = self.module_name(module)
             char = reader.peek()
+            if (char == "C" and reader.ahead(1) in CONSTRUCTOR_KINDS) or (
+                char == "D" and reader.ahead(1) in DESTRUCTOR_KINDS
+            ):
+                # `<unqualified-name> ::= [<module-name>] <operator-name> | <ctor-dtor-name>
+                # | [<module-name>] <source-name> ...`: a module goes on an operator, a
+                # source name or an unnamed type, never on a structor, whose module is
+                # the one on the class's own name -- `_ZNW4llvm6ModuleC1Ev`. So
+                # `_ZNStW9rGPRClassC2Ev` names nothing; `parseUnqualifiedName` refuses a
+                # `C` or `D` after a module, and this read it as `std::std()`, the
+                # module dropped, while `c++filt` makes the module the class. Neither
+                # is a declaration the encoding spells. `tools/mutate.py --seed 20`.
+                raise ParseError(self._mangled, reader.pos, "a module name on a constructor or destructor")
         # `F` marks a friend declared inside the class it is a friend of. The scope is
         # already in `parts`, which `qualified` joins with `::`, so the marker decorates
         # the name that follows the last `::` -- see `_befriended` for where it goes.
