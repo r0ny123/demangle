@@ -1855,7 +1855,8 @@ class _Demangler:
         else:
             returns = self.returnType()
         params = self.parameters()
-        self.member_cv += self.throwSpecification()
+        specification = self.throwSpecification()
+        self.member_cv += specification
         if not self.nested and not self.eof():
             raise _Bail
         lead = ""
@@ -1875,7 +1876,14 @@ class _Demangler:
                 raise _Bail
             name = name.replace("\0conversion\0", f"operator{self.conversion_arguments} {self.rendered(returns)}")
         signature = FunctionType(convention, params, returns)
-        trailing = self.member_cv if access and not is_static else ""
+        # A free or static function carries no member qualifiers, but a `noexcept` is
+        # not one of those: `?f@@YAXX_E` is `void __cdecl f(void) noexcept` to the
+        # reference, and this dropped the specification with the qualifiers. No
+        # compiler writes `_E` on a function's own symbol -- clang writes it only inside
+        # a function *type*, which is where the corpora carry it -- so this is the
+        # reference's reading of a name none writes, spelled as it spells it. Found by
+        # `tools/enumerate.py --length 6`: 120 of the 1,031 names it read under `?f@@`.
+        trailing = self.member_cv if access and not is_static else specification
         if returns is not None:
             # as in thunkBody: completing the spelling is what refuses one past the bound
             self.rendered(signature, name, trailing)

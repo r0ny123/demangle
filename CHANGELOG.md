@@ -82,6 +82,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: a free or static function's `noexcept` was read and then dropped.** `_E`
+  stands in place of the `Z` that ends a signature, and `?f@@YAXX_E` is
+  `void __cdecl f(void) noexcept` to the reference; this kept the specification with
+  the member qualifiers, which a free or a static function does not print, so it came
+  back `void __cdecl f(void)`. No compiler writes `_E` on a function's own symbol --
+  clang writes it only inside a function type -- so this is the reference's reading of
+  a name none writes, spelled as it spells it. Found by `tools/enumerate.py --length 6`,
+  which reads 12,204,240 strings under `?f@@` and disagreed with `llvm-undname` on 120
+  of the 1,031 it read; the length-4 run the gate makes never reaches the marker.
 - **Four finds from `tools/mutate.py --count 200000`**, four times the draw the gate
   runs, one per reader:
   - Itanium: a constructor or destructor of a class declared in a module repeated the

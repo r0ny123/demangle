@@ -607,6 +607,35 @@ COMPLETING_DECLINED = [
 ]
 
 
+NOEXCEPT_ON_THE_SYMBOL = [
+    # `_E` in place of the `Z` that ends a signature. clang writes it only inside a
+    # function *type* -- `?noexcept_ptr@ms@@YAXP6AXH@_EP6AXX_E@Z` -- and never on a
+    # function's own symbol, but the reference reads it there too, and this read it and
+    # then dropped it for a free or a static function, keeping it only for a member.
+    # `tools/enumerate.py --length 6`.
+    ("?f@@YAXX_E", "void __cdecl f(void) noexcept"),
+    ("?f@@YAX@_E", "void __cdecl f() noexcept"),
+    ("?f@@YAXZ_E", "void __cdecl f(...) noexcept"),
+    ("?f@@YAXHZ_E", "void __cdecl f(int, ...) noexcept"),
+    ("?f@C@@SAXX_E", "public: static void __cdecl C::f(void) noexcept"),
+    ("?f@C@@QEAAXX_E", "public: void __cdecl C::f(void) noexcept"),
+    ("?f@C@@QEBAXX_E", "public: void __cdecl C::f(void) const noexcept"),
+]
+
+
+class MsvcNoexceptOnTheSymbolTestSuite(unittest.TestCase):
+    def test_the_reference_spelling(self):
+        for mangled, expected in NOEXCEPT_ON_THE_SYMBOL:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), expected)
+
+    def test_the_marker_takes_the_place_of_the_terminator(self):
+        """`_E` stands where `Z` would; a name with both, or with neither, is not one."""
+        for mangled in ("?f@@YAXXZ_E", "?f@@YAXX", "?f@@YAXX_", "?f@@YAXX_F"):
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle_msvc_symbol(mangled), mangled)
+
+
 class MsvcCompletingFormsTestSuite(unittest.TestCase):
     def test_shapes_the_completing_forms_do_not_allow_are_refused(self):
         for mangled in COMPLETING_DECLINED:
