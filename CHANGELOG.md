@@ -82,6 +82,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a bare substitution was read as a name.** `_ZZ1fPiES_` came back
+  `f(int*)::int*` -- a local entity that is a type -- and `_ZZaSFvOEES_`, a fuzzer's
+  find recorded in libiberty's own test suite, came back
+  `operator=(void () &&)::void () &&`. A back-reference stands where a name goes only
+  as an `<unscoped-template-name>`, and that production ends in `<template-args>`.
+  `llvm-cxxfilt` refuses the bare form; libiberty's `d_name` says in a comment that the
+  grammar does not permit it and that it does not bother to check, and this followed
+  the leniency without meaning to. Found by putting `libiberty/testsuite/demangle-expected`
+  at binutils' main branch to this reader: the two rows it refuses that this read.
+  Refused now, under both styles; `_ZZ1fPiES_IvE`, with arguments, reads as before.
 - **Itanium: an uppercase digit in a floating-point literal was read as its value.**
   `_Z1fILf3F800000EEvv` came back `void f<0x1p+0f>()`. The ABI says the digits are
   lowercase, no compiler writes them otherwise, and LLVM's demangler at its main branch

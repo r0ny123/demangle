@@ -142,6 +142,29 @@ class TestStillRefusesWhatItShould:
         assert demangle.demangle(mangled) == mangled
 
     @pytest.mark.parametrize(
+        "mangled", ["_ZZ1fPiES_", "_ZZ1fPiES_1g", "_ZZ1fN1A1BEES0_", "_ZZaSFvOEES_", "_ZZeqFvOEES_z"]
+    )
+    def test_a_bare_substitution_is_not_a_name(self, mangled):
+        """`<name> ::= <unscoped-template-name> <template-args>` is the only production
+        that lets a back-reference stand where a name goes, and it ends in arguments.
+
+        `llvm-cxxfilt` refuses `S_` alone there. libiberty's `d_name` carries a comment
+        saying the grammar does not permit the case and that it does not bother to
+        check, so `c++filt` reads `_ZZ1fPiES_` as `f(int*)::int*`, a local entity that
+        is a type, and this did too. The last two are a fuzzer's finds in libiberty's
+        own test suite, which both references refuse; this answered
+        `operator=(void () &&)::void () &&` for the first.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
+
+    def test_with_arguments_it_is_a_name(self):
+        assert demangle.demangle("_ZZ1fPiES_IvE") == "f(int*)::int*<void>"
+        assert demangle.demangle("_ZSt4sortIPiEvT_S0_") == "void std::sort<int*>(int*, int*)"
+
+    @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
             # The same names with a parameter list, which is the only difference.

@@ -1069,6 +1069,16 @@ class ItaniumParser:
                 specialised = self.apply_template_args(base)
                 self._specialised_handles[id(specialised)] = specialised
                 return specialised, (), "", True
+            if not candidate:
+                # A back-reference is a <name> only as an <unscoped-template-name>, and
+                # that production ends in <template-args>: `S_` alone names nothing.
+                # `llvm-cxxfilt` refuses it here; libiberty's `d_name` says in a comment
+                # that the grammar does not permit the case and that it does not bother
+                # to check, so `c++filt` reads `_ZZ1fPiES_` as `f(int*)::int*` -- a
+                # local entity that is a type -- and this did too. For `_ZZaSFvOEES_`,
+                # a fuzzer's find in libiberty's own test suite, both references refuse
+                # and this answered `operator=(void () &&)::void () &&`.
+                raise ParseError(self._mangled, reader.pos, "a substitution as a name must carry template arguments")
             return base, (), "", False
 
         base = self.unqualified_name()
