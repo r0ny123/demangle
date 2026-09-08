@@ -87,6 +87,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **tools: llvm-undname's reading of a `$$h` identifier is kept.**
+  `?b@FTypeWithQuals@@3U?@YAHXZ@$$h4U<unnamed-type-v>@?1??1@YAHXZ@A`
+  is `$$h` in the middle of a local type's name, not a hybrid marker.
+  llvm-undname reads it as identifier characters too, and glues `?` to
+  `FTypeWithQuals`; this keeps the space. The tool stripped the marker
+  and asked again; that name is unreadable, and the refusal overwrote
+  the original answer. A substitute the reference also refuses is not
+  a second opinion. `tools/mutate.py --seed 20`.
 - **tools: llvm-cxxfilt refusing a constructor whose name is a module.**
   `_ZNStW9rGPRClassC2Ev` is `std::std()` here: `St` is the prefix,
   `W9rGPRClass` a module on the constructor, `C2` the marker. A

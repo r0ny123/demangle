@@ -372,7 +372,15 @@ def run(scheme, count, seed, quiet, show, batch):
                 # way, since it has no production for `$$h` at all: it read
                 # `?$oo_aad@@$$hYAXAEAD@Z` as `public: char && $oo_aad()`, taking the
                 # marker for part of a type.
-                theirs[name] = stand_in.get(substitute)
+                #
+                # A substitute the reference also refuses is not a second opinion:
+                # `$$h` inside an identifier is read as three more characters of it,
+                # and the original answer -- a space `insertSpaceIfNeeded` did not
+                # print -- is the one to compare. Overwriting with None made that a
+                # refusal. `tools/mutate.py --seed 20`.
+                stand = stand_in.get(substitute)
+                if stand is not None:
+                    theirs[name] = stand
 
     differ = [
         (n, ours[n], theirs.get(n), (second.get(n), ours_gnu.get(n)))

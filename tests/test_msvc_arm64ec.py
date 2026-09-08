@@ -60,6 +60,14 @@ class TestTheHybridMarker:
         assert demangle.demangle("?foo$$hbar@@YAXXZ") == "void __cdecl foo$$hbar(void)"
         assert demangle.demangle("?foo$$hbar@@3HA") == "int foo$$hbar"
         assert demangle.demangle("??@$$hYAXP6AXQEAH@Z1@Z") == "??@$$hYAXP6AXQEAH@"
+        # A `$$h` in the middle of a local type's name, not a hybrid marker.
+        # llvm-undname reads it as identifier characters too, and glues `?` to
+        # `FTypeWithQuals`; this keeps the space. Stripping the marker leaves a
+        # name neither reads. `tools/mutate.py --seed 20`.
+        assert (
+            demangle.demangle("?b@FTypeWithQuals@@3U?@YAHXZ@$$h4U<unnamed-type-v>@?1??1@YAHXZ@A")
+            == "struct `int __cdecl FTypeWithQuals(void)'::`2'::$$h4U<unnamed-type-v>::YAHXZ::? FTypeWithQuals::b"
+        )
 
     def test_the_rule_removes_one_marker_and_not_a_run_of_them(self):
         """`getArm64ECMangledFunctionName` inserts one marker into a name that has none.
