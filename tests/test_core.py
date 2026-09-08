@@ -14,7 +14,7 @@ import demangle
 from demangle.core import registry
 from demangle.core.ast import AST_BUILDER as A
 from demangle.core.cache import MISSING, BoundedCache
-from demangle.core.errors import ParseError, TruncatedError
+from demangle.core.errors import DemanglingError, ParseError, TruncatedError
 from demangle.core.reader import Reader
 from demangle.core.spelling import SPELLING_BUILDER as B
 
@@ -168,6 +168,10 @@ class TestEveryDeclaratorDistributesOverAPack:
     `Dp`, and the parser has always ranged that over the members itself. What this fixes
     is the encoding that names a pack *without* expanding it, which is ill-formed -- and
     which llvm-cxxfilt prints as its first member and GNU c++filt refuses outright.
+
+    Over an *empty* pack the two builders now agree by refusing: a declarator over no
+    members spelled nothing, and a name that says `(int, int [3])` over `J E` came back
+    `(int)`, one parameter fewer than it has. See `_over_a_pack`.
     """
 
     @pytest.mark.parametrize(
@@ -176,15 +180,23 @@ class TestEveryDeclaratorDistributesOverAPack:
             ("_Z1fIJicEEviA3_T_", "void f<int, char>(int, int [3], char [3])"),
             ("_Z1fIJicEEviU9enable_ifT_", "void f<int, char>(int, int enable_if, char enable_if)"),
             ("_Z1fIJicEEviMT_l", "void f<int, char>(int, long int::*, long char::*)"),
-            ("_Z1fIJEEviA3_T_", "void f<>(int)"),
-            ("_Z1fIJEEviU9enable_ifT_", "void f<>(int)"),
-            ("_Z1fIJEEviMT_i", "void f<>(int)"),
-            ("_Z1fIJEEviMiT_", "void f<>(int)"),
         ],
     )
     def test_a_declarator_over_a_pack_is_one_per_member(self, mangled, expected):
         assert demangle.demangle_strict(mangled) == expected
         assert demangle.parse(mangled).spell() == expected
+
+    @pytest.mark.parametrize(
+        "mangled", ["_Z1fIJEEviA3_T_", "_Z1fIJEEviU9enable_ifT_", "_Z1fIJEEviMT_i", "_Z1fIJEEviMiT_"]
+    )
+    def test_a_declarator_over_an_empty_pack_is_refused(self, mangled):
+        """These read `void f<>(int)` once: the parameter vanished with the pack it was
+        built over. `c++filt` refuses them; `llvm-cxxfilt` prints ` [3]` and `int ::*`,
+        a declarator round nothing. Both builders refuse now, as one."""
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled)
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),

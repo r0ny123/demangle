@@ -82,6 +82,25 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a modifier over an empty parameter pack dropped the argument.**
+  `_Z1fIJEPT_E` writes `P` over `T_`, and `T_` is the empty pack `J E`: there is
+  nothing to point to, and `c++filt` refuses the name. `llvm-cxxfilt` prints `f<*>`,
+  the modifier alone, and this printed `f<>` -- the argument dropped the way an empty
+  pack is dropped, which reads as a name with one argument fewer than it has. The same
+  for a reference, a qualifier, an array, a member pointer and a complex; an expansion
+  over an empty pack, `DpT_`, spells nothing on purpose and is untouched. Refused now.
+  Found by `tools/enumerate.py --length 6`, the four unexplained names under `_Z1fI`.
+  The same run's twelve under `types` are one shape, a cv- or ref-qualified function
+  type returning an array -- `KFA_iE`, which C++ has not, and `c++filt` refuses --
+  where `llvm-cxxfilt` writes the qualifier after the array's brackets and this
+  before them; the tool now accepts that placement, as it does the vendor-qualifier
+  one.
+- **Itanium: an abbreviation's structor behind an internal-linkage marker.** `_ZNSiLD1Ev`
+  is `std::basic_istream<char, std::char_traits<char>>::~basic_istream()` to
+  `llvm-cxxfilt`, the scope spelled in full as it is for `_ZNSiD1Ev`; this looked past
+  the abbreviation, saw the `L`, and spelled `std::istream::~istream()`. Nothing
+  writes the marker there and `c++filt` refuses it. `tools/enumerate.py --length 6`,
+  the one unexplained name under `_ZN`.
 - **MSVC: a free or static function's `noexcept` was read and then dropped.** `_E`
   stands in place of the `Z` that ends a signature, and `?f@@YAXX_E` is
   `void __cdecl f(void) noexcept` to the reference; this kept the specification with

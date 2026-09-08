@@ -423,6 +423,7 @@ class ItaniumParser:
         "_productions",
         "_reading_closure_signature",
         "_reading_conversion_type",
+        "_reading_pattern",
         "_reject_unbound_parameters",
         "_rework",
         "_saw_empty_pack",
@@ -470,6 +471,9 @@ class ItaniumParser:
         self._template_name_entries = set()
         #: The index the last `S<n>_` named, or None after an abbreviation.
         self._last_entry_index = None
+        #: How many `Dp` patterns are being read for their arity: a modifier over an
+        #: empty pack is the pattern's business there, not a refusal's.
+        self._reading_pattern = 0
         #: Whether the `<type>` about to be read stands directly as a template argument,
         #: where a template with no arguments *is* something a type position can hold:
         #: the argument for a template template parameter, `ScalarMemoTable<int,
@@ -2208,6 +2212,13 @@ class ItaniumParser:
         if reader.peek2() not in STD_ABBREVIATIONS:
             return False
         following = reader.ahead2(2)
+        if following[:1] == "L":
+            # An internal-linkage marker between the scope and its structor. Nothing
+            # writes one there, but `llvm-cxxfilt` reads `_ZNSiLD1Ev` and spells the
+            # scope in full as it does for `_ZNSiD1Ev`, where this looked past the
+            # abbreviation, saw the `L`, and spelled it short. `c++filt` refuses it.
+            # `tools/enumerate.py --length 6`.
+            following = reader.ahead2(3)
         if len(following) != 2:
             return False
         return (following[0] == "C" and following[1] in CONSTRUCTOR_KINDS) or (
@@ -2270,6 +2281,25 @@ class ItaniumParser:
         """Record `handle` as the result of a `Dp`, and return it."""
         self._expansion_handles[id(handle)] = handle
         return handle
+
+    def _over_a_pack(self, inner):
+        """`inner`, the operand a type modifier is about to wrap -- unless it is an
+        empty parameter pack standing outside an expansion, which no modifier can wrap.
+
+        `_Z1fIJEPT_E` writes `P` over `T_`, and `T_` is the empty pack `J E`. There is
+        nothing to point to: `c++filt` refuses the name; `llvm-cxxfilt` prints `f<*>`,
+        the modifier alone; this printed `f<>`, the argument dropped as an empty pack is
+        dropped, which reads as a name with one argument fewer than it has. The same
+        for a reference, a qualifier, an array, a member pointer, a complex. An
+        expansion over an empty pack is a different thing -- `DpT_` spells nothing on
+        purpose -- and is left alone. Found by `tools/enumerate.py --length 6`.
+        """
+        if self._reading_pattern:
+            return inner
+        members = self.builder.members(inner)
+        if members is not None and not members and id(inner) not in self._expansion_handles:
+            raise ParseError(self._mangled, self.reader.pos, "a type built over an empty parameter pack")
+        return inner
 
     def _pack_aware(self, handle):
         """Report a pack, and stand in for one of its members while one is being read.
@@ -2619,10 +2649,10 @@ class ItaniumParser:
 
         if char == "R":
             reader.pos += 1
-            return subs.remember(builder.reference(self.type_()), "type")
+            return subs.remember(builder.reference(self._over_a_pack(self.type_())), "type")
         if char == "P":
             reader.pos += 1
-            inner = self.type_()
+            inner = self._over_a_pack(self.type_())
             protocol = self._objc_protocols.get(id(inner))
             if protocol is not None:
                 # `objc_object` conforming to a protocol, pointed to, is `id<A>` -- the
@@ -2641,7 +2671,7 @@ class ItaniumParser:
                 return self.function_type_production()
             qualifiers = self.cv_qualifiers()
             inner = self.type_()
-            return subs.remember(builder.qualify(inner, qualifiers), "type")
+            return subs.remember(builder.qualify(self._over_a_pack(inner), qualifiers), "type")
 
         if char == "T":
             following = reader.ahead(1)
@@ -2682,7 +2712,7 @@ class ItaniumParser:
 
         if char == "O":
             reader.pos += 1
-            return subs.remember(builder.rvalue_reference(self.type_()), "type")
+            return subs.remember(builder.rvalue_reference(self._over_a_pack(self.type_())), "type")
         if char == "D":
             extended = self.extended_type()
             if extended is not None:
@@ -2731,7 +2761,7 @@ class ItaniumParser:
             # Not a cv-qualifier, so a repeat does not collapse: `c++filt` writes
             # `signed char _Imaginary _Imaginary` for `_Z1fGGa` and folding it lost a
             # word of the name.
-            return subs.remember(builder.qualify(self.type_(), (qualifier,), cv=False), "type")
+            return subs.remember(builder.qualify(self._over_a_pack(self.type_()), (qualifier,), cv=False), "type")
 
         raise ParseError(self._mangled, reader.pos, f"unknown type code {char!r}")
 
@@ -2797,12 +2827,14 @@ class ItaniumParser:
             self._saw_empty_pack = False
             self._saw_pack = False
             self._pack_arity = None
+            self._reading_pattern += 1
             try:
                 inner = self.type_()
                 over_empty = self._saw_empty_pack
                 over_pack = self._saw_pack
                 arity = self._pack_arity
             finally:
+                self._reading_pattern -= 1
                 self._saw_empty_pack = outer_empty
                 # An expansion consumes its pack: `ParameterPackExpansion::printLeft`
                 # restores the pack context after itself, so an enclosing pattern that
@@ -3024,13 +3056,15 @@ class ItaniumParser:
                     self._objc_ids.append(handle)
                     self._objc_protocols[id(handle)] = protocol
                 return handle
-            return builder.vendor_qualify(inner, qualifier)
+            return builder.vendor_qualify(self._over_a_pack(inner), qualifier)
         if self._at_function_type():
             # A cv-qualified function type is its own production either way round.
             return self.type_()
         qualifiers = self.cv_qualifiers()
         inner = self.type_()
-        return builder.qualify(inner, qualifiers) if qualifiers else inner
+        if qualifiers:
+            return builder.qualify(self._over_a_pack(inner), qualifiers)
+        return inner
 
     def function_type_production(self):
         """The whole of `[<CV-qualifiers>] [<exception-spec>] [Dx] F ... E`.
@@ -3159,14 +3193,14 @@ class ItaniumParser:
             # the type's spelling, not an operand position a consumer would walk into.
             dimension = self.expression_text()
         reader.expect("_")
-        return self.builder.array(self.type_(), dimension)
+        return self.builder.array(self._over_a_pack(self.type_()), dimension)
 
     def member_pointer_type(self):
         """<pointer-to-member-type> ::= M <class type> <member type>"""
         reader = self.reader
         reader.expect("M")
-        owner = self.type_()
-        member = self.type_()
+        owner = self._over_a_pack(self.type_())
+        member = self._over_a_pack(self.type_())
         return self.builder.member_pointer(owner, member)
 
     # -- 5.1.5.10 template arguments -------------------------------------------

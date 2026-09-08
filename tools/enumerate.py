@@ -502,11 +502,14 @@ ACCEPTED = {
             or _gnuv2_function_name(ours).startswith(_gnuv2_function_name(first) + "__")
         )
     ),
-    # A bare type is read under every Itanium rule, and one more: a vendor extended
-    # qualifier over a function type, which the three implementations place three ways.
+    # A bare type is read under every Itanium rule, and two more: a vendor extended
+    # qualifier over a function type, which the three implementations place three ways,
+    # and a cv- or ref-qualified function type returning an array, which `c++filt`
+    # refuses and `llvm-cxxfilt` and this place two ways.
     "types": lambda name, ours, first, second: (
         ACCEPTED["itanium"](name, ours, first, second)
         or (first is not None and second[0] is not None and _VENDOR_QUALIFIED_FUNCTION.search(name) is not None)
+        or (first is not None and _QUALIFIED_FUNCTION_RETURNING_AN_ARRAY.search(name) is not None)
     ),
     "swift": lambda name, ours, first, second: (
         (first is None and _METATYPE_PARAMS_REMOVED.search(name) is not None)
@@ -660,6 +663,13 @@ _MISORDERED_FUNCTION_QUALIFIERS = re.compile(r"(?:KV|VV|KK|rr|Vr|Kr)[rVK]*(?:Do|
 #: A vendor extended qualifier, `U <source-name>`, applied to a function type: the same
 #: three-way shape as the imaginary declarator below, which no compiler writes.
 _VENDOR_QUALIFIED_FUNCTION = re.compile(r"U\d+[A-Za-z_][A-Za-z0-9_$.]*?[rVK]*(?:Do|DO.*?E|Dw.*?E|Dx)?F")
+
+#: A cv- or ref-qualified function type whose return type is an array -- `KFA_iE`,
+#: `FA_iRE` -- which C++ has not. `c++filt` refuses it; `llvm-cxxfilt` writes the
+#: qualifier after the array's brackets, `int () [] const`, and this before them,
+#: `int () const []`, where each is the order its printer gives every function type.
+#: Found at length six by `tools/enumerate.py`; nothing at the gate's length reaches it.
+_QUALIFIED_FUNCTION_RETURNING_AN_ARRAY = re.compile(r"(?:^[rVK]+FA_.*E$)|(?:^FA_.*[RO]E$)")
 
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array or a
 #: function. The one shape where all three implementations write something different.

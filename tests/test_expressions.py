@@ -774,6 +774,55 @@ class TestALiteralsValueIsANumber:
         assert demangle.demangle(mangled) == mangled
 
 
+class TestAModifierOverAnEmptyPack:
+    """`_Z1fIJEPT_E` writes `P` over `T_`, and `T_` is the empty pack `J E`: there is
+    nothing to point to. `c++filt` refuses the name; `llvm-cxxfilt` prints `f<*>`, the
+    modifier alone; this printed `f<>`, the argument dropped as an empty pack is
+    dropped -- a name with one argument fewer than it has. Found by
+    `tools/enumerate.py --length 6`, whose gate-length run never reaches the shape."""
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_Z1fIJEPT_E",
+            "_Z1fIJERT_E",
+            "_Z1fIJEOT_E",
+            "_Z1fIJEGT_E",
+            "_Z1fIJECT_E",
+            "_Z1fIJEKT_E",
+            "_Z1fIJEA3_T_E",
+            "_Z1fIJEM1AT_E",
+            "_Z1fIJEEvPT_",
+        ],
+    )
+    def test_refused(self, mangled):
+        assert demangle.demangle(mangled) == mangled
+        assert demangle.demangle(mangled, style="gnu") == mangled
+
+    def test_an_expansion_over_an_empty_pack_still_spells_nothing(self):
+        assert demangle.demangle("_Z1fIJEEvDpT_") == "void f<>()"
+        assert demangle.demangle("_Z1fIJEEvDpPT_") == "void f<>()"
+
+    def test_a_modifier_over_a_pack_with_members_reads_as_before(self):
+        assert demangle.demangle("_Z1fIJiEPT_E") == "f<int, int*>"
+
+
+class TestAnAbbreviationBeforeAStructorBehindALinkageMarker:
+    """`_ZNSiLD1Ev`: an internal-linkage `L` between the abbreviation and its destructor.
+    Nothing writes one there; `llvm-cxxfilt` reads it and spells the scope in full, as
+    it does without the marker, and this spelled it short. `c++filt` refuses it.
+    `tools/enumerate.py --length 6`, the one unexplained name under `_ZN`."""
+
+    def test_the_scope_is_spelled_in_full(self):
+        full = "std::basic_istream<char, std::char_traits<char>>::~basic_istream()"
+        assert demangle.demangle("_ZNSiLD1Ev") == full
+        assert demangle.demangle("_ZNSiD1Ev") == full
+        assert demangle.demangle("_ZNSiLC1Ev") == "std::basic_istream<char, std::char_traits<char>>::basic_istream()"
+
+    def test_a_plain_member_behind_the_marker_keeps_the_short_name(self):
+        assert demangle.demangle("_ZNSiL3fooEv") == "std::istream::foo()"
+
+
 class TestAnExpansionWhosePatternNamesNoPack:
     """`Dp <type>` where the type mentions no pack spells `type...` whatever packs the
     enclosing template has. `ParameterPackExpansion::printLeft` prints the child and,
