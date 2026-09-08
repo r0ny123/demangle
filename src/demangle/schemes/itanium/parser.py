@@ -1963,7 +1963,17 @@ class ItaniumParser:
         # to both references, where this wrote `Module@llvm::Module@llvm()`. No name
         # a constructor repeats carries an `@` of its own.
         module = spelled.find("@")
-        return spelled[:module] if module > 0 else spelled
+        spelled = spelled[:module] if module > 0 else spelled
+        # Friend is a property of the declaration, not of the class name being
+        # repeated: `_ZN1AF3fooC1Ev` is `A::friend foo::foo()`, not
+        # `A::friend foo::friend foo()`. Both references drop the marker from the
+        # constructor. `tools/mutate.py --seed 15`.
+        if self.options.gnu_friend_spelling:
+            if spelled.endswith("[friend]"):
+                spelled = spelled[: -len("[friend]")]
+        elif spelled.startswith("friend "):
+            spelled = spelled[len("friend ") :]
+        return spelled
 
     def source_name(self):
         """<source-name> ::= <positive length number> <identifier>"""

@@ -1539,6 +1539,25 @@ class TestAFriendDeclaredInsideItsClass:
         """`F` outside a nested name is a type letter, not a friend marker."""
         assert demangle.demangle_strict("_Z1fFvvE", language="itanium") == "f(void ())"
 
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            # The constructor repeats the class, not the friend marker. Both references
+            # drop it from the repeated name. `tools/mutate.py --seed 15`.
+            ("_ZN1AF3fooC1Ev", "A::friend foo::foo()", "A::foo[friend]::foo()"),
+            ("_ZN1AF3fooD1Ev", "A::friend foo::~foo()", "A::foo[friend]::~foo()"),
+            ("_ZN1AF3fooIiEC1Ev", "A::friend foo<int>::foo()", "A::foo[friend]<int>::foo()"),
+            (
+                "_ZNSt8ios_base7failureF5cxx11C2EPKcRKSt10error_code",
+                "std::ios_base::failure::friend cxx11::cxx11(char const*, std::error_code const&)",
+                "std::ios_base::failure::cxx11[friend]::cxx11(char const*, std::error_code const&)",
+            ),
+        ],
+    )
+    def test_a_constructor_does_not_repeat_the_friend_marker(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled, language="itanium", style="llvm") == llvm
+        assert demangle.demangle_strict(mangled, language="itanium", style="gnu") == gnu
+
     @pytest.mark.parametrize("mangled", ["_ZN1ALF3fooEv", "_ZN5cluleInfoELFD0Ev", "_ZN1ALFC1Ev"])
     def test_the_marker_goes_before_the_internal_linkage_one(self, mangled):
         """`parseUnqualifiedName` consumes `F` and then `L`, in that order, and

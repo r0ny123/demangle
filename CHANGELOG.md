@@ -87,6 +87,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a constructor does not repeat the friend marker.**
+  `_ZN1AF3fooC1Ev` is `A::friend foo::foo()` to llvm-cxxfilt and
+  `A::foo[friend]::foo()` to c++filt; this printed `friend` on the
+  constructor as well. Friend marks the declaration, not the class name
+  being repeated. `_ZNSt8ios_base7failureF5cxx11C2EPKcRKSt10error_code`
+  is the same shape, a mutant of the `[abi:cxx11]` constructor with `F`
+  where `B` was. `tools/mutate.py --seed 15`.
 - **Itanium: llvm-cxxfilt dropping a function type from a cast is a gap.**
   `_ZN5test21hIPFfvEEEvT_DTccPFDTclfL0p_EEvELi0EE` is
   `void test2::h<float (*)()>(float (*)(), decltype(const_cast<decltype(fp()) (*)()>(0)))`
