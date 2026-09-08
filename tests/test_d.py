@@ -961,6 +961,14 @@ class TestWhatTheSecondAndThirdDrawsFound:
         type, and the argument the reference spells `i` was refused."""
         assert demangle.demangle(mangled, language="d") == expected
 
+    def test_a_length_prefixed_symbol_argument_may_not_have_a_leftover_type(self):
+        """`S11` then `9symbol3foo`: nine characters of name and an `o`. The length
+        looked exact because the leftover was read as `ifloat`, and the argument was
+        spelled `symbol3fo`. libiberty refuses. `tools/mutate.py --seed 15`."""
+        mangled = "_D8demangle23__T4testS119symbol3fooZv"
+        assert demangle.demangle(mangled, language="d") == mangled
+        assert demangle.demangle("_D8demangle__T4testS116symbol3fooZv", language="d") == "demangle.test!(symbol.foo)"
+
     @pytest.mark.parametrize("mangled", ["_D8demangle4mainFZ4__S1xi", "_D8demangle4mainFZ4__S1FZ1xi", "_D4main4__S1Z"])
     def test_a_compiler_scope_is_followed_by_the_next_component_at_once(self, mangled):
         """`dlang_identifier` steps over a `__S<n>` and reads the next identifier there

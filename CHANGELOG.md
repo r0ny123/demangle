@@ -87,6 +87,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **D: a length-prefixed symbol argument with leftover in the bound is refused.**
+  `_D8demangle23__T4testS119symbol3fooZv` is `S11` then `9symbol3foo`:
+  nine characters of name and an `o`. The length looked exact because the
+  leftover was read as `ifloat`, and this printed `demangle.test!(symbol3fo)`.
+  libiberty refuses. `S116symbol3foo` -- eleven characters of `symbol.foo` --
+  still reads. `tools/mutate.py --seed 15`.
 - **Itanium: a constructor does not repeat the friend marker.**
   `_ZN1AF3fooC1Ev` is `A::friend foo::foo()` to llvm-cxxfilt and
   `A::foo[friend]::foo()` to c++filt; this printed `friend` on the

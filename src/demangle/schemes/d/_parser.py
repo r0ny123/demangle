@@ -902,8 +902,11 @@ class _Parser:
                     reader.pos += 1
                 else:
                     self.trailing_type()
-            elif reader.pos < end:
-                self.trailing_type()
+            # Unprefixed: the region is a qualified name and nothing more. A leftover
+            # type letter -- `S11` then `9symbol3foo`, nine characters of name and an
+            # `o` -- made the length look exact because `trailing_type` ate the `o` as
+            # `ifloat`, and the argument was spelled `symbol3fo`. libiberty refuses.
+            # `tools/mutate.py --seed 15`.
             return reader.pos == end
         except (DemangleFailure, _Exhausted):
             return False
