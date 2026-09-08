@@ -406,6 +406,7 @@ class ItaniumParser:
         "_in_special_name",
         "_last_entry_index",
         "_last_source_name",
+        "_legacy_pack_nested",
         "_legacy_pack_used",
         "_mangled",
         "_max_depth",
@@ -654,6 +655,9 @@ class ItaniumParser:
         #: Whether an argument pack was read from the pre-`J` form, `I <template-arg>* E`.
         #: Read by tools/enumerate.py, which knows `llvm-cxxfilt` refuses that form.
         self._legacy_pack_used = False
+        #: Whether such a pack stood as a direct member of another pack, `J ... I ... E
+        #: ... E`, a shape no compiler writes. Read by tools/enumerate.py as well.
+        self._legacy_pack_nested = False
         # Whether the last component appended to the <prefix> being read came from a
         # `<substitution>`. The final component of a <nested-name> is an
         # <unqualified-name>, which a substitution is not -- see `nested_name`.
@@ -3630,6 +3634,8 @@ class ItaniumParser:
                     break
                 if not next_char:
                     raise ParseError(self._mangled, reader.pos, "unterminated argument pack")
+                if next_char == "I":
+                    self._legacy_pack_nested = True
                 member, _ = self.template_arg()
                 if member is not None:
                     members.append(member)

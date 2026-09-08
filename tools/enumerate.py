@@ -352,13 +352,22 @@ ACCEPTED = {
         # which `llvm-cxxfilt` refuses and `c++filt` reads -- accepted where `c++filt`
         # refuses the name for a reason of its own, since with both references silent
         # the pack is the only thing on this library's side of the disagreement that
-        # is known to be one; and where the pack is nested inside a `J` pack, `JI`,
-        # a shape no compiler writes, over which c++filt applies a following
-        # declarator to the last member only -- `_Z1fIJIivEEEvDpPT_` is `(int, void*)`
-        # to it and `(int*, void*)` here -- and neither reading has any authority.
-        # c++filt's reading of a non-nested pack is a second opinion and is kept as
-        # one. See `_uses_a_legacy_argument_pack`. `tools/mutate.py --seed 18`.
-        or (first is None and (second[0] is None or "JI" in name) and _uses_a_legacy_argument_pack(name))
+        # is known to be one; and where the pack is nested inside a `J` pack, a shape
+        # no compiler writes, over which c++filt applies a following declarator to
+        # the last member only -- `_Z1fIJIivEEEvDpPT_` is `(int, void*)` to it and
+        # `(int*, void*)` here -- and spells an empty one as an empty member --
+        # `_Z1fIJiIEcEEvDpT_` is `f<int, , char>(int, , char)` to it and
+        # `f<int, char>(int, char)` here, as an empty `J` pack in the same place is
+        # to both references -- and neither reading has any authority. The nested
+        # pack is asked of the parser rather than looked for as `JI`, which sees only
+        # a pack standing first. c++filt's reading of a non-nested pack is a second
+        # opinion and is kept as one. See `_uses_a_legacy_argument_pack`.
+        # `tools/mutate.py --seed 18` and `--seed 30`.
+        or (
+            first is None
+            and (second[0] is None or _nests_a_legacy_argument_pack(name))
+            and _uses_a_legacy_argument_pack(name)
+        )
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1055,6 +1064,18 @@ def _uses_a_legacy_argument_pack(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._legacy_pack_used
+
+
+def _nests_a_legacy_argument_pack(mangled):
+    """Whether an `I ... E` pack stood as a direct member of another pack.
+
+    `JiIEcE` as much as `JIivEE`: the member need not come first. Asked of the parser,
+    which saw the `I` open where a member was expected, because no regex over the name
+    can tell an `I` opening a member from one opening a template argument list inside
+    a member.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._legacy_pack_nested
 
 
 def _differs_only_by_the_numbering_rule(mangled, first, second):
