@@ -91,6 +91,23 @@ class TestTheFormsClangWrites:
         with pytest.raises(DemangleFailure):
             parse_objc_symbol("___8-[K go]_block_invoke")
 
+    def test_mismatched_block_length_is_refused(self):
+        """A block whose length prefix does not match the outer method's length
+        (such as `___41-[Foo bar:]_block_invoke` where -[Foo bar:] has length 11)
+        is refused: the count is what verifies the method bounds and ensures
+        it was emitted by clang's mangleObjCMethodNameAsSourceName."""
+        assert not demangle.detect("___41-[Foo bar:]_block_invoke")
+        assert demangle.demangle("___41-[Foo bar:]_block_invoke") == "___41-[Foo bar:]_block_invoke"
+        with pytest.raises(demangle.DemanglingError):
+            demangle.demangle_strict("___41-[Foo bar:]_block_invoke", language="objc")
+
+        # But if the method really has 41 characters, it is claimed and read:
+        long_method = "-[Foo " + "a" * 33 + ":]"
+        assert len(long_method) == 41
+        sym = f"___{len(long_method)}{long_method}_block_invoke"
+        assert demangle.detect(sym) == "objc"
+        assert demangle.demangle(sym) == f"block #1 in {long_method}"
+
     def test_a_dotted_selector_clang_does_not_write_is_refused(self):
         """`.cxx_construct` and `.cxx_destruct` are the two; a leading `.` is not a
         general selector form."""
