@@ -82,6 +82,15 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a cv- or ref-qualified function type returning an array, as a
+  parameter.** The types job already accepted `KFA_iE` / `FA_iRE` as bare encodings,
+  where llvm-cxxfilt writes the qualifier after the array's brackets and this before
+  them, and `c++filt` refuses -- C++ has no function returning an array, and each
+  printer is applying the order it gives every function type. Length six under
+  `_Z1f` reaches the same shape as a parameter: `_Z1fKFA_iE` is `f(int () const [])`
+  here and `f(int () [] const)` there; `_Z1fFA_iRE` is `f(int () & [])` against
+  `f(int () [] &)`. The tool accepts that placement on a symbol the way it already
+  did on a type. Found by `tools/enumerate.py --length 6`, twelve unexplained names.
 - **Itanium: an imaginary qualifier over a substitution or a member pointer keeps the
   declarator.** `_Z1fFiEGS_` is `G` over `S_`, and `S_` is the function type `FiE`:
   llvm-cxxfilt prints `f(int (), int  imaginary)`, the `()` dropped the way it drops

@@ -807,6 +807,25 @@ class TestAModifierOverAnEmptyPack:
         assert demangle.demangle("_Z1fIJiEPT_E") == "f<int, int*>"
 
 
+class TestAQualifiedFunctionTypeReturningAnArray:
+    """`KFA_iE` / `FA_iRE` as a parameter. C++ has no function returning an array;
+    llvm-cxxfilt writes the qualifier after the `[]`, this before them, `c++filt`
+    refuses. The types job already accepts the bare encodings; length six under
+    `_Z1f` reaches them as a parameter. Found by `tools/enumerate.py --length 6`,
+    twelve unexplained names."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fKFA_iE", "f(int () const [])"),
+            ("_Z1fFA_iRE", "f(int () & [])"),
+            ("_Z1fFA_iOE", "f(int () && [])"),
+        ],
+    )
+    def test_the_qualifier_stands_before_the_brackets(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected
+
+
 class TestImaginaryOverASubstitutedOrMemberPointerDeclarator:
     """`G` over a substitution that names a function or array, or over a member pointer
     to a function. llvm-cxxfilt drops the `()` / `[]` or leaves a parenthesis unclosed;

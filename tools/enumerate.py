@@ -344,6 +344,12 @@ ACCEPTED = {
         # the inner one's `()` and this before it, the same placement the two give a
         # function returning an array. See `_QUALIFIED_FUNCTION_RETURNING_A_FUNCTION`.
         or (first is not None and _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION.search(first) is not None)
+        # Or a function type returning an array, which C++ has not. The types job
+        # already accepts the bare encodings `KFA_iE` / `FA_iRE`; length six under
+        # `_Z1f` reaches them as a parameter -- `_Z1fKFA_iE` is `f(int () const [])`
+        # here and `f(int () [] const)` to llvm-cxxfilt, `c++filt` refuses. See
+        # `_QUALIFIED_FUNCTION_RETURNING_AN_ARRAY`.
+        or (first is not None and _QUALIFIED_FUNCTION_RETURNING_AN_ARRAY.search(name) is not None)
         # Or a name the references number by the ABI's closure-prefix rule and the
         # common `auto` rule where this, by the name's form or by a retry, applied GCC
         # 12's or Apple's -- and agrees with them under theirs. See
@@ -718,11 +724,13 @@ _MISORDERED_FUNCTION_QUALIFIERS = re.compile(r"(?:KV|VV|KK|rr|Vr|Kr)[rVK]*(?:Do|
 _VENDOR_QUALIFIED_FUNCTION = re.compile(r"U\d+[A-Za-z_][A-Za-z0-9_$.]*?[rVK]*(?:Do|DO.*?E|Dw.*?E|Dx)?F")
 
 #: A cv- or ref-qualified function type whose return type is an array -- `KFA_iE`,
-#: `FA_iRE` -- which C++ has not. `c++filt` refuses it; `llvm-cxxfilt` writes the
-#: qualifier after the array's brackets, `int () [] const`, and this before them,
-#: `int () const []`, where each is the order its printer gives every function type.
-#: Found at length six by `tools/enumerate.py`; nothing at the gate's length reaches it.
-_QUALIFIED_FUNCTION_RETURNING_AN_ARRAY = re.compile(r"(?:^[rVK]+FA_.*E$)|(?:^FA_.*[RO]E$)")
+#: `FA_iRE`, and the same as a parameter of `_Z1f` -- which C++ has not. `c++filt`
+#: refuses it; `llvm-cxxfilt` writes the qualifier after the array's brackets,
+#: `int () [] const`, and this before them, `int () const []`, where each is the
+#: order its printer gives every function type. Found at length six by
+#: `tools/enumerate.py`; nothing at the gate's length reaches it. Unanchored so a
+#: symbol carrying the type matches the same way a bare encoding does.
+_QUALIFIED_FUNCTION_RETURNING_AN_ARRAY = re.compile(r"(?:[rVK]+FA_[^E]*E)|(?:FA_[^E]*[RO]E)")
 
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array, a
 #: function, a substitution that names one, or a member pointer to one. The one shape
