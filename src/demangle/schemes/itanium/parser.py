@@ -1322,9 +1322,14 @@ class ItaniumParser:
         self._prefix_has_args = False
         # A nested name inside a template argument reads prefix components of its own.
         # Without this the class name a constructor repeats could be one belonging to an
-        # argument -- `A<B::C>::A` would come back as `A<B::C>::C`.
+        # argument -- `A<B::C>::A` would come back as `A<B::C>::C`. The no-base-name
+        # flag travels with that prefix: an outer destructor leaves it set, and an
+        # inner constructor of a templated substitution (`NSbIw...IEC2E`) would then
+        # treat `basic_string` as nameless and repeat the outer class, or nothing.
         outer_bare = self._prefix_bare
+        outer_bare_has_no_base_name = self._prefix_bare_has_no_base_name
         self._prefix_bare = None
+        self._prefix_bare_has_no_base_name = False
         try:
             max_depth = self._max_depth
             peek = reader.peek
@@ -1376,6 +1381,7 @@ class ItaniumParser:
         finally:
             self._ctor_dtor = outer_ctor_dtor
             self._prefix_bare = outer_bare
+            self._prefix_bare_has_no_base_name = outer_bare_has_no_base_name
             self._prefix_has_args = outer_has_args
         name = parts[0] if len(parts) == 1 else self.builder.qualified(parts)
         if is_template:

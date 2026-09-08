@@ -1681,6 +1681,46 @@ class TestARequiresClauseHasNoPlaceInsideANestedName:
         assert demangle.demangle(mangled) == expected
 
 
+class TestAConstructorInsideADestructorDoesNotRepeatTheOuterClass:
+    """A destructor of `Link` whose first parameter is a constructor of
+    `std::basic_string<wchar_t, ...>`. The inner nested name is a substitution
+    plus template arguments plus `C2`; the outer `D0` had already marked the
+    prefix as having no base name to repeat. That flag leaked in, so the inner
+    constructor printed as `::` (llvm) or `::Link` (gnu) instead of
+    `::basic_string`. `_ZN1AD0EN1BC1Ev` still agrees. `tools/mutate.py --seed 28`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "llvm", "gnu"),
+        [
+            (
+                "_ZN4LinkD0ENSbIwSt11char_traitsIwESaIwEEC2Ev",
+                "Link::~Link(std::basic_string<wchar_t, std::char_traits<wchar_t>, std::allocator<wchar_t>>::basic_string, void)",
+                "Link::~Link(std::basic_string<wchar_t, std::char_traits<wchar_t>, std::allocator<wchar_t> >::basic_string, void)",
+            ),
+            (
+                "_ZN5clang6driver5tools6darwin4LinkD0ENSbIwSt11char_traitsIwESaIwEEC2ERKS2_mmRKS1_@@GLIBCXX_3.4",
+                "clang::driver::tools::darwin::Link::~Link(std::basic_string<wchar_t, std::char_traits<wchar_t>, std::allocator<wchar_t>>::basic_string, clang::driver::tools::darwin const&, unsigned long, unsigned long, clang::driver::tools const&)@@GLIBCXX_3.4",
+                "clang::driver::tools::darwin::Link::~Link(std::basic_string<wchar_t, std::char_traits<wchar_t>, std::allocator<wchar_t> >::basic_string, clang::driver::tools::darwin const&, unsigned long, unsigned long, clang::driver::tools const&)@@GLIBCXX_3.4",
+            ),
+            (
+                "_ZN4LinkD0ENSaIcEC2Ev",
+                "Link::~Link(std::allocator<char>::allocator, void)",
+                "Link::~Link(std::allocator<char>::allocator, void)",
+            ),
+            ("_ZN1AD0EN1BC1Ev", "A::~A(B::B, void)", "A::~A(B::B, void)"),
+            (
+                "_ZN4LinkD0ENSbC2Ev",
+                "Link::~Link(std::basic_string::basic_string, void)",
+                "Link::~Link(std::basic_string::basic_string, void)",
+            ),
+        ],
+    )
+    def test_both_styles(self, mangled, llvm, gnu):
+        assert demangle.demangle_strict(mangled, language="itanium") == llvm
+        assert demangle.demangle_strict(mangled, language="itanium", style="gnu") == gnu
+
+
 class TestARequiresClauseFollowsAFunctionTypeReturn:
     """A function whose return is a function type: `F1fE` is `f ()`. The
     requires-clause is a suffix of the declaration, after the whole

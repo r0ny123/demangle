@@ -87,6 +87,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Itanium: a constructor used as a type does not repeat the outer class.**
+  `_ZN4LinkD0ENSbIwSt11char_traitsIwESaIwEEC2Ev` is a destructor of
+  `Link` whose first parameter is a constructor of
+  `std::basic_string<wchar_t, ...>`. This printed `::` (llvm) or
+  `::Link` (gnu). The outer destructor marks the prefix as having no
+  base name; that flag leaked into the inner nested name, so the
+  constructor of the substitution-plus-arguments treated
+  `basic_string` as nameless. llvm-cxxfilt and c++filt both print
+  `::basic_string`. `_ZN1AD0EN1BC1Ev` still agrees.
+  `tools/mutate.py --seed 28`.
 - **MSVC: an extern-C marker is not followed by a variable.**
   `?overloaded_fn@@$$J04HA` is `$$J0` -- a function mangled although
   it is extern "C" -- then `4HA`, a data-storage encoding. This
