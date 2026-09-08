@@ -87,6 +87,13 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **MSVC: an extern-C marker is not followed by a variable.**
+  `?overloaded_fn@@$$J04HA` is `$$J0` -- a function mangled although
+  it is extern "C" -- then `4HA`, a data-storage encoding. This
+  printed `int overloaded_fn`. llvm-undname refuses. `$$J0` marks a
+  function; `?overloaded_fn@@$$J0YAXXZ` still reads, and
+  `?overloaded_fn@@3HA` is still the variable. `tools/mutate.py
+  --seed 23`.
 - **tools: llvm-undname repeating const after const volatile.**
   `?foo_aay144cbh@@YAXAAY144$$CBSAHH@Z` is `$$CB` over `S` -- const
   over `int *const volatile`. This spells `int *const volatile`;

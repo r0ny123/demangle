@@ -1271,6 +1271,27 @@ class TestOneElementQualifierAtATime(unittest.TestCase):
         self.assertEqual(demangle_msvc_symbol("?f@@YAXAEAY111$$CBH@Z"), "void __cdecl f(int const (&)[2][2])")
 
 
+class TestAnExternCMarkerIsNotFollowedByAVariable(unittest.TestCase):
+    """`$$J0` marks a function mangled although it is extern "C". A data-storage
+    letter after it is not a function encoding. llvm-undname refuses
+    `?overloaded_fn@@$$J04HA`; this printed `int overloaded_fn`.
+    `?overloaded_fn@@$$J0YAXXZ` still reads. `tools/mutate.py --seed 23`.
+    """
+
+    def test_refused(self):
+        self.assertEqual(demangle_msvc_symbol("?overloaded_fn@@$$J04HA"), "?overloaded_fn@@$$J04HA")
+        self.assertEqual(demangle_msvc_symbol("?overloaded_fn@@$$h$$J04HA"), "?overloaded_fn@@$$h$$J04HA")
+
+    def test_a_function_after_the_marker_still_reads(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?overloaded_fn@@$$J0YAXXZ"),
+            'extern "C" void __cdecl overloaded_fn(void)',
+        )
+
+    def test_the_variable_without_the_marker_still_reads(self):
+        self.assertEqual(demangle_msvc_symbol("?overloaded_fn@@3HA"), "int overloaded_fn")
+
+
 class TestDollarCOverAPointerThatIsAlreadyConst(unittest.TestCase):
     """`$$CB` over `S` -- const over `int *const volatile`. This spells the
     qualifier once; llvm-undname appends another `const`. No compiler writes

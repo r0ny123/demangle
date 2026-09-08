@@ -1545,6 +1545,13 @@ class _Demangler:
             self.pos += 4
             extern_c = 'extern "C" '
             char = self.peek()
+            # `$$J0` marks a function that was mangled although it is extern "C".
+            # A data-storage letter after it is not a function encoding, and
+            # llvm-undname refuses `?overloaded_fn@@$$J04HA`. This read it as
+            # `int overloaded_fn`. `?overloaded_fn@@$$J0YAXXZ` still reads.
+            # `tools/mutate.py --seed 23`.
+            if char in _DATA_ACCESS:
+                raise _Bail
         if char == "9":
             # a name with no signature at all: the linkage is what is being spelled
             self.take()
