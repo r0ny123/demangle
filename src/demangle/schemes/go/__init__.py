@@ -50,7 +50,10 @@ def detect(name):
     slash = name.rfind("/")
     if slash < 0:
         return False
-    # A path element after the last slash, then a `.`, then something to name.
+    # A path element after the last slash, then a `.`, then something to name. The last
+    # slash of the *symbol*, deliberately: a path inside a generic argument list,
+    # `main.F[internal/sync.node]`, is evidence of Go too, and `parse_go_symbol` finds
+    # the package's own boundary for itself.
     dot = name.find(".", slash + 1)
     return 0 < dot < len(name) - 1
 

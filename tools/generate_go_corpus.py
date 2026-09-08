@@ -67,10 +67,23 @@ def build_corpus_module(destination):
 
 
 def symbols(binary):
+    """Every symbol name in `binary`, as `nm` prints it: `[address] type name`.
+
+    The name is everything after the type letter, spaces included -- a generic
+    instantiation over a struct shape is written `go.shape.struct { X int }`, and taking
+    the last whitespace-separated field of that line kept `}`.
+    """
     result = subprocess.run(["nm", binary], capture_output=True, text=True)
     if result.returncode != 0:
         return []
-    return [line.split()[-1] for line in result.stdout.splitlines() if line.strip()]
+    names = []
+    for line in result.stdout.splitlines():
+        fields = line.split(None, 2)
+        if len(fields) == 3:
+            names.append(fields[2])
+        elif len(fields) == 2:  # an undefined symbol has no address
+            names.append(fields[1])
+    return names
 
 
 def shape(name):
@@ -107,7 +120,9 @@ def main():
 
     built = build_corpus_module(Path(arguments.build_dir))
     if built is not None:
-        contributed = [name for name in symbols(built) if "example.com/corpus" in name]
+        # Its own symbols, and the linker's generated ones over its types: a struct tag
+        # reaches a symbol name quoted, and every symbol carrying one is kept.
+        contributed = [name for name in symbols(built) if "example.com/corpus" in name or '"' in name]
         print(f"  corpus module contributed {len(contributed)} symbols")
         seen.update(contributed)
     else:

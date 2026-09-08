@@ -325,7 +325,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Swift — the compiler's own demangler vectors | `swift-demangle`, built from source ✤ | **514 / 514** |
 | Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
 | Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
-| Go, from the shipped toolchain | round trip ‡ | **1498 / 1498** |
+| Go, from the shipped toolchain | round trip ‡ | **1517 / 1517** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
 | Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
 | Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` ✤ | **217 / 217** |

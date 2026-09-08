@@ -25,6 +25,16 @@ What a name looks like, all verified against go1.24.7 output:
     example.com/m/pkg.Function.func1            a closure inside it
     go:itab.*errors.errorString,error           an itab: concrete type, interface
     type:.eq.example.com/m/pkg.Type             a generated equality routine
+
+Escapes are not confined to the leading package path. A generic instantiation, a
+receiver and a linker-generated symbol all carry *type strings*, and a type string
+writes each named type with its package path escaped the same way: the linker emits
+`main..dict.Gen[example.com/tag/v2%2e5.K]` and `type:.eq.main.Box[example.com/tag/v2%2e5.K]`
+for a package directory called `v2.5`. The one place a `%` is not an escape is inside
+a struct tag, which a type string quotes verbatim: `type:.eq.struct { S string
+"json:\\"50%\\""; K example.com/tag/v2%2e5.K }` is a real symbol (all of these are
+go1.24.7 output) and decoding the tag's `%` would either rewrite it or refuse the name.
+So escapes decode everywhere outside double quotes, and nowhere inside them.
 """
 
 from ...core.errors import NotMangledError, ParseError
@@ -101,7 +111,8 @@ class GoSymbol:
     `package` and `name` are decoded; `raw` is what was read. `receiver` is the type a
     method is on, without its `*`, and `pointer_receiver` says which form it was written
     in. `generic` holds the text between the brackets of an instantiation, and
-    `generated` names the linker's own prefix for a symbol that has one.
+    `generated` names the linker's own prefix for a symbol that has one -- such a symbol
+    has no package, receiver or instantiation of its own: `name` is the linker's text.
     """
 
     __slots__ = ("generated", "generic", "name", "package", "pointer_receiver", "raw", "receiver")
@@ -139,18 +150,63 @@ def _is_text(decoded):
     return True
 
 
-def _split_package(text):
-    """Split a symbol into its package path and the rest.
+def _unescape_outside_quotes(text):
+    """Decode every escape in `text` that is not inside a double-quoted string.
+
+    A symbol's package paths -- the leading one, and any inside a type string -- were
+    escaped by `PathToPrefix`, and a struct tag inside a type string was written with
+    `strconv.Quote`, which escapes `"` and `\\` and leaves `%` alone. So a `%` outside
+    quotes is always an escape and a `%` inside them never is. An unterminated quote
+    runs to the end of the text, which is also what a Go reader of it would do.
+
+    Raises `ValueError` as `unescape_path` does, for an escape outside quotes that is
+    not two hex digits.
+    """
+    if "%" not in text:
+        return text
+    out = []
+    index = 0
+    while True:
+        quote = text.find('"', index)
+        if quote < 0:
+            out.append(unescape_path(text[index:]))
+            return "".join(out)
+        out.append(unescape_path(text[index:quote]))
+        end = quote + 1
+        while end < len(text):
+            if text[end] == "\\":
+                end += 2
+            elif text[end] == '"':
+                end += 1
+                break
+            else:
+                end += 1
+        out.append(text[quote:end])
+        index = end
+
+
+def _package_boundary(text):
+    """Where the package path ends: the index of its last `/` and of the `.` after it.
 
     The package path ends at the first `.` that follows the last `/`. That is exactly
     why the escaping exists: a `.` inside the final path element is written `%2e`, so
     the first literal `.` after the last `/` is unambiguously the separator.
+
+    "The last `/`" is the last one *the path* could contain. A receiver's parentheses,
+    a generic argument list's brackets and a struct tag's quotes can each carry a type
+    string with slashes of its own -- `example.com/x.F[go.shape.[]internal/sync.node]`
+    is in package `example.com/x`, not `example.com/x.F[go.shape.[]internal/sync` --
+    and an import path can contain none of those three characters, so the search for
+    the slash stops at the first of them. Returns `(-1, -1)` for text with no slash and
+    `(slash, -1)` for one with no separator after it.
     """
-    slash = text.rfind("/")
-    dot = text.find(".", slash + 1)
-    if dot < 0:
-        return None, text
-    return text[:dot], text[dot + 1 :]
+    limit = len(text)
+    for stop in '(["':
+        index = text.find(stop)
+        if 0 <= index < limit:
+            limit = index
+    slash = text.rfind("/", 0, limit)
+    return slash, text.find(".", slash + 1)
 
 
 def parse_go_symbol(symbol):
@@ -169,21 +225,28 @@ def parse_go_symbol(symbol):
             generated, body = prefix, symbol[len(prefix) :]
             break
 
-    package, rest = _split_package(body)
-    if package is None:
-        if not generated:
-            raise NotMangledError(symbol, "no package separator")
+    if generated:
+        # What follows the prefix is the linker's own text -- a type string, a pair of
+        # them, an object's name -- and not a package-qualified declaration. It is not
+        # split: `type:.eq.[2]string` has no package, and reading its leading `.` as
+        # the separator dropped the dot. Its escapes are decoded where they stand.
         package, rest = "", body
+    else:
+        _, dot = _package_boundary(body)
+        if dot < 0:
+            raise NotMangledError(symbol, "no package separator")
+        package, rest = body[:dot], body[dot + 1 :]
+        if not package:
+            raise NotMangledError(symbol, "empty package")
     if not rest:
         raise NotMangledError(symbol, "empty name")
-    if not package and not generated:
-        raise NotMangledError(symbol, "empty package")
 
     try:
         package = unescape_path(package)
+        name = _unescape_outside_quotes(rest)
     except ValueError as error:
         raise ParseError(symbol, None, str(error)) from error
-    if not _is_text(package):
+    if not _is_text(package) or not _is_text(name):
         # `unescape_path` is a faithful port of `PrefixToPath`, which works on bytes and
         # is content to hand back whatever the escapes decoded to. This package returns
         # `str`, so a decoding that is not valid UTF-8 arrives as lone surrogates -- a
@@ -195,22 +258,19 @@ def parse_go_symbol(symbol):
         raise ParseError(symbol, None, "package path does not decode to text")
 
     receiver, pointer, generic = None, False, None
-    name = rest
-
-    if name.startswith("(*") and ")." in name:
-        close = name.index(").")
-        receiver, pointer = name[2:close], True
-        name = name[close + 2 :]
-
-    if "[" in name and name.endswith("]"):
-        open_bracket = name.index("[")
-        generic = name[open_bracket + 1 : -1]
-        name = name[:open_bracket]
+    if not generated:
+        declared = name
+        if declared.startswith("(*") and ")." in declared:
+            close = declared.index(").")
+            receiver, pointer = declared[2:close], True
+            declared = declared[close + 2 :]
+        if "[" in declared and declared.endswith("]"):
+            generic = declared[declared.index("[") + 1 : -1]
 
     return GoSymbol(
         raw=symbol,
         package=package,
-        name=rest,
+        name=name,
         receiver=receiver,
         pointer_receiver=pointer,
         generic=generic,

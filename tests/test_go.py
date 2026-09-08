@@ -199,13 +199,143 @@ class TestSafety:
         for mangled, _ in ROWS:
             assert isinstance(demangle.demangle(mangled), str)
 
-    @pytest.mark.parametrize("value", [".", "go:.", "type:.", "a/b.", ".foo"])
+    @pytest.mark.parametrize("value", [".", "go:", "type:", "a/b.", ".foo"])
     def test_an_empty_package_or_name_is_refused(self, value):
-        """`.` used to read as the empty string and `go:.` as `go:`: a dot dropped, not
-        a name read. Only a generated symbol may go without a package."""
+        """`.` used to read as the empty string: a dot dropped, not a name read. Only a
+        generated symbol may go without a package, and it still needs a name."""
         with pytest.raises(DemanglingError):
             parse_go_symbol(value)
         assert demangle.demangle(value, language="go") == value
+
+
+class TestAGeneratedSymbolIsTheLinkerText:
+    """What follows `go:` or `type:` is not a package-qualified declaration.
+
+    It is a type string, or two of them, or the name of an object the linker made. It
+    was read as a declaration: the first `.` after the last `/` was the package
+    separator, so `type:.eq.[2]string` -- no slash, and a leading dot -- lost its dot
+    and came back `type:eq.[2]string`, thirteen corpus rows pinning the loss; and with
+    a slash the "package" was whatever stood before the last one, `go:itab.*os.File,io`
+    and the like, which the tree reported as the symbol's package. Every symbol here is
+    go1.24.7 output.
+    """
+
+    @pytest.mark.parametrize(
+        ("symbol", "expected"),
+        [
+            ("type:.eq.[2]string", "type:.eq.[2]string"),
+            ("type:.eq.[2]runtime.Frame", "type:.eq.[2]runtime.Frame"),
+            ("type:.hash.[2]string", "type:.hash.[2]string"),
+            ("type:*", "type:*"),
+            ("go:string.*", "go:string.*"),
+            ("go:itab.*os.File,io.Reader", "go:itab.*os.File,io.Reader"),
+            # Escaped paths inside the linker's text decode where they stand.
+            ("type:.eq.example.com/tag/v2%2e5.K", "type:.eq.example.com/tag/v2.5.K"),
+            ("type:.eq.main.Box[example.com/tag/v2%2e5.K]", "type:.eq.main.Box[example.com/tag/v2.5.K]"),
+            (
+                "go:itab.example.com/corpus/v2%2e5.Ünïcødé,example.com/corpus/v2%2e5.Iface",
+                "go:itab.example.com/corpus/v2.5.Ünïcødé,example.com/corpus/v2.5.Iface",
+            ),
+        ],
+    )
+    def test_it_is_spelled_as_it_stands_with_its_escapes_decoded(self, symbol, expected):
+        assert demangle.demangle(symbol, language="go") == expected
+        assert demangle.parse(symbol, language="go").spell() == expected
+
+    @pytest.mark.parametrize(
+        "symbol",
+        ["type:.eq.[2]string", "type:[]sync/atomic.Pointer[net.T]", "go:itab.*os.File,io.Reader"],
+    )
+    def test_it_has_no_package_receiver_or_instantiation(self, symbol):
+        """`type:[]sync/atomic.Pointer[net.T]` ends in `]` and is not an instantiation of
+        anything; `go:itab.*os.File,io.Reader` is not in package `itab`."""
+        tree = demangle.parse(symbol, language="go")
+        assert next(tree.find("path"), None) is None
+        assert next(tree.find("receiver"), None) is None
+        assert next(tree.find("template"), None) is None
+        assert tree.generated in ("go:", "type:")
+
+    def test_a_generated_name_that_is_only_a_dot_keeps_it(self):
+        assert demangle.demangle("go:.", language="go") == "go:."
+        assert demangle.demangle("type:.", language="go") == "type:."
+
+
+class TestEscapesOutsideTheLeadingPath:
+    """A type string writes each named type with its package path escaped, and quotes
+    a struct tag verbatim; both reach symbol names. All go1.24.7 output for a package
+    directory called `v2.5` and a field tagged `json:"50%"` or `json:"a%2eb"`.
+    """
+
+    @pytest.mark.parametrize(
+        ("symbol", "expected"),
+        [
+            ("main..dict.Gen[example.com/tag/v2%2e5.K]", "main..dict.Gen[example.com/tag/v2.5.K]"),
+            ("main..dict.Box[example.com/tag/v2%2e5.K]", "main..dict.Box[example.com/tag/v2.5.K]"),
+        ],
+    )
+    def test_a_path_inside_an_instantiation_decodes(self, symbol, expected):
+        assert demangle.demangle(symbol, language="go") == expected
+        assert (
+            next(demangle.parse(symbol, language="go").find("template")).arguments
+            == expected[expected.index("[") + 1 : -1]
+        )
+
+    @pytest.mark.parametrize(
+        "symbol",
+        [
+            # `50%\"` is not an escape, and reading it as one refused the whole symbol;
+            # the `%2e` beside it is one.
+            'type:.eq.struct { S string "json:\\"50%\\""; K example.com/tag/v2%2e5.K }',
+            'type:.hash.struct { S string "json:\\"a%2eb\\" x:\\"q\\\\\\"z\\""; I interface {} }',
+            'main.Gen[go.shape.struct { S string "json:\\"a%2eb\\" x:\\"q\\\\\\"z\\""; I interface {} }]',
+            'main.(*Box[go.shape.struct { S string "json:\\"a%b\\" x:\\"q\\\\\\"z\\""; I interface {} }]).Get',
+            # An escaped quote does not end the tag.
+            'main.Gen[struct { S string "a\\"%2e" }]',
+        ],
+    )
+    def test_a_percent_inside_a_struct_tag_is_not_an_escape(self, symbol):
+        got = demangle.demangle_strict(symbol, language="go")
+        assert got == symbol.replace("%2e5", ".5")
+
+    def test_a_tag_percent_beside_a_real_escape(self):
+        symbol = 'type:.eq.struct { S string "json:\\"50%\\""; K example.com/tag/v2%2e5.K }'
+        expected = 'type:.eq.struct { S string "json:\\"50%\\""; K example.com/tag/v2.5.K }'
+        assert demangle.demangle(symbol, language="go") == expected
+
+    def test_a_malformed_escape_outside_quotes_is_still_refused(self):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict("main.Gen[example.com/x/y%zz.T]", language="go")
+
+
+class TestThePackageEndsBeforeAnyTypeString:
+    """`example.com/x.F[go.shape.[]internal/sync.node]` is in `example.com/x`: the last
+    `/` of the *package* is not the last `/` of the symbol once a receiver or an
+    instantiation carries a path of its own. The tree said `example.com/x.F[go.shape.[]internal/sync`.
+    """
+
+    @pytest.mark.parametrize(
+        ("symbol", "package", "rest"),
+        [
+            ("example.com/x.F[go.shape.[]internal/sync.node]", "example.com/x", "F[go.shape.[]internal/sync.node]"),
+            ("example.com/x.(*T[internal/sync.node]).M", "example.com/x", "(*T[internal/sync.node]).M"),
+            ("sync/atomic.(*Pointer[go.shape.struct { internal/sync.isEntry bool }]).Load", "sync/atomic", None),
+            ("example.com/x.F", "example.com/x", "F"),
+            ("main.F[internal/sync.node]", "main", "F[internal/sync.node]"),
+        ],
+    )
+    def test_the_path_node_is_the_package(self, symbol, package, rest):
+        parsed = parse_go_symbol(symbol)
+        assert parsed.package == package
+        if rest is not None:
+            assert parsed.name == rest
+        tree = demangle.parse(symbol, language="go")
+        assert next(tree.find("path")).text == package
+        assert tree.spell() == symbol
+
+    def test_a_path_inside_the_brackets_is_still_evidence_of_go(self):
+        assert detect("example.com/x.F[go.shape.[]internal/sync.node]") is True
+        assert detect("main.F[internal/sync.node]") is True
+        assert demangle.demangle("main.F[internal/sync.node]") == "main.F[internal/sync.node]"
 
 
 class TestOutputIsAlwaysText:

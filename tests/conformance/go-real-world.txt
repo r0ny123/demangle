@@ -263,16 +263,31 @@ cmd/compile/internal/ssagen.initIntrinsics.func74	cmd/compile/internal/ssagen.in
 cmd/compile/internal/ssagen.initIntrinsics.func75	cmd/compile/internal/ssagen.initIntrinsics.func75
 cmd/compile/internal/ssagen.initIntrinsics.func76	cmd/compile/internal/ssagen.initIntrinsics.func76
 cmd/compile/internal/ssagen.initIntrinsics.func77	cmd/compile/internal/ssagen.initIntrinsics.func77
+example.com/corpus/v2%2e5.(*Box[go.shape.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2%2e5.Ünïcødé }]).Get	example.com/corpus/v2.5.(*Box[go.shape.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2.5.Ünïcødé }]).Get
 example.com/corpus/v2%2e5.(*Ünïcødé).Pointeró	example.com/corpus/v2.5.(*Ünïcødé).Pointeró
+example.com/corpus/v2%2e5..dict.Box[struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2%2e5.Ünïcødé }]	example.com/corpus/v2.5..dict.Box[struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2.5.Ünïcødé }]
 example.com/corpus/v2%2e5..dict.Frëe[int]	example.com/corpus/v2.5..dict.Frëe[int]
+example.com/corpus/v2%2e5..dict.Same[struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2%2e5.Ünïcødé }]	example.com/corpus/v2.5..dict.Same[struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2.5.Ünïcødé }]
+example.com/corpus/v2%2e5..inittask	example.com/corpus/v2.5..inittask
 example.com/corpus/v2%2e5.Closure	example.com/corpus/v2.5.Closure
 example.com/corpus/v2%2e5.Closure.func1	example.com/corpus/v2.5.Closure.func1
+example.com/corpus/v2%2e5.Count	example.com/corpus/v2.5.Count
 example.com/corpus/v2%2e5.Frëe[go.shape.int]	example.com/corpus/v2.5.Frëe[go.shape.int]
+example.com/corpus/v2%2e5.Same[go.shape.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2%2e5.Ünïcødé }]	example.com/corpus/v2.5.Same[go.shape.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2.5.Ünïcødé }]
+example.com/corpus/v2%2e5.Seen	example.com/corpus/v2.5.Seen
+example.com/corpus/v2%2e5.init	example.com/corpus/v2.5.init
 example.com/corpus/v2%2e5.Ünïcødé.Método	example.com/corpus/v2.5.Ünïcødé.Método
 example.com/corpus/weird%2epkg%2ename.(*T).P	example.com/corpus/weird.pkg.name.(*T).P
 example.com/corpus/weird%2epkg%2ename..dict.G[string,int]	example.com/corpus/weird.pkg.name..dict.G[string,int]
 example.com/corpus/weird%2epkg%2ename.G[go.shape.string,go.shape.int]	example.com/corpus/weird.pkg.name.G[go.shape.string,go.shape.int]
 example.com/corpus/weird%2epkg%2ename.T.M	example.com/corpus/weird.pkg.name.T.M
+type:.eq.example.com/corpus/v2%2e5.Box[struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2%2e5.Ünïcødé }]	type:.eq.example.com/corpus/v2.5.Box[struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2.5.Ünïcødé }]
+type:.eq.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2%2e5.Ünïcødé }	type:.eq.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2.5.Ünïcødé }
+type:.hash.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2%2e5.Ünïcødé }	type:.hash.struct { S string "json:\"50%\" x:\"q\\\"z\""; K example.com/corpus/v2.5.Ünïcødé }
+go:(*struct { io.Reader; io.Closer }).Close	go:(*struct { io.Reader; io.Closer }).Close
+go:(*struct { io.Reader; io.Closer }).Read	go:(*struct { io.Reader; io.Closer }).Read
+go:(*struct { io.Reader; io.WriterTo }).Read	go:(*struct { io.Reader; io.WriterTo }).Read
+go:(*struct { io.Reader; io.WriterTo }).WriteTo	go:(*struct { io.Reader; io.WriterTo }).WriteTo
 go:buildinfo	go:buildinfo
 go:buildinfo.ref	go:buildinfo.ref
 go:datafipsend	go:datafipsend
@@ -286,6 +301,10 @@ go:rodatafipsend	go:rodatafipsend
 go:rodatafipsstart	go:rodatafipsstart
 go:runtime.inittasks	go:runtime.inittasks
 go:string.*	go:string.*
+go:struct { io.Reader; io.Closer }.Close	go:struct { io.Reader; io.Closer }.Close
+go:struct { io.Reader; io.Closer }.Read	go:struct { io.Reader; io.Closer }.Read
+go:struct { io.Reader; io.WriterTo }.Read	go:struct { io.Reader; io.WriterTo }.Read
+go:struct { io.Reader; io.WriterTo }.WriteTo	go:struct { io.Reader; io.WriterTo }.WriteTo
 go:textfipsend	go:textfipsend
 go:textfipsstart	go:textfipsstart
 cmd/compile/internal/inline/inlheur..dict.flagSliceToSB[cmd/compile/internal/inline/inlheur.ParamPropBits]	cmd/compile/internal/inline/inlheur..dict.flagSliceToSB[cmd/compile/internal/inline/inlheur.ParamPropBits]
@@ -313,6 +332,7 @@ cmd/internal/par..dict.Cache[string,cmd/internal/par.errValue[cmd/vendor/golang.
 cmd/internal/par..dict.Cache[string,cmd/internal/par.errValue[string]]	cmd/internal/par..dict.Cache[string,cmd/internal/par.errValue[string]]
 cmd/internal/par..dict.Cache[string,error]	cmd/internal/par..dict.Cache[string,error]
 cmd/internal/par..dict.Cache[string,string]	cmd/internal/par..dict.Cache[string,string]
+cmd/internal/par..dict.Cache[struct {},cmd/internal/par.errValue[*cmd/go/internal/modfetch.RevInfo]]	cmd/internal/par..dict.Cache[struct {},cmd/internal/par.errValue[*cmd/go/internal/modfetch.RevInfo]]
 cmd/internal/par..dict.ErrCache[[2]string,*cmd/go/internal/modindex.IndexPackage]	cmd/internal/par..dict.ErrCache[[2]string,*cmd/go/internal/modindex.IndexPackage]
 cmd/internal/par..dict.ErrCache[cmd/go/internal/modfetch/codehost.vcsCacheKey,cmd/go/internal/modfetch/codehost.Repo]	cmd/internal/par..dict.ErrCache[cmd/go/internal/modfetch/codehost.vcsCacheKey,cmd/go/internal/modfetch/codehost.Repo]
 cmd/internal/par..dict.ErrCache[cmd/go/internal/modget.matchInModuleKey,[]string]	cmd/internal/par..dict.ErrCache[cmd/go/internal/modget.matchInModuleKey,[]string]
@@ -328,6 +348,7 @@ cmd/internal/par..dict.ErrCache[string,bool]	cmd/internal/par..dict.ErrCache[str
 cmd/internal/par..dict.ErrCache[string,cmd/go/internal/vcs.Status]	cmd/internal/par..dict.ErrCache[string,cmd/go/internal/vcs.Status]
 cmd/internal/par..dict.ErrCache[string,cmd/vendor/golang.org/x/mod/module.Version]	cmd/internal/par..dict.ErrCache[string,cmd/vendor/golang.org/x/mod/module.Version]
 cmd/internal/par..dict.ErrCache[string,string]	cmd/internal/par..dict.ErrCache[string,string]
+cmd/internal/par..dict.ErrCache[struct {},*cmd/go/internal/modfetch.RevInfo]	cmd/internal/par..dict.ErrCache[struct {},*cmd/go/internal/modfetch.RevInfo]
 cmd/internal/par..dict.Work[cmd/vendor/golang.org/x/mod/module.Version]	cmd/internal/par..dict.Work[cmd/vendor/golang.org/x/mod/module.Version]
 cmp..dict.Compare[cmd/compile/internal/ssa.ID]	cmp..dict.Compare[cmd/compile/internal/ssa.ID]
 cmp..dict.Compare[int64]	cmp..dict.Compare[int64]
@@ -472,13 +493,16 @@ crypto/internal/fips140/hkdf..dict.Extract[crypto/internal/fips140.Hash]	crypto/
 crypto/internal/fips140/hkdf..dict.Extract[hash.Hash]	crypto/internal/fips140/hkdf..dict.Extract[hash.Hash]
 crypto/internal/fips140/hkdf..dict.Key[*crypto/internal/fips140/sha256.Digest]	crypto/internal/fips140/hkdf..dict.Key[*crypto/internal/fips140/sha256.Digest]
 crypto/internal/fips140/hkdf.Expand[go.shape.*uint8]	crypto/internal/fips140/hkdf.Expand[go.shape.*uint8]
+crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/hkdf.Expand[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/hkdf.Extract[go.shape.*uint8]	crypto/internal/fips140/hkdf.Extract[go.shape.*uint8]
+crypto/internal/fips140/hkdf.Extract[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/hkdf.Extract[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/hkdf.Key[go.shape.*uint8]	crypto/internal/fips140/hkdf.Key[go.shape.*uint8]
 crypto/internal/fips140/hmac..dict.New[*crypto/internal/fips140/sha256.Digest]	crypto/internal/fips140/hmac..dict.New[*crypto/internal/fips140/sha256.Digest]
 crypto/internal/fips140/hmac..dict.New[*crypto/internal/fips140/sha512.Digest]	crypto/internal/fips140/hmac..dict.New[*crypto/internal/fips140/sha512.Digest]
 crypto/internal/fips140/hmac..dict.New[crypto/internal/fips140.Hash]	crypto/internal/fips140/hmac..dict.New[crypto/internal/fips140.Hash]
 crypto/internal/fips140/hmac..dict.New[hash.Hash]	crypto/internal/fips140/hmac..dict.New[hash.Hash]
 crypto/internal/fips140/hmac.New[go.shape.*uint8]	crypto/internal/fips140/hmac.New[go.shape.*uint8]
+crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/hmac.New[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/mlkem..dict.polyByteEncode[crypto/internal/fips140/mlkem.nttElement]	crypto/internal/fips140/mlkem..dict.polyByteEncode[crypto/internal/fips140/mlkem.nttElement]
 crypto/internal/fips140/mlkem.polyByteEncode[go.shape.[256]crypto/internal/fips140/mlkem.fieldElement]	crypto/internal/fips140/mlkem.polyByteEncode[go.shape.[256]crypto/internal/fips140/mlkem.fieldElement]
 crypto/internal/fips140/tls12..dict.MasterSecret[*crypto/internal/fips140/sha256.Digest]	crypto/internal/fips140/tls12..dict.MasterSecret[*crypto/internal/fips140/sha256.Digest]
@@ -488,8 +512,11 @@ crypto/internal/fips140/tls12..dict.PRF[hash.Hash]	crypto/internal/fips140/tls12
 crypto/internal/fips140/tls12..dict.pHash[*crypto/internal/fips140/sha256.Digest]	crypto/internal/fips140/tls12..dict.pHash[*crypto/internal/fips140/sha256.Digest]
 crypto/internal/fips140/tls12..dict.pHash[hash.Hash]	crypto/internal/fips140/tls12..dict.pHash[hash.Hash]
 crypto/internal/fips140/tls12.MasterSecret[go.shape.*uint8]	crypto/internal/fips140/tls12.MasterSecret[go.shape.*uint8]
+crypto/internal/fips140/tls12.MasterSecret[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/tls12.MasterSecret[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/tls12.PRF[go.shape.*uint8]	crypto/internal/fips140/tls12.PRF[go.shape.*uint8]
+crypto/internal/fips140/tls12.PRF[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/tls12.PRF[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/tls12.pHash[go.shape.*uint8]	crypto/internal/fips140/tls12.pHash[go.shape.*uint8]
+crypto/internal/fips140/tls12.pHash[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/tls12.pHash[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/tls13..dict.ExpandLabel[crypto/internal/fips140.Hash]	crypto/internal/fips140/tls13..dict.ExpandLabel[crypto/internal/fips140.Hash]
 crypto/internal/fips140/tls13..dict.ExpandLabel[hash.Hash]	crypto/internal/fips140/tls13..dict.ExpandLabel[hash.Hash]
 crypto/internal/fips140/tls13..dict.NewEarlySecret[*crypto/internal/fips140/sha256.Digest]	crypto/internal/fips140/tls13..dict.NewEarlySecret[*crypto/internal/fips140/sha256.Digest]
@@ -498,8 +525,12 @@ crypto/internal/fips140/tls13..dict.deriveSecret[crypto/internal/fips140.Hash]	c
 crypto/internal/fips140/tls13..dict.extract[*crypto/internal/fips140/sha256.Digest]	crypto/internal/fips140/tls13..dict.extract[*crypto/internal/fips140/sha256.Digest]
 crypto/internal/fips140/tls13..dict.extract[crypto/internal/fips140.Hash]	crypto/internal/fips140/tls13..dict.extract[crypto/internal/fips140.Hash]
 crypto/internal/fips140/tls13..dict.extract[hash.Hash]	crypto/internal/fips140/tls13..dict.extract[hash.Hash]
+crypto/internal/fips140/tls13.ExpandLabel[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/tls13.ExpandLabel[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/tls13.NewEarlySecret[go.shape.*uint8]	crypto/internal/fips140/tls13.NewEarlySecret[go.shape.*uint8]
+crypto/internal/fips140/tls13.NewEarlySecret[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/tls13.NewEarlySecret[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
+crypto/internal/fips140/tls13.deriveSecret[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/tls13.deriveSecret[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140/tls13.extract[go.shape.*uint8]	crypto/internal/fips140/tls13.extract[go.shape.*uint8]
+crypto/internal/fips140/tls13.extract[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]	crypto/internal/fips140/tls13.extract[go.shape.interface { BlockSize() int; Reset(); Size() int; Sum([]uint8) []uint8; Write([]uint8) (int, error) }]
 crypto/internal/fips140hash..dict.UnwrapNew[hash.Hash]	crypto/internal/fips140hash..dict.UnwrapNew[hash.Hash]
 encoding/json..dict.appendString[[]uint8]	encoding/json..dict.appendString[[]uint8]
 encoding/json..dict.appendString[string]	encoding/json..dict.appendString[string]
@@ -507,6 +538,7 @@ encoding/json.appendString[go.shape.[]uint8]	encoding/json.appendString[go.shape
 encoding/json.appendString[go.shape.string]	encoding/json.appendString[go.shape.string]
 internal/abi..dict.Escape[*net/netip.addrDetail]	internal/abi..dict.Escape[*net/netip.addrDetail]
 internal/abi..dict.TypeFor[net/netip.addrDetail]	internal/abi..dict.TypeFor[net/netip.addrDetail]
+internal/abi.TypeFor[go.shape.struct { net/netip.isV6 bool; net/netip.zoneV6 string }]	internal/abi.TypeFor[go.shape.struct { net/netip.isV6 bool; net/netip.zoneV6 string }]
 internal/bytealg..dict.HashStrRev[[]uint8]	internal/bytealg..dict.HashStrRev[[]uint8]
 internal/bytealg..dict.HashStr[[]uint8]	internal/bytealg..dict.HashStr[[]uint8]
 internal/bytealg..dict.HashStr[string]	internal/bytealg..dict.HashStr[string]
@@ -516,28 +548,15 @@ internal/bytealg..dict.LastIndexRabinKarp[[]uint8]	internal/bytealg..dict.LastIn
 internal/bytealg.IndexRabinKarp[go.shape.[]uint8]	internal/bytealg.IndexRabinKarp[go.shape.[]uint8]
 internal/bytealg.IndexRabinKarp[go.shape.string]	internal/bytealg.IndexRabinKarp[go.shape.string]
 internal/bytealg.LastIndexRabinKarp[go.shape.[]uint8]	internal/bytealg.LastIndexRabinKarp[go.shape.[]uint8]
+internal/sync..dict.HashTrieMap[*internal/abi.Type,interface {}]	internal/sync..dict.HashTrieMap[*internal/abi.Type,interface {}]
+internal/sync..dict.HashTrieMap[interface {},interface {}]	internal/sync..dict.HashTrieMap[interface {},interface {}]
 internal/sync..dict.HashTrieMap[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]	internal/sync..dict.HashTrieMap[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]
+internal/sync..dict.entry[*internal/abi.Type,interface {}]	internal/sync..dict.entry[*internal/abi.Type,interface {}]
+internal/sync..dict.entry[interface {},interface {}]	internal/sync..dict.entry[interface {},interface {}]
 internal/sync..dict.entry[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]	internal/sync..dict.entry[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]
+internal/sync..dict.indirect[*internal/abi.Type,interface {}]	internal/sync..dict.indirect[*internal/abi.Type,interface {}]
+internal/sync..dict.indirect[interface {},interface {}]	internal/sync..dict.indirect[interface {},interface {}]
 internal/sync..dict.indirect[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]	internal/sync..dict.indirect[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]
-internal/sync..dict.newEntryNode[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]	internal/sync..dict.newEntryNode[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]
-internal/sync..dict.newIndirectNode[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]	internal/sync..dict.newIndirectNode[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]
-internal/sync..dict.node[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]	internal/sync..dict.node[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]
-maps..dict.Keys[map[string]bool,string,bool]	maps..dict.Keys[map[string]bool,string,bool]
-maps..dict.Keys[map[string]string,string,string]	maps..dict.Keys[map[string]string,string,string]
-maps..dict.Keys[net/url.Values,string,[]string]	maps..dict.Keys[net/url.Values,string,[]string]
-maps..dict.Values[map[string]*crypto/x509.policyGraphNode,string,*crypto/x509.policyGraphNode]	maps..dict.Values[map[string]*crypto/x509.policyGraphNode,string,*crypto/x509.policyGraphNode]
-reflect..dict.TypeFor[*math/big.Int]	reflect..dict.TypeFor[*math/big.Int]
-reflect..dict.TypeFor[encoding.TextMarshaler]	reflect..dict.TypeFor[encoding.TextMarshaler]
-reflect..dict.TypeFor[encoding.TextUnmarshaler]	reflect..dict.TypeFor[encoding.TextUnmarshaler]
-reflect..dict.TypeFor[encoding/asn1.BitString]	reflect..dict.TypeFor[encoding/asn1.BitString]
-reflect..dict.TypeFor[encoding/asn1.Enumerated]	reflect..dict.TypeFor[encoding/asn1.Enumerated]
-reflect..dict.TypeFor[encoding/asn1.Flag]	reflect..dict.TypeFor[encoding/asn1.Flag]
-reflect..dict.TypeFor[encoding/asn1.ObjectIdentifier]	reflect..dict.TypeFor[encoding/asn1.ObjectIdentifier]
-reflect..dict.TypeFor[encoding/asn1.RawContent]	reflect..dict.TypeFor[encoding/asn1.RawContent]
-reflect..dict.TypeFor[encoding/asn1.RawValue]	reflect..dict.TypeFor[encoding/asn1.RawValue]
-reflect..dict.TypeFor[encoding/json.Marshaler]	reflect..dict.TypeFor[encoding/json.Marshaler]
-reflect..dict.TypeFor[encoding/json.Number]	reflect..dict.TypeFor[encoding/json.Number]
-reflect..dict.TypeFor[encoding/json.isZeroer]	reflect..dict.TypeFor[encoding/json.isZeroer]
 go:itab.*archive/zip.checksumReader,io.ReadCloser	go:itab.*archive/zip.checksumReader,io.ReadCloser
 go:itab.*archive/zip.countWriter,io.Writer	go:itab.*archive/zip.countWriter,io.Writer
 go:itab.*archive/zip.dirReader,io.ReadCloser	go:itab.*archive/zip.dirReader,io.ReadCloser
@@ -1262,8 +1281,13 @@ cmd/compile/internal/dwarfgen.(*ScopeMarker).Unpush	cmd/compile/internal/dwarfge
 cmd/compile/internal/dwarfgen.(*ScopeMarker).WriteTo	cmd/compile/internal/dwarfgen.(*ScopeMarker).WriteTo
 cmd/compile/internal/dwarfgen.(*ScopeMarker).checkPos	cmd/compile/internal/dwarfgen.(*ScopeMarker).checkPos
 type:*	type:*
-type:.eq.[10]string	type:eq.[10]string
-type:.eq.[13]string	type:eq.[13]string
+type:.eq.[10]interface {}	type:.eq.[10]interface {}
+type:.eq.[10]string	type:.eq.[10]string
+type:.eq.[13]string	type:.eq.[13]string
+type:.eq.[16]interface {}	type:.eq.[16]interface {}
+type:.eq.[16]sync/atomic.Pointer[go.shape.struct { internal/sync.isEntry bool }]	type:.eq.[16]sync/atomic.Pointer[go.shape.struct { internal/sync.isEntry bool }]
+type:.eq.[16]sync/atomic.Pointer[internal/sync.node[*internal/abi.Type,interface {}]]	type:.eq.[16]sync/atomic.Pointer[internal/sync.node[*internal/abi.Type,interface {}]]
+type:.eq.[16]sync/atomic.Pointer[internal/sync.node[interface {},interface {}]]	type:.eq.[16]sync/atomic.Pointer[internal/sync.node[interface {},interface {}]]
 type:.eq.[16]sync/atomic.Pointer[internal/sync.node[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]]	type:.eq.[16]sync/atomic.Pointer[internal/sync.node[net/netip.addrDetail,weak.Pointer[net/netip.addrDetail]]]
 type:.eq.[1]cmd/internal/obj.Addr	type:.eq.[1]cmd/internal/obj.Addr
 type:.eq.[1]cmd/internal/obj.WasmField	type:.eq.[1]cmd/internal/obj.WasmField
@@ -1271,10 +1295,10 @@ type:.eq.[1]cmd/link/internal/ld.stackCheckChain	type:.eq.[1]cmd/link/internal/l
 type:.eq.[1]cmd/link/internal/ld.stackCheckEdge	type:.eq.[1]cmd/link/internal/ld.stackCheckEdge
 type:.eq.[1]cmd/vendor/golang.org/x/mod/modfile.Comment	type:.eq.[1]cmd/vendor/golang.org/x/mod/modfile.Comment
 type:.eq.[1]cmd/vendor/golang.org/x/mod/module.Version	type:.eq.[1]cmd/vendor/golang.org/x/mod/module.Version
-type:.eq.[1]runtime.Frame	type:eq.[1]runtime.Frame
+type:.eq.[1]runtime.Frame	type:.eq.[1]runtime.Frame
 type:.eq.[1]text/template.variable	type:.eq.[1]text/template.variable
-type:.eq.[1]time.zone	type:eq.[1]time.zone
-type:.eq.[1]time.zoneTrans	type:eq.[1]time.zoneTrans
+type:.eq.[1]time.zone	type:.eq.[1]time.zone
+type:.eq.[1]time.zoneTrans	type:.eq.[1]time.zoneTrans
 type:.eq.[2000]cmd/compile/internal/ssa.Location	type:.eq.[2000]cmd/compile/internal/ssa.Location
 type:.eq.[2]cmd/compile/internal/ir.Node	type:.eq.[2]cmd/compile/internal/ir.Node
 type:.eq.[2]cmd/compile/internal/syntax.Expr	type:.eq.[2]cmd/compile/internal/syntax.Expr
@@ -1282,27 +1306,36 @@ type:.eq.[2]cmd/compile/internal/syntax.Stmt	type:.eq.[2]cmd/compile/internal/sy
 type:.eq.[2]cmd/go/internal/cfg.EnvVar	type:.eq.[2]cmd/go/internal/cfg.EnvVar
 type:.eq.[2]cmd/vendor/golang.org/x/mod/module.Version	type:.eq.[2]cmd/vendor/golang.org/x/mod/module.Version
 type:.eq.[2]encoding/asn1.encoder	type:.eq.[2]encoding/asn1.encoder
-type:.eq.[2]runtime.Frame	type:eq.[2]runtime.Frame
-type:.eq.[2]string	type:eq.[2]string
+type:.eq.[2]interface {}	type:.eq.[2]interface {}
+type:.eq.[2]runtime.Frame	type:.eq.[2]runtime.Frame
+type:.eq.[2]string	type:.eq.[2]string
 type:.eq.[31]cmd/go/internal/cfg.EnvVar	type:.eq.[31]cmd/go/internal/cfg.EnvVar
 type:.eq.[3]cmd/compile/internal/ir.Node	type:.eq.[3]cmd/compile/internal/ir.Node
 type:.eq.[3]cmd/compile/internal/syntax.Expr	type:.eq.[3]cmd/compile/internal/syntax.Expr
 type:.eq.[3]cmd/vendor/golang.org/x/mod/module.Version	type:.eq.[3]cmd/vendor/golang.org/x/mod/module.Version
-type:.eq.[3]string	type:eq.[3]string
+type:.eq.[3]interface {}	type:.eq.[3]interface {}
+type:.eq.[3]string	type:.eq.[3]string
 type:.eq.[3]text/template/parse.item	type:.eq.[3]text/template/parse.item
 type:.eq.[42]vendor/golang.org/x/sys/cpu.option	type:.eq.[42]vendor/golang.org/x/sys/cpu.option
 type:.eq.[4]cmd/compile/internal/ir.Node	type:.eq.[4]cmd/compile/internal/ir.Node
+type:.eq.[4]interface {}	type:.eq.[4]interface {}
 type:.eq.[4]runtime/metrics.Sample	type:.eq.[4]runtime/metrics.Sample
-type:.eq.[4]string	type:eq.[4]string
+type:.eq.[4]string	type:.eq.[4]string
 type:.eq.[5]cmd/compile/internal/ir.Node	type:.eq.[5]cmd/compile/internal/ir.Node
-type:.eq.[5]string	type:eq.[5]string
+type:.eq.[5]interface {}	type:.eq.[5]interface {}
+type:.eq.[5]string	type:.eq.[5]string
+type:.eq.[61]struct { Size uint32; Mallocs uint64; Frees uint64 }	type:.eq.[61]struct { Size uint32; Mallocs uint64; Frees uint64 }
 type:.eq.[6]cmd/compile/internal/ir.Node	type:.eq.[6]cmd/compile/internal/ir.Node
-type:.eq.[6]string	type:eq.[6]string
+type:.eq.[6]interface {}	type:.eq.[6]interface {}
+type:.eq.[6]string	type:.eq.[6]string
 type:.eq.[7]cmd/compile/internal/ir.Node	type:.eq.[7]cmd/compile/internal/ir.Node
 type:.eq.[7]cmd/go/internal/cfg.EnvVar	type:.eq.[7]cmd/go/internal/cfg.EnvVar
+type:.eq.[7]interface {}	type:.eq.[7]interface {}
 type:.eq.[7]internal/cpu.option	type:.eq.[7]internal/cpu.option
-type:.eq.[7]string	type:eq.[7]string
-type:.eq.[9]string	type:eq.[9]string
+type:.eq.[7]string	type:.eq.[7]string
+type:.eq.[8]interface {}	type:.eq.[8]interface {}
+type:.eq.[9]interface {}	type:.eq.[9]interface {}
+type:.eq.[9]string	type:.eq.[9]string
 type:.eq.archive/zip.checksumReader	type:.eq.archive/zip.checksumReader
 type:.eq.archive/zip.countWriter	type:.eq.archive/zip.countWriter
 type:.eq.archive/zip.directoryEnd	type:.eq.archive/zip.directoryEnd
@@ -1497,17 +1530,3 @@ type:.eq.cmd/go/internal/modfetch/codehost.limitedWriter	type:.eq.cmd/go/interna
 type:.eq.cmd/go/internal/modfetch/codehost.listEntry.1	type:.eq.cmd/go/internal/modfetch/codehost.listEntry.1
 type:.eq.cmd/go/internal/modfetch/codehost.vcsCacheKey	type:.eq.cmd/go/internal/modfetch/codehost.vcsCacheKey
 type:.eq.cmd/go/internal/modget.change.3	type:.eq.cmd/go/internal/modget.change.3
-type:.eq.cmd/go/internal/modget.conflictError	type:.eq.cmd/go/internal/modget.conflictError
-type:.eq.cmd/go/internal/modget.matchInModuleKey	type:.eq.cmd/go/internal/modget.matchInModuleKey
-type:.eq.cmd/go/internal/modget.modMessage.2	type:.eq.cmd/go/internal/modget.modMessage.2
-type:.eq.cmd/go/internal/modget.upgradeFlag	type:.eq.cmd/go/internal/modget.upgradeFlag
-type:.eq.cmd/go/internal/modget.versionReason	type:.eq.cmd/go/internal/modget.versionReason
-type:.eq.cmd/go/internal/modindex.Module	type:.eq.cmd/go/internal/modindex.Module
-type:.eq.cmd/go/internal/modindex.embed	type:.eq.cmd/go/internal/modindex.embed
-type:.eq.cmd/go/internal/modindex.fileEmbed	type:.eq.cmd/go/internal/modindex.fileEmbed
-type:.eq.cmd/go/internal/modindex.fileImport	type:.eq.cmd/go/internal/modindex.fileImport
-type:.eq.cmd/go/internal/modindex.parseError	type:.eq.cmd/go/internal/modindex.parseError
-type:.eq.cmd/go/internal/modindex.rawImport	type:.eq.cmd/go/internal/modindex.rawImport
-type:.eq.cmd/go/internal/modload.DirectImportFromImplicitDependencyError	type:.eq.cmd/go/internal/modload.DirectImportFromImplicitDependencyError
-type:.eq.cmd/go/internal/modload.ImportMissingError	type:.eq.cmd/go/internal/modload.ImportMissingError
-type:.eq.cmd/go/internal/modload.NoMatchingVersionError	type:.eq.cmd/go/internal/modload.NoMatchingVersionError

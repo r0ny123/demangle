@@ -82,6 +82,28 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **Go: a linker-generated symbol is the linker's text, and a `%` inside a struct tag
+  is not an escape.** What follows `go:` or `type:` was read as a package-qualified
+  declaration -- the first `.` after the last `/` being the package separator -- and
+  three things went wrong with that. `type:.eq.[2]string`, no slash and a leading
+  dot, lost the dot: `type:eq.[2]string`, thirteen corpus rows pinning the loss. With
+  a slash, the "package" was whatever stood before the last one, and the tree
+  reported `go:itab.*os.File,io.Reader` as being in package `itab` and
+  `example.com/x.F[go.shape.[]internal/sync.node]` as being in
+  `example.com/x.F[go.shape.[]internal/sync`, since an instantiation's and a
+  receiver's type strings carry paths of their own. And a type string quotes a struct
+  tag verbatim, so `type:.eq.struct { S string "json:\"50%\""; K example.com/tag/v2%2e5.K }`
+  -- go1.24.7 output for a map keyed by a tagged struct -- was refused outright at the
+  tag's `%\"`, a real symbol declined for a malformed escape it does not have. Now a
+  generated symbol is not split at all and has no package, receiver or instantiation;
+  the package of a declaration ends before the first `(`, `[` or `"`, none of which
+  an import path may contain; and escapes decode everywhere outside double quotes
+  and nowhere inside them, so `main..dict.Gen[example.com/tag/v2%2e5.K]` reads
+  `main..dict.Gen[example.com/tag/v2.5.K]` where the bracketed path was left
+  encoded before. `tools/generate_go_corpus.py` took the last whitespace-separated
+  field of an `nm` line as the name, which kept `}` of every instantiation over a
+  struct shape; it takes the whole name now, and the corpus module gained a tagged
+  struct and a generic type over it, so the corpus carries these shapes.
 - **Itanium: a modifier over an empty parameter pack dropped the argument.**
   `_Z1fIJEPT_E` writes `P` over `T_`, and `T_` is the empty pack `J E`: there is
   nothing to point to, and `c++filt` refuses the name. `llvm-cxxfilt` prints `f<*>`,

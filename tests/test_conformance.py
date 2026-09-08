@@ -133,7 +133,7 @@ JNI_TOTAL, JNI_EXACT = 50, 50
 #: something is the round-trip property in tests/test_go.py -- re-escaping a decoded path
 #: must reproduce the bytes Go's own PathToPrefix wrote. The count pins the corpus; the
 #: property is the correctness argument.
-GO_TOTAL, GO_EXACT = 1498, 1498
+GO_TOTAL, GO_EXACT = 1517, 1517
 
 #: D, against GNU binutils' D demangler over the shipped libgphobos and libgdruntime.
 D_TOTAL, D_EXACT = 1257, 1257
@@ -624,8 +624,9 @@ def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
 #: writes `<lambda_1>` and CodeWarrior a template argument list in angle brackets, which
 #: the token leaves out on purpose -- objdump spells a call target
 #: `call 1050 <_ZN3foo3barEv>`, and a token that takes the brackets in is one no scheme
-#: reads. Go's two carry a `,` inside `[...]`, which the token also stops at, and there
-#: the piece plus the text after it still spells the whole name.
+#: reads. Go's six carry a `,` inside `[...]`, which the token also stops at, or a struct
+#: shape spelled with spaces and quoted tags, and there the piece plus the text after it
+#: still spells the whole name.
 #:
 #: Pinned because the number was 172 before `?` stopped being a character a Delphi
 #: identifier may hold, and 2,983 before `%` and `#` became characters a token may. The
@@ -634,7 +635,7 @@ def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
 #: `??R<lambda_1>@x@A@PR31197@@QBE@XZ`, the name `msvc-llvm-corpus.txt` already carries.
 FILTER_REPORTS_PIECES = {
     "codewarrior-cwdemangle.txt": 2,
-    "go-real-world.txt": 2,
+    "go-real-world.txt": 6,
     "msvc-dbghelp.txt": 3,
     "msvc-llvm-corpus.txt": 2,
     "msvc-name-only.txt": 1,

@@ -12,6 +12,7 @@ func main() {
 	var i a.Iface = u
 	var t b.T
 	var s c.S
+	n, same := a.Count(a.Tagged{S: "x"})
 	fmt.Println(u.Método(), u.Pointeró(), a.Frëe(1), a.Closure()(), i.Método(),
-		t.M(), t.P(), b.G(map[string]int{}), s.Go())
+		t.M(), t.P(), b.G(map[string]int{}), s.Go(), n, same)
 }
