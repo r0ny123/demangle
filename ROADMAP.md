@@ -242,21 +242,21 @@ in total, the last three of them (pre-Itanium C++, CodeWarrior, Ada/GNAT) in thi
 D, Swift, Nim, Free Pascal, Objective-C and Delphi have all landed the same way. What
 each is measured against differs, and the difference is the interesting part:
 
-- **D** — 100% against GNU binutils' `c++filt --format=dlang`.
-- **Swift** — exact against `swift-demangle` built from swiftlang/swift's own sources,
+- ~~**D**~~ — 100% against GNU binutils' `c++filt --format=dlang`.
+- ~~**Swift**~~ — exact against `swift-demangle` built from swiftlang/swift's own sources,
   over the whole shipped runtime and the compiler's own test corpus, in both the current
   mangling and Swift 3's. Nothing a distribution ships reads a Swift name, so the
   reference is built here: `tools/swift-demangle-reference/`.
-- **Nim** — no reference demangler exists, so the property is that re-mangling what is
+- ~~**Nim**~~ — no reference demangler exists, so the property is that re-mangling what is
   read reproduces the symbol, plus agreement with the name the compiler recorded in its
   own `.ndi` files.
-- **Free Pascal** — no reference demangler either; the property is re-assembly, over all
+- ~~**Free Pascal**~~ — no reference demangler either; the property is re-assembly, over all
   236,570 readable symbols in the shipped runtime, plus a check against `ppudump`.
-- **Delphi / C++Builder** — no Delphi compiler here, so the grammar is Embarcadero's
+- ~~**Delphi / C++Builder**~~ — no Delphi compiler here, so the grammar is Embarcadero's
   `unmangle.c` and the spelling is what TDUMP prints. A different scheme from Free
   Pascal's.
 
-- **JNI** — *landed*. `Java_com_example_Foo_bar__Ljava_lang_String_2` is the C function
+- ~~**JNI**~~ — *landed*. `Java_com_example_Foo_bar__Ljava_lang_String_2` is the C function
   a `native` method is called through, and Android ships them by the thousand; the usual
   way to read one is by eye, because neither binutils nor LLVM reads them and neither
   does Ghidra or IDA. It is also the one scheme here whose encoding is *written down
@@ -265,7 +265,7 @@ each is measured against differs, and the difference is the interesting part:
   the package/class boundary, which the encoding genuinely does not carry, so the
   spelling puts the whole path in one run rather than inventing a structure.
 
-- **Pre-Itanium C++: the GNU v2 / cfront / ARM family** — *landed*. `__ls__7ostreamPCc`,
+- ~~**Pre-Itanium C++: the GNU v2 / cfront / ARM family**~~ — *landed*. `__ls__7ostreamPCc`,
   `BuildLight__9CGuiLightCFv`. binutils *deleted* these styles in 2019 and Ghidra ships a
   second, older copy of libiberty specifically to keep reading them, which was the
   loudest available signal that analysts still meet them — console and embedded
@@ -298,7 +298,7 @@ each is measured against differs, and the difference is the interesting part:
   option rather than a guess: `demangle.style("llvm", gnuv2={"style": "arm"})`, with
   `gnu` the default.
 
-- **Metrowerks CodeWarrior** — *landed*, beside the four above. The other pre-Itanium
+- ~~**Metrowerks CodeWarrior**~~ — *landed*, beside the four above. The other pre-Itanium
   mangling, and a scheme of its own rather than a sixth style, because libiberty never
   read it: `cplus-dem.c` has no CodeWarrior flag and `demangle-expected` has no vectors
   for it. The reference is `encounter/cwdemangle`, the tool decompilation projects for
@@ -318,7 +318,7 @@ each is measured against differs, and the difference is the interesting part:
   debugging symbols in external `.xSYM` sidecars rather than in-binary symbol tables.
   The vectors transcribed from `encounter/cwdemangle` remain the authoritative test set.
 
-- **Ada/GNAT** — *landed*, **34 of 34** against the cases `demangle-expected` marks
+- ~~**Ada/GNAT**~~ — *landed*, **34 of 34** against the cases `demangle-expected` marks
   `--format=gnat`, and **1,438 of 1,438** real-world GNAT runtime symbols from
   `libgnat`/`libgnarl` extracted via `tools/generate_ada_corpus.py` and scored against
   `c++filt --format=gnat`. The last of the pre-Itanium formats libiberty still carries:
@@ -650,38 +650,41 @@ which is whether to spell something *differently*.
 The seed ladder across existing corpora reached saturation (seeds 0 to 32 clean at 200k,
 every corpus exact). Issue #28 mapped out the subsequent stretch of work:
 
-- **Probing schemes with no reference** — *completed for this phase*:
-  - **Ada**: `tools/generate_ada_corpus.py` samples 1,438 real-world symbols from `libgnat`
+- ~~**Probing schemes with no reference**~~ — *completed*:
+  - ~~**Ada**~~ — *landed*: `tools/generate_ada_corpus.py` samples 1,438 real-world symbols from `libgnat`
     and `libgnarl`, 100% exact against GNU binutils' `c++filt --format=gnat`, seeding the
     fuzzers with real GNAT runtime names.
-  - **Nim**: The eight lossy names in the standard library where the compiler discards an
+  - ~~**Nim**~~ — *settled*: The eight lossy names in the standard library where the compiler discards an
     underscore before a digit were pinned in `tests/conformance/nim-lossy.txt` and verified in
     `tests/test_nim.py`.
-  - **Objective-C**: Block invocation symbols (`___[length]-[Class method]_block_invoke`)
+  - ~~**Objective-C**~~ — *settled*: Block invocation symbols (`___[length]-[Class method]_block_invoke`)
     were evaluated against Clang's `mangleFunctionBlock`: well-formed invocations are
     supported, and length mismatches are refused to prevent false claims.
-  - **CodeWarrior**: A search for CodeWarrior-built PowerPC ELF/PEF binaries with symbol tables
+  - ~~**CodeWarrior**~~ — *settled*: A search for CodeWarrior-built PowerPC ELF/PEF binaries with symbol tables
     confirmed none are available (shipping GameCube/Wii discs stripped symbols into `.dol`
     executables, and Classic Mac OS PEF binaries stored debug symbols in external `.xSYM`
     sidecars).
-  - **Free Pascal**: Probed against `ppudump -Va` across all runtime units (4,384 of 4,384
+  - ~~**Free Pascal**~~ — *verified*: Probed against `ppudump -Va` across all runtime units (4,384 of 4,384
     symbols matching declared names).
 
-- **Defect investigations from the hunt**:
-  - **D back-reference landing inside an identifier's characters**: *Fixed*. The span of
+- ~~**Defect investigations from the hunt**~~ — *completed*:
+  - ~~**D back-reference landing inside an identifier's characters**~~ — *fixed*: The span of
     every length-prefixed identifier is recorded and back-reference targets landing strictly
     inside a span are refused.
-  - **`--refusals` at 200k**: Mutator refusals run across Itanium, MSVC, Swift, D, and
+  - ~~**`--refusals` at 200k**~~ — *completed*: Mutator refusals run across Itanium, MSVC, Swift, D, and
     GNUv2 at 200,000 mutants to triage cases where references accept corrupted inputs.
     Divergences were confirmed to be reference leniencies (ignoring invalid identifier
     characters, dropping trailing garbage, or accepting malformed template names).
 
-- **Future sweeps (Reseeding the fuzzers)**:
+- **Reseeding the fuzzers**:
+  - ~~**Swift / Go generic shapes and new node kinds**~~ — *done*: Swept against Swift 6.2+
+    (the full `test/Demangle/Inputs/manglings.txt` at swiftlang/swift main, `async_Main`
+    funclets and modern node kinds) and Go 1.25/1.26 (linker generated symbols, tagged struct
+    escapes, and generic shape instantiations).
   - *Itanium*: File bank compiled with GCC 14+ / Clang 19+ at `-std=c++26` with C++20 modules
     (`W` module names, `DF` floats, friend declarations, structured bindings).
   - *MSVC*: Sweep NuGet packages built with the MSVC 14.4x toolset for modern C++20/23
     constructs (`$$Q`, lambda numbering, `__int128`).
   - *Rust v0*: Modern nightly `librustc_driver` or large crates compiled with
     `-C symbol-mangling-version=v0`.
-  - *Swift / Go*: Sweeps for Swift 6.2 and Go 1.25+ generic shapes and new node kinds.
 
