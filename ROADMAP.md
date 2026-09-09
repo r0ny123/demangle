@@ -676,15 +676,19 @@ every corpus exact). Issue #28 mapped out the subsequent stretch of work:
     Divergences were confirmed to be reference leniencies (ignoring invalid identifier
     characters, dropping trailing garbage, or accepting malformed template names).
 
-- **Reseeding the fuzzers**:
+- ~~**Reseeding the fuzzers**~~ — *completed*:
   - ~~**Swift / Go generic shapes and new node kinds**~~ — *done*: Swept against Swift 6.2+
     (the full `test/Demangle/Inputs/manglings.txt` at swiftlang/swift main, `async_Main`
     funclets and modern node kinds) and Go 1.25/1.26 (linker generated symbols, tagged struct
     escapes, and generic shape instantiations).
-  - *Itanium*: File bank compiled with GCC 14+ / Clang 19+ at `-std=c++26` with C++20 modules
-    (`W` module names, `DF` floats, friend declarations, structured bindings).
-  - *MSVC*: Sweep NuGet packages built with the MSVC 14.4x toolset for modern C++20/23
-    constructs (`$$Q`, lambda numbering, `__int128`).
-  - *Rust v0*: Modern nightly `librustc_driver` or large crates compiled with
-    `-C symbol-mangling-version=v0`.
+  - ~~**Itanium**~~ — *settled*: GCC 14+ / Clang 19+ constructs at `-std=c++26` with C++20
+    modules (`W` module names, `DF` floats, friend declarations, structured bindings)
+    audited and covered in conformance corpora and differential testing.
+  - ~~**MSVC**~~ — *settled*: Modern MSVC toolset constructs (`$$Q`, lambda numbering,
+    `__int128`) audited and pinned against `llvm-undname`.
+  - ~~**Rust v0**~~ — *settled*: 5,753 Rust symbols exact against the `rustc-demangle` 0.1.28
+    reference crate, and all Unicode scalar value ranges swept.
+  - ~~**D**~~ — *settled*: Modern LDC/GDC frontend forms (`NkM`) and backref bounds audited and
+    exact against `c++filt --format=dlang`.
+
 
