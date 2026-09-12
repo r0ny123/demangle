@@ -387,6 +387,7 @@ class ItaniumParser:
         "_argument_constraint",
         "_auto_substitutes",
         "_bare_angle",
+        "_bare_entity_prefix_used",
         "_bare_pack_used",
         "_closure_level",
         "_closure_prefix_entries",
@@ -658,6 +659,11 @@ class ItaniumParser:
         #: Whether such a pack stood as a direct member of another pack, `J ... I ... E
         #: ... E`, a shape no compiler writes. Read by tools/enumerate.py as well.
         self._legacy_pack_nested = False
+        #: Whether an `<expr-primary>` named its entity with a bare `Z` rather than `_Z`
+        #: -- the g++ compatibility form, which `llvm-cxxfilt` takes as a template
+        #: argument and refuses inside an expression. Read by tools/enumerate.py, which
+        #: knows that is where the two references part. See `expr_primary`.
+        self._bare_entity_prefix_used = False
         # Whether the last component appended to the <prefix> being read came from a
         # `<substitution>`. The final component of a <nested-name> is an
         # <unqualified-name>, which a substitution is not -- see `nested_name`.
@@ -3684,6 +3690,25 @@ class ItaniumParser:
             # it that index the enclosing name's table -- Clang emits exactly that for
             # the address of a function template passed as a non-type argument, and a
             # fresh table makes every one of those unresolvable.
+            #
+            # The underscore is optional, and that is a compatibility form rather than
+            # an oversight: g++ wrote `L Z <encoding> E` for an external name standing
+            # as a template argument, and six of libcxxabi's own test vectors are that
+            # shape -- `_ZN5test52f2ENS_2t2ILZ4mainEEE` is `test5::f2(test5::t2<main>)`
+            # to both references. Requiring the `_Z` refuses all six.
+            #
+            # Where the two references part is *where* the bare form may stand. LLVM
+            # accepts it from `parseTemplateArg` and not from `parseExprPrimary`, so it
+            # reads `_Z1xILZ1yEEvv` and refuses `_Z1xIXLZ1yEEEvv` -- the same entity one
+            # level down, inside an expression. `c++filt` reads both. No compiler writes
+            # the second: by the time expressions could carry one, `L_Z` was what was
+            # written. Both are read here, which is `c++filt`'s reading and keeps the
+            # vectors; the divergence llvm-cxxfilt shows on the expression form is
+            # recorded in `tools/enumerate.py` rather than resolved by refusing a name a
+            # reference reads. `_bare_entity_prefix_used` is what tells that rule this
+            # name took the form. `tools/mutate.py --seed 35`.
+            if reader.peek() == "Z":
+                self._bare_entity_prefix_used = True
             reader.eat("_")
             reader.expect("Z")
             # `Z <encoding> E <entity>` -- a local name. Read here rather than off the

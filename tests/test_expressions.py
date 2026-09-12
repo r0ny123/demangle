@@ -2111,3 +2111,85 @@ class TestLlvmDropsACastFunctionType:
     def test_the_parameter_list_is_kept(self, mangled, expected):
         assert demangle.demangle(mangled) == expected
         assert demangle.demangle(mangled, style="gnu").count("(") == demangle.demangle(mangled, style="gnu").count(")")
+
+
+class TestAnEntityNamedWithABareZ:
+    """`L Z <encoding> E`, the g++ compatibility spelling of `L _Z <encoding> E`.
+
+    Six of libcxxabi's own test vectors are this shape -- an external name standing as a
+    template argument -- so refusing it costs six names on that corpus and both
+    references read every one of them.
+
+    Where the references part is how deep the bare form may stand. LLVM takes it in
+    `parseTemplateArg` and not in `parseExprPrimary`, so `_Z1xILZ1yEEvv` reads and
+    `_Z1xIXLZ1yEEEvv` -- the same entity inside an expression -- does not. `c++filt`
+    reads both, and so does this. No compiler writes the second; by the time expressions
+    could carry an entity, `L_Z` was what was written. `tools/mutate.py --seed 35` found
+    it as a pointer-to-member conversion that looked like the disagreement and was not.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # libcxxabi's own vectors, read the same way by both references.
+            ("_ZN5test52f2ENS_2t2ILZ4mainEEE", "test5::f2(test5::t2<main>)"),
+            ("_ZN5test32f1ENS_2t1ILZ8test3_f0EEE", "test3::f1(test3::t1<test3_f0>)"),
+            ("_ZN5test12f0ENS_1TILZNS_1xEEEE", "test1::f0(test1::T<test1::x>)"),
+            ("_ZN5test12f1ENS_2t1ILZNS_2f0EfEEE", "test1::f1(test1::t1<test1::f0(float)>)"),
+            # And the same entity one level down, where only c++filt follows.
+            ("_Z1xIXLZ1yEEEvv", "void x<y>()"),
+            ("_Z1xIXadLZ1yEEEvv", "void x<&y>()"),
+        ],
+    )
+    def test_the_bare_form_is_read(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "flagged"),
+        [
+            ("_Z1xIXLZ1yEEEvv", True),
+            ("_Z1xIXL_Z1yEEEvv", False),
+        ],
+    )
+    def test_the_parser_records_which_form_it_read(self, mangled, flagged):
+        """`tools/enumerate.py` asks the parser, not the text: a `LZ` can be an `L`
+        ending one production and a `Z` opening the next."""
+        from demangle.core.spelling import SPELLING_BUILDER
+        from demangle.schemes.itanium.parser import ItaniumParser
+
+        parser = ItaniumParser(mangled, SPELLING_BUILDER)
+        parser.parse()
+        assert parser._bare_entity_prefix_used is flagged
+
+
+class TestAPointerToMemberConversionInAClassNttp:
+    """`mc <parameter type> <expr> [<offset number>] E`, the conversion the ABI writes
+    inside a C++20 class-type non-type template parameter.
+
+    Compiled rather than taken from a table: given a struct holding an `int Derived::*`
+    and initialised from `&Base::z`, clang 18 writes the first name below. `c++filt` has
+    no `mc` production at all and hands every one of these back; `llvm-cxxfilt` reads it
+    and spells it exactly as this does.
+
+    `tools/mutate.py --seed 35` reported one of these as a divergence, which it is not:
+    what the mutant had actually damaged was the `L_Z` of the entity inside it. See
+    `TestStillRefusesWhatItShould.test_an_embedded_entity_is_named_by_a_whole_mangled_name`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # clang 18, `-std=c++20`, read out of the object file with `nm`.
+            (
+                "_Z1fIXtl6HoldermcM7DerivediadL_ZN4Base1zEEEEEEvv",
+                "void f<Holder{(int Derived::*)(&Base::z)}>()",
+            ),
+            # The same production with an explicit offset, and without the brace.
+            (
+                "_Z1fIXmcM7DerivedKiadL_ZN11MoreDerived1zEE8EEEvv",
+                "void f<(int const Derived::*)(&MoreDerived::z)>()",
+            ),
+        ],
+    )
+    def test_the_conversion_is_read(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected

@@ -379,6 +379,17 @@ ACCEPTED = {
             and (second[0] is None or _nests_a_legacy_argument_pack(name))
             and _uses_a_legacy_argument_pack(name)
         )
+        # Or an entity named with a bare `Z` rather than `_Z` inside an *expression*.
+        # `L Z <encoding> E` is g++'s compatibility spelling, and both references read it
+        # where it stands as a template argument -- six of libcxxabi's own vectors are
+        # that shape. LLVM accepts it only there: it is in `parseTemplateArg` and not in
+        # `parseExprPrimary`, so `_Z1xILZ1yEEvv` reads and `_Z1xIXLZ1yEEEvv`, the same
+        # entity one level down, does not. `c++filt` reads both and so does this, which
+        # is what keeps the vectors. Asked of the parser rather than looked for as `LZ`
+        # in the text, since an `L` ending one production and a `Z` opening the next
+        # spell the same two characters. `tools/mutate.py --seed 35`, which found it
+        # wearing a pointer-to-member conversion that looked like the disagreement.
+        or (first is None and _names_an_entity_with_a_bare_z(name))
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1101,6 +1112,19 @@ def _uses_a_legacy_argument_pack(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._legacy_pack_used
+
+
+def _names_an_entity_with_a_bare_z(mangled):
+    """Whether this library's reading of `mangled` took an `<expr-primary>` entity from
+    `L Z <encoding> E` rather than `L _Z <encoding> E`.
+
+    The flag is set wherever the bare form was read, including the template-argument
+    position both references accept; the rule that consults it also asks that
+    `llvm-cxxfilt` refused the name, which is what narrows it to the expression position
+    where the two references actually part.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._bare_entity_prefix_used
 
 
 def _nests_a_legacy_argument_pack(mangled):
