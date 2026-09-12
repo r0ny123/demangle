@@ -271,6 +271,25 @@ compiler named on each entry.
   A rule broad enough to catch it would swallow any second defect in the same name, which
   is worse than a divergence the gate keeps showing.
 
+- **A constrained `decltype(auto)` is a type, and so is a substitution candidate** —
+  *open*, and the reason `tools/mutate.py --seed 40` reports one divergence. `DK
+  <type-constraint>` is a `<type>`, which ABI 5.1.10 makes a candidate, so this records
+  the composite; `llvm-cxxfilt` 18.1.3 records nothing for it. Probing `_Z1fDKN1A1BE`
+  with `tools/probe_substitutions.py` shows the whole disagreement: `S_` is `A` to both,
+  and `S0_` is `A::B decltype(auto)` here and out of range there. One entry's difference
+  is enough to move every later back-reference, which is how a mutant of
+
+  ```
+  _ZNK5clang6driver5tools7openbsd4Link12ConstructJobE...DKNS0_9InputInfoE...S9_...
+  ```
+
+  comes back with `llvm::SmallVector<llvm, 4u>` from the reference and
+  `llvm::SmallVector<clang::driver::InputInfo decltype(auto), 4u>` here. `Dk` and `DK`
+  are already recorded above as newer than either reference, which is the likeliest
+  reading of this: support for the production landed without the table entry it implies.
+  Neither reference reads enough of it to settle the question, and the mutant is the only
+  place it has been reached, so nothing is claimed and no `ACCEPTED` rule hides it.
+
 ## 1. More schemes
 
 *Nothing here is outstanding.* Kept as a record of what each scheme is measured against,
