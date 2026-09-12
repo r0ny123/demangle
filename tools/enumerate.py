@@ -372,11 +372,21 @@ ACCEPTED = {
         # to both references -- and neither reading has any authority. The nested
         # pack is asked of the parser rather than looked for as `JI`, which sees only
         # a pack standing first. c++filt's reading of a non-nested pack is a second
-        # opinion and is kept as one. See `_uses_a_legacy_argument_pack`.
-        # `tools/mutate.py --seed 18` and `--seed 30`.
+        # opinion and is kept as one -- unless that pack also stands where a single
+        # type goes, outside any expansion, which is the disagreement the rule above
+        # already describes: there c++filt prints one member where this library prints
+        # one type per member, and it is doing so only because `llvm-cxxfilt`, which
+        # refuses the `I ... E` form outright, is not there to be the reference that
+        # does it. `_ZSt16__insertion_sortIN9__gnu_cxx17__normal_iteratorIPSt4pairIjfE
+        # St6vectorIS3_SaIS3_EEEEI12_GLOBAL__N_113WeightCompareEEvT_SB_T0_` is a
+        # mutant of a libstdc++ symbol whose `T0_` names such a pack: `(anonymous
+        # namespace)` alone to c++filt, `(anonymous namespace), WeightCompare` here.
+        # Two encodings no compiler writes in one name, and neither reading has any
+        # authority. See `_uses_a_legacy_argument_pack`.
+        # `tools/mutate.py --seed 18`, `--seed 30` and `--seed 37`.
         or (
             first is None
-            and (second[0] is None or _nests_a_legacy_argument_pack(name))
+            and (second[0] is None or _nests_a_legacy_argument_pack(name) or _uses_a_pack_outside_an_expansion(name))
             and _uses_a_legacy_argument_pack(name)
         )
         # Or an entity named with a bare `Z` rather than `_Z` inside an *expression*.
