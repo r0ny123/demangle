@@ -260,14 +260,22 @@ def readings(scheme, names, style=None):
     return found
 
 
-def ask_tolerantly(tool, names, batch):
+def ask_tolerantly(tool, names, batch, casualties=None):
     """`reference_answers`, for names that may take the reference down.
 
-    The gate only ever puts names this library reads to the reference, and those have
-    never killed one. The refused ones are another matter: Swift's own demangler aborts
-    on some of them, and a process that dies mid-batch answers nothing for any name in
-    it. So a batch that comes back short is split and asked again, down to the one name
-    that did it, which is recorded as `None` like a refusal.
+    A process that dies mid-batch answers nothing for any name in it, so a batch that
+    comes back short is split and asked again, down to the one name that did it. That
+    name is recorded as `None` and, where `casualties` is given, named in it.
+
+    Both halves of the gate need this. The refused mutants were the known case -- Swift's
+    own demangler aborts on some of them -- but a name this library *reads* can kill a
+    reference too, which the gate path had assumed could not happen. `c++filt
+    --format=gnat` from binutils 2.42 aborts on `aSO__bDF` with a detected buffer
+    overflow: an `'Output` attribute, a `__` separator and a `.Finalize` suffix in one
+    name, none of which does it alone. This library reads that mutant as
+    `a'Output.b.Finalize`, so it went to the reference through the gate and took the
+    whole Ada run down with it -- `tools/mutate.py --seed 37` died with 6,933 answers
+    for 20,000 names and checked no Ada at all.
 
     Binutils' D demangler is the other failure mode: a mutant whose back references
     chain takes it into gigabytes of expansion and never returns, while this library
@@ -283,10 +291,12 @@ def ask_tolerantly(tool, names, batch):
         except (SystemExit, subprocess.TimeoutExpired):
             if len(chunk) == 1:
                 answers[chunk[0]] = None
+                if casualties is not None:
+                    casualties.add(chunk[0])
             else:
                 half = len(chunk) // 2
-                answers.update(ask_tolerantly(tool, chunk[:half], batch))
-                answers.update(ask_tolerantly(tool, chunk[half:], batch))
+                answers.update(ask_tolerantly(tool, chunk[:half], batch, casualties))
+                answers.update(ask_tolerantly(tool, chunk[half:], batch, casualties))
     return answers
 
 
@@ -340,12 +350,14 @@ def run(scheme, count, seed, quiet, show, batch):
     ours_gnu = readings(scheme, names, style="gnu") if second_tool else {}
 
     # In batches: a reference is handed the names on stdin, and one process for half a
-    # million of them is a process that can die with nothing to show for it.
+    # million of them is a process that can die with nothing to show for it. Tolerantly,
+    # because a name this library reads can still kill a reference -- see
+    # `ask_tolerantly` -- and one that does must not take the rest of the scheme's run
+    # with it.
+    casualties = set()
+
     def ask(what, wanted):
-        answers = {}
-        for start in range(0, len(wanted), batch):
-            answers.update(reference_answers(what, wanted[start : start + batch]))
-        return answers
+        return ask_tolerantly(what, wanted, batch, casualties)
 
     theirs = ask(tool, names)
     second = ask(second_tool, names) if second_tool else {}
@@ -388,6 +400,17 @@ def run(scheme, count, seed, quiet, show, batch):
                 stand = stand_in.get(substitute)
                 if stand is not None or "$$h" not in ours[name]:
                     theirs[name] = stand
+
+    # A name that killed the reference is not a refusal and not a reading: there is no
+    # answer to compare, so it is left out of the comparison rather than counted as a
+    # disagreement. It is still worth naming -- a reference that aborts on a symbol is a
+    # finding about the reference, and the symbols in a binary are not always friendly.
+    if casualties:
+        who = Path(tool.split()[0]).name
+        print(f"{scheme:8} {len(casualties):>6} name(s) aborted {who}; not compared")
+        for name in sorted(casualties)[:show]:
+            print(f"   {name}")
+        names = [n for n in names if n not in casualties]
 
     differ = [
         (n, ours[n], theirs.get(n), (second.get(n), ours_gnu.get(n)))

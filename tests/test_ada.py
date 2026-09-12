@@ -281,3 +281,40 @@ class TestAdaRealWorld:
         for mangled, expected in rows:
             with subtests.test(mangled=mangled):
                 assert demangle.demangle(mangled) == expected
+
+
+class TestTheNameThatAbortsTheReference:
+    """`c++filt --format=gnat` from binutils 2.42 dies on a shape this reads.
+
+        $ printf 'aSO__bDF\n' | c++filt --format=gnat
+        *** buffer overflow detected ***: terminated
+        Aborted
+
+    Eight characters, and all three parts are needed: an `SO` attribute marker, a `__`
+    separator, and a `DF` suffix. Drop any one -- `aSO__b`, `a__bDF`, `aSObDF` -- and it
+    returns normally, so it is the two expansions in one name that do it. Only the GNAT
+    format reaches it; `c++filt` left to detect the scheme does not.
+
+    `tools/mutate.py --seed 37` found it as a mutant of a GNAT runtime symbol, and it
+    took the whole Ada run down: the reference answered 6,933 of 20,000 names and the
+    tool could pair none of them. `ask_tolerantly` now splits a batch down to the name
+    that did it and leaves that one out of the comparison, which is why the seed
+    completes.
+
+    This library reads all of these. The test is here so that stays true, and so the
+    shape is written down somewhere other than a fuzzer's output.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("aSO__bDF", "a'Output.b.Finalize"),
+            ("tSO__gDF", "t'Output.g.Finalize"),
+            (
+                "gnat__wide_string_split__slice_setSO__vstring__table_arrayDF",
+                "gnat.wide_string_split.slice_set'Output.vstring.table_array.Finalize",
+            ),
+        ],
+    )
+    def test_it_reads_here(self, mangled, expected):
+        assert demangle.demangle(mangled, language="ada") == expected
