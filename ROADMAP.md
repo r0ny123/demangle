@@ -230,6 +230,47 @@ compiler named on each entry.
   ones is the wrong side of the trade, and `TestTheThreeItStillClaimsWrongly` in
   `tests/test_gnuv2.py` pins both sides of it so the rule cannot be adopted by accident.
 
+- **`c++filt --format=gnat` aborts on an eight-character name** — *open*, and the one
+  entry here that is a crash rather than a wrong reading. Binutils 2.42:
+
+  ```
+  $ printf 'aSO__bDF\n' | c++filt --format=gnat
+  *** buffer overflow detected ***: terminated
+  Aborted
+  ```
+
+  All three parts are needed — an `SO` attribute marker, a `__` separator and a `DF`
+  suffix — and dropping any one of them returns normally, so it is the two expansions in
+  one name that overrun. Only the GNAT format reaches it; `c++filt` left to detect the
+  scheme does not. This library reads the shape as `a'Output.b.Finalize`, which is why a
+  mutant of a GNAT runtime symbol went to the reference through the gate and took the
+  whole Ada run of `tools/mutate.py --seed 37` down with it. `ask_tolerantly` now splits
+  a batch to the name that did it and leaves that one out of the comparison, and
+  `tests/test_ada.py` pins the reading. Worth reporting upstream: `c++filt` is what `nm`,
+  `objdump` and `addr2line` use, and the symbols in a binary are not always friendly.
+
+- **A `<template-param>` bound to a pack, resolved to one member and not the same one** —
+  *open*. `tools/mutate.py --seed 39` reads
+
+  ```
+  _ZSt12construct_atIcJRbcEEDTgsnwcvPvLi0E_T_pispcl7declvalIT0_EEEEPS3_DpOS4_
+  ```
+
+  a mutant of a libstdc++ symbol whose `S3_` is the entry `T0_` contributed, and `T0_` is
+  bound to the pack `J Rb c E`. Probing the table with `tools/probe_substitutions.py`
+  gives three answers for that one entry: the pack here, `bool&` to `llvm-cxxfilt`, and
+  `char` to `c++filt`. The references disagree with each other, which is the same defect
+  section 0 already records — the entry is the parameter, not an argument bound to it —
+  reached through a pack rather than through a second template scope.
+
+  Left unexplained on purpose. `ACCEPTED` has three arms for a pack standing where one
+  type goes: c++filt silent, and the two references agreeing on the first member. This is
+  the fourth, where they pick different members, and the evidence that would make the
+  rule narrow — that the two references disagree *with each other* — cannot be tested
+  from their answers, because those differ by output style whether they disagree or not.
+  A rule broad enough to catch it would swallow any second defect in the same name, which
+  is worse than a divergence the gate keeps showing.
+
 ## 1. More schemes
 
 *Nothing here is outstanding.* Kept as a record of what each scheme is measured against,
