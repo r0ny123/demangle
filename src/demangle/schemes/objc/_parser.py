@@ -795,12 +795,27 @@ def detect(name):
     actually claims a name is the parse succeeding. A form that says `objc` somewhere in
     it is worth trying, and so are the two that do not: `-[`/`+[`, and the `_i_`/`_c_`
     method mangling.
+
+    The markers are tested one by one rather than through `any(...)` over
+    `_SCREEN_MARKERS`. This plugin declares `_` among its first characters, so it is
+    offered every underscore-prefixed symbol in a binary -- 85% of the benchmark corpus
+    -- and the generator cost six interpreter frames per name to run five membership
+    tests that are each a single C-level scan. Written out it is the same five scans in
+    the same short-circuiting order, and no frames at all: 71,778 calls off the cold
+    corpus. `_SCREEN_MARKERS` stays as the documentation of what the screen is.
     """
     if not name:
         return False
     if name[0] in "-+":
         return _apple_method(name) is not None
-    if not any(marker in name for marker in _SCREEN_MARKERS) and not _method_prefixed(name):
+    if (
+        "objc" not in name
+        and "OBJC" not in name
+        and "_block_invoke" not in name
+        and "block_literal" not in name
+        and "block_descriptor" not in name
+        and not _method_prefixed(name)
+    ):
         return False
     try:
         return parse_objc_symbol(name) is not None

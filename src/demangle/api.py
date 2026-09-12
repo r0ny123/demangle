@@ -30,7 +30,7 @@ from .core import registry as _registry
 from .core import style as _style_module
 from .core.ast import Node, builder_for
 from .core.cache import MISSING, BoundedCache
-from .core.decorations import split_decorations
+from .core.decorations import VERSION_SEPARATOR, split_decorations
 from .core.errors import (
     DemanglingError,
     LimitExceeded,
@@ -226,7 +226,20 @@ def demangle(
 
     for candidate in tried:
         try:
-            if plugin is None and not _claims(candidate, mangled, base):
+            # `_claims` written out. It is the same two tests in the same order, and its
+            # `try` is redundant *here*: a `detect` that throws is caught by this loop's
+            # own handler, which calls the same `reraise_if_operational` and then tries
+            # the next scheme, exactly as returning False would have. What the call cost
+            # was an interpreter frame for every candidate a name is offered to -- around
+            # seven per name on the benchmark corpus, six of them on a symbol that is not
+            # mangled at all, which is most of a real symbol table. `detect()` keeps the
+            # helper: it is not the hot path and one implementation of the rule should be
+            # readable somewhere.
+            if (
+                plugin is None
+                and not candidate.detect(mangled)
+                and (base is None or not candidate.symbol_table_decorations or not candidate.detect(base))
+            ):
                 continue
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
         except LimitExceeded:
@@ -522,9 +535,15 @@ def _undecorated(mangled):
     the name, and a symbol table is mostly names that carry no decoration at all -- so
     the answer for the first plugin that asks is the answer for all of them, and it is
     almost always "there is nothing to take off".
+
+    `split_decorations` is what defines the split and stays the place it is written; this
+    is its answer read directly off the same `find`, because building and unpacking a
+    two-tuple through a second interpreter frame is a per-name cost for a question whose
+    answer is `None` for nearly every symbol. The separator is imported rather than
+    spelled again, so the two cannot drift apart.
     """
-    base, decoration = split_decorations(mangled)
-    return base if decoration else None
+    version = mangled.find(VERSION_SEPARATOR)
+    return mangled[:version] if version > 0 else None
 
 
 def _claims(plugin, mangled, base):
