@@ -774,3 +774,67 @@ class TestAnExceptionSpecificationComesFirstToCxxfilt:
     def test_the_option_is_what_selects_it(self):
         on = demangle.style("llvm", itanium={"gnu_exception_spec_first": True})
         assert demangle.demangle_strict("_Z1fM1AKDoFvvE", style=on) == "f(void (A::*)() noexcept const)"
+
+
+class TestADependentElaboratedTypeSpecifier:
+    """`<class-enum-type> ::= Ts <name> | Tu <name> | Te <name>`.
+
+    What a writer had to spell out because the type is dependent: `struct T::Inner`.
+    Compiled rather than taken from a table -- clang 18 on
+
+        template <class T> void f(struct T::Inner*) {}
+        struct Host { struct Inner {}; union Un { int a; }; enum En { E0 }; };
+        void use() { f<Host>(nullptr); }
+
+    writes `_Z1fI4HostEvPTsNT_5InnerE`, and the union and enum forms alongside it.
+    `c++filt` 2.42 refuses all three; `llvm-cxxfilt` reads them and spells them as here.
+
+    The whole of `<name>` stands after the keyword. A `<source-name>` opens with its
+    length, which a guard here used to read as the index of a `Ts <index> _` marker on a
+    `<template-param>` -- so `Ts3Foo` was refused. That marker is not a production; see
+    `test_a_parameter_carries_no_pack_marker`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # clang 18, `-std=c++17`, read out of the object file with `nm`.
+            ("_Z1fI4HostEvPTsNT_5InnerE", "void f<Host>(struct Host::Inner*)"),
+            ("_Z1gI4HostEvPTuNT_2UnE", "void g<Host>(union Host::Un*)"),
+            ("_Z1hI4HostEvPTeNT_2EnE", "void h<Host>(enum Host::En*)"),
+            # The rest of `<name>`: a plain source-name, one carrying template
+            # arguments, and the `St` abbreviation.
+            ("_Z1fTs3Foo", "f(struct Foo)"),
+            ("_Z1fTu3Foo", "f(union Foo)"),
+            ("_Z1fTe3Foo", "f(enum Foo)"),
+            ("_Z1fTs3FooIiE", "f(struct Foo<int>)"),
+            ("_Z1fTsSt3Foo", "f(struct std::Foo)"),
+            ("_Z1fTsN3Foo3BarE", "f(struct Foo::Bar)"),
+            # And the specifier is a substitution candidate like any other type.
+            ("_Z1fTs3FooS_", "f(struct Foo, struct Foo)"),
+        ],
+    )
+    def test_the_specifier_is_read(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    @pytest.mark.parametrize("mangled", ["_Z1fIiEvTp_", "_Z1fIiEvTs_", "_Z1fIJiEEvDpTs_", "_Z1fIJiEEvDpTp_"])
+    def test_a_parameter_carries_no_pack_marker(self, mangled):
+        """`<template-param>` is `T_`, `T <index> _` or the `TL` level form, and nothing
+        else.
+
+        A `p` and an `s` were consumed here as markers on the parameter. Neither is a
+        production: `Tp` introduces a `<template-param-decl>`, which
+        `_PARAMETER_DECLARATIONS` already records as unconfusable with a
+        `<template-param>` and which `template_param_decl` reads, and `Ts` opens the
+        elaborated specifier above. Reading them made each of these a second mangling of
+        `_Z1fIiEvT_`, `void f<int>(int)`, which is the one answer worse than none. Both
+        references refuse every one, no compiler writes them, and there is no
+        `T[ps]<index>_` among the checked-in symbols.
+        """
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(mangled, language="itanium")
+        assert demangle.demangle(mangled) == mangled
+
+    def test_the_parameter_forms_that_are_productions_still_read(self):
+        assert demangle.demangle_strict("_Z1fIiEvT_") == "void f<int>(int)"
+        assert demangle.demangle_strict("_Z1fIJiEEvDpT_") == "void f<int>(int)"

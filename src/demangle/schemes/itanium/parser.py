@@ -212,10 +212,6 @@ def _c_hex_binary(bits, exponent_bits, fraction_bits):
     return f"{sign}0x{leading}{'.' + fraction if fraction else ''}p{max(exponent, 1) - bias:+d}"
 
 
-#: What a `<template-param>` index looks like where an elaborated specifier would have a
-#: name: `Ts0_` is the pack marker, `TsN...E` is `struct ...`.
-_INDEX_START = frozenset("0123456789_")
-
 #: Clang's vendor qualifier for "conforms to this Objective-C protocol", and the type
 #: that a pointer to it is spelled `id<...>` rather than `objc_object<...>*`.
 #: How the two references spell C99's complex and imaginary qualifiers, indexed by
@@ -2443,14 +2439,20 @@ class ItaniumParser:
         # `TL <level-1> _` names the level; a bare `T` is level 0, the innermost
         # enclosing <template-args>. The levels above that are the lists a generic
         # lambda and a template template parameter declare, in nesting order.
+        #
+        # `L` is the only letter that may stand here. A `p` and an `s` were consumed as
+        # well, as markers on the parameter, and neither is a production: `Tp` introduces
+        # a `<template-param-decl>` -- which `_PARAMETER_DECLARATIONS` already says
+        # cannot be confused with a `<template-param>`, and which `template_param_decl`
+        # reads -- and `Ts` opens an elaborated specifier a few productions down. Eating
+        # them made `_Z1fIiEvTp_` and `_Z1fIiEvTs_` two further manglings of
+        # `_Z1fIiEvT_`, which both references refuse and no compiler writes: there is no
+        # `T[ps]<index>_` in any of the 640,000 checked-in symbols, none in the grammar
+        # in docs/specs, and no test asked for one.
         level = 0
         if reader.eat("L"):
             level = int(reader.digits()) + 1
             reader.expect("_")
-        else:
-            # Tp/Ts mark a pack expansion of the parameter; the pack was recorded as one
-            # argument, so the marker only needs consuming.
-            reader.eat("p") or reader.eat("s")
         index = 0 if reader.peek() == "_" else reader.integer(allow_negative=False) + 1
         reader.expect("_")
 
@@ -2783,12 +2785,18 @@ class ItaniumParser:
 
         if char == "T":
             following = reader.ahead(1)
-            if following in _ELABORATED_KEYWORDS and reader.ahead(2) not in _INDEX_START:
+            if following in _ELABORATED_KEYWORDS:
                 # <class-enum-type> ::= Ts <name> | Tu <name> | Te <name>
                 #
-                # A dependent type the writer had to spell out: `struct T::c`. `Ts` is told
-                # from the `Ts <index> _` pack marker by what follows -- an index is digits
-                # or `_`, and a name is neither.
+                # A dependent type the writer had to spell out: `struct T::c`, which
+                # clang writes `PTsNT_5InnerE` for `struct T::Inner*`. This used to be
+                # taken only when what followed was neither a digit nor `_`, to tell it
+                # from a `Ts <index> _` pack marker on a `<template-param>` -- but that
+                # marker is not a production, and removing it leaves the whole of
+                # `<name>` reachable here. A `<source-name>` opens with its length, so
+                # the guard had been refusing `Ts3Foo` and `Ts3FooIiE` -- `struct Foo`
+                # and `struct Foo<int>` to `llvm-cxxfilt`, and what the grammar in
+                # docs/specs says they are.
                 keyword = _ELABORATED_KEYWORDS[following]
                 reader.pos += 2
                 return subs.remember(builder.raw(f"{keyword} {builder.spell(self.class_enum_type())}"), "type")
