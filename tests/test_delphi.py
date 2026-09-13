@@ -120,6 +120,25 @@ class TestClaimsNothingItShouldNot:
     @pytest.mark.parametrize(
         "name",
         [
+            # A `@` and then anything that is not a Borland export. This scheme declares
+            # `@` as its first character, so it is offered every one of these, and it
+            # copies characters through rather than checking an alphabet -- so without a
+            # screen it claimed them all and answered with the `@` taken off and every
+            # inner one turned into `::`, which is this grammar's qualifier separator.
+            #
+            # The first three are what a demangled Swift type looks like, which is how
+            # this was found: `demangle(demangle(x))` has to be `demangle(x)`, and for
+            # 49 of the corpora's Swift names it was not. See
+            # `TestReadingAnAnswerAgainChangesNothing` in `tests/test_architecture.py`.
+            "@convention(block) (Swift.Int) -> Swift.UInt",
+            "@escaping @differentiable @callee_guaranteed (@unowned Swift.Float) -> ()",
+            "@objc SomeClass.method()",
+            "@ hello world",
+            # And the ones that need no re-reading to reach: MSVC and clang-cl put both
+            # of these in every COFF object they emit, and `@feat.00` came back as
+            # `feat.00` -- a name that is neither the symbol nor a declaration.
+            "@feat.00",
+            "@comp.id",
             "main",
             "_Z1fv",
             "?f@@YAXH@Z",

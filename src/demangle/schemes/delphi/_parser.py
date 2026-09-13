@@ -126,6 +126,13 @@ _MSVC_FASTCALL = re.compile(r"^@[^$]*@\d+$")
 #: `@@InitExe` is a linker procedure with no type encoding. `@@bug@@x` is not.
 _LINKPROC_BARE = re.compile(r"^@@[A-Za-z_][A-Za-z0-9_]*$")
 
+#: Every character a Borland export is made of, and nothing else: Pascal identifiers --
+#: letters, digits and `_` -- with the encoding's own markers, `@` between qualifiers,
+#: `$` opening a type, `%` a template, and `&` and `#` inside a generated name. Measured
+#: over the 11,484 recorded exports in `tests/conformance/delphi-*.txt`, which use these
+#: and no others. `detect` screens on it; see there for what was claimed without it.
+_SYMBOL_CHARACTERS = re.compile(r"[A-Za-z0-9_@$%&#]+")
+
 _TABLE_KIND = {
     "FL": "frndl",
     "CH": "chtbl",
@@ -851,8 +858,29 @@ def detect(name):
     over came back as `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ` -- a Delphi
     declaration built out of half an MSVC symbol. Asked for by language it is still read;
     what this decides is whether to claim a name nobody said was Delphi's.
+
+    The same copying-through is why the alphabet is checked as a whole rather than one
+    forbidden character at a time. This scheme declares `@` as its first character and
+    is offered every symbol that starts with one, and it claimed a great deal that no
+    Borland tool wrote: `@ hello world` came back as ` hello world`, and so did every
+    demangled Swift type -- `@convention(block) (Swift.Int) -> Swift.UInt` reads as
+    `convention(block) (Swift.Int) -> Swift.UInt` and
+    `@escaping @differentiable @callee_guaranteed (@unowned Swift.Float)` turns its
+    inner markers into `::`, because `@` is this grammar's qualifier separator. That is
+    reachable from a symbol table and not only from re-reading output: `@feat.00` and
+    `@comp.id` are in every COFF object MSVC and clang-cl emit, and both came back with
+    the `@` taken off -- a name that is neither the symbol nor a declaration, which is
+    the one answer this package treats as worse than leaving a name alone.
+
+    `_SYMBOL_CHARACTERS` is what the 11,484 recorded exports are made of and nothing
+    else. See the module docstring for why that is the whole alphabet: a name is
+    `@`-delimited qualifiers -- Pascal identifiers -- with `$`, `%`, `&` and `#` as the
+    encoding's own markers. A `.` is not among them, which is what turns `@feat.00`
+    away.
     """
     if not name or name[0] != "@" or name.startswith("@__swift") or _MSVC_FASTCALL.match(name):
+        return False
+    if not _SYMBOL_CHARACTERS.fullmatch(name):
         return False
     if "?" in name:
         return False

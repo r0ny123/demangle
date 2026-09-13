@@ -341,6 +341,41 @@ class TestTheTreeSpellsWhatTheTextPathSpells:
                 assert differ == []
 
 
+class TestReadingAnAnswerAgainChangesNothing:
+    """What `demangle()` returns is not a mangled name, so offering it back is a no-op.
+
+    Not an academic property. A tool walking a symbol table demangles every entry and
+    prints it, and anything downstream that demangles again -- a log scraper, a second
+    pass over a report, a user pasting a line back -- must not get a third spelling. The
+    library's promise is that a name it cannot read comes back unchanged, and a
+    demangled answer is such a name.
+
+    It failed for 49 of the corpora's names, all of them Swift and all for one reason.
+    A Swift type is spelled with `@` markers -- `@convention(block) (Swift.Int) ->
+    Swift.UInt`, `@escaping @differentiable @callee_guaranteed (@unowned Swift.Float)` --
+    and `@` is the Delphi scheme's first character and its qualifier separator, so that
+    scheme claimed the answer and read the markers as scope: `escaping
+    ::differentiable ::callee_guaranteed (::unowned Swift.Float)`. The claim was never
+    about re-reading output alone -- `@feat.00` and `@comp.id` are in every COFF object
+    MSVC and clang-cl emit, and came back with the `@` taken off. Fixed by screening
+    `delphi.detect` on the alphabet Borland exports are actually made of; see there.
+    """
+
+    def test_every_corpus_name_in_both_styles(self, subtests):
+        names = corpus_names()
+        assert len(names) > 50_000, "corpora did not load; this test would prove nothing"
+        for style in ("llvm", "gnu"):
+            with subtests.test(style=style):
+                unstable = []
+                for name in names:
+                    once = demangle.demangle(name, style=style)
+                    if once == name:
+                        continue
+                    if demangle.demangle(once, style=style) != once:
+                        unstable.append((name, once))
+                assert unstable == []
+
+
 class TestTheToolsAndTheSuiteAgree:
     """Two lists of excused names have to say the same thing.
 
