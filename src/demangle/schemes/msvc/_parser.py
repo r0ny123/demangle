@@ -393,6 +393,12 @@ class _Demangler:
 
     def __init__(self, mangled, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         self.text = mangled
+        #: `len(self.text)`, taken once. `self.text` is written here and nowhere else, so
+        #: the end of input is a property of the parser rather than a thing to measure --
+        #: and `eof` is the most-called method in this scheme by a wide margin, a million
+        #: times over four thousand names, which made the `len` in it a million calls of
+        #: its own.
+        self.length = len(mangled)
         #: Which parts of a declaration to print. Held by the *parser* and not only by
         #: the renderer, because this scheme resolves a back-reference against rendered
         #: text: a template argument and a nested symbol are spelled as they are read, so
@@ -439,21 +445,30 @@ class _Demangler:
         self.max_render = min(limits.max_output, 32 * len(mangled) + 256)
 
     def eof(self):
-        return self.pos >= len(self.text)
+        return self.pos >= self.length
 
+    # The three below test the bound themselves rather than calling `eof`, and `take`
+    # does not reach `peek`. Every production in this scheme reads through them -- a
+    # million `eof`s, half a million `peek`s and a third of a million `eat`s over four
+    # thousand names -- and each call was an interpreter frame around one comparison.
+    # `eof` stays for the twenty places that ask the question without consuming.
     def peek(self):
-        if self.eof():
+        pos = self.pos
+        if pos >= self.length:
             raise _Bail
-        return self.text[self.pos]
+        return self.text[pos]
 
     def take(self):
-        char = self.peek()
-        self.pos += 1
-        return char
+        pos = self.pos
+        if pos >= self.length:
+            raise _Bail
+        self.pos = pos + 1
+        return self.text[pos]
 
     def eat(self, char):
-        if not self.eof() and self.text[self.pos] == char:
-            self.pos += 1
+        pos = self.pos
+        if pos < self.length and self.text[pos] == char:
+            self.pos = pos + 1
             return True
         return False
 
@@ -478,8 +493,13 @@ class _Demangler:
         entries. Both rules move the indices every later back-reference resolves against, so
         appending unconditionally does not merely miss a compression - it reads "?3" as the
         fourth name where the mangler counted three, and answers a name the grammar refuses.
+
+        The bound is tested first. Both conditions have to hold and neither has a side
+        effect, so the order is free to be chosen on cost -- and a full table is the
+        common case on any name long enough to matter, where testing it first skips a
+        scan of the list rather than finishing one that cannot change anything.
         """
-        if name not in self.name_backrefs and len(self.name_backrefs) < 10:
+        if len(self.name_backrefs) < 10 and name not in self.name_backrefs:
             self.name_backrefs.append(name)
 
     def templateInstantiation(self, operator=None):

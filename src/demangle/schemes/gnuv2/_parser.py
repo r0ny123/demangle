@@ -248,22 +248,29 @@ class _Cur:
     cursor has to be a value the caller can replace, not an index into one buffer.
     """
 
-    __slots__ = ("i", "s")
+    __slots__ = ("i", "n", "s")
 
     def __init__(self, s, i=0):
         self.s = s
         self.i = i
+        #: `len(s)`, taken once. A cursor is *replaced* rather than re-pointed -- that is
+        #: what the note above is about -- so the string it holds never changes under it
+        #: and its length is a property of the cursor. `at` is the most-called method in
+        #: this scheme, and the `len` inside it was a call of its own each time. This
+        #: scheme also parses inside `detect`, so it runs on names that turn out to
+        #: belong to nobody.
+        self.n = len(s)
 
     def at(self, offset=0):
         """The character `offset` ahead, or `""` past the end, which stands in for NUL."""
         index = self.i + offset
-        return self.s[index] if 0 <= index < len(self.s) else ""
+        return self.s[index] if 0 <= index < self.n else ""
 
     def rest(self):
         return self.s[self.i :]
 
     def done(self):
-        return self.i >= len(self.s)
+        return self.i >= self.n
 
     def advance(self, count=1):
         self.i += count
