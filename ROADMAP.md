@@ -271,6 +271,21 @@ compiler named on each entry.
   A rule broad enough to catch it would swallow any second defect in the same name, which
   is worse than a divergence the gate keeps showing.
 
+  It is not one stray mutant. Seeds 39, 42, 43 and 48 all reach it, every one a damaged
+  `std::construct_at` whose `S3_` or `S4_` is the entry `T0_` contributed — which is why
+  the shape is written down here rather than triaged again each time. The members differ
+  by seed and so does what the references make of them: with a one-member pack both keep
+  an unexpanded `...` where this expands it, and with two they each pick a different one.
+
+- **`$$C` over a `__restrict` pointer puts the two qualifier words in either order** —
+  *open, and cosmetic*. `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z` from `tools/mutate.py --seed 42`
+  is `char *const __restrict` here and `char *__restrict const` to `llvm-undname`: the
+  same declaration, since the order of `const` and `__restrict` after a `*` is free, and
+  the two agree on every shape a compiler writes — `?x@@3QIADA` is `char *const
+  __restrict x` to both. They part only where an outer `$$CB` is applied over a pointer
+  that already carries `I`, which is a shape section 0 elsewhere records no compiler as
+  writing. Nothing to fix and nothing to claim; written down so it is not triaged twice.
+
 - **A constrained `decltype(auto)` is a type, and so is a substitution candidate** —
   *open*, and the reason `tools/mutate.py --seed 40` reports one divergence. `DK
   <type-constraint>` is a `<type>`, which ABI 5.1.10 makes a candidate, so this records
