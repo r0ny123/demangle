@@ -736,6 +736,20 @@ survives.
   names read identically under both styles and through the tree, and 40,000 components
   built out of escape fragments -- refusals included, since a refusal is an answer here.
 
+  `Parser.integer_62` went the same way afterwards, for **17%** off itself: it wrote the
+  cursor back to the object once per digit, which nothing reads after a refusal because
+  no caller in this scheme catches one, and carried a `first` flag through every turn of
+  the loop for a case that is 497 of its 22,152 calls. Measured on the function alone
+  over the digit distribution the corpora show, seven rounds a side, three times with no
+  overlap; the whole-corpus clock cannot see one percent.
+
+  Rejected beside it, and worth the note: merging the printer's adjacent `emit` calls
+  where no node boundary falls between them. It is 15,114 fewer calls of the 4.3 million
+  the cold benchmark costs -- a third of a percent -- and it regroups the string
+  fragments inside 1,250 of the 5,761 Rust trees. The rendered text and the node
+  structure are identical either way, but `parse()` exists so that a caller can walk the
+  parts, and a third of a percent is not worth moving them under one.
+
 Nothing is left under this heading. `parse()` was the next thing worth measuring, and it
 has now been measured rather than guessed at: against `demangle_strict()` over the same
 names, cache cleared each round, median of nine.
