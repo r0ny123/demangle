@@ -916,9 +916,22 @@ class _Demangler:
                 which = self.take()
                 if which == "1":
                     written = [self.templateInteger() for _ in range(4)]
-                    # where the base sits may be negative, but how far the table reaches and
-                    # what it is flagged with may not
-                    if any(value.startswith("-") for value in written[2:]):
+                    # The four are `mdisp, pdisp, vdisp, attributes`, and only the second
+                    # may be negative: it is where the vbtable pointer sits, and -1 says
+                    # there is no virtual base. The other three are an offset within the
+                    # object, an index into the table, and a flag word. That is what the
+                    # 82 recorded descriptors show -- every one has a non-negative first
+                    # number and most have `-1` second -- and what `llvm-undname`
+                    # enforces.
+                    #
+                    # The first was allowed to be negative here, which bought nothing and
+                    # cost two readings. `?A@` is a negated zero, so `??_R1?A@A@A@A@...`
+                    # and `??_R1A@A@A@A@...` were one name spelled two ways, the fault
+                    # this package treats as worse than refusing; and a real negative
+                    # resynchronised the parse, so `??_R1?0A@A@A@A@Other@ns@@8` came back
+                    # as `ns::Other::A::` -- a class path with a component the name does
+                    # not hold. `llvm-undname` refuses both. `tools/mutate.py --seed 60`.
+                    if written[0].startswith("-") or any(value.startswith("-") for value in written[2:]):
                         raise _Bail
                     at = ", ".join(str(int(value)) for value in written)
                     return f"`RTTI Base Class Descriptor at ({at})'", "rtti"

@@ -18,6 +18,8 @@ and none of those does.
 
 import pathlib
 
+import pytest
+
 import demangle
 
 from .conftest import load_corpus
@@ -140,3 +142,45 @@ class TestWhatIsNotADescriptor:
         assert demangle.demangle("._M") == "unsigned __int128 `RTTI Type Descriptor Name'"
         assert demangle.demangle("._L") == "__int128 `RTTI Type Descriptor Name'"
         assert demangle.demangle("?x@@3_MA") == "unsigned __int128 x"
+
+
+class TestABaseClassDescriptorsFourNumbers:
+    """`??_R1` carries `mdisp, pdisp, vdisp, attributes`, and only `pdisp` may be
+    negative: it is where the vbtable pointer sits, and -1 says there is no virtual
+    base. The other three are an offset within the object, an index into the table and
+    a flag word.
+
+    That is what the 82 recorded descriptors show -- every one has a non-negative first
+    number, and most carry `-1` second -- and what `llvm-undname` enforces. The first
+    was allowed to be negative here, which bought nothing and cost two readings:
+    `?A@` is a negated zero, so the two names below spelled one descriptor two ways; and
+    a real negative resynchronised the parse into a class path with a component the name
+    does not hold. `tools/mutate.py --seed 60`.
+    """
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            # A negated zero, which aliased with the plain zero below it.
+            "??_R1?A@A@A@A@Other@ns@@8",
+            "??_R1?A@?0A@EA@Other@ns@@8",
+            # A real negative first number, which came back as `ns::Other::A::`.
+            "??_R1?0A@A@A@A@Other@ns@@8",
+            # And the two the rule already refused, for company.
+            "??_R1A@A@?A@A@Other@ns@@8",
+            "??_R1A@A@A@?A@Other@ns@@8",
+        ],
+    )
+    def test_a_negative_where_one_cannot_stand_is_refused(self, mangled):
+        assert demangle.demangle(mangled, language="msvc") == mangled
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("??_R1A@A@A@A@Other@ns@@8", "ns::Other::`RTTI Base Class Descriptor at (0, 0, 0, 0)'"),
+            ("??_R1A@?0A@EA@Other@ns@@8", "ns::Other::`RTTI Base Class Descriptor at (0, -1, 0, 64)'"),
+            ("??_R1BA@?0A@EA@Other@ns@@8", "ns::Other::`RTTI Base Class Descriptor at (16, -1, 0, 64)'"),
+        ],
+    )
+    def test_the_shapes_a_compiler_writes_still_read(self, mangled, expected):
+        assert demangle.demangle(mangled, language="msvc") == expected
