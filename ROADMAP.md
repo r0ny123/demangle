@@ -4,11 +4,28 @@ What is not done yet, and -- for the schemes -- what was done and why, so the re
 survives the commit that carried it. Each open entry says what would have to change, so
 anyone can pick one up.
 
+| # | Heading | State |
+| --- | --- | --- |
+| [0](#0-where-a-reference-is-wrong) | Where a reference is wrong | 16 closed, **1 open** |
+| [1](#1-more-schemes) | More schemes | 12 closed, covering all fourteen schemes |
+| [2](#2-performance) | Performance | 9 closed |
+| [2a](#2a-what-hostile-input-can-buy) | What hostile input can buy | measured for every scheme |
+| [3](#3-output-modes) | Output modes | 6 closed |
+| [4](#4-issue-28-next-steps-and-modern-compiler-sweeps) | Issue #28 sweeps | 12 closed, in three groups |
+
+**How to read the boxes.** A ticked one is closed, and the italic verdict on the entry
+says how it closed -- *landed*, *fixed*, *settled*, *done*, or *rejected*, because an
+idea that was measured and turned down is closed too and the measurement is the reason
+to keep it. An empty box is open, and there is one in the file: a crash in `c++filt
+--format=gnat`, which is binutils' to fix rather than this project's.
+
 **No scheme is outstanding.** Section 1 is now a record rather than a queue: every
 mangling this project set out to read, it reads, and the survey below says why nothing
 else on the list is worth transcribing. What remains open is the measured shortfall
 against the upstream corpora, immediately below, and every item of it is documented
 rather than merely counted.
+
+## Conformance against the upstream corpora
 
 Conformance is measured against the reference projects' *own* corpora as well as the
 ones checked in here. Every checked-in corpus is exact against its reference, and so are
@@ -34,24 +51,6 @@ for those reasons, and `tests/test_conformance.py` says so where it pins it.
   is `c++filt -t` and `__cxa_demangle`'s type mode. So these four stay counted against
   the corpus, because the corpus scores the symbol entry point, and none of them is
   unreadable.
-- ~~**Per-level template parameter tracking**~~ — *done*. `TemplateArgumentTable` is a
-  stack: level 0 is the innermost `<template-args>`, and each generic lambda and each
-  template template parameter declaration opens a level of its own, so `TL<k>_<n>_`
-  reaches past one to the list outside it. Held flat, the levels overwrote each other
-  and such a reference came out as the numbering it carried — `T`, `T1` — which names
-  nothing. A level that is not in scope at all is now refused rather than named, as the
-  reference refuses it; inside a `<constraint-expression>` it is still spelled by its own
-  mangled text, which is also what the reference does and for the reason it gives.
-- ~~**An expansion over an empty pack, inside an expression**~~ — *done*. `Dp` already
-  dropped the argument in a type list; `sp` did not, so `getT<$_5>()()(std::forward<>(fp))`
-  was printed where the reference prints `getT<$_5>()()()`. Handled where the reference
-  handles it: any member of a comma-separated list that prints nothing takes its comma
-  with it.
-- ~~**A `sr` whose type carries template arguments**~~ — *done*. `srN <unresolved-type>
-  <template-args> E <base-unresolved-name>` — arguments after the type in the `N` form,
-  and *zero* qualifier levels after them, neither of which the ABI's own grammar admits
-  and both of which Clang emits. The arguments also sit outside the substitution entry
-  the type records, so an `S_` written after one names the bare parameter.
 - **One is a self-referential conversion operator**, `_Zcv1BIRT_EIS1_E`, whose type is
   the argument list that contains it. The reference guards against printing a cycle by
   printing *nothing* the second time round, so it answers `operator B<><>`; this used to
@@ -66,6 +65,27 @@ for those reasons, and `tests/test_conformance.py` says so where it pins it.
   substitution table, so the vector's `S_` is the lambda's own invented parameter; by the
   ABI's numbering, which GCC 13 and Clang both emit, it is `x`. `tests/test_conformance.py`
   pins both readings and says which compiler writes which.
+
+Three that had been in that count closed on the way here:
+
+- [x] **Per-level template parameter tracking** — *done*. `TemplateArgumentTable` is a
+  stack: level 0 is the innermost `<template-args>`, and each generic lambda and each
+  template template parameter declaration opens a level of its own, so `TL<k>_<n>_`
+  reaches past one to the list outside it. Held flat, the levels overwrote each other
+  and such a reference came out as the numbering it carried — `T`, `T1` — which names
+  nothing. A level that is not in scope at all is now refused rather than named, as the
+  reference refuses it; inside a `<constraint-expression>` it is still spelled by its own
+  mangled text, which is also what the reference does and for the reason it gives.
+- [x] **An expansion over an empty pack, inside an expression** — *done*. `Dp` already
+  dropped the argument in a type list; `sp` did not, so `getT<$_5>()()(std::forward<>(fp))`
+  was printed where the reference prints `getT<$_5>()()()`. Handled where the reference
+  handles it: any member of a comma-separated list that prints nothing takes its comma
+  with it.
+- [x] **A `sr` whose type carries template arguments** — *done*. `srN <unresolved-type>
+  <template-args> E <base-unresolved-name>` — arguments after the type in the `N` form,
+  and *zero* qualifier levels after them, neither of which the ABI's own grammar admits
+  and both of which Clang emits. The arguments also sit outside the substitution entry
+  the type records, so an `S_` written after one names the bare parameter.
 
 **D**, libiberty's `d-demangle-expected`: 366 of 366. What the last of them needed was
 not in the D ABI at all -- the five characters the reference names inside a string, the
@@ -143,8 +163,48 @@ declaration rather than from a demangler — with reduced sources in
 `tools/corpus_sources/reference_defects/` and `tools/corpus_sources/msvc/`, and the
 compiler named on each entry.
 
-- ~~**A qualifier in front of an MSVC deduced return type, dropped by
-  `llvm-undname`**~~ — *settled*, from the source rather than argued about. A deduced
+**Sixteen closed, one open** -- and the open one is a crash in a reference rather
+than a reading of ours.
+
+### Open
+
+- [ ] **`c++filt --format=gnat` aborts on an eight-character name** — *open*, and the one
+  entry here that is a crash rather than a wrong reading. Binutils 2.42:
+
+  ```
+  $ printf 'aSO__bDF\n' | c++filt --format=gnat
+  *** buffer overflow detected ***: terminated
+  Aborted
+  ```
+
+  Two expansions in one name are what overrun it, rather than that particular pair:
+  `aSO__bSO` goes the same way, and `aSO__bSR` does not, because the buffer has seven
+  characters of slack and `'Read` grows the name by three where `'Output` grows it by
+  five. Eight characters is the shortest a crash can be written in, since a second
+  expansion needs a separator and an entity name in front of it. Only the GNAT format
+  reaches it; `c++filt` left to detect the scheme does not. This library reads the shape
+  as `a'Output.b.Finalize`, which is why a mutant of a GNAT runtime symbol went to the
+  reference through the gate and took the whole Ada run of `tools/mutate.py --seed 37`
+  down with it. `ask_tolerantly` now splits a batch to the name that did it and leaves
+  that one out of the comparison, and `tests/test_ada.py` pins the reading.
+
+  It is already upstream, three times over: GCC PR 92453 (2019, with a two-pass patch
+  posted to gcc-patches that never drew a review), rediscovered as GCC PR 103893 and
+  binutils PR 28736, both closed onto the first. Still unfixed on gcc master, which sizes
+  the buffer `strlen (mangled) + 7 + 1` on the reasoning that the expanding cases "occur
+  only once" — the `continue` at the `__` separator is what makes that false, because the
+  loop comes back round for every component of the name and the stream attributes expand
+  in each one. The overrun is therefore not a fixed few bytes: every `xSO__` reads five
+  characters and writes nine, so a long enough symbol writes about four bytes past the
+  end for every five characters of its own length. `nm --demangle=gnat` and `objdump
+  --demangle=gnat` abort on an object file carrying such a symbol, not only `c++filt` on
+  a string, which is the part worth pressing — the symbols in a file you have been handed
+  are not always friendly. Nothing left to do on this side.
+
+### Closed
+
+- [x] **A qualifier in front of an MSVC deduced return type, dropped by
+  `llvm-undname`** — *settled*, from the source rather than argued about. A deduced
   return type is written `?` and a name — `?A?<auto>@@` — and takes a qualifier like any
   other type, so `const auto structured_const()` is `?B?<auto>@@`.
   `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp` is `Identifier->output(OB, Flags);`
@@ -157,8 +217,8 @@ compiler named on each entry.
   `tools/enumerate.py` carries the reason the reference's answer is not evidence when the
   fuzzers reach the same shape.
 
-- ~~**The extension qualifiers on the pointee of an MSVC pointer to member, dropped by
-  `llvm-undname`**~~ — *settled*, the same way. `__restrict` on a pointer and
+- [x] **The extension qualifiers on the pointee of an MSVC pointer to member, dropped by
+  `llvm-undname`** — *settled*, the same way. `__restrict` on a pointer and
   `__unaligned` on what it points at are ordinary declarator syntax for this target, and
   the mangling writes both in the pointee's own letters: `PEQExt@1@PEIFAH` is
   `int __unaligned *__restrict ns::Ext::*`. The reference prints both words for that same
@@ -171,8 +231,8 @@ compiler named on each entry.
   their declarations in `tests/conformance/msvc-reference-defects.txt`, and `ACCEPTED`
   in `tools/enumerate.py` explains the divergence for the fuzzers.
 
-- ~~**A `<template-template-param>` is a substitution candidate, and `llvm-cxxfilt`
-  does not record it**~~ — *settled*, from two compilers' output. `T_ I ... E` is two
+- [x] **A `<template-template-param>` is a substitution candidate, and `llvm-cxxfilt`
+  does not record it** — *settled*, from two compilers' output. `T_ I ... E` is two
   grammar components: the parameter, which 5.1.10 names as a candidate in its own right,
   and the specialisation built over it, which is a `<type>`. So it contributes two
   entries, and this library has recorded both since the change that reads
@@ -191,8 +251,8 @@ compiler named on each entry.
   which is the only case `ACCEPTED` has to carry, since where that reference reads such a
   name the rule for "both agree with this library" has already taken it.
 
-- ~~**An inheriting constructor's base class type, entered by one compiler and not the
-  other**~~ — *settled, and both are read now*. `CI1`/`CI2` name the base a constructor
+- [x] **An inheriting constructor's base class type, entered by one compiler and not the
+  other** — *settled, and both are read now*. `CI1`/`CI2` name the base a constructor
   is inherited from, and that `<base class type>` is a `<type>`, which 5.1.10 makes a
   substitution candidate. g++ 13.3.0 enters it; clang++ 18.1.3 does not. For
 
@@ -217,8 +277,8 @@ compiler named on each entry.
   `tools/corpus_sources/reference_defects/inheriting_constructor.cpp` pin both numberings
   against their declarations. `tools/mutate.py --seed 69`.
 
-- ~~**A recorded `<template-param>` resolved where it was written, not where it is
-  read**~~ — *fixed*, for the parameter and for anything built over one. The entry a
+- [x] **A recorded `<template-param>` resolved where it was written, not where it is
+  read** — *fixed*, for the parameter and for anything built over one. The entry a
   `<template-param>` contributes to the substitution table is the parameter, not the
   argument bound to it at that point, because the mangler canonicalises a template type
   parameter by level and index and so reuses one entry across two different templates.
@@ -227,7 +287,7 @@ compiler named on each entry.
   answer on 322, and GNU c++filt 2.42 refuses 227 of those and agrees with us on 91 of
   the 95 it reads.
 
-- ~~**A generic lambda's own parameter, reached through a substitution**~~ — *closed in
+- [x] **A generic lambda's own parameter, reached through a substitution** — *closed in
   the gnu style*, which now spells the number GNU spells. For
 
   ```cpp
@@ -251,7 +311,7 @@ compiler named on each entry.
   llvm resolves `S3_` under `run` rather than under the closure, which is the defect
   above.
 
-- ~~**The remaining gnu-style spelling gaps**~~ — *closed*, 80 of the 217,057 names GNU
+- [x] **The remaining gnu-style spelling gaps** — *closed*, 80 of the 217,057 names GNU
   c++filt reads down to 3, and those 3 are the reference defect above. None of the five
   changed what a name *means*; all were spelling policy, each read off `c++filt` with
   probes rather than guessed, each behind its own option and off under llvm style.
@@ -287,7 +347,7 @@ compiler named on each entry.
   of the three kinds, every declarator shape, and two levels of `Tt` nesting — 242 names
   agreeing byte for byte. `tests/test_gnu_expressions.py`.
 
-- ~~**`gnuv2` claims ordinary C symbols**~~ — *mostly closed*, issue #6. Two of the
+- [x] **`gnuv2` claims ordinary C symbols** — *mostly closed*, issue #6. Two of the
   three causes were spellings no declaration contains, and `_plausible` now refuses them:
   a parameter list holding `int0_t` (what libiberty prints when `I` is followed by
   something that is not hex) and `void` used as one parameter among several. Detection
@@ -311,7 +371,7 @@ compiler named on each entry.
   ones is the wrong side of the trade, and `TestTheThreeItStillClaimsWrongly` in
   `tests/test_gnuv2.py` pins both sides of it so the rule cannot be adopted by accident.
 
-- ~~**Two leniencies of this library's own, each shared with one reference**~~ —
+- [x] **Two leniencies of this library's own, each shared with one reference** —
   *recorded, and kept*. `tools/mutate.py --seed 65` and `--seed 66` found the two, and
   both are places where the references split rather than places either of them settles.
 
@@ -334,7 +394,7 @@ compiler named on each entry.
   Both are pinned — `tests/test_types.py` and `tests/test_msvc.py` — and `ACCEPTED` in
   `tools/enumerate.py` carries each reason.
 
-- ~~**The MSVC type grammar, in the one position that holds a bare one**~~ — *swept, and
+- [x] **The MSVC type grammar, in the one position that holds a bare one** — *swept, and
   clean*. `tools/enumerate.py`'s three MSVC jobs all reach a type through a *signature*,
   where the calling convention and the return type have to be read before the type
   starts and most of a four-character alphabet is spent getting there. A variable's own
@@ -345,7 +405,7 @@ compiler named on each entry.
   the prefix widens `tools/mutate.py`'s MSVC alphabet too, since that is drawn from these
   jobs; eight seeds at 200,000 mutants under the wider one are clean.
 
-- ~~**The gnu style over libcxxabi's own corpus**~~ — *swept, and clean*. Every one of
+- [x] **The gnu style over libcxxabi's own corpus** — *swept, and clean*. Every one of
   the 29,926 names `c++filt` can be asked about on a command line was put to it and
   compared with this library's gnu-style answer: 29 differ, and all 29 are already
   written down. Twenty-two are the `char [N]{(char)104, ...}` spelling of a string
@@ -356,11 +416,11 @@ compiler named on each entry.
   the *old* `_ZGR` form `#0`, a production it reads and the modern `_ZGR <name> _` one it
   refuses entirely.
 
-- ~~**A D back reference to a scope reproduced only the name at its target**~~ —
-  *fixed*, and it was this library's memo rather than a reading. `tools/mutate.py --seed 69` damages
-  `core.internal.lifetime.emplaceInitializer` into a name whose last parameter is a type
-  back reference pointing at a qualified name that continues with a function type and a
-  further component — a *scope*, which nothing in the grammar marks and which both
+- [x] **A D back reference to a scope reproduced only the name at its target** — *fixed*,
+  and it was this library's memo rather than a reading. `tools/mutate.py --seed 69`
+  damages `core.internal.lifetime.emplaceInitializer` into a name whose last parameter is
+  a type back reference pointing at a qualified name that continues with a function type
+  and a further component — a *scope*, which nothing in the grammar marks and which both
   readers find by reading a function type and seeing whether a component follows it.
   `c++filt --format=dlang` reproduces the whole of it, `...emplaceRef(ref X, ref Y).S`;
   this reproduces `...emplaceRef` and stops. Everything else in the 900-character answer
@@ -378,41 +438,8 @@ compiler named on each entry.
   names in heading 2a are unchanged to within the clock's spread.
   `tests/test_d.py::TestTwoBackReferencesToOneTargetReadItTheSameWay`.
 
-- **`c++filt --format=gnat` aborts on an eight-character name** — *open*, and the one
-  entry here that is a crash rather than a wrong reading. Binutils 2.42:
-
-  ```
-  $ printf 'aSO__bDF\n' | c++filt --format=gnat
-  *** buffer overflow detected ***: terminated
-  Aborted
-  ```
-
-  Two expansions in one name are what overrun it, rather than that particular pair:
-  `aSO__bSO` goes the same way, and `aSO__bSR` does not, because the buffer has seven
-  characters of slack and `'Read` grows the name by three where `'Output` grows it by
-  five. Eight characters is the shortest a crash can be written in, since a second
-  expansion needs a separator and an entity name in front of it. Only the GNAT format
-  reaches it; `c++filt` left to detect the scheme does not. This library reads the shape
-  as `a'Output.b.Finalize`, which is why a mutant of a GNAT runtime symbol went to the
-  reference through the gate and took the whole Ada run of `tools/mutate.py --seed 37`
-  down with it. `ask_tolerantly` now splits a batch to the name that did it and leaves
-  that one out of the comparison, and `tests/test_ada.py` pins the reading.
-
-  It is already upstream, three times over: GCC PR 92453 (2019, with a two-pass patch
-  posted to gcc-patches that never drew a review), rediscovered as GCC PR 103893 and
-  binutils PR 28736, both closed onto the first. Still unfixed on gcc master, which sizes
-  the buffer `strlen (mangled) + 7 + 1` on the reasoning that the expanding cases "occur
-  only once" — the `continue` at the `__` separator is what makes that false, because the
-  loop comes back round for every component of the name and the stream attributes expand
-  in each one. The overrun is therefore not a fixed few bytes: every `xSO__` reads five
-  characters and writes nine, so a long enough symbol writes about four bytes past the
-  end for every five characters of its own length. `nm --demangle=gnat` and `objdump
-  --demangle=gnat` abort on an object file carrying such a symbol, not only `c++filt` on
-  a string, which is the part worth pressing — the symbols in a file you have been handed
-  are not always friendly. Nothing left to do on this side.
-
-- ~~**A `<template-param>` bound to a pack, resolved to one member and not the same
-  one**~~ — *settled*. `tools/mutate.py --seed 39` reads
+- [x] **A `<template-param>` bound to a pack, resolved to one member and not the same
+  one** — *settled*. `tools/mutate.py --seed 39` reads
 
   ```
   _ZSt12construct_atIcJRbcEEDTgsnwcvPvLi0E_T_pispcl7declvalIT0_EEEEPS3_DpOS4_
@@ -447,7 +474,7 @@ compiler named on each entry.
   not one stray mutant: seeds 39, 42, 43 and 48 all reach it, every one a damaged
   `std::construct_at` whose `S3_` or `S4_` is the entry `T0_` contributed.
 
-- ~~**A pre-Itanium template whose second argument is a value**~~ — *fixed*.
+- [x] **A pre-Itanium template whose second argument is a value** — *fixed*.
   `__opi__t2TA2Z5__pt__8_PFcPv_i` from `tools/mutate.py --seed 54` was
   `TA<__pt_, 8>::operator int(int (*)(char, void *))` to the reference and
   `_PFcPv_i::operator int(void)` here: the value argument was not read, and what was left
@@ -469,7 +496,7 @@ compiler named on each entry.
   and `TestATemplateValueArgumentWithNoTypeInFrontOfIt` in `tests/test_gnuv2.py` pins
   both sides of it.
 
-- ~~**`$$C` over a `__restrict` pointer puts the two qualifier words in either order**~~
+- [x] **`$$C` over a `__restrict` pointer puts the two qualifier words in either order**
   — *settled, and it was cosmetic*. `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z` from
   `tools/mutate.py --seed 42` is `char *const __restrict` here and
   `char *__restrict const` to `llvm-undname`: the same declaration, since the order of
@@ -483,7 +510,7 @@ compiler named on each entry.
   `TestDollarCOverARestrictPointer` in `tests/test_msvc.py` pins the reading along with
   the compiler-written neighbour the two agree on.
 
-- ~~**A constrained `decltype(auto)` is a type, and so is a substitution candidate**~~ —
+- [x] **A constrained `decltype(auto)` is a type, and so is a substitution candidate** —
   *settled*, and `tools/mutate.py --seed 40` is clean. `DK <type-constraint>` is a
   `<type>`, which ABI 5.1.10 makes a candidate, so this records the composite;
   `llvm-cxxfilt` 18.1.3 records nothing for it. Probing `_Z1fDKN1A1BE` with
@@ -514,8 +541,10 @@ compiler named on each entry.
 
 ## 1. More schemes
 
-*Nothing here is outstanding.* Kept as a record of what each scheme is measured against,
-because that differs per scheme and is the part worth knowing before trusting a number.
+**Twelve entries, fourteen schemes, all landed.**
+
+Kept as a record of what each scheme is measured against, because that differs per
+scheme and is the part worth knowing before trusting a number.
 
 The plugin interface exists so a scheme needs no core changes. Go landed that way,
 without touching `core` at all, and so did the thirteen that followed -- fourteen schemes
@@ -524,21 +553,21 @@ in total, the last three of them (pre-Itanium C++, CodeWarrior, Ada/GNAT) in thi
 D, Swift, Nim, Free Pascal, Objective-C and Delphi have all landed the same way. What
 each is measured against differs, and the difference is the interesting part:
 
-- ~~**D**~~ — 100% against GNU binutils' `c++filt --format=dlang`.
-- ~~**Swift**~~ — exact against `swift-demangle` built from swiftlang/swift's own sources,
+- [x] **D** — 100% against GNU binutils' `c++filt --format=dlang`.
+- [x] **Swift** — exact against `swift-demangle` built from swiftlang/swift's own sources,
   over the whole shipped runtime and the compiler's own test corpus, in both the current
   mangling and Swift 3's. Nothing a distribution ships reads a Swift name, so the
   reference is built here: `tools/swift-demangle-reference/`.
-- ~~**Nim**~~ — no reference demangler exists, so the property is that re-mangling what is
+- [x] **Nim** — no reference demangler exists, so the property is that re-mangling what is
   read reproduces the symbol, plus agreement with the name the compiler recorded in its
   own `.ndi` files.
-- ~~**Free Pascal**~~ — no reference demangler either; the property is re-assembly, over all
+- [x] **Free Pascal** — no reference demangler either; the property is re-assembly, over all
   236,570 readable symbols in the shipped runtime, plus a check against `ppudump`.
-- ~~**Delphi / C++Builder**~~ — no Delphi compiler here, so the grammar is Embarcadero's
+- [x] **Delphi / C++Builder** — no Delphi compiler here, so the grammar is Embarcadero's
   `unmangle.c` and the spelling is what TDUMP prints. A different scheme from Free
   Pascal's.
 
-- ~~**JNI**~~ — *landed*. `Java_com_example_Foo_bar__Ljava_lang_String_2` is the C function
+- [x] **JNI** — *landed*. `Java_com_example_Foo_bar__Ljava_lang_String_2` is the C function
   a `native` method is called through, and Android ships them by the thousand; the usual
   way to read one is by eye, because neither binutils nor LLVM reads them and neither
   does Ghidra or IDA. It is also the one scheme here whose encoding is *written down
@@ -547,7 +576,7 @@ each is measured against differs, and the difference is the interesting part:
   the package/class boundary, which the encoding genuinely does not carry, so the
   spelling puts the whole path in one run rather than inventing a structure.
 
-- ~~**Pre-Itanium C++: the GNU v2 / cfront / ARM family**~~ — *landed*. `__ls__7ostreamPCc`,
+- [x] **Pre-Itanium C++: the GNU v2 / cfront / ARM family** — *landed*. `__ls__7ostreamPCc`,
   `BuildLight__9CGuiLightCFv`. binutils *deleted* these styles in 2019 and Ghidra ships a
   second, older copy of libiberty specifically to keep reading them, which was the
   loudest available signal that analysts still meet them — console and embedded
@@ -580,7 +609,7 @@ each is measured against differs, and the difference is the interesting part:
   option rather than a guess: `demangle.style("llvm", gnuv2={"style": "arm"})`, with
   `gnu` the default.
 
-- ~~**Metrowerks CodeWarrior**~~ — *landed*, beside the four above. The other pre-Itanium
+- [x] **Metrowerks CodeWarrior** — *landed*, beside the four above. The other pre-Itanium
   mangling, and a scheme of its own rather than a sixth style, because libiberty never
   read it: `cplus-dem.c` has no CodeWarrior flag and `demangle-expected` has no vectors
   for it. The reference is `encounter/cwdemangle`, the tool decompilation projects for
@@ -600,7 +629,7 @@ each is measured against differs, and the difference is the interesting part:
   debugging symbols in external `.xSYM` sidecars rather than in-binary symbol tables.
   The vectors transcribed from `encounter/cwdemangle` remain the authoritative test set.
 
-- ~~**Ada/GNAT**~~ — *landed*, **34 of 34** against the cases `demangle-expected` marks
+- [x] **Ada/GNAT** — *landed*, **34 of 34** against the cases `demangle-expected` marks
   `--format=gnat`, and **1,438 of 1,438** real-world GNAT runtime symbols from
   `libgnat`/`libgnarl` extracted via `tools/generate_ada_corpus.py` and scored against
   `c++filt --format=gnat`. The last of the pre-Itanium formats libiberty still carries:
@@ -626,7 +655,7 @@ Sun Studio's undocumented `libdemangle`, gcj's `DMGL_JAVA`).
 
 The last one before JNI was Delphi:
 
-- ~~**Borland/Embarcadero Delphi**~~ — *landed*. A different scheme from Free Pascal's,
+- [x] **Borland/Embarcadero Delphi** — *landed*. A different scheme from Free Pascal's,
   written `@Unit@Class@Method$qqrv`, transcribed from Embarcadero's `unmangle.c` (the
   unmangler TDUMP runs) because there is no Delphi compiler on the platforms this is
   developed on. Spelling is what that unmangler prints. Microsoft's `@name@N` 32-bit
@@ -635,7 +664,7 @@ The last one before JNI was Delphi:
   and C++Builder DLLs, 11,363 of 11,363, with the whole symbol consumed. That dump is
   checked in and replayed, so the number is a test result rather than a claim.
 
-- ~~**Objective-C**~~ — *landed*. It turned out to be four families across three
+- [x] **Objective-C** — *landed*. It turned out to be four families across three
   runtimes rather than one form, and the interesting part is that the rules belong to the
   compiler rather than the language: they are transcribed from clang's `Mangle.cpp`,
   `CGObjCMac.cpp` and `CGObjCGNU.cpp`, and checked against what clang emitted for
@@ -644,7 +673,7 @@ The last one before JNI was Delphi:
   Block invocations (`___[length]-[Class method]_block_invoke`) follow Clang's
   `mangleFunctionBlock`; well-formed block invocations are demangled, and mismatched
   length prefixes are strictly refused.
-- ~~**Swift's symbolic references**~~ — *landed*, with the API that takes the binary too.
+- [x] **Swift's symbolic references** — *landed*, with the API that takes the binary too.
   `swift.demangle_symbolic` reads a name as bytes and takes a resolver;
   `resolve.ContextResolver` is one, over an `Image` that `elf_image` or `macho_image`
   builds from a file. The reference cannot be resolved from a name alone and so is
@@ -654,25 +683,27 @@ The last one before JNI was Delphi:
 
 ## 2. Performance
 
-Two of the three items originally listed here were measured and settled; what remains is
-below. The measurements are recorded because a rejected idea is only useful if the reason
+**Nine entries, all closed** -- five changes that landed, three ideas measured and
+turned down, and one that landed for leaves and was turned down for composites.
+
+The measurements are recorded because a rejected idea is only useful if the reason
 survives.
 
-- **Batch detection over a whole table** — *not worth doing*. Detection is 1.45% of total
-  demangling time over the 14,318-name corpus (10.7ms of 737ms). Batching could recover
-  some fraction of that fraction, in exchange for an API that has to be kept in step with
-  the per-name one.
-- **Interning repeated components** — *done for leaves, rejected for composites*. Leaves
+- [x] **Batch detection over a whole table** — *not worth doing*. Detection is 1.45% of
+  total demangling time over the 14,318-name corpus (10.7ms of 737ms). Batching could
+  recover some fraction of that fraction, in exchange for an API that has to be kept in
+  step with the per-name one.
+- [x] **Interning repeated components** — *done for leaves, rejected for composites*. Leaves
   are 55% of all nodes and repeat 49 times over; keying them by text costs one string
   hash and gives 40% less memory and about 6% less time. Interning composites collapses
   the tree further still, 4.2MB to 2.4MB, but a composite hashes by walking its children
   and building that table costs seven times the whole parse.
-- **A benchmark corpus that is not a microbenchmark** — *done*, and the original
+- [x] **A benchmark corpus that is not a microbenchmark** — *done*, and the original
   diagnosis was wrong. The old 887-name corpus was not too small for cache: holding
   composition constant, per-name cost is flat from 500 names to 5,913. It was
   unrepresentative in *composition*, being mostly cheap MSVC names, which flattered the
   headline figure by 3x. The benchmark now spans every corpus and all four schemes.
-- **Rust's remaining cost** — *done*, and what read as an obstacle was the answer.
+- [x] **Rust's remaining cost** — *done*, and what read as an obstacle was the answer.
   "Spread across `eat`, `ident` and `integer_62` rather than concentrated anywhere"
   means the cost *is* the interpreter frames: those are per-character helpers, and they
   run 1.5 million times over the 5,710-name corpus. Writing them out at the hot call
@@ -680,7 +711,7 @@ survives.
   took 80us a name to 54us without touching the grammar. Verified byte-identical over
   60,000 mutated names.
 
-- **A profile-guided pass over the Itanium parser** — *done*, and the profile said what
+- [x] **A profile-guided pass over the Itanium parser** — *done*, and the profile said what
   the Rust one had: a name costs 400 interpreter frames and about half the time is the
   frames rather than the work inside them. Writing out the recursion guard, asking one
   lookahead instead of five in `template_arg`, and ending the `E`-terminated loops on a
@@ -688,12 +719,12 @@ survives.
   `Node.spell` each ran an `import` statement per call, and detection was 18.5% of an
   Itanium name rather than the 1.45% recorded above — that figure was measured over a
   corpus dominated by cheap MSVC names, and before three more schemes were registered.
-- **Interning builtin spellings** — *rejected*. `builtin` is called 14,765 times over the
-  Itanium corpus and holds about thirty distinct texts, so a cache would remove almost
+- [x] **Interning builtin spellings** — *rejected*. `builtin` is called 14,765 times over
+  the Itanium corpus and holds about thirty distinct texts, so a cache would remove almost
   every allocation. It measured under 1%, and it would make `SpellingBuilder` — shared by
   every parse and documented as stateless — carry state, with a bound needed against
   `_Float<n>`, whose spelling the input chooses.
-- **Inlining the detection call into `demangle`** — *rejected*. Roughly 1.5% of the cost
+- [x] **Inlining the detection call into `demangle`** — *rejected*. Roughly 1.5% of the cost
   is the `_claims` frame itself. Recovering it means duplicating the
   symbol-table-decoration fallback at the call site, and that rule is one that has to
   stay in one place.
@@ -713,7 +744,7 @@ survives.
   wider screen than one character — eight of the ten schemes are offered every `_`, and
   `go`, `nim` and `pascal` are offered every symbol whatever it starts with.
 
-- **A second profile-guided pass over the Itanium parser** — *done*, **7.4%** off the
+- [x] **A second profile-guided pass over the Itanium parser** — *done*, **7.4%** off the
   project's own Itanium corpus and **10.2%** off 217,730 real symbols, with byte-identical
   output. The profile said the same thing a third time, and the answer was to stop paying
   for frames and comparisons that the corpus says are not needed.
@@ -736,7 +767,7 @@ survives.
   rounds per process; identical trees measured that way come out at 0.993 and 1.005,
   where a single run of the committed benchmark has a 24% spread on its cold phase.
 
-- **Rust's second reading of the same path** — *done*, **17%** off the Rust corpora and
+- [x] **Rust's second reading of the same path** — *done*, **17%** off the Rust corpora and
   **9.3%** off the whole cold benchmark's Python-level call count, with byte-identical
   output. `_run` opened with a `skip_path` over the symbol path so that the residual
   after it could be checked before anything was written, and then reset the cursor and
@@ -810,6 +841,8 @@ anyway, which times `demangle()`. A caller who wants the tree is asking for the 
 
 ## 2a. What hostile input can buy
 
+**Measured for every scheme, and nothing is superlinear.**
+
 A mangled name is untrusted input, so "how much work can one symbol cause" is a question
 with a number rather than a posture. Measured by growing a repeated unit until it reaches
 the input bound, for every scheme, recording wall time and peak allocation:
@@ -856,13 +889,15 @@ lead. That last class now has a test of its own over every corpus at once, in
 
 ## 3. Output modes
 
+**Six entries, all landed.**
+
 A caller does not always want the whole spelling. `signature()` answers with the parts —
 namespace, base name, parameter types, return type, and what the name does *not* say —
 and the CLI's `-p`, `--base-name` and `--no-return-type` print one of them. Those are
 render-time selections over what the parse already found; a mode is a different question,
 which is whether to spell something *differently*.
 
-- ~~**Bare type encodings**~~ — *landed*. `demangle_type()` and `parse_type()` read a
+- [x] **Bare type encodings** — *landed*. `demangle_type()` and `parse_type()` read a
   `<type>` on its own — `Pi`, an MSVC `PEAX`, a Swift `SaySiG` — which is what a
   `typeinfo` name, an RTTI type descriptor and a Swift metadata typeref carry. `language`
   is required and cannot be made optional: a whole symbol announces its scheme with `_Z`,
@@ -876,7 +911,7 @@ which is whether to spell something *differently*.
   of 1,076** against `c++filt -t`. The last three to close were a doubled `KK`
   cv-qualifier that GNU folds away and LLVM keeps.
 
-- ~~**ARM64EC hybrid names**~~ — *landed*, **606 of 606**. A function built for the
+- [x] **ARM64EC hybrid names** — *landed*, **606 of 606**. A function built for the
   hybrid ABI carries `$$h` after its qualified name, and nothing reads it: `llvm-undname`
   18.1.3 refuses `?func@@$$hYAXXZ` and current upstream has no `$$h` in
   `MicrosoftDemangle.cpp` either. So there is no reference *spelling* — but there is a
@@ -891,7 +926,7 @@ which is whether to spell something *differently*.
   strip one character, and this is offered every symbol in a binary where LLVM applies
   its rule only to objects already known to be ARM64EC.
 
-- ~~**MSVC RTTI type descriptor names**~~ — *landed*. A `type_info` points at a string,
+- [x] **MSVC RTTI type descriptor names** — *landed*. A `type_info` points at a string,
   and the linker spells it as a `.` and a bare type encoding: `.PEAX`, `.?AVFoo@@`. Not a
   decorated name — no `?`, nothing declared — so every one of them was refused and a PE
   symbol dump full of them said nothing. **106 of 106** against `llvm-undname`, counting
@@ -904,14 +939,14 @@ which is whether to spell something *differently*.
   place in the descriptor object this already read: it goes where a *declarator* goes, so
   a pointer to an array of two is `int (*`RTTI Type Descriptor')[2]`.
 
-- ~~**The stream filter and the tree as library API**~~ — *landed*. `demangle_text()`,
+- [x] **The stream filter and the tree as library API** — *landed*. `demangle_text()`,
   `demangle_stream()` and `find_symbols()` are the word-scanning filter the command has
   always run, now callable; `Node.to_dict()`, `demangle --json`, `__match_args__` and
   `node_kinds()` make the tree data rather than something to read our source for. The
   serialisation shares repeated nodes, because the structure is a graph and expanding it
   in full does not always terminate in useful time.
 
-- ~~**A per-call options object**~~ — *landed*. `style()` composes a style from a named
+- [x] **A per-call options object** — *landed*. `style()` composes a style from a named
   one and per-language changes, at the call site:
   `demangle(name, style=demangle.style("llvm", msvc={"calling_convention": False}))`. A
   composed style is an object rather than a registered name, and `demangle()` does not
@@ -964,7 +999,7 @@ which is whether to spell something *differently*.
   at **5,751 of 5,753** against the reference asked the same way; the two that differ do
   so in both modes and for reasons that have nothing to do with the hash.
 
-- ~~**Swift's simplified manglings**~~ — *landed*, **217 of 217** against
+- [x] **Swift's simplified manglings** — *landed*, **217 of 217** against
   `test/Demangle/Inputs/simplified-manglings.txt`. What `swift-demangle --simplified`
   prints and what an IDE shows in a stack trace: `Either` for `Monads.Either`, `(_:)` for
   `(Swift.Int) -> Swift.UInt`, `specialized f()` for a page of specialisation arguments.
@@ -977,50 +1012,53 @@ which is whether to spell something *differently*.
   and a flag no vector exercises is a flag with no reference behind it. Reached as
   `demangle --simplified`, or `style("llvm", swift=SIMPLIFIED_OPTIONS)`.
 
-## 4. Issue #28: Next Steps and Modern Compiler Sweeps
+## 4. Issue #28: next steps and modern compiler sweeps
+
+**Three groups, twelve entries, all closed.**
 
 The seed ladder across existing corpora reached saturation (seeds 0 to 32 clean at 200k,
 every corpus exact). Issue #28 mapped out the subsequent stretch of work:
 
-- ~~**Probing schemes with no reference**~~ — *completed*:
-  - ~~**Ada**~~ — *landed*: `tools/generate_ada_corpus.py` samples 1,438 real-world symbols from `libgnat`
-    and `libgnarl`, 100% exact against GNU binutils' `c++filt --format=gnat`, seeding the
-    fuzzers with real GNAT runtime names.
-  - ~~**Nim**~~ — *settled*: The eight lossy names in the standard library where the compiler discards an
-    underscore before a digit were pinned in `tests/conformance/nim-lossy.txt` and verified in
-    `tests/test_nim.py`.
-  - ~~**Objective-C**~~ — *settled*: Block invocation symbols (`___[length]-[Class method]_block_invoke`)
-    were evaluated against Clang's `mangleFunctionBlock`: well-formed invocations are
-    supported, and length mismatches are refused to prevent false claims.
-  - ~~**CodeWarrior**~~ — *settled*: A search for CodeWarrior-built PowerPC ELF/PEF binaries with symbol tables
-    confirmed none are available (shipping GameCube/Wii discs stripped symbols into `.dol`
-    executables, and Classic Mac OS PEF binaries stored debug symbols in external `.xSYM`
-    sidecars).
-  - ~~**Free Pascal**~~ — *verified*: Probed against `ppudump -Va` across all runtime units (4,384 of 4,384
-    symbols matching declared names).
+- [x] **Probing schemes with no reference** — *completed*:
+  - [x] **Ada** — *landed*: `tools/generate_ada_corpus.py` samples 1,438 real-world
+    symbols from `libgnat` and `libgnarl`, 100% exact against GNU binutils' `c++filt
+    --format=gnat`, seeding the fuzzers with real GNAT runtime names.
+  - [x] **Nim** — *settled*: The eight lossy names in the standard library where the
+    compiler discards an underscore before a digit were pinned in
+    `tests/conformance/nim-lossy.txt` and verified in `tests/test_nim.py`.
+  - [x] **Objective-C** — *settled*: Block invocation symbols (`___[length]-[Class
+    method]_block_invoke`) were evaluated against Clang's `mangleFunctionBlock`:
+    well-formed invocations are supported, and length mismatches are refused to prevent
+    false claims.
+  - [x] **CodeWarrior** — *settled*: A search for CodeWarrior-built PowerPC ELF/PEF
+    binaries with symbol tables confirmed none are available (shipping GameCube/Wii discs
+    stripped symbols into `.dol` executables, and Classic Mac OS PEF binaries stored debug
+    symbols in external `.xSYM` sidecars).
+  - [x] **Free Pascal** — *verified*: Probed against `ppudump -Va` across all runtime
+    units (4,384 of 4,384 symbols matching declared names).
 
-- ~~**Defect investigations from the hunt**~~ — *completed*:
-  - ~~**D back-reference landing inside an identifier's characters**~~ — *fixed*: The span of
-    every length-prefixed identifier is recorded and back-reference targets landing strictly
-    inside a span are refused.
-  - ~~**`--refusals` at 200k**~~ — *completed*: Mutator refusals run across Itanium, MSVC, Swift, D, and
-    GNUv2 at 200,000 mutants to triage cases where references accept corrupted inputs.
-    Divergences were confirmed to be reference leniencies (ignoring invalid identifier
-    characters, dropping trailing garbage, or accepting malformed template names).
+- [x] **Defect investigations from the hunt** — *completed*:
+  - [x] **D back-reference landing inside an identifier's characters** — *fixed*: The span
+    of every length-prefixed identifier is recorded and back-reference targets landing
+    strictly inside a span are refused.
+  - [x] **`--refusals` at 200k** — *completed*: Mutator refusals run across Itanium, MSVC,
+    Swift, D, and GNUv2 at 200,000 mutants to triage cases where references accept
+    corrupted inputs. Divergences were confirmed to be reference leniencies (ignoring
+    invalid identifier characters, dropping trailing garbage, or accepting malformed
+    template names).
 
-- ~~**Reseeding the fuzzers**~~ — *completed*:
-  - ~~**Swift / Go generic shapes and new node kinds**~~ — *done*: Swept against Swift 6.2+
-    (the full `test/Demangle/Inputs/manglings.txt` at swiftlang/swift main, `async_Main`
-    funclets and modern node kinds) and Go 1.25/1.26 (linker generated symbols, tagged struct
-    escapes, and generic shape instantiations).
-  - ~~**Itanium**~~ — *settled*: GCC 14+ / Clang 19+ constructs at `-std=c++26` with C++20
+- [x] **Reseeding the fuzzers** — *completed*:
+  - [x] **Swift / Go generic shapes and new node kinds** — *done*: Swept against Swift
+    6.2+ (the full `test/Demangle/Inputs/manglings.txt` at swiftlang/swift main,
+    `async_Main` funclets and modern node kinds) and Go 1.25/1.26 (linker generated
+    symbols, tagged struct escapes, and generic shape instantiations).
+  - [x] **Itanium** — *settled*: GCC 14+ / Clang 19+ constructs at `-std=c++26` with C++20
     modules (`W` module names, `DF` floats, friend declarations, structured bindings)
     audited and covered in conformance corpora and differential testing.
-  - ~~**MSVC**~~ — *settled*: Modern MSVC toolset constructs (`$$Q`, lambda numbering,
+  - [x] **MSVC** — *settled*: Modern MSVC toolset constructs (`$$Q`, lambda numbering,
     `__int128`) audited and pinned against `llvm-undname`.
-  - ~~**Rust v0**~~ — *settled*: 5,753 Rust symbols exact against the `rustc-demangle` 0.1.28
-    reference crate, and all Unicode scalar value ranges swept.
-  - ~~**D**~~ — *settled*: Modern LDC/GDC frontend forms (`NkM`) and backref bounds audited and
-    exact against `c++filt --format=dlang`.
-
+  - [x] **Rust v0** — *settled*: 5,753 Rust symbols exact against the `rustc-demangle`
+    0.1.28 reference crate, and all Unicode scalar value ranges swept.
+  - [x] **D** — *settled*: Modern LDC/GDC frontend forms (`NkM`) and backref bounds
+    audited and exact against `c++filt --format=dlang`.
 
