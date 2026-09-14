@@ -318,7 +318,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
-| Names a reference reads wrongly ✱ | the declaration | **31 / 31** |
+| Names a reference reads wrongly ✱ | the declaration | **37 / 37** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |
@@ -565,7 +565,7 @@ type the source disproves: `std::__insertion_sort<llvm::cfg::Update<llvm::BasicB
 taking `llvm::BasicBlock*`, a generic lambda's `operator()<int>` taking `auto`, or a
 closure declared `[](auto x)` taking `int`.
 
-Settled against nine reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
+Settled against ten reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
 in under `tools/corpus_sources/reference_defects/`, and pinned with five more symbols
 in `tests/conformance/itanium-reference-defects.txt` — the one corpus here whose expected
 column comes from the declaration rather than from a demangler. `tools/generate_corpus.py`
@@ -580,6 +580,17 @@ outright, and answers `void g<A, char>(A<char>, char<int>)` for its neighbour, w
 `char<int>` is not a type. Both g++ 13.3.0 and clang++ 18.1.3 emit the two names
 byte-identically for an ordinary `void f(C<T>, C<T>, C<T>)`, and GNU `c++filt` 2.42
 agrees with the declarations.
+
+The tenth is a third defect again, and the only one whose two sides each refuse the
+other's output. An inheriting constructor's `<base class type>` — the `1C` of `CI2 1C` —
+is a `<type>` and so a candidate, and the two compilers disagree about entering it: for
+`struct D : C { using C::C; }` with `C(Kind, Kind)`, g++ 13.3.0 writes
+`_ZN1DCI21CENS0_4KindES1_` and clang++ 18.1.3 writes `_ZN1DCI21CEN1C4KindES1_`, one
+declaration under two numberings. `llvm-cxxfilt` 18.1.3 implements clang's and refuses
+g++'s outright; GNU `c++filt` 2.42 reads both parameter lists and then names the
+constructor after the base, `D::C`, which is neither compiler's declaration. This reads
+both, by clang's rule with a retry under g++'s, and
+`ItaniumOptions.inherited_constructor_substitution` forces either.
 
 `llvm-cxxfilt` 18.1.3 freezes both, which is why the llvm-style whole-library rows above
 are no longer 100%: over the 217,730 distinct Itanium symbols in every shared library a

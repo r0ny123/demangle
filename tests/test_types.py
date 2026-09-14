@@ -999,3 +999,57 @@ class TestASourceNameLengthWrittenWithALeadingZero:
 
     def test_an_array_bound_keeps_its_zero(self):
         assert demangle.demangle_strict("_Z1fA01_i") == "f(int [01])"
+
+
+class TestAnInheritingConstructorsBaseType:
+    """`CI2 <base class type>` names the base a constructor is inherited from, and the
+    two compilers disagree about whether that type takes a substitution entry.
+
+    It is a `<type>`, which 5.1.10 makes a candidate. g++ 13.3.0 enters it and writes
+    `_ZN1DCI21CENS0_4KindES1_` -- `S0_` is that entry -- while clang++ 18.1.3 does not,
+    and spells `C` again: `_ZN1DCI21CEN1C4KindES1_`, whose `S1_` is one entry further
+    along. Both come from `struct D : C { using C::C; }` with `C(Kind, Kind)`, so both
+    parameters are `C::Kind` in both names, and a reader applying the wrong rule prints
+    the second one as `C`.
+
+    Read by clang's rule, with a retry under g++'s that a run past the table triggers:
+    a g++ name refers to the base's entry as the highest index in use where it stands,
+    so that reference overruns and the retry catches it, while a clang name gives no
+    signal at all and has to be right the first time. `llvm-cxxfilt` 18 implements
+    clang's rule and refuses g++'s names; `c++filt` 2.42 reads both parameter lists and
+    then names the constructor after the *base*, `D::C`, which is neither compiler's
+    declaration. `tools/corpus_sources/reference_defects/inheriting_constructor.cpp` is
+    the source and `tests/conformance/itanium-reference-defects.txt` pins all six
+    against it. `tools/mutate.py --seed 69`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # clang's numbering, which is the one read first.
+            ("_ZN1DCI21CEN1C4KindE", "D::D(C::Kind)"),
+            ("_ZN1DCI21CEN1C4KindES1_", "D::D(C::Kind, C::Kind)"),
+            # g++'s, which the retry reaches.
+            ("_ZN1DCI11CENS0_4KindE", "D::D(C::Kind)"),
+            ("_ZN1DCI11CENS0_4KindES1_", "D::D(C::Kind, C::Kind)"),
+            ("_ZN1DCI21CENS0_4KindE", "D::D(C::Kind)"),
+            ("_ZN1DCI21CENS0_4KindES1_", "D::D(C::Kind, C::Kind)"),
+            # The two the corpora already carried, neither of which refers back.
+            ("_ZN1BCI21AEi", "B::B(int)"),
+            ("_ZN1DCI21CIiEET_", "D::D(int)"),
+        ],
+    )
+    def test_both_numberings_read(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    def test_forcing_gplusplus_rule_reads_the_clang_name_as_the_wrong_type(self):
+        """What the option is for, and why the default is the other way round."""
+        forced = demangle.style("llvm", itanium={"inherited_constructor_substitution": True})
+        assert demangle.demangle_strict("_ZN1DCI21CEN1C4KindES1_", style=forced) == "D::D(C::Kind, C)"
+        assert demangle.demangle_strict("_ZN1DCI21CENS0_4KindES1_", style=forced) == "D::D(C::Kind, C::Kind)"
+
+    def test_forcing_clangs_rule_refuses_the_gplusplus_name(self):
+        forced = demangle.style("llvm", itanium={"inherited_constructor_substitution": False})
+        assert demangle.demangle_strict("_ZN1DCI21CEN1C4KindES1_", style=forced) == "D::D(C::Kind, C::Kind)"
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict("_ZN1DCI21CENS0_4KindES1_", style=forced)

@@ -1,7 +1,7 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Thirteen of the entries
+# the expected column is derived from the *declaration* instead. Seventeen of the entries
 # have a source in tools/corpus_sources/reference_defects/: it is compiled with the
 # compiler named on the entry, the symbol is read out of the object file with `nm`, and
 # the spelling is what that source says the symbol's type is. Two more come from the
@@ -35,7 +35,7 @@
 #
 # style: llvm
 #
-# pairs: 16
+# pairs: 20
 #
 # tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
 # `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,
@@ -254,3 +254,20 @@ __ZNKSt3__110__function6__funcIN14duckdb_httplib7Request20is_connection_closedMU
 # c++filt 2.42 agrees with the declarations. `tools/mutate.py --seed 43`.
 _Z1fI1AiEvT_IT0_ES3_S3_	void f<A, int>(A<int>, A<int>, A<int>)
 _Z1gI1AcEvT_IT0_ES1_IiE	void g<A, char>(A<char>, A<int>)
+
+# tools/corpus_sources/reference_defects/inheriting_constructor.cpp, g++ 13.3.0 for the
+# first four and clang++ 18.1.3 for the last two. A third defect, and the one whose two
+# sides each refuse the other's output. An inheriting constructor's `<base class type>`
+# is a <type>, which 5.1.10 makes a candidate; g++ enters it and clang does not, so each
+# compiler's `S<n>_` counts one differently from the other's. Both parameters are
+# `C::Kind`, which is what makes it visible: read under the wrong rule the second one
+# comes back `C`. llvm-cxxfilt 18 implements clang's rule and refuses g++'s names
+# outright; GNU c++filt 2.42 reads both parameter lists and then names the constructor
+# after the base, `D::C`, which is neither compiler's declaration.
+# `tools/mutate.py --seed 69`.
+_ZN1DCI11CENS0_4KindE	D::D(C::Kind)
+_ZN1DCI11CENS0_4KindES1_	D::D(C::Kind, C::Kind)
+_ZN1DCI21CENS0_4KindE	D::D(C::Kind)
+_ZN1DCI21CENS0_4KindES1_	D::D(C::Kind, C::Kind)
+_ZN1DCI21CEN1C4KindE	D::D(C::Kind)
+_ZN1DCI21CEN1C4KindES1_	D::D(C::Kind, C::Kind)

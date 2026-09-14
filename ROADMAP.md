@@ -191,6 +191,32 @@ compiler named on each entry.
   which is the only case `ACCEPTED` has to carry, since where that reference reads such a
   name the rule for "both agree with this library" has already taken it.
 
+- ~~**An inheriting constructor's base class type, entered by one compiler and not the
+  other**~~ — *settled, and both are read now*. `CI1`/`CI2` name the base a constructor
+  is inherited from, and that `<base class type>` is a `<type>`, which 5.1.10 makes a
+  substitution candidate. g++ 13.3.0 enters it; clang++ 18.1.3 does not. For
+
+  ```cpp
+  struct C { struct Kind { int v; }; C(Kind, Kind); };
+  struct D : C { using C::C; };
+  ```
+
+  g++ writes `_ZN1DCI21CENS0_4KindES1_`, whose `S0_` is that entry, and clang writes
+  `_ZN1DCI21CEN1C4KindES1_`, spelling `C` again because it has none — one declaration
+  under two numberings, and each unreadable under the other's rule. `llvm-cxxfilt` 18
+  implements clang's and refuses g++'s outright; `c++filt` 2.42 reads both parameter
+  lists and then names the constructor after the *base*, `D::C`, which is neither
+  compiler's declaration. This read only g++'s, so clang's `S1_` came back `C` where the
+  source says `C::Kind`.
+
+  Read by clang's rule now, with a retry under g++'s that a run past the table triggers:
+  a g++ name refers to the base's entry as the highest index in use where it stands, so
+  that reference overruns and the retry catches it, while a clang name gives no signal at
+  all and has to be right the first time. The residual ambiguity is the one
+  `closure_prefix_substitution` has and is written down beside it. Six names from
+  `tools/corpus_sources/reference_defects/inheriting_constructor.cpp` pin both numberings
+  against their declarations. `tools/mutate.py --seed 69`.
+
 - ~~**A recorded `<template-param>` resolved where it was written, not where it is
   read**~~ — *fixed*, for the parameter and for anything built over one. The entry a
   `<template-param>` contributes to the substitution table is the parameter, not the
@@ -318,6 +344,23 @@ compiler named on each entry.
   over eight operand shapes, 142 names — and the only difference is `c++filt` numbering
   the *old* `_ZGR` form `#0`, a production it reads and the modern `_ZGR <name> _` one it
   refuses entirely.
+
+- **A D back reference to a scope reproduces only the name at its target** — *open, and
+  mutant-only*. `tools/mutate.py --seed 69` damages
+  `core.internal.lifetime.emplaceInitializer` into a name whose last parameter is a type
+  back reference pointing at a qualified name that continues with a function type and a
+  further component — a *scope*, which nothing in the grammar marks and which both
+  readers find by reading a function type and seeing whether a component follows it.
+  `c++filt --format=dlang` reproduces the whole of it, `...emplaceRef(ref X, ref Y).S`;
+  this reproduces `...emplaceRef` and stops. Everything else in the 900-character answer
+  agrees, including an earlier back reference in the same name that both take whole.
+
+  Not triaged further yet: `identifier_back_reference` reads only a length and that many
+  characters on purpose — the comment there records the 56 mutant shapes that reading
+  more produced, where a template instance came back named twice — and whether the
+  *type* back reference should differ from it needs a case small enough to put to D's own
+  `core.demangle`, which is the thing that settles a split neither reference is authority
+  for.
 
 - **`c++filt --format=gnat` aborts on an eight-character name** — *open*, and the one
   entry here that is a crash rather than a wrong reading. Binutils 2.42:

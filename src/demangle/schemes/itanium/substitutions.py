@@ -205,6 +205,18 @@ class SubstitutionTable:
         if self._entries:
             self._entries[-1] = DeferredProduction(start, end)
 
+    def drop_last(self, mark):
+        """Forget the entry a production just recorded, if it recorded one.
+
+        `mark` is `mark()` taken before the production ran, so nothing is dropped where
+        nothing was added. The one caller is an inheriting constructor's base class type
+        under the numbering clang uses, which reads that type without entering it while
+        still entering the components inside it. See
+        `ItaniumOptions.inherited_constructor_substitution`.
+        """
+        if len(self._entries) > mark:
+            del self._entries[-1]
+
     @property
     def last(self):
         """The entry most recently recorded, or None."""

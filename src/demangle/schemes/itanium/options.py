@@ -127,6 +127,35 @@ class ItaniumOptions:
     different type without tripping anything.
     """
 
+    inherited_constructor_substitution: bool | None = None
+    """Count the `<base class type>` an inheriting constructor names -- the `1C` of
+    `CI2 1C` -- as a substitution candidate.
+
+    The third place two compilers number the same name differently, and the one whose
+    two sides each refuse the other's output. For
+
+    ```cpp
+    struct C { struct Kind { int v; }; C(Kind, Kind); };
+    struct D : C { using C::C; };
+    ```
+
+    g++ 13.3 writes `_ZN1DCI21CENS0_4KindES1_` -- `S0_` is the base type's own entry --
+    and clang++ 18.1.3 writes `_ZN1DCI21CEN1C4KindES1_`, spelling `C` again because it
+    has no entry for it. Each is unreadable under the other's rule: llvm-cxxfilt 18
+    refuses g++'s name outright, and g++'s rule reads clang's `S1_` as `C` where the
+    declaration says `C::Kind`.
+
+    None, the default, is clang's rule with a retry under g++'s, which is the way round
+    that catches the most: a g++ name refers to the base's entry as the highest index in
+    use at that point, so under clang's rule that reference runs past the table and the
+    retry fixes it, while a clang name gives no such signal at all and has to be right
+    the first time. True or False forces a rule and skips the retry. What neither can
+    catch is a name whose shifted references all land on some other entry -- `S1_` for a
+    parameter's own type rather than for the base -- which reads as a different type
+    without tripping anything, and is the same residual ambiguity
+    `closure_prefix_substitution` has.
+    """
+
     gnu_nullptr_spelling: bool = False
     """Spell `Dn` as `decltype(nullptr)` rather than `std::nullptr_t`.
 

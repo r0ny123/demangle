@@ -403,6 +403,8 @@ class ItaniumParser:
         "_explicit_object",
         "_in_constraint",
         "_in_special_name",
+        "_inherited_base_seen",
+        "_inherited_base_substitutes",
         "_last_entry_index",
         "_last_source_name",
         "_legacy_pack_nested",
@@ -567,6 +569,12 @@ class ItaniumParser:
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
         self._ctor_dtor = False
+        #: Whether an inheriting constructor's `<base class type>` was read, and whether
+        #: it was entered in the substitution table. The two compilers differ and each
+        #: refuses the other's output; see
+        #: `ItaniumOptions.inherited_constructor_substitution`.
+        self._inherited_base_seen = False
+        self._inherited_base_substitutes = options.inherited_constructor_substitution is True
         # True while a special name's operand is being read: a local entity there is
         # data, so the function type that may follow one elsewhere belongs to no
         # encoding here, and a template parameter is refused -- both references refuse
@@ -1979,7 +1987,17 @@ class ItaniumParser:
             # <type> and may itself be a nested name -- reading it first would leave the
             # base's own last component standing where the class should be.
             spelled = self.enclosing_class_name(scope)
+            # The base type is a `<type>`, which 5.1.10 makes a candidate, and g++ 13.3
+            # enters it: it writes `_ZN1DCI21CENS0_4KindES1_`, whose `S0_` is that entry.
+            # clang++ 18.1.3 does not, and spells `C` again -- `_ZN1DCI21CEN1C4KindES1_`
+            # -- so its `S1_` is one entry further along. Read by clang's rule here and
+            # by g++'s on the retry a run-off-the-table triggers; see
+            # `ItaniumOptions.inherited_constructor_substitution`.
+            self._inherited_base_seen = True
+            mark = self.subs.mark()
             self.type_()
+            if not self._inherited_base_substitutes:
+                self.subs.drop_last(mark)
             if reader.peek() == "B":
                 spelled += self.abi_tags()
             return self.builder.name(spelled)
@@ -5389,6 +5407,16 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
                 # Both at once: upstream clang targeting Darwin counts the closure
                 # prefix and not the `auto`, the opposite of Apple's fork on both.
                 rules.append({**rules[0], **rules[1]})
+            if options.inherited_constructor_substitution is None and parser._inherited_base_seen:
+                # The other rule for an inheriting constructor's base class type: g++'s,
+                # which enters it, against clang's, which does not. Read by clang's rule
+                # first, so this is the one a g++ name reaches -- its reference to that
+                # entry is the highest index in use where it stands, so it runs past the
+                # table rather than landing somewhere else. Not combined with the two
+                # above: a name carrying an inheriting constructor *and* a closure prefix
+                # is not a shape any corpus here holds, and a combination that has never
+                # been seen is a rule that cannot be checked.
+                rules.append({"_inherited_base_substitutes": True})
         for overrides in rules:
             retry = ItaniumParser(mangled, builder, limits, options)
             for attribute, value in overrides.items():

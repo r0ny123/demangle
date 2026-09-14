@@ -78,7 +78,15 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #: 5.1.10 makes each a candidate, so `T_ I ... E` contributes two entries. llvm-cxxfilt
 #: 18 records only the second, so it refuses `_Z1fI1AiEvT_IT0_ES3_S3_` and answers
 #: `char<int>` for `_Z1gI1AcEvT_IT0_ES1_IiE`; GNU c++filt 2.42 agrees with the source.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 31, 31
+#:
+#: The six after those are a third defect, and the one whose two sides each refuse the
+#: other's output: an inheriting constructor's `<base class type>` is a <type> and so a
+#: candidate, g++ 13.3 enters it and clang++ 18.1.3 does not, so `_ZN1DCI21CENS0_4KindE`
+#: and `_ZN1DCI21CEN1C4KindE` are the same declaration written under two numberings.
+#: llvm-cxxfilt 18 reads clang's and refuses g++'s; c++filt 2.42 reads both parameter
+#: lists and names the constructor `D::C`. See
+#: `ItaniumOptions.inherited_constructor_substitution`.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 37, 37
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are
