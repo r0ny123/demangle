@@ -120,28 +120,35 @@ class LegacyDemangler:
 
             component = len(disp)
 
-            if rest.startswith("_$"):
+            if rest[:2] == "_$":
                 rest = rest[1:]
 
-            while True:
-                if rest.startswith("."):
-                    if rest[1:].startswith("."):
+            # Dispatched on the first character rather than by asking `startswith` three
+            # times and then scanning the whole remainder for a `$`: over the checked-in
+            # Rust corpora this loop cost 131,691 `startswith` calls, forty-three per
+            # name, and `rest[1:].find(...)` copied the rest of a component to look one
+            # character ahead. The branches and what each does are unchanged.
+            while rest:
+                head = rest[0]
+                if head == ".":
+                    if rest[1:2] == ".":
                         disp += "::"
                         rest = rest[2:]
                     else:
                         disp += "."
                         rest = rest[1:]
 
-                elif rest.startswith("$"):
-                    end = rest[1:].find("$")
-                    if end == -1:
+                elif head == "$":
+                    # The closing `$`, as an index into `rest`. Anything below 2 is
+                    # either no closing `$` at all or an empty escape, and both stop the
+                    # loop where the reference stops it.
+                    closing = rest.find("$", 1)
+                    if closing < 2:
                         break
-                    escape = rest[1 : end + 1]
-                    after_escape = rest[end + 2 :]
-                    if not escape:
-                        break
+                    escape = rest[1:closing]
+                    after_escape = rest[closing + 1 :]
 
-                    if escape.startswith("u"):
+                    if escape[0] == "u":
                         digits = escape[1:]
                         if not digits:
                             break
@@ -170,23 +177,20 @@ class LegacyDemangler:
                         rest = after_escape
                         continue
 
-                elif ("$") in rest:
+                else:
+                    # Plain characters up to whichever marker comes first. Where there
+                    # is no `$` left the loop stops and the remainder is taken as it
+                    # stands, dots and all, which is what the reference does.
                     dollar = rest.find("$")
+                    if dollar == -1:
+                        break
                     dot = rest.find(".")
-
-                    if dot == -1:
-                        disp += rest[:dollar]
-                        rest = rest[dollar:]
-                        continue
-
-                    if dollar < dot:
+                    if dot == -1 or dollar < dot:
                         disp += rest[:dollar]
                         rest = rest[dollar:]
                     else:
                         disp += rest[:dot]
                         rest = rest[dot:]
-                else:
-                    break
             disp += rest
             self.spans.append((component, len(disp)))
 
@@ -205,7 +209,7 @@ class LegacyDemangler:
         # can hold -- and refuses the name otherwise. Dropping it instead, which is what
         # this did, meant `_ZN3fooE.llvm moocow` read as plain `foo`: a name that is not
         # the symbol and not the truth.
-        if not inn.startswith("E"):
+        if inn[:1] != "E":
             raise UnableToLegacyDemangle(original_inpstr)
         self.suffix = inn[1:]
         if self.suffix:

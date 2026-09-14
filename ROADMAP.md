@@ -629,6 +629,31 @@ survives.
   rounds per process; identical trees measured that way come out at 0.993 and 1.005,
   where a single run of the committed benchmark has a 24% spread on its cold phase.
 
+- **Rust's second reading of the same path** — *done*, **17%** off the Rust corpora and
+  **9.3%** off the whole cold benchmark's Python-level call count, with byte-identical
+  output. `_run` opened with a `skip_path` over the symbol path so that the residual
+  after it could be checked before anything was written, and then reset the cursor and
+  read the same path again to print it. That is the whole path twice: 4,972 of the
+  49,597 `skip_path` calls the checked-in Rust corpora cost, and every recursion under
+  them. Printing *is* the pass that finds where the path ends, so the skip is gone; the
+  `<instantiating-crate>` after it is still skipped, because that one is not printed.
+
+  The one thing the old ordering bought was which refusal a name gets when it is
+  malformed *and* too long for the caller's `max_output` -- the residual check came
+  first, so the answer was "not this scheme" rather than "you set a bound". That is
+  restored on the one path where the two differ rather than given up, and it costs
+  nothing on the path that answers.
+
+  The legacy scheme's escape loop went with it: it asked `startswith` three times and
+  then scanned the whole remainder for a `$` on every iteration -- 131,691 calls over
+  these corpora, forty-three per name -- and copied the rest of a component with
+  `rest[1:].find(...)` to look one character ahead. Dispatching on `rest[0]` and finding
+  from an offset does the same work in one comparison.
+
+  Verified rather than assumed: every checked-in corpus still exact, 46,088 damaged Rust
+  names read identically under both styles and through the tree, and 40,000 components
+  built out of escape fragments -- refusals included, since a refusal is an answer here.
+
 Nothing is left under this heading. `parse()` was the next thing worth measuring, and it
 has now been measured rather than guessed at: against `demangle_strict()` over the same
 names, cache cleared each round, median of nine.

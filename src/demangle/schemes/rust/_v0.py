@@ -131,9 +131,24 @@ class V0Demangler:
         self.inpstr = _strip_llvm_suffix(self.inpstr)
 
         parser = Parser(self.inpstr, 0, self.keep_hash)
-        parser.skip_path()
+        # Printing the symbol path *is* the pass that finds where it ends, so there is
+        # no `skip_path` in front of it. There used to be one, to establish the residual
+        # before anything was written; it read the whole path a second time -- 4,972 of
+        # the 49,597 `skip_path` calls the checked-in Rust corpora cost, and every
+        # recursion under them.
+        #
+        # What that ordering did buy is which refusal a name gets when it is malformed
+        # *and* too long for the caller's `max_output`: the residual check came first,
+        # so the answer was "not this scheme" rather than "you set a bound". That is
+        # restored below rather than given up, on the one path where the two differ.
+        try:
+            Printer(parser, sink, 0).print_path(True)
+        except OutputTooLong:
+            self._refuse_if_malformed(inpstr)
+            raise
         # An <instantiating-crate> is a second <path>, and only a <path> can follow the
-        # first one. Every path production opens with a capital.
+        # first one. It is skipped rather than printed, so it keeps its own pass. Every
+        # path production opens with a capital.
         if (len(parser.inn) > parser.next_val) and parser.inn[parser.next_val].isupper():
             parser.skip_path()
 
@@ -148,14 +163,27 @@ class V0Demangler:
         if residual and not (residual.startswith(".") and _is_symbol_like(residual)):
             raise UnableTov0Demangle(inpstr)
 
-        parser.next_val = 0
-        Printer(parser, sink, 0).print_path(True)
-
         if residual:
             self.suffix = residual
             sink.emit(self.suffix)
 
         return sink
+
+    def _refuse_if_malformed(self, inpstr):
+        """Raise `UnableTov0Demangle` if the name would not have read anyway.
+
+        Only reached when printing hit `max_output`, which is where the reading pass
+        stops before it can say what follows the symbol path. Reading the path again
+        without printing it costs nothing on the path that answers, and keeps a
+        malformed name reported as malformed rather than as a bound the caller set.
+        """
+        probe = Parser(self.inpstr, 0, self.keep_hash)
+        probe.skip_path()
+        if (len(probe.inn) > probe.next_val) and probe.inn[probe.next_val].isupper():
+            probe.skip_path()
+        trailing = probe.inn[probe.next_val :]
+        if trailing and not (trailing.startswith(".") and _is_symbol_like(trailing)):
+            raise UnableTov0Demangle(inpstr)
 
     def sanity_check(self, inpstr: str):
         if not inpstr or not inpstr[0].isupper():
