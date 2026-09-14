@@ -86,6 +86,8 @@ renderer would mean MSVC-shaped branches inside `core`.
 ```
 demangle/
   api.py              demangle(), parse(), detect() -- the public surface
+  _signature.py       signature(): the parts of a name rather than its spelling
+  filter.py           demangling the symbols out of text that is not only symbols
   cli.py              the `demangle` command
   core/
     reader.py         a bounds-checked cursor; the only input primitive parsers use
@@ -93,6 +95,10 @@ demangle/
     spelling.py       SpellingBuilder: C++ declarator placement, the fast path
     ast.py            AstBuilder and the Node hierarchy
     errors.py         the exception hierarchy
+    limits.py         the bounds a parser reads before it recurses or emits
+    style.py          named styles, and composing one for a single call
+    decorations.py    what a symbol table adds around a name, which belongs to no scheme
+    plugin.py         LanguagePlugin: the contract a scheme implements
     cache.py          bounded memoisation
     registry.py       language discovery, including third-party plugins
   schemes/
@@ -106,6 +112,10 @@ demangle/
     objc/             Objective-C
     pascal/           Free Pascal
     delphi/           Borland/Embarcadero Delphi and C++Builder
+    gnuv2/            pre-Itanium C++: g++ before 3.0, cfront/ARM, Lucid, HP aCC, EDG
+    codewarrior/      Metrowerks CodeWarrior, the other pre-Itanium C++ mangling
+    ada/              Ada, as GNAT encodes it
+    jni/              the C function a Java `native` method is called through
 ```
 
 `core` never imports from `schemes`; `schemes/*` never import from each other. Both are
@@ -178,11 +188,15 @@ part of the release checklist rather than a thing to check when someone complain
 ## Correctness
 
 Correctness is defined against the reference implementations, not against our own
-reading of the specifications:
-
-- Itanium: `llvm-cxxfilt`
-- MSVC: `llvm-undname`
-- Rust: `rustc-demangle`
+reading of the specifications. Each scheme has one: `llvm-cxxfilt` and GNU `c++filt` for
+Itanium, `llvm-undname` for MSVC, the `rustc-demangle` crate for Rust, `c++filt
+--format=dlang` for D and `--format=gnat` for Ada, Embarcadero's own unmangler for
+Delphi, and -- where a distribution ships nothing that reads the mangling -- a reference
+built here from the compiler's own sources, for Swift, pre-Itanium C++ and CodeWarrior.
+Go, Nim, Free Pascal, Objective-C and JNI have no reference anywhere, and are held to a
+property instead: re-mangling what was read has to reproduce the symbol.
+[CONFORMANCE.md](CONFORMANCE.md) records what each is measured against and what the
+measurement says.
 
 `tests/conformance/` holds frozen corpora with the reference output recorded next to
 each name, and the pass counts are pinned as exact numbers so that a change in either

@@ -143,3 +143,37 @@ class TestEveryExampleInTheDocsIsWhatTheCodeDoes:
                         assert repr(eval(call, {"demangle": demangle})) == expected
                     checked += 1
         assert checked, "no documented results were found to check; has the shape of the examples changed?"
+
+
+class TestTheArchitecturesLayoutIsTheLayout:
+    """The tree in ARCHITECTURE.md, against the tree on disk.
+
+    It had drifted by four schemes and five core modules: `gnuv2`, `codewarrior`, `ada`
+    and `jni` all landed without being listed, so a reader taking the diagram for the map
+    would have concluded the package reads ten manglings rather than fourteen.
+    """
+
+    ARCHITECTURE = ROOT / "ARCHITECTURE.md"
+    SOURCE = ROOT / "src" / "demangle"
+
+    def layout(self):
+        if not self.ARCHITECTURE.exists() or not self.SOURCE.is_dir():  # pragma: no cover
+            pytest.skip("the source tree and ARCHITECTURE.md are not both present")
+        match = re.search(r"```\ndemangle/\n(.*?)```", self.ARCHITECTURE.read_text(encoding="utf-8"), re.S)
+        assert match, "ARCHITECTURE.md no longer carries a layout diagram"
+        return match.group(1)
+
+    def test_every_scheme_is_listed(self, subtests):
+        listed = self.layout()
+        for scheme in sorted(demangle.languages()):
+            with subtests.test(scheme=scheme):
+                assert f"{scheme}/" in listed, f"the layout in ARCHITECTURE.md does not list the {scheme} scheme"
+
+    def test_every_module_is_listed(self, subtests):
+        listed = self.layout()
+        modules = [*sorted(self.SOURCE.glob("*.py")), *sorted((self.SOURCE / "core").glob("*.py"))]
+        for module in modules:
+            if module.name == "__init__.py":
+                continue
+            with subtests.test(module=module.name):
+                assert module.name in listed, f"the layout in ARCHITECTURE.md does not list {module.name}"
