@@ -1,0 +1,49 @@
+name: Conformance bug
+description: A name this library reads differently from the reference demangler, or refuses.
+labels: ["conformance"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        The most valuable report is small and complete: the name, what the reference
+        says, and what this says. No prose is needed beyond that.
+  - type: input
+    id: name
+    attributes:
+      label: The mangled name
+      description: Exactly as it appears in the symbol table, with nothing trimmed.
+      placeholder: _ZNSt6vectorIiSaIiEE9push_backERKi
+    validations:
+      required: true
+  - type: input
+    id: reference
+    attributes:
+      label: What the reference prints
+      description: >-
+        And which reference — llvm-cxxfilt, c++filt, llvm-undname, rustfilt,
+        swift-demangle, cwdemangle — with its version.
+      placeholder: "llvm-cxxfilt 18.1.3: std::vector<int, std::allocator<int>>::push_back(int const&)"
+    validations:
+      required: true
+  - type: input
+    id: ours
+    attributes:
+      label: What this library prints
+      description: "`demangle <name>`, or the exception it raised."
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Where the name came from
+      description: >-
+        Optional, and worth a lot when you have it: the declaration the compiler was
+        given, or the binary and the compiler that built it. The declaration settles a
+        case where the two demanglers disagree with each other.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`python -c 'import demangle; print(demangle.__version__)'`"
+    validations:
+      required: true

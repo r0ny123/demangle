@@ -6,7 +6,7 @@ live, and they build the three references that have to be built here because no
 distribution ships one.
 
 Run them against any change to a parser's shape rules. Everything below is optional for
-a one-line fix and expected for a parser change; [CONTRIBUTING](https://r0ny123.github.io/demangle/CONTRIBUTING/) has the
+a one-line fix and expected for a parser change; [CONTRIBUTING](https://github.com/r0ny123/demangle/blob/main/CONTRIBUTING.md) has the
 checklist that says which.
 
 ## Enumeration

@@ -1,7 +1,6 @@
 # demangle
 
 [![CI](https://github.com/r0ny123/demangle/actions/workflows/ci.yml/badge.svg)](https://github.com/r0ny123/demangle/actions/workflows/ci.yml)
-[![Documentation](https://img.shields.io/badge/docs-r0ny123.github.io-blue)](https://r0ny123.github.io/demangle/)
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue)](https://www.python.org/downloads/)
 [![Licence](https://img.shields.io/badge/licence-MIT-green)](https://github.com/r0ny123/demangle/blob/main/LICENSE)
 
@@ -241,8 +240,8 @@ The MSVC scheme has nine such options: the five flags `llvm-undname` has —
 — and four `UnDecorateSymbolName` mask bits it has no flag for, `ms_keywords`,
 `leading_underscores`, `this_type` and `tag_kind`. The two kinds reach differently, which
 is the references' doing rather than a convenience:
-[the API reference](https://r0ny123.github.io/demangle/reference/api/#printing-less-of-a-name)
-says which is which, and each is scored against its own reference in
+[`MsvcOptions`](https://github.com/r0ny123/demangle/blob/main/src/demangle/schemes/msvc/options.py) says which is which, field by
+field, and each kind is scored against its own reference in
 [CONFORMANCE.md](CONFORMANCE.md). Every one of them has a command-line flag.
 
 Swift has the bundle Xcode and LLDB show instead of the full spelling — `Either` for
@@ -332,13 +331,13 @@ Schemes are plugins. `core` never imports one, they never import each other, and
 separate distribution can add a language through the `demangle.languages`
 entry-point group without patching this package. Both rules are enforced by tests.
 
-[Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) works
+[Working with the tree](https://github.com/r0ny123/demangle/blob/main/docs/analysing-a-binary.md) works
 one real task through `parse()` end to end — finding every function in libstdc++ that
 takes a string by const reference, and measuring what the regular-expression version of
 the same question gets wrong.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture and
-[Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/) to add a language
+[Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md) to add a language
 of your own. The API reference is published at <https://r0ny123.github.io/demangle/>.
 
 ## Contributing

@@ -1,0 +1,7 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/r0ny123/demangle/security/advisories/new
+    about: >-
+      A crafted name that hangs, exhausts memory, or escapes an exception goes here
+      privately rather than in a public issue. SECURITY.md has the threat model.

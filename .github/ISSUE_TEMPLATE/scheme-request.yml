@@ -1,0 +1,32 @@
+name: A mangling this does not read
+description: A scheme that is missing, or a production within one that is refused.
+labels: ["scheme"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        ROADMAP.md heading 1 records the schemes that landed and the ones surveyed and
+        turned down, with the reason for each. It is worth a look first.
+  - type: input
+    id: scheme
+    attributes:
+      label: The mangling
+      placeholder: Watcom C++, Sun Studio, ...
+    validations:
+      required: true
+  - type: textarea
+    id: names
+    attributes:
+      label: Some real names
+      description: >-
+        Out of a binary rather than invented, and the declaration each came from if you
+        have it. A scheme is only as good as the symbols it was checked against.
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: What reads them today
+      description: >-
+        A demangler, a specification, or nothing. Where there is no reference, the check
+        becomes a round-trip property instead, and that is worth knowing up front.

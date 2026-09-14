@@ -88,7 +88,7 @@ comment naming the probe that settled it.
 
 ## Adding a scheme
 
-See [Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/). In short: three functions and a
+See [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md). In short: three functions and a
 `LanguagePlugin`, in a new directory under `src/demangle/schemes/`.
 
 ## Before you open a pull request
@@ -120,7 +120,7 @@ Then, before you open it:
 - [ ] A change to a parser's shape rules has been through the fuzzers.
 
 That last one is
-[Fuzzing and the reference demanglers](https://r0ny123.github.io/demangle/testing/):
+[Fuzzing and the reference demanglers](https://github.com/r0ny123/demangle/blob/main/docs/testing.md):
 what `tools/enumerate.py`, `tools/mutate.py` and `tools/invariants.py` ask that the
 corpora cannot, and how to build the references for Rust, Swift and pre-Itanium C++ that
 no distribution ships.

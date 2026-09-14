@@ -209,3 +209,35 @@ class TestEverySnippetIsValidPython:
                     with subtests.test(page=page.name, block=index):
                         compile(source, f"<{page.name}:{index}>", "exec")
         assert blocks, "no python blocks were found; has the shape of the examples changed?"
+
+
+class TestTheReferenceDefectSourcesAreDocumented:
+    """Every source under `tools/corpus_sources/reference_defects/`, against its README.
+
+    The expected column of `tests/conformance/itanium-reference-defects.txt` comes from
+    the declaration rather than from a demangler, so the table in that README -- which
+    compiler wrote each name, and what each reference does with it -- is the only record
+    of why a row says what it says. A source added without a row is evidence nobody else
+    can check; a row left behind after its source went names a file that is not there.
+    """
+
+    SOURCES = ROOT / "tools" / "corpus_sources" / "reference_defects"
+
+    def readme(self):
+        if not self.SOURCES.is_dir():  # pragma: no cover - only in a wheel-only checkout
+            pytest.skip("the corpus sources are not part of this distribution")
+        return (self.SOURCES / "README.md").read_text(encoding="utf-8")
+
+    def test_every_source_has_a_row(self, subtests):
+        readme = self.readme()
+        for source in sorted(self.SOURCES.glob("*.cpp")):
+            with subtests.test(source=source.name):
+                assert f"`{source.name}`" in readme, f"{source.name} has no row in the reference-defects README"
+
+    def test_every_row_names_a_source(self, subtests):
+        readme = self.readme()
+        for name in re.findall(r"^\| `([^`]+\.cpp)`", readme, re.M):
+            with subtests.test(source=name):
+                assert (self.SOURCES / name).exists(), (
+                    f"the reference-defects README has a row for {name}, which is gone"
+                )
