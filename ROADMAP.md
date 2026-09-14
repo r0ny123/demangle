@@ -301,20 +301,27 @@ compiler named on each entry.
   by seed and so does what the references make of them: with a one-member pack both keep
   an unexpanded `...` where this expands it, and with two they each pick a different one.
 
-- **A pre-Itanium template whose second argument is a value** — *open, and mutant-only*.
-  `__opi__t2TA2Z5__pt__8_PFcPv_i` from `tools/mutate.py --seed 54` is
+- ~~**A pre-Itanium template whose second argument is a value**~~ — *fixed*.
+  `__opi__t2TA2Z5__pt__8_PFcPv_i` from `tools/mutate.py --seed 54` was
   `TA<__pt_, 8>::operator int(int (*)(char, void *))` to the reference and
-  `_PFcPv_i::operator int(void)` here: the value argument is not read, and what is left
-  of the name is resynchronised as a class name. The smaller
-  `__opi__t2TA2Z5__pt__1_i` shows it plainly — `_::operator int(int)`, naming a class
+  `_PFcPv_i::operator int(void)` here: the value argument was not read, and what was left
+  of the name was resynchronised as a class name. The smaller
+  `__opi__t2TA2Z5__pt__1_i` showed it plainly — `_::operator int(int)`, naming a class
   called `_`, which is the kind of answer this package treats as worse than none.
 
-  Not fixed, because the trade is the wrong way round. All 5,112 template names in
-  `tests/conformance/gnuv2-*.txt` already agree with the reference exactly, and the
-  shape is reachable only by damaging one: `t<n><name><count>` followed by `Z<name>` and
-  then `_<digits>` appears in no recorded symbol. Adding a production for it means
-  touching the code that reads those 5,112, and section 0 already records what this
-  scheme's ambiguity costs when a rule is widened to catch a few more names.
+  The production turned out to be two lines of the reference rather than a grammar to
+  add. `demangle_fund_type` in `cplus-dem.c` ends its switch on `'\0'` and `'_'` with a
+  bare `break`: an empty fundamental type, successful, integral, and consuming nothing,
+  so `demangle_template_value_parm` reads the `_8_` after it with
+  `consume_count_with_underscores`. This library already had that case and refused it
+  deliberately — it is one of the three shapes that made the scheme claim ordinary C
+  symbols, and `drm_intel_gem_bo_map__cpu` is a C function rather than a call taking a
+  `__restrict *`. The refusal is now lifted in exactly one place, the type in front of a
+  template *value* argument, which no C name can reach because the whole shape sits
+  inside a `t <count> <name> <count>` production. All 5,112 template names in
+  `tests/conformance/gnuv2-*.txt` are unchanged, the detection numbers are unchanged,
+  and `TestATemplateValueArgumentWithNoTypeInFrontOfIt` in `tests/test_gnuv2.py` pins
+  both sides of it.
 
 - ~~**`$$C` over a `__restrict` pointer puts the two qualifier words in either order**~~
   — *settled, and it was cosmetic*. `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z` from

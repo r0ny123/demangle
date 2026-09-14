@@ -543,3 +543,43 @@ class TestAVirtualTableWithACountTooLarge:
     )
     def test_the_spelling(self, mangled, expected):
         assert demangle.demangle(mangled, language="gnuv2") == expected
+
+
+class TestATemplateValueArgumentWithNoTypeInFrontOfIt:
+    """`_8_` in a template argument list is the value `8`, and nothing spells its type.
+
+    `demangle_fund_type` in the reference ends its switch on `'\\0'` and `'_'` with a
+    bare `break`: an empty fundamental type, successful, integral, and consuming nothing,
+    so `demangle_template_value_parm` reads the `_8_` after it with
+    `consume_count_with_underscores`. `__opi__t2TA2Z5__pt__8_PFcPv_i` is therefore
+    `TA<__pt_, 8>::operator int(int (*)(char, void *))` to it.
+
+    That empty type is refused everywhere else here, and on purpose -- it is one of the
+    three shapes that made this scheme claim ordinary C symbols, and
+    `drm_intel_gem_bo_map__cpu` is a C function rather than a call taking a
+    `__restrict *`. The refusal is lifted only in front of a template *value* argument,
+    where no C name can reach: the whole shape sits inside a `t <count> <name> <count>`
+    production. Left unread, what followed was resynchronised as a class name and
+    `__opi__t2TA2Z5__pt__1_i` came back as `_::operator int(int)`, naming a class called
+    `_` -- an answer this package treats as worse than none. `tools/mutate.py --seed 54`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("__opi__t2TA2Z5__pt__8_PFcPv_i", "TA<__pt_, 8>::operator int(int (*)(char, void *))"),
+            ("__opi__t2TA2Z5__pt__1_i", "TA<__pt_, 1>::operator int(int)"),
+            ("__opi__t2TA2Z1A_8_i", "TA<A, 8>::operator int(int)"),
+            ("__opi__t2TA1_8_i", "TA<8>::operator int(int)"),
+            ("f__t2TA2Z1A_8_i", "TA<A, 8>::f(int)"),
+            # A value argument whose type *is* spelled still reads as it always did.
+            ("f__t2TA1i8i", "TA<8>::f(int)"),
+        ],
+    )
+    def test_the_value_is_read(self, mangled, expected):
+        assert demangle.demangle(mangled, language="gnuv2") == expected
+
+    def test_the_empty_type_is_still_refused_outside_a_template(self):
+        """The shape that made this scheme claim C symbols is untouched."""
+        assert demangle.demangle("drm_intel_gem_bo_map__cpu") == "drm_intel_gem_bo_map__cpu"
+        assert not gnuv2.detect("drm_intel_gem_bo_map__cpu")

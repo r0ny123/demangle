@@ -544,7 +544,7 @@ def get_count(cur):
 # --------------------------------------------------------------------------------------
 
 
-def do_type(work, cur, result):
+def do_type(work, cur, result, allow_empty=False):
     """One type encoding. Returns a `_TK_*` kind, or 0 for failure.
 
     `result` is cleared first, as the reference's `string_init` does to the buffer its
@@ -553,12 +553,16 @@ def do_type(work, cur, result):
     The declarator is built in `decl` and joined on at the end, which is why a pointer to
     an array comes out as `int (*)[3]` -- the `(` and `)` are added when the array sees a
     `*` already sitting at the front of the declarator.
+
+    `allow_empty` lets the base type be nothing at all, which is what the reference does
+    everywhere and this does only where a template value argument's type goes. See
+    `demangle_fund_type`.
     """
     with _Depth(work):
-        return _do_type(work, cur, result)
+        return _do_type(work, cur, result, allow_empty)
 
 
-def _do_type(work, cur, result):
+def _do_type(work, cur, result, allow_empty):
     decl = _Buf()
     result.clear()
     done = False
@@ -666,7 +670,7 @@ def _do_type(work, cur, result):
                     result.append(f"T{index}")
                 success = 1
         else:
-            success = demangle_fund_type(work, cur, result)
+            success = demangle_fund_type(work, cur, result, allow_empty)
             if tk == _TK_NONE:
                 tk = success
 
@@ -754,7 +758,7 @@ _FUND_TYPES = {
 }
 
 
-def demangle_fund_type(work, cur, result):
+def demangle_fund_type(work, cur, result, allow_empty=False):
     """A builtin type and the qualifiers in front of it: `CUs` is `const unsigned short`.
 
     Appends to `result` rather than clearing it -- `do_type` has already prepared the
@@ -793,7 +797,12 @@ def demangle_fund_type(work, cur, result):
         # C function, not a call taking a `__restrict *`, and that is the shape that
         # says so. A type that has already spelled something keeps the reference's
         # reading.
-        return tk if len(result) else 0
+        #
+        # `allow_empty` is the one place that refusal does not apply: the type in front
+        # of a template *value* argument, where `_8_` is the argument `8` and there is
+        # no C symbol to be confused with, since the whole shape lives inside a `t`
+        # production that a C name cannot open. See `_demangle_template`.
+        return tk if allow_empty or len(result) else 0
     if code in _FUND_TYPES:
         spelling, kind = _FUND_TYPES[code]
         cur.advance()
@@ -1115,7 +1124,7 @@ def _demangle_template(work, cur, tname, trawname, is_type, remember):
                 break
         else:
             temp = _Buf()
-            success = do_type(work, cur, temp)
+            success = do_type(work, cur, temp, allow_empty=True)
             if not success:
                 break
             out = tname if is_type else _Buf()
