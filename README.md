@@ -29,6 +29,24 @@ Python. No dependencies, no native code, no compiler required.
 'CActor::~CActor()'
 ```
 
+**Contents**
+
+- [Why this exists](#why-this-exists) · [Install](#install)
+- [Use](#use) — [strings](#the-string-you-probably-want) ·
+  [trees](#the-structure-when-you-need-it) ·
+  [parts](#the-parts-when-the-spelling-is-not-what-you-want) ·
+  [types](#a-type-on-its-own-not-a-whole-symbol) · [files](#a-file-not-a-name) ·
+  [detection](#detection-and-batches) ·
+  [bytes](#bytes-when-the-names-came-from-a-symbol-table) ·
+  [tree as data](#the-tree-as-data) · [styles](#styles) ·
+  [printing less](#printing-less-of-a-name) · [command line](#command-line)
+- [Correctness](#correctness) — [checked-in corpora](#checked-in-corpora) ·
+  [notes on the corpora](#notes-on-the-corpora) ·
+  [whole symbol tables](#whole-symbol-tables) ·
+  [on trusting the references](#on-trusting-the-references)
+- [Safety](#safety) · [Performance](#performance) · [Architecture](#architecture) ·
+  [Security](#security) · [Contributing](#contributing) · [Licence](#licence)
+
 ## Why this exists
 
 Every existing option in Python binds to a native demangler: `cxxfilt` and `pycxxfilt`
@@ -234,7 +252,7 @@ Five of the MSVC options are `llvm-undname`'s five flags and mean the same:
 `calling_convention`, `access_specifier`, `member_type`, `return_type`, `variable_type`.
 On the command line they are `--no-calling-convention` and its siblings. Over LLVM's own
 609-name corpus this agrees with the reference on **1250 / 1253** of the differences the
-flags make ††.
+flags make <sup>[2](#2-where-a-dropped-return-type-leaves-a-bracket-open)</sup>.
 
 Four more are `UnDecorateSymbolName` mask bits that `llvm-undname` has no flag for, so
 the reference for them is Microsoft's own `dbghelp.dll`: `ms_keywords`
@@ -253,7 +271,7 @@ symbol a local name is scoped by.
 'void f(C<int> *)'
 ```
 
-Scored at **1064 / 1064** against `dbghelp.dll` 10.0.26100.8328 ※. The remaining mask bits
+Scored at **1064 / 1064** against `dbghelp.dll` 10.0.26100.8328 <sup>[1](#1-the-dbghelp-mask-bits)</sup>. The remaining mask bits
 have no field, and `tests/test_msvc_options.py` says why for each: nine of them change no
 spelling in the corpus at all, and `UNDNAME_NAME_ONLY` discards a vftable's base path,
 which would spell three different vtables the same way.
@@ -312,31 +330,40 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Rust, both schemes | `rustfilt` (rustc-demangle 0.1.28) | **5316 / 5316** |
 | MSVC — LLVM's own test corpus | `llvm-undname` 18.1.3 | **609 / 609** |
 | MSVC RTTI type descriptors, both forms | `llvm-undname` 18.1.3 | **106 / 106** |
-| MSVC ARM64EC hybrid names | LLVM's own mangling rule ✦ | **606 / 606** |
-| MSVC — the mask bits `llvm-undname` has no flag for ※ | `dbghelp.dll` 10.0.26100.8328 | **1064 / 1064** |
+| MSVC ARM64EC hybrid names | LLVM's own mangling rule <sup>[4](#4-arm64ec-hybrid-names)</sup> | **606 / 606** |
+| MSVC — the mask bits `llvm-undname` has no flag for <sup>[1](#1-the-dbghelp-mask-bits)</sup> | `dbghelp.dll` 10.0.26100.8328 | **1064 / 1064** |
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
-| Names a reference reads wrongly ✱ | the declaration | **37 / 37** |
+| Names a reference reads wrongly <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | the declaration | **37 / 37** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
-| Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
-| Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |
-| Swift — the compiler's own demangler vectors | `swift-demangle`, built from source ✤ | **514 / 514** |
-| Nim 1.6 and 2.2, against the compiler's own record ¶ | `.ndi` debug mapping | **2115 / 2115** |
-| Free Pascal 3.2.2 runtime and packages § | re-assembly + `ppudump` | **3899 / 3899** |
-| Go, from the shipped toolchain | round trip ‡ | **1517 / 1517** |
+| Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** <sup>[3](#3-bare-types-under-both-references)</sup> |
+| Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **8494 / 8494** |
+| Swift — the compiler's own demangler vectors | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **514 / 514** |
+| Nim 1.6 and 2.2, against the compiler's own record <sup>[14](#14-nim)</sup> | `.ndi` debug mapping | **2115 / 2115** |
+| Free Pascal 3.2.2 runtime and packages <sup>[5](#5-free-pascal)</sup> | re-assembly + `ppudump` | **3899 / 3899** |
+| Go, from the shipped toolchain | round trip <sup>[16](#16-go)</sup> | **1517 / 1517** |
 | D, from the shipped libgphobos | GNU `c++filt --format=dlang` | **1257 / 1257** |
-| Objective-C, three ABIs, against the declaration ⁂ | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
-| Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` ✤ | **217 / 217** |
-| Swift names the reference reads wrongly ✤ | the demangling tree | **5 / 5** |
-| Delphi/C++Builder, against Embarcadero's unmangler ◊ | recorded `tdump -um` | **11363 / 11363** |
-| Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings ★ | GNU `c++filt --format=<style>` | **1324 / 1324** |
-| CodeWarrior — the reference's own vectors ✧ | `cwdemangle` 1.0 | **47 / 47** |
-| Ada/GNAT — libiberty's own vectors ✦ | GNU `c++filt --format=gnat` | **34 / 34** |
-| JNI native method names, from real `native` declarations ✽ | round trip ✽ | **50 / 50** |
+| Objective-C, three ABIs, against the declaration <sup>[9](#9-objective-c)</sup> | clang 18.1.3 + `libobjc.a` | **2665 / 2665** |
+| Swift, simplified spelling — the compiler's own vectors | `swift-demangle --simplified` <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **217 / 217** |
+| Swift names the reference reads wrongly <sup>[6](#6-the-swift-reference-is-built-here)</sup> | the demangling tree | **5 / 5** |
+| Delphi/C++Builder, against Embarcadero's unmangler <sup>[13](#13-delphi-and-cbuilder)</sup> | recorded `tdump -um` | **11363 / 11363** |
+| Pre-Itanium C++ — libiberty's own vectors, both `DMGL_PARAMS` settings <sup>[10](#10-the-pre-itanium-family)</sup> | GNU `c++filt --format=<style>` | **1324 / 1324** |
+| CodeWarrior — the reference's own vectors <sup>[11](#11-codewarrior)</sup> | `cwdemangle` 1.0 | **47 / 47** |
+| Ada/GNAT — libiberty's own vectors <sup>[12](#12-ada-and-gnat)</sup> | GNU `c++filt --format=gnat` | **34 / 34** |
+| JNI native method names, from real `native` declarations <sup>[15](#15-jni)</sup> | round trip <sup>[15](#15-jni)</sup> | **50 / 50** |
 
-※ `UnDecorateSymbolName` with the mask set, driven over the same 609 names by
+### Notes on the corpora
+
+What the numbered marks in the table above point at, and the ones in
+[whole symbol tables](#whole-symbol-tables) below. Each says what a row is measured
+against where that is not simply "a reference demangler said so", or what the names
+it does not account for are.
+
+#### 1. The dbghelp mask bits
+
+`UnDecorateSymbolName` with the mask set, driven over the same 609 names by
 `tools/generate_msvc_dbghelp_corpus.py`. The two references do not spell a name alike —
 `dbghelp` prints `__ptr64`, writes `char * const`, and puts no space after a comma — so
 its answer goes through eight spacing rewrites before it is recorded, and each rewrite is
@@ -350,19 +377,25 @@ four bits that *do* mean what an `llvm-undname` flag means found the two referen
 disagreeing about how far a flag reaches; `UNDNAME_REACH_DIVERGENCES` in
 `tests/test_conformance.py` names one of each.
 
-†† The three are names where `llvm-undname --no-return-type` leaves an unclosed
+#### 2. Where a dropped return type leaves a bracket open
+
+The three are names where `llvm-undname --no-return-type` leaves an unclosed
 bracket — `int (__cdecl * (__cdecl B::*volatile memptrtofun7)(void)` is not a declaration
 of anything. This keeps the balanced spelling, which is what the reference itself prints
 with no flag.
 
-‡‡ The same 1,076 encodings under both references, which spell them differently: each
+#### 3. Bare types under both references
+
+The same 1,076 encodings under both references, which spell them differently: each
 style reads every row of its own reference's corpus. The last three to close were a
 doubled `KK` cv-qualifier, which `c++filt` folds away and `llvm-cxxfilt` keeps — left
 alone for a while on the reasoning that no compiler emits `KK`, which was true of the
 literal spelling and false of what it means, since the same doubling arrives through an
 already-qualified template argument and the shipped libLLVM has three of those.
 
-✦ Nothing demangles ARM64EC's `$$h` marker — `llvm-undname` refuses these and so does
+#### 4. ARM64EC hybrid names
+
+Nothing demangles ARM64EC's `$$h` marker — `llvm-undname` refuses these and so does
 current upstream — so there is no reference spelling to copy. There is a normative
 *rule*: LLVM's `getArm64ECDemangledFunctionName` says what an ARM64EC name is the hybrid
 form of, and it is what the compiler emits an `EXPORTAS` directive against, so its answer
@@ -370,14 +403,18 @@ is the name the linker resolves. Every name in LLVM's own corpus with the marker
 where LLVM's *mangler* puts it must demangle to what the name without it demangles to —
 and that column came from `llvm-undname`.
 
-§ Free Pascal ships no demangler either. The property is re-assembly — the parts this
+#### 5. Free Pascal
+
+Free Pascal ships no demangler either. The property is re-assembly — the parts this
 splits out, rejoined with the compiler's own separators, must reproduce the symbol — and
 it holds for all 236,570 readable symbols in the shipped runtime, not only the sample
 above. Independently, `ppudump` prints both a unit's mangled names and the names it
 declares, and every name read is one the unit declares. Case is not recoverable: Pascal
 is case-insensitive and the compiler upper-cases before mangling.
 
-✤ **The Swift reference is built here, from source.** Nothing a distribution ships
+#### 6. The Swift reference is built here
+
+**The Swift reference is built here, from source.** Nothing a distribution ships
 reads a Swift name — `llvm-cxxfilt` and `c++filt` both decline a `$s` outright — so
 `tools/swift-demangle-reference/` builds swiftlang/swift's own `lib/Demangling` at a
 pinned revision behind a line-per-name front end. The revision is a commit on `main` and
@@ -388,7 +425,9 @@ README has the measurements, and the one row where following it would be the def
 as `<null node pointer>`, a path its own test corpus never exercises — is pinned in
 `tests/conformance/swift-reference-defects.txt` against what the tree says instead.
 
-✻ A mangled name in Swift *metadata* can hold a one-byte marker and a four-byte offset
+#### 7. Swift symbolic references
+
+A mangled name in Swift *metadata* can hold a one-byte marker and a four-byte offset
 in place of a type the image already describes, so reading one needs the image:
 `swift.demangle_symbolic` takes bytes and a resolver, and `resolve.ContextResolver` is
 one. Each reference resolves to a descriptor; the check is that the symbol the *linker*
@@ -406,7 +445,9 @@ spliced form, and the other 260 are names the reference cannot be given, because
 fragment spliced into a name shifts the substitution indices and word substitutions
 around it — checked one by one.
 
-✚ Apple's clang numbers the substitution table by a rule no other compiler uses: an
+#### 8. How Apple clang numbers a substitution table
+
+Apple's clang numbers the substitution table by a rule no other compiler uses: an
 undeduced `auto` return type, `Da`, is a candidate -- Clang 6.0's accident, kept by
 Apple's fork in every version since -- so every back-reference after one is one higher
 than GCC or upstream clang would write, and llvm-cxxfilt and c++filt read every such
@@ -417,7 +458,7 @@ back-reference overruns or names something no type can be, and takes
 `ItaniumOptions.undeduced_auto_substitution` to force either. Checked against clang 18 under `-fclang-abi-compat=6`, which writes the
 same numbering, and against upstream clang targeting Darwin, which does not. Of the
 12,350 names in the bottles where this and `llvm-cxxfilt -_` part, 4,690 are that rule
-and 7,660 the template-parameter rebinding ✱ describes, 7,573 of them one generic lambda
+and 7,660 the template-parameter rebinding <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> describes, 7,573 of them one generic lambda
 in ceres; the 67 neither reads are `$tlv$init`, the thread-local initialiser a Mach-O
 linker names after its variable. A second batch of bottles -- Arrow, DuckDB, RocksDB,
 gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python, 295,281 more
@@ -446,7 +487,9 @@ something no type can be -- a closure prefix, or a template with no arguments af
 forces either. Established against g++ 13 under `-fabi-version=17` and `18`, against
 clang 18 targeting Linux and Darwin, and against the bottles' own symbols.
 
-⁂ Objective-C has no reference demangler, and barely a mangling: what there is comes from
+#### 9. Objective-C
+
+Objective-C has no reference demangler, and barely a mangling: what there is comes from
 the compiler rather than the language, so the rules are transcribed from clang's
 `Mangle.cpp`, `CGObjCMac.cpp` and `CGObjCGNU.cpp`. The expected column is not this
 library's own output but what the *declaration* said — every symbol was emitted by clang
@@ -456,7 +499,9 @@ GNU-family method mangling is not injective, and clang says so where it writes i
 the preferred one is flagged `ambiguous`; the 26 names where the preference differs from
 the declaration are listed in `tests/conformance/objc-lossy.txt` rather than rounded off.
 
-★ Pre-Itanium C++ is five manglings that share one demangler: g++ before 3.0, Lucid's
+#### 10. The pre-Itanium family
+
+Pre-Itanium C++ is five manglings that share one demangler: g++ before 3.0, Lucid's
 `lcc`, the ARM/cfront encoding, HP aCC and EDG. The reference is libiberty's
 `cplus-dem.c` at GCC 8.3.0, the last release that carried it, and the corpus is the 662
 cases that tree's own `demangle-expected` marks `--format=gnu`, `--format=lucid`,
@@ -477,7 +522,9 @@ mutants of it this library never reads a name libiberty refuses; where the two p
 libiberty is spelling a gap round something it should have refused, and its README has
 the families.
 
-✧ Metrowerks CodeWarrior is the other pre-Itanium C++ mangling, and the one libiberty
+#### 11. CodeWarrior
+
+Metrowerks CodeWarrior is the other pre-Itanium C++ mangling, and the one libiberty
 never read: `cplus-dem.c` has no CodeWarrior flag and `demangle-expected` has no vectors
 for it, so the reference is `encounter/cwdemangle` — the tool decompilation projects for
 GameCube and Wii titles run, dedicated to the public domain — and the corpus is its own
@@ -491,7 +538,9 @@ What is unambiguously CodeWarrior — a template argument list written literally
 symbol, `@LOCAL@`, `$localstatic`, a `__dt` the `gnu` style does not know — GNU v2 refuses
 and it falls through. `language="codewarrior"` gets the whole scheme regardless.
 
-✦ Ada, as GNAT encodes it, is the last of the pre-Itanium formats libiberty still
+#### 12. Ada and GNAT
+
+Ada, as GNAT encodes it, is the last of the pre-Itanium formats libiberty still
 carries — when the GNU v2, lucid, ARM and HP styles were dropped from the default,
 `--format=gnat` stayed. The reference is `ada_demangle` in `cplus-dem.c`, with GCC's own
 `exp_dbug.ads` documenting the encoding normatively, and the corpus is the 34 cases
@@ -515,7 +564,9 @@ identifiers joined by `__` and nothing else — are not auto-detected. They dema
 returns it unchanged, which is what an unreadable name does anyway, while claiming
 someone else's rewrites it into a plausible lie.
 
-◊ Delphi and C++Builder share one mangling, `@Unit@Class@Method$qqrv`. There is no Delphi
+#### 13. Delphi and C++Builder
+
+Delphi and C++Builder share one mangling, `@Unit@Class@Method$qqrv`. There is no Delphi
 compiler on the platforms this is developed on, so the grammar is Embarcadero's own
 `unmangle.c` — the code TDUMP, the linker and the debugger run. The reference is a
 recorded one: `tests/conformance/delphi-tdump.txt` is a dump of the real `tdump.exe
@@ -536,7 +587,9 @@ against TDUMP. That is **weaker evidence**, it is kept in its own file so it can
 read as part of the row above, and its header says so. A C++Builder `.map` or TDUMP dump
 carrying these shapes would replace it with real evidence.
 
-¶ Nim has no reference demangler either, and its mangling is not injective: `mangle`
+#### 14. Nim
+
+Nim has no reference demangler either, and its mangling is not injective: `mangle`
 drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
 carries correctness is the same round-trip property Go uses — re-mangling what we read
 must reproduce the bytes — plus agreement with the name the compiler recorded for a
@@ -544,19 +597,25 @@ debugger. Seven names in the corpus cannot come back exactly, and all seven are 
 documented loss; they are listed by name in `tests/conformance/nim-lossy.txt` rather than
 rounded off.
 
-✽ JNI has no reference demangler either — neither binutils, LLVM, Ghidra nor IDA reads
+#### 15. JNI
+
+JNI has no reference demangler either — neither binutils, LLVM, Ghidra nor IDA reads
 one — but it is the only scheme here transcribed from a *normative* specification
 rather than from a reference implementation, so the check is the specification's own
 rule run backwards: re-encoding a reading must reproduce the symbol the compiler
 wrote, escapes and overload descriptor included.
 
-‡ Go has no reference demangler — `go tool nm` prints symbol names with their escapes
+#### 16. Go
+
+Go has no reference demangler — `go tool nm` prints symbol names with their escapes
 intact and nothing in the toolchain decodes one. So the check is a property instead:
 re-escaping a decoded package path must reproduce the bytes the linker wrote, where the
 escaping is a transcription of Go's own `objabi.PathToPrefix`. It is verified over every
 symbol in the shipped toolchain binaries, not just the recorded sample.
 
-✱ **Where following a reference would be the defect.** A `<template-param>` recorded as a
+#### 17. Where following a reference would be the defect
+
+**Where following a reference would be the defect.** A `<template-param>` recorded as a
 substitution candidate — and any component built over one — is the *parameter*, not the
 argument bound to it where the entry was made. The mangler canonicalises a template type
 parameter by level and index, so it reuses one entry across two different templates, and
@@ -600,14 +659,34 @@ those and agrees with this on 91 of the 95 it reads. Of the four left, three are
 against *both* references; the fourth is one open case of ours, in ROADMAP.md heading 0.
 Over the same 217,730 symbols this now differs from `c++filt` in the gnu style on 3.
 
-‖ The `gnu` style reads every one of the 44,093 names `c++filt` reads in
+#### 18. The gnu style over whole libraries
+
+The `gnu` style reads every one of the 44,093 names `c++filt` reads in
 `libLLVM.so.18.1` and spells all of them byte for byte as it does. Over all 217,730
 symbols there are three left, and all three are the `std::once_flag::_Prepare_execution`
 shape above, where the declaration in libstdc++'s own header says this is right and GNU
 is not — so what is left is not a gap. `c++filt` refuses 673 of those 217,730 outright,
 and this reads 457 of them.
 
-⁑ 436,546 of the 436,644 read exactly as `llvm-undname` reads them, and none reads
+Five differences used to be listed here and are now reproduced: `&A::f` inside a template
+argument, which GNU prints without the parameter list the mangling carries; the
+`{default arg#1}` scope of an entity declared in a default argument; a generic lambda's
+`auto:1`; how GNU brackets an operand by *kind* rather than by precedence; and a `const`
+applied to a type that already carries one, which the mangling really does say and which
+GNU folds away because no declaration spells `const const`.
+
+A third disagreement used to be here and is now reproduced instead. GNU omits the space
+it otherwise puts between two closing angle brackets when the last template argument is
+an empty pack, which is a bookkeeping slip rather than a rule: libiberty decides on a
+field it updates on every append and does not restore when it rewinds the separator in
+front of an argument that printed nothing, so the character it tests is that separator's
+space. The same output shows both spellings in one name — `f<A<B<C>>, JE>` comes out
+`void f<A<B<C> >>(A<B<C> >)`. The `gnu` style exists to reproduce `c++filt`, slip and
+all, so it now does; the default `llvm` style spaces neither, as `llvm-cxxfilt` does.
+
+#### 19. MSVC over whole libraries
+
+436,546 of the 436,644 read exactly as `llvm-undname` reads them, and none reads
 differently. Of the 98 left, 91 are MD5-hashed names, which both hand back as they
 stand; six are local statics carrying a `.0`-style suffix, which the reference reads by
 stopping where the name ends and saying nothing about the rest -- it reads `?x@@3HAjunk`
@@ -627,21 +706,11 @@ differently; 722 carry a deduced return type, `?A_P` for `auto` and `?A_T` for
 4,372 are MD5-hashed names both hand back; and 198 are `$initializer$` variables neither
 reads.
 
-Five differences used to be listed here and are now reproduced: `&A::f` inside a template
-argument, which GNU prints without the parameter list the mangling carries; the
-`{default arg#1}` scope of an entity declared in a default argument; a generic lambda's
-`auto:1`; how GNU brackets an operand by *kind* rather than by precedence; and a `const`
-applied to a type that already carries one, which the mangling really does say and which
-GNU folds away because no declaration spells `const const`.
+#### 20. A pre-Itanium thunk for a positive delta
 
-A third disagreement used to be here and is now reproduced instead. GNU omits the space
-it otherwise puts between two closing angle brackets when the last template argument is
-an empty pack, which is a bookkeeping slip rather than a rule: libiberty decides on a
-field it updates on every append and does not restore when it rewinds the separator in
-front of an argument that printed nothing, so the character it tests is that separator's
-space. The same output shows both spellings in one name — `f<A<B<C>>, JE>` comes out
-`void f<A<B<C> >>(A<B<C> >)`. The `gnu` style exists to reproduce `c++filt`, slip and
-all, so it now does; the default `llvm` style spaces neither, as `llvm-cxxfilt` does.
+All 396 are one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which
+libiberty reads as a method named `n8_setInstance`. The compiler's own `make_thunk` is the
+authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest.
 
 ### Whole symbol tables
 
@@ -649,34 +718,49 @@ Run live against the reference, not replayed.
 
 | Binary | Symbols | Agree |
 |---|---|---|
-| `libLLVM.so.18.1` ✱ | 44,186 | **31 differ** |
-| `libclang-cpp.so` + Polly + LTO ✱ | 39,020 | **236 differ** |
+| `libLLVM.so.18.1` <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 44,186 | **31 differ** |
+| `libclang-cpp.so` + Polly + LTO <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 39,020 | **236 differ** |
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6`, gnu style | 5,990 | **100%** |
-| `libLLVM.so.18.1`, gnu style | 44,093 | **100%** ‖ |
-| Every shared library Ubuntu 24.04 ships, llvm style ✱ | 217,409 | **322 differ** |
+| `libLLVM.so.18.1`, gnu style | 44,093 | **100%** <sup>[18](#18-the-gnu-style-over-whole-libraries)</sup> |
+| Every shared library Ubuntu 24.04 ships, llvm style <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 217,409 | **322 differ** |
 | Swift runtime + Foundation | 48,368 | **100%** |
-| Swift 6.1.2 toolchain, all 29 runtime libraries ✤ | 135,492 | **1 differ** |
-| Swift 6.1.2 toolchain C++ (`swift-frontend`, `liblldb`, `libsourcekitdInProc`), names not in the rows above ✱ | 185,532 | **62 differ** |
-| Nim standard library routine names ¶ | 5,946 | **99.87%** |
-| Free Pascal runtime and packages § | 236,570 | **100%** |
+| Swift 6.1.2 toolchain, all 29 runtime libraries <sup>[6](#6-the-swift-reference-is-built-here)</sup> | 135,492 | **1 differ** |
+| Swift 6.1.2 toolchain C++ (`swift-frontend`, `liblldb`, `libsourcekitdInProc`), names not in the rows above <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 185,532 | **62 differ** |
+| Nim standard library routine names <sup>[14](#14-nim)</sup> | 5,946 | **99.87%** |
+| Free Pascal runtime and packages <sup>[5](#5-free-pascal)</sup> | 236,570 | **100%** |
 | `libgphobos` + `libgdruntime` (D) | 16,333 | **100%** |
 | `libgnat` + `libgnarl` (Ada), against `c++filt --format=gnat` | 11,237 | **100%** |
 | LDC 1.40 runtime (D 2.110 frontend), the names `c++filt` reads | 15,350 | **100%** |
-| LLVM 18.1.8 Windows release, every static library (MSVC) | 436,644 | **100%** ⁑ |
-| Boost 1.84, twenty-nine `boost_*-vc143` NuGet packages (MSVC 14.3, x64 and x86) | 122,162 | **100%** ⁑ |
-| ITK 5.0, OpenCV 5, Qt 5.9, libzmq 4.3, leveldb and restbed, NuGet packages (MSVC 2017 to 2022) | 471,881 | **100%** ⁑ |
-| 46 C++ development packages' static libraries (libc++, Boost, Abseil, gRPC, RocksDB, Cap'n Proto...) ✱ | 109,606 | **74 differ** |
-| Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip ‡ |
-| Objective-C, 3 ABIs + shipped `libobjc.a` ⁂ | 3,163 | **100%** |
-| Swift metadata symbolic references ✻ | 4,528 | **100%** |
-| Swift 6.1.2 runtime typerefs, resolved through the dynamic relocations and symbols ✻ | 7,071 | 6,811 agree; 260 unspliceable |
-| KDE 2.2.2, omniORB 3.0.4, gtkmm 1.2 and libstdc++ 2.10, as gcc 2.95 mangled them (pre-Itanium), against libiberty | 56,347 | **396 differ** ✶ |
-| Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU and glog (Apple clang, Mach-O) ✱ ✚ | 108,839 | **12,350 differ** ✱ ✚ |
-| Homebrew bottles of Arrow, DuckDB, RocksDB, gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python (Apple clang, Mach-O) ✱ ✚ | 295,281 | **6,134 differ** ✱ ✚ |
-| Delphi/C++Builder BPL and DLL export tables ◊ | 11,363 | **100%** |
+| LLVM 18.1.8 Windows release, every static library (MSVC) | 436,644 | **100%** <sup>[19](#19-msvc-over-whole-libraries)</sup> |
+| Boost 1.84, twenty-nine `boost_*-vc143` NuGet packages (MSVC 14.3, x64 and x86) | 122,162 | **100%** <sup>[19](#19-msvc-over-whole-libraries)</sup> |
+| ITK 5.0, OpenCV 5, Qt 5.9, libzmq 4.3, leveldb and restbed, NuGet packages (MSVC 2017 to 2022) | 471,881 | **100%** <sup>[19](#19-msvc-over-whole-libraries)</sup> |
+| 46 C++ development packages' static libraries (libc++, Boost, Abseil, gRPC, RocksDB, Cap'n Proto...) <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 109,606 | **74 differ** |
+| Go toolchain (`go`, `compile`, `link`) | 30,733 | round trip <sup>[16](#16-go)</sup> |
+| Objective-C, 3 ABIs + shipped `libobjc.a` <sup>[9](#9-objective-c)</sup> | 3,163 | **100%** |
+| Swift metadata symbolic references <sup>[7](#7-swift-symbolic-references)</sup> | 4,528 | **100%** |
+| Swift 6.1.2 runtime typerefs, resolved through the dynamic relocations and symbols <sup>[7](#7-swift-symbolic-references)</sup> | 7,071 | 6,811 agree; 260 unspliceable |
+| KDE 2.2.2, omniORB 3.0.4, gtkmm 1.2 and libstdc++ 2.10, as gcc 2.95 mangled them (pre-Itanium), against libiberty | 56,347 | **396 differ** <sup>[20](#20-a-pre-itanium-thunk-for-a-positive-delta)</sup> |
+| Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU and glog (Apple clang, Mach-O) <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup> | 108,839 | **12,350 differ** <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup> |
+| Homebrew bottles of Arrow, DuckDB, RocksDB, gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python (Apple clang, Mach-O) <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup> | 295,281 | **6,134 differ** <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup> |
+| Delphi/C++Builder BPL and DLL export tables <sup>[13](#13-delphi-and-cbuilder)</sup> | 11,363 | **100%** |
 
-About 2,393,000 real symbols. Every row is exact except the ten marked and the 6.1.2 typeref row, whose 260 are names the reference cannot be handed at all (✻), and on the ten every difference is a name a reference reads wrongly (✱; the one ✤ in the Swift runtime row, which is the shape `tests/conformance/swift-reference-defects.txt` pins; and the 396 ✶, all one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive delta, which libiberty reads as a method named `n8_setInstance` -- the compiler's own `make_thunk` is the authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest) or a spelling policy still short of `c++filt` (‖) — all accounted for below, name by name. The 62 in the Swift toolchain's C++, the 74 in the development packages and 7,660 of the 12,350 in the Homebrew bottles -- 7,573 of them one generic lambda in ceres's `ParallelInvoke`, whose `auto&` both references resolve to the enclosing template's argument; the other 4,690 are Apple's `auto` rule, ✚ -- are the template-parameter rebinding `_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the `ArrayRefView` lambdas -- where this spells the parameter the header declares.
+About 2,393,000 real symbols. Every row is exact except the ten marked and the 6.1.2
+typeref row, whose 260 are names the reference cannot be handed at all <sup>[7](#7-swift-symbolic-references)</sup>.
+
+On the ten, every difference is either a name a reference reads wrongly <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> or
+a spelling policy still short of `c++filt` <sup>[18](#18-the-gnu-style-over-whole-libraries)</sup> -- all accounted for in the notes
+above, name by name. Two of the ten are their own case: the one <sup>[6](#6-the-swift-reference-is-built-here)</sup> in the Swift
+runtime row is the shape `tests/conformance/swift-reference-defects.txt` pins, and the
+396 <sup>[20](#20-a-pre-itanium-thunk-for-a-positive-delta)</sup> are one form of pre-Itanium thunk.
+
+The 62 in the Swift toolchain's C++, the 74 in the development packages and 7,660 of the
+12,350 in the Homebrew bottles are the template-parameter rebinding
+`_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the
+`ArrayRefView` lambdas -- where this spells the parameter the header declares. Of those
+7,660, some 7,573 are one generic lambda in ceres's `ParallelInvoke`, whose `auto&` both
+references resolve to the enclosing template's argument; the other 4,690 of the 12,350
+are Apple's `auto` rule <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup>.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
