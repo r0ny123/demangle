@@ -3,10 +3,12 @@
 `tests/test_readme.py` covers the README: its counts, its version, and the output of
 every example it prints. This covers the rest of `docs/`, which had no guard at all.
 
-Both rules here were written because the thing they check had already drifted: every
+Every rule here was written because the thing it checks had already drifted: every
 public export is supposed to be reachable in the API reference, and `Decorated` and
 `register_language` were not -- exported, and documented nowhere; every registered
-scheme is supposed to have a section, and Ada and JNI had none.
+scheme is supposed to have a section, and Ada and JNI had none; and a page is supposed
+to render the members it asks for, where the pre-Itanium parser's section asked for a
+`detect` that module does not have.
 
 Links are deliberately *not* checked here. Doing it by hand needs a Markdown parser --
 these pages carry MSVC names with a literal backtick in them, so code spans cannot be
@@ -15,6 +17,7 @@ was fail: `validation:` in `mkdocs.yml` now promotes an unresolved link, an unli
 page and a bad anchor from INFO to a warning, which `--strict` turns into a red build.
 """
 
+import importlib
 import re
 from pathlib import Path
 
@@ -32,22 +35,58 @@ def docs_pages():
     return sorted(DOCS.rglob("*.md"))
 
 
-def rendered_members():
-    """Every name the API reference renders, and every module it renders whole.
+def directives():
+    """Every `::: target` in the reference, with the members it names.
 
-    A `::: module` directive with a `members:` list renders exactly those names; one
-    without renders every public member of the module. Both count as documented, so the
-    check below has to know which kind each directive is.
+    A directive with a `members:` list renders exactly those names; one without renders
+    every public member of the module. The two checks below need opposite halves of that
+    -- which names are rendered, and which module each was asked of -- so both read this
+    rather than each matching the directive for itself.
     """
-    named, whole = set(), set()
     for page in docs_pages():
         for match in re.finditer(r"^::: (\S+)((?:\n[ \t]+.*)*)", page.read_text(encoding="utf-8"), re.M):
             target, body = match.group(1), match.group(2)
-            if "members:" in body:
-                named.update(re.findall(r"^\s+- ([A-Za-z_][A-Za-z0-9_]*)$", body, re.M))
-            else:
-                whole.add(target)
+            named = re.findall(r"^\s+- ([A-Za-z_][A-Za-z0-9_]*)$", body, re.M) if "members:" in body else None
+            yield page, target, named
+
+
+def rendered_members():
+    """Every name the API reference renders, and every module it renders whole.
+
+    Both count as documented, so the check below has to know which kind each directive
+    is.
+    """
+    named, whole = set(), set()
+    for _page, target, members in directives():
+        if members is None:
+            whole.add(target)
+        else:
+            named.update(members)
     return named, whole
+
+
+class TestEveryDocumentedNameExists:
+    """The converse of the class below, and it had drifted the same way.
+
+    `mkdocstrings` renders nothing for a `members:` entry naming something the module
+    does not have, and does not fail the build over it, so the page quietly shows one
+    member fewer than it asks for. The pre-Itanium parser's section listed a `detect`
+    that the scheme's package defines and `_parser` does not.
+    """
+
+    def test_every_rendered_target_is_a_module(self, subtests):
+        for page, target, _members in directives():
+            with subtests.test(page=page.name, target=target):
+                importlib.import_module(target)
+
+    def test_every_member_a_page_asks_for_is_there(self, subtests):
+        for page, target, members in directives():
+            if members is None:
+                continue
+            module = importlib.import_module(target)
+            for name in members:
+                with subtests.test(page=page.name, target=target, member=name):
+                    assert hasattr(module, name), f"{page.name} renders {target}.{name}, which does not exist"
 
 
 class TestEveryPublicNameIsDocumented:

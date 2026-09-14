@@ -175,7 +175,6 @@ which of the five compilers wrote it.
       members:
         - GnuV2Symbol
         - demangle_gnuv2
-        - detect
 
 ### Nodes
 
