@@ -144,7 +144,8 @@ survive the round trip rather than raising.
 
 `parse()` returns nodes to walk; `to_dict()` turns one into plain data, and
 `node_kinds()` is the vocabulary to switch on. The nodes carry `__match_args__`, so
-structural pattern matching works over them.
+structural pattern matching works over them; the classes to match against are catalogued
+under [the tree](core.md#the-tree) on the core page.
 
 ::: demangle.api
     options:

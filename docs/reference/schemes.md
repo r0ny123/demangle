@@ -87,6 +87,32 @@ A different grammar, still what the ObjC runtime holds for a Swift class.
         - Printer
         - print_root
 
+### Symbolic references
+
+A mangled name in a Swift binary's *metadata* is not always self-contained: where it
+would have to spell a type the image already describes, the compiler writes a one-byte
+marker and a four-byte offset instead. Reading one needs the image, which is why it is a
+separate entry point rather than something `demangle()` could do.
+
+::: demangle.schemes.swift.symbolic
+    options:
+      members:
+        - SymbolicReference
+        - read
+        - scan
+        - end_of_name
+        - names
+
+### Resolving one
+
+::: demangle.schemes.swift.resolve
+    options:
+      members:
+        - Image
+        - elf_image
+        - macho_image
+        - ContextResolver
+
 ## D
 
 ::: demangle.schemes.d
@@ -275,29 +301,3 @@ that is not injective, which clang's own source says out loud.
         - Category
         - Selector
         - build
-
-### Symbolic references
-
-A mangled name in a Swift binary's *metadata* is not always self-contained: where it
-would have to spell a type the image already describes, the compiler writes a one-byte
-marker and a four-byte offset instead. Reading one needs the image, which is why it is a
-separate entry point rather than something `demangle()` could do.
-
-::: demangle.schemes.swift.symbolic
-    options:
-      members:
-        - SymbolicReference
-        - read
-        - scan
-        - end_of_name
-        - names
-
-### Resolving one
-
-::: demangle.schemes.swift.resolve
-    options:
-      members:
-        - Image
-        - elf_image
-        - macho_image
-        - ContextResolver
