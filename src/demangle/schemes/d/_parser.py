@@ -425,6 +425,15 @@ class _Parser:
         # writes one, and libiberty resolving them turns characters inside an
         # identifier into types or names.
         self._lname_spans = []
+        #: How many of those spans cover each position strictly inside one. The spans
+        #: alone answer `_is_inside_lname` by being scanned, and they are neither sorted
+        #: nor disjoint -- backtracking re-reads a region and a template instance's
+        #: components nest -- so the scan cannot be cut short and grows with the name.
+        #: Over the D corpus that is 192,857 steps, 125,776 of them on the single
+        #: longest symbol, against 75,222 positions to mark and 1,601 on that same name.
+        #: A count rather than a flag because the spans overlap: a position leaves the
+        #: map when the last span covering it is dropped, not the first.
+        self._lname_cover = {}
         self._backref_inside_lname = False
         # Whether a whole symbol name starts at a position -- see `_symbol_name_follows`.
         self._starts_symbol = {}
@@ -612,7 +621,7 @@ class _Parser:
             # `tools/mutate.py --seed 17`.
             raise DemangleFailure("identifier is not a D name")
         reader.pos = start + length
-        self._lname_spans.append((lname_start, reader.pos))
+        self._remember_lname(lname_start, reader.pos)
         return text
 
     @staticmethod
@@ -966,7 +975,7 @@ class _Parser:
                 answer = False
             finally:
                 reader.pos, reader.depth = saved, saved_depth
-                del self._lname_spans[saved_spans:]
+                self._forget_lnames(saved_spans)
             self._starts_symbol[key] = answer
         return answer
 
@@ -984,8 +993,36 @@ class _Parser:
         target = at - distance
         return target if 0 <= target < at else None
 
+    def _remember_lname(self, start, end):
+        """Record an identifier's span, and mark the positions strictly inside it."""
+        self._lname_spans.append((start, end))
+        cover = self._lname_cover
+        for position in range(start + 1, end):
+            cover[position] = cover.get(position, 0) + 1
+
+    def _forget_lnames(self, keep):
+        """Drop every span recorded after the first `keep`, and unmark what they covered.
+
+        The probe in `_symbol_name_follows` reads a whole symbol to find out whether one
+        is there and then puts the cursor back; the spans it recorded on the way have to
+        go back too, or a later back reference is refused for landing inside an
+        identifier that was never really read.
+        """
+        spans = self._lname_spans
+        if len(spans) == keep:
+            return
+        cover = self._lname_cover
+        for start, end in spans[keep:]:
+            for position in range(start + 1, end):
+                depth = cover[position] - 1
+                if depth:
+                    cover[position] = depth
+                else:
+                    del cover[position]
+        del spans[keep:]
+
     def _is_inside_lname(self, target):
-        return any(s < target < e for s, e in self._lname_spans)
+        return target in self._lname_cover
 
     def _back_reference_targets_identifier(self, at):
         """`dlang_symbol_name_p` on a `Q` at `at`: whether it points at a digit."""
