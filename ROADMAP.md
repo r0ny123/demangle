@@ -277,6 +277,21 @@ compiler named on each entry.
   by seed and so does what the references make of them: with a one-member pack both keep
   an unexpanded `...` where this expands it, and with two they each pick a different one.
 
+- **A pre-Itanium template whose second argument is a value** — *open, and mutant-only*.
+  `__opi__t2TA2Z5__pt__8_PFcPv_i` from `tools/mutate.py --seed 54` is
+  `TA<__pt_, 8>::operator int(int (*)(char, void *))` to the reference and
+  `_PFcPv_i::operator int(void)` here: the value argument is not read, and what is left
+  of the name is resynchronised as a class name. The smaller
+  `__opi__t2TA2Z5__pt__1_i` shows it plainly — `_::operator int(int)`, naming a class
+  called `_`, which is the kind of answer this package treats as worse than none.
+
+  Not fixed, because the trade is the wrong way round. All 5,112 template names in
+  `tests/conformance/gnuv2-*.txt` already agree with the reference exactly, and the
+  shape is reachable only by damaging one: `t<n><name><count>` followed by `Z<name>` and
+  then `_<digits>` appears in no recorded symbol. Adding a production for it means
+  touching the code that reads those 5,112, and section 0 already records what this
+  scheme's ambiguity costs when a rule is widened to catch a few more names.
+
 - **`$$C` over a `__restrict` pointer puts the two qualifier words in either order** —
   *open, and cosmetic*. `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z` from `tools/mutate.py --seed 42`
   is `char *const __restrict` here and `char *__restrict const` to `llvm-undname`: the
