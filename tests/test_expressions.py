@@ -1517,13 +1517,29 @@ class TestAConversionOperatorHasNoNameToRepeat:
     `_ZN1AcviD0Ev` as `A::operator int::~()` and `_ZN1AD1IiED0Ev` as `A::~A<int>::~()`.
     No compiler writes one, and repeating the name in full was a third reading beside
     the two references' -- `c++filt` writes the type's own name. `tools/mutate.py
-    --seed 2` and `--seed 8`."""
+    --seed 2` and `--seed 8`.
+
+    Every case here converted to a builtin until `tools/mutate.py --seed 55`, and that
+    is what hid a second bug. The flag was raised before the operator's *operand* was
+    read, and a conversion to a class name reads that name through this same function,
+    whose first act is to clear the flag. `cvi` survived because a builtin reads no
+    name; `cv1A` did not, so `_ZN1Scv1AC2Ev` came back `S::operator A::operator A()`.
+    With template arguments the answer was not merely a third reading but a broken one:
+    `_ZN1Scv7MuncherISsEC2Ev` was `S::operator Muncher<std::string>::string>()`, whose
+    brackets do not balance, because the name is cut at the spelling's last `::` and
+    that falls inside the argument list. The flag is set after the operand now, which is
+    what the closure branch beside it already did and for the same reason."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
             ("_ZN1AcviD0Ev", "A::operator int::~()"),
             ("_ZN1AcviC2Ev", "A::operator int::()"),
+            # Converting to a class name, which reads a name of its own on the way.
+            ("_ZN1Scv1AC2Ev", "S::operator A::()"),
+            ("_ZN1Scv1AD0Ev", "S::operator A::~()"),
+            ("_ZN1Scv7MuncherISsEC2Ev", "S::operator Muncher<std::string>::()"),
+            ("_ZN1ScvN1B1CEC2Ev", "S::operator B::C::()"),
             ("_ZN1AcviIiED0Ev", "A::operator int<int>::~()"),
             ("_ZNStcvtD1Ev", "std::operator unsigned short::~()"),
             ("_ZN1AD1IiED0Ev", "A::~A<int>::~()"),
@@ -1542,6 +1558,36 @@ class TestAConversionOperatorHasNoNameToRepeat:
     )
     def test_the_spelling(self, mangled, expected):
         assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # `c++filt` names the structor after the last source name it read, which is
+            # what the gnu style follows. These are its answers verbatim.
+            ("_ZN1Scv1AC2Ev", "S::operator A::A()"),
+            ("_ZN1Scv1AD0Ev", "S::operator A::~A()"),
+            (
+                "_ZN1Scv7MuncherISsEC2Ev",
+                "S::operator Muncher<std::basic_string<char, std::char_traits<char>, "
+                "std::allocator<char> > >::Muncher()",
+            ),
+        ],
+    )
+    def test_the_gnu_spelling_is_cxxfilts(self, mangled, expected):
+        assert demangle.demangle(mangled, style="gnu") == expected
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["_ZN1Scv7MuncherISsEC2Ev", "_ZN1Scv7MuncherIJSaISsEESaIS1_EEC2ERKS3_", "_ZN1Scv1AC2Ev"],
+    )
+    def test_the_brackets_balance(self, mangled):
+        """The broken reading was visible without a reference at all: it closed angle
+        brackets it never opened, because the name was cut out of the middle of an
+        argument list."""
+        for style in ("llvm", "gnu"):
+            spelled = demangle.demangle(mangled, style=style)
+            assert spelled.count("<") == spelled.count(">"), spelled
+            assert spelled.count("(") == spelled.count(")"), spelled
 
 
 class TestAFriendDeclaredInsideItsClass:

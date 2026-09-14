@@ -1869,8 +1869,20 @@ class ItaniumParser:
         # `ConversionOperatorType` to `llvm-cxxfilt`, and a literal operator has no base
         # name either; see `enclosing_class_name`.
         code = reader.peek2()
-        self._component_has_no_base_name = code in ("cv", "li") or (code[:1] == "v" and code[1:2].isdigit())
+        has_no_base_name = code in ("cv", "li") or (code[:1] == "v" and code[1:2].isdigit())
         spelled = self._in_module(self.operator_name(), module) + self.abi_tags()
+        # Assigned *after* the operator is read, for the reason the closure above gives:
+        # a conversion operator's type may be a class name, and reading one comes back
+        # round through this function, whose first act is to clear the flag. Set before,
+        # it survived `cvi` -- a builtin type reads no name -- and was lost on `cv1A`,
+        # so `_ZN1Scv1AC2Ev` came back `S::operator A::operator A()`, a constructor
+        # named after the whole conversion operator, where `llvm-cxxfilt` prints
+        # `S::operator A::()` and `c++filt` `S::operator A::A()`. With a template it was
+        # worse than a third reading: `_ZN1Scv7MuncherISsEC2Ev` was
+        # `S::operator Muncher<std::string>::string>()`, whose brackets do not balance,
+        # because `enclosing_class_name` cuts the spelling at its last `::` and that
+        # falls inside the argument list. `tools/mutate.py --seed 55`.
+        self._component_has_no_base_name = has_no_base_name
         operator = builder.name(self._befriended(spelled) if friend else spelled)
         if reader.peek() != "I":
             # Nothing is going to bind a conversion operator's template parameters, so
