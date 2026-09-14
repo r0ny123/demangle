@@ -157,6 +157,20 @@ compiler named on each entry.
   `tools/enumerate.py` carries the reason the reference's answer is not evidence when the
   fuzzers reach the same shape.
 
+- ~~**The extension qualifiers on the pointee of an MSVC pointer to member, dropped by
+  `llvm-undname`**~~ — *settled*, the same way. `__restrict` on a pointer and
+  `__unaligned` on what it points at are ordinary declarator syntax for this target, and
+  the mangling writes both in the pointee's own letters: `PEQExt@1@PEIFAH` is
+  `int __unaligned *__restrict ns::Ext::*`. The reference prints both words for that same
+  `PEIFAH` standing on its own and neither when it is a member pointer's pointee, so two
+  declarations come back from it as one spelling — `int *ns::Ext::*`, which is a third
+  type that is neither. Found by `tools/mutate.py --seed 42` wearing an ARM64EC marker
+  and then written in C++ to see whether a compiler reaches it, which it does without
+  being asked for anything unusual: `extended_member`, `takes_extended_member` and the
+  agreeing `extended_plain` in `tools/corpus_sources/msvc/msvc.cpp` are pinned against
+  their declarations in `tests/conformance/msvc-reference-defects.txt`, and `ACCEPTED`
+  in `tools/enumerate.py` explains the divergence for the fuzzers.
+
 - ~~**A recorded `<template-param>` resolved where it was written, not where it is
   read**~~ — *fixed*, for the parameter and for anything built over one. The entry a
   `<template-param>` contributes to the substitution table is the parameter, not the

@@ -47,6 +47,23 @@ extern int freefn(int);
 int freefn(int a) { return a; }
 
 // Return types that wrap the declarator, which is where a member qualifier goes.
+// The MS extension qualifiers on the pointee of a pointer to member. `__restrict` on a
+// pointer and `__unaligned` on what it points at are ordinary declarator syntax here,
+// and the mangling writes both in the pointee's own letters -- `PEQExt@@PEIFAH` for
+// `int __unaligned *__restrict Ext::*`. `llvm-undname` 18.1 prints neither when the
+// pointer is a member pointer's pointee, and both when it is not, so `extended_member`
+// and `extended_plain` below return the same spelling to it and two different
+// declarations to the compiler.
+struct Ext {
+  int __unaligned *__restrict m;
+};
+int __unaligned *__restrict Ext::*extended_member();
+int __unaligned *__restrict extended_plain();
+void takes_extended_member(int __unaligned *__restrict Ext::*);
+int __unaligned *__restrict Ext::*extended_member() { return &Ext::m; }
+int __unaligned *__restrict extended_plain() { return nullptr; }
+void takes_extended_member(int __unaligned *__restrict Ext::*) {}
+
 struct Q {
   const char (&r1() const)[4];
   const char (*r2() volatile)[4];

@@ -1338,6 +1338,40 @@ class TestDollarCOverARestrictPointer(unittest.TestCase):
         self.assertEqual(demangle_msvc_symbol("?x@@3QIADA"), "char *const __restrict x")
 
 
+class TestAMemberPointersPointeeKeepsItsExtensionQualifiers(unittest.TestCase):
+    """`PEQExt@1@PEIFAH` is `int __unaligned *__restrict ns::Ext::*`, and the two
+    extension words belong to the pointee's own letters.
+
+    llvm-undname 18.1 prints both on a pointer and neither when that pointer is a member
+    pointer's pointee, so it answers `int *ns::Ext::*` -- one spelling for two
+    declarations, since `?extended_plain@ns@@YAPEIFAHXZ` written from the same declarator
+    keeps both words there and in this library. Compiler-emitted: `extended_member`,
+    `takes_extended_member` and `extended_plain` in
+    `tools/corpus_sources/msvc/msvc.cpp`, read back out of a
+    `clang++ --target=x86_64-pc-windows-msvc` object file, and pinned against their
+    declarations in `tests/conformance/msvc-reference-defects.txt`. `tools/mutate.py
+    --seed 42` reached the same gap from the other end.
+    """
+
+    def test_a_member_pointers_pointee_keeps_both_words(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?extended_member@ns@@YAPEQExt@1@PEIFAHXZ"),
+            "int __unaligned *__restrict ns::Ext::* __cdecl ns::extended_member(void)",
+        )
+
+    def test_the_same_pointee_as_a_parameter(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?takes_extended_member@ns@@YAXPEQExt@1@PEIFAH@Z"),
+            "void __cdecl ns::takes_extended_member(int __unaligned *__restrict ns::Ext::*)",
+        )
+
+    def test_the_same_pointer_outside_a_member_pointer_is_where_the_two_agree(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?extended_plain@ns@@YAPEIFAHXZ"),
+            "int __unaligned *__restrict __cdecl ns::extended_plain(void)",
+        )
+
+
 class TestAPointerToAMemberOfArrayType(unittest.TestCase):
     """`PEQA@@Y03H` is a pointer to a member of `A` whose type is `int[4]`, and the
     declarator an array brackets is the member pointer's: `int (A::*)[4]`. The array's

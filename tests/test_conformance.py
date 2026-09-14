@@ -30,7 +30,7 @@ MSVC_TOTAL, MSVC_EXACT = 609, 609
 #: variable refused outright, `operator<=>` and `operator co_await` missing from the
 #: table, the `_E` that ends a `noexcept` signature where a `Z` ends every other one, and
 #: a deduced return type written as a back reference to an earlier one.
-MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 160, 160
+MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 161, 161
 
 #: The names in that run `llvm-undname` reads wrongly: `_L` and `_M`, which are
 #: `__int128` and `unsigned __int128` and which `demanglePrimitiveType` has no case for,
@@ -38,8 +38,12 @@ MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 160, 160
 #: drops. Their expected column is the declaration in the source, as for the Itanium file
 #: above. Then three from Boost 1.84's MSVC build: `?A_P` and `?A_T`, `auto` and
 #: `decltype(auto)` as a return type, which the release refuses and LLVM's main branch
-#: reads; the expected column is the STL declaration, and main's spelling agrees.
-MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 7, 7
+#: reads; the expected column is the STL declaration, and main's spelling agrees. And two
+#: where the pointee of a pointer to member carries `__restrict` or `__unaligned`, which
+#: the reference prints for the same pointer outside a member pointer and drops inside
+#: one -- so `int __unaligned *__restrict ns::Ext::*` and `int *ns::Ext::*`, two
+#: declarations, come back from it as the second.
+MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 9, 9
 
 #: Boost 1.84's twenty-nine `boost_*-vc143` NuGet packages, x64 and x86: every twentieth
 #: of the 122,162 names `llvm-undname` 18 reads, every vcall thunk, and ten catch-block

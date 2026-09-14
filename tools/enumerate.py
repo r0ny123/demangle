@@ -223,6 +223,15 @@ ACCEPTED = {
                 # member's and drops the pointer's; this keeps both. No compiler
                 # writes them apart.
                 or _undname_keeps_one_member_pointer_qualifier(name, ours, first)
+                # Or the MS extension qualifiers on the pointer a member pointer points
+                # at, which `llvm-undname` prints on that pointer everywhere else and
+                # drops here: `PEQExt@@PEIFAH` is `int __unaligned *__restrict Ext::*`
+                # to the compiler that wrote it and `int *Ext::*` to the reference,
+                # where `PEIFAH` alone is the two words to both. Compiler-emitted;
+                # `tests/conformance/msvc-reference-defects.txt` pins it against the
+                # source in `tools/corpus_sources/msvc/msvc.cpp`. `tools/mutate.py
+                # --seed 42` reached it wearing an ARM64EC marker.
+                or _undname_drops_a_member_pointees_extension_qualifiers(name, ours, first)
                 # Or a vftable or vbtable base path with more than one element.
                 # `llvm-undname` reads the first element and drops the rest, so
                 # `??_7A@B@@6BC@D@@@`, `...E@F@@@` and `...E@F@@G@H@@@` -- three symbols
@@ -992,6 +1001,16 @@ _CROSS_SCOPE_BACK_REFERENCE = re.compile(r"Z\d+\w*?I[^Z]*?E[^Z]*?Z[^Z]*?S\d*_")
 #: then the pointee's own pointer letter (`P`/`Q`/`R`/`S`) and a function. See the rule.
 _MEMBER_POINTER_LETTERS = re.compile(r"[PQRS][EFGHI]*([QRST])[A-Za-z0-9_$@?]*?@@[EFGHI]*([PQRS])6")
 
+#: The same, where the pointee is itself a *pointer* carrying `F` (`__unaligned`) or `I`
+#: (`__restrict`) rather than a function. See
+#: `_undname_drops_a_member_pointees_extension_qualifiers`.
+#: The class is matched up to a single `@` rather than the `@@` that ends a fully
+#: written one, since a namespace in it may be a back reference: `PEQExt@1@PEIFAH`.
+_MEMBER_POINTEE_EXTENSIONS = re.compile(r"[PQRS][EFGHI]*[QRST][A-Za-z0-9_$@?]*?@[PQRS][EGH]*[FI][EFGHI]*[A-D]")
+
+#: The qualifier words the MS extension letters spell. See the rule above.
+_EXTENSION_QUALIFIER = re.compile(r"\b__(?:unaligned|restrict)\b")
+
 
 def _strip_qualifiers(text):
     return re.sub(r"\b(?:const|volatile) ", "", text).replace(" ", "")
@@ -1014,6 +1033,28 @@ def _undname_keeps_one_member_pointer_qualifier(name, ours, first):
     if found is None or "QRST".index(found.group(1)) == "PQRS".index(found.group(2)):
         return False
     return ours != first and _strip_qualifiers(ours) == _strip_qualifiers(first)
+
+
+def _undname_drops_a_member_pointees_extension_qualifiers(name, ours, first):
+    """Whether `first` is `ours` with `__unaligned` or `__restrict` gone from the pointer
+    a member pointer points at.
+
+    `llvm-undname` prints both words on a pointer and drops both when that pointer is a
+    member pointer's pointee, so `?extended_member@ns@@YAPEQExt@1@PEIFAHXZ` and a
+    `?extended_plain@ns@@YAPEIFAHXZ` written from the same declarator come back from it
+    as one spelling and two. Compiler-emitted, and pinned against the source in
+    `tests/conformance/msvc-reference-defects.txt`.
+
+    Both sides have their words taken out before comparing, so a name that carries the
+    shape *and* some second disagreement still differs; and the reference has to be the
+    side printing fewer of them, so this never explains a word this library dropped.
+    """
+    if first is None or _MEMBER_POINTEE_EXTENSIONS.search(name) is None:
+        return False
+    if len(_EXTENSION_QUALIFIER.findall(first)) >= len(_EXTENSION_QUALIFIER.findall(ours)):
+        return False
+    without = _EXTENSION_QUALIFIER.sub("", ours).replace(" ", "")
+    return without == _EXTENSION_QUALIFIER.sub("", first).replace(" ", "")
 
 
 def _undname_drops_array_element_qualifiers(name, ours, first):

@@ -26,13 +26,24 @@
 # `tools/corpus_sources/msvc/modern.cpp`, next to the `auto structured()` whose
 # unqualified `?A?<auto>@@` the reference does read.
 #
-# The last three are a refusal again. `?A_P` and `?A_T` where a return type goes are
+# The next three are a refusal again. `?A_P` and `?A_T` where a return type goes are
 # `auto` and `decltype(auto)`: what MSVC 14.3 writes for a function declared with one
 # and not yet defined, so the compiler had nothing to write but the keyword, and `_P` and
 # `_T` are types anywhere, so `$$QA_P` is `auto &&`. `demanglePrimitiveType` at 18 has
 # neither; LLVM's main branch has both, and spells them so. The three are Boost 1.84's
 # builds of the MSVC STL's `_Get_unwrapped`, `_Idl_distance` and `_Tuple_get`, declared
 # `decltype(auto)`, `auto` and `auto&&` in <xutility> and <tuple>.
+# The last two are a wrong reading again, and in a shape a compiler emits without being
+# asked for anything unusual. `__restrict` on a pointer and `__unaligned` on what it
+# points at are ordinary declarator syntax for this target, and the mangling writes both
+# in the pointee's own letters: `PEQExt@@PEIFAH` is `int __unaligned *__restrict Ext::*`.
+# `llvm-undname` 18.1 prints neither word when that pointer is a member pointer's
+# pointee, so it answers `int *ns::Ext::*` -- and prints both when it is not, which
+# `?extended_plain@ns@@YAPEIFAHXZ` in `tests/conformance/msvc-clang.txt` records next to
+# these and both demanglers agree on. Two declarations, one spelling. The source is
+# `extended_member` and `takes_extended_member` in
+# `tools/corpus_sources/msvc/msvc.cpp`; `tools/mutate.py --seed 42` reached the same gap
+# from the other end, wearing an ARM64EC marker.
 
 ?bd@S@@QEBA_L_M@Z	public: __int128 __cdecl S::bd(unsigned __int128) const
 ?alpha@@YAX_L@Z	void __cdecl alpha(__int128)
@@ -41,3 +52,5 @@
 ??$_Get_unwrapped@AAPAD@std@@YA?A_TAAPAD@Z	decltype(auto) __cdecl std::_Get_unwrapped<char *&>(char *&)
 ??$_Idl_distance@PADPAD@std@@YA?A_PABQAD0@Z	auto __cdecl std::_Idl_distance<char *, char *>(char *const &, char *const &)
 ??$_Tuple_get@$0A@$$QAH@std@@YA$$QA_P$$QAV?$tuple@$$QAH@0@@Z	auto && __cdecl std::_Tuple_get<0, int &&>(class std::tuple<int &&> &&)
+?extended_member@ns@@YAPEQExt@1@PEIFAHXZ	int __unaligned *__restrict ns::Ext::* __cdecl ns::extended_member(void)
+?takes_extended_member@ns@@YAXPEQExt@1@PEIFAH@Z	void __cdecl ns::takes_extended_member(int __unaligned *__restrict ns::Ext::*)

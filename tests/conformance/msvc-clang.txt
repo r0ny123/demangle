@@ -104,6 +104,7 @@
 ?destroy@ns@@YAXPEAUBase@1@@Z	void __cdecl ns::destroy(struct ns::Base *)
 ?destroy_array@ns@@YAXPEAUBase@1@@Z	void __cdecl ns::destroy_array(struct ns::Base *)
 ?down@ns@@YAPEAUDerived@1@PEAUBase@1@@Z	struct ns::Derived * __cdecl ns::down(struct ns::Base *)
+?extended_plain@ns@@YAPEIFAHXZ	int __unaligned *__restrict __cdecl ns::extended_plain(void)
 ?f@?$Higher@UPair@ns@@@ns@@QEBAHXZ	public: int __cdecl ns::Higher<struct ns::Pair>::f(void) const
 ?f@?$MemFnNT@$1?fn@HasMember@hard@@QEAAHH@Z@hard@@QEBAHXZ	public: int __cdecl hard::MemFnNT<&public: int __cdecl hard::HasMember::fn(int)>::f(void) const
 ?f@?$MemPtrNT@$0A@@hard@@QEBAHXZ	public: int __cdecl hard::MemPtrNT<0>::f(void) const
