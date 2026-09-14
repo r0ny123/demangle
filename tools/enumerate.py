@@ -260,6 +260,14 @@ ACCEPTED = {
                 # prints `int *const volatile const`. Accepted where collapsing the
                 # extra word gives this answer. `tools/mutate.py --seed 23`.
                 or (first is not None and first != ours and _collapse_doubled_qualifier(first) == ours)
+                # Or the same qualifier words on a pointer in the other order, which
+                # C++ leaves free: `char *const __restrict` here and
+                # `char *__restrict const` to `llvm-undname` for
+                # `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z`. They part only where an outer `$$C`
+                # is applied over a pointer that already carries `I`, and agree on every
+                # shape a compiler writes -- `?x@@3QIADA` is `char *const __restrict x`
+                # to both. `tools/mutate.py --seed 42`.
+                or _qualifier_words_on_a_pointer_reordered(ours, first)
             )
         )
         # Or `__int128`, which `llvm-undname` 18.1 cannot read and its own compiler
@@ -699,6 +707,9 @@ _QUALIFIED_CUSTOM_TYPE = re.compile(r"[B-D]\?(?:<|[0-9])")
 _CUSTOM_TYPE_QUALIFIERS = re.compile(r"(<[^<>]*>)(?: (?:const|volatile))+")
 #: The same qualifier word written twice in a row by `llvm-undname`. See `ACCEPTED`.
 _DOUBLED_QUALIFIER = re.compile(r"\b(const|volatile) \1\b")
+#: A run of qualifier words directly after a `*`, whose order C++ leaves free. See
+#: `_qualifier_words_on_a_pointer_reordered`.
+_POINTER_QUALIFIER_RUN = re.compile(r"\*(?:const|volatile|__restrict)(?: (?:const|volatile|__restrict))+")
 
 
 def _collapse_doubled_qualifier(text):
@@ -715,6 +726,26 @@ def _collapse_doubled_qualifier(text):
     text = text.replace("const volatile const", "const volatile")
     text = text.replace("volatile const volatile", "volatile const")
     return text
+
+
+def _qualifier_words_on_a_pointer_reordered(ours, first):
+    """Whether two answers differ only in the order of the qualifier words on a pointer.
+
+    C++ leaves that order free -- `char *const __restrict` and `char *__restrict const`
+    are one declaration -- and the two demanglers write it differently where an outer
+    `$$C` qualifier is applied over a pointer that already carries `I`, a shape no
+    compiler writes. `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z` is the first here and the second
+    to `llvm-undname`. They agree on every shape a compiler does write: `?x@@3QIADA`
+    is `char *const __restrict x` to both.
+
+    Sorting the words in each run keeps the multiset, so a word one side dropped or
+    added still differs and is still reported. `tools/mutate.py --seed 42`.
+    """
+
+    def sorted_runs(text):
+        return _POINTER_QUALIFIER_RUN.sub(lambda run: "*" + " ".join(sorted(run.group()[1:].split())), text)
+
+    return ours != first and sorted_runs(ours) == sorted_runs(first)
 
 
 #: A gap where libiberty spelled a component it could not read as nothing: an empty

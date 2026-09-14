@@ -1312,6 +1312,32 @@ class TestDollarCOverAPointerThatIsAlreadyConst(unittest.TestCase):
         )
 
 
+class TestDollarCOverARestrictPointer(unittest.TestCase):
+    """`$$CB` over `PIAD` -- const over `char *__restrict`. This spells the pointer's
+    two qualifier words in the order the letters come in, `const __restrict`;
+    llvm-undname writes `__restrict const`. C++ leaves the order after a `*` free, so
+    both are the same declaration, and the two agree everywhere a compiler writes the
+    shape: `?x@@3QIADA` is `char *const __restrict x` to both. They part only where an
+    outer `$$C` re-qualifies a pointer that already carries `I`, which no compiler
+    writes. `tools/mutate.py --seed 42`.
+    """
+
+    def test_the_two_words_come_in_the_order_the_letters_do(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z"),
+            "public: char *const __restrict (& __cdecl ns::Q::r1() const)[4]",
+        )
+
+    def test_without_dollar_c_the_pointer_carries_one_word(self):
+        self.assertEqual(
+            demangle_msvc_symbol("?r1@Q@ns@@QEBAAEAY03PIAD@Z"),
+            "public: char *__restrict (& __cdecl ns::Q::r1() const)[4]",
+        )
+
+    def test_the_shape_a_compiler_writes_agrees_with_the_reference(self):
+        self.assertEqual(demangle_msvc_symbol("?x@@3QIADA"), "char *const __restrict x")
+
+
 class TestAPointerToAMemberOfArrayType(unittest.TestCase):
     """`PEQA@@Y03H` is a pointer to a member of `A` whose type is `int[4]`, and the
     declarator an array brackets is the member pointer's: `int (A::*)[4]`. The array's

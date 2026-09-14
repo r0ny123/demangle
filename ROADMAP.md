@@ -302,14 +302,19 @@ compiler named on each entry.
   touching the code that reads those 5,112, and section 0 already records what this
   scheme's ambiguity costs when a rule is widened to catch a few more names.
 
-- **`$$C` over a `__restrict` pointer puts the two qualifier words in either order** —
-  *open, and cosmetic*. `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z` from `tools/mutate.py --seed 42`
-  is `char *const __restrict` here and `char *__restrict const` to `llvm-undname`: the
-  same declaration, since the order of `const` and `__restrict` after a `*` is free, and
-  the two agree on every shape a compiler writes — `?x@@3QIADA` is `char *const
-  __restrict x` to both. They part only where an outer `$$CB` is applied over a pointer
-  that already carries `I`, which is a shape section 0 elsewhere records no compiler as
-  writing. Nothing to fix and nothing to claim; written down so it is not triaged twice.
+- ~~**`$$C` over a `__restrict` pointer puts the two qualifier words in either order**~~
+  — *settled, and it was cosmetic*. `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z` from
+  `tools/mutate.py --seed 42` is `char *const __restrict` here and
+  `char *__restrict const` to `llvm-undname`: the same declaration, since the order of
+  `const` and `__restrict` after a `*` is free, and the two agree on every shape a
+  compiler writes — `?x@@3QIADA` is `char *const __restrict x` to both. They part only
+  where an outer `$$CB` is applied over a pointer that already carries `I`, which is a
+  shape section 0 elsewhere records no compiler as writing. Nothing to fix, so what
+  closes it is saying so where the fuzzers ask: `ACCEPTED` in `tools/enumerate.py` now
+  sorts the words in each run directly after a `*` before comparing, which keeps the
+  multiset — a word one side drops or adds still differs and is still reported — and
+  `TestDollarCOverARestrictPointer` in `tests/test_msvc.py` pins the reading along with
+  the compiler-written neighbour the two agree on.
 
 - ~~**A constrained `decltype(auto)` is a type, and so is a substitution candidate**~~ —
   *settled*, and `tools/mutate.py --seed 40` is clean. `DK <type-constraint>` is a
