@@ -273,8 +273,8 @@ compiler named on each entry.
   `tests/test_ada.py` pins the reading. Worth reporting upstream: `c++filt` is what `nm`,
   `objdump` and `addr2line` use, and the symbols in a binary are not always friendly.
 
-- **A `<template-param>` bound to a pack, resolved to one member and not the same one** —
-  *open*. `tools/mutate.py --seed 39` reads
+- ~~**A `<template-param>` bound to a pack, resolved to one member and not the same
+  one**~~ — *settled*. `tools/mutate.py --seed 39` reads
 
   ```
   _ZSt12construct_atIcJRbcEEDTgsnwcvPvLi0E_T_pispcl7declvalIT0_EEEEPS3_DpOS4_
@@ -287,19 +287,27 @@ compiler named on each entry.
   section 0 already records — the entry is the parameter, not an argument bound to it —
   reached through a pack rather than through a second template scope.
 
-  Left unexplained on purpose. `ACCEPTED` has three arms for a pack standing where one
-  type goes: c++filt silent, and the two references agreeing on the first member. This is
-  the fourth, where they pick different members, and the evidence that would make the
-  rule narrow — that the two references disagree *with each other* — cannot be tested
-  from their answers, because those differ by output style whether they disagree or not.
-  A rule broad enough to catch it would swallow any second defect in the same name, which
-  is worse than a divergence the gate keeps showing.
+  It was left unexplained because the evidence that would narrow a rule — that the two
+  references disagree *with each other* — cannot be read off their answers, which differ
+  by output style whether they disagree or not. What settles it is asking a name small
+  enough that the answers cannot hide anything. `_Z1fIiJbcdEEvT_DpT0_` has two entries
+  for its pack: entry one is what `T0_` contributed and entry two is the `Dp` expansion's
+  own. All three demanglers agree entry two is the whole pack. On entry one,
+  `llvm-cxxfilt` says `bool` — the *first* member — and `c++filt` says `double` — the
+  *last* — while this says the pack.
 
-  It is not one stray mutant. Seeds 39, 42, 43 and 48 all reach it, every one a damaged
-  `std::construct_at` whose `S3_` or `S4_` is the entry `T0_` contributed — which is why
-  the shape is written down here rather than triaged again each time. The members differ
-  by seed and so does what the references make of them: with a one-member pack both keep
-  an unexpanded `...` where this expands it, and with two they each pick a different one.
+  So the two references each record one member and not the same one, which is what says
+  neither has a rule here; and the rule this library does have is the one heading 0
+  already establishes against four compilers' output for the unpacked case, that the
+  entry is the parameter rather than the argument bound to it. A pack parameter is not a
+  different kind of parameter.
+
+  `TestABackReferenceToAPackBoundParameter` in `tests/test_types.py` pins all four
+  entries, and `ACCEPTED` in `tools/enumerate.py` accepts the shape — a back-reference
+  that landed on a pack-bound parameter's entry, asked of the parser, which is the only
+  thing that knows which entry an `S<n>_` landed on — rather than either answer. It is
+  not one stray mutant: seeds 39, 42, 43 and 48 all reach it, every one a damaged
+  `std::construct_at` whose `S3_` or `S4_` is the entry `T0_` contributed.
 
 - ~~**A pre-Itanium template whose second argument is a value**~~ — *fixed*.
   `__opi__t2TA2Z5__pt__8_PFcPv_i` from `tools/mutate.py --seed 54` was

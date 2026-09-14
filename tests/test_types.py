@@ -881,3 +881,41 @@ class TestAConstrainedPlaceholderIsASubstitutionCandidate:
 
     def test_one_entry_past_the_placeholder_is_out_of_range(self):
         assert demangle.demangle("_Z1fDkN1A1BES1_") == "_Z1fDkN1A1BES1_"
+
+
+class TestABackReferenceToAPackBoundParameter:
+    """The entry a `<template-param>` contributes is the parameter, and a parameter bound
+    to a pack is the pack.
+
+    That is the same rule the ROADMAP's heading 0 establishes against four compilers'
+    output for the unpacked case -- the entry is the parameter, not the argument bound to
+    it where the entry was made -- and a pack parameter is not a different kind of
+    parameter. `_Z1fIiJbcdEEvT_DpT0_` makes the three readings visible side by side:
+    entry one is what `T0_` contributed and entry two is the `Dp` expansion's own. All
+    three demanglers agree entry two is the whole pack. On entry one, `llvm-cxxfilt` 18
+    says `bool` -- the first member -- and `c++filt` 2.42 says `double` -- the last --
+    while this says the pack, and reads a pack standing where one type goes as one type
+    per member, which is what `TestAnArgumentPackWrittenWithI` pins elsewhere.
+
+    Two references that disagree with each other about which member to record are not a
+    second opinion about whether to record one; no compiler writes a back-reference to
+    such an entry, and `tools/enumerate.py` accepts the disagreement on the shape rather
+    than on either answer. `tools/mutate.py --seed 39`, and 42, 43 and 48 reach it too.
+    """
+
+    NAME = "_Z1fIiJbcdEEvT_DpT0_"
+    SIGNATURE = "void f<int, bool, char, double>(int, bool, char, double"
+
+    def test_the_pack_parameters_entry_is_the_pack(self):
+        assert demangle.demangle_strict(self.NAME + "S1_") == f"{self.SIGNATURE}, bool, char, double)"
+
+    def test_the_expansions_own_entry_is_the_pack_too_and_all_three_agree(self):
+        assert demangle.demangle_strict(self.NAME + "S2_") == f"{self.SIGNATURE}, bool, char, double)"
+
+    def test_the_entries_before_it_are_the_template_name_and_the_first_argument(self):
+        assert demangle.demangle_strict(self.NAME + "S0_") == f"{self.SIGNATURE}, int)"
+        # `S_` is the template name, which a `<type>` may not name without its arguments.
+        assert demangle.demangle(self.NAME + "S_") == self.NAME + "S_"
+
+    def test_one_entry_past_the_expansion_is_out_of_range(self):
+        assert demangle.demangle(self.NAME + "S3_") == self.NAME + "S3_"

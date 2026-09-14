@@ -430,6 +430,20 @@ ACCEPTED = {
         # still refuses. Asked of the parser, since `Dk` and `DK` spell two characters a
         # <source-name> may hold. `tools/mutate.py --seed 40`.
         or _records_a_constrained_placeholder(name)
+        # Or a back-reference naming the entry a `<template-param>` bound to a pack
+        # contributed. The entry is the parameter -- which is what heading 0 of the
+        # ROADMAP establishes against four compilers' output for the unpacked case, and
+        # a pack parameter is not a different kind of parameter -- so this resolves it
+        # to the pack, and a pack standing where one type goes is read one type per
+        # member, as the arm above describes. Both references instead record one
+        # *member* there, and not the same one: for `_Z1fIiJbcdEEvT_DpT0_S1_`,
+        # `llvm-cxxfilt` says `bool` and `c++filt` says `double`, while all three agree
+        # that the *next* entry, the `Dp` expansion's own, is the whole pack. Two
+        # references that disagree with each other about one entry are not a second
+        # opinion about this one, and no compiler writes the shape. Asked of the parser,
+        # which is the only thing that knows which entry an `S<n>_` landed on.
+        # `tools/mutate.py --seed 39`, and seeds 42, 43 and 48 reach it too.
+        or _back_reference_names_a_pack_bound_parameter(name)
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1220,6 +1234,21 @@ def _names_an_entity_with_a_bare_z(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._bare_entity_prefix_used
+
+
+def _back_reference_names_a_pack_bound_parameter(mangled):
+    """Whether an `S<n>_` in `mangled` named the entry a `<template-param>` bound to a
+    pack contributed, and this library resolved it to the pack.
+
+    The three answers are visible in a minimal name. For `_Z1fIiJbcdEEvT_DpT0_`, entry
+    one is what `T0_` contributed and entry two is the `Dp` expansion's own; all three
+    demanglers agree entry two is the whole pack, and on entry one `llvm-cxxfilt` says
+    `bool`, `c++filt` says `double` and this says `bool, char, double`. The references
+    pick a member and not the same one -- the first and the last -- which is what says
+    neither has a rule to follow here.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._pack_named_through_a_back_reference
 
 
 def _records_a_constrained_placeholder(mangled):

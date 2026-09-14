@@ -419,6 +419,7 @@ class ItaniumParser:
         "_pack_arity",
         "_pack_ids",
         "_pack_index",
+        "_pack_named_through_a_back_reference",
         "_packs",
         "_parameter_counts",
         "_parameter_uses",
@@ -480,6 +481,14 @@ class ItaniumParser:
         self._template_name_entries = set()
         #: The index the last `S<n>_` named, or None after an abbreviation.
         self._last_entry_index = None
+        #: Whether an `S<n>_` named the entry a `<template-param>` bound to a pack
+        #: contributed, and got the pack. The entry is the parameter, which is what
+        #: heading 0 of the ROADMAP establishes against four compilers' output for the
+        #: unpacked case; both references instead record one *member* of the pack there,
+        #: and not the same one -- `llvm-cxxfilt` the first, `c++filt` the last. Read by
+        #: tools/enumerate.py, which accepts that three-way disagreement. See
+        #: `_note_pack_binding`.
+        self._pack_named_through_a_back_reference = False
         #: How many `Dp` patterns are being read for their arity: a modifier over an
         #: empty pack is the pattern's business there, not a refusal's.
         self._reading_pattern = 0
@@ -2359,11 +2368,11 @@ class ItaniumParser:
                 # recorded; those differ whenever the back-reference is read under a
                 # different template scope. `bind_template_param` does the pack handling
                 # `_pack_aware` would, so it is not applied twice. See `ParameterReference`.
-                if entry.symbolic is None:
-                    return self.bind_template_param(entry.index, entry.level)
                 try:
-                    return self.bind_template_param(entry.index, entry.level)
+                    return self._note_pack_binding(self.bind_template_param(entry.index, entry.level))
                 except ParseError:
+                    if entry.symbolic is None:
+                        raise
                     return self.builder.raw(entry.symbolic)
             if kind is DeferredProduction:
                 # The same, for a component built *over* a parameter. See
@@ -2375,6 +2384,17 @@ class ItaniumParser:
             # back-references inside it through this same method, and the caller asks
             # about the one it read, not the last one the re-reading did.
             self._last_entry_index = index
+
+    def _note_pack_binding(self, bound):
+        """Record that a back-reference named a `<template-param>` entry holding a pack.
+
+        Only where the pack is still a pack: inside an expansion `bind_template_param`
+        has already picked the member being read, and that reading is not in question.
+        See `_pack_named_through_a_back_reference`.
+        """
+        if self.builder.members(bound) is not None:
+            self._pack_named_through_a_back_reference = True
+        return bound
 
     def _expansion(self, handle):
         """Record `handle` as the result of a `Dp`, and return it."""
