@@ -596,8 +596,19 @@ the input bound, for every scheme, recording wall time and peak allocation:
   *without moving*, so `push_back` un-consumed a character that had really been read.
   Fixed in `next_char`, so the two are inverses everywhere rather than at the sites
   someone happened to check.
+- The claim above stopped being true for D, and the measurement did not catch it because
+  it predates the code. Refusing a back reference that lands inside an identifier means
+  asking, per reference, whether its target lies strictly inside any identifier read so
+  far, and that was a scan of every span recorded. The spans are neither sorted nor
+  disjoint — backtracking re-reads a region and a template instance's components nest —
+  so the scan cannot stop early and grows with the name: over the D corpus, 0.03 span
+  comparisons per character at 50 characters and 240 per character at 500. The longest
+  real D symbol, 2,695 characters, spent 125,776 of them. The spans now carry a map of
+  the positions they cover, so the question costs one lookup and the marking is linear in
+  the identifier text: 1,601 marks on that same name, and 11.3ms down to 5.7ms. Re-measure
+  this section's numbers when a scheme gains a check that consults everything read so far.
 
-Both were found by fuzzing rather than by reading, which is the point of the campaign
+These were found by fuzzing rather than by reading, which is the point of the campaign
 recorded here: roughly 550,000 corpus mutations across every scheme, 380,000
 grammar-generated Itanium names, 120,000 grammar-generated Swift names and 45,000 MSVC
 mutations, checking on each one that nothing but a `DemanglingError` escapes, that the
