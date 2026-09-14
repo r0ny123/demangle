@@ -311,24 +311,34 @@ compiler named on each entry.
   that already carries `I`, which is a shape section 0 elsewhere records no compiler as
   writing. Nothing to fix and nothing to claim; written down so it is not triaged twice.
 
-- **A constrained `decltype(auto)` is a type, and so is a substitution candidate** —
-  *open*, and the reason `tools/mutate.py --seed 40` reports one divergence. `DK
-  <type-constraint>` is a `<type>`, which ABI 5.1.10 makes a candidate, so this records
-  the composite; `llvm-cxxfilt` 18.1.3 records nothing for it. Probing `_Z1fDKN1A1BE`
-  with `tools/probe_substitutions.py` shows the whole disagreement: `S_` is `A` to both,
-  and `S0_` is `A::B decltype(auto)` here and out of range there. One entry's difference
-  is enough to move every later back-reference, which is how a mutant of
+- ~~**A constrained `decltype(auto)` is a type, and so is a substitution candidate**~~ —
+  *settled*, and `tools/mutate.py --seed 40` is clean. `DK <type-constraint>` is a
+  `<type>`, which ABI 5.1.10 makes a candidate, so this records the composite;
+  `llvm-cxxfilt` 18.1.3 records nothing for it. Probing `_Z1fDKN1A1BE` with
+  `tools/probe_substitutions.py` shows the whole disagreement: `S_` is `A` to both, and
+  `S0_` is `A::B decltype(auto)` here and out of range there. One entry's difference is
+  enough to move every later back-reference, which is how a mutant of
 
   ```
   _ZNK5clang6driver5tools7openbsd4Link12ConstructJobE...DKNS0_9InputInfoE...S9_...
   ```
 
   comes back with `llvm::SmallVector<llvm, 4u>` from the reference and
-  `llvm::SmallVector<clang::driver::InputInfo decltype(auto), 4u>` here. `Dk` and `DK`
-  are already recorded above as newer than either reference, which is the likeliest
-  reading of this: support for the production landed without the table entry it implies.
-  Neither reference reads enough of it to settle the question, and the mutant is the only
-  place it has been reached, so nothing is claimed and no `ACCEPTED` rule hides it.
+  `llvm::SmallVector<clang::driver::InputInfo decltype(auto), 4u>` here.
+
+  What settles it is that the omission is those two codes and not a rule that reference
+  holds about compound types. Probed the same way, it records the composite for `Dv2_i`
+  and for `Dpi`. And it is the omission its `DB` had as well: libcxxabi's own corpus
+  carries `_Z6myfuncRDB8_S0_` as `myfunc(_BitInt(8)&, _BitInt(8)&)`, which needs
+  `DB8_` in the table and which the shipped `llvm-cxxfilt` 18 refuses — so upstream
+  added that entry after the production, which is the reading this always was: support
+  landed without the table entry it implies. Neither g++ 13.3 nor clang++ 18.1.3 emits
+  `Dk` or `DK` at all — both write `Tk` in the `<template-param-decl>` instead — so the
+  grammar is the whole of the evidence and there is no compiler output to weigh against
+  it. Pinned by `TestAConstrainedPlaceholderIsASubstitutionCandidate` in
+  `tests/test_types.py`, and `ACCEPTED` in `tools/enumerate.py` now carries the reason,
+  read off the parser's own `_constrained_placeholder_recorded` rather than off the two
+  characters, which a `<source-name>` may also hold.
 
 ## 1. More schemes
 

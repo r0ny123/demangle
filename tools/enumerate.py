@@ -400,6 +400,19 @@ ACCEPTED = {
         # spell the same two characters. `tools/mutate.py --seed 35`, which found it
         # wearing a pointer-to-member conversion that looked like the disagreement.
         or (first is None and _names_an_entity_with_a_bare_z(name))
+        # Or a `Dk`/`DK` constrained placeholder recorded as a substitution candidate,
+        # which it is -- `Dk <type-constraint>` is a `<type>` and 5.1.10 makes every
+        # non-builtin one a candidate -- and which `llvm-cxxfilt` 18 does not record.
+        # `_Z1fDKN1A1BE` shows the whole disagreement: `S_` is `A` to both, and `S0_` is
+        # `A::B decltype(auto)` here and out of range there. One entry moves every later
+        # back-reference, which is why a mutant of `clang::driver::tools::openbsd::Link`
+        # comes back `llvm::SmallVector<llvm, 4u>` from the reference. That reference
+        # records the composite for `Dv` and for `Dp`, so the omission is these two codes
+        # and not a rule about placeholders; the same omission its `DB` had until
+        # libcxxabi's own corpus pinned `_Z6myfuncRDB8_S0_`, which the shipped binary
+        # still refuses. Asked of the parser, since `Dk` and `DK` spell two characters a
+        # <source-name> may hold. `tools/mutate.py --seed 40`.
+        or _records_a_constrained_placeholder(name)
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1135,6 +1148,18 @@ def _names_an_entity_with_a_bare_z(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._bare_entity_prefix_used
+
+
+def _records_a_constrained_placeholder(mangled):
+    """Whether this library's reading of `mangled` entered a `Dk`/`DK` type in the table.
+
+    The flag is set wherever one was read, because reading one *is* recording one: the
+    composite is a `<type>`. No compiler emits either code, so any name carrying one is
+    a name only demanglers read, and the two read its table differently by exactly this
+    entry.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._constrained_placeholder_recorded
 
 
 def _nests_a_legacy_argument_pack(mangled):

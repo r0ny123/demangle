@@ -390,6 +390,7 @@ class ItaniumParser:
         "_closure_prefix_seen",
         "_closure_prefix_substitutes",
         "_component_has_no_base_name",
+        "_constrained_placeholder_recorded",
         "_conversion_unbound",
         "_ctor_dtor",
         "_deferred",
@@ -660,6 +661,12 @@ class ItaniumParser:
         #: argument and refuses inside an expression. Read by tools/enumerate.py, which
         #: knows that is where the two references part. See `expr_primary`.
         self._bare_entity_prefix_used = False
+        #: Whether a `Dk`/`DK` constrained placeholder was recorded as a substitution
+        #: candidate. It is a `<type>`, which 5.1.10 makes one, and no compiler emits
+        #: either code, so the only readers of such a name are the demanglers. Read by
+        #: tools/enumerate.py, which knows `llvm-cxxfilt` 18 records nothing for it and
+        #: that one missing entry moves every later back-reference. See `type_`.
+        self._constrained_placeholder_recorded = False
         # Whether the last component appended to the <prefix> being read came from a
         # `<substitution>`. The final component of a <nested-name> is an
         # <unqualified-name>, which a substitution is not -- see `nested_name`.
@@ -3024,9 +3031,15 @@ class ItaniumParser:
         if pair in ("Dk", "DK"):
             # <type> ::= Dk <type-constraint>   # `C auto`
             #          | DK <type-constraint>   # `C decltype(auto)`
+            #
+            # The composite is a <type> and so a candidate, which `llvm-cxxfilt` 18
+            # does not record -- the same shape of omission its `DB` had until the
+            # vector `_Z6myfuncRDB8_S0_` in libcxxabi's own corpus fixed it, which that
+            # binary still refuses. See `_constrained_placeholder_recorded`.
             placeholder = "auto" if pair == "Dk" else "decltype(auto)"
             reader.pos += 2
             constraint = builder.spell(self.name()[0])
+            self._constrained_placeholder_recorded = True
             return self.subs.remember(builder.raw(f"{constraint} {placeholder}"), "type")
 
         if pair == "Dy":

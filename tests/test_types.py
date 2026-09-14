@@ -838,3 +838,46 @@ class TestADependentElaboratedTypeSpecifier:
     def test_the_parameter_forms_that_are_productions_still_read(self):
         assert demangle.demangle_strict("_Z1fIiEvT_") == "void f<int>(int)"
         assert demangle.demangle_strict("_Z1fIJiEEvDpT_") == "void f<int>(int)"
+
+
+class TestAConstrainedPlaceholderIsASubstitutionCandidate:
+    """`Dk <type-constraint>` and `DK <type-constraint>` are `<type>` productions, and
+    5.1.10 makes every `<type>` that is not a builtin a substitution candidate.
+
+    `llvm-cxxfilt` 18.1.3 records nothing for either, which is one entry short: probing
+    `_Z1fDKN1A1BE` with `tools/probe_substitutions.py` gives `S_` as `A` to both and
+    `S0_` as `A::B decltype(auto)` here and out of range there. One entry moves every
+    later back-reference in the name, so the disagreement is not confined to names that
+    refer back to the placeholder itself.
+
+    The omission is these two codes and not a rule that reference holds about compound
+    types: it records the composite for `Dv2_i` and for `Dpi`, both probed the same way.
+    It is the omission its `DB` had too -- `_Z6myfuncRDB8_S0_` is `myfunc(_BitInt(8)&,
+    _BitInt(8)&)` in libcxxabi's own corpus, and the shipped `llvm-cxxfilt` 18 refuses
+    that vector, so the entry was added upstream after the production was. Neither `Dk`
+    nor `DK` is emitted by g++ 13.3 or clang++ 18.1.3 -- both write `Tk` in the
+    `<template-param-decl>` instead -- so no compiler output settles it and the ABI's
+    own grammar is the whole of the evidence.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fDkN1A1BE", "f(A::B auto)"),
+            ("_Z1fDKN1A1BE", "f(A::B decltype(auto))"),
+            # The prefixes of the constraint name come first, then the composite.
+            ("_Z1fDkN1A1BES_", "f(A::B auto, A)"),
+            ("_Z1fDkN1A1BES0_", "f(A::B auto, A::B auto)"),
+            ("_Z1fDKN1A1BES_", "f(A::B decltype(auto), A)"),
+            ("_Z1fDKN1A1BES0_", "f(A::B decltype(auto), A::B decltype(auto))"),
+            # A three-level constraint contributes its two prefixes and then the type,
+            # so the complete name is reachable only through the placeholder that holds
+            # it: `A::B::C` alone is a <type-constraint> here and not a <type>.
+            ("_Z1fDkN1A1B1CES1_", "f(A::B::C auto, A::B::C auto)"),
+        ],
+    )
+    def test_the_placeholder_is_entered_after_its_constraints_prefixes(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    def test_one_entry_past_the_placeholder_is_out_of_range(self):
+        assert demangle.demangle("_Z1fDkN1A1BES1_") == "_Z1fDkN1A1BES1_"
