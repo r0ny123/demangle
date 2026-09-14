@@ -1372,6 +1372,38 @@ class TestAMemberPointersPointeeKeepsItsExtensionQualifiers(unittest.TestCase):
         )
 
 
+class TestADynamicInitialiserOverANestedSymbolName(unittest.TestCase):
+    """`??__E` takes a name, and a nested symbol `?<encoding>@` is one.
+
+    MSVC writes `??__E?i@C@@0HA@@YAXXZ` for a static data member -- the initialised
+    variable spelled with its own access and type inside the initialiser's name -- and
+    `tests/conformance/msvc-arm64ec.txt` carries that shape out of a real binary.
+    `llvm-undname` 18 reads the nested encoding where it is a variable and refuses it
+    where it is a *function*, which nothing initialises. That shape is therefore
+    reachable only by damaging one of the real ones, and this reads the text as it
+    stands rather than deciding what a name may be initialised for. `tools/mutate.py
+    --seed 65`.
+    """
+
+    def test_the_shape_a_compiler_writes(self):
+        self.assertEqual(
+            demangle_msvc_symbol("??__E?i@C@@0HA@@YAXXZ"),
+            "void __cdecl `dynamic initializer for `private: static int C::i''(void)",
+        )
+
+    def test_a_function_encoding_in_the_same_place_is_read_as_one(self):
+        self.assertEqual(
+            demangle_msvc_symbol("??__E?i@C@@YAXXZ@@YAXXZ"),
+            "void __cdecl `dynamic initializer for `void __cdecl C::i(void)''(void)",
+        )
+
+    def test_the_atexit_destructor_is_the_same_production(self):
+        self.assertEqual(
+            demangle_msvc_symbol("??__F?i@C@@0HA@@YAXXZ"),
+            "void __cdecl `dynamic atexit destructor for `private: static int C::i''(void)",
+        )
+
+
 class TestAPointerToAMemberOfArrayType(unittest.TestCase):
     """`PEQA@@Y03H` is a pointer to a member of `A` whose type is `int[4]`, and the
     declarator an array brackets is the member pointer's: `int (A::*)[4]`. The array's

@@ -285,6 +285,40 @@ compiler named on each entry.
   ones is the wrong side of the trade, and `TestTheThreeItStillClaimsWrongly` in
   `tests/test_gnuv2.py` pins both sides of it so the rule cannot be adopted by accident.
 
+- ~~**Two leniencies of this library's own, each shared with one reference**~~ —
+  *recorded, and kept*. `tools/mutate.py --seed 65` and `--seed 66` found the two, and
+  both are places where the references split rather than places either of them settles.
+
+  A `<source-name>` whose length is written with a leading zero — `_Z1f01A` — is not
+  well formed: a number in these grammars has none. `c++filt` 2.42 reads it as `f(A)`,
+  because libiberty's `d_number` consumes digits and calls `atoi`; `llvm-cxxfilt` 18
+  refuses it. This reads it as `c++filt` does, which is the side it already takes on the
+  legacy `I ... E` argument pack and on the old `sr` form. An array *bound* is a
+  different production and keeps its zero in every reader: `A01_i` is `int [01]`.
+
+  A dynamic initialiser over a nested symbol name that spells a *function* —
+  `??__E?i@C@@YAXXZ@@YAXXZ` — is read here and refused by `llvm-undname` 18, which reads
+  the same position where the nested encoding is a *variable*.
+  `tests/conformance/msvc-arm64ec.txt` carries `??__E?i@C@@0HA@@$$hYAXXZ` out of a real
+  binary, so the shape is compiler-emitted and only the function form is not. Nothing
+  initialises a function, so the name is reachable only by damaging one of the real ones,
+  and this reads the text as it stands rather than deciding what a name may be
+  initialised for.
+
+  Both are pinned — `tests/test_types.py` and `tests/test_msvc.py` — and `ACCEPTED` in
+  `tools/enumerate.py` carries each reason.
+
+- ~~**The gnu style over libcxxabi's own corpus**~~ — *swept, and clean*. Every one of
+  the 29,926 names `c++filt` can be asked about on a command line was put to it and
+  compared with this library's gnu-style answer: 29 differ, and all 29 are already
+  written down. Twenty-two are the `char [N]{(char)104, ...}` spelling of a string
+  literal, which this joins into the string it spells and both references list out; the
+  rest are the reference defects above and the two libcxxabi vectors heading 0's intro
+  counts. Nothing new. The `<special-name>` space was swept the same way — every code
+  over eight operand shapes, 142 names — and the only difference is `c++filt` numbering
+  the *old* `_ZGR` form `#0`, a production it reads and the modern `_ZGR <name> _` one it
+  refuses entirely.
+
 - **`c++filt --format=gnat` aborts on an eight-character name** — *open*, and the one
   entry here that is a crash rather than a wrong reading. Binutils 2.42:
 

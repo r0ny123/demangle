@@ -44,12 +44,18 @@ class Reader:
     its terminator and 4,931 truncated encodings read as though they were whole.
     """
 
-    __slots__ = ("length", "pos", "text")
+    __slots__ = ("length", "padded_length", "pos", "text")
 
     def __init__(self, text):
         self.text = text
         self.pos = 0
         self.length = len(text)
+        #: Whether a `length_prefixed()` read a length written with a leading zero, which
+        #: the grammars spell without one. Recorded rather than refused: `c++filt` 2.42
+        #: reads `_Z1f01A` as `f(A)` and `llvm-cxxfilt` 18 refuses it, so a name carrying
+        #: one is a place the two references split and no compiler settles. Read by
+        #: tools/enumerate.py.
+        self.padded_length = False
 
     # -- inspection ------------------------------------------------------------
 
@@ -189,6 +195,10 @@ class Reader:
                 raise ParseError(text, start, "number too long")
         if pos == start:
             raise ParseError(text, start, "expected a number")
+        if text[start] == "0":
+            # One comparison on the commonest production in the package, and a store
+            # only on input no compiler writes. See `padded_length`.
+            self.padded_length = True
         count = int(text[start:pos])
         end = pos + count
         if end > length:

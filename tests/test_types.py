@@ -961,3 +961,41 @@ class TestATemplateTemplateParameterTakesAnEntryOfItsOwn:
     )
     def test_the_names_both_compilers_emit(self, mangled, expected):
         assert demangle.demangle_strict(mangled) == expected
+
+
+class TestASourceNameLengthWrittenWithALeadingZero:
+    """`<source-name>` is a *positive length number* and an identifier, and a number in
+    these grammars has no leading zero -- so `01A` is not one.
+
+    The two references split on it. `c++filt` 2.42 reads `_Z1f01A` as `f(A)`, because
+    libiberty's `d_number` consumes digits and calls `atoi`; `llvm-cxxfilt` 18 refuses
+    the name outright. This reads it as `c++filt` does, which is the side it takes on the
+    legacy `I ... E` argument pack and on the old `sr` form as well, and no compiler
+    writes one, so there is nothing to settle the split against. `tools/mutate.py
+    --seed 66` is what reached it, through a damaged `modern::constrained` whose `Tk`
+    `c++filt` cannot read either -- so both references refused that name, for two
+    different reasons.
+
+    An array *bound* is a different production and is printed as it is written: `A01_i`
+    is `int [01]` to all three.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1f01A", "f(A)"),
+            ("_Z1f001A", "f(A)"),
+            ("_Z1f02AB", "f(AB)"),
+            ("_Z1fN01A1BE", "f(A::B)"),
+            ("_Z01fv", "f()"),
+            ("_ZN01A1BE", "A::B"),
+        ],
+    )
+    def test_the_zero_is_padding_and_the_name_reads(self, mangled, expected):
+        assert demangle.demangle_strict(mangled, language="itanium") == expected
+
+    def test_a_length_of_zero_is_still_refused(self):
+        assert demangle.demangle("_Z1f0v") == "_Z1f0v"
+
+    def test_an_array_bound_keeps_its_zero(self):
+        assert demangle.demangle_strict("_Z1fA01_i") == "f(int [01])"

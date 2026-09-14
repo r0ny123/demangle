@@ -289,6 +289,16 @@ ACCEPTED = {
         # Boost 1.84's symbols -- and `llvm-undname` 18 cannot read. LLVM's main branch
         # reads both, and this spells them as it does.
         or (first is None and _DEDUCED_TYPE.search(name) is not None and _DEDUCED_WORD.search(ours) is not None)
+        # Or a dynamic initialiser over a nested symbol name that spells a *function*.
+        # `??__E` takes a name, and a nested symbol `?<encoding>@` is one: MSVC writes
+        # `??__E?i@C@@0HA@@YAXXZ` for a static data member, which both read, and
+        # `tests/conformance/msvc-arm64ec.txt` carries that shape from a real binary.
+        # `llvm-undname` 18 reads the nested encoding only where it is a *variable* and
+        # refuses it where it is a function, which nothing initialises -- so the shape is
+        # reachable only by damaging one of the real ones, and this reads the text as it
+        # stands rather than deciding what a name may be initialised for.
+        # `tools/mutate.py --seed 65`.
+        or (first is None and _NESTED_FUNCTION_INITIALISER.search(ours) is not None)
     ),
     # `c++filt --format=dlang` writes a path separator for a component that spells
     # nothing. An anonymous component and a `__S<n>` compiler scope are left out of the
@@ -463,6 +473,15 @@ ACCEPTED = {
         # a `TL0_1_` elsewhere in the signature readable, and an option must not change
         # which names read. See `_declares_a_parameter_after_a_pack`.
         or _declares_a_parameter_after_a_pack(name)
+        # Or a `<source-name>` whose length was written with a leading zero. A number in
+        # these grammars has none, so `_Z1f01A` is not a well-formed name; `c++filt`
+        # reads it as `f(A)` and `llvm-cxxfilt` refuses it, and this reads it as
+        # `c++filt` does. Accepted whichever way the references fall, since where only
+        # `llvm-cxxfilt` refuses the arm for "both agree with this library" has already
+        # taken the name, and where both refuse they are refusing two different things:
+        # `_ZN6modern11constrainedITkNS_8IntegralEiEET_01_` is the zero to one of them
+        # and the `Tk` to the other. `tools/mutate.py --seed 66`.
+        or _reads_a_length_written_with_a_leading_zero(name)
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1025,6 +1044,10 @@ _BIT_INT = re.compile(r"D[BU](?:\d+_|T)")
 
 _QUALIFIED_ARRAY_ELEMENT = re.compile(r"Y[0-9A-P@]*\$\$C[BCD]")
 
+#: A dynamic initialiser or atexit destructor whose operand is a nested symbol name
+#: that spells a *function*. See the `msvc` rule in `ACCEPTED`.
+_NESTED_FUNCTION_INITIALISER = re.compile(r"`dynamic (?:initializer|atexit destructor) for `[^`']*\(")
+
 #: A local name inside a template function's encoding, then another local name reading
 #: a back reference: `Z1fIiE...E...Z1gIdE...S2_...E`. See the `itanium` rule.
 _CROSS_SCOPE_BACK_REFERENCE = re.compile(r"Z\d+\w*?I[^Z]*?E[^Z]*?Z[^Z]*?S\d*_")
@@ -1266,6 +1289,20 @@ def _declares_a_parameter_after_a_pack(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._declaration_after_a_pack
+
+
+def _reads_a_length_written_with_a_leading_zero(mangled):
+    """Whether a `<source-name>` in `mangled` had its length written with a leading zero.
+
+    `<source-name>` is a *positive length number* and an identifier, and a number in
+    these grammars has no leading zero -- so `01A` is not a source name. `c++filt` 2.42
+    reads it anyway, because libiberty's `d_number` consumes digits and calls `atoi`;
+    `llvm-cxxfilt` 18 refuses it. This library reads it as `c++filt` does, which is the
+    same side it takes on the legacy `I ... E` argument pack and the old `sr`. No
+    compiler writes one, so there is nothing to settle the split against.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser.reader.padded_length
 
 
 def _shifted_by_a_template_template_param(mangled):
