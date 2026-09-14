@@ -387,15 +387,29 @@ compiler named on each entry.
   Aborted
   ```
 
-  All three parts are needed — an `SO` attribute marker, a `__` separator and a `DF`
-  suffix — and dropping any one of them returns normally, so it is the two expansions in
-  one name that overrun. Only the GNAT format reaches it; `c++filt` left to detect the
-  scheme does not. This library reads the shape as `a'Output.b.Finalize`, which is why a
-  mutant of a GNAT runtime symbol went to the reference through the gate and took the
-  whole Ada run of `tools/mutate.py --seed 37` down with it. `ask_tolerantly` now splits
-  a batch to the name that did it and leaves that one out of the comparison, and
-  `tests/test_ada.py` pins the reading. Worth reporting upstream: `c++filt` is what `nm`,
-  `objdump` and `addr2line` use, and the symbols in a binary are not always friendly.
+  Two expansions in one name are what overrun it, rather than that particular pair:
+  `aSO__bSO` goes the same way, and `aSO__bSR` does not, because the buffer has seven
+  characters of slack and `'Read` grows the name by three where `'Output` grows it by
+  five. Eight characters is the shortest a crash can be written in, since a second
+  expansion needs a separator and an entity name in front of it. Only the GNAT format
+  reaches it; `c++filt` left to detect the scheme does not. This library reads the shape
+  as `a'Output.b.Finalize`, which is why a mutant of a GNAT runtime symbol went to the
+  reference through the gate and took the whole Ada run of `tools/mutate.py --seed 37`
+  down with it. `ask_tolerantly` now splits a batch to the name that did it and leaves
+  that one out of the comparison, and `tests/test_ada.py` pins the reading.
+
+  It is already upstream, three times over: GCC PR 92453 (2019, with a two-pass patch
+  posted to gcc-patches that never drew a review), rediscovered as GCC PR 103893 and
+  binutils PR 28736, both closed onto the first. Still unfixed on gcc master, which sizes
+  the buffer `strlen (mangled) + 7 + 1` on the reasoning that the expanding cases "occur
+  only once" — the `continue` at the `__` separator is what makes that false, because the
+  loop comes back round for every component of the name and the stream attributes expand
+  in each one. The overrun is therefore not a fixed few bytes: every `xSO__` reads five
+  characters and writes nine, so a long enough symbol writes about four bytes past the
+  end for every five characters of its own length. `nm --demangle=gnat` and `objdump
+  --demangle=gnat` abort on an object file carrying such a symbol, not only `c++filt` on
+  a string, which is the part worth pressing — the symbols in a file you have been handed
+  are not always friendly. Nothing left to do on this side.
 
 - ~~**A `<template-param>` bound to a pack, resolved to one member and not the same
   one**~~ — *settled*. `tools/mutate.py --seed 39` reads
