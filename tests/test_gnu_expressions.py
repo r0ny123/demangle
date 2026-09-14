@@ -850,3 +850,108 @@ class TestAnEmptyPackIsAnEmptyEntryToCxxfilt:
         assert demangle.demangle_strict("_Z1fIJEiEvDpT_T0_", style=off) == "void f<int>(int)"
         on = demangle.style("llvm", itanium={"gnu_empty_pack_spelling": True})
         assert demangle.demangle_strict("_Z1fIJEiEvDpT_T0_", style=on) == "void f<, int>(, int)"
+
+
+class TestADeclaredTemplateParameterUnderTheGnuStyle:
+    """`Tn`, `Tp`, `Tt` and the numbering: four spellings GNU c++filt does differently.
+
+    A `<template-param-decl>` is what a generic lambda writes for each parameter it
+    declares, and the two references spell the whole production apart:
+
+    * **The name goes after the type.** `Tn PA3_i` is `int (*$N) [3]` to llvm-cxxfilt,
+      which is where a declarator goes, and `int (*) [3] $N0` to c++filt, which is not a
+      declaration anyone can write. Every shape with a declarator parts the same way:
+      an array, a reference to one, a function, a pointer to a member function.
+    * **A `Tp` puts its ellipsis on the type**, not on the name: `typename... $T0` and
+      `int [3]... $N0` against llvm-cxxfilt's `typename ...$T` and `int ...$N [3]`.
+    * **A `Tt` is spelled `class`**, and its own declarations are written without their
+      names: `template<typename, int> class $TT0`.
+    * **The numbering is one sequence across kinds.** llvm-cxxfilt counts each kind
+      separately and leaves the first of each unsuffixed, so `Ty Ty Tn i` is
+      `$T, $T0, $N`; c++filt numbers every *printed* declaration from zero in one
+      sequence, `$T0, $T1, $N2`. A declaration inside a `Tt`, which it does not print,
+      spends nothing: `Ty Tt Ty E Ty` is `$T0, $TT1, $T2`.
+
+    Read off `c++filt` 2.42 with probes rather than guessed: every ordering of the three
+    kinds, every declarator shape above, and two levels of `Tt` nesting -- 242 names in
+    all, agreeing byte for byte. The one place the two lists part is a declaration
+    *after* a pack, which is ill-formed C++ and which c++filt drops rather than refuses;
+    `TestADeclarationAfterAPackIsKept` below pins that this library keeps it.
+    """
+
+    @pytest.mark.parametrize(
+        ("declarations", "expected"),
+        [
+            ("Ty", "typename $T0"),
+            ("Tni", "int $N0"),
+            ("TnPi", "int* $N0"),
+            ("TnA3_i", "int [3] $N0"),
+            ("TnPA3_i", "int (*) [3] $N0"),
+            ("TnRA3_i", "int (&) [3] $N0"),
+            ("TnPFicE", "int (*)(char) $N0"),
+            ("TnM1Ai", "int A::* $N0"),
+            ("TnM1AFivE", "int (A::*)() $N0"),
+            ("TnFivE", "int () $N0"),
+            ("TpTy", "typename... $T0"),
+            ("TpTni", "int... $N0"),
+            ("TpTnA3_i", "int [3]... $N0"),
+            ("TpTnPA3_i", "int (*) [3]... $N0"),
+            ("TtTyE", "template<typename> class $TT0"),
+            ("TtTyTyE", "template<typename, typename> class $TT0"),
+            ("TtTyTniE", "template<typename, int> class $TT0"),
+            ("TtTyTnPA3_iE", "template<typename, int (*) [3]> class $TT0"),
+            ("TtTpTyE", "template<typename...> class $TT0"),
+            ("TtTtTyEE", "template<template<typename> class> class $TT0"),
+            ("TpTtTyE", "template<typename> class... $TT0"),
+            # The numbering is one sequence, and a `Tt`'s own list spends nothing.
+            ("TyTyTni", "typename $T0, typename $T1, int $N2"),
+            ("TniTyTni", "int $N0, typename $T1, int $N2"),
+            ("TyTniTy", "typename $T0, int $N1, typename $T2"),
+            ("TyTtTyETy", "typename $T0, template<typename> class $TT1, typename $T2"),
+            ("TtTyETy", "template<typename> class $TT0, typename $T1"),
+            ("TtTniETni", "template<int> class $TT0, int $N1"),
+        ],
+    )
+    def test_the_gnu_spelling_is_cxxfilts(self, declarations, expected):
+        mangled = f"_ZNK1xMUl{declarations}vE_clIiEEDav"
+        spelled = demangle.demangle_strict(mangled, style="gnu")
+        assert spelled == f"auto x::{{lambda<{expected}>()#1}}::operator()<int>() const"
+
+    @pytest.mark.parametrize(
+        ("declarations", "expected"),
+        [
+            ("TnPA3_i", "int (*$N) [3]"),
+            ("TpTnPA3_i", "int (*...$N) [3]"),
+            ("TtTyTniE", "template<typename $T, int $N> typename $TT"),
+            ("TyTyTni", "typename $T, typename $T0, int $N"),
+            ("TyTtTyETy", "typename $T, template<typename $T0> typename $TT, typename $T1"),
+        ],
+    )
+    def test_the_llvm_spelling_is_unchanged(self, declarations, expected):
+        mangled = f"_ZNK1xMUl{declarations}vE_clIiEEDav"
+        spelled = demangle.demangle_strict(mangled)
+        assert spelled == f"auto x::'lambda'<{expected}>()::operator()<int>() const"
+
+
+class TestADeclarationAfterAPackIsKept:
+    """A pack must be the last parameter a template declares, so `Tp Ty Ty` is a shape
+    no compiler writes. `c++filt` 2.42 stops the list at the pack and prints
+    `typename... $T0`, dropping the second declaration; this keeps both.
+
+    Dropping one is dropping a name: a `TL0_1_` elsewhere in the same signature refers
+    to it, and an option chooses how a name is spelled rather than which names read at
+    all. `tools/enumerate.py` carries the reason instead.
+    """
+
+    @pytest.mark.parametrize(
+        ("declarations", "expected"),
+        [
+            ("TpTyTy", "typename... $T0, typename $T1"),
+            ("TpTyTni", "typename... $T0, int $N1"),
+            ("TyTpTyTy", "typename $T0, typename... $T1, typename $T2"),
+        ],
+    )
+    def test_every_declaration_is_spelled(self, declarations, expected):
+        mangled = f"_ZNK1xMUl{declarations}vE_clIiEEDav"
+        spelled = demangle.demangle_strict(mangled, style="gnu")
+        assert spelled == f"auto x::{{lambda<{expected}>()#1}}::operator()<int>() const"

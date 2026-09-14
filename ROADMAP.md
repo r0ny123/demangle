@@ -250,6 +250,17 @@ compiler named on each entry.
     has one in its body too. `tests/test_local_names.py`.
   - A generic lambda's `auto:1`, 1 name; see the item above.
 
+  A sixth was found after that count, by `tools/mutate.py --seed 56`, and it is not
+  reached by any shipped symbol: the whole of `<template-param-decl>`, which is what a
+  generic lambda writes for each parameter it declares. GNU puts the name *after* the
+  type rather than where a declarator goes — `int (*) [3] $N0`, which is not a
+  declaration anyone can write — puts a `Tp`'s ellipsis on the type rather than on the
+  name, spells a `Tt` `class` and writes that `Tt`'s own declarations without their
+  names, and numbers every *printed* declaration in one sequence across kinds where
+  llvm-cxxfilt counts each kind separately. Read off `c++filt` 2.42 over every ordering
+  of the three kinds, every declarator shape, and two levels of `Tt` nesting — 242 names
+  agreeing byte for byte. `tests/test_gnu_expressions.py`.
+
 - ~~**`gnuv2` claims ordinary C symbols**~~ — *mostly closed*, issue #6. Two of the
   three causes were spellings no declaration contains, and `_plausible` now refuses them:
   a parameter list holding `int0_t` (what libiberty prints when `I` is followed by

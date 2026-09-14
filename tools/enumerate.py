@@ -456,6 +456,13 @@ ACCEPTED = {
         # agrees with this library and the arm at the top has already accepted it.
         # `tools/mutate.py --seed 43`.
         or (second[0] is None and _shifted_by_a_template_template_param(name))
+        # Or a lambda that declares a template parameter after a pack, which is
+        # ill-formed -- a pack must be last -- and where `c++filt` stops the declaration
+        # list rather than refusing the name, so `Tp Ty Ty` is `typename... $T0` to it
+        # and `typename... $T0, typename $T1` here. Keeping the declaration is what keeps
+        # a `TL0_1_` elsewhere in the signature readable, and an option must not change
+        # which names read. See `_declares_a_parameter_after_a_pack`.
+        or _declares_a_parameter_after_a_pack(name)
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1246,6 +1253,19 @@ def _names_an_entity_with_a_bare_z(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._bare_entity_prefix_used
+
+
+def _declares_a_parameter_after_a_pack(mangled):
+    """Whether a lambda in `mangled` declared a template parameter after a pack.
+
+    A pack must be the last parameter a template declares, so nothing a compiler writes
+    reaches this. `c++filt` 2.42 stops the declaration list at the pack rather than
+    refusing the name -- `Tp Ty Ty` is `typename... $T0` to it, with the second dropped
+    -- and this library keeps every declaration, because dropping one is dropping a name
+    a `TL0_<n>_` elsewhere in the signature can refer to.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._declaration_after_a_pack
 
 
 def _shifted_by_a_template_template_param(mangled):

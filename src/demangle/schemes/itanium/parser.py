@@ -393,6 +393,7 @@ class ItaniumParser:
         "_constrained_placeholder_recorded",
         "_conversion_unbound",
         "_ctor_dtor",
+        "_declaration_after_a_pack",
         "_deferred",
         "_depth",
         "_drop_return",
@@ -686,6 +687,10 @@ class ItaniumParser:
         #: tools/enumerate.py, which knows `llvm-cxxfilt` 18 records nothing for it and
         #: that one missing entry moves every later back-reference. See `type_`.
         self._constrained_placeholder_recorded = False
+        #: Whether a lambda declared a template parameter after a pack, which no
+        #: compiler writes -- a pack must be last -- and where `c++filt` 2.42 stops the
+        #: list rather than refusing the name. Read by tools/enumerate.py.
+        self._declaration_after_a_pack = False
         # Whether the last component appended to the <prefix> being read came from a
         # `<substitution>`. The final component of a <nested-name> is an
         # <unqualified-name>, which a substitution is not -- see `nested_name`.
@@ -2205,10 +2210,22 @@ class ItaniumParser:
             self._closure_level = self.targs.depth()
             self.targs.push(declared)
             constraint = ""
+            saw_pack = False
             was_reading_closure = self._reading_closure_signature
             self._reading_closure_signature = True
             try:
                 while reader.peek2() in _PARAMETER_DECLARATIONS:
+                    # A pack must be the last parameter a template declares, so anything
+                    # after one is a shape no compiler writes -- and `c++filt` 2.42 stops
+                    # the list there rather than refusing it, printing `typename... $T0`
+                    # for `Tp Ty Ty` and dropping the second. This keeps them: an option
+                    # chooses how a name is spelled and must not change which names read,
+                    # and a dropped declaration is one a `TL0_<n>_` can no longer name.
+                    # Read by tools/enumerate.py. See `_declaration_after_a_pack`.
+                    if reader.peek2() == "Tp":
+                        saw_pack = True
+                    elif saw_pack:
+                        self._declaration_after_a_pack = True
                     _, declaration = self.template_param_decl(params=declared)
                     declarations.append(declaration)
                 if reader.eat("Q"):
@@ -3397,17 +3414,17 @@ class ItaniumParser:
 
     # -- 5.1.5.10 template arguments -------------------------------------------
 
-    def template_param_decl(self, ellipsis="", params=None):
+    def template_param_decl(self, ellipsis="", params=None, named=True):
         """Guarded wrapper: `Tp` and `Tt` both recurse into this production."""
         depth = self._depth = self._depth + 1
         if depth > self._max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
         try:
-            return self._template_param_decl(ellipsis, params)
+            return self._template_param_decl(ellipsis, params, named)
         finally:
             self._depth = depth - 1
 
-    def _template_param_decl(self, ellipsis="", params=None):
+    def _template_param_decl(self, ellipsis="", params=None, named=True):
         """A declared template parameter.
 
         ```
@@ -3429,13 +3446,32 @@ class ItaniumParser:
         nothing -- an ordinary argument list, where a declaration is read for the input
         it consumes and nothing refers back to it. A `Tt` always opens a level of its
         own whatever `params` is, because its inner declarations refer to each other.
+
+        `named` is False for the declarations inside a `Tt`'s own list under the GNU
+        style, which writes those without names -- `template<typename, int> class $TT0`.
+        The name is still invented, because a `TL0_<n>_` elsewhere in the signature can
+        refer to one; it just is not printed, and it does not advance the counter the
+        printed names come from. See `_parameter_name`.
+
+        Under the GNU style the whole production is spelled differently, and every part
+        of that was read off `c++filt` 2.42 rather than guessed:
+
+        * the name comes *after* the type rather than where a declarator goes, so `Tn
+          PA3_i` is `int (*) [3] $N0` and not `int (*$N0) [3]` -- which is not a
+          declaration, but it is what the reference writes;
+        * a `Tp` puts its ellipsis on the type rather than on the name, `typename...
+          $T0` and `int [3]... $N0`;
+        * a `Tt` is spelled `class` rather than `typename`.
         """
         reader = self.reader
         pair = reader.peek2()
         reader.pos += 2
+        gnu = self.options.gnu_closure_spelling
 
         if pair == "Ty":
-            binding = self._declare("T", params)
+            binding = self._declare("T", params, named)
+            if gnu:
+                return binding, f"typename{ellipsis}" + (f" {binding}" if named else "")
             return binding, f"typename {ellipsis}{binding}"
         if pair == "Tk":
             # A constrained parameter: the concept it must satisfy, then the parameter.
@@ -3450,25 +3486,31 @@ class ItaniumParser:
             finally:
                 self._in_constraint = outer
                 self._naming = outer_naming
-            binding = self._declare("T", params)
+            binding = self._declare("T", params, named)
+            if gnu:
+                return binding, f"{concept}{ellipsis}" + (f" {binding}" if named else "")
             return binding, f"{concept} {ellipsis}{binding}"
         if pair == "Tn":
             # The name goes where a declarator goes, so a parameter of array-of-pointer
-            # type is `$T0 (*$N) [3]` and not `$T0 (*) [3] $N`.
+            # type is `$T0 (*$N) [3]` and not `$T0 (*) [3] $N`. The GNU style writes the
+            # second; see the note above.
             kind = self.type_()
-            binding = self._declare("N", params)
+            binding = self._declare("N", params, named)
+            if gnu:
+                spelled = self.builder.spell(kind) + ellipsis
+                return binding, spelled + (f" {binding}" if named else "")
             return binding, self.builder.spell(kind, f"{ellipsis}{binding}")
         if pair == "Tp":
             # A pack. The ellipsis goes immediately before the name, wherever the name
             # ends up: `$T0 (*...$N0) [3]`. It binds into the same level its inner
             # declaration would have.
-            return self.template_param_decl("...", params)
+            return self.template_param_decl("...", params, named)
         if pair == "Tt":
             # The name is invented *before* the inner list is read, so it belongs to the
             # level outside it -- `template<typename $T0, ...> typename $TT` has `$TT`
             # beside its siblings and `$T0` a level down. Reading the inner list first
             # numbered them the other way round.
-            binding = self._declare("TT", params)
+            binding = self._declare("TT", params, named)
             inner = []
             declared = []
             self.targs.push(declared)
@@ -3483,25 +3525,41 @@ class ItaniumParser:
                         self.constraint_expression()
                         reader.expect("E")
                         break
-                    inner.append(self.template_param_decl(params=declared)[1])
+                    inner.append(self.template_param_decl(params=declared, named=not gnu)[1])
             finally:
                 self.targs.pop()
+            if gnu:
+                head = f"template<{', '.join(inner)}> class{ellipsis}"
+                return binding, head + (f" {binding}" if named else "")
             return binding, f"template<{', '.join(inner)}> typename {ellipsis}{binding}"
         raise ParseError(self._mangled, reader.pos, f"unknown template parameter declaration {pair!r}")
 
-    def _declare(self, kind, params):
+    def _declare(self, kind, params, named=True):
         """Invent a name for a declared parameter, and bind it into `params`."""
-        binding = self._parameter_name(kind)
+        binding = self._parameter_name(kind, named)
         if params is not None:
             params.append(self.builder.raw(binding))
         return binding
 
-    def _parameter_name(self, kind):
+    def _parameter_name(self, kind, named=True):
         """The synthetic name for a declared parameter.
 
-        llvm-cxxfilt leaves the first unsuffixed -- `$T`, `$T0`, `$T1` -- while GNU
-        c++filt numbers from zero throughout: `$T0`, `$T1`.
+        llvm-cxxfilt leaves the first of each kind unsuffixed -- `$T`, `$T0`, `$T1`, and
+        `$N` counts separately from `$T` -- while GNU c++filt numbers *every* declaration
+        in one sequence from zero, so `Ty Ty Tn i` is `$T0, $T1, $N2` to it and
+        `$T, $T0, $N` to llvm-cxxfilt. Verified over every ordering of the three kinds.
+
+        A declaration GNU does not print -- one inside a `Tt`'s own list -- does not
+        advance that sequence: `Ty Tt Ty E Ty` is `$T0, $TT1, $T2`, with nothing spent on
+        the inner `typename`. Such a declaration still needs a name, because a
+        `TL0_<n>_` can refer to one, so it takes the next of its own kind instead; what
+        that name is cannot be read off the reference, which refuses every name that
+        mentions one.
         """
+        if self.options.gnu_closure_spelling and named:
+            index = self._parameter_counts.get("", 0)
+            self._parameter_counts[""] = index + 1
+            return f"${kind}{index}"
         index = self._parameter_counts.get(kind, 0)
         self._parameter_counts[kind] = index + 1
         if self.options.gnu_closure_spelling:
