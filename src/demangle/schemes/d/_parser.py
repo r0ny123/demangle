@@ -1512,9 +1512,17 @@ class _Parser:
         self._follows -= 1
         if self._follows < 0:
             raise _Exhausted
-        # What a target reads as depends on the bound in force while it is read, so the
-        # bound is part of the key.
-        key = (target, "type", self._in_symbol_argument, self._last_backref)
+        # What a target reads as depends on the bound in force *while it is read*, which
+        # is the one installed below -- this `Q`'s own position -- and not the one that
+        # was in force on the way in. Keyed on the latter, two references to one target
+        # from two places shared an entry and the second was served the first's reading:
+        # in the `emplaceInitializer` mutant of `tools/mutate.py --seed 69` the `Q` at
+        # 122 reads position 49 under a bound that refuses the scope's own function type,
+        # stores the short form, and the `Q` at 143 -- which has no such restriction and
+        # which `c++filt` reads whole -- was handed it. The key costs a little sharing:
+        # only the same `Q` resolved again hits, which is still every repeat the memo
+        # exists to stop.
+        key = (target, "type", self._in_symbol_argument, at)
         found = self._resolved.get(key)
         if found is not None:
             return found[0]

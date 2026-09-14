@@ -1345,3 +1345,47 @@ class TestTheMachOUnderscore:
         assert not detect("___D4test3fooFZv")
         assert demangle.demangle("___D4test3fooFZv") == "___D4test3fooFZv"
         assert demangle.demangle("__D") == "__D"
+
+
+class TestTwoBackReferencesToOneTargetReadItTheSameWay:
+    """The memo for a resolved type back reference was keyed on the wrong bound.
+
+    Resolving a `Q` installs that `Q`'s own position as the bound a nested back
+    reference may not reach past -- the guard that stops a chain turning round and
+    reading a target from inside itself. So what a target reads as depends on *that*
+    bound, and the memo was keyed on the bound in force on the way in instead.
+
+    Two references to one target from two places therefore shared an entry, and the
+    second was served whatever the first had read under its own restriction. In this
+    mutant of `core.internal.lifetime.emplaceInitializer` the `Q` at 122 reads position
+    49 under a bound that refuses the scope's own function type and stores the short
+    form, `...emplaceRef`; the `Q` at 143 has no such restriction -- `c++filt
+    --format=dlang` reads it whole -- and was handed the short one. The two answers
+    differed by 190 characters at the end of a 900-character reading, and everything
+    before it agreed. `tools/mutate.py --seed 69`.
+    """
+
+    MANGLED = (
+        "_D4core8internal8lifetime__T18emplaceInitializerTSQBwQBuQBo__T10emplaceRefTS3std5regex"
+        "QDb2ir10NamedGroupTQBeTQBiZQBzFKQBrKQCvZ1SZQDxFNaNbNiNeMKQDqZv"
+    )
+    #: `core.internal.lifetime.emplaceRef!(NamedGroup, NamedGroup, NamedGroup).emplaceRef`,
+    #: which is what position 49 reads as when nothing restricts it.
+    WHOLE = (
+        "core.internal.lifetime.emplaceRef!(std.regex.internal.ir.NamedGroup, "
+        "std.regex.internal.ir.NamedGroup, std.regex.internal.ir.NamedGroup).emplaceRef"
+        "(ref std.regex.internal.ir.NamedGroup, ref core.internal.lifetime.emplaceRef!("
+        "std.regex.internal.ir.NamedGroup, std.regex.internal.ir.NamedGroup, "
+        "std.regex.internal.ir.NamedGroup).emplaceRef).S"
+    )
+
+    def test_the_argument_and_the_parameter_read_the_same_target_alike(self):
+        spelled = demangle.demangle_strict(self.MANGLED, language="d")
+        assert (
+            spelled
+            == f"core.internal.lifetime.emplaceInitializer!({self.WHOLE}).emplaceInitializer(scope ref {self.WHOLE})"
+        )
+
+    def test_the_reading_is_the_references_own(self):
+        """Both halves are what `c++filt --format=dlang` 2.42 prints for this name."""
+        assert demangle.demangle_strict(self.MANGLED, language="d").count(self.WHOLE) == 2

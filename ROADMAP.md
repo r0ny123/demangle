@@ -345,8 +345,8 @@ compiler named on each entry.
   the *old* `_ZGR` form `#0`, a production it reads and the modern `_ZGR <name> _` one it
   refuses entirely.
 
-- **A D back reference to a scope reproduces only the name at its target** — *open, and
-  mutant-only*. `tools/mutate.py --seed 69` damages
+- ~~**A D back reference to a scope reproduced only the name at its target**~~ —
+  *fixed*, and it was this library's memo rather than a reading. `tools/mutate.py --seed 69` damages
   `core.internal.lifetime.emplaceInitializer` into a name whose last parameter is a type
   back reference pointing at a qualified name that continues with a function type and a
   further component — a *scope*, which nothing in the grammar marks and which both
@@ -355,12 +355,17 @@ compiler named on each entry.
   this reproduces `...emplaceRef` and stops. Everything else in the 900-character answer
   agrees, including an earlier back reference in the same name that both take whole.
 
-  Not triaged further yet: `identifier_back_reference` reads only a length and that many
-  characters on purpose — the comment there records the 56 mutant shapes that reading
-  more produced, where a template instance came back named twice — and whether the
-  *type* back reference should differ from it needs a case small enough to put to D's own
-  `core.demangle`, which is the thing that settles a split neither reference is authority
-  for.
+  Resolving a `Q` installs that `Q`'s own position as the bound a nested back reference
+  may not reach past, which is the guard that stops a chain turning round and reading a
+  target from inside itself. What a target reads as therefore depends on *that* bound —
+  and the memo was keyed on the bound in force on the way in instead. Two references to
+  one target from two places shared an entry, and the second was served whatever the
+  first had read under its own restriction: here the `Q` at 122 reads position 49 under a
+  bound that refuses the scope's own function type, and the `Q` at 143, which has no such
+  restriction, was handed the short answer. Keyed on the `Q`'s own position now. That
+  costs a little sharing — only the same `Q` resolved again hits — and the adversarial
+  names in heading 2a are unchanged to within the clock's spread.
+  `tests/test_d.py::TestTwoBackReferencesToOneTargetReadItTheSameWay`.
 
 - **`c++filt --format=gnat` aborts on an eight-character name** — *open*, and the one
   entry here that is a crash rather than a wrong reading. Binutils 2.42:
