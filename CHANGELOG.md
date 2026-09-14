@@ -6,8 +6,37 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The README is a front page again, and the conformance evidence has a page of
+  its own.** It had grown to 876 lines, 55% of them the two corpus tables and the
+  twenty notes behind them. Those move to `CONFORMANCE.md`, which the site and the
+  sdist both carry; the README keeps the quick tour, the examples and a summary,
+  and is 357 lines. `tests/test_readme.py` checks the pinned counts across both
+  files, so which page holds a row is editorial rather than something a test
+  decides.
+- **The notes behind the conformance numbers are numbered and titled.** They hung
+  off the tables on glyphs -- a dagger, a pilcrow, four different asterisks -- with
+  no way to jump to one, and two different notes shared a glyph, so an Ada row's
+  mark led to the note about ARM64EC markers. Each is a titled subsection now and
+  every mark is a link to it.
+- **`ROADMAP.md` states what is done with task-list checkboxes** rather than
+  strikethrough on a title, which renders as deleted rather than done, with an
+  index of the six headings and their counts at the top.
+
 ### Fixed
 
+- **The published documentation site's links to two of its own pages.** The home
+  page is a snippet include of the README, so a link written `docs/adding-a-scheme.md`
+  resolved from `docs/` and looked for `docs/docs/adding-a-scheme.md`; the worked
+  example and the scheme walk-through were unreachable from the pages that introduce
+  them, and `mkdocs build --strict` had been failing on it.
+- **The node classes a parse tree is made of are documented.** The README teaches
+  `from demangle.core.ast import Builtin, Pointer` and matches on them, and the API
+  reference rendered three of the module's twenty-four names. All nineteen node
+  classes are rendered now, and `tests/test_docs.py` checks that every member a page
+  asks for exists -- which found `demangle.schemes.gnuv2._parser.detect`, a name that
+  module does not have.
 - **D: a back reference that lands inside an identifier's characters is refused.**
   `_D83TypeInfo_S4core8internal5array7casting__T11__ArrayCastTxhTxuZQuFNaNiNeNkMAxhZ5Array6__ZQDlFNaNfkbQDkQDnQByZi`
   has two type back references pointing into the 83-character identifier,

@@ -3,6 +3,10 @@
 Three separate documents had drifted from the pinned conformance numbers at once, which
 is what happens to any figure a human has to remember to update. These tests make the
 drift a test failure instead.
+
+The conformance tables moved to `CONFORMANCE.md` when the README was cut down to what a
+reader meets first, so the count checks read both files and the example checks read the
+README, which is where the examples are.
 """
 
 import pathlib
@@ -16,13 +20,30 @@ import demangle
 from . import test_conformance as pins
 
 README = Path(__file__).parent.parent / "README.md"
+CONFORMANCE = Path(__file__).parent.parent / "CONFORMANCE.md"
+
+
+def _read(path):
+    if not path.exists():  # pragma: no cover - only in a wheel-only checkout
+        pytest.skip(f"{path.name} is not part of this distribution")
+    return path.read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
 def readme():
-    if not README.exists():  # pragma: no cover - only in a wheel-only checkout
-        pytest.skip("README.md is not part of this distribution")
-    return README.read_text(encoding="utf-8")
+    return _read(README)
+
+
+@pytest.fixture(scope="module")
+def prose():
+    """The README and the conformance page together.
+
+    The counts live on the conformance page and the examples in the README, but which
+    document holds a given figure is an editorial decision rather than something these
+    checks should pin. Both are read, so moving a row between them is not a test failure
+    and dropping one still is.
+    """
+    return _read(README) + "\n" + _read(CONFORMANCE)
 
 
 @pytest.mark.parametrize(
@@ -43,11 +64,11 @@ def readme():
         (pins.JNI_EXACT, pins.JNI_TOTAL),
     ],
 )
-def test_every_pinned_count_appears_in_the_readme(readme, exact, total):
-    assert f"{exact} / {total}" in readme, f"README does not state {exact} / {total}; regenerate the conformance table"
+def test_every_pinned_count_appears_in_the_prose(prose, exact, total):
+    assert f"{exact} / {total}" in prose, f"no page states {exact} / {total}; regenerate the conformance table"
 
 
-def test_the_readme_states_no_stale_conformance_numbers(readme):
+def test_the_prose_states_no_stale_conformance_numbers(prose):
     """Any `N / M` in the table must be a pin, not a number left over from before."""
     pinned = {
         (pins.LIBSTDCXX_EXACT, pins.LIBSTDCXX_TOTAL),
@@ -82,8 +103,8 @@ def test_the_readme_states_no_stale_conformance_numbers(readme):
         (pins.ADA_EXACT, pins.ADA_TOTAL),
         (pins.JNI_EXACT, pins.JNI_TOTAL),
     }
-    stated = {(int(a), int(b)) for a, b in re.findall(r"\*\*(\d+) / (\d+)\*\*", readme)}
-    assert stated <= pinned, f"README states counts that are not pinned anywhere: {sorted(stated - pinned)}"
+    stated = {(int(a), int(b)) for a, b in re.findall(r"\*\*(\d+) / (\d+)\*\*", prose)}
+    assert stated <= pinned, f"the documentation states counts that are not pinned anywhere: {sorted(stated - pinned)}"
 
 
 def test_the_version_is_stated_once(readme):

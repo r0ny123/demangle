@@ -108,6 +108,7 @@ include = [
     "/README.md",
     "/ARCHITECTURE.md",
     "/CHANGELOG.md",
+    "/CONFORMANCE.md",
     "/CONTRIBUTING.md",
     "/ROADMAP.md",
     "/SECURITY.md",
