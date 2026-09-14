@@ -1,25 +1,25 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Eleven of the entries have
-# a source in tools/corpus_sources/reference_defects/: it is compiled with the compiler
-# named on the entry, the symbol is read out of the object file with `nm`, and the
-# spelling is what that source says the symbol's type is. Two more come from the general
-# corpus sources named on them, and five are symbols out of shipped libraries, where the
-# declaration is the library's own header or its published signature and the reading is
-# spelled out in the entry's comment. That is the only ground truth a demangler has, and
-# it is what settles a split between references.
+# the expected column is derived from the *declaration* instead. Thirteen of the entries
+# have a source in tools/corpus_sources/reference_defects/: it is compiled with the
+# compiler named on the entry, the symbol is read out of the object file with `nm`, and
+# the spelling is what that source says the symbol's type is. Two more come from the
+# general corpus sources named on them, and five are symbols out of shipped libraries,
+# where the declaration is the library's own header or its published signature and the
+# reading is spelled out in the entry's comment. That is the only ground truth a
+# demangler has, and it is what settles a split between references.
 #
-# All of these are one defect. A <template-param> is a substitution candidate in its own
-# right (ABI 5.1.10), and the entry it contributes is *the parameter*, not the argument
-# bound to it at the point the entry was made -- nor, for a component built over one, the
-# composite that argument produced. The two differ whenever the back-reference is read
-# under a different template scope, which is what happens in any name mentioning a local
-# entity: the enclosing function's signature is written against that function's
-# parameters, a `T_` inside it enters the table, and a later `S<n>_` naming that entry
-# belongs to the *outer* template. The mangler does this because it canonicalises a
-# template type parameter by level and index, so `T_` of one template and `T_` of another
-# are one node to it.
+# Almost all of these are one defect. A <template-param> is a substitution candidate in
+# its own right (ABI 5.1.10), and the entry it contributes is *the parameter*, not the
+# argument bound to it at the point the entry was made -- nor, for a component built
+# over one, the composite that argument produced. The two differ whenever the
+# back-reference is read under a different template scope, which is what happens in any
+# name mentioning a local entity: the enclosing function's signature is written against
+# that function's parameters, a `T_` inside it enters the table, and a later `S<n>_`
+# naming that entry belongs to the *outer* template. The mangler does this because it
+# canonicalises a template type parameter by level and index, so `T_` of one template
+# and `T_` of another are one node to it.
 #
 # What each reference does, measured over the 217,730 distinct Itanium symbols in the
 # shared libraries shipped on Ubuntu 24.04 (libLLVM 17/18/20, libclang-cpp, liblldb,
@@ -35,7 +35,7 @@
 #
 # style: llvm
 #
-# pairs: 14
+# pairs: 16
 #
 # tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
 # `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,
@@ -242,3 +242,15 @@ _ZZNK2ns6nestedMUlNS_3BoxIiEEE_clES1_ENKUlS1_S1_E_clES1_S1_	ns::nested::'lambda'
 # `std::function<bool()> is_connection_closed = []() { return true; };`.
 __ZNKSt3__110__function6__funcIN7rocksdb20RangeTreeLockManager13barrier_func_MUlRKNS2_8EndpointES6_E_ENS_9allocatorIS7_EEFbS6_S6_EE7__cloneEv	std::__1::__function::__func<rocksdb::RangeTreeLockManager::barrier_func_::'lambda'(rocksdb::Endpoint const&, rocksdb::Endpoint const&), std::__1::allocator<rocksdb::RangeTreeLockManager::barrier_func_::'lambda'(rocksdb::Endpoint const&, rocksdb::Endpoint const&)>, bool (rocksdb::Endpoint const&, rocksdb::Endpoint const&)>::__clone() const
 __ZNKSt3__110__function6__funcIN14duckdb_httplib7Request20is_connection_closedMUlvE_ENS_9allocatorIS4_EEFbvEE7__cloneEv	std::__1::__function::__func<duckdb_httplib::Request::is_connection_closed::'lambda'(), std::__1::allocator<duckdb_httplib::Request::is_connection_closed::'lambda'()>, bool ()>::__clone() const
+
+# tools/corpus_sources/reference_defects/template_template_param.cpp, g++ 13.3.0 and
+# clang++ 18.1.3 identically. A different defect, and about the *count* of entries
+# rather than what one of them holds: `<template-template-param> <template-args>` is two
+# grammar components -- the parameter, which 5.1.10 names as a candidate in its own
+# right, and the specialisation built over it, which is a <type> -- so `T_ I ... E`
+# contributes two entries. llvm-cxxfilt 18 records only the second, so every index at or
+# after the parameter's is one out. On `f` the shift runs off the end and it refuses the
+# name; on `g` it lands one short and answers `char<int>`, which is not a type. GNU
+# c++filt 2.42 agrees with the declarations. `tools/mutate.py --seed 43`.
+_Z1fI1AiEvT_IT0_ES3_S3_	void f<A, int>(A<int>, A<int>, A<int>)
+_Z1gI1AcEvT_IT0_ES1_IiE	void g<A, char>(A<char>, A<int>)

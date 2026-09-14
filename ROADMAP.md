@@ -171,6 +171,26 @@ compiler named on each entry.
   their declarations in `tests/conformance/msvc-reference-defects.txt`, and `ACCEPTED`
   in `tools/enumerate.py` explains the divergence for the fuzzers.
 
+- ~~**A `<template-template-param>` is a substitution candidate, and `llvm-cxxfilt`
+  does not record it**~~ — *settled*, from two compilers' output. `T_ I ... E` is two
+  grammar components: the parameter, which 5.1.10 names as a candidate in its own right,
+  and the specialisation built over it, which is a `<type>`. So it contributes two
+  entries, and this library has recorded both since the change that reads
+  `...T_IT0_Li3EES5_` — a name g++ 13.3 and clang++ 18.1.3 both emit, whose `S5_` is
+  reachable only if `T_` took an index of its own.
+
+  `llvm-cxxfilt` 18 records the second alone, so every index at or after the parameter's
+  is one out. For `template <template <class> class C, class T> void f(C<T>, C<T>, C<T>)`
+  the shift runs off the end and it refuses `_Z1fI1AiEvT_IT0_ES3_S3_` outright; for a
+  `g(C<T>, C<int>)` beside it the shift lands one short and it answers
+  `void g<A, char>(A<char>, char<int>)`, and `char<int>` is not a type. `c++filt` 2.42
+  agrees with the declarations, and so does this. Pinned against the source in
+  `tools/corpus_sources/reference_defects/template_template_param.cpp`. Reached by
+  `tools/mutate.py --seed 43` through a damaged `std::pair` constructor, where `c++filt`
+  refuses the mutant for its own reasons and so is not there to be the second opinion —
+  which is the only case `ACCEPTED` has to carry, since where that reference reads such a
+  name the rule for "both agree with this library" has already taken it.
+
 - ~~**A recorded `<template-param>` resolved where it was written, not where it is
   read**~~ — *fixed*, for the parameter and for anything built over one. The entry a
   `<template-param>` contributes to the substitution table is the parameter, not the

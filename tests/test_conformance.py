@@ -72,7 +72,13 @@ REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 #: calls `std::format` carries. The eighteenth is the same header compiled by Clang,
 #: where the entry resolves to `double` and the parameter comes out
 #: `basic_string<double>&`, a type libstdc++ does not instantiate.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 29, 29
+#:
+#: The last two are a different defect, and about the *count* of entries rather than what
+#: one of them holds: `<template-template-param> <template-args>` is two components and
+#: 5.1.10 makes each a candidate, so `T_ I ... E` contributes two entries. llvm-cxxfilt
+#: 18 records only the second, so it refuses `_Z1fI1AiEvT_IT0_ES3_S3_` and answers
+#: `char<int>` for `_Z1gI1AcEvT_IT0_ES1_IiE`; GNU c++filt 2.42 agrees with the source.
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 31, 31
 
 #: Bare `<type>` encodings -- `Pi`, `PKFvRiE` -- read by `demangle_type()` rather than by
 #: `demangle()`, which refuses every one of them on purpose. The same 1,076 encodings are

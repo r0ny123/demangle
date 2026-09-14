@@ -919,3 +919,45 @@ class TestABackReferenceToAPackBoundParameter:
 
     def test_one_entry_past_the_expansion_is_out_of_range(self):
         assert demangle.demangle(self.NAME + "S3_") == self.NAME + "S3_"
+
+
+class TestATemplateTemplateParameterTakesAnEntryOfItsOwn:
+    """`T_ I ... E` is two grammar components, and 5.1.10 makes each a candidate.
+
+    The parameter is one -- `<template-template-param>` is named in the list -- and the
+    specialisation built over it is a `<type>`, so the application contributes two
+    entries. `_Z1gI1A1BEvT_IT0_E` shows all six: `g`, `A`, `B`, then `T_` (which is `A`),
+    `T0_` (which is `B`), then `A<B>`. `c++filt` 2.42 agrees entry by entry.
+    `llvm-cxxfilt` 18 records the parameter's alone, so its table is one short and every
+    index at or after it names something else.
+
+    Settled against the manglers rather than a demangler, and both write the shape
+    without being asked for anything unusual: for `f(C<T>, C<T>, C<T>)` g++ 13.3.0 and
+    clang++ 18.1.3 both emit `_Z1fI1AiEvT_IT0_ES3_S3_`, which the reference refuses
+    because the shift runs off the end of its table, and for a `g(C<T>, C<int>)` beside
+    it `_Z1gI1AcEvT_IT0_ES1_IiE`, which it answers `char<int>`.
+    `tools/corpus_sources/reference_defects/template_template_param.cpp` is the source
+    and `tests/conformance/itanium-reference-defects.txt` pins both against it.
+    """
+
+    NAME = "_Z1gI1A1BEvT_IT0_E"
+
+    @pytest.mark.parametrize(
+        ("token", "entry"),
+        [("S0_", "A"), ("S1_", "B"), ("S2_", "A"), ("S3_", "B"), ("S4_", "A<B>")],
+    )
+    def test_each_entry(self, token, entry):
+        assert demangle.demangle_strict(self.NAME + token) == f"void g<A, B>(A<B>, {entry})"
+
+    def test_one_past_the_last_is_out_of_range(self):
+        assert demangle.demangle(self.NAME + "S5_") == self.NAME + "S5_"
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_Z1fI1AiEvT_IT0_ES3_S3_", "void f<A, int>(A<int>, A<int>, A<int>)"),
+            ("_Z1gI1AcEvT_IT0_ES1_IiE", "void g<A, char>(A<char>, A<int>)"),
+        ],
+    )
+    def test_the_names_both_compilers_emit(self, mangled, expected):
+        assert demangle.demangle_strict(mangled) == expected

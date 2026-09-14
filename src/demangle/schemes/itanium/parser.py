@@ -444,6 +444,8 @@ class ItaniumParser:
         "_specialised_handles",
         "_template_name_argument",
         "_template_name_entries",
+        "_template_template_param_floor",
+        "_template_template_shifted",
         "_trailing_empty_pack",
         "_try_template_args",
         "builder",
@@ -479,6 +481,14 @@ class ItaniumParser:
         #: table because the table holds handles and knows nothing of the grammar.
         self._closure_prefix_entries = set()
         self._template_name_entries = set()
+        #: The lowest table index a `<template-template-param>` took, and whether an
+        #: `S<n>_` has resolved at or after it. `T_ I ... E` records the parameter *and*
+        #: the specialisation built over it -- two components, two candidates by 5.1.10,
+        #: and `T_IT0_Li3EES5_` from both g++ 13.3 and clang++ 18.1.3 is only readable
+        #: with both. `llvm-cxxfilt` 18 records the second alone, so every later
+        #: back-reference in such a name is one entry out. Read by tools/enumerate.py.
+        self._template_template_param_floor = 1 << 30
+        self._template_template_shifted = False
         #: The index the last `S<n>_` named, or None after an abbreviation.
         self._last_entry_index = None
         #: Whether an `S<n>_` named the entry a `<template-param>` bound to a pack
@@ -1516,6 +1526,7 @@ class ItaniumParser:
                 component, reference = self.template_param_binding()
                 parts.append(component)
                 self.subs.remember(reference if reference is not None else component, "template-template-param")
+                self._note_template_template_param()
                 return False, module
 
             if char == "D" and reader.ahead(1) in ("t", "T"):
@@ -1584,6 +1595,15 @@ class ItaniumParser:
         """
         if self.subs.recording:
             entries.add(len(self.subs) - 1)
+
+    def _note_template_template_param(self):
+        """Remember where the entry a `<template-template-param>` just took sits.
+
+        Everything at or after it is numbered differently by `llvm-cxxfilt`, which does
+        not record the parameter. See `_template_template_param_floor`.
+        """
+        if self.subs.recording:
+            self._template_template_param_floor = min(self._template_template_param_floor, len(self.subs) - 1)
 
     def _as_special_operand(self, read):
         """Run `read` as a special name's operand: data, not a function, and no `T_`."""
@@ -2360,6 +2380,8 @@ class ItaniumParser:
                 return self.subs.remember(self.builder.raw(table[code] + tags), "type")
             return self.builder.raw(table[code])
         index = reader.seq_id()
+        if index >= self._template_template_param_floor:
+            self._template_template_shifted = True
         entry = self.subs.lookup(index)
         kind = type(entry)
         try:
@@ -2857,6 +2879,7 @@ class ItaniumParser:
                 # every later back-reference in any name that applies a template
                 # template parameter.
                 subs.remember(recorded, "template-template-param")
+                self._note_template_template_param()
                 arguments = self.template_arguments()
                 return subs.remember(builder.template(component, arguments, not self._trailing_empty_pack), "type")
             # A <template-param> reached through <type> is a <type>, and <type> is a

@@ -444,6 +444,18 @@ ACCEPTED = {
         # which is the only thing that knows which entry an `S<n>_` landed on.
         # `tools/mutate.py --seed 39`, and seeds 42, 43 and 48 reach it too.
         or _back_reference_names_a_pack_bound_parameter(name)
+        # Or a back-reference numbered past the entry a `<template-template-param>` took,
+        # which `llvm-cxxfilt` 18 does not record: `T_ I ... E` is two components and
+        # 5.1.10 makes each a candidate, so `_Z1fI1AiEvT_IT0_ES3_S3_` -- what g++ 13.3
+        # and clang++ 18.1.3 both emit for `f(C<T>, C<T>, C<T>)` -- is readable only with
+        # both, and the reference refuses it. `tests/conformance/itanium-reference-defects.txt`
+        # pins that name and `_Z1gI1AcEvT_IT0_ES1_IiE`, where the shift lands one short
+        # and the reference answers `char<int>`, against the source in
+        # `tools/corpus_sources/reference_defects/template_template_param.cpp`. Asked
+        # only where `c++filt` is silent as well, since where it reads such a name it
+        # agrees with this library and the arm at the top has already accepted it.
+        # `tools/mutate.py --seed 43`.
+        or (second[0] is None and _shifted_by_a_template_template_param(name))
         # Or a function type returning a function type, which C++ has not, with a cv-
         # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
         # the inner one's `()` and this before it, the same placement the two give a
@@ -1234,6 +1246,22 @@ def _names_an_entity_with_a_bare_z(mangled):
     """
     parser = _itanium_parser_after_reading(mangled)
     return parser is not None and parser._bare_entity_prefix_used
+
+
+def _shifted_by_a_template_template_param(mangled):
+    """Whether a back-reference in `mangled` resolved at or after the entry a
+    `<template-template-param>` took.
+
+    `T_ I ... E` records the parameter *and* the specialisation built over it: two
+    grammar components, two candidates by 5.1.10, and `_Z1fI1AiEvT_IT0_ES3_S3_` from
+    both g++ 13.3 and clang++ 18.1.3 is readable only with both. `llvm-cxxfilt` 18
+    records the second alone, so it refuses that name and answers `char<int>` for
+    `_Z1gI1AcEvT_IT0_ES1_IiE`; `c++filt` 2.42 agrees with the declarations and with this.
+    Every index at or after the parameter's is one entry out, which is why the test is
+    on where the back-reference landed rather than on what it named.
+    """
+    parser = _itanium_parser_after_reading(mangled)
+    return parser is not None and parser._template_template_shifted
 
 
 def _back_reference_names_a_pack_bound_parameter(mangled):

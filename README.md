@@ -318,7 +318,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
-| Names a reference reads wrongly ✱ | the declaration | **29 / 29** |
+| Names a reference reads wrongly ✱ | the declaration | **31 / 31** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** ‡‡ |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source ✤ | **8494 / 8494** |
@@ -565,11 +565,21 @@ type the source disproves: `std::__insertion_sort<llvm::cfg::Update<llvm::BasicB
 taking `llvm::BasicBlock*`, a generic lambda's `operator()<int>` taking `auto`, or a
 closure declared `[](auto x)` taking `int`.
 
-Settled against eight reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
+Settled against nine reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
 in under `tools/corpus_sources/reference_defects/`, and pinned with five more symbols
 in `tests/conformance/itanium-reference-defects.txt` — the one corpus here whose expected
 column comes from the declaration rather than from a demangler. `tools/generate_corpus.py`
 excludes those names, so a regeneration cannot record the wrong answer again.
+
+The ninth source is a different defect in the same table, and about the *count* of
+entries rather than what one of them holds. `T_ I ... E` — a template template parameter
+applied to arguments — is two grammar components, and 5.1.10 makes each a candidate, so
+it contributes two entries. `llvm-cxxfilt` 18.1.3 records only the specialisation, so
+every index at or after the parameter's is one out: it refuses `_Z1fI1AiEvT_IT0_ES3_S3_`
+outright, and answers `void g<A, char>(A<char>, char<int>)` for its neighbour, where
+`char<int>` is not a type. Both g++ 13.3.0 and clang++ 18.1.3 emit the two names
+byte-identically for an ordinary `void f(C<T>, C<T>, C<T>)`, and GNU `c++filt` 2.42
+agrees with the declarations.
 
 `llvm-cxxfilt` 18.1.3 freezes both, which is why the llvm-style whole-library rows above
 are no longer 100%: over the 217,730 distinct Itanium symbols in every shared library a
