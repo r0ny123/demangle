@@ -23,6 +23,7 @@ nav:
       - Schemes: reference/schemes.md
   - Adding a scheme: adding-a-scheme.md
   - Contributing: CONTRIBUTING.md
+  - Fuzzing and the references: testing.md
   - Security: SECURITY.md
   - Roadmap: ROADMAP.md
   - Changelog: CHANGELOG.md
@@ -43,10 +44,6 @@ validation:
     anchors: warn
     absolute_links: warn
     unrecognized_links: warn
-
-not_in_nav: |
-  docs/adding-a-scheme.md
-  docs/analysing-a-binary.md
 
 theme:
   name: material
