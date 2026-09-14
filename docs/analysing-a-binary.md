@@ -160,7 +160,7 @@ Every scheme returns a tree, but the kinds differ with what each language has to
   a mixed binary does not need to know which language produced a tree to ask for its
   identifiers.
 
-See `ARCHITECTURE.md` for why the trees are built the way they are, and
-`docs/adding-a-scheme.md` to add a language of your own. (Named rather than linked: this
-page is served from two paths so that the repository's own links resolve, and a relative
-link cannot be correct from both.)
+See `ARCHITECTURE.md` for why the trees are built the way they are -- named rather than
+linked, because that file lives at the repository root and the copy beside this page is a
+one-line include of it -- and [adding-a-scheme.md](adding-a-scheme.md) to add a language
+of your own.

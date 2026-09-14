@@ -759,14 +759,14 @@ Schemes are plugins. `core` never imports one, they never import each other, and
 separate distribution can add a language through the `demangle.languages`
 entry-point group without patching this package. Both rules are enforced by tests.
 
-[docs/analysing-a-binary.md](docs/analysing-a-binary.md) works one real task through
+[Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) works one real task through
 `parse()` end to end — finding every function in libstdc++ that takes a string by const
 reference, and measuring what the regular-expression version of the same question gets
 wrong.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture, and
-[docs/adding-a-scheme.md](docs/adding-a-scheme.md) to add a language. The API reference
-is published at <https://r0ny123.github.io/demangle/>.
+[Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/) to add a language. The API reference is
+published at <https://r0ny123.github.io/demangle/>.
 
 ## Security
 

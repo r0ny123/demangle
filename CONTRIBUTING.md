@@ -88,7 +88,7 @@ comment naming the probe that settled it.
 
 ## Adding a scheme
 
-See [docs/adding-a-scheme.md](docs/adding-a-scheme.md). In short: three functions and a
+See [Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/). In short: three functions and a
 `LanguagePlugin`, in a new directory under `src/demangle/schemes/`.
 
 ## Before you open a pull request
