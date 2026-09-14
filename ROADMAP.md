@@ -18,11 +18,13 @@ symbolic reference in the Swift metadata — well over half a million real symbo
 follows is what the upstream corpora still find, all of it pinned in both directions by
 the test suite so it can only go up and cannot quietly stop being accurate.
 
-**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,914 of 29,928 exact. Fourteen left,
-and thirteen of them are not shortfalls: four are bare types refused on purpose, and nine
-record llvm-cxxfilt's own reading of a recorded `<template-param>`, which heading 0 below
-settles against four compilers' output. The number went *down* from 29,923 for that
-reason, and `tests/test_conformance.py` says so where it pins it.
+**Itanium**, libcxxabi's `DemangleTestCases.inc`: 29,913 of 29,928 exact. Fifteen left,
+in four groups, and none of them is a name read wrongly: four are bare types refused on
+purpose, one is a self-referential conversion operator refused because it has no
+declaration, nine record llvm-cxxfilt's own reading of a recorded `<template-param>`
+(which heading 0 below settles against four compilers' output), and one is numbered by
+GCC 12's closure-prefix rule rather than the ABI's. The number went *down* from 29,923
+for those reasons, and `tests/test_conformance.py` says so where it pins it.
 
 - Four are `<type>` manglings with no `_Z` prefix at all — `i` for `int`,
   `PKFvRiE` for `void (*)(int&) const`. They are refused *as symbols*, deliberately and
@@ -50,12 +52,20 @@ reason, and `tests/test_conformance.py` says so where it pins it.
   and *zero* qualifier levels after them, neither of which the ABI's own grammar admits
   and both of which Clang emits. The arguments also sit outside the substitution entry
   the type records, so an `S_` written after one names the bare parameter.
-- **The last one is a self-referential conversion operator**, `_Zcv1BIRT_EIS1_E`, whose
-  type is the argument list that contains it. The reference guards against printing a
-  cycle by printing *nothing* the second time round, so it answers `operator B<><>`;
-  this reads the type again once the arguments are bound and answers
-  `operator B<auto&><auto&>`. Neither is the declaration, because there is no
-  declaration — no compiler emits this, and it comes from LLVM's fuzz corpus.
+- **One is a self-referential conversion operator**, `_Zcv1BIRT_EIS1_E`, whose type is
+  the argument list that contains it. The reference guards against printing a cycle by
+  printing *nothing* the second time round, so it answers `operator B<><>`; this used to
+  read the type again once the arguments were bound and answer `operator B<auto&><auto&>`.
+  Neither is the declaration, because there is no declaration — no compiler emits this,
+  and it comes from LLVM's fuzz corpus. It is refused now, which is what `c++filt` 2.42
+  does with it, and it is refused by the general rule rather than by a guard: a
+  `<template-param>` reads as `auto` only where nothing is bound on purpose, and the
+  `T_` here is in neither such reading.
+- **One is numbered by GCC 12**, `_ZNK1xMUlTyT_E_clIiEEDaS_`, a lambda in the
+  initializer of a variable `x`. GCC 12 and earlier left the closure prefix out of the
+  substitution table, so the vector's `S_` is the lambda's own invented parameter; by the
+  ABI's numbering, which GCC 13 and Clang both emit, it is `x`. `tests/test_conformance.py`
+  pins both readings and says which compiler writes which.
 
 **D**, libiberty's `d-demangle-expected`: 366 of 366. What the last of them needed was
 not in the D ABI at all -- the five characters the reference names inside a string, the
