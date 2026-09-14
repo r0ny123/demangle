@@ -157,6 +157,11 @@ JOBS = {
             ("?f@@", "YAXPEAUHVW@Z$0_"),
             ("??", "0A@$?QEBH1_23456"),
             ("??_B@5", "?0123456789ABC"),
+            # The *type* grammar, in the one position that holds a bare one: a variable's
+            # own type, `?x@@3 <type> <cv>`. The other three jobs reach a type only
+            # through a signature, where the calling convention and the return type have
+            # to be read first and most of the alphabet is spent before the type starts.
+            ("?x@@3", "PAQBHXNDUJ@_$Y6C"),
         ],
     ),
     "gnuv2": (

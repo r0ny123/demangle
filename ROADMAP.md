@@ -334,6 +334,17 @@ compiler named on each entry.
   Both are pinned — `tests/test_types.py` and `tests/test_msvc.py` — and `ACCEPTED` in
   `tools/enumerate.py` carries each reason.
 
+- ~~**The MSVC type grammar, in the one position that holds a bare one**~~ — *swept, and
+  clean*. `tools/enumerate.py`'s three MSVC jobs all reach a type through a *signature*,
+  where the calling convention and the return type have to be read before the type
+  starts and most of a four-character alphabet is spent getting there. A variable's own
+  type is the bare position — `?x@@3 <type> <cv>` — and it was not swept at all. It is a
+  fourth job now: 837,930 strings at length four over a 29-character alphabet found 1,183
+  readable names and nothing `llvm-undname` disagrees with, and the trimmed alphabet the
+  job carries reads 332 at four and 712 at five, again with nothing unexplained. Adding
+  the prefix widens `tools/mutate.py`'s MSVC alphabet too, since that is drawn from these
+  jobs; eight seeds at 200,000 mutants under the wider one are clean.
+
 - ~~**The gnu style over libcxxabi's own corpus**~~ — *swept, and clean*. Every one of
   the 29,926 names `c++filt` can be asked about on a command line was put to it and
   compared with this library's gnu-style answer: 29 differ, and all 29 are already
