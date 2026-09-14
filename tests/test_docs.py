@@ -17,6 +17,7 @@ was fail: `validation:` in `mkdocs.yml` now promotes an unresolved link, an unli
 page and a bad anchor from INFO to a warning, which `--strict` turns into a red build.
 """
 
+import doctest
 import importlib
 import re
 from pathlib import Path
@@ -33,6 +34,15 @@ def docs_pages():
     if not DOCS.is_dir():  # pragma: no cover - only in a wheel-only checkout
         pytest.skip("docs/ is not part of this distribution")
     return sorted(DOCS.rglob("*.md"))
+
+
+def prose_pages():
+    """Every page a reader meets: the ones under `docs/` and the ones at the root.
+
+    The root files are the ones GitHub renders; `docs/` holds one-line includes of them
+    plus the pages that exist only on the site. Both carry examples.
+    """
+    return sorted(set(docs_pages()) | set(ROOT.glob("*.md")))
 
 
 def directives():
@@ -177,3 +187,25 @@ class TestTheArchitecturesLayoutIsTheLayout:
                 continue
             with subtests.test(module=module.name):
                 assert module.name in listed, f"the layout in ARCHITECTURE.md does not list {module.name}"
+
+
+class TestEverySnippetIsValidPython:
+    """Every ```python block in the documentation, compiled.
+
+    Not run -- most of them need a binary, a compiler or a file that is not here -- but
+    a block that no longer parses is a block nobody has read since it stopped being
+    true. Doctest-style blocks are taken apart by `doctest` first, so the expected
+    output between the prompts is not fed to the compiler as if it were source.
+    """
+
+    def test_every_block_parses(self, subtests):
+        parser = doctest.DocTestParser()
+        blocks = 0
+        for page in prose_pages():
+            for index, block in enumerate(re.findall(r"```python\n(.*?)```", page.read_text(encoding="utf-8"), re.S)):
+                blocks += 1
+                sources = [example.source for example in parser.get_examples(block)] if ">>>" in block else [block]
+                for source in sources:
+                    with subtests.test(page=page.name, block=index):
+                        compile(source, f"<{page.name}:{index}>", "exec")
+        assert blocks, "no python blocks were found; has the shape of the examples changed?"

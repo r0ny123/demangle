@@ -7,6 +7,12 @@ Every number here is pinned as an exact count in `tests/test_conformance.py`, so
 improvement cannot quietly mask a regression, and `tests/test_readme.py` checks this
 page against those pins.
 
+**Contents** — [checked-in corpora](#checked-in-corpora) ·
+[notes on the corpora](#notes-on-the-corpora) ·
+[whole symbol tables](#whole-symbol-tables) ·
+[printing the name without its signature](#printing-the-name-without-its-signature) ·
+[on trusting the references](#on-trusting-the-references)
+
 ## Checked-in corpora
 
 Replayed by the test suite. No compiler and no reference demangler needed.

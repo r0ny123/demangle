@@ -65,4 +65,11 @@ Out of scope:
 
 ## Supported versions
 
-Until 1.0, security fixes land on the latest released minor version only.
+| Version | Supported |
+| --- | --- |
+| 0.2.x | yes |
+| earlier | no |
+
+Until 1.0, security fixes land on the latest released minor version only. There is no
+long-term support branch and no backporting; upgrading to the current minor version is
+the fix.

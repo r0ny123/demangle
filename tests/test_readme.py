@@ -231,10 +231,3 @@ class TestWorkedExample:
 
         page = (pathlib.Path(__file__).parent.parent / "docs" / "analysing-a-binary.md").read_text()
         assert str(strings) in page, f"the page states a count this library no longer finds ({strings})"
-
-    def test_every_snippet_on_the_page_is_valid_python(self):
-        page = (pathlib.Path(__file__).parent.parent / "docs" / "analysing-a-binary.md").read_text()
-        blocks = re.findall(r"```python\n(.*?)```", page, re.DOTALL)
-        assert blocks, "no python blocks found; has the page been renamed?"
-        for block in blocks:
-            compile(block, "<page>", "exec")
