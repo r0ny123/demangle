@@ -19,9 +19,9 @@ which matters, because that is exactly what the Itanium back-reference scheme do
 from .builder import Builder
 from .decorations import describe
 
-#: Characters after which a declarator needs no separating space: `int*x` reads fine,
-#: `intx` does not.
-_TIGHT_ENDINGS = ("*", "&", "(", " ", ":")
+#: Characters after which a declarator name needs no separating space of its own,
+#: because what precedes it already ends in one or opens a group. See `Spelling.spell`.
+_TIGHT_ENDINGS = (" ", "(")
 
 
 class Spelling:
@@ -53,12 +53,22 @@ class Spelling:
         self.members = members
 
     def spell(self, declarator=""):
+        """This type with `declarator` -- a name -- written where a declarator goes.
+
+        Both references space the name off the type unless the type has a *right* part
+        to put after it, which is what `NonTypeTemplateParamDecl::printLeft` asks
+        `hasRHSComponent` in LLVM's `ItaniumDemangle.h`: `int* $N` and `int A::* $N`
+        against `int$N [3]` and `int (*$N) [3]`. A function type's left half already
+        ends in a space, so `int $N()` comes out with exactly one either way. Verified
+        against both references over every declarator shape; `int*$N`, which is what a
+        rule about the last character gives, is what neither writes.
+        """
         if not declarator:
             return self.left + self.right if self.right else self.left
         left = self.left
         if not left:
             return declarator + self.right
-        joiner = "" if left.endswith(_TIGHT_ENDINGS) else " "
+        joiner = "" if self.right or left.endswith(_TIGHT_ENDINGS) else " "
         return left + joiner + declarator + self.right
 
     def __str__(self):

@@ -922,6 +922,12 @@ class TestADeclaredTemplateParameterUnderTheGnuStyle:
         [
             ("TnPA3_i", "int (*$N) [3]"),
             ("TpTnPA3_i", "int (*...$N) [3]"),
+            # A type with no right part is spaced off the name; one with a right part
+            # is not. `int*$N` is what neither reference writes.
+            ("TnPi", "int* $N"),
+            ("TnM1Ai", "int A::* $N"),
+            ("TnA3_i", "int$N [3]"),
+            ("TnFivE", "int $N()"),
             ("TtTyTniE", "template<typename $T, int $N> typename $TT"),
             ("TyTyTni", "typename $T, typename $T0, int $N"),
             ("TyTtTyETy", "typename $T, template<typename $T0> typename $TT, typename $T1"),
