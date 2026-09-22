@@ -76,7 +76,7 @@ format = [
 lint = [
     { include-group = "format" },
     { include-group = "test" },
-    "ty==0.0.78",
+    "ty==0.0.82",
 ]
 docs = [
     { include-group = "format" },
