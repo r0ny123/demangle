@@ -30,16 +30,10 @@ from ._parser import _LimitHit, parse_msvc_symbol_strict, parse_msvc_type
 from ._parser import render as _render
 from .options import DEFAULT_OPTIONS, MsvcOptions
 
-#: MSVC replaces a decorated name too long for the linker with an MD5 hash of it,
-#: written `??@<hash>@`. Nothing can be recovered -- the original spelling is simply not
-#: in the symbol -- so the demangled form of such a name is the name itself, which is
-#: what `llvm-undname` prints for it.
+#: An MD5-hashed name (`??@<hash>@`) demangles to itself, as in `llvm-undname`.
 _MD5_PREFIX = "??@"
 
-#: The one thing that may follow an MD5 name and still belong to it: the RTTI complete
-#: object locator tag. Probing `llvm-undname` shows every other trailing sequence --
-#: `??_R0@` through `??_R5@`, `??_C@`, `??_7@`, arbitrary text -- being dropped, and only
-#: `??_R4@` kept.
+#: The only suffix `llvm-undname` keeps after an MD5 name.
 _MD5_RTTI_SUFFIX = "??_R4@"
 
 
@@ -60,21 +54,15 @@ def _md5_name(mangled):
     return base
 
 
-#: An RTTI *type descriptor name*: a `.` and a bare type encoding, which is how the
-#: linker spells the string a `type_info` points at. Nothing else in this scheme opens
-#: with a `.`, and nothing in any other scheme here does either.
+#: An RTTI type descriptor name: `.` and a bare type encoding.
 _TYPE_DESCRIPTOR_NAME = "."
 
-#: What the reference writes after the type. Its sibling `??_R0...@8` -- the descriptor
-#: *object* rather than the name in it -- writes the same words without `Name`.
+#: `??_R0...@8`, the descriptor object, writes the same words without `Name`.
 _TYPE_DESCRIPTOR_SUFFIX = "`RTTI Type Descriptor Name'"
 
 
-#: The ARM64EC marker. A function compiled for the hybrid ABI carries `$$h` in its
-#: decorated name, inserted immediately after the fully qualified name and before the
-#: type encoding, and an MD5-hashed one carries `$$h@` before its closing `@`. Both from
-#: LLVM's `getArm64ECMangledFunctionName`, which is where the mangling side of this
-#: lives; nothing reads it, `llvm-undname` included.
+#: ARM64EC: after the qualified name, or `$$h@` before an MD5 name's closing `@`. From
+#: LLVM's `getArm64ECMangledFunctionName`; `llvm-undname` does not read it.
 _HYBRID_MARKER = "$$h"
 
 
@@ -112,9 +100,7 @@ def detect(name):
     return bool(name) and name[0] in "?."
 
 
-#: What each builder class answered to `_wants_structure`. Asked once per class rather
-#: than once per name: the answer is a property of the builder's type, and this question
-#: is on the path every symbol takes.
+#: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
 
 
@@ -137,10 +123,7 @@ def _wants_structure(builder):
     return answer
 
 
-#: What a decorated name may not contain, as one C-level scan. Written as
-#: `any(char < " " or char == "\x7f" for char in name)`, which is the same set, it was a
-#: generator resumed once per character of every name offered -- 7.8x the cost of this
-#: on a 64-character name, measured, and this is on the path every MSVC symbol takes.
+#: A regex rather than a per-character generator: 7.8x cheaper on every MSVC symbol.
 _CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -149,50 +132,29 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     options = options or DEFAULT_OPTIONS
     if not detect(mangled):
         raise NotMangledError(mangled, "not an MSVC decorated name")
-    # The input bound, which this scheme did not enforce at all. A caller asking for
-    # `max_input=32` had a 100,000-character name read in full and then rejected on
-    # output length, 185ms later; a bound on input size that is checked after the input
-    # has been read is not one.
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
-    # A decorated name is read from a NUL-terminated string of source-legal characters
-    # and cannot hold a control character. One that does is refused outright rather than
-    # copied into the output, where it would travel on into a caller's report.
+    # Refused rather than copied into the output and on into a caller's report.
     if _CONTROL_CHARACTER.search(mangled) is not None:
         raise ParseError(mangled, None, "decorated name contains a control character")
     if mangled.startswith(_TYPE_DESCRIPTOR_NAME):
-        # `.PEAX` is the string a `type_info` points at: a bare type encoding with a `.`
-        # in front of it. It is not a declaration, so it has no tree of its own beyond
-        # the type -- the reference spells the type and appends what it is.
-        #
-        # `_LimitHit` is translated here as well as below. This branch used to sit in
-        # front of the `try` that does it, so a bound hit while reading a descriptor
-        # escaped as the internal exception, and `api` wrapped it in the arm meant for a
-        # plugin with a *defect*: `.?AV?$vector@HV?$allocator@H@std@@@std@@` under a
-        # lowered `max_depth` came back as `ParseError: msvc parser failed:
-        # _LimitHit('recursion depth')`. Wrong type, and a message accusing this library
-        # of a bug for doing exactly what the caller asked.
+        # Not a declaration: the reference spells the type and appends what it is.
         try:
             tree = parse_msvc_type(mangled, limits, options)
             if tree is None:
                 raise ParseError(mangled, None, "not a type descriptor name this demangler can read")
-            # The marker goes where a *declarator* goes. For anything that wraps its name
-            # that is not the same place as after the type: a pointer to an array of two
-            # reads `int (*`RTTI Type Descriptor Name')[2]`.
+            # The marker goes where a declarator goes: `int (*`RTTI Type Descriptor Name')[2]`.
             spelled = _render(tree, _TYPE_DESCRIPTOR_SUFFIX, options=options)
         except _LimitHit as hit:
             raise LimitExceeded(mangled, hit.what, hit.limit) from hit
         _check_length(mangled, len(spelled), limits)
         return builder.raw(spelled)
-    # ARM64EC. Read as the name it is the hybrid form *of*, which is what LLVM's own
-    # `getArm64ECDemangledFunctionName` answers -- and it has to be a fallback rather
-    # than a first step, because a name that already reads is not one to rewrite.
+    # ARM64EC, as LLVM's `getArm64ECDemangledFunctionName`: a fallback, since a name
+    # that already reads is not one to rewrite.
     plain_error = None
     try:
         if mangled.startswith(_MD5_PREFIX):
             # A hashed name carries no recoverable spelling, so it is its own expansion.
-            # This is a successful parse, not a failure: there is nothing more to say about
-            # the symbol, and the reference demangler agrees.
             hashed = _md5_name(mangled)
             if hashed is None:
                 raise ParseError(mangled, None, "unterminated MD5-hashed name")
@@ -203,12 +165,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
                 tree = parse_msvc_symbol_strict(mangled, limits, options)
                 if tree is None:
                     raise ParseError(mangled, None, "not a decorated name this demangler can read")
-                # No length check here, and that is not an omission. The parser bounds its
-                # own output as it builds -- `_Demangler.rendered` refuses past
-                # `min(limits.max_output, ...)`, and the top-level declaration goes through
-                # it -- so by the time there is a tree the bound has already been enforced.
-                # Checking again meant calling `tree.spell()` and throwing the string away:
-                # the expensive half of `parse()` run for a number that was already settled.
+                # No output check: `_Demangler.rendered` has already bounded it.
                 return tree
             tree = parse_msvc_symbol_strict(mangled, limits, options)
             if tree is None:
@@ -217,22 +174,14 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
             _check_length(mangled, len(expanded), limits)
             return builder.raw(expanded)
         except _LimitHit as hit:
-            # A bound stopped the parse. Reported as a `ParseError` this said the name could
-            # not be read, which is a different claim: the name may be well formed and
-            # merely larger than this caller allowed. `hit.limit` rather than the caller's
-            # figure, because this scheme narrows both bounds with one of its own and the
-            # caller's is not the one that stopped the parse -- see `_LimitHit`.
+            # `hit.limit`, not the caller's: this scheme narrows both bounds (see `_LimitHit`).
             raise LimitExceeded(mangled, hit.what, hit.limit) from hit
     except ParseError as exc:
         plain_error = exc
     hybrid = _without_hybrid_marker(mangled)
     if hybrid is not None:
         if _HYBRID_MARKER in hybrid:
-            # `getArm64ECDemangledFunctionName` removes the *first* marker and no more,
-            # so a name carrying two is one it still cannot read. Recursing removed them
-            # one at a time until none was left, and `?f@@$$h$$hYAXXZ` -- which
-            # `getArm64ECMangledFunctionName` cannot produce, since it inserts one marker
-            # into a name that has none -- came back as `void __cdecl f(void)`.
+            # LLVM removes only the first marker; two is not something it can produce.
             raise ParseError(mangled, None, "more than one ARM64EC marker")
         return parse(hybrid, builder, limits, options)
     assert plain_error is not None
@@ -281,7 +230,6 @@ PLUGIN = LanguagePlugin(
     description="Microsoft Visual C++ decorated names (MSVC, clang-cl)",
     options_type=MsvcOptions,
     aliases=("microsoft", "ms", "vc"),
-    # A decorated name opens with `?`; an RTTI type descriptor name opens with `.`.
     first_characters="?.",
     priority=100,
 )

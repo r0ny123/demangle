@@ -35,13 +35,10 @@ __all__ = [
     "demangle_codewarrior",
 ]
 
-#: How deep the mutually recursive productions may nest before this gives up. The
-#: reference has no such bound; `demangle`'s callers read symbol tables they did not
-#: write, so the bound is not optional.
+#: The reference has no depth bound; untrusted symbol tables need one.
 MAX_DEPTH = 200
 
-#: The fundamental types, one letter each. `e` is the ellipsis, which the reference reads
-#: as a type because that is where it appears in an argument list.
+#: `e` is the ellipsis, read as a type as the reference does.
 FUNDAMENTAL = {
     "i": "int",
     "b": "bool",
@@ -56,12 +53,10 @@ FUNDAMENTAL = {
     "e": "...",
 }
 
-#: Metrowerks' extension types, written as digits and therefore ambiguous with a template
-#: argument literal. Read only when `mw_extensions` is on.
+#: Ambiguous with a template argument literal, so read only under `mw_extensions`.
 MW_EXTENSIONS = {1: "__int128", 2: "__vec2x32float__"}
 
-#: The special function names, which follow a leading `__`. `vt` is a vtable rather than
-#: a function; the reference spells it `__vtable` and so does this.
+#: Follow a leading `__`. `vt` is the vtable, spelt `__vtable` as the reference does.
 SPECIAL_FUNCTIONS = {
     "nw": "operator new",
     "nwa": "operator new[]",
@@ -296,8 +291,7 @@ def _demangle_arg(text, options):
     if is_member or text.startswith("F"):
         text = text[1:]
         if is_member:
-            # The two hidden parameters a member function pointer carries. Which of them
-            # is written is how the encoding says whether the member function is `const`.
+            # The member function pointer's hidden parameters; which is written encodes `const`.
             if text.startswith("PCvPCv"):
                 const_member = True
                 text = text[6:]
@@ -332,8 +326,7 @@ def _demangle_arg(text, options):
     if options.mw_extensions and code in ("1", "2"):
         return result + MW_EXTENSIONS[int(code)] + post, "", text[1:]
     if code == "_":
-        # A return type separator where a type was expected: the reference stops here and
-        # hands back what it has, leaving the `_` for its caller.
+        # A return type separator: the reference stops and leaves the `_` for its caller.
         return result, "", text
     _fail(f"unknown type code {code!r}")
     return None  # pragma: no cover - `_fail` always raises
@@ -371,8 +364,7 @@ def demangle_special_function(text, class_name, options):
         return f"{class_name}{args}"
     spelling = SPECIAL_FUNCTIONS.get(op)
     if spelling is None:
-        # Not one this knows. The reference keeps the leading `__` and the name as
-        # written rather than dropping the symbol, so a `__foo` stays legible.
+        # Unknown: kept as written, `__` included, as the reference does.
         return f"__{op}{args}"
     return f"{spelling}{args}"
 
@@ -450,8 +442,7 @@ def _demangle(text, options):
     qualified = ""
     constant = False
 
-    # Wii CodeWarrior writes a function-local static as `@LOCAL@<function>@<variable>`,
-    # and its one-time guard as `@GUARD@...`.
+    # Wii: `@LOCAL@<function>@<variable>`, guard `@GUARD@...`.
     guard = text.startswith("@GUARD@")
     if guard or text.startswith("@LOCAL@"):
         text = text[7:]
@@ -474,8 +465,7 @@ def _demangle(text, options):
 
     if special:
         if name == "init":
-            # `__init__<something>__<class>`: the first `__` was the separator for a
-            # guard variable, and the real one is further along.
+            # `__init__<x>__<class>`: a guard variable; the real separator is further on.
             inner = rest[2:].find("__")
             if inner < 0:
                 _fail("a static initialiser needs a second separator")
@@ -492,8 +482,7 @@ def _demangle(text, options):
             base, args = demangle_template_args(name, options)
             name = f"{base}{args}"
 
-    # GameCube CodeWarrior wrote a function-local static the other way round, as
-    # `<variable>$localstatic<n>$<function>`.
+    # GameCube: `<variable>$localstatic<n>$<function>`.
     first = name.find("$")
     if first >= 0:
         second = name[first + 1 :].find("$")

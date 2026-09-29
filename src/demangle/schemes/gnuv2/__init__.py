@@ -48,38 +48,22 @@ __all__ = [
     "parse",
 ]
 
-#: Above this, a name is not offered to the parser at all. `detect` runs the whole parse,
-#: and `iterate_demangle_function` backtracks once per `__` in the name, so the cost of
-#: deciding is quadratic in the input rather than constant: `("a__" * 682)` takes 4 ms to
-#: refuse, against microseconds for anything real. The longest vector in libiberty's own
-#: test file is 122 characters, and the longest of these names in any binary measured
-#: here is well under 500, so the bound costs nothing and caps the adversarial case at
-#: about a millisecond. A caller who names the language is not screened.
+#: Longest name `detect` will parse: the parse backtracks once per `__`, so the cost is
+#: quadratic. Real names stay under 500; a caller who names the language is not screened.
 _DETECT_MAX = 1024
 
 
-#: What a name in one of these manglings is made of. A pattern rather than a set of
-#: characters because this is on every symbol's path and `fullmatch` is one C-level scan
-#: where `issuperset` walks the string a character at a time. `$` and `.` are in it
-#: because they are the two characters g++ used as its scope marker, depending on what
-#: the assembler would accept; `<>#,*&` because HP aCC wrote a template specialisation's
-#: arguments into the symbol literally, as `Spec<#1,#1.*>`. Nothing else is, which is
-#: what keeps the Borland `@Class@method$qqs...` family -- the one other scheme here
-#: whose names would otherwise parse as a signature -- from ever reaching the parser.
+#: `$` and `.` are g++'s scope markers; `<>#,*&` are HP aCC's literal specialisation
+#: arguments (`Spec<#1,#1.*>`). Nothing else, which keeps Borland `@Class@method$qqs` out.
 _SYMBOL_RE = re.compile(r"[A-Za-z0-9_$.<>#,*&]+")
 
-#: What a component of a demangled C++ name may be made of, once template arguments and
-#: a destructor's `~` have been taken off it. Deliberately not `$` or `.`: those are
-#: markers in the *mangled* name and the demangler turns them into `::`, so one left in
-#: the output means what came out was not a name.
+#: Not `$` or `.`: those are mangled scope markers, so one left in the output is not a name.
 _NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
-#: Names that mean the symbol was written by a compiler this style cannot read. See
-#: `_plausible`.
+#: Names written by a compiler this style cannot read. See `_plausible`.
 _FOREIGN_MARKERS = frozenset({"__ct", "__dt", "__vt", "__RTTI"})
 
-#: The evidence that a *name* was decoded, rather than a run of type letters: a
-#: length-prefixed class, a `Q`-qualified name, or a template.
+#: Evidence that a *name* was decoded rather than a run of type letters.
 _NAMED_SOMETHING = frozenset({"class", "qualified", "template"})
 
 
@@ -101,11 +85,8 @@ def _screen(name):
     if "__" not in name and not (name[0] == "_" and ("$" in name or "." in name)):
         return False
     if ("<" in name or ">" in name) and "#" not in name:
-        # None of these five compilers writes a template argument list into the symbol:
-        # a template is encoded, as `t8BDDHookV1ZPc`. The one exception is HP aCC's
-        # specialisation pseudo-arguments, `Spec<#1,#1.*>`, which carry a `#`. A bracket
-        # without one means CodeWarrior wrote the name, and reading it here would give a
-        # spelling with the argument list still mangled inside it.
+        # Only HP aCC writes a literal argument list, and it always carries a `#`; any
+        # other bracket is CodeWarrior's.
         return False
     return _SYMBOL_RE.fullmatch(name) is not None
 
@@ -149,8 +130,7 @@ def _plausible(symbol):
     and the marker is the evidence.
     """
     if "special" in symbol.evidence:
-        # `_GLOBAL_$I$` is the marker with nothing keyed to it, and `global constructors
-        # keyed to ` names nothing. A label on its own is not a reading.
+        # `_GLOBAL_$I$` with nothing keyed to it: a label on its own is not a reading.
         body = symbol.text
         if symbol.special and body.startswith(symbol.special):
             body = body[len(symbol.special) :]
@@ -158,31 +138,18 @@ def _plausible(symbol):
             body = body[: -len(symbol.suffix)]
         return bool(body.strip())
     if "::)" in symbol.text:
-        # A declarator with an empty pointer slot: `int (CGuiWidget::)(...)`. Nothing in
-        # C++ spells that. It is what this reads out of CodeWarrior's pointer-to-member,
-        # which writes `M<class>F` where these five write `PM<class>`, and a spelling
-        # that cannot be a declaration is not a reading.
+        # `int (CGuiWidget::)(...)`: CodeWarrior's `M<class>F` member pointer, not a declaration.
         return False
     parameters = symbol.parameters or ()
     if any("int0_t" in parameter for parameter in parameters):
-        # `int0_t` is not a type. It is what the reference prints when `I` is followed by
-        # something that is not hex: `demangle_fund_type` copies at most two characters,
-        # runs `sscanf("%x")` over them and prints `int%u_t` whatever happened, so `INT`
-        # comes out `int0_t` with the `NT` swallowed. `_hex_prefix` reproduces that on
-        # purpose, and `language="gnuv2"` keeps it -- but a *claim* on a name nobody
-        # asked about cannot rest on it. `g_cclosure_marshal_VOID__INT` is GLib's
-        # generated marshaller, in every GTK binary, and it is not a C++ symbol.
+        # `int0_t` is the reference's output for `I` without hex (`INT` in
+        # `g_cclosure_marshal_VOID__INT`); `language="gnuv2"` keeps it, detection does not.
         return False
     if len(parameters) > 1 and any(parameter == "void" for parameter in parameters):
-        # `f(char, short, void)` cannot be a declaration: `void` is a parameter list only
-        # when it is the whole of it. `PyInit__csv` is a CPython module initialiser, and
-        # `csv` reading as three fundamental types is a coincidence of the letters.
+        # `void` is a parameter list only when it is the whole of it (`PyInit__csv`).
         return False
     if symbol.qualifiers and not (symbol.evidence & _NAMED_SOMETHING):
-        # `static`, `const`, `volatile` and `__restrict` qualify a *member* function, and
-        # a member function has a class. Where none was read, what was matched was a `S`
-        # or a `C` sitting in someone else's encoding -- `_TtU__FQD__Si` is a Swift
-        # symbol, not a static function taking an `int`.
+        # Member qualifiers without a class: an `S` or `C` in a foreign encoding (`_TtU__FQD__Si`).
         return False
     for component in _components(symbol.qualified_name):
         at = component.find("<")
@@ -194,12 +161,8 @@ def _plausible(symbol):
         if component.startswith("operator"):
             continue
         if component in _FOREIGN_MARKERS:
-            # A marker another pre-Itanium compiler writes and the *gnu* style does not
-            # know: `__ct` and `__dt` are the ARM family's constructor and destructor,
-            # `__vt` and `__RTTI` CodeWarrior's. The reference reads them under
-            # `--format=arm` and reads them as an ordinary function name under
-            # `--format=gnu`, which is a wrong name rather than no name. A caller who
-            # names the style still gets them.
+            # ARM/CodeWarrior markers: the reference reads them under `--format=arm` and as a
+            # wrong ordinary name under `--format=gnu`. Naming the style still gets them.
             return False
         if not _NAME_CHARACTERS.issuperset(component) or component[0].isdigit():
             return False
@@ -235,19 +198,12 @@ def detect(name, style="gnu"):
     whether it parsed. Screened first, so that the great majority of symbols cost a
     substring search and nothing else.
     """
-    # The cheapest possible reject, inline and first. This is called on every symbol a
-    # caller offers the library, most of which are not mangled at all, and `not_a_symbol`
-    # should cost one C-level substring search and a character compare -- not a call into
-    # `_screen` to find that out. Both halves are the necessary condition `_screen`
-    # states; the rest of it only runs for a name that passed this.
+    # The cheap necessary condition from `_screen`, inline, before any call.
     if "__" not in name and not (name[:1] == "_" and ("$" in name or "." in name)):
         return False
     if name.startswith(("_Z", "__Z")):
-        # Itanium's own prefix, and the Mach-O form of it. The Itanium reader is
-        # offered every such name first; one it refuses is offered on down the list,
-        # and a `__Z` name is full of the `__` this grammar reads as a separator:
-        # `__ZNKSt3__110__function6__funcI...` read as the method `__ZNKSt3` of a
-        # class named after the rest of it. No g++ 2.x name opens with `_Z`.
+        # Itanium refusals fall through here, and `__Z...` is full of `__` separators;
+        # no g++ 2.x name opens with `_Z`.
         return False
     if len(name) > _DETECT_MAX or not _screen(name):
         return False
@@ -255,8 +211,7 @@ def detect(name, style="gnu"):
     return symbol is not None and _decoded(name, symbol) and _plausible(symbol)
 
 
-#: What each builder class answered to `_wants_structure`, asked once per class: the
-#: answer is a property of the builder's type and this is on every symbol's path.
+#: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
 
 
@@ -285,8 +240,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
 
     if not _decoded(mangled, symbol):
-        # The same bar `detect` holds a name to, applied here as well: a caller who names
-        # the language still gets a refusal rather than their own bytes handed back.
+        # The same bar `detect` holds a name to.
         raise ParseError(mangled, None, "the name decodes to itself")
     if len(symbol.text) > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)
@@ -305,20 +259,8 @@ PLUGIN = LanguagePlugin(
     options_type=GnuV2Options,
     aliases=("gnu-v2", "cfront", "cplus-dem"),
     symbol_table_decorations=True,
-    # `priority` is ascending: *lower is offered first*. Second-to-last -- after Itanium,
-    # which is 200 -- because these names have no marker and can only be told from an
-    # ordinary C identifier by reading one. Everything with a prefix of its own gets
-    # first refusal.
-    #
-    # Before `codewarrior` (300), and that is a real decision rather than an arbitrary
-    # one. `AtEnd__13ivRubberGroup` is a valid symbol under both manglings, both readings
-    # parse, and they differ only in spelling -- `ivRubberGroup::AtEnd(void)` here,
-    # `ivRubberGroup::AtEnd()` there. Nothing in the name settles it, so the commoner
-    # mangling wins the tie: any g++ before 3.0 wrote these, against CodeWarrior's
-    # console and embedded niche. What CodeWarrior writes and this cannot read -- a
-    # literal `<...>` argument list, `@LOCAL@`, `$localstatic`, a `__dt` under the
-    # default style -- is refused here and falls through to it.
-    # tests/test_core.py pins the order against every corpus.
+    # Before `codewarrior` (300): `AtEnd__13ivRubberGroup` reads under both, and the
+    # commoner mangling wins. tests/test_core.py pins the order.
     priority=290,
 )
 """The scheme as the registry holds it, registered when this package is imported."""

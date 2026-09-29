@@ -54,13 +54,10 @@ STYLES = ("auto", "gnu", "lucid", "arm", "hp", "edg")
 parameterised-type prefixes; it is not a search over the other four.
 """
 
-#: The character g++ wrote between a class and a static member, and around the `_$_` of
-#: a destructor. `$` on assemblers that took it, `.` on those that did not; the reference
-#: accepts either, and so does this.
+#: g++'s scope marker: `$` where the assembler took it, `.` where it did not.
 CPLUS_MARKERS = "$."
 
-#: Type qualifier bits, and the spelling of every combination of them. The reference
-#: keeps these as a bitmask so that `Ci` and `CVi` share one path.
+#: A bitmask, as in the reference, so `Ci` and `CVi` share one path.
 _QUAL_CONST, _QUAL_VOLATILE, _QUAL_RESTRICT = 1, 2, 4
 _QUALIFIER_CODES = {"C": _QUAL_CONST, "V": _QUAL_VOLATILE, "u": _QUAL_RESTRICT}
 _QUALIFIER_STRINGS = {
@@ -74,16 +71,13 @@ _QUALIFIER_STRINGS = {
     _QUAL_CONST | _QUAL_VOLATILE | _QUAL_RESTRICT: "const volatile __restrict",
 }
 
-# The kind of type just read, which decides how a template's *value* parameter is
-# spelled: `1` is a pointer, so the value is a symbol name; `tk_bool` prints `true`
-# rather than `1`. `tk_none` means "not yet known" and reads as integral at the end.
+# The kind of type just read decides how a template value parameter is spelled
+# (pointer: a symbol name; bool: `true`). `tk_none` reads as integral at the end.
 _TK_NONE, _TK_POINTER, _TK_REFERENCE, _TK_RVALUE_REFERENCE = 0, 1, 2, 3
 _TK_INTEGRAL, _TK_BOOL, _TK_CHAR, _TK_REAL = 4, 5, 6, 7
 
-#: The operator table, in the reference's order, which is load-bearing: `demangle_expression`
-#: takes the *first* entry whose code is a prefix of what is left, so `minus` must
-#: precede `mi`. The `flags` column is dropped -- it is consulted only by
-#: `cplus_mangle_opname`, which mangles rather than demangles.
+#: In the reference's order, which is load-bearing: `demangle_expression` takes the first
+#: prefix match, so `minus` precedes `mi`. The mangling-only `flags` column is dropped.
 OPTABLE = (
     ("nw", " new"),
     ("dl", " delete"),
@@ -166,8 +160,7 @@ OPTABLE = (
     ("sz", "sizeof "),
 )
 
-#: The same table keyed by code, for the exact-length lookups `demangle_function_name`
-#: does. Every code in `OPTABLE` is distinct, so nothing is lost by the first-wins rule.
+#: Keyed by code for `demangle_function_name`'s exact-length lookups; codes are distinct.
 _OPS = {}
 for _code, _spelling in OPTABLE:
     _OPS.setdefault(_code, _spelling)
@@ -187,13 +180,10 @@ def _hex_prefix(digits):
     return int(digits[:end], 16) if end else 0
 
 
-#: How deep the mutually recursive productions may nest before this gives up. The
-#: reference has no such bound and segfaults on a name deep enough; `demangle`'s callers
-#: read symbol tables they did not write, so the bound is not optional.
+#: The reference has no depth bound and segfaults on a deep enough name.
 MAX_DEPTH = 200
 
-#: How many times a name may recurse into a *whole* nested demangling -- an HP template
-#: literal, an EDG qualifier, a `__thunk_` target -- each of which restarts the parser.
+#: Whole nested demanglings (HP template literal, EDG qualifier, `__thunk_` target).
 MAX_NESTED = 16
 
 
@@ -255,12 +245,7 @@ class _Cur:
     def __init__(self, s, i=0):
         self.s = s
         self.i = i
-        #: `len(s)`, taken once. A cursor is *replaced* rather than re-pointed -- that is
-        #: what the note above is about -- so the string it holds never changes under it
-        #: and its length is a property of the cursor. `at` is the most-called method in
-        #: this scheme, and the `len` inside it was a call of its own each time. This
-        #: scheme also parses inside `detect`, so it runs on names that turn out to
-        #: belong to nobody.
+        #: Constant: a cursor is replaced, never re-pointed, and `at` is the hot path.
         self.n = len(s)
 
     def at(self, offset=0):
@@ -345,12 +330,8 @@ class _Work:
         self.trailing = ()
         self.special = None
         self.suffix = ""
-        #: What in the name was actually *decoded*, as opposed to read as a run of
-        #: fundamental-type letters. See `schemes.gnuv2.detect`: a reading that decoded
-        #: no name at all is not evidence that the symbol was mangled.
+        #: What was decoded as opposed to read as fundamental-type letters; see `detect`.
         self.evidence = set()
-
-    # -- style predicates, the reference's *_DEMANGLING macros ------------------------
 
     @property
     def auto(self):
@@ -375,8 +356,6 @@ class _Work:
     @property
     def edg(self):
         return self.style == "edg"
-
-    # -- remembered types -------------------------------------------------------------
 
     def remember_type(self, text):
         if not self.forgetting_types:
@@ -408,8 +387,6 @@ class _Work:
     def delete_all(self):
         self.delete_non_bk()
         self.forget_b_and_k_types()
-
-    # -- backtracking -----------------------------------------------------------------
 
     def snapshot(self):
         """`work_stuff_copy_to_from`, in the direction that saves."""
@@ -479,11 +456,6 @@ class _Depth:
         return False
 
 
-# --------------------------------------------------------------------------------------
-# counts
-# --------------------------------------------------------------------------------------
-
-
 def consume_count(cur):
     """A run of digits, or -1 where there is not one. -1 also on overflow."""
     if not _isdigit(cur.at()):
@@ -539,11 +511,6 @@ def get_count(cur):
             cur.i = scan + 1
             count = value
     return True, count
-
-
-# --------------------------------------------------------------------------------------
-# types
-# --------------------------------------------------------------------------------------
 
 
 def do_type(work, cur, result, allow_empty=False):
@@ -613,9 +580,7 @@ def _do_type(work, cur, result, allow_empty):
             if success:
                 is_proctypevec = True
                 work.proctypevec.append(n)
-                # The remembered type is re-read in place of the reference to it, so the
-                # cursor is *replaced* rather than advanced. The caller's own cursor
-                # stays where `T`n left it.
+                # The remembered type is re-read in place of the reference, on a new cursor.
                 cur = _Cur(work.typevec[n])
         elif code == "F":
             cur.advance()
@@ -650,9 +615,7 @@ def _do_type(work, cur, result, allow_empty):
             cur.advance()
             ok, n = get_count(cur)
             if not ok or n < 0 or n >= len(work.btypevec) or work.btypevec[n] is None:
-                # The `is None` is not the reference's: a `B` code may name a slot that
-                # was registered and never filled, and the reference dereferences the
-                # null it finds there. No valid name reaches it.
+                # Not the reference's, which dereferences a registered-but-unfilled slot.
                 success = 0
             else:
                 result.append(work.btypevec[n])
@@ -744,7 +707,6 @@ def _do_type_member(work, cur, decl):
     return 1
 
 
-#: The one-letter fundamental types, and what each spells.
 _FUND_TYPES = {
     "v": ("void", _TK_INTEGRAL),
     "x": ("long long", _TK_INTEGRAL),
@@ -793,17 +755,9 @@ def demangle_fund_type(work, cur, result, allow_empty=False):
 
     code = cur.at()
     if code in ("", "_"):
-        # The reference calls this a successful `int` with nothing written. Where that
-        # leaves the whole type empty -- no base type at all, only a qualifier or a `*`
-        # hanging off nothing -- it is refused instead: `drm_intel_gem_bo_map__cpu` is a
-        # C function, not a call taking a `__restrict *`, and that is the shape that
-        # says so. A type that has already spelled something keeps the reference's
-        # reading.
-        #
-        # `allow_empty` is the one place that refusal does not apply: the type in front
-        # of a template *value* argument, where `_8_` is the argument `8` and there is
-        # no C symbol to be confused with, since the whole shape lives inside a `t`
-        # production that a C name cannot open. See `_demangle_template`.
+        # The reference's empty `int`, refused where the whole type would be empty
+        # (`drm_intel_gem_bo_map__cpu` is C). `allow_empty` is for a template value's
+        # type, `_8_`, which a C name cannot reach; see `_demangle_template`.
         return tk if allow_empty or len(result) else 0
     if code in _FUND_TYPES:
         spelling, kind = _FUND_TYPES[code]
@@ -812,8 +766,7 @@ def demangle_fund_type(work, cur, result, allow_empty=False):
         result.append(spelling)
         return kind
     if code in ("G", "I"):
-        # `I` is the fixed-width `int<N>_t` family, written as a hex width; `G` is the
-        # same thing spelled with a leading digit count.
+        # `I` is `int<N>_t` with a hex width; `G` the same with a leading digit count.
         if code == "G":
             cur.advance()
             if not _isdigit(cur.at()):
@@ -850,11 +803,6 @@ def demangle_fund_type(work, cur, result, allow_empty=False):
         result.append(btype.s)
         return tk if success else 0
     return 0
-
-
-# --------------------------------------------------------------------------------------
-# templates and template arguments
-# --------------------------------------------------------------------------------------
 
 
 def demangle_template_template_parm(work, cur, tname):
@@ -928,8 +876,7 @@ def demangle_integral_value(work, cur, out):
     if cur.at() in ("Q", "K"):
         return demangle_qualified(work, cur, out, 0, 1)
 
-    # Whether the count is written `_NN_` or bare decides both how it is read and
-    # whether a trailing `_` belongs to it. The reference's two flags, kept.
+    # The reference's two flags for a `_NN_` or bare count.
     multidigit_without_leading_underscore = False
     leave_following_underscore = False
 
@@ -1037,9 +984,8 @@ def demangle_template_value_parm(work, cur, out, tk):
                 out.append("0")
             else:
                 name = cur.s[cur.i : cur.i + symbol_len]
-                # A whole separate name, mangled on its own: the reference calls the
-                # public entry point rather than recursing, precisely so that none of
-                # the squangling state built up so far applies to it.
+                # Via the public entry point, as the reference does, so no squangling
+                # state applies.
                 spelled = _demangle_fresh(work, name)
                 if tk == _TK_POINTER:
                     out.append("&")
@@ -1149,11 +1095,6 @@ def _demangle_template(work, cur, tname, trawname, is_type, remember):
     if success:
         work.evidence.add("template")
     return success
-
-
-# --------------------------------------------------------------------------------------
-# ARM and HP parameterised types
-# --------------------------------------------------------------------------------------
 
 
 def arm_pt(work, cur, n):
@@ -1354,9 +1295,7 @@ def demangle_arm_hp_template(work, cur, n, declp):
             declp.append(arg.s)
             declp.append(",")
         if args.i >= end and len(declp):
-            # Remove the trailing comma. The reference does this unconditionally on
-            # reaching the end, which is why the guard is on the buffer being non-empty
-            # rather than on the loop having run.
+            # The reference drops it unconditionally at the end, hence the non-empty guard.
             declp.truncate(len(declp) - 1)
         declp.append(">")
         work.params = hold_params
@@ -1384,8 +1323,7 @@ def demangle_class_name(work, cur, declp):
     """A length-prefixed class name, with template arguments where it has them."""
     n = consume_count(cur)
     if n <= 0:
-        # Stricter than the reference, which accepts a zero-length class name and
-        # prepends `::` to nothing. No vector in its own test file has one.
+        # Stricter than the reference, which prepends `::` to a zero-length class name.
         return 0
     if len(cur.rest()) >= n:
         demangle_arm_hp_template(work, cur, n, declp)
@@ -1486,8 +1424,7 @@ def _demangle_qualified(work, cur, result, isfuncname, append):
             if not success:
                 break
         elif work.edg:
-            # EDG writes a whole mangled name as the qualifier, so it is demangled on
-            # its own rather than parsed as a type.
+            # EDG writes a whole mangled name as the qualifier.
             namelength = consume_count(cur)
             if namelength == -1:
                 success = 0
@@ -1533,11 +1470,6 @@ def recursively_demangle(work, cur, result, namelength):
     cur.advance(namelength)
 
 
-# --------------------------------------------------------------------------------------
-# argument lists
-# --------------------------------------------------------------------------------------
-
-
 def do_arg(work, cur, result):
     """One argument, remembered afterwards so that a later `T`n can refer back to it."""
     start = cur.i
@@ -1562,9 +1494,7 @@ def do_arg(work, cur, result):
             cur.advance()
         return do_arg(work, cur, result)
 
-    # The reference demangles straight into `previous_argument`, so it holds whatever
-    # came out even when the parse failed. Kept, because a repeat that follows a failure
-    # reads it.
+    # The reference fills `previous_argument` even on failure, and a later repeat reads it.
     previous = _Buf()
     read = do_type(work, cur, previous)
     work.previous_argument = previous.s
@@ -1604,9 +1534,8 @@ def demangle_args(work, cur, declp, capture=None):
                 repeats = 1
 
             if (work.hp or work.arm or work.edg) and len(work.typevec) >= 10:
-                # Ten or more remembered types means the index may be more than one
-                # digit, so the whole count is consumed. Ambiguous either way -- see the
-                # reference's note -- and this is the reading it picks.
+                # Ten or more remembered types: the whole count is consumed, the reference's
+                # reading of an ambiguous form.
                 index = consume_count(cur)
                 if index <= 0:
                     return 0
@@ -1619,8 +1548,7 @@ def demangle_args(work, cur, declp, capture=None):
             if index < 0 or index >= len(work.typevec):
                 return 0
             while True:
-                # `work->nrepeats > 0 || --r >= 0`: a squangling repeat in flight holds
-                # the count still, so the decrement only happens when there is not one.
+                # `work->nrepeats > 0 || --r >= 0`
                 if work.nrepeats <= 0:
                     repeats -= 1
                     if repeats < 0:
@@ -1658,8 +1586,7 @@ def demangle_args(work, cur, declp, capture=None):
         if capture is not None:
             capture.append("...")
         if cur.at() not in ("", "_"):
-            # `e` ends the list, so a type after it is a second list rather than the
-            # rest of this one. Only the end or a return type may follow it.
+            # `e` ends the list: only the end or a return type may follow.
             return 0
 
     if work.params:
@@ -1683,11 +1610,6 @@ def demangle_nested_args(work, cur, declp):
     return result
 
 
-# --------------------------------------------------------------------------------------
-# function names
-# --------------------------------------------------------------------------------------
-
-
 def demangle_function_name(work, cur, declp, scan):
     """Everything before the `__` at `scan`, read as a function name.
 
@@ -1703,8 +1625,7 @@ def demangle_function_name(work, cur, declp, scan):
         demangle_arm_hp_template(work, cur, 0, declp)
 
     if work.lucid or work.arm or work.hp or work.edg:
-        # An ARM constructor or destructor is only recorded here; the class it belongs
-        # to is not known until the signature has been read.
+        # An ARM structor's class is not known until the signature has been read.
         if declp.s == "__ct":
             work.constructor += 1
             declp.clear()
@@ -1766,11 +1687,6 @@ def demangle_function_name(work, cur, declp, scan):
                 declp.append(spelling)
 
     return 0 if declp.s == "." else 1
-
-
-# --------------------------------------------------------------------------------------
-# signatures
-# --------------------------------------------------------------------------------------
 
 
 def demangle_signature(work, cur, declp):
@@ -1849,8 +1765,7 @@ def _demangle_signature(work, cur, declp):
             oldmangled = None
             expect_func = True
         elif code == "F":
-            # ARM and HP write an explicit `F`; GNU implies it. Consuming one either way
-            # keeps both readable.
+            # ARM and HP write an explicit `F`; GNU implies it.
             oldmangled = None
             func_done = True
             cur.advance()
@@ -1895,8 +1810,7 @@ def _demangle_signature(work, cur, declp):
                 while _isdigit(cur.at()):
                     cur.advance()
             else:
-                # At the outermost level there is no return type to read, so a second
-                # `_` means this is not a name this knows how to read.
+                # A second `_` at the outermost level: not a name this reads.
                 success = 0
         elif code == "H" and (work.auto or work.gnu):
             success = demangle_template(work, cur, declp, None, 0, 0)
@@ -1919,13 +1833,11 @@ def _demangle_signature(work, cur, declp):
             if work.lucid or work.arm or work.edg:
                 work.forget_types()
             success = _demangle_args_capturing(work, cur, declp)
-            # A template carries its return type, so the next time round must not read
-            # another argument list.
+            # A template carries its return type: no further argument list.
             expect_func = False
 
     if success and not func_done and (work.auto or work.gnu):
-        # `bar__3foo` is `foo::bar(void)`, and this is where the `(void)` comes from.
-        # Under ARM and HP the same shape is a static data member, so it is left alone.
+        # `bar__3foo` is `foo::bar(void)`; under ARM and HP it is a static data member.
         success = _demangle_args_capturing(work, cur, declp)
 
     if success and work.params:
@@ -1961,11 +1873,6 @@ def _demangle_args_capturing(work, cur, declp):
     return success
 
 
-# --------------------------------------------------------------------------------------
-# prefixes and special forms
-# --------------------------------------------------------------------------------------
-
-
 def _find_double_underscore(s, start=0):
     at = s.find("__", start)
     return None if at < 0 else at
@@ -1977,13 +1884,11 @@ def demangle_prefix(work, cur, declp):
     rest = cur.rest()
 
     if len(rest) > 6 and (rest.startswith("_imp__") or rest.startswith("__imp_")):
-        # A symbol imported from a PE DLL: `_imp__` is dlltool's current spelling and
-        # `__imp_` the one older versions wrote.
+        # PE DLL import: `_imp__` (dlltool) or `__imp_` (older).
         cur.advance(6)
         work.dllimported = 1
     elif len(rest) >= 11 and rest.startswith("_GLOBAL_"):
-        # A global constructor or destructor, keyed to the translation unit that needs
-        # it. The marker character is written twice, around the `D` or `I`.
+        # A global constructor or destructor: the marker is written around `D` or `I`.
         if rest[8] in CPLUS_MARKERS and rest[8] == rest[10]:
             if rest[9] == "D":
                 cur.advance(11)
@@ -2025,31 +1930,25 @@ def demangle_prefix(work, cur, declp):
         return 1
     if scan == cur.i and (_isdigit(ch(scan + 2)) or ch(scan + 2) in ("Q", "t", "K", "H")):
         if (work.lucid or work.arm or work.hp) and _isdigit(ch(scan + 2)):
-            # cfront writes `__<nesting level>` in front of a local variable. The ARM
-            # says nothing about local variables at all; this is an extension.
+            # cfront's `__<nesting level>` before a local variable; not in the ARM.
             cur.i = scan + 2
             consume_count(cur)
             declp.append(cur.rest())
             cur.i = len(s)
             return 1
-        # A GNU constructor starts `__[0-9Qt]`, and a member-template one `__H`. cfront
-        # writes `__Q2_3foo3bar` for a nested type name, so this shape is not read as a
-        # constructor there.
+        # GNU constructor `__[0-9Qt]` or `__H`; cfront's `__Q2_3foo3bar` is a nested type.
         if not (work.lucid or work.arm or work.hp or work.edg):
             work.constructor += 1
             work.evidence.add("structor")
         cur.i = scan + 2
     elif (work.arm and ch(scan + 2) == "p" and ch(scan + 3) == "t") or (
-        # cfront's `__pt__`, and EDG's `__tm__`, `__ps__` and `__pt__`: a parameterised
-        # type, whose arguments the signature reads rather than the prefix. The reference
-        # writes these as two branches calling the same thing.
+        # cfront `__pt__`, EDG `__tm__`/`__ps__`/`__pt__`: a parameterised type.
         work.edg and ch(scan + 2) + ch(scan + 3) in ("tm", "ps", "pt")
     ):
         demangle_arm_hp_template(work, cur, len(cur.rest()), declp)
         return 1
     elif scan == cur.i and not _isdigit(ch(scan + 2)) and ch(scan + 2) != "t":
-        # The name starts `__`. Skip the underscores, then find the `__` that separates
-        # the prefix from the signature.
+        # Skip the leading underscores, then find the separating `__`.
         if not (work.arm or work.lucid or work.hp or work.edg) or arm_special(work, cur, declp) == 0:
             while ch(scan) == "_":
                 scan += 1
@@ -2148,13 +2047,8 @@ def gnu_special(work, cur, declp):
                 n = None
                 if _isdigit(code):
                     n = consume_count(cur)
-                    # A too-large count is a `.<digits>` static local marker rather than
-                    # a length; declare victory rather than trying to read that many.
-                    # The reference's `break` leaves only the `switch`: the count is
-                    # dropped, the loop goes on, and whatever follows is read as the
-                    # next piece of the name -- `_vt.6i` is `i virtual table`. Leaving
-                    # the loop here left the `i` for the caller, which read it as a
-                    # parameter list and spelled ` virtual table(int)`.
+                    # Too large: a `.<digits>` static local marker. The reference's `break`
+                    # leaves only the `switch`, so the loop goes on: `_vt.6i` is `i virtual table`.
                     if n > len(cur.rest()):
                         success = 1
                         n = None
@@ -2203,8 +2097,7 @@ def gnu_special(work, cur, declp):
                 and here[8] == here[10]
                 and here[8] in CPLUS_MARKERS
             ):
-                # A member of the anonymous namespace. What it was keyed to is there
-                # only to make the symbol unique, so it is stepped over.
+                # the anonymous namespace; its key only makes the symbol unique
                 declp.append("{anonymous}")
                 cur.advance(n)
                 marker = _find_marker(s, cur.i)
@@ -2220,13 +2113,8 @@ def gnu_special(work, cur, declp):
 
     if rest.startswith("__thunk_"):
         cur.advance(8)
-        # gcc 2.95's `make_thunk` writes the delta's magnitude, with an `n` in front
-        # when it is positive: `__thunk_8_` is a delta of -8 and `__thunk_n8_` one of
-        # 8. libiberty reads only the first form, and having stepped past `__thunk_`
-        # before finding no digit, it reads the rest as a method: `__thunk_n8_
-        # setInstance__Q26KParts8PartBaseP9KInstance`, from KDE 2.2.2, is
-        # `KParts::PartBase::n8_setInstance(KInstance *)` to it. The compiler's own
-        # naming is the authority on what the compiler wrote.
+        # gcc 2.95's `make_thunk` marks a positive delta with `n` (`__thunk_n8_`), which
+        # libiberty misreads as part of the method name; the compiler is followed.
         positive = cur.at() == "n"
         if positive:
             cur.advance()
@@ -2319,11 +2207,6 @@ def arm_special(work, cur, declp):
     return 1
 
 
-# --------------------------------------------------------------------------------------
-# entry points
-# --------------------------------------------------------------------------------------
-
-
 class GnuV2Symbol:
     """What one of these names says, spelled and in pieces.
 
@@ -2362,16 +2245,14 @@ class GnuV2Symbol:
         self.style = style
         self.qualified_name = qualified_name
         self.parameters = parameters
-        #: Exactly what the argument list contributed to `text`, parentheses included,
-        #: or "" where none was written. `nodes.build` slices the tree at it.
+        #: What the argument list contributed to `text`, or ""; `nodes.build` slices at it.
         self.arguments_text = arguments_text
         self.return_type = return_type
         self.qualifiers = qualifiers
         self.special = special
         self.suffix = suffix
-        #: What the reading actually decoded: `class`, `qualified`, `template`,
-        #: `operator`, `structor`, `special`. Empty means nothing but fundamental-type
-        #: letters came out, which `detect` treats as no evidence at all.
+        #: `class`, `qualified`, `template`, `operator`, `structor`, `special`; empty
+        #: is no evidence to `detect`.
         self.evidence = evidence
 
     def __repr__(self):
@@ -2392,12 +2273,8 @@ def _internal_demangle(work, mangled):
         cur = _Cur(mangled)
         success = 0
 
-        # A GNU special form is tried first, because `_$_5__foo` has a `__` in it that
-        # `demangle_prefix` would otherwise read as the separator. One cursor throughout:
-        # `gnu_special` advances it even on the paths where it then fails, and
-        # `demangle_prefix` picks up from wherever it stopped, as the reference does --
-        # except for the forms whose prefix is unambiguous, which refuse instead; see
-        # `_refuse_special`.
+        # GNU special forms first, since `_$_5__foo` has a `__`. One cursor throughout, as
+        # the reference does, except where `_refuse_special` refuses.
         if work.auto or work.gnu:
             success = gnu_special(work, cur, declp)
             if success:
