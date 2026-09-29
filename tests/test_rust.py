@@ -434,7 +434,7 @@ def _on_a_deep_stack(work):
     """Run `work` where the interpreter's stack is not the binding bound."""
     seen = []
     previous_limit = sys.getrecursionlimit()
-    previous_size = threading.stack_size(256 << 20)
+    previous_size = threading.stack_size(128 << 20)
     try:
         sys.setrecursionlimit(100_000)
         thread = threading.Thread(target=lambda: seen.append(work()))
