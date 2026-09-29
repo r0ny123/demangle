@@ -33,10 +33,8 @@ class SubstitutionMisuse(ParseError):
     `ItaniumOptions.closure_prefix_substitution`."""
 
 
-#: Section 5.1.10: "Each non-terminal in the grammar above for which <substitution>
-#: appears on the right-hand side is both a source of future substitutions and a
-#: candidate for being substituted." Enumerated here so the parser's `remember()` calls
-#: can be checked against the specification rather than against intuition.
+#: 5.1.10: every non-terminal with <substitution> on its right-hand side, the set the
+#: parser's `remember()` calls must match.
 CANDIDATE_PRODUCTIONS = frozenset(
     {
         "type",
@@ -49,9 +47,8 @@ CANDIDATE_PRODUCTIONS = frozenset(
     }
 )
 
-#: Section 5.1.10 names two exclusions that look like candidates in the grammar but are
-#: not: "<builtin-type> other than vendor extended types, and function and operator
-#: names other than extern "C" functions."
+#: 5.1.10's exclusions: "<builtin-type> other than vendor extended types, and function
+#: and operator names other than extern "C" functions."
 EXCLUDED_PRODUCTIONS = frozenset({"builtin-type", "function-name", "operator-name"})
 
 
@@ -92,11 +89,8 @@ class ParameterReference:
     def __init__(self, index, level=0, symbolic=None):
         self.index = index
         self.level = level
-        #: The parameter's own mangled text, where it was read inside a requires-clause
-        #: under a style that substitutes the bound argument. The clause's scope can be
-        #: gone by the time a later `S_` names the entry, and this is what stands in --
-        #: the spelling the other style uses throughout. None everywhere else, which is
-        #: every entry outside a clause.
+        #: Mangled text of a parameter read inside a requires-clause whose scope may be
+        #: gone when a later `S_` names it; None outside a clause.
         self.symbolic = symbolic
 
     def __repr__(self):  # pragma: no cover - debugging aid
@@ -171,9 +165,8 @@ class SubstitutionTable:
         self._entries = []
         self._limit = limit
         self._mangled = mangled
-        #: False while the parser is re-reading a `DeferredProduction`. Those bytes have
-        #: already contributed their entries; adding them again would renumber the table
-        #: under the very back-reference being resolved.
+        #: False while re-reading a `DeferredProduction`, whose entries already exist;
+        #: adding them again would renumber the table.
         self.recording = True
 
     def remember(self, handle, production="type"):
@@ -293,10 +286,8 @@ class TemplateArgumentTable:
 
     def __init__(self):
         self._levels = []
-        #: Bumped on every change. Two different scopes never share a value, which is
-        #: what lets the parser memoise a `DeferredProduction` per scope rather than
-        #: re-reading its span once per back-reference -- a chain of entries each built
-        #: over the one before is otherwise quadratic in the length of the name.
+        #: Bumped on every change, so the parser can memoise a `DeferredProduction` per
+        #: scope; re-reading it per back-reference is quadratic.
         self.generation = 0
 
     # -- level 0: the innermost <template-args> --------------------------------------
