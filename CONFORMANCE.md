@@ -36,7 +36,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Names a reference reads wrongly <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | the declaration | **37 / 37** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** <sup>[3](#3-bare-types-under-both-references)</sup> |
-| Swift runtime + the compiler's own test corpus | `swift-demangle` 5.10.1 | **8494 / 8494** |
+| Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **8494 / 8494** |
 | Swift — the compiler's own demangler vectors | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **514 / 514** |
 | Nim 1.6 and 2.2, against the compiler's own record <sup>[14](#14-nim)</sup> | `.ndi` debug mapping | **2115 / 2115** |
 | Free Pascal 3.2.2 runtime and packages <sup>[5](#5-free-pascal)</sup> | re-assembly + `ppudump` | **3899 / 3899** |
@@ -128,14 +128,13 @@ is case-insensitive and the compiler upper-cases before mangling.
 
 Nothing a distribution ships reads a Swift name — `llvm-cxxfilt` and `c++filt` both
 decline a `$s` outright — so `tools/swift-demangle-reference/` builds swiftlang/swift's
-own `lib/Demangling` at a pinned revision behind a line-per-name front end. The revision
-is a commit on `main` and not a release tag, because every release through 6.3.3 refuses
-part of the compiler's own vector file: 5.10.1 scores 455 of the 514 and 6.3.3 does not
-carry all of them. Its README has the measurements, and the one row where following it
-would be the defect — `NodePrinter` reads an extended existential shape one child too
-high and spells the type as `<null node pointer>`, a path its own test corpus never
-exercises — is pinned in `tests/conformance/swift-reference-defects.txt` against what
-the tree says instead.
+own `lib/Demangling` at a pinned commit on `main`. Its
+[README](https://github.com/r0ny123/demangle/blob/main/tools/swift-demangle-reference/README.md)
+has the build and the measurements behind that choice of revision. The one row where
+following it would be the defect — `NodePrinter` reads an extended existential shape one
+child too high and spells the type as `<null node pointer>`, a path its own test corpus
+never exercises — is pinned in `tests/conformance/swift-reference-defects.txt` against
+what the tree says instead.
 
 ### 7. Swift symbolic references
 
@@ -233,13 +232,11 @@ run, and over 339,117 symbols from this machine's own shared libraries it claims
 `drm_intel_gem_bo_map__wc`, where `wc` is a valid argument list, is left alone, though
 `language="gnuv2"` reads it as libiberty does. (The changelog's 101,625 is a different,
 smaller set: the non-`_Z` symbols of a stock Ubuntu library directory.) That reference
-is built here too: binutils 2.42 no longer ships the pre-Itanium styles and GCC 9
-removed the demangler, so `tools/cplus-dem-reference/` compiles the 8.3.0 tree's own
-`cplus-dem.c` behind a line-per-name front end, pinned by tag and by checksum, and the
-enumeration and mutation fuzzers ask it. It reproduces the corpus 1,324 of 1,324, and
-over 420,000 mutants of it this library never reads a name libiberty refuses; where the
-two part, libiberty is spelling a gap round something it should have refused, and its
-README has the families.
+is built by `tools/cplus-dem-reference/`, whose
+[README](https://github.com/r0ny123/demangle/blob/main/tools/cplus-dem-reference/README.md)
+has the build. It reproduces the corpus 1,324 of 1,324, and over 420,000 mutants of it
+this library never reads a name libiberty refuses; where the two part, libiberty is
+spelling a gap round something it should have refused, and the README has the families.
 
 ### 11. CodeWarrior
 

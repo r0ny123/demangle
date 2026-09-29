@@ -9,7 +9,7 @@ and 490 at 9.1.0 -- so every claim about this scheme rested on a corpus recorded
 with no way to put a *new* name to the implementation it was recorded from.
 
 This builds that implementation out of GCC 8.3.0's own tree -- `cplus-dem.c` and the
-five helpers it calls, unmodified -- behind a line-per-name front end, so the
+libiberty sources it links against, unmodified -- behind a line-per-name front end, so the
 differential tools can ask it the way they ask `llvm-cxxfilt`: one name in, one spelling
 out, a name it cannot read handed back unchanged.
 

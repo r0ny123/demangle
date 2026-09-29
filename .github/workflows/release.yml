@@ -40,7 +40,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Protected environment: needs human approval; PyPI's trusted publisher is scoped to it.
+    # Protected environment: needs human approval; PyPI's trusted publisher is
+    # scoped to it.
     environment:
       name: pypi
       url: https://pypi.org/p/demangle

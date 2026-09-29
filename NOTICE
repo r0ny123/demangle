@@ -144,8 +144,9 @@ Swift conformance corpus -- tests/conformance/swift-real-world.txt
 Part of this file is the mangled names from the Swift compiler's own demangler
 test corpus (test/Demangle/Inputs/manglings.txt), used under the Apache License
 2.0 with the Runtime Library Exception. The expected column was produced by
-running swift-demangle 5.10.1 over them. The rest is a stratified sample of the
-symbols in the shipped Swift runtime and Foundation.
+running a swift-demangle built from the swiftlang/swift main branch over them.
+The rest is a stratified sample of the symbols in the shipped Swift runtime and
+Foundation.
 
 ================================================================================
 Swift conformance corpora -- tests/conformance/swift-upstream.txt,

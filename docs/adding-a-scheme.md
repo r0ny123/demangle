@@ -81,8 +81,8 @@ builder.template(base, arguments)
 builder.qualified([namespace, class_, method])
 ```
 
-What comes back is an opaque handle. Pass it to other builder methods; do not inspect it.
-Where a grammar genuinely needs the text of something already built,
+What comes back is an opaque handle. Pass it to other builder methods; do not inspect
+it. Where a grammar genuinely needs the text of something already built,
 `builder.spell(handle)` is the one legal way to look.
 
 This is what earns your scheme structured output for free: the same parser drives both
@@ -95,10 +95,11 @@ Declarator placement -- `int (*)(char)`, `int (*) [10]` -- is already handled in
 ## Types, if your scheme has them
 
 `parse_type` is optional and most schemes leave it None. Supply it only if your grammar
-has a *type* production that stands alone -- what a `typeinfo` name or an RTTI descriptor
-carries -- and it becomes `demangle_type(enc, language="yours")`. It is a separate entry
-point rather than a fallback inside `parse` because a type encoding carries no marker
-saying which scheme it belongs to, so it can only ever be read on request.
+has a *type* production that stands alone -- what a `typeinfo` name or an RTTI
+descriptor carries -- and it becomes `demangle_type(enc, language="yours")`. It is a
+separate entry point rather than a fallback inside `parse` because a type encoding
+carries no marker saying which scheme it belongs to, so it can only ever be read on
+request.
 
 ## Priority
 
@@ -130,7 +131,7 @@ registered scheme, so a new plugin is covered by them the moment it registers.
 ## Conformance
 
 If a reference implementation exists, do not treat your reading of the specification as
-the last word. Add a corpus under `tests/conformance/` with the reference output recorded
-next to each name, and pin its count as
+the last word. Add a corpus under `tests/conformance/` with the reference output
+recorded next to each name, and pin its count as
 [Contributing](CONTRIBUTING.md#conformance-numbers) describes. See
 `tools/generate_corpus.py` for how the Itanium corpus is produced.

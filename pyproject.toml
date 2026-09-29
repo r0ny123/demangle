@@ -46,10 +46,8 @@ Changelog = "https://github.com/r0ny123/demangle/blob/main/CHANGELOG.md"
 [project.scripts]
 demangle = "demangle.cli:main"
 
-[project.entry-points."demangle.languages"]
-# Intentionally empty: built-ins register directly; third-party schemes use this group.
-
-# Dependency groups (PEP 735), not extras, so dev tooling stays out of published metadata.
+# Dependency groups (PEP 735), not extras, so dev tooling stays out of published
+# metadata.
 [dependency-groups]
 test = [
     "pytest>=8",
@@ -139,10 +137,6 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
-ignore = [
-    # Parsers mirror grammar productions; splitting them hides the correspondence.
-    "C901",
-]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]

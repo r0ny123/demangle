@@ -6,14 +6,12 @@
 
 <!-- CONTRIBUTING.md explains each of these. -->
 
-- [ ] `hatch run check` passes, or `ruff check . && ruff format --check . && ty check .`,
-      `pytest`, `python tools/differential.py` and `python benchmarks/bench.py --check`
-      all do.
+- [ ] `hatch run check` passes (or its steps without Hatch; see CONTRIBUTING.md).
 - [ ] New behaviour comes with a test; new *reference-derived* behaviour comes with a
       corpus entry.
-- [ ] A conformance number that moved is stated in the PR description, which way and
-      why, with the pin in `tests/test_conformance.py` updated in the same PR.
-- [ ] A benchmark that moved is stated in the PR description.
+- [ ] A conformance number that moved is stated under *Numbers that moved*, which way
+      and why, with the pin in `tests/test_conformance.py` updated in the same PR.
+- [ ] A benchmark that moved is stated under *Numbers that moved*.
 - [ ] A change to a parser's shape rules has been through the fuzzers:
       `tools/enumerate.py`, `tools/mutate.py` and `tools/invariants.py`.
 

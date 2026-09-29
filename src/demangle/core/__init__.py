@@ -9,7 +9,7 @@ scheme is written against these modules and nothing else:
 - `spelling` -- C-family declarator placement, shared by every scheme that spells its
   types the way C does.
 - `ast` -- the tree `parse()` returns.
-- `reader` -- a bounds-checked cursor; the only input primitive parsers use.
+- `reader` -- a bounds-checked cursor; the input primitive for a new parser.
 - `errors`, `limits` -- the failure and resource contracts.
 - `plugin`, `registry` -- how a scheme announces itself.
 - `decorations` -- what a symbol table appends to a name, which belongs to no scheme.

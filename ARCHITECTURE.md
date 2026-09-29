@@ -95,7 +95,7 @@ demangle/
   filter.py           demangling the symbols out of text that is not only symbols
   cli.py              the `demangle` command
   core/
-    reader.py         a bounds-checked cursor; the only input primitive parsers use
+    reader.py         a bounds-checked cursor; the input primitive for a new parser
     builder.py        the Builder protocol -- the contract between parser and output
     spelling.py       SpellingBuilder: C++ declarator placement, the fast path
     ast.py            AstBuilder and the Node hierarchy
@@ -170,15 +170,14 @@ the pre-Itanium C++ manglings, whose `detect` has to parse -- are offered last, 
 everything a prefix settles.
 
 [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md)
-is the walkthrough.
+is the walk-through.
 
 ## Performance
 
 Design rules, in the order they matter:
 
 1. **The common call must not allocate an AST.** Hence the builder protocol.
-2. **Detection precedes parsing.** A one-character prefix test rejects the majority of
-   real symbols before any parser starts.
+2. **Detection precedes parsing.** See [Adding a scheme](#adding-a-scheme).
 3. **Results are memoised.** Symbol tables repeat names heavily -- the same
    `std::allocator<char>` appears thousands of times in one binary. Caches are bounded
    so a long-running process cannot grow without limit.
@@ -206,9 +205,8 @@ are held to a property instead: re-mangling what was read has to reproduce the s
 measurement says.
 
 `tests/conformance/` holds frozen corpora with the reference output recorded next to
-each name. Their pass counts are pinned as exact numbers rather than as floors, so a
-change in either direction is a deliberate edit rather than something that slips
-through. The harness in `tools/` regenerates those corpora and can run a live
+each name; [CONTRIBUTING.md](CONTRIBUTING.md#conformance-numbers) says how their pass
+counts are pinned. The harness in `tools/` regenerates those corpora and can run a live
 differential against the reference binaries when they are installed.
 
 The contract at the boundary is deliberately narrow: `demangle()` never raises and
