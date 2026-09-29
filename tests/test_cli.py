@@ -257,10 +257,8 @@ class TestPartFlags:
         [
             (VECTOR, VECTOR_SPELLED),
             ("_ZSt4sortIPiEvT_S1_", "std::sort<int*>(int*, int*)"),
-            # MSVC goes through the scheme's own option rather than the render-time cut:
-            # a return type there wraps *around* the declarator, and `private: ` comes
-            # before it, so there is no prefix to strip. This is `llvm-undname
-            # --no-return-type`.
+            # MSVC uses the scheme's own option (`llvm-undname --no-return-type`): `private: `
+            # comes before the return type, so there is no prefix to strip.
             ("?f@Foo@@AEBAXH@Z", "private: __cdecl Foo::f(int) const"),
         ],
     )
@@ -457,13 +455,10 @@ class TestTheReturnTypeFlags:
     @pytest.mark.parametrize(
         ("name", "dropped", "postfix"),
         [
-            # A plain template function: the return type is a prefix, so cutting the
-            # front of the spelling would have worked too.
+            # A plain template function: the return type is a prefix.
             ("_Z1fIiET_S0_", "f<int>(int)", "f<int>(int)int"),
             ("_Z1fIiEvT_", "f<int>(int)", "f<int>(int)void"),
-            # And one that *wraps* the declarator. `int (*g<int>(int))(int)` has no
-            # prefix to strip, so the cut left the return type in place and reported
-            # success -- the silently ignored flag this is here to keep fixed.
+            # One that *wraps* the declarator: `int (*g<int>(int))(int)` has no prefix to strip.
             ("_Z1gIiEPFT_S0_ES0_", "g<int>(int)", "g<int>(int)int (*)(int)"),
             # A name whose mangling carries no return type at all is untouched by both.
             ("_Z1fi", "f(int)", "f(int)"),
@@ -510,11 +505,8 @@ class TestStripUnderscore:
             ("__ZN3foo3barEv", "foo::bar()"),
             # The one that needs it.
             ("_?f@@YAXH@Z", "void __cdecl f(int)"),
-            # Stripping leaves something that does not read: both references print the
-            # name they were *given*, not the stripped form, so a table of `_foo` comes
-            # back untouched rather than a character short. `_Z1fv` is the sharp case --
-            # it reads perfectly well *unstripped*, and asking for the strip costs the
-            # reading, which is exactly what `c++filt --strip-underscore` does with it.
+            # When the stripped form does not read, both references print the name as given;
+            # `_Z1fv` loses its reading under `c++filt --strip-underscore` too.
             ("_Z1fv", "_Z1fv"),
             ("_foo", "_foo"),
             ("_", "_"),

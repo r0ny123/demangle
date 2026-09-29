@@ -24,16 +24,11 @@ from .conftest import CONFORMANCE
 from .test_conformance import GNUV2_EXACT as LIBIBERTY_EXACT
 from .test_conformance import GNUV2_TOTAL as LIBIBERTY_TOTAL
 
-#: How many of the 662 the *default* style claims. The rest are shapes only ARM, Lucid or
-#: HP write -- an ARM `__ct` marker, an HP template specialisation -- and GNU's reading
-#: refuses them rather than guessing, which is the correct answer: a caller who knows the
-#: compiler passes `GnuV2Options(style=...)`, and many of them are read correctly by the
-#: CodeWarrior scheme next door, which shares the ARM family's `__ct`/`__dt` convention.
+#: How many of the 662 the *default* style claims. The rest are ARM/Lucid/HP-only shapes
+#: that GNU's reading refuses rather than guesses; `GnuV2Options(style=...)` reads them.
 DETECTED_UNDER_GNU = 507
 
-#: How many of the 662 come back as a structured tree -- a name and a parameter list --
-#: rather than as one flat `name` part. The rest are the shapes with no argument list to
-#: separate: virtual tables, `type_info` nodes, static data members, thunks.
+#: The rest have no argument list to separate: vtables, `type_info`, static data, thunks.
 STRUCTURED = 624
 
 
@@ -268,9 +263,7 @@ class TestWhatItRefusesToClaim:
             "_vt$t8BDDHookV1__pt__2_cFv",
             "__tfPQ25libcwt16option_evet__12T1__pt__3_1tFv",
             "__thunk_8__$_junk__Fi",
-            # libiberty's own test for a `type_info` name is the four-character prefix,
-            # so a function whose name merely begins `__ti` is misread: `k(int)` to it,
-            # and to this before the rule.
+            # libiberty tests only the four-character prefix, and misreads this as `k(int)`.
             "__tick__Fi",
         ):
             assert not gnuv2.detect(name), name
@@ -572,7 +565,7 @@ class TestATemplateValueArgumentWithNoTypeInFrontOfIt:
             ("__opi__t2TA2Z1A_8_i", "TA<A, 8>::operator int(int)"),
             ("__opi__t2TA1_8_i", "TA<8>::operator int(int)"),
             ("f__t2TA2Z1A_8_i", "TA<A, 8>::f(int)"),
-            # A value argument whose type *is* spelled still reads as it always did.
+            # A value argument whose type *is* spelled.
             ("f__t2TA1i8i", "TA<8>::f(int)"),
         ],
     )

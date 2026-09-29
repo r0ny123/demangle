@@ -62,19 +62,12 @@ def answered(value):
         return False
 
 
-# -- the strategies ----------------------------------------------------------------
-#
-# Random text almost never reaches a parser: measured over 20,000 samples from the
-# mangling alphabet, 1.5% got past the one-character prefix test in `detect` and *none*
-# parsed successfully. A defect living behind the grammar -- which is where they live --
-# would never be found that way. So the strategies below start from names that really do
-# parse and damage them.
+# Strategies damage real names: random text from the mangling alphabet almost never gets
+# past `detect` (1.5% of 20,000 samples, none parsed), so it never reaches the grammar.
 
 CORPUS = [name for name, _ in load_corpus("itanium-real-world.txt")][:400]
 CORPUS += [name for name, _ in load_corpus("msvc-llvm-corpus.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("rust-real-world.txt")][:200]
-# Every scheme, so a grammar added later is fuzzed as soon as it has a corpus. A
-# hostile binary is not obliged to hold only the schemes that existed first.
 CORPUS += [name for name, _ in load_corpus("swift-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("d-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("go-real-world.txt")][:200]
@@ -271,10 +264,8 @@ class TestErrorContract:
         finally:
             registry._plugins.pop("boom", None)
             registry._ordered = None
-            # `_by_first` too, or the per-first-character screen keeps handing out
-            # tuples that still hold this plugin after it has been unregistered --
-            # `candidates()` and `available()` then disagree, and whichever test runs
-            # next and asks both fails for a reason that has nothing to do with it.
+            # `_by_first` too, or the per-first-character screen still hands out this
+            # plugin and `candidates()` disagrees with `available()` in a later test.
             registry._by_first = None
             demangle.cache_clear()
 
@@ -329,8 +320,8 @@ class TestTheCursorNeverPassesTheEndOfInput:
 
         watched, violations = self._watching()
         names = corpus_sample(37)
-        # The shape that had the bug: a real encoding cut short inside the window that
-        # `___Z..._block_invoke` installs, so the literal sits where the rest would be.
+        # A real encoding cut short inside the window `___Z..._block_invoke` installs,
+        # so the literal sits where the rest would be.
         for name in list(names):
             if name.startswith("_Z"):
                 body = name[2:]

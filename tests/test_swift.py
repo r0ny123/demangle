@@ -43,8 +43,7 @@ def corpus():
 
 ROWS = corpus()
 
-#: Swift's own vectors, read through the shared loader so the storage format is the one
-#: every other corpus uses.
+#: Swift's own vectors.
 UPSTREAM = load_corpus("swift-upstream.txt")
 
 
@@ -313,10 +312,7 @@ class TestAgainstSwiftsOwnCorpus:
     this number to be re-read rather than left to rot.
     """
 
-    #: Every vector. Nothing left to raise, and a drop is a regression whatever the
-    #: total -- which is what the two tests below are for. Shared with
-    #: tests/test_conformance.py, where tests/test_readme.py looks for the README's
-    #: counts.
+    #: Shared with tests/test_conformance.py, where tests/test_readme.py reads it.
     EXPECTED_EXACT = pins.SWIFT_UPSTREAM_EXACT
 
     def _score(self):
@@ -666,7 +662,6 @@ class TestTheCursorNeverGoesBackwardsOverACharacterItDidNotRead:
         assert reader.next_char() == ""
         reader.push_back()
         assert reader.pos == reader.end
-        # And the ordinary case is unchanged: what was read is what comes back.
         reader.pos = reader.end - 1
         assert reader.next_char() == "b"
         reader.push_back()
@@ -751,7 +746,7 @@ class TestTheMachOUnderscore:
             ("__$s4demo5PointVMn", "nominal type descriptor for demo.Point"),
             ("__$S4demo5PointVMn", "nominal type descriptor for demo.Point"),
             ("__TtC4demo5Point", "demo.Point"),
-            # The single-underscore forms are the compiler's own and unchanged.
+            # The single-underscore forms are the compiler's own.
             ("_T04demo5PointVMn", "nominal type descriptor for demo.Point"),
             ("_$s4demo5PointVMn", "nominal type descriptor for demo.Point"),
         ],

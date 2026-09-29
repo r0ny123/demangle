@@ -227,9 +227,7 @@ class TestSafety:
             # `M` with a function after it, which is the shape it exists for.
             ("_D4test3fooMFiZv", "test.foo(int)"),
             ("_D4test3fooMxFiZv", "test.foo(int) const"),
-            # The check is on how far the cursor moved, not on what came out: a
-            # zero-length component is anonymous and spells nothing, and the reference
-            # reads this one.
+            # A zero-length component is anonymous and spells nothing; the reference reads it.
             ("_D3fooC0", "foo"),
             ("_D3fooC3bar", "foo"),
             ("_D3fooFC3barZv", "foo(bar)"),
@@ -486,11 +484,8 @@ class TestWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # The `P` that *is* the word `function` absorbs; the ones above it do not.
-            # `dlang_type` decides that from the character after the `P` -- a calling
-            # convention, and nothing else -- and deciding it from the pointee's
-            # *spelling* swallowed every level: `PPUZi` and `PPPUZi` both came back as
-            # `PUZi`, so a pointer to a function pointer was spelled as the pointer.
+            # Only the `P` that *is* the word `function` absorbs: `dlang_type` decides from
+            # the character after the `P` (a calling convention), not the pointee's spelling.
             ("_D3foo3barFUZiZv", "foo.bar(extern(C) int() function)"),
             ("_D3foo3barFPUZiZv", "foo.bar(extern(C) int() function)"),
             ("_D3foo3barFPPUZiZv", "foo.bar(extern(C) int() function*)"),
@@ -504,8 +499,7 @@ class TestWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_parse_integer` appends the characters it read, so a leading zero is
-            # part of the literal. Formatting the value instead spelled `24u` for `024u`.
+            # `dlang_parse_integer` appends the characters it read, so a leading zero stays.
             ("_D3foo__T3barVki024Z3bazFZv", "foo.bar!(024u).baz()"),
             ("_D3foo__T3barVmi007Z3bazFZv", "foo.bar!(007uL).baz()"),
             ("_D3foo__T3barVii00Z3bazFZv", "foo.bar!(00).baz()"),
@@ -523,9 +517,7 @@ class TestWhatMutatingRealSymbolsFound:
         ("mangled", "expected"),
         [
             ("_D3foo__T3barViN13Z3bazFZv", "foo.bar!(-13).baz()"),
-            # The two kinds that spell their *value* rather than their digits used to
-            # drop the sign with the digits, and `-'\x11'` came back as `'\x11'` -- the
-            # positive literal, not an unspellable one.
+            # The kinds that spell their *value* rather than their digits keep the sign.
             ("_D3foo__T3barVaN17Z3bazFZv", "foo.bar!(-'\\x11').baz()"),
             ("_D3foo__T3barVuN1000Z3bazFZv", "foo.bar!(-'\\u03e8').baz()"),
             ("_D3foo__T3barVbN1Z3bazFZv", "foo.bar!(-true).baz()"),
@@ -537,10 +529,7 @@ class TestWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         "mangled",
         [
-            # A bare `0` is the anonymous *scope* inside a path, where the reference
-            # writes nothing for it. An argument list has no such thing: the empty
-            # string took a slot and was spelled as one, so these came back
-            # `foo.bar!(null, ).baz()` and `foo.bar!(, ).qux()`.
+            # A bare `0` is an anonymous *scope* inside a path; an argument list has none.
             "_D3foo__T3barVln0Z3bazFZv",
             "_D3foo__T3bar00Z3quxFZv",
         ],
@@ -555,15 +544,13 @@ class TestMoreOfWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type.
-            # The `Z` is what makes it one, so a truncated `_D10TypeInfo_c6__vtbl` is not
-            # `_D10TypeInfo_c6__vtblZ` with the end missing -- it is not a symbol.
+            # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type; the
+            # `Z` is what makes it one, so without it this is not a symbol.
             ("_D3foo6__vtblZ", "vtable for foo"),
             ("_D3foo6__vtbl", "_D3foo6__vtbl"),
             ("_D3foo7__Class", "_D3foo7__Class"),
             ("_D10TypeInfo_c6__vtbl", "_D10TypeInfo_c6__vtbl"),
-            # And a component that is *called* `__vtbl` with a function type after it is
-            # an ordinary function, which refusing to fall through had made unreadable.
+            # A component *called* `__vtbl` with a function type after it is a function.
             ("_D3foo6__vtblFZv", "foo.__vtbl()"),
         ],
     )
@@ -598,12 +585,8 @@ class TestMoreOfWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_parse_qualified` skips a literal `0` with a `continue`, which steps
-            # over the "consume the encoded arguments" every other component goes
-            # through -- so the type belongs to a component the reference left out, and
-            # the reference does not spell it. Writing it after the path said the
-            # component before was that function: `Mutex.unlock()` for a name whose `()`
-            # is somewhere else.
+            # `dlang_parse_qualified` skips a literal `0` with a `continue`, bypassing the
+            # argument parse, so the type belongs to the omitted component and is not spelled.
             ("_D3foo3bar0FZv", "foo.bar"),
             ("_D3foo3bar0FiZv", "foo.bar"),
             ("_D4core4sync5mutex5Mutex6unlock0FNeZv", "core.sync.mutex.Mutex.unlock"),
@@ -620,14 +603,10 @@ class TestMoreOfWhatMutatingRealSymbolsFound:
         "mangled",
         [
             # `TemplateArgX` is `T Type`, `V Type Value`, `S Number_opt QualifiedName` or
-            # `X`, and nothing else. A bare symbol name was read here as well, on the
-            # grounds that a compiler emits one where the kind is unambiguous -- it does
-            # not, `dlang_template_args` refuses one, and neither corpus has a name that
-            # needs it.
+            # `X`, and nothing else; `dlang_template_args` refuses a bare symbol name.
             "_D3foo__T3bar3bazZ3quxFZv",
             "_D3foo__T3barQeZ3quxFZv",
-            # An `S` argument whose qualified name spells nothing is not an argument
-            # either: it took a slot and was spelled as one.
+            # An `S` argument whose qualified name spells nothing is not an argument either.
             "_D3foo__T3barS0Z3quxFZv",
         ],
     )
@@ -641,9 +620,7 @@ class TestWhatTheThirdSittingFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_type`'s `G` case remembers where the digit run began and appends it
-            # verbatim, so a leading zero is part of the bound. Same rule as an integer
-            # literal; re-formatting it wrote a different bound.
+            # `dlang_type`'s `G` case appends the digit run verbatim, leading zero included.
             ("_D3foo3barFG012aZv", "foo.bar(char[012])"),
             ("_D3foo3barFG12aZv", "foo.bar(char[12])"),
             ("_D8demangle4testFG02G42G42aZv", "demangle.test(char[42][42][02])"),
@@ -655,9 +632,8 @@ class TestWhatTheThirdSittingFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # Nothing is left to name once the marker is taken off, and the reference
-            # still writes the prefix. Requiring a component before it read the marker as
-            # an ordinary name.
+            # Nothing is left to name once the marker is taken off; the reference still
+            # writes the prefix.
             ("_D6__initZ", "initializer for"),
             ("_D6__vtblZ", "vtable for"),
         ],
@@ -669,8 +645,7 @@ class TestWhatTheThirdSittingFound:
         ("mangled", "expected"),
         [
             # The reference renames `__postblit` only where the type is exactly a `this`
-            # parameter and an empty D-convention signature. "No attributes" was the
-            # first reading of the rule and renamed six shapes it does not.
+            # parameter and an empty D-convention signature.
             ("_D8demangle4test10__postblitMFZv", "demangle.test.this(this)"),
             ("_D8demangle4test10__postblitMFZi", "demangle.test.this(this)"),
             ("_D8demangle4test10__postblitFZv", "demangle.test.__postblit()"),
@@ -801,8 +776,7 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
             ("_D1w__T1bS__T1cZZ1xi", "w.b!(c!()).x"),
             ("_D1w__T1bS__T1cTaZZ1xi", "w.b!(c!(char)).x"),
             ("_D1w__T1bS__T1cZ1yZ1xi", "w.b!(c!().y).x"),
-            # The 44-character `testexpansion.s!(...)` instance with `S` where a
-            # length `8` was. `tools/mutate.py --seed 9`.
+            # The 44-character `testexpansion.s!(...)` instance with `S` where a length was.
             (
                 "_D13testexpansion44__T1sTS13testexpansionS__T1sTiZ1sFiZ6ResultZ1sFS13testexpansion8__T1sTiZ1sFiZ6ResultZ6Result3fooMFNaNfZv",
                 "testexpansion.s!(testexpansion, s!(int).s(int).Result).s(testexpansion.s!(int).s(int).Result).Result.foo()",
@@ -1240,8 +1214,7 @@ class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
             "_D8demangle__T4testS_D0Zv",
             "_D4core8internal2gc4impl12conservativeQw3Gcx__T7markAllS_DaZv",
             # A back reference counts as a name only where it points at one:
-            # `dlang_symbol_name_p` follows the `Q` and asks for a digit there, and `Qi`
-            # here points into the middle of the name. `S_DQiZv` came back `abc!()`.
+            # `dlang_symbol_name_p` follows the `Q` and asks for a digit there.
             "_D8demangle__T3abcS_DQiZv",
         ],
     )

@@ -284,8 +284,7 @@ class TestEscapesOutsideTheLeadingPath:
     @pytest.mark.parametrize(
         "symbol",
         [
-            # `50%\"` is not an escape, and reading it as one refused the whole symbol;
-            # the `%2e` beside it is one.
+            # `50%\"` is not an escape; the `%2e` beside it is.
             'type:.eq.struct { S string "json:\\"50%\\""; K example.com/tag/v2%2e5.K }',
             'type:.hash.struct { S string "json:\\"a%2eb\\" x:\\"q\\\\\\"z\\""; I interface {} }',
             'main.Gen[go.shape.struct { S string "json:\\"a%2eb\\" x:\\"q\\\\\\"z\\""; I interface {} }]',

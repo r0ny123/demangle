@@ -66,11 +66,8 @@ def corpus_names():
     """Every mangled name in every conformance corpus, whatever scheme wrote it."""
     import gzip
 
-    # Anchored on this file, not on `demangle.__file__`. Walking up from the package
-    # only reaches `tests/` when the package is an editable install pointing into this
-    # checkout; from an installed wheel or sdist it lands in site-packages, where there
-    # is no `tests/conformance` -- which is exactly how the suite failed when the CI job
-    # that installs the sdist and runs the shipped tests got round to this one.
+    # Anchored on this file, not `demangle.__file__`, which is in site-packages when the
+    # sdist's tests run against an installed package.
     conformance = Path(__file__).parent / "conformance"
     names = []
     for path in sorted(conformance.iterdir()):
@@ -402,10 +399,6 @@ class TestTheToolsAndTheSuiteAgree:
         from . import test_conformance as pins
 
         tool = self.module("differential")
-        # The two sets are equal. `_Z16templateTemplate...S4_` was the one entry the tool
-        # carried and the suite did not -- excused against an older reference version
-        # rather than against a corpus -- and it is now a reference defect with the
-        # declaration as its expected column, which is checked rather than excused.
         assert set(pins.GNU_DIVERGENCES) == tool.KNOWN_DIVERGENCES
 
     def test_no_excused_name_is_also_a_reference_defect(self):

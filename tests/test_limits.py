@@ -25,8 +25,7 @@ from demangle.schemes.itanium.options import GNU_OPTIONS
 
 from .conftest import load_corpus
 
-#: One real name per scheme, so the bound is tested against something the parser will
-#: actually get its teeth into rather than against a name it refuses immediately.
+#: One real name per scheme, so the bound is tested on a name the parser reads deeply.
 CORPUS_FOR = {
     "itanium": "itanium-real-world.txt",
     "msvc": "msvc-llvm-corpus.txt",
@@ -72,19 +71,14 @@ class TestEveryPluginHonoursTheInputBound:
         demangle.demangle_strict(longest, language=plugin, limits=roomy)
 
 
-#: A hostile name and a label for it. Hoisted out of the `parametrize` below so the label
-#: can be the test id: pytest builds an id from the parameters, and `PYTEST_CURRENT_TEST`
-#: carries it in the environment, where Windows refuses anything past 32,767 characters.
-#: One of these names is sixty thousand characters long, so the whole class failed to
-#: *collect* there -- on the platform whose demangler two of the cases are about.
+#: Labelled so the label is the test id: `PYTEST_CURRENT_TEST` carries the id in the
+#: environment, and Windows refuses values past 32,767 characters.
 HOSTILE_NAMES = [
-    # A GNU-runtime Objective-C method: the reading search was over pairs of
-    # underscore positions, and re-mangled the whole symbol for each pair.
+    # A GNU-runtime Objective-C method: readings search over pairs of underscores.
     ("objc method readings", "_i_" + "a_" * 800),
     # Rust v0 bound lifetimes: the count is a base-62 field, so each further
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
-    # MSVC: `max_input` was not consulted at all.
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
     # Itanium substitution reuse, which can double the output every few bytes.
     ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
@@ -199,8 +193,7 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
             assert demangle.demangle(self.NAME, style="cache-probe") != first
             assert demangle.demangle(self.NAME) == before
         finally:
-            # Taken back out, or `--list-styles` in a later test file sees it: this ran
-            # after `test_cli.py` in the default order and hid a missing cleanup.
+            # Taken back out, or `--list-styles` in a later test file sees it.
             from demangle.core.style import _STYLES
 
             if _STYLES is not None:
@@ -293,12 +286,7 @@ class TestDepthExhaustionIsReportedAsABound:
         "mangled",
         [
             "_Z1f" + "1XI" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
-            # An expression nested inside an expression, which is what `ng` is -- not a
-            # `decltype` nested inside a `decltype`, which was here before and which
-            # neither reference reads: `_Z1fDTDTfp_EEv` is handed back by `c++filt` 2.42
-            # and `llvm-cxxfilt` 18.1 alike. It parsed here only through a catch-all in
-            # `_expression` that read whatever could open a `<type>` as one, and it went
-            # with that. `-(-(-fp))` is the same shape and is read the same way by both.
+            # `-(-(-fp))`: nested expressions both references read (unlike nested `DT`).
             "_Z1fDT" + "ng" * DEEPER_THAN_THE_LIMIT + "fp_" + "Ev",
             "_Z1f" + "PF" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
             "?f@@YAX" + "PA" * DEEPER_THAN_THE_LIMIT + "H@Z",
@@ -309,10 +297,8 @@ class TestDepthExhaustionIsReportedAsABound:
             demangle.demangle_strict(mangled, limits=demangle.RELAXED_LIMITS)
 
     def test_and_demangle_still_answers(self):
-        # 400 rather than the count above, and correctly: this one runs under the
-        # *default* limits, whose `max_depth` of 256 the counter reaches well before
-        # here. What it asserts is that the bound comes back as the name unchanged
-        # rather than as an exception, which is `demangle()`'s promise.
+        # 400 is past the *default* `max_depth` of 256; the bound must come back as the
+        # name unchanged, not as an exception.
         deep = "_Z1f" + "1XI" * 400 + "i" + "E" * 400
         assert demangle.demangle(deep) == deep
 
@@ -342,8 +328,7 @@ class TestALimitRefusesRatherThanTruncates:
     def test_the_name_comes_back_whole_rather_than_read_by_another_scheme(self):
         tight = replace(demangle.RELAXED_LIMITS, max_substitutions=2)
         assert demangle.demangle(self.OVERSPENT, limits=tight) == self.OVERSPENT
-        # What the scheme it used to fall through to says about the same text, so the
-        # test fails if that reading ever becomes the answer again.
+        # The pre-Itanium misreading, which must never become the answer.
         assert demangle.demangle(self.OVERSPENT, language="gnuv2") == "_ZN11Expressions2f2ILi1EEEvPApsT(int)"
 
     @pytest.mark.parametrize("entry", ["demangle_strict", "parse"])

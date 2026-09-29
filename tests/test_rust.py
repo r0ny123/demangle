@@ -17,30 +17,22 @@ from demangle.core.errors import DemanglingError
 
 from .conftest import load_corpus
 
-#: rustc-demangle's own vectors, read through the shared loader.
+#: rustc-demangle's own vectors.
 UPSTREAM = load_corpus("rustc-upstream.txt")
 
-#: The four vectors whose expected column this does not produce, held by name so the
-#: count below cannot drift into hiding a real failure. Each spelling here was checked
-#: against `rustfilt` -- rustc-demangle's *own* command-line front end -- rather than
-#: against the library's `#[test]` assertion, because on two of the four the tool and the
-#: assertion do not agree with each other and the tool is what a user meets.
+#: Vectors whose expected column this does not produce, held by name. Spellings are
+#: checked against `rustfilt`, not the library's `#[test]` assertions: on two of them the
+#: two disagree, and the tool is what a user meets.
 KNOWN_DIFFERENCES = {
-    # Detection, not spelling. rustc's hash is `17h` and sixteen hex digits; neither of
-    # these is that shape, so this plugin declines to read them as Rust at all and the
-    # C++ demangler reads them instead -- correctly, since `foo::h05af` is a name C++ can
-    # have. rustc-demangle can afford the wider rule because it is only ever handed names
-    # a caller has already decided are Rust's; see `rust.detect`.
+    # Detection, not spelling: not rustc's `17h` + sixteen hex digits hash shape, so the
+    # C++ scheme reads it. rustc-demangle is only handed names already known to be Rust.
     "_ZN3foo20h05af221e174051e9abcE": "foo::h05af221e174051e9abc",
     "_ZN3foo5h05afE": "foo::h05af",
-    # Not a difference from the tool at all: `rustfilt` prints `foo@@16` for this too.
-    # The vector records the library's own `Display`, which reports what follows the
-    # symbol separately rather than printing it.
+    # `rustfilt` prints this too; the vector records the library's `Display`, which
+    # reports the suffix separately.
     "_RC3foo.llvm.9D1C9369@@16": "foo@@16",
-    # A legacy name with the leading underscore stripped *and* no hash and no `$...$`
-    # escape. rustc-demangle claims it for the reason above; this plugin is offered every
-    # symbol in a binary, where the same rule would claim any C identifier starting `ZN`.
-    # `rustfilt` echoes it back unread, exactly as this does.
+    # No underscore, hash or `$...$` escape: claiming it would claim any C identifier
+    # starting `ZN`. `rustfilt` echoes it back too.
     "ZN4testE": "ZN4testE",
 }
 
@@ -121,8 +113,7 @@ class TestAnIdentifierLengthHasToBeADigit:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # A length written `0` is a different thing and stays legal: the reference
-            # spells this `::f` too. So the test is "not a digit", not "falsy".
+            # A length written `0` stays legal: the test is "not a digit", not "falsy".
             ("_RNvC0_1f", "::f"),
             ("_RC1C", "C"),
             ("_RNvC1C1f", "C::f"),
@@ -156,8 +147,7 @@ class TestWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # The leading `.` is part of the marker. Searching for `llvm.` without it
-            # deleted text that belongs to the symbol.
+            # The leading `.` is part of the marker.
             ("_RNvCs1_1a1f.llvm.123", "a::f"),
             ("_RNvCs1_1a1fllvm.123", "_RNvCs1_1a1fllvm.123"),
             ("_RNvCs1_1a1fB2_llvm.123", "_RNvCs1_1a1fB2_llvm.123"),
@@ -281,17 +271,15 @@ class TestSevenEdgesSettledAgainstTheReference:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # A path with no closing `E` is not a path; this read it as `std`.
+            # A path with no closing `E` is not a path.
             ("_ZN3std", "_ZN3std"),
-            # An escape the reference does not know is printed as it stands, where this
-            # refused the whole name.
+            # An escape the reference does not know is printed as it stands.
             ("_ZN11test$XX$fooE", "test$XX$foo"),
             # `$u..$` takes lowercase hex only, and a control character stays literal.
             ("_ZN14test$u00ab$fooE", "test«foo"),
             ("_ZN14test$u00AB$fooE", "test$u00AB$foo"),
             ("_ZN14test$u0000$fooE", "test$u0000$foo"),
-            # `char::from_u32` refuses a surrogate; `chr` does not, and the lone surrogate
-            # it produced crashed `demangleb` on the way back out.
+            # `char::from_u32` refuses a surrogate; Python's `chr` does not.
             ("_ZN14test$uD800$fooE", "test$uD800$foo"),
             # A bare `h` is the hash marker with no digits, so the hash is empty.
             ("_ZN4test1hE", "test"),

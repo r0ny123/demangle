@@ -38,10 +38,7 @@ class TestShape:
         assert [str(operand) for operand in node.operands] == ["int", "int", "int"]
 
     def test_sizeof_carries_what_it_measures(self):
-        # `_ZN1AIXszcvi_EEE1fEv` rather than `_ZN1AIXszcvT__EEE1fEv`, which was here
-        # before: that one puts a `T_` inside the very argument list it belongs to, and
-        # both references hand it back. This is the same shape with a concrete type, and
-        # all three read it alike.
+        # not `cvT__`: a `T_` inside its own argument list is refused by both references
         node = only("_ZN1AIXszcvi_EEE1fEv", "sizeof")
         assert str(node.operands[0]) == "(int)()"
 
@@ -167,7 +164,6 @@ class TestStillRefusesWhatItShould:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # The same names with a parameter list, which is the only difference.
             ("_Z1fIiEiv", "int f<int>()"),
             ("_Z1fIiEvv", "void f<int>()"),
             ("_Z1fI1DEav", "signed char f<D>()"),
@@ -730,20 +726,16 @@ class TestAStringLiteralArgument:
             ("_Z1fIXtlA3_cLc104ELc0ELc105EEEEvv", 'void f<"h\\0i">()'),
             ("_Z1fIXtlA3_cLc104ELc105ELc0EEEEvv", 'void f<"hi\\0">()'),
             ("_Z1fIXtlA3_cEEEvv", 'void f<"">()'),
-            # A byte that is not UTF-8 is escaped as the byte it is. This came back
-            # `"hÈ"`, a Latin-1 reading of a byte that was never Latin-1.
+            # A byte that is not UTF-8 is escaped as the byte it is.
             ("_Z1fIXtlA3_cLc104ELc200EEEEvv", 'void f<"h\\xC8">()'),
-            # A high byte that is not UTF-8, inside a longer string. llvm-cxxfilt 21
-            # writes the raw byte; this keeps the escape. `tools/mutate.py --seed 9`.
+            # llvm-cxxfilt 21 writes the raw byte; this keeps the escape.
             (
                 "_Z1fIXtl5HellotlA6_cLc15ELc101ELc108ELc208ELc111EEEEEvv",
                 'void f<Hello{"\\xF""el\\xD0o"}>()',
             ),
             ("_Z1fIXtlA3_cLc200ELc65EEEEvv", 'void f<"\\xC8""A">()'),
             ("_Z1fIXtlA3_cLc255ELc255EEEEvv", 'void f<"\\xFF\\xFF">()'),
-            # A high byte whose `\xHH` is followed by a hex digit: the escape is split
-            # so `e` is not a third digit. llvm-cxxfilt writes the raw `0x9B` byte.
-            # `tools/mutate.py --seed 17`.
+            # A `\xHH` followed by a hex digit is split so `e` is not a third digit.
             (
                 "_Z1fIXtl5HellotlA6_cLc155ELc101ELc108ELc108ELc111EEEEEvv",
                 'void f<Hello{"\\x9B""ello"}>()',
@@ -1430,7 +1422,6 @@ class TestTheNameAConstructorRepeats:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # What the cut was there for, and still does.
             ("_ZN3FooIiEC1Ev", "Foo<int>::Foo()"),
             ("_ZN3FooIiED1Ev", "Foo<int>::~Foo()"),
             ("_ZN3FooB3abcC1Ev", "Foo[abi:abc]::Foo()"),
@@ -1549,7 +1540,7 @@ class TestAConversionOperatorHasNoNameToRepeat:
             ("_ZNUt_C1Ev", "'unnamed'::()"),
             ("_ZNDC1a1bEC1Ev", "[a, b]::()"),
             ("_ZNli3_kmC1Ev", 'operator"" _km::()'),
-            # Any other operator name, and a class, are repeated in full, as before.
+            # Any other operator name, and a class, are repeated in full.
             ("_ZNplD0Ev", "operator+::~operator+()"),
             ("_ZNplC1Ev", "operator+::operator+()"),
             ("_ZN1A1BC1Ev", "A::B::B()"),
@@ -1626,8 +1617,7 @@ class TestAFriendDeclaredInsideItsClass:
     @pytest.mark.parametrize(
         ("mangled", "llvm", "gnu"),
         [
-            # The constructor repeats the class, not the friend marker. Both references
-            # drop it from the repeated name. `tools/mutate.py --seed 15`.
+            # The constructor repeats the class, not the friend marker, as both references do.
             ("_ZN1AF3fooC1Ev", "A::friend foo::foo()", "A::foo[friend]::foo()"),
             ("_ZN1AF3fooD1Ev", "A::friend foo::~foo()", "A::foo[friend]::~foo()"),
             ("_ZN1AF3fooIiEC1Ev", "A::friend foo<int>::foo()", "A::foo[friend]<int>::foo()"),
@@ -1879,7 +1869,7 @@ class TestTheOldFormOfSrWithAPlainClass:
         # `sr 1A 3baz E 1v` reads as qualifier levels, which record nothing: `S0_` is
         # the decltype, as it is to both references.
         assert demangle.demangle_strict("_Z1fIiEDTsr1A3bazE1vES0_") == "decltype(A::baz::v) f<int>(decltype(A::baz::v))"
-        # Clang's form of the same member is unchanged.
+        # Clang's form of the same member.
         assert demangle.demangle_strict("_Z1kIiEDTplsr1AE3bazIT_Efp_ES0_1APi") == (
             "decltype(A::baz<int> + fp) k<int>(int, A, int*)"
         )

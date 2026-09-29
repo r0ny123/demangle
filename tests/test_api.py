@@ -73,9 +73,8 @@ class TestDetection:
             ("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E", "rust"),
             ("memcpy", None),
             ("", None),
-            # Itanium `parse` never read `_GLOBAL__` names -- GNU's "global
-            # constructors keyed to ..." extension -- so `detect` does not claim
-            # them either. It used to, and handed them back unchanged one step later.
+            # Itanium `parse` does not read GNU's `_GLOBAL__` names, so `detect` must not
+            # claim them.
             ("_GLOBAL__sub_I_main", None),
         ],
     )

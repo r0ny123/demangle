@@ -266,8 +266,7 @@ class TestFirstCharacterScreen:
 
     def test_no_declaring_scheme_claims_a_name_outside_its_set(self, subtests):
         names = list(self._corpus_names())
-        # Plus every one-and-two-character start, so a scheme that would claim something
-        # short and odd is caught even where no corpus happens to hold one.
+        # Plus every one- and two-character start, which no corpus holds.
         alphabet = string.ascii_letters + string.digits + "_$?@.%&*<>-+~"
         names += list(alphabet) + [a + b for a in alphabet for b in alphabet]
         assert len(names) > 20000

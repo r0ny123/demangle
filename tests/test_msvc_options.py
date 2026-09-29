@@ -36,8 +36,6 @@ from .test_conformance import (
     UNDNAME_INERT_BITS,
 )
 
-#: Every field of `MsvcOptions`, read off the dataclass rather than listed again, so a
-#: field added without a home in these tests still reaches the composition check below.
 ALL_MSVC_OPTIONS = tuple(field.name for field in fields(MsvcOptions))
 
 

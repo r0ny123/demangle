@@ -96,9 +96,7 @@ class TestWhatEachFlagDoes:
                 "destroy for bar",
             ),
             # `ShortenThunk` reaches the three autodiff kinds too, which the vectors never
-            # showed: a derivative stops at the function it is of, a subset-parameters
-            # thunk at what it thunks, and a self-reordering thunk keeps its source type
-            # alone. The 6.1.2 runtime's 310 differentiable symbols all spell so.
+            # show; the 6.1.2 runtime's 310 differentiable symbols all spell so.
             (
                 "shorten_thunk",
                 "$sSdyS2dcfCTJfSUpSr",

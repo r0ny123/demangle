@@ -18,8 +18,7 @@ import pytest
 
 import demangle
 
-#: (mangled, llvm-style, gnu-style). Every one of these is a template argument list
-#: holding one expression, so the difference is visible with nothing else around it.
+#: (mangled, llvm-style, gnu-style).
 VECTORS = [
     # The shape the rule exists for: a plain qualified function. GNU drops the parameter
     # list because `&A::f` is a pointer to member and the parameters are not part of it.
@@ -32,15 +31,10 @@ VECTORS = [
     ("_Z1gI1AIXadL_ZN1AC1EvEEEEvv", "void g<A<&A::A()>>()", "void g<A<&A::A> >()"),
     ("_Z1gI1AIXadL_ZN1AD1EvEEEEvv", "void g<A<&A::~A()>>()", "void g<A<&A::~A> >()"),
     # `S1_` inside the embedded encoding indexes the *enclosing* name's substitution
-    # table -- entry 0 is `g`, entry 1 is `A`, entry 2 the `A` the encoding's own
-    # nested name entered -- which is why both references print `A&` for it. The
-    # shared table is deliberate; see `expr_primary`. (Entry 0 is a function
-    # template's name, and `RS_` in its place is refused: no type is that. Both
-    # references print `g&` for it; see `test_a_template_name_is_not_a_type`.)
+    # table (g, A, then the encoding's own A); see `expr_primary`.
     ("_Z1gI1AIXadL_ZN1AplERS1_EEEEvv", "void g<A<&A::operator+(A&)>>()", "void g<A<&A::operator+> >()"),
     # Unqualified: there is no scope to print, so GNU brackets the declaration instead.
-    # `N 1f E` is a nested name with one component and counts as unqualified, the same as
-    # the bare `_Z1fv` -- both references were asked and both say so.
+    # `N 1f E` counts as unqualified too, per both references.
     ("_Z1gI1AIXadL_Z1fvEEEEvv", "void g<A<&f()>>()", "void g<A<&(f())> >()"),
     ("_Z1gI1AIXadL_ZN1fEvEEEEvv", "void g<A<&f()>>()", "void g<A<&(f())> >()"),
     # A cv- or ref-qualifier is part of the pointer's type and cannot be dropped, so the

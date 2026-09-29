@@ -105,8 +105,7 @@ class TestWhatTheBottlesCarry:
             ),
             # Abseil's raw_hash_map: `template <class Allocator> static auto transfer(
             # Allocator* alloc, slot_type* new_slot, slot_type* old_slot)`. The last
-            # parameter's `SJ_` is one past what the common rule numbers, so every
-            # demangler refused the name.
+            # parameter's `SJ_` is one past what the common rule numbers.
             (
                 ABSEIL_BOTTLE,
                 "auto absl::lts_20260817::container_internal::map_slot_policy<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>::transfer<std::__1::allocator<std::__1::pair<std::__1::vector<int, std::__1::allocator<int>> const, std::__1::vector<int, std::__1::allocator<int>>>>>(std::__1::allocator<std::__1::pair<std::__1::vector<int, std::__1::allocator<int>> const, std::__1::vector<int, std::__1::allocator<int>>>>*, absl::lts_20260817::container_internal::map_slot_type<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>*, absl::lts_20260817::container_internal::map_slot_type<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>*)",

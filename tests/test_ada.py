@@ -47,9 +47,7 @@ class TestAgainstLibertysOwnVectors:
         assert exact == ADA_EXACT
 
     def test_the_one_name_the_reference_declines_is_declined_here(self):
-        # `c++filt --format=gnat` answers `<x_E>`; wrapping in angle brackets is how it
-        # says "not mine". This returns the name unchanged, which says the same thing in
-        # this library's vocabulary.
+        # `c++filt --format=gnat` answers `<x_E>`, its way of saying "not mine".
         assert demangle.demangle("x_E", language="ada") == "x_E"
         with pytest.raises(DemanglingError):
             demangle.demangle_strict("x_E", language="ada")
@@ -221,8 +219,7 @@ class TestSharingTheOverlapWithTheOtherPreItaniumSchemes:
         assert order.index("ada") < order.index("gnuv2") < order.index("codewarrior")
 
     def test_a_gnat_name_would_otherwise_be_read_as_cpp(self):
-        # What the ordering buys. GNU v2 reads this happily and gets a wrong name, not
-        # no name, which is the outcome this library treats as worse than silence.
+        # GNU v2 would read this and get a wrong name, which is worse than none.
         mangled = "p__taskobjTKB"
         assert demangle.demangle(mangled) == "p.taskobj"
         assert demangle.demangle(mangled, language="gnuv2") != "p.taskobj"

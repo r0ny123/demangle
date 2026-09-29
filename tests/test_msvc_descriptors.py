@@ -161,12 +161,11 @@ class TestABaseClassDescriptorsFourNumbers:
     @pytest.mark.parametrize(
         "mangled",
         [
-            # A negated zero, which aliased with the plain zero below it.
+            # A negated zero.
             "??_R1?A@A@A@A@Other@ns@@8",
             "??_R1?A@?0A@EA@Other@ns@@8",
-            # A real negative first number, which came back as `ns::Other::A::`.
+            # A real negative first number.
             "??_R1?0A@A@A@A@Other@ns@@8",
-            # And the two the rule already refused, for company.
             "??_R1A@A@?A@A@Other@ns@@8",
             "??_R1A@A@A@?A@Other@ns@@8",
         ],

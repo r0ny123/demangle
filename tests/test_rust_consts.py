@@ -32,10 +32,8 @@ EXPECTED = [
     ("ca_", "'\\n'"),
     ("c2202_", "'∂'"),
     # `escape_debug` escapes a grapheme-extending character so it cannot attach itself
-    # to the quote: a combining mark by category, and the `Other_Grapheme_Extend` list
-    # -- U+0DDF is category `Mc` and U+FF9E is `Lm`, and both printed bare here where
-    # the reference writes the escape. Every scalar value was put to the reference to
-    # find the list; `tools/mutate.py --seed 4` found the first.
+    # to the quote: a combining mark by category, plus the `Other_Grapheme_Extend` list
+    # (U+0DDF is `Mc` and U+FF9E is `Lm`).
     ("c300_", "'\\u{300}'"),
     ("cddf_", "'\\u{ddf}'"),
     ("cff9e_", "'\\u{ff9e}'"),
@@ -80,8 +78,7 @@ EXPECTED = [
     ("e090a_", '{*"\\t\\n"}'),
 ]
 
-#: Real `rustc` output, to show the productions surviving a whole symbol rather than the
-#: synthetic `_RIC0K...E` wrapper. Produced by `rustfilt`; see the module docstring.
+#: Real `rustc` output, spelled by `rustfilt`; see the module docstring.
 REAL_WORLD = [
     ("_RINvCsipD1KD37Gle_6consts8with_arrKAh1_h2_h3_EEB2_", "consts::with_arr::<{[1, 2, 3]}>"),
     ("_RINvCsipD1KD37Gle_6consts10with_tupleKTh7_b1_EEB2_", "consts::with_tuple::<{(7, true)}>"),
@@ -102,9 +99,7 @@ REAL_WORLD = [
     ("_RINvCsipD1KD37Gle_6consts8with_strKRe_EB2_", 'consts::with_str::<"">'),
 ]
 
-#: One truncated or otherwise malformed input per production. None of these may raise out
-#: of `demangle.demangle()`, which promises an answer for anything: an attacker-supplied
-#: symbol table is the normal case, not the exceptional one.
+#: One truncated or otherwise malformed input per production.
 MALFORMED = [
     "_RIC0KA",  # array, no elements and no terminator
     "_RIC0KAh1_",  # array, one element, truncated before "E"

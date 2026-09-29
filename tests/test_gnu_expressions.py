@@ -39,8 +39,7 @@ OPERANDS = [
     ("pltl1AELi2E", "A{} + 2", "A{}+(2)"),
     ("plfpTLi2E", "this + 2", "this+(2)"),
     # A qualifier may carry template arguments and the name stays a name: what decides
-    # is the last component. `!is_array<T>::value` appears in every `enable_if` in
-    # libstdc++ and was two of the differences from c++filt over the shipped libraries.
+    # is the last component.
     ("ntsr8is_arrayIiEE5value", "!is_array<int>::value", "!is_array<int>::value"),
     # Arguments on the last component make it a template-id, and c++filt brackets it.
     ("plsr3stdE1xIiELi2E", "std::x<int> + 2", "(std::x<int>)+(2)"),
@@ -177,9 +176,7 @@ def test_the_option_is_what_selects_it():
 @pytest.mark.parametrize(
     ("mangled", "llvm", "gnu"),
     [
-        # The comma is the one infix operator whose GNU spelling had a space in it here.
-        # GNU writes no space after any operator, this one included -- `(1),(2)` beside
-        # `(1)+(2)` -- and llvm-cxxfilt writes `1, 2`, which is a list and does have one.
+        # GNU writes no space after any operator, the comma included.
         ("_Z1fDTcmLi1ELi2EEv", "f(decltype(1, 2), void)", "f(decltype ((1),(2)), void)"),
         (
             "_Z1fDTcmfp_fp0_Eii",
@@ -740,8 +737,7 @@ class TestAResolvedCalleeIsPrintedByName:
             ),
             ("_Z1fIiEDTclL_Z1hiEEET_", "decltype (h()) f<int>(int)", "decltype(h(int)()) f<int>(int)"),
             # `S0_` is the `A` the callee's own nested name entered; `S_` would be the
-            # function template `f`, which is nothing a type can be, and that form is
-            # refused now where both references read it as `f const&`.
+            # function template `f`, which no type can be.
             (
                 "_Z1fIiEDTclL_ZN1AplERKS0_Efp_EET_",
                 "decltype (A::operator+({parm#1})) f<int>(int)",
@@ -833,9 +829,7 @@ class TestAnEmptyPackIsAnEmptyEntryToCxxfilt:
                 "decltype (new int(, int)) f<, int>(, int)",
                 "decltype(new int(int)) f<int>(int)",
             ),
-            # An expansion inside a type's argument list, which the llvm style dropped
-            # only when it was written `J E`: `1AIDpT_T0_E` over an empty `T_` spelled
-            # `A<, int>` and `A<int, >` there, where llvm-cxxfilt prints `A<int>`.
+            # An expansion inside a type's argument list.
             ("_Z1fIJEiEv1AIDpT_T0_E", "void f<, int>(A<, int>)", "void f<int>(A<int>)"),
             ("_Z1fIJEiEv1AIT0_DpT_E", "void f<, int>(A<int>)", "void f<int>(A<int>)"),
             ("_Z1fIJEiEv1AIDpT_E", "void f<, int>(A<>)", "void f<int>(A<>)"),

@@ -27,9 +27,7 @@ import demangle
 
 from .conftest import load_corpus
 
-#: Every scheme's corpus, because the defect this file was written for lived in one
-#: scheme and nothing would have found it in another. A scheme added later is covered
-#: as soon as it has a corpus.
+#: Every scheme's corpus: a race in one scheme would not show in another.
 CORPORA = (
     "itanium-real-world.txt",
     "itanium-libstdcxx.txt",
@@ -45,9 +43,7 @@ CORPORA = (
     "delphi-real-world.txt",
 )
 
-#: Enough names per corpus to interleave the threads properly, few enough to stay a
-#: unit test. The race this catches showed up at 3% of names, so a few hundred per
-#: scheme is far past the point where it would be missed.
+#: The race this catches showed up at 3% of names, so a few hundred per scheme suffice.
 PER_CORPUS = 300
 THREADS = 8
 ROUNDS = 3

@@ -29,8 +29,7 @@ from .test_conformance import TYPES_GNU_EXACT, TYPES_LLVM_EXACT, TYPES_TOTAL
 
 
 class TestTheItaniumTypeGrammar:
-    #: Raised as gaps close, never lowered silently. Both styles now read every row of
-    #: their reference's corpus exactly; `gnu` used to fall three short, on `KK`.
+    #: Never lowered silently.
     EXPECTED_EXACT: ClassVar = {"gnu": TYPES_GNU_EXACT, "llvm": TYPES_LLVM_EXACT}
 
     CORPUS: ClassVar = {"gnu": "itanium-types.txt", "llvm": "itanium-types-llvm.txt"}
@@ -186,8 +185,7 @@ class TestComplexAndImaginaryAreNotCvQualifiers:
     @pytest.mark.parametrize(
         ("mangled", "llvm", "gnu"),
         [
-            # The collapse the gnu style does do, and still does: a real duplicate
-            # cv-qualifier, where the outer one wins.
+            # The collapse the gnu style does do: a real duplicate cv-qualifier.
             ("_Z1fKKi", "f(int const const)", "f(int const)"),
             ("_Z1fKVi", "f(int volatile const)", "f(int volatile const)"),
         ],

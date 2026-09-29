@@ -25,9 +25,7 @@ from demangle.schemes.codewarrior._parser import DemangleFailure, demangle_codew
 from .conftest import CONFORMANCE
 from .test_conformance import CODEWARRIOR_EXACT, CODEWARRIOR_TOTAL
 
-#: How many of the vectors auto-detection routes here and reads exactly. The rest are
-#: names `gnuv2` also reads -- validly, and with its own spelling -- and it is offered
-#: first. Naming the language gives all of them.
+#: The rest are names `gnuv2` also validly reads and is offered first.
 AUTODETECTED_EXACT = 36
 
 
@@ -84,7 +82,6 @@ class TestAgainstTheReferencesOwnVectors:
             ("__dt__6CActorFv", "CActor::~CActor()"),
             # A template argument list written literally into the symbol.
             ("destroy<PUi>__4rstlFPUiPUi", "rstl::destroy<unsigned int*>(unsigned int*, unsigned int*)"),
-            # An operator.
             ("__pl__FRC9CRelAngleRC9CRelAngle", "operator+(const CRelAngle&, const CRelAngle&)"),
             # A pointer to member, with the two hidden parameters that say it is const.
             (

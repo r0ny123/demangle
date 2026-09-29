@@ -211,8 +211,7 @@ class TestClaimsNothingItShouldNot:
             "a__b_u",
             "SYSTEM_$$_init",
             "_GLOBAL__sub_I_main.cpp",
-            # A lone surrogate, which is what a byte that is not UTF-8 arrives as. The
-            # re-mangling check used to let a `UnicodeEncodeError` out instead of saying no.
+            # A lone surrogate, which is what a byte that is not UTF-8 arrives as.
             "\ud800__b_1",
             "tyObject_\ud800__abc",
         ],

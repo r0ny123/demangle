@@ -96,8 +96,7 @@ class TestWhatIsRefused:
             # parameters, so it never stands here -- bare or as an array's element.
             "Java_pkg_C_m__V",
             "Java_pkg_C_m___3V",
-            # An overload head that unescapes to `a//b`: the fallback path refused the
-            # empty component, the overload loop did not, and `a..b(int)` was read.
+            # An overload head that unescapes to `a//b`: an empty component.
             "Java_a__b__I",
             # A surrogate on its own is not a character, and no Java identifier holds
             # one: a high surrogate with no low one after it, a low one with nothing
