@@ -54,9 +54,9 @@ demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi").base_name
 
 ## Errors
 
-What the strict entry points raise when a name cannot be read. A plugin that fails some
-other way is wrapped in a `ParseError`, with the original chained; an argument that is
-wrong rather than unreadable is a `TypeError` or a `ValueError`, as each function says.
+What the strict entry points raise when a name cannot be read. An argument that is
+wrong rather than unreadable is a `TypeError` or a `ValueError`, as each function
+says.
 
 ::: demangle.core.errors
     options:
@@ -77,8 +77,8 @@ wrong rather than unreadable is a `TypeError` or a `ValueError`, as each functio
   [the tree](core.md#the-tree).
 - [`Style`][demangle.core.style.Style] and
   [`register_style`][demangle.core.style.register_style]: [styles](core.md#styles).
-- [`LanguagePlugin`][demangle.core.plugin.LanguagePlugin] and `register_language`, which is
-  [`demangle.core.registry.register`][demangle.core.registry.register]:
+- [`LanguagePlugin`][demangle.core.plugin.LanguagePlugin] and `register_language`,
+  which is [`demangle.core.registry.register`][demangle.core.registry.register]:
   [plugins](core.md#plugins).
 - The options objects `style()` takes, one per scheme that has any:
   [`ItaniumOptions`][demangle.schemes.itanium.options.ItaniumOptions],

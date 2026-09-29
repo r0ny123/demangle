@@ -28,9 +28,8 @@ def symbols(library):
     return [line.split()[-1] for line in output.splitlines() if line.strip()]
 ```
 
-For a report, the string form is what you want, and `demangle()` is built for this shape
-of use: most symbols in a real binary are not mangled at all, and one it cannot read
-comes back unchanged rather than raising.
+For a report, the string form is what you want; `demangle()` hands back a name it
+cannot read rather than raising, so it can label every symbol in the table.
 
 ```python
 import demangle
@@ -39,13 +38,13 @@ for name in symbols("/usr/lib/x86_64-linux-gnu/libstdc++.so.6"):
     print(demangle.demangle(name))
 ```
 
-`demangle_all()` is the same over an iterable, sharing one cache — worth using on a whole
-table, because symbol tables repeat themselves relentlessly.
+`demangle_all()` is the same over an iterable, sharing one cache, which suits a whole
+table.
 
 ## Asking the structural question
 
-`parse()` returns a `Node`. Every node supports `walk()`, `find(kind)`, `children()` and
-`spell()`.
+`parse()` returns a `Node`. Every node supports `walk()`, `find(kind)`, `children()`
+and `spell()`.
 
 ```python
 def template_taken_by_const_reference(parameter):
@@ -64,8 +63,8 @@ def template_taken_by_const_reference(parameter):
     return referent if referent.kind == "template" else None
 ```
 
-Each test is a question about the node, not about characters — and that `qualified` step
-is the sort of thing you only find by looking at a real tree.
+Each test is a question about the node, not about characters — and that `qualified`
+step is the sort of thing you only find by looking at a real tree.
 
 ```python
 import collections
@@ -111,8 +110,8 @@ Measured on the same library against the same question:
 The false positives are mostly `basic_string`'s own constructors, where the `const&`
 belongs to a different parameter entirely:
 `basic_string(char const*, unsigned long, std::allocator<char> const&)` matches, because
-nothing in the pattern knows where one parameter ends and the next begins. Making it know
-means matching brackets, and the element types carry `<`, `>` and `,` of their own.
+nothing in the pattern knows where one parameter ends and the next begins. Making it
+know means matching brackets, and the element types carry `<`, `>` and `,` of their own.
 
 That is the whole failure: C++ declaration syntax nests, and nesting is what regular
 expressions cannot parse. The nesting is not incidental — it is how the type system is
@@ -123,8 +122,6 @@ written down.
 ```python
 tree = demangle.parse("_ZNK3Foo3barIiEEvPKc")
 
-tree.spell()  # 'void Foo::bar<int>(char const*) const'
-[node.text for node in tree.find("name")]  # ['Foo', 'bar']
 next(tree.find("function")).parameters  # the parameter list, as nodes
 next(tree.find("template")).arguments  # the template arguments, as nodes
 ```
@@ -142,17 +139,17 @@ next(go.find("receiver")).pointer  # True
 ```
 
 That last one is worth dwelling on. `example.com/m/v2%2e5.(*T).Method` cannot be split
-into a package and a name by looking for a `.`: the package path contains one of its own,
-written `%2e` precisely because it would otherwise be ambiguous. Reading it correctly
-means decoding it, and the tree hands it over already decoded.
+into a package and a name by looking for a `.`: the package path contains one of its
+own, written `%2e` precisely because it would otherwise be ambiguous. Reading it
+correctly means decoding it, and the tree hands it over already decoded.
 
 ## How the schemes differ
 
 Every scheme returns a tree, but the kinds differ with what each language has to say.
 
 - **C++ trees carry declarator shape** — pointers, references, parameter lists, return
-  types — because a C++ type wraps the name it declares. `int (*)(char)` is a pointer to
-  a function, and the tree says so rather than leaving you to read it out of the
+  types — because a C++ type wraps the name it declares. `int (*)(char)` is a pointer
+  to a function, and the tree says so rather than leaving you to read it out of the
   brackets.
 - **Rust and Go trees carry path structure** — `symbol`, `path`, `impl`, `namespace`,
   `receiver` — because neither language has declarator syntax, and what a caller wants

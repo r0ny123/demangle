@@ -41,9 +41,8 @@ native code, no compiler required.
   the template arguments and the parameter types are fields rather than a regular
   expression against C++ declaration syntax, which nests and so cannot be parsed that
   way.
-- **Measured, not asserted.** Every scheme is scored against its reference demangler or,
-  where none exists, against what the compiler itself recorded or a round trip back to
-  the symbol. Correctness, below, says how and over how many names.
+- **Measured, not asserted.** Every scheme is scored against a reference; see
+  Correctness, below.
 - **Safe on untrusted input.** `demangle()` never raises over a name it cannot read; it
   hands the name back. Recursion depth, output size, substitution count and input length
   are all bounded, and every bound is configurable per call.
@@ -86,11 +85,9 @@ symbol nor the declaration.
 1
 ```
 
-Every node supports `.walk()`, `.find(kind)`, `.children()` and `.spell()`.
-
 All schemes return full trees. A Rust symbol comes back as a `symbol` holding a
-`path` of `name` components, with `impl`, `template`, `type` and `literal` nodes for what
-the path carries:
+`path` of `name` components, with `impl`, `template`, `type` and `literal` nodes for
+what the path carries:
 
 ```python
 >>> tree = demangle.parse("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
@@ -98,7 +95,7 @@ the path carries:
 ['core', 'fmt', 'Formatter', 'pad']
 ```
 
-[Working with the tree](https://github.com/r0ny123/demangle/blob/main/docs/analysing-a-binary.md) works
+[Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) works
 one real task through `parse()` end to end — finding every function in libstdc++ that
 takes a string by const reference, and measuring what the regular-expression version of
 the same question gets wrong.
@@ -158,20 +155,21 @@ library does too:
 ```python
 >>> demangle.demangle_text("0000000000001139 T _ZN3foo3barEv")
 '0000000000001139 T foo::bar()'
->>> demangle.demangle_stream(sys.stdin, sys.stdout)     # a line at a time, for pipes
 >>> [f.mangled for f in demangle.find_symbols("a _ZN3foo3barEv b")]
 ['_ZN3foo3barEv']
 ```
 
 `find_symbols` gives the span as well as the spelling, for a caller that needs to know
-*where* in a line a symbol was.
+*where* in a line a symbol was. `demangle_stream(sys.stdin, sys.stdout)` does the same
+a line at a time, for pipes.
 
 ### Detection and batches
 
 ```python
 >>> demangle.detect("?f@@YAXH@Z")
 'msvc'
->>> list(demangle.demangle_all(symbol_table))     # generator, shares the cache
+>>> list(demangle.demangle_all(["_Z1fv", "main"]))    # shares the cache
+['f()', 'main']
 ```
 
 ### Bytes, when the names came from a symbol table
@@ -203,12 +201,13 @@ of our source:
 ```
 
 The nodes carry `__match_args__`, so a `match` statement can test the shape of a
-subtree; [the tree's reference](https://r0ny123.github.io/demangle/reference/core/#the-tree)
-has an example.
+subtree; [the tree's
+reference](https://r0ny123.github.io/demangle/reference/core/#the-tree) has an example.
 
 A node reached more than once — an Itanium substitution, a Rust node named both by
-position and by role — is written once with an `id` and afterwards as `{"$ref": id}`. The
-structure is a graph, and expanding it in full does not always terminate in useful time.
+position and by role — is written once with an `id` and afterwards as `{"$ref": id}`.
+The structure is a graph, and expanding it in full does not always terminate in useful
+time.
 
 ### Styles
 
@@ -237,7 +236,7 @@ leave out, at the call site rather than by registering anything globally:
 
 The MSVC scheme has nine such options, five from `llvm-undname` and four from
 `UnDecorateSymbolName`, each with a command-line flag;
-[`MsvcOptions`](https://github.com/r0ny123/demangle/blob/main/src/demangle/schemes/msvc/options.py)
+[`MsvcOptions`](https://r0ny123.github.io/demangle/reference/schemes/#demangle.schemes.msvc.options.MsvcOptions)
 says which is which and how far each reaches.
 
 Swift has the bundle Xcode and LLDB show instead of the full spelling — `Either` for
@@ -273,27 +272,27 @@ $ demangle --json _Z1fPi                           # the parse tree as JSON
 
 ## Correctness
 
-Correctness here is a measurement rather than a claim. Every scheme is scored against the
-reference implementation for its mangling — `llvm-cxxfilt`, GNU `c++filt`,
-`llvm-undname`, `rustfilt`, `swift-demangle`, `cwdemangle`, Embarcadero's own unmangler —
-and, where no reference exists, against what the compiler itself recorded or a property
-the mangling has to satisfy: re-mangling what was read must reproduce the symbol the
-compiler wrote.
+Correctness here is a measurement rather than a claim. Every scheme is scored against
+the reference implementation for its mangling — `llvm-cxxfilt`, GNU `c++filt`,
+`llvm-undname`, `rustfilt`, `swift-demangle`, `cwdemangle`, Embarcadero's own unmangler
+— and, where no reference exists, against what the compiler itself recorded or a
+property the mangling has to satisfy: re-mangling what was read must reproduce the
+symbol the compiler wrote.
 
 The checked-in corpora are replayed by the test suite with no compiler and no reference
 demangler present. Beyond them, whole symbol tables are run live against the references:
-about 2,400,000 real symbols from shipped libraries, and every name that differs is
+about 2,500,000 real symbols from shipped libraries, and every name that differs is
 accounted for one by one.
 
-**[CONFORMANCE.md](https://github.com/r0ny123/demangle/blob/main/CONFORMANCE.md) is the whole picture** — what each corpus is measured
-against, the notes behind every number, the live runs, and the places where following a
-reference would itself be the defect.
+**[CONFORMANCE.md](https://r0ny123.github.io/demangle/CONFORMANCE/) is the whole
+picture** — what each corpus is measured against, the notes behind every number, the
+live runs, and the places where following a reference would itself be the defect.
 
 ## Safety
 
 A mangled name is untrusted input in any tool that opens files it did not produce, so
 the bounds are the design rather than a hardening pass.
-[SECURITY.md](https://github.com/r0ny123/demangle/blob/main/SECURITY.md) has the threat
+[SECURITY.md](https://r0ny123.github.io/demangle/SECURITY/) has the threat
 model, how the bounds are enforced and tested, and how to report privately.
 
 ## Performance
@@ -310,9 +309,9 @@ Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
 Treat these as ratios rather than absolutes. The gap between cold and warm is the point:
 symbol tables repeat themselves relentlessly, and results are cached.
 
-`bench.py --check` gates CI against the committed baseline. It compares figures normalised
-against a calibration workload measured in the same run, so the gate reports a slower
-*demangler* rather than a slower *machine*.
+`bench.py --check` gates CI against the committed baseline. It compares figures
+normalised against a calibration workload measured in the same run, so the gate reports
+a slower *demangler* rather than a slower *machine*.
 
 ## Architecture
 
@@ -324,22 +323,20 @@ Schemes are plugins. `core` never imports one, they never import each other, and
 separate distribution can add a language through the `demangle.languages`
 entry-point group without patching this package. Both rules are enforced by tests.
 
-See [ARCHITECTURE.md](https://github.com/r0ny123/demangle/blob/main/ARCHITECTURE.md) for the full picture and
-[Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md) to add a language
-of your own.
+See [ARCHITECTURE.md](https://r0ny123.github.io/demangle/ARCHITECTURE/) for the full
+picture and [Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/) to
+add a language of your own.
 
 ## Contributing
 
 New schemes, corpus contributions, and conformance bug reports are all welcome — see
-[CONTRIBUTING.md](https://github.com/r0ny123/demangle/blob/main/CONTRIBUTING.md), or
-[report a wrong spelling](https://github.com/r0ny123/demangle/issues/new?template=conformance-bug.yml).
+[CONTRIBUTING.md](https://r0ny123.github.io/demangle/CONTRIBUTING/), or [report a wrong
+spelling](https://github.com/r0ny123/demangle/issues/new?template=conformance-bug.yml).
 
 Fixing a spelling or adding a language should not require understanding the whole
 codebase. Where it does, that is a bug.
 
 ## Licence
 
-MIT. The Rust demangler derives from Team bi0s' `rust_demangler` (MIT) and the MSVC
-demangler from [SMDA](https://github.com/danielplohmann/smda) (BSD 2-Clause); both are
-substantially modified, and both upstream licences are reproduced in
-[NOTICE](https://github.com/r0ny123/demangle/blob/main/NOTICE).
+MIT. The Rust and MSVC readers derive from MIT- and BSD-licensed originals;
+[NOTICE](https://github.com/r0ny123/demangle/blob/main/NOTICE) has the details.

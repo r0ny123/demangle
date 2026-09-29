@@ -19,8 +19,7 @@ do to a consuming application is in scope.
 Specifically in scope:
 
 - Unbounded memory or CPU use from a short input (algorithmic complexity attacks).
-- An exception escaping `demangle()` for any string, which is documented to hand back a
-  name it cannot read rather than raise.
+- An exception escaping `demangle()` for any string.
 - `RecursionError` or stack exhaustion escaping any entry point.
 - Non-deterministic output for identical input.
 - Control characters or other unexpected content reaching output that a caller would
@@ -35,14 +34,13 @@ Out of scope:
 ## Defences
 
 - `demangle()` never raises for a name it cannot read: every such failure returns the
-  input unchanged. What it does raise on is a mistake in the call itself — a `language`
-  or `style` that does not exist, or a name that is not a string.
+  input unchanged. What it does raise on is a mistake in the call itself — a
+  `language` or `style` that does not exist, or a name that is not a string.
 - Recursion depth, output length, substitution count and input length are all bounded,
   with defaults set well above anything a real compiler emits, and are configurable
   per call through `Limits`. Every registered scheme is checked against the input bound
   by `tests/test_limits.py`, so a scheme added later has to keep the promise rather than
-  quietly not be covered — this was written after MSVC and Rust were found not to be
-  consulting `max_input` at all.
+  quietly not be covered.
 - Bounds are enforced *while* a name is read, not checked on the finished result. A
   bound observed only afterwards is a report: a fourteen-character Rust name asking for
   fourteen million bound lifetimes took fourteen seconds to build the string that the
@@ -51,14 +49,15 @@ Out of scope:
   claimed the name and then ran out of the budget the caller set, so the name is offered
   to no other scheme. Passing it on meant a laxer one read the mangling itself — an
   Itanium name over a tightened substitution budget came back as
-  `_ZN11Expressions2f2ILi1EEEvPApsT(int)`, a declaration built out of the encoding by the
-  pre-Itanium scheme. A caller who lowers a limit is defending against hostile input,
+  `_ZN11Expressions2f2ILi1EEEvPApsT(int)`, a declaration built out of the encoding by
+  the pre-Itanium scheme. A caller who lowers a limit is defending against hostile input,
   which is the last place to start guessing.
 - `KeyboardInterrupt`, `SystemExit` and `MemoryError` are never swallowed by the
-  best-effort paths — they mean the process is in trouble, not that a name is malformed.
+  best-effort paths — they mean the process is in trouble, not that a name is
+  malformed.
 - The library is safe to call from several threads. `tests/test_concurrency.py` asserts
   the strong form — every thread agrees with the single-threaded answer character for
-  character — over every scheme's corpus, and CI runs it on free-threaded builds where
+  character — over every scheme's corpus, and CI runs it on a free-threaded build where
   the GIL is not there to hide a shared mutable parser.
 - The package has no runtime dependencies, so it contributes no transitive supply chain.
   This is enforced by a test, not just stated.
@@ -70,16 +69,16 @@ Out of scope:
 
 How much work one symbol can cause is measured rather than assumed, by growing a
 repeated unit until it reaches the input bound, for every scheme, and recording wall
-time and peak allocation. Apart from the one bounded case below, nothing is superlinear.
-The worst shape in the package is a Swift name of 64KB, the largest the default
-`max_input` allows: about 586ms and 16MB, linear in the input from 5KB up, and every
-other scheme's worst is under that.
+time and peak allocation. Apart from the one bounded case below, nothing is
+superlinear. The worst shape in the package is a Swift name of 64K characters, the
+largest the default `max_input` allows: about 586ms and 16MB, linear in the input from
+5KB up, and every other scheme's worst is under that.
 
 That case is quadratic and bounded rather than removed. Every Itanium `<prefix>` is a
 substitution candidate and each entry holds the whole prefix, so N components record
 O(N²) characters without any single one crossing `max_output`: `_ZN` and 8,190
 components of `1a`, 16KB, took a second and 98MB. The characters the table records are
-now capped at sixteen times the output bound, a hundred times what the largest of the
+capped at sixteen times the output bound, a hundred times what the largest of the
 217,730 Itanium symbols in a stock Ubuntu 24.04 records.
 
 The fuzzing that found it — roughly 550,000 corpus mutations across every scheme,

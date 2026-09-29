@@ -311,10 +311,6 @@ once, with the module that says most about it -- an options class with its optio
 
 ## Ada / GNAT
 
-As with Go, a name that spells itself can still be a reading rather than a refusal:
-`demangle_ada("x")` reads `x` as a unit of that name, because a bare lower-case identifier
-is a valid Ada unit name. `detect` still declines it, so autodetection never claims it.
-
 ::: demangle.schemes.ada
 
 ### Nodes

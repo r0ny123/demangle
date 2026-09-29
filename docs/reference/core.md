@@ -1,7 +1,7 @@
 # Core
 
-The scheme-agnostic half. Nothing here imports a scheme at import time, and a new mangling
-scheme is written against these and nothing else.
+The scheme-agnostic half. Nothing here imports a scheme at import time, and a new
+mangling scheme is written against these and nothing else.
 
 ## The builder protocol
 
@@ -18,10 +18,9 @@ scheme is written against these and nothing else.
 
 ## The tree
 
-The node classes a tree is made of -- `Node` and `Decorated` are also exported from
-`demangle` -- and the builder a scheme hands them to. Every class declares
-`__match_args__`, so a caller can match on the shape of a subtree rather than compare
-`node.kind` against a string:
+The node classes a tree is made of, and the builder a scheme hands them to. Every class
+declares `__match_args__`, so a caller can match on the shape of a subtree rather than
+compare `node.kind` against a string:
 
 ```python
 import demangle
@@ -67,9 +66,9 @@ A scheme's own node kinds are under its section on the [schemes page](schemes.md
 
 ## Plugins
 
-A distribution can add a scheme of its own by calling `register`, which the package
-exports as `demangle.register_language`, or by advertising a `demangle.languages` entry
-point. [Adding a scheme](../adding-a-scheme.md) is the walk-through.
+A distribution can add a scheme of its own by calling `register` or by advertising a
+`demangle.languages` entry point. [Adding a scheme](../adding-a-scheme.md) is the
+walk-through.
 
 ::: demangle.core.plugin
 
@@ -87,9 +86,6 @@ point. [Adding a scheme](../adding-a-scheme.md) is the walk-through.
 ::: demangle.core.decorations
 
 ## Styles
-
-`Style` and `register_style` are also exported from `demangle`, and `demangle.style()`
-composes a style for one call.
 
 ::: demangle.core.style
     options:

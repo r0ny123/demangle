@@ -5,9 +5,6 @@ repo_url: https://github.com/r0ny123/demangle
 repo_name: r0ny123/demangle
 edit_uri: edit/main/
 
-# Pages include the root-level Markdown via snippets rather than copying it.
-docs_dir: docs
-
 nav:
   - Home: index.md
   - Working with the tree: analysing-a-binary.md
@@ -57,6 +54,7 @@ markdown_extensions:
   - pymdownx.highlight: { anchor_linenums: true }
   - pymdownx.superfences
   - pymdownx.inlinehilite
+  # Pages include the root-level Markdown via snippets rather than copying it.
   - pymdownx.snippets:
       base_path: ["."]
       check_paths: true

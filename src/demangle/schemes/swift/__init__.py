@@ -202,7 +202,7 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
 def typerefs(blob):
     """Split a metadata blob of NUL-terminated mangled names into those names.
 
-    Not `blob.split(b"\0")`: a symbolic reference's offset is arbitrary bytes and very
+    Not `blob.split(b"\\0")`: a symbolic reference's offset is arbitrary bytes and very
     often holds a zero, so splitting cuts names in half. See `symbolic.end_of_name`.
     """
     from .symbolic import names
