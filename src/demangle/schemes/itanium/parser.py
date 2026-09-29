@@ -18,9 +18,9 @@ A transcription of the productions is vendored at docs/specs/itanium-grammar.txt
 import re
 import struct
 
-from ...core.errors import LimitExceeded, NotMangledError, ParseError
+from ...core.errors import LimitExceeded, NotMangledError, ParseError, TruncatedError
 from ...core.limits import DEFAULT_LIMITS
-from ...core.reader import DIGITS, Reader
+from ...core.reader import DIGITS, MAX_NUMBER_DIGITS, Reader
 from .options import DEFAULT_OPTIONS
 from .substitutions import (
     DeferredProduction,
@@ -638,12 +638,13 @@ class ItaniumParser:
     def parse(self):
         """<mangled-name> ::= _Z <encoding> [. <vendor-specific suffix>]"""
         reader = self.reader
-        if reader.startswith("___Z") or reader.startswith("____Z"):
+        mangled = reader.text
+        if mangled.startswith(("___Z", "____Z")):
             return self.block_invocation()
         # See `_ALLOC_TOKEN`. `__alloc_token_malloc` is not one: what follows must be a mangled
         # name itself.
         alloc_token = ""
-        if reader.startswith(_ALLOC_TOKEN):
+        if mangled.startswith(_ALLOC_TOKEN):
             after = reader.pos + len(_ALLOC_TOKEN)
             digits = after
             while digits < reader.length and reader.text[digits] in DIGITS:
@@ -722,15 +723,21 @@ class ItaniumParser:
         `L _Z... E` in the template arguments -- writes it first and this overwrites it,
         which is the order that leaves the outermost answer standing.
         """
-        special = self.special_name()
-        if special is not None:
-            self._entity_shape = ("special", None)
-            return special
+        reader = self.reader
+        pos = reader.pos
+        if pos < reader.length and reader.text[pos] in "TG":
+            special = self.special_name()
+            if special is not None:
+                self._entity_shape = ("special", None)
+                return special
+        elif self._depth >= self._max_depth:
+            # The guard `special_name` would have applied.
+            raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
 
         name, quals, ref_qualifier, is_template = self.name()
 
-        reader = self.reader
-        if reader.eof or reader.peek() in ("E", "."):
+        pos = reader.pos
+        if pos >= reader.length or reader.text[pos] in "E.":
             # A data symbol: a name and nothing after it, and so no return type for a
             # conversion operator's name to have suppressed.
             self._drop_return = False
@@ -750,7 +757,8 @@ class ItaniumParser:
         builder = self.builder
         reader = self.reader
         attributes = ""
-        if reader.startswith("Ua9enable_ifI"):
+        pos = reader.pos
+        if pos < reader.length and reader.text[pos] == "U" and reader.startswith("Ua9enable_ifI"):
             # `Ua <source-name> <template-arg>* E` is a vendor attribute; `enable_if` is
             # the only one either reference spells, and it goes after the signature.
             reader.pos += len("Ua9enable_ifI")
@@ -784,12 +792,20 @@ class ItaniumParser:
             # an empty list.
             wrote_void = False
             keep_empty = self.options.gnu_empty_pack_spelling
-            while not reader.eof and reader.peek() not in ("E", ".", "Q"):
+            text = reader.text
+            size = self._size
+            while True:
+                pos = reader.pos
+                if pos >= reader.length:
+                    break
+                char = text[pos]
+                if char == "E" or char == "." or char == "Q":
+                    break
                 if not read:
-                    wrote_void = reader.peek() == "v"
+                    wrote_void = char == "v"
                 parameter = self.type_()
                 read += 1
-                if _drops_out(builder, parameter):
+                if not size(parameter):
                     # An expansion over an empty pack is not the explicit object parameter. c++filt still
                     # prints it as an empty entry, `f(, int)`, unless it ends the list.
                     if keep_empty:
@@ -821,7 +837,9 @@ class ItaniumParser:
         if ref_qualifier:
             suffix += " " + ref_qualifier
         suffix += attributes
-        if reader.eat("Q"):
+        pos = reader.pos
+        if pos < reader.length and reader.text[pos] == "Q":
+            reader.pos = pos + 1
             # The requires-clause closes the declaration, after the qualifiers.
             suffix += " requires " + builder.spell(self.constraint_expression())
         if self._argument_constraint is not None:
@@ -970,7 +988,8 @@ class ItaniumParser:
         back out with it.
         """
         reader = self.reader
-        char = reader.peek()
+        pos = reader.pos
+        char = reader.text[pos] if pos < reader.length else ""
 
         if char == "N":
             return self.nested_name(as_type)
@@ -1132,11 +1151,19 @@ class ItaniumParser:
         ```
         """
         reader = self.reader
-        reader.expect("N")
+        text = reader.text
+        # Only `block_invocation` moves the end, and not while a name is being read.
+        end = reader.length
+        pos = reader.pos
+        if pos >= end or text[pos] != "N":
+            raise ParseError(text, pos, "expected 'N'")
+        pos += 1
+        reader.pos = pos
         # `N H`: a C++23 explicit object member function, which has no qualifiers of its own.
         quals = ()
         ref_qualifier = ""
-        if reader.peek() == "H":
+        char = text[pos] if pos < end else ""
+        if char == "H":
             # Licensed by `peek`: the character it just returned is the one consumed.
             reader.pos += 1
             # `H` marks an explicit object parameter for the entity's own name only;
@@ -1144,8 +1171,9 @@ class ItaniumParser:
             if not as_type:
                 self._explicit_object = True
         else:
-            quals = self.cv_qualifiers()
-            char = reader.peek()
+            if char in QUALIFIER_LETTERS:
+                quals = self.cv_qualifiers()
+                char = reader.peek()
             if char == "R":
                 reader.pos += 1
                 ref_qualifier = "&"
@@ -1166,17 +1194,83 @@ class ItaniumParser:
         outer_bare_has_no_base_name = self._prefix_bare_has_no_base_name
         self._prefix_bare = None
         self._prefix_bare_has_no_base_name = False
+        builder = self.builder
+        subs = self.subs
         try:
             max_depth = self._max_depth
-            peek = reader.peek
             while True:
-                char = peek()
+                pos = reader.pos
+                if pos >= end:
+                    raise ParseError(self._mangled, pos, "unterminated nested name")
+                char = text[pos]
                 if char == "E":
-                    # Licensed by `peek`, as above.
-                    reader.pos += 1
+                    reader.pos = pos + 1
                     break
-                if not char:
-                    raise ParseError(self._mangled, reader.pos, "unterminated nested name")
+                if char in DIGITS:
+                    # `prefix_component` for its commonest case, a bare <source-name>, inlined. It
+                    # neither recurses nor carries a module name on, and nothing here raises the depth.
+                    if self._depth >= max_depth:
+                        raise LimitExceeded(self._mangled, "recursion depth", max_depth)
+                    self._prefix_ended_on = ""
+                    self._component_has_no_base_name = False
+                    # `plain_source_name`, inlined but for the anonymous namespace.
+                    start = pos
+                    pos += 1
+                    if pos < end and text[pos] in DIGITS:
+                        while pos < end and text[pos] in DIGITS:
+                            pos += 1
+                            if pos - start > MAX_NUMBER_DIGITS:
+                                raise ParseError(text, start, "number too long")
+                        if char == "0":
+                            reader.padded_length = True
+                        length = int(text[start:pos])
+                    else:
+                        length = ord(char) - 48
+                    stop = pos + length
+                    if stop > end:
+                        raise TruncatedError(text, pos)
+                    if not length or text[pos] == "_":
+                        reader.pos = start
+                        name = self.plain_source_name()
+                    else:
+                        reader.pos = stop
+                        name = self._last_source_name = text[pos:stop]
+                    if module:
+                        name = f"{name}@{module}"
+                        module = ""
+                    pos = reader.pos
+                    following = text[pos] if pos < end else ""
+                    if following == "B":
+                        name += self.abi_tags()
+                        pos = reader.pos
+                        following = text[pos] if pos < end else ""
+                    component = builder.name(name)
+                    parts.append(component)
+                    self._prefix_bare = component
+                    self._prefix_bare_has_no_base_name = False
+                    self._prefix_has_args = False
+                    is_template = False
+                    if following == "E":
+                        continue
+                    if following == "M":
+                        self._closure_prefix_seen = True
+                        if not self._closure_prefix_substitutes:
+                            continue
+                    combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
+                    self._prefixes -= self._size(combined)
+                    if self._prefixes < 0:
+                        raise LimitExceeded(self._mangled, "output length", self._max_output)
+                    if subs.recording:
+                        # `SubstitutionTable.remember(combined, "prefix")`, inlined.
+                        entries = subs._entries
+                        if len(entries) >= subs._limit:
+                            raise LimitExceeded(self._mangled, "substitution", subs._limit)
+                        entries.append(combined)
+                    if following == "M":
+                        self._note_entry(self._closure_prefix_entries)
+                    elif following == "I":
+                        self._note_entry(self._template_name_entries)
+                    continue
                 depth = self._depth = self._depth + 1
                 if depth > max_depth:
                     raise LimitExceeded(self._mangled, "recursion depth", max_depth)
@@ -1249,19 +1343,25 @@ class ItaniumParser:
         reader = self.reader
         builder = self.builder
         self._prefix_ended_on = ""
-        char = reader.peek()
+        text = reader.text
+        pos = reader.pos
+        char = text[pos] if pos < reader.length else ""
 
-        # Most components are length-prefixed names: one set test skips the markers below.
+        # `nested_name` reads a <source-name> itself; one set test skips the markers below.
         if char in _PREFIX_MARKERS:
             if char == "S":
-                component = self.substitution(expanded=self._abbreviation_scopes_a_structor())
-                named = self._module_of(component)
+                expanded = text[pos : min(pos + 2, reader.length)] in STD_ABBREVIATIONS and (
+                    self._abbreviation_scopes_a_structor()
+                )
+                component = self.substitution(expanded=expanded)
+                named = self._module_names.get(id(component)) if self._module_names else None
                 if named is not None:
                     # A module name, not a scope: it belongs to the component that
                     # follows, and it decorates that component wherever it stands. The
                     # position rule below is about a substitution used as a *scope*.
                     return False, named
-                self._only_a_base_production(parts, "a substitution")
+                if parts:
+                    self._only_a_base_production(parts, "a substitution")
                 self._prefix_ended_on = "a substitution"
                 self._prefix_bare = None
                 self._prefix_has_args = id(component) in self._specialised_handles
@@ -1334,7 +1434,8 @@ class ItaniumParser:
         self._prefix_bare = component
         self._prefix_bare_has_no_base_name = self._component_has_no_base_name
         self._prefix_has_args = False
-        following = reader.peek()
+        pos = reader.pos
+        following = text[pos] if pos < reader.length else ""
         if following != "E":
             if following == "M":
                 # The prefix of a closure or data member: a candidate under the ABI, clang and GCC 13,
@@ -1343,7 +1444,11 @@ class ItaniumParser:
                 if not self._closure_prefix_substitutes:
                     return False, ""
             combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
-            self.subs.remember(self._spend_prefix(combined), "prefix")
+            # `_spend_prefix`, inlined.
+            self._prefixes -= self._size(combined)
+            if self._prefixes < 0:
+                raise LimitExceeded(self._mangled, "output length", self._max_output)
+            self.subs.remember(combined, "prefix")
             if following == "M":
                 self._note_entry(self._closure_prefix_entries)
             elif following == "I":
@@ -1765,24 +1870,36 @@ class ItaniumParser:
         Split out because a module name goes *between* the two: `3FooB3ABI` inside
         module `MOD` is `Foo@MOD[abi:ABI]`, not `Foo[abi:ABI]@MOD`.
         """
+        # `Reader.length_prefixed` inlined, errors and all: this runs for nearly every
+        # component of every name.
         reader = self.reader
-        length, text = reader.length_prefixed()
+        mangled, end = reader.text, reader.length
+        start = pos = reader.pos
+        while pos < end and mangled[pos] in DIGITS:
+            pos += 1
+            if pos - start > MAX_NUMBER_DIGITS:
+                raise ParseError(mangled, start, "number too long")
+        if pos == start:
+            raise ParseError(mangled, start, "expected a number")
+        if mangled[start] == "0":
+            reader.padded_length = True
+        length = int(mangled[start:pos])
+        stop = pos + length
+        if stop > end:
+            raise TruncatedError(mangled, pos)
+        reader.pos = stop
+        text = mangled[pos:stop]
         self._last_source_name = text
         if length <= 0:
-            raise ParseError(self._mangled, reader.pos, "source name of non-positive length")
-        if text.startswith("_GLOBAL__N"):
-            return "(anonymous namespace)"
-        if (
-            self.options.gnu_expression_spelling
-            and len(text) >= 10
-            and text.startswith("_GLOBAL_")
-            and text[8] in "._$"
-            and text[9] == "N"
-        ):
-            # `d_source_name` takes any of the three markers assemblers have used
-            # between `_GLOBAL_` and the `N` -- `_`, `.` and `$` -- where llvm-cxxfilt
-            # knows the underscore alone and prints the others as written.
-            return "(anonymous namespace)"
+            raise ParseError(self._mangled, stop, "source name of non-positive length")
+        if text[0] == "_" and text.startswith("_GLOBAL_"):
+            if text.startswith("_GLOBAL__N"):
+                return "(anonymous namespace)"
+            if self.options.gnu_expression_spelling and len(text) >= 10 and text[8] in "._$" and text[9] == "N":
+                # `d_source_name` takes any of the three markers assemblers have used
+                # between `_GLOBAL_` and the `N` -- `_`, `.` and `$` -- where llvm-cxxfilt
+                # knows the underscore alone and prints the others as written.
+                return "(anonymous namespace)"
         return text
 
     def _identifier(self):
@@ -2051,13 +2168,18 @@ class ItaniumParser:
         and the class is the template rather than the typedef.
         """
         reader = self.reader
-        reader.expect("S")
-        code = "S" + reader.peek()
+        text, end = reader.text, reader.length
+        pos = reader.pos
+        if pos >= end or text[pos] != "S":
+            raise ParseError(text, pos, "expected 'S'")
+        pos += 1
+        reader.pos = pos
+        code = "S" + text[pos] if pos < end else "S"
         table = self._abbrev_expanded if expanded else self._abbrev
         self._last_entry_index = None
         if code in table:
-            reader.take()
-            tags = self.abi_tags()
+            reader.pos = pos + 1
+            tags = self.abi_tags() if pos + 1 < end and text[pos + 1] == "B" else ""
             if tags:
                 # 5.1.2: an abbreviation carrying ABI tags is substitutable as the tagged whole; the bare
                 # abbreviation is not.
@@ -2066,7 +2188,8 @@ class ItaniumParser:
         index = reader.seq_id()
         if index >= self._template_template_param_floor:
             self._template_template_shifted = True
-        entry = self.subs.lookup(index)
+        entries = self.subs._entries
+        entry = entries[index] if index < len(entries) else self.subs.lookup(index)
         kind = type(entry)
         try:
             if kind is ParameterReference:
@@ -2083,6 +2206,9 @@ class ItaniumParser:
                 # The same, for a component built *over* a parameter. See
                 # `DeferredProduction`.
                 return self._pack_aware(self._reread(index, entry))
+            if self.builder.members(entry) is None and id(entry) not in self._expansion_handles:
+                # `_pack_aware`'s answer for anything that is not a pack.
+                return entry
             return self._pack_aware(entry)
         finally:
             # Set on the way out: re-reading a deferred production resolves back-references through
@@ -2301,28 +2427,52 @@ class ItaniumParser:
         back-reference in the name.
         """
         reader = self.reader
-        # Most types carry no qualifiers: one lookahead settles it.
-        if reader.peek() not in QUALIFIER_LETTERS:
-            return ()
+        text, end = reader.text, reader.length
+        pos = reader.pos
         mask = 0
-        if reader.eat("r"):
+        if pos < end and text[pos] == "r":
             mask = 1
-        if reader.eat("V"):
+            pos += 1
+        if pos < end and text[pos] == "V":
             mask |= 2
-        if reader.eat("K"):
+            pos += 1
+        if pos < end and text[pos] == "K":
             mask |= 4
+            pos += 1
+        reader.pos = pos
         return CV_COMBINATIONS[mask]
 
     def type_(self):
         self._productions += 1
+        reader = self.reader
+        pos = reader.pos
+        char = reader.text[pos] if pos < reader.length else ""
+        if char:
+            builtin = BUILTIN_TYPES.get(char)
+            if builtin is not None and self._depth < self._max_depth:
+                # `_type`'s first arm, without the frame: a builtin records nothing and binds nothing.
+                reader.pos = pos + 1
+                # A builtin renders as its spelling, so its size is that spelling's length.
+                if len(builtin) > self._max_output:
+                    raise LimitExceeded(self._mangled, "output length", self._max_output)
+                return self.builder.builtin(builtin)
         depth = self._depth = self._depth + 1
         if depth > self._max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
         subs = self.subs
-        start = self.reader.pos
-        uses, entries = self._parameter_uses, len(subs)
+        start = pos
+        uses, entries = self._parameter_uses, len(subs._entries)
         try:
-            result = self._type()
+            if char == "N":
+                # `_type`'s commonest arm, without the frame.
+                result = self.nested_name(True)[0]
+                if subs.recording:
+                    recorded = subs._entries
+                    if len(recorded) >= subs._limit:
+                        raise LimitExceeded(self._mangled, "substitution", subs._limit)
+                    recorded.append(result)
+            else:
+                result = self._type(char)
             # Checked on every type: `M S_ S_` doubles, so a few hundred bytes can describe
             # gigabytes. `size()` is O(1).
             if self._size(result) > self._max_output:
@@ -2333,10 +2483,10 @@ class ItaniumParser:
             if (
                 self._parameter_uses != uses
                 and subs.recording
-                and len(subs) > entries
+                and len(subs._entries) > entries
                 and type(subs.last) is not ParameterReference
             ):
-                subs.defer_last(start, self.reader.pos)
+                subs.defer_last(start, reader.pos)
             return result
         finally:
             self._depth = depth - 1
@@ -2371,19 +2521,14 @@ class ItaniumParser:
             self._deferred[key] = result
         return result
 
-    def _type(self):
+    def _type(self, char):
+        """The `<type>` opening with `char`, which `type_` has already read at the cursor."""
         reader = self.reader
         builder = self.builder
         subs = self.subs
-        char = reader.peek()
 
-        # <builtin-type>: never a substitution candidate (5.1.10).
-        builtin = BUILTIN_TYPES.get(char)
-        if builtin is not None:
-            reader.pos += 1
-            return builder.builtin(builtin)
-
-        # Arms ordered by how often each is taken over the Itanium symbols of Ubuntu 24.04.
+        # A <builtin-type> and a <nested-name> never reach here: `type_` reads them. Arms ordered
+        # by how often each is taken over the Itanium symbols of Ubuntu 24.04.
         if char in _CLASS_ENUM_START:
             return subs.remember(self.class_enum_type(), "type")
 
@@ -2406,7 +2551,7 @@ class ItaniumParser:
                 raise SubstitutionMisuse(
                     self._mangled, reader.pos, f"substitution S{index}_ names nothing a type can be"
                 )
-            named = self._module_of(component)
+            named = self._module_names.get(id(component)) if self._module_names else None
             if named is not None:
                 # `S1_ 1A` is `A@FOO.BAR`: the pair is a <type> candidate; the module entry alone is
                 # not one a later `S<n>_` can mean.
@@ -2422,7 +2567,7 @@ class ItaniumParser:
         if char == "P":
             reader.pos += 1
             inner = self._over_a_pack(self.type_())
-            protocol = self._objc_protocols.get(id(inner))
+            protocol = self._objc_protocols.get(id(inner)) if self._objc_protocols else None
             if protocol is not None:
                 # A pointer to protocol-qualified `objc_object` is `id<A>`; a second pointer is
                 # ordinary.
@@ -2706,14 +2851,17 @@ class ItaniumParser:
         recognising it means looking past them.
         """
         reader = self.reader
+        text, end = reader.text, reader.length
         at = reader.pos
         for letter in ("r", "V", "K"):
-            if reader.ahead(at - reader.pos) == letter:
+            if at < end and text[at] == letter:
                 at += 1
-        offset = at - reader.pos
-        if reader.ahead2(offset) in ("Do", "DO", "Dw", "Dx"):
-            return True
-        return reader.ahead(offset) == "F"
+        if at >= end:
+            return False
+        char = text[at]
+        if char == "D":
+            return at + 1 < end and text[at + 1] in "oOwx"
+        return char == "F"
 
     def qualified_type(self):
         """<qualified-type>, as the reference reads it: one production, one candidate.
@@ -3093,14 +3241,16 @@ class ItaniumParser:
         # one in a parameter's type.
         outer_constraint = self._argument_constraint
         self._argument_constraint = None
+        text = reader.text
         try:
             while True:
-                char = reader.peek()
+                pos = reader.pos
+                if pos >= reader.length:
+                    raise ParseError(self._mangled, pos, "unterminated template argument list")
+                char = text[pos]
                 if char == "E":
-                    reader.take()
+                    reader.pos = pos + 1
                     break
-                if not char:
-                    raise ParseError(self._mangled, reader.pos, "unterminated template argument list")
                 if char == "Q" and not seen:
                     # `I <template-arg>+ [Q <constraint>] E`: llvm-cxxfilt refuses
                     # `_ZN5test21jIQ4TrueITL0__EEEvz`.

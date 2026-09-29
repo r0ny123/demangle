@@ -181,11 +181,11 @@ class SubstitutionTable:
                 f"{production!r} is not a substitution candidate under ABI 5.1.10; "
                 f"candidates are {sorted(CANDIDATE_PRODUCTIONS)}"
             )
-        if not self.recording:
-            return handle
-        if len(self._entries) >= self._limit:
-            raise LimitExceeded(self._mangled, "substitution", self._limit)
-        self._entries.append(handle)
+        if self.recording:
+            entries = self._entries
+            if len(entries) >= self._limit:
+                raise LimitExceeded(self._mangled, "substitution", self._limit)
+            entries.append(handle)
         return handle
 
     def defer_last(self, start, end):

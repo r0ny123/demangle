@@ -213,11 +213,14 @@ class Reader:
             pos += 1
             if pos - start > MAX_SEQ_ID_DIGITS:
                 raise ParseError(text, start, "substitution index too long")
-        raw = text[start:pos]
-        self.pos = pos
-        self.expect("_")
-        if not raw:
+        # `expect("_")`, inlined.
+        if pos >= length or text[pos] != "_":
+            self.pos = pos
+            raise ParseError(text, pos, "expected '_'")
+        self.pos = pos + 1
+        if pos == start:
             return 0
+        raw = text[start:pos]
         value = 0
         for char in raw:
             value = value * 36 + _SEQ_ID_VALUES[char]

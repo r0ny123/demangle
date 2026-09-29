@@ -193,14 +193,11 @@ class SpellingBuilder(Builder):
         #: its element; every other declarator stops them.
         self.collapse_duplicate_qualifiers = collapse_duplicate_qualifiers
 
-    def builtin(self, spelling):
-        return Spelling(spelling)
-
-    def name(self, text):
-        return Spelling(text)
-
-    def raw(self, text):
-        return Spelling(text)
+    # The class itself rather than a method calling it: a class attribute does not bind,
+    # so `builder.name(text)` is `Spelling(text)`, and these are the builder's commonest calls.
+    builtin = Spelling
+    name = Spelling
+    raw = Spelling
 
     def literal(self, kind, value):
         return Spelling(value)

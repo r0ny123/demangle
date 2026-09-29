@@ -480,6 +480,7 @@ class TestStillRefusesWhatItShould:
             ("_Z1fIJEEvDpT_v", "void f<>(void)"),
             ("_Z1fvv", "f(void, void)"),
             ("_Z1fvi", "f(void, int)"),
+            ("_Z1fiv", "f(int, void)"),
             # And the shape the rule exists for, which is exactly one written `v`.
             ("_Z1fv", "f()"),
             ("_Z1fIiEvv", "void f<int>()"),

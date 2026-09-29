@@ -39,6 +39,8 @@ the reference demanglers, and a **Performance** section.
   faster.
 - **The result cache holds 65,536 names** (was 16,384), so a second pass over a large
   library's symbol table hits; about 440 bytes per C++ entry.
+- **Cold Itanium demangling is about 1.25x faster** on real symbol tables (a third fewer
+  instructions per name), with byte-identical output.
 
 ### Fixed
 
