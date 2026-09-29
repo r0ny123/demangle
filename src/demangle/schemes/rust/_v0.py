@@ -1,7 +1,7 @@
 import re
 import string
 import unicodedata
-from typing import NoReturn, Optional
+from typing import NoReturn
 
 from ...core.limits import DEFAULT_LIMITS
 from . import nodes
@@ -426,7 +426,7 @@ def escape_debug(character: str) -> str:
     return character
 
 
-def parse_hex_uint(nibbles: str) -> Optional[int]:
+def parse_hex_uint(nibbles: str) -> int | None:
     """A `<hex-digits>` run as an integer, or None when it will not fit in 64 bits.
 
     Leading zeroes are stripped *before* the width test, so a padded encoding of a small
@@ -440,7 +440,7 @@ def parse_hex_uint(nibbles: str) -> Optional[int]:
     return int(trimmed, 16) if trimmed else 0
 
 
-def parse_hex_str(nibbles: str) -> Optional[str]:
+def parse_hex_str(nibbles: str) -> str | None:
     """A `<hex-digits>` run as the UTF-8 string it encodes, or None if it is not UTF-8.
 
     Each byte is a pair of nibbles, so an odd count cannot be a byte string at all. The
@@ -583,7 +583,7 @@ class Parser:
             raise UnableTov0Demangle(self.inn)
         return value + 1
 
-    def namespace(self) -> Optional[str]:
+    def namespace(self) -> str | None:
         at = self.next_val
         if at >= self.end:
             raise UnableTov0Demangle(self.inn)

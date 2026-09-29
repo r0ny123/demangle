@@ -209,7 +209,7 @@ class TestOutOfScope:
         for name, original in saved.items():
             setattr(builder, name, watch(original))
         try:
-            for corpus in ("itanium-reference-defects.txt", "itanium-regressions.txt", "itanium-libstdcxx.txt"):
+            for corpus in ("itanium-reference-defects.txt", "reported/itanium.txt", "itanium-libstdcxx.txt"):
                 for mangled, _ in load_corpus(corpus):
                     with contextlib.suppress(DemanglingError):
                         demangle.parse(mangled)

@@ -39,6 +39,7 @@ class TestRendersWhatItSpells:
         # A silent zero here would make every check below vacuously true.
         assert len(NAMES) > 5000
 
+    @pytest.mark.sweep
     def test_every_corpus_name_spells_the_same_through_the_tree(self, subtests):
         for name in NAMES:
             expected = demangle.demangle(name)

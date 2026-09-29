@@ -57,7 +57,7 @@ IDENTITY_IS_A_READING = {"ada": {"x", "not_a_symbol_at_all"}}
 
 def corpus_names():
     names, seen = [], set()
-    for path in sorted(CONFORMANCE.iterdir()):
+    for path in sorted([*CONFORMANCE.iterdir(), *(CONFORMANCE / "reported").glob("*.txt")]):
         if path.suffix == ".gz":
             text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
         elif path.suffix == ".txt":
@@ -122,6 +122,7 @@ class TestEverySchemeKeepsTheSameContract:
                 assert demangle.demangle(sample, language=language, style=style) != sample
 
 
+@pytest.mark.sweep
 def test_the_bytes_path_answers_what_the_text_path_answers():
     """Over every name in every corpus, whichever scheme claims it.
 

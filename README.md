@@ -333,9 +333,6 @@ New schemes, corpus contributions, and conformance bug reports are all welcome â
 [CONTRIBUTING.md](https://r0ny123.github.io/demangle/CONTRIBUTING/), or [report a wrong
 spelling](https://github.com/r0ny123/demangle/issues/new?template=conformance-bug.yml).
 
-Fixing a spelling or adding a language should not require understanding the whole
-codebase. Where it does, that is a bug.
-
 ## Licence
 
 MIT. The Rust and MSVC readers derive from MIT- and BSD-licensed originals;

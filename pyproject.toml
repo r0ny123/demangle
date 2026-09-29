@@ -92,6 +92,8 @@ include = [
     "/README.md",
     "/ARCHITECTURE.md",
     "/CHANGELOG.md",
+    "/CITATION.cff",
+    "/CODE_OF_CONDUCT.md",
     "/CONFORMANCE.md",
     "/CONTRIBUTING.md",
     "/SECURITY.md",
@@ -106,6 +108,7 @@ dependency-groups = ["dev"]
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args}"
+quick = "pytest -m 'not sweep' {args}"
 cover = "pytest --cov=demangle --cov-report=term-missing {args}"
 lint = ["ruff check {args:.}", "ruff format --check {args:.}", "ty check {args:.}"]
 fmt = ["ruff check --fix {args:.}", "ruff format {args:.}", "lint"]
@@ -129,6 +132,9 @@ serve = "mkdocs serve {args}"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "sweep: a property checked over whole corpora; `hatch run quick` skips these",
+]
 
 [tool.ruff]
 line-length = 120
@@ -140,9 +146,6 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
-"src/demangle/schemes/rust/_v0.py" = ["ALL"]
-"src/demangle/schemes/rust/_legacy.py" = ["ALL"]
-"src/demangle/schemes/rust/_dispatch.py" = ["ALL"]
 
 [tool.ty.environment]
 python-version = "3.13"

@@ -120,7 +120,7 @@ SEEDS = {
             "itanium-real-world-gnu.txt",
             "itanium-types.txt",
             "itanium-types-llvm.txt",
-            "itanium-regressions.txt",
+            "reported/itanium.txt",
             "itanium-libcxxabi.txt.gz",
         ],
         "_Z",

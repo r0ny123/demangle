@@ -247,14 +247,11 @@ class TestItClaimsNothingItShouldNot:
     """The screen that matters: a scheme offered every symbol in a binary."""
 
     def test_no_other_scheme_s_corpus_name_is_claimed(self, subtests):
-        from .conftest import CONFORMANCE, load_corpus
+        from .conftest import corpus_files, load_corpus
 
-        names = [
-            path.name
-            for path in sorted(CONFORMANCE.iterdir())
-            if not path.name.endswith(".gz") and path.name != "jni-real-world.txt"
-        ]
-        for corpus in [*names, "itanium-libcxxabi.txt"]:
+        for corpus in corpus_files():
+            if corpus.startswith(("jni-", "reported/jni")):
+                continue
             for mangled, _ in load_corpus(corpus):
                 if mangled.startswith("Java_"):
                     with subtests.test(mangled=mangled):

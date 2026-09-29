@@ -34,6 +34,13 @@ def load_corpus(name):
     return pairs
 
 
+def corpus_files():
+    """Every corpus, named as `load_corpus` takes it: the checked-in ones and `reported/`."""
+    names = {path.name.removesuffix(".gz") for path in CONFORMANCE.glob("*.txt*")}
+    names.update(f"reported/{path.name}" for path in (CONFORMANCE / "reported").glob("*.txt"))
+    return sorted(names)
+
+
 def reference_available(tool):
     return shutil.which(tool) is not None
 

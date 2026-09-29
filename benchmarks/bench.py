@@ -158,7 +158,7 @@ def benchmarks():
     sampled = corpus_names(
         "itanium-real-world.txt",
         "itanium-libstdcxx.txt",
-        "itanium-regressions.txt",
+        "reported/itanium.txt",
         "msvc-llvm-corpus.txt",
         "rust-real-world.txt",
         "rust-toolchain.txt",

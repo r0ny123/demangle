@@ -110,7 +110,7 @@ def problems_with(name):
 def corpora(pattern=None):
     """Every conformance corpus as `(name, seeds, alphabet)`, longest names first."""
     found = []
-    for path in sorted(CONFORMANCE.iterdir()):
+    for path in sorted([*CONFORMANCE.iterdir(), *(CONFORMANCE / "reported").glob("*.txt")]):
         if path.suffix == ".gz":
             text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
         elif path.suffix == ".txt":

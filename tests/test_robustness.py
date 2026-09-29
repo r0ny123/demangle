@@ -19,7 +19,7 @@ from demangle.core.ast import rendered
 from demangle.core.errors import DemanglingError, LimitExceeded
 from demangle.core.limits import Limits
 
-from .conftest import CONFORMANCE, load_corpus
+from .conftest import corpus_files, load_corpus
 
 hypothesis = pytest.importorskip("hypothesis")
 from hypothesis import HealthCheck, given, settings  # noqa: E402
@@ -37,10 +37,8 @@ def corpus_sample(step):
     that use this run a pass per *prefix* of each one.
     """
     sampled = []
-    for path in sorted(CONFORMANCE.iterdir()):
-        if path.suffix not in (".txt", ".gz"):
-            continue
-        names = [name for name, _ in load_corpus(path.name.removesuffix(".gz"))]
+    for corpus in corpus_files():
+        names = [name for name, _ in load_corpus(corpus)]
         sampled.extend(names[::step])
     return sampled
 
@@ -410,6 +408,7 @@ class TestResourceBounds:
         relaxed = Limits(max_output=1 << 22)
         assert demangle.demangle_strict("_ZN" + "1a" * 1000 + "E", limits=relaxed) == "::".join(["a"] * 1000)
 
+    @pytest.mark.sweep
     def test_truncation_at_every_offset_of_every_corpus_is_answered(self, subtests):
         """Every scheme, on real names, cut short at every offset.
 

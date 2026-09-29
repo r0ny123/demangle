@@ -1,16 +1,18 @@
-# Conformance corpus: names that each exposed a distinct defect.
+# Itanium C++ names that each exposed a distinct defect. Every one must stay fixed.
 #
-# Curated from the symbol tables of libLLVM, libclang-cpp and the system libstdc++,
-# which together are far too large to check in. Every entry here failed at some point
-# during development and now pins the fix: substitution numbering for pack expansions,
-# cv-qualified function types and embedded mangled names; <unresolved-name>;
-# <template-param-decl>; empty and multi-member packs; local names used as types;
-# multi-dimensional arrays; operator precedence in expressions; abbreviations scoping a
-# constructor; the thread-local special names; and a vector's dependent size and pixel
-# element, from clang++ 18.1.3 over the sources named in tests/test_types.py.
+# One row per name, in the llvm style: the mangled name, a tab, the expected spelling.
+# There is no count to update; CONTRIBUTING.md has the format.
+#
+# The first thirty were curated from the symbol tables of libLLVM, libclang-cpp and the
+# system libstdc++, which together are far too large to check in: substitution
+# numbering for pack expansions, cv-qualified function types and embedded mangled names;
+# <unresolved-name>; <template-param-decl>; empty and multi-member packs; local names
+# used as types; multi-dimensional arrays; operator precedence in expressions;
+# abbreviations scoping a constructor; the thread-local special names; and a vector's
+# dependent size and pixel element, from clang++ 18.1.3 over the sources named in
+# tests/test_types.py.
 #
 # reference: llvm-cxxfilt Ubuntu LLVM version 18.1.3   Optimized build.
-# pairs: 30
 _Z1fIXaantLb1ELb0EEEvv	void f<!true && false>()
 _Z1fIXmlplLi1ELi2ELi3EEEvv	void f<(1 + 2) * 3>()
 _Z1fIXntntLb1EEEvv	void f<!(!true)>()

@@ -8,6 +8,20 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Added
+
+- **`tools/repro.py`.** Given a mangled name, prints this library's reading in each
+  style, every installed reference demangler's, a body for the conformance bug form,
+  and the corpus line for the fix.
+- **Reported corpora, `tests/conformance/reported/<scheme>.txt`**, with no count to
+  update: every row must read as recorded. The Itanium regression corpus moved there.
+- **A failing conformance pin names what missed**: the first ten names (want, got)
+  and the `tools/differential.py` command that lists them all.
+- **`hatch run quick`** skips the whole-corpus property checks (marked `sweep`) while
+  iterating; CI still runs everything.
+- **`CODE_OF_CONDUCT.md`, `CITATION.cff` and `.github/CODEOWNERS`**; CONTRIBUTING
+  says how changes get merged, and the bug form asks for the scheme and exact call.
+
 ### Changed
 
 - **MSVC nesting follows `Limits.max_depth`**, as Itanium's does, instead of a fixed

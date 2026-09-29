@@ -1,15 +1,15 @@
 """Swift mangled names.
 
-Exact against `swift-demangle` from the 5.10.1 toolchain: every one of the 48,368 `$s`
-symbols in the shipped runtime and Foundation, and all 376 cases in the compiler's own
-`test/Demangle/Inputs/manglings.txt` -- both the current mangling and Swift 3's. Nothing
-refused, nothing mis-spelled.
+Scored against `swift-demangle` built from swiftlang/swift `main`
+(`tools/swift-demangle-reference/`), over the `$s` symbols in the 5.10.1 runtime and
+Foundation and the cases in the compiler's own `test/Demangle/Inputs/manglings.txt` --
+both the current mangling and Swift 3's. Nothing refused, nothing mis-spelled.
 
-The corpus below is a stratified sample of that -- up to four symbols per distinct set of
-demangling-tree node kinds, so each construct that occurs is represented -- with the
-compiler's own cases added whole, since those are what exercise the parts a shipped
-binary does not: SIL function types, function-signature specialisations, key-path
-thunks, autodiff, macro expansions.
+The corpus below is a stratified sample of the runtime's symbols -- up to four per
+distinct set of demangling-tree node kinds, so each construct that occurs is
+represented -- with the compiler's own cases added whole, since those are what exercise
+the parts a shipped binary does not: SIL function types, function-signature
+specialisations, key-path thunks, autodiff, macro expansions.
 
 What each test below pins is a rule that had to be *measured*. The reference is 8,000
 lines of C++ whose behaviour is not all obvious from reading it, and each of these was

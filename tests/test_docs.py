@@ -241,3 +241,13 @@ class TestTheReferenceDefectSourcesAreDocumented:
                 assert (self.SOURCES / name).exists(), (
                     f"the reference-defects README has a row for {name}, which is gone"
                 )
+
+
+def test_the_citation_names_this_version():
+    """`CITATION.cff` is what GitHub's "Cite this repository" reads."""
+    citation = ROOT / "CITATION.cff"
+    if not citation.exists():  # pragma: no cover - only in a wheel-only checkout
+        pytest.skip("CITATION.cff is not part of this distribution")
+    version = re.search(r'^version:\s*"?([^"\s]+)"?\s*$', citation.read_text(encoding="utf-8"), re.M)
+    assert version is not None, "CITATION.cff has no version"
+    assert version.group(1) == demangle.__version__

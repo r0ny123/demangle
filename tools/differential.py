@@ -6,7 +6,8 @@ Three modes:
   --corpus     replay a checked-in corpus file (mangled name, tab, expected spelling).
                Needs no reference binary, so it runs in CI and offline. With no argument
                every checked-in corpus is replayed, each with the style and language it
-               was recorded under -- see CORPUS_SETTINGS.
+               was recorded under -- see `corpus_settings` -- and every file in
+               `reported/` under the language (and style) its name gives.
   --live       demangle names on stdin with both this library and a reference binary,
                reporting every disagreement. Used when hunting new failures.
   --cross      run several reference *versions* over the same names and report where the
@@ -59,6 +60,16 @@ CORPUS_SETTINGS = {
     # Pre-Itanium detection is deliberately narrow (see tests/test_gnuv2.py).
     "gnuv2-real-world.txt": {"language": "gnuv2"},
 }
+
+
+def corpus_settings(path):
+    """How to replay `path`: `CORPUS_SETTINGS`, or for `reported/<scheme>[-<style>].txt`
+    the language and style its name gives."""
+    if path.parent.name == "reported":
+        language, _, style = path.stem.partition("-")
+        return {"language": language, "style": style or "llvm"}
+    return CORPUS_SETTINGS.get(path.name, {})
+
 
 #: Files in `tests/conformance/` that are not two-column corpora replayable with
 #: `demangle()`; their own test modules read them.
@@ -145,7 +156,7 @@ def replay(paths, style, language, show, quiet, overrides=True):
     failures = []
     reasons = Counter()
     for path in paths:
-        settings = CORPUS_SETTINGS.get(path.name, {}) if overrides else {}
+        settings = corpus_settings(path) if overrides else {}
         corpus_style = settings.get("style", style)
         corpus_language = settings.get("language", language)
         for mangled, expected in load_corpus(path):
@@ -353,10 +364,11 @@ def main():
         return live(names, arguments.tool, arguments.style, arguments.language, arguments.show)
 
     if arguments.cross:
+        directory = Path(__file__).resolve().parent.parent / "tests" / "conformance"
         paths = arguments.corpus or sorted(
             path
-            for path in (Path(__file__).resolve().parent.parent / "tests" / "conformance").glob("itanium-*.txt")
-            if path.name not in NOT_REPLAYED
+            for path in [*directory.glob("itanium-*.txt"), *directory.glob("reported/itanium*.txt")]
+            if path.name not in NOT_REPLAYED or path.parent.name == "reported"
         )
         names = [mangled for path in paths for mangled, _ in load_corpus(path)]
         return cross(names, arguments.cross, arguments.style, arguments.language, arguments.show)
@@ -365,6 +377,7 @@ def main():
     if not paths:
         directory = Path(__file__).resolve().parent.parent / "tests" / "conformance"
         paths = [path for path in sorted(directory.glob("*.txt")) if path.name not in NOT_REPLAYED]
+        paths += sorted(directory.glob("reported/*.txt"))
     if not paths:
         sys.exit("no corpus files found")
     return replay(

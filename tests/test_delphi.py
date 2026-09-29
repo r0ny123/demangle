@@ -193,8 +193,8 @@ class TestClaimsNothingItShouldNot:
         assert not detect("@@bug@@x")
 
     def test_it_claims_nothing_in_the_other_schemes_corpora(self, subtests):
-        for path in sorted(CONFORMANCE.glob("*.txt")):
-            if path.name.startswith("delphi-"):
+        for path in sorted([*CONFORMANCE.glob("*.txt"), *(CONFORMANCE / "reported").glob("*.txt")]):
+            if path.stem.partition("-")[0] == "delphi":
                 continue
             with subtests.test(name=path.name):
                 claimed = [

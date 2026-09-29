@@ -5,6 +5,9 @@ body:
   - type: markdown
     attributes:
       value: >-
+        `python tools/repro.py NAME` prints all of this for you.
+
+
         The most valuable report is small and complete: the name, what the reference
         says, and what this says. No prose is needed beyond that.
   - type: input
@@ -15,7 +18,30 @@ body:
       placeholder: _ZNSt6vectorIiSaIiEE9push_backERKi
     validations:
       required: true
-  - type: input
+  - type: dropdown
+    id: scheme
+    attributes:
+      label: Scheme
+      description: What `demangle --detect NAME` says, or the one you forced.
+      options:
+        - itanium
+        - msvc
+        - rust
+        - swift
+        - objc
+        - go
+        - d
+        - nim
+        - pascal
+        - delphi
+        - ada
+        - jni
+        - gnuv2
+        - codewarrior
+        - not detected
+    validations:
+      required: true
+  - type: textarea
     id: reference
     attributes:
       label: What the reference prints
@@ -24,15 +50,23 @@ body:
         such as --format=dlang or --format=gnat), llvm-undname, dbghelp's
         UnDecorateSymbolName, rustfilt, swift-demangle, cwdemangle, tdump -um, or another.
       placeholder: "llvm-cxxfilt 18.1.3: std::vector<int, std::allocator<int>>::push_back(int const&)"
+      render: text
     validations:
       required: true
-  - type: input
+  - type: textarea
     id: ours
     attributes:
       label: What this library prints
-      description: "`demangle <name>`, or the exception it raised."
+      description: "`demangle NAME`, or the exception it raised."
+      render: text
     validations:
       required: true
+  - type: input
+    id: call
+    attributes:
+      label: Exact call or flags
+      description: The command line or the Python call, with every option you passed.
+      placeholder: "demangle --style gnu NAME, or demangle.demangle(name, language=\"msvc\")"
   - type: textarea
     id: source
     attributes:
@@ -48,3 +82,9 @@ body:
       description: "`python -c 'import demangle; print(demangle.__version__)'`"
     validations:
       required: true
+  - type: checkboxes
+    id: fix
+    attributes:
+      label: Fixing it
+      options:
+        - label: I'd like to send the fix

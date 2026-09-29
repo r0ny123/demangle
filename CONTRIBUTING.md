@@ -3,11 +3,13 @@
 The project is meant to be approachable one piece at a time. Adding a scheme, fixing a
 spelling, or contributing a corpus should not require understanding the whole codebase.
 
+Everyone taking part follows the [Code of Conduct](https://github.com/r0ny123/demangle/blob/main/CODE_OF_CONDUCT.md).
+
 ## Getting set up
 
 The project builds with [Hatch](https://hatch.pypa.io/) and installs with
 [uv](https://docs.astral.sh/uv/). You need neither -- plain pip works -- but together
-they turn the whole check into one command that takes a few minutes.
+they turn the whole check into one command.
 
 ```console
 git clone https://github.com/r0ny123/demangle
@@ -20,6 +22,11 @@ hatch run check
 The pieces are available on their own: `hatch run test`, `cover`, `lint`, `fmt`,
 `bench`, `differential`. `hatch run test:test` runs the suite on Python 3.13 and 3.14,
 and `hatch run docs:serve` previews the documentation site.
+
+`hatch run quick` while iterating (about a minute); `hatch run check` before pushing
+(about seven minutes on four cores). `quick` skips the tests marked `sweep` --
+properties checked over every corpus name, which are most of the suite's time -- and CI
+runs everything.
 
 Without Hatch:
 
@@ -49,9 +56,20 @@ apt-get install llvm clang g++ binutils
 ## Reporting a conformance bug
 
 Use the [conformance bug form](https://github.com/r0ny123/demangle/issues/new?template=conformance-bug.yml):
-the name, what the reference prints, and what this library prints. If you fix one
-yourself, the name goes into a corpus and the pin moves with it, as
-[below](#conformance-numbers).
+the name, what the reference prints, and what this library prints.
+`python tools/repro.py NAME` prints all three -- this library in every style, and every
+reference demangler for the scheme that is installed or built under `tools/` -- then a
+report body ready to paste and the corpus line for the fix.
+
+### Reported names
+
+A fix for a reported name adds that line to `tests/conformance/reported/<scheme>.txt`,
+where `<scheme>` is the language name (`demangle --list-languages`). One row per name:
+the mangled name, a tab, the spelling the reference prints in the llvm style. A row
+recorded in another style goes in `<scheme>-<style>.txt` instead. A comment line
+`# #123` above a row names its issue. There is no count to update: every row must read
+as recorded, under the language the file is named for, and a file for a new scheme is
+picked up without an edit.
 
 ## The rules that matter
 
@@ -111,8 +129,10 @@ than against what the test's author believed it said.
 
 ### Conformance numbers
 
-The conformance corpora's pass counts are pinned as exact numbers in
-`tests/test_conformance.py`, so a count that moves in either direction fails the suite.
+The pass counts of the corpora outside `reported/` are pinned as exact numbers in
+`tests/test_conformance.py`, so a count that moves in either direction fails the suite,
+listing the first ten names that miss and the `tools/differential.py` command that shows
+them all.
 A pull request that moves one updates the pin in the same pull request and says in its
 description which way the number moved and why; so does one that moves a benchmark.
 
@@ -124,6 +144,14 @@ it accepts -- has been through `tools/enumerate.py`, `tools/mutate.py` and
 [Fuzzing and the reference demanglers](https://github.com/r0ny123/demangle/blob/main/docs/testing.md)
 has why, what each asks, and how to build the references for Rust, Swift and
 pre-Itanium C++ that no distribution ships.
+
+## How changes get merged
+
+Leave `CHANGELOG.md` alone: the maintainer writes the entry when merging. A first-time
+contributor's CI runs once a maintainer approves it, so the first push can sit for a
+while before any checks appear. The easiest first contribution is a
+[reported name](#reported-names): a report, or a fix with its line in
+`tests/conformance/reported/`.
 
 ## CI and workflows
 

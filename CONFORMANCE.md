@@ -32,7 +32,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Rust toolchain (`rustc_driver`, `libstd`) | `rustfilt` 0.2.1 | **394 / 394** |
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
-| Regression corpus | `llvm-cxxfilt` 18.1.3 | **30 / 30** |
+| Reported names, one file per scheme in `tests/conformance/reported/` | the reference each report cites | **every entry** |
 | Names a reference reads wrongly <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | the declaration | **37 / 37** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** <sup>[3](#3-bare-types-under-both-references)</sup> |

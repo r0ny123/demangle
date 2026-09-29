@@ -211,8 +211,8 @@ class TestClaimsNothingItShouldNot:
         assert demangle.demangle("MYUNIT_$$_ADD$LONGINT$$LONGINT") == "MYUNIT.ADD(LONGINT): LONGINT"
 
     def test_it_claims_nothing_in_the_other_schemes_corpora(self, subtests):
-        for path in sorted(CONFORMANCE.glob("*.txt")):
-            if path.name.startswith("pascal-"):
+        for path in sorted([*CONFORMANCE.glob("*.txt"), *(CONFORMANCE / "reported").glob("*.txt")]):
+            if path.stem.partition("-")[0] == "pascal":
                 continue
             with subtests.test(name=path.name):
                 claimed = [

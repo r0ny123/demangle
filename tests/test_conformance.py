@@ -14,7 +14,9 @@ import pytest
 import demangle
 from demangle.core.errors import DemanglingError
 
-from .conftest import CONFORMANCE, load_corpus
+from .conftest import CONFORMANCE, corpus_files, load_corpus
+
+REPORTED = CONFORMANCE / "reported"
 
 # Measured against llvm-cxxfilt 18.1.3 and GNU c++filt 2.42; CONFORMANCE.md describes
 # each corpus below and what its reference is.
@@ -27,7 +29,6 @@ MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT = 161, 161
 MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT = 9, 9
 MSVC_BOOST_TOTAL, MSVC_BOOST_EXACT = 5843, 5843
 LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
-REGRESSIONS_TOTAL, REGRESSIONS_EXACT = 30, 30
 
 #: Expected column is derived from the declaration. `tools/generate_corpus.py` excludes
 #: these names, so a regeneration cannot re-record a reference's wrong answer.
@@ -83,7 +84,7 @@ PASCAL_TOTAL, PASCAL_EXACT = 3899, 3899
 NIM_TOTAL, NIM_EXACT = 2115, 2115
 SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 
-#: Not scored here: 70 rows are reference refusals, which `_score` counts as misses.
+#: Not scored here: 70 rows are reference refusals, which `_misses` counts as misses.
 #: tests/test_swift.py scores it; it lives here for tests/test_readme.py.
 SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 514, 514
 SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT = 5, 5
@@ -147,54 +148,71 @@ UNDNAME_INERT_BITS = {
 GNU_DIVERGENCES = []
 
 
-def _score(corpus, style, language=None):
+def _misses(corpus, style, language=None):
+    """The corpus's size, and `(name, want, got)` for every row that does not read as recorded."""
     pairs = load_corpus(corpus)
-    exact = 0
+    missed = []
     for mangled, expected in pairs:
         try:
             got = demangle.demangle_strict(mangled, style=style, language=language)
-        except (DemanglingError, RecursionError):
-            continue
-        exact += got == expected
-    return len(pairs), exact
+        except (DemanglingError, RecursionError) as error:
+            got = f"<{type(error).__name__}>"
+        if got != expected:
+            missed.append((mangled, expected, got))
+    return len(pairs), missed
+
+
+def _describe(corpus, style, language, missed, shown=10):
+    """The first few misses and the command that lists them all."""
+    lines = [f"{len(missed)} row(s) of {corpus} do not read as recorded:"]
+    for mangled, expected, got in missed[:shown]:
+        lines += [f"  name {mangled}", f"  want {expected}", f"  got  {got}"]
+    if len(missed) > shown:
+        lines.append(f"  ... and {len(missed) - shown} more")
+    stored = corpus if (CONFORMANCE / corpus).exists() else f"{corpus}.gz"
+    command = f"python tools/differential.py --corpus tests/conformance/{stored} --style {style}"
+    lines.append(f"reproduce: {command}{f' --language {language}' if language else ''}")
+    return "\n".join(lines)
+
+
+def _assert_pinned(corpus, style, language, pinned_total, pinned_exact):
+    total, missed = _misses(corpus, style, language)
+    exact = total - len(missed)
+    assert (total, exact) == (pinned_total, pinned_exact), (
+        f"pinned {pinned_exact} / {pinned_total}, measured {exact} / {total}; a change that "
+        f"moves the count updates the pin with it.\n{_describe(corpus, style, language, missed)}"
+    )
 
 
 def test_itanium_matches_llvm_cxxfilt():
-    total, exact = _score("itanium-real-world.txt", "llvm")
-    assert (total, exact) == (ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT)
+    _assert_pinned("itanium-real-world.txt", "llvm", None, ITANIUM_LLVM_TOTAL, ITANIUM_LLVM_EXACT)
 
 
 def test_itanium_matches_gnu_cxxfilt():
-    total, exact = _score("itanium-real-world-gnu.txt", "gnu")
-    assert (total, exact) == (ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT)
+    _assert_pinned("itanium-real-world-gnu.txt", "gnu", None, ITANIUM_GNU_TOTAL, ITANIUM_GNU_EXACT)
 
 
 def test_gnuv2_matches_libiberty_on_kde2():
     """See `GNUV2_REAL_WORLD_TOTAL` for what this does and does not establish."""
-    total, exact = _score("gnuv2-real-world.txt", "llvm", language="gnuv2")
-    assert (total, exact) == (GNUV2_REAL_WORLD_TOTAL, GNUV2_REAL_WORLD_EXACT)
+    _assert_pinned("gnuv2-real-world.txt", "llvm", "gnuv2", GNUV2_REAL_WORLD_TOTAL, GNUV2_REAL_WORLD_EXACT)
 
 
 def test_jni_corpus():
     """See `JNI_TOTAL` for what this does and does not establish."""
-    total, exact = _score("jni-real-world.txt", "llvm", language="jni")
-    assert (total, exact) == (JNI_TOTAL, JNI_EXACT)
+    _assert_pinned("jni-real-world.txt", "llvm", "jni", JNI_TOTAL, JNI_EXACT)
 
 
 def test_go_corpus():
     """See `GO_TOTAL` for what this does and does not establish."""
-    total, exact = _score("go-real-world.txt", "llvm", language="go")
-    assert (total, exact) == (GO_TOTAL, GO_EXACT)
+    _assert_pinned("go-real-world.txt", "llvm", "go", GO_TOTAL, GO_EXACT)
 
 
 def test_d_matches_gnu_dlang_demangler():
-    total, exact = _score("d-real-world.txt", "llvm", language="d")
-    assert (total, exact) == (D_TOTAL, D_EXACT)
+    _assert_pinned("d-real-world.txt", "llvm", "d", D_TOTAL, D_EXACT)
 
 
 def test_swift_matches_swift_demangle():
-    total, exact = _score("swift-real-world.txt", "llvm", language="swift")
-    assert (total, exact) == (SWIFT_TOTAL, SWIFT_EXACT)
+    _assert_pinned("swift-real-world.txt", "llvm", "swift", SWIFT_TOTAL, SWIFT_EXACT)
 
 
 def test_swift_reference_defect_corpus():
@@ -202,43 +220,40 @@ def test_swift_reference_defect_corpus():
 
     See `SWIFT_REFERENCE_DEFECTS_TOTAL` and the file's own header.
     """
-    total, exact = _score("swift-reference-defects.txt", "llvm", language="swift")
-    assert (total, exact) == (SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT)
+    _assert_pinned(
+        "swift-reference-defects.txt", "llvm", "swift", SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT
+    )
 
 
 def test_pascal_corpus():
     """See `PASCAL_TOTAL` for what this does and does not establish."""
-    total, exact = _score("pascal-real-world.txt", "llvm", language="pascal")
-    assert (total, exact) == (PASCAL_TOTAL, PASCAL_EXACT)
+    _assert_pinned("pascal-real-world.txt", "llvm", "pascal", PASCAL_TOTAL, PASCAL_EXACT)
 
 
 def test_nim_matches_the_compilers_own_record():
     """See `NIM_TOTAL` for what this does and does not establish."""
-    total, exact = _score("nim-real-world.txt", "llvm", language="nim")
-    assert (total, exact) == (NIM_TOTAL, NIM_EXACT)
+    _assert_pinned("nim-real-world.txt", "llvm", "nim", NIM_TOTAL, NIM_EXACT)
 
 
 def test_msvc_matches_llvm_undname():
-    total, exact = _score("msvc-llvm-corpus.txt", "llvm", language="msvc")
-    assert (total, exact) == (MSVC_TOTAL, MSVC_EXACT)
+    _assert_pinned("msvc-llvm-corpus.txt", "llvm", "msvc", MSVC_TOTAL, MSVC_EXACT)
 
 
 def test_msvc_matches_llvm_undname_on_real_compiler_output():
     """See `MSVC_CLANG_TOTAL`. Names a compiler wrote, not vectors somebody chose."""
-    total, exact = _score("msvc-clang.txt", "llvm", language="msvc")
-    assert (total, exact) == (MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT)
+    _assert_pinned("msvc-clang.txt", "llvm", "msvc", MSVC_CLANG_TOTAL, MSVC_CLANG_EXACT)
 
 
 def test_msvc_matches_llvm_undname_on_boost():
     """See `MSVC_BOOST_TOTAL`."""
-    total, exact = _score("msvc-boost.txt", "llvm", language="msvc")
-    assert (total, exact) == (MSVC_BOOST_TOTAL, MSVC_BOOST_EXACT)
+    _assert_pinned("msvc-boost.txt", "llvm", "msvc", MSVC_BOOST_TOTAL, MSVC_BOOST_EXACT)
 
 
 def test_msvc_reads_what_its_reference_cannot():
     """See `MSVC_REFERENCE_DEFECTS_TOTAL`. The expected column is the declaration."""
-    total, exact = _score("msvc-reference-defects.txt", "llvm", language="msvc")
-    assert (total, exact) == (MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT)
+    _assert_pinned(
+        "msvc-reference-defects.txt", "llvm", "msvc", MSVC_REFERENCE_DEFECTS_TOTAL, MSVC_REFERENCE_DEFECTS_EXACT
+    )
 
 
 def test_matches_llvm_cxxfilt_on_the_system_libstdcxx():
@@ -247,14 +262,7 @@ def test_matches_llvm_cxxfilt_on_the_system_libstdcxx():
     Real released C++ rather than something compiled for the test, which is the point:
     it carries what only a real standard library produces.
     """
-    total, exact = _score("itanium-libstdcxx.txt", "llvm")
-    assert (total, exact) == (LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT)
-
-
-def test_regression_corpus():
-    """Names that each exposed a distinct defect. Every one must stay fixed."""
-    total, exact = _score("itanium-regressions.txt", "llvm")
-    assert (total, exact) == (REGRESSIONS_TOTAL, REGRESSIONS_EXACT)
+    _assert_pinned("itanium-libstdcxx.txt", "llvm", None, LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT)
 
 
 def test_reference_defect_corpus():
@@ -263,8 +271,7 @@ def test_reference_defect_corpus():
     The Itanium corpus whose expected column is not a reference demangler's output. See
     `REFERENCE_DEFECTS_TOTAL` and the file's own header.
     """
-    total, exact = _score("itanium-reference-defects.txt", "llvm")
-    assert (total, exact) == (REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT)
+    _assert_pinned("itanium-reference-defects.txt", "llvm", None, REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT)
 
 
 def test_rust_matches_rustc_demangle():
@@ -275,14 +282,12 @@ def test_rust_matches_rustc_demangle():
     name to the C++ parser and yields a plausible but quite wrong spelling rather than
     an error.
     """
-    total, exact = _score("rust-real-world.txt", "llvm")
-    assert (total, exact) == (RUST_TOTAL, RUST_EXACT)
+    _assert_pinned("rust-real-world.txt", "llvm", None, RUST_TOTAL, RUST_EXACT)
 
 
 def test_rust_matches_the_shipped_toolchain():
     """Symbols from rustc's own libraries, including ELF-versioned ones."""
-    total, exact = _score("rust-toolchain.txt", "llvm")
-    assert (total, exact) == (RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT)
+    _assert_pinned("rust-toolchain.txt", "llvm", None, RUST_TOOLCHAIN_TOTAL, RUST_TOOLCHAIN_EXACT)
 
 
 def test_objc_matches_what_the_declaration_said():
@@ -292,32 +297,27 @@ def test_objc_matches_what_the_declaration_said():
     `_i_`/`_c_` method mangling above all -- so what has to hold is that detection
     reaches them without claiming anything else.
     """
-    total, exact = _score("objc-real-world.txt", "llvm")
-    assert (total, exact) == (OBJC_TOTAL, OBJC_EXACT)
+    _assert_pinned("objc-real-world.txt", "llvm", None, OBJC_TOTAL, OBJC_EXACT)
 
 
 def test_delphi_matches_embarcadero_unmangle():
     """See `DELPHI_TOTAL` for what this does and does not establish."""
-    total, exact = _score("delphi-real-world.txt", "llvm")
-    assert (total, exact) == (DELPHI_TOTAL, DELPHI_EXACT)
+    _assert_pinned("delphi-real-world.txt", "llvm", None, DELPHI_TOTAL, DELPHI_EXACT)
 
 
 def test_delphi_whole_export_tables_match_the_dump():
     """The sample is not the measurement. The measurement is the whole TDUMP dump."""
-    total, exact = _score("delphi-tdump.txt", "llvm")
-    assert (total, exact) == (DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT)
+    _assert_pinned("delphi-tdump.txt", "llvm", None, DELPHI_TABLE_TOTAL, DELPHI_TABLE_EXACT)
 
 
 def test_delphi_constructs_absent_from_the_export_tables():
     """See `DELPHI_CONSTRUCT_TOTAL` for what this does and does not establish."""
-    total, exact = _score("delphi-constructs.txt", "llvm")
-    assert (total, exact) == (DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT)
+    _assert_pinned("delphi-constructs.txt", "llvm", None, DELPHI_CONSTRUCT_TOTAL, DELPHI_CONSTRUCT_EXACT)
 
 
 def test_ada_matches_gnu_gnat_demangler():
     """See `ADA_REAL_WORLD_TOTAL`."""
-    total, exact = _score("ada-real-world.txt", "llvm")
-    assert (total, exact) == (ADA_REAL_WORLD_TOTAL, ADA_REAL_WORLD_EXACT)
+    _assert_pinned("ada-real-world.txt", "llvm", None, ADA_REAL_WORLD_TOTAL, ADA_REAL_WORLD_EXACT)
 
 
 def test_gnu_shortfalls_are_only_the_known_reference_divergences():
@@ -334,13 +334,34 @@ def test_gnu_shortfalls_are_only_the_known_reference_divergences():
     assert failing == GNU_DIVERGENCES
 
 
+def _reported():
+    return sorted(f"{REPORTED.name}/{path.name}" for path in REPORTED.glob("*.txt"))
+
+
+@pytest.mark.parametrize("corpus", _reported())
+def test_every_reported_name_reads_as_recorded(corpus):
+    """Names somebody reported, each fixed and kept fixed. No count: every row must hold.
+
+    `<scheme>.txt` is read under that language in the llvm style, `<scheme>-<style>.txt`
+    in the style it names, so detection is not what is under test.
+    """
+    language, _, style = corpus.removeprefix(f"{REPORTED.name}/").removesuffix(".txt").partition("-")
+    style = style or "llvm"
+    assert language in demangle.languages(), f"{corpus}: no scheme is called {language!r}"
+    assert style in demangle.styles(), f"{corpus}: no style is called {style!r}"
+    names = [mangled for mangled, _ in load_corpus(corpus)]
+    assert names, f"{corpus} has no rows"
+    assert len(set(names)) == len(names), f"{corpus} lists a name twice"
+    _, missed = _misses(corpus, style, language)
+    assert missed == [], _describe(corpus, style, language, missed)
+
+
 def _every_corpus():
     """Every conformance file, so a corpus added later is covered without an edit."""
-    names = {path.name for path in CONFORMANCE.glob("*.txt")}
-    names.update(path.name.removesuffix(".gz") for path in CONFORMANCE.glob("*.txt.gz"))
-    return sorted(names)
+    return corpus_files()
 
 
+@pytest.mark.sweep
 @pytest.mark.parametrize("corpus", _every_corpus())
 def test_best_effort_never_raises_on_any_corpus_name(corpus):
     """Whatever the corpus holds, `demangle()` answers rather than raising."""
@@ -361,6 +382,7 @@ def test_llvm_undname_loses_a_vftable_base_path_and_we_do_not():
     assert len({demangle.demangle(name) for name in family}) == len(family)
 
 
+@pytest.mark.sweep
 @pytest.mark.parametrize("style", demangle.styles())
 @pytest.mark.parametrize("corpus", _every_corpus())
 def test_the_tree_spells_what_the_fast_path_spells(corpus, style):
@@ -391,6 +413,7 @@ def test_the_tree_spells_what_the_fast_path_spells(corpus, style):
         assert tree.spell(style=style) == demangle.demangle(mangled, style=style), mangled
 
 
+@pytest.mark.sweep
 @pytest.mark.parametrize("corpus", _every_corpus())
 def test_a_style_does_not_decide_whether_a_name_parses(corpus):
     """A style is a spelling policy. It must not change what the grammar accepts.
@@ -426,6 +449,7 @@ def test_a_style_does_not_decide_whether_a_name_parses(corpus):
 FILTER_REWRITES_AGAIN = 7
 
 
+@pytest.mark.sweep
 @pytest.mark.parametrize("corpus", _every_corpus())
 def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
     """`demangle_text` over a spelling this library produced should leave it alone.
@@ -464,6 +488,7 @@ FILTER_REPORTS_PIECES = {
 }
 
 
+@pytest.mark.sweep
 @pytest.mark.parametrize("corpus", _every_corpus())
 def test_the_filter_reports_no_piece_of_a_name_it_reads_whole(corpus):
     """A fragment that happens to demangle is a reading of something that is not there.
@@ -502,18 +527,23 @@ class TestAgainstLibcxxabisOwnCorpus:
     #: Never lowered silently; the named shortfall below says why it is not 29,928.
     EXPECTED_EXACT = 29913
 
-    def _score(self):
-        return sum(
-            1 for mangled, expected in load_corpus("itanium-libcxxabi.txt") if demangle.demangle(mangled) == expected
-        )
+    def _missed(self):
+        return [
+            (mangled, expected, got)
+            for mangled, expected in load_corpus("itanium-libcxxabi.txt")
+            if (got := demangle.demangle(mangled)) != expected
+        ]
 
     def test_the_score_has_not_gone_backwards(self):
         total = len(load_corpus("itanium-libcxxabi.txt"))
         assert total > 29000, "corpus did not load; this test would prove nothing"
-        assert self._score() >= self.EXPECTED_EXACT
+        missed = self._missed()
+        assert total - len(missed) >= self.EXPECTED_EXACT, _describe("itanium-libcxxabi.txt", "llvm", None, missed)
 
     def test_the_pinned_number_is_still_accurate(self):
-        assert self._score() == self.EXPECTED_EXACT
+        total = len(load_corpus("itanium-libcxxabi.txt"))
+        missed = self._missed()
+        assert total - len(missed) == self.EXPECTED_EXACT, _describe("itanium-libcxxabi.txt", "llvm", None, missed)
 
     def test_the_shortfall_is_fifteen_names_and_this_says_which(self):
         """Fifteen left, in four groups, and none of them is a name read wrongly.
@@ -606,6 +636,7 @@ class TestAgainstLibcxxabisOwnCorpus:
         for mangled, _ in load_corpus("itanium-libcxxabi.txt"):
             assert demangle.demangle(mangled) != ""
 
+    @pytest.mark.sweep
     @pytest.mark.parametrize("style", demangle.styles())
     def test_the_tree_agrees_with_the_text_throughout(self, style):
         """29,928 names is the size at which declarator placement disagreements show up."""

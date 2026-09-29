@@ -15,13 +15,14 @@ from demangle import Signature, signature, signatureb
 from demangle._signature import _SEPARATORS, _split_last
 from demangle.core.errors import DemanglingError
 
-from .conftest import CONFORMANCE, load_corpus, requires_gnu_cxxfilt
+from .conftest import corpus_files, load_corpus, requires_gnu_cxxfilt
 from .test_conformance import NO_PARAMS_AGREE, NO_PARAMS_TOTAL
 
 #: The refusal corpora hold names with no expected column, so they load as nothing.
-CORPORA = sorted(name for name in (p.name.removesuffix(".gz") for p in CONFORMANCE.iterdir()) if load_corpus(name))
+CORPORA = [name for name in corpus_files() if load_corpus(name)]
 
 
+@pytest.mark.sweep
 class TestTheNameFields:
     """`namespace` + separator + `base_name` == `qualified_name`, everywhere."""
 

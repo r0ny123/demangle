@@ -70,7 +70,7 @@ def corpus_names():
     # sdist's tests run against an installed package.
     conformance = Path(__file__).parent / "conformance"
     names = []
-    for path in sorted(conformance.iterdir()):
+    for path in sorted([*conformance.iterdir(), *(conformance / "reported").glob("*.txt")]):
         if path.suffix == ".gz":
             text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
         elif path.suffix == ".txt":
@@ -322,6 +322,7 @@ class TestTheTreeSpellsWhatTheTextPathSpells:
     spelled without its `P$`.
     """
 
+    @pytest.mark.sweep
     def test_every_corpus_name_in_both_styles(self, subtests):
         names = corpus_names()
         assert len(names) > 50_000, "corpora did not load; this test would prove nothing"
@@ -358,6 +359,7 @@ class TestReadingAnAnswerAgainChangesNothing:
     `delphi.detect` on the alphabet Borland exports are actually made of; see there.
     """
 
+    @pytest.mark.sweep
     def test_every_corpus_name_in_both_styles(self, subtests):
         names = corpus_names()
         assert len(names) > 50_000, "corpora did not load; this test would prove nothing"

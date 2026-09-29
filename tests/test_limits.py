@@ -411,6 +411,7 @@ class TestALimitRefusesRatherThanTruncates:
             "class std::vector<int, class std::allocator<int>> `RTTI Type Descriptor Name'"
         )
 
+    @pytest.mark.sweep
     def test_no_corpus_name_answers_differently_under_a_tighter_bound(self, subtests):
         """The property the nine were found by, over a sample of every corpus."""
         names = [

@@ -1,9 +1,10 @@
-# Swift symbols and what `swift-demangle` from the 5.10.1 toolchain spells them.
-# Stratified over the shipped runtime and Foundation -- up to four symbols per
-# distinct set of demangling-tree node kinds, so every construct that occurs is
-# represented -- plus every case from the compiler's own
-# test/Demangle/Inputs/manglings.txt that the reference itself can read, in both
-# the current mangling and Swift 3's.
+# Swift symbols and what `swift-demangle`, built from swiftlang/swift `main` by
+# tools/swift-demangle-reference/, spells them. Stratified over the 5.10.1 runtime and
+# Foundation -- up to four symbols per distinct set of demangling-tree node kinds, so
+# every construct that occurs is represented -- plus every case from the compiler's own
+# test/Demangle/Inputs/manglings.txt that the reference itself can read, in both the
+# current mangling and Swift 3's. One row, the `Tgm5` specialisation, carries 5.10.1's
+# spelling because `main` no longer reads it; the reference's README says why.
 $S18resilient_protocol21ResilientBaseProtocolTL	protocol requirements base descriptor for resilient_protocol.ResilientBaseProtocol
 $S1T19protocol_resilience17ResilientProtocolPTl	associated type descriptor for protocol_resilience.ResilientProtocol.T
 $S1t1PP10AssocType2_AA1QTN	default associated conformance accessor for t.P.AssocType2: t.Q

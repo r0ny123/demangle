@@ -134,8 +134,10 @@ class TestDetectionDeclinesWhatItCannotTell:
         claim it if asked is a rule with a hole in it.
         """
         claimed = []
-        for path in sorted(CONFORMANCE.glob("*.txt")) + sorted(CONFORMANCE.glob("*.txt.gz")):
-            if path.name.startswith("ada-"):
+        for path in sorted(
+            [*CONFORMANCE.glob("*.txt"), *CONFORMANCE.glob("*.txt.gz"), *(CONFORMANCE / "reported").glob("*.txt")]
+        ):
+            if path.stem.partition("-")[0] == "ada":
                 continue
             text = (
                 gzip.decompress(path.read_bytes()).decode("utf-8")
@@ -150,6 +152,7 @@ class TestDetectionDeclinesWhatItCannotTell:
                     claimed.append(name)
         assert claimed == []
 
+    @pytest.mark.sweep
     def test_no_real_symbol_on_this_machine_is_read_as_ada(self):
         """The measurement the docstring quotes, run rather than remembered.
 

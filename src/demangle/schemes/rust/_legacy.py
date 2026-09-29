@@ -9,6 +9,8 @@ _HEXDIGITS = frozenset(string.hexdigits)
 #: Lowercase only, as the reference's `'0'..='9' | 'a'..='f'`: it leaves `$u00AB$` literal.
 _LOWER_HEXDIGITS = frozenset(string.digits + "abcdef")
 
+_UNESCAPED = {"SP": "@", "BP": "*", "RF": "&", "LT": "<", "GT": ">", "LP": "(", "RP": ")", "C": ","}
+
 
 class UnableToLegacyDemangle(Exception):
     def __init__(self, given_str, message="Not able to demangle the given string using LegacyDemangler"):
@@ -21,8 +23,6 @@ class UnableToLegacyDemangle(Exception):
 
 
 class LegacyDemangler:
-    _UNESCAPED = {"SP": "@", "BP": "*", "RF": "&", "LT": "<", "GT": ">", "LP": "(", "RP": ")", "C": ","}
-
     def __init__(self, keep_hash: bool = False):
         self.keep_hash = keep_hash
 
@@ -153,9 +153,9 @@ class LegacyDemangler:
                         continue
 
                     else:
-                        if escape not in self._UNESCAPED:
+                        if escape not in _UNESCAPED:
                             break
-                        disp += self._UNESCAPED[escape]
+                        disp += _UNESCAPED[escape]
                         rest = after_escape
                         continue
 

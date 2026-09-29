@@ -5,8 +5,7 @@ legacy Rust symbol is also a valid Itanium symbol -- which is why this plugin is
 names first. The v0 scheme, specified in RFC 2603 and stabilised behind
 `-Csymbol-mangling-version=v0`, is a scheme of its own.
 
-Derived from Team bi0s' rust_demangler (MIT), with both grammars substantially reworked.
-See NOTICE.
+Derived from MIT-licensed code, with both grammars substantially reworked; see NOTICE.
 
 Structured output
 -----------------

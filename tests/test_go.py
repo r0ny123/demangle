@@ -175,8 +175,9 @@ class TestDetection:
     def test_no_corpus_name_from_another_scheme_is_claimed(self):
         """Checked over every corpus rather than the handful above."""
         stolen = []
-        for path in sorted((pathlib.Path(__file__).parent / "conformance").glob("*.txt")):
-            if path.name.startswith("go-"):
+        conformance = pathlib.Path(__file__).parent / "conformance"
+        for path in sorted([*conformance.glob("*.txt"), *conformance.glob("reported/*.txt")]):
+            if path.stem.partition("-")[0] == "go":
                 continue
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line and not line.startswith("#") and "\t" in line:
