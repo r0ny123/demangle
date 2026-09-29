@@ -1,5 +1,5 @@
 site_name: demangle
-site_description: Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Delphi and more -- in pure Python.
+site_description: Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI and pre-Itanium C++ (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior) -- in pure Python.
 site_url: https://r0ny123.github.io/demangle/
 repo_url: https://github.com/r0ny123/demangle
 repo_name: r0ny123/demangle
@@ -10,22 +10,22 @@ edit_uri: edit/main/
 # snippets extension rather than copying them, so there is one copy of every sentence.
 docs_dir: docs
 
-# Page names match the repository-root filenames the README links to, so one link text
-# works both on GitHub and here.
+# Using the library first, then how it is measured and built, then contributing to it.
+# The README's links are absolute GitHub URLs, because PyPI renders it too, so on the
+# Home page they lead to GitHub rather than to the pages listed here.
 nav:
   - Home: index.md
   - Working with the tree: analysing-a-binary.md
-  - Conformance: CONFORMANCE.md
-  - Architecture: ARCHITECTURE.md
   - API reference:
       - Public API: reference/api.md
       - Core: reference/core.md
       - Schemes: reference/schemes.md
+  - Conformance: CONFORMANCE.md
+  - Architecture: ARCHITECTURE.md
+  - Security: SECURITY.md
   - Adding a scheme: adding-a-scheme.md
   - Contributing: CONTRIBUTING.md
   - Fuzzing and the references: testing.md
-  - Security: SECURITY.md
-  - Roadmap: ROADMAP.md
   - Changelog: CHANGELOG.md
 
 # Every one of these is reported by default, and every one of them was reported on a
@@ -94,3 +94,6 @@ watch:
   - README.md
   - ARCHITECTURE.md
   - CONFORMANCE.md
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - CHANGELOG.md

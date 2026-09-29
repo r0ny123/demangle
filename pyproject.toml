@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "demangle"
-description = "Read mangled symbol names -- Itanium C++, MSVC, pre-Itanium C++, Ada/GNAT, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi and JNI -- in pure Python, with no dependencies."
+description = "Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI and pre-Itanium C++ (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior) -- in pure Python, with no dependencies."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
@@ -12,15 +12,20 @@ license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "demangle contributors" }]
 keywords = [
     "demangle", "demangler", "mangling", "symbol", "itanium", "msvc", "rust",
-    "c++", "abi", "reverse-engineering", "binary-analysis", "disassembler",
+    "swift", "objective-c", "go", "dlang", "nim", "pascal", "delphi", "ada", "jni",
+    "c++", "c++filt", "undname", "abi", "reverse-engineering", "binary-analysis",
+    "disassembler",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Free Threading :: 3 - Stable",
     "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Security",
     "Topic :: Software Development :: Disassemblers",
@@ -38,6 +43,7 @@ dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/r0ny123/demangle"
+Documentation = "https://r0ny123.github.io/demangle/"
 Issues = "https://github.com/r0ny123/demangle/issues"
 Changelog = "https://github.com/r0ny123/demangle/blob/main/CHANGELOG.md"
 
@@ -52,8 +58,8 @@ demangle = "demangle.cli:main"
 # an extra is a *published* feature of the distribution, and a linter is not a feature
 # of a demangler. Groups stay in the source tree and never reach the built metadata.
 #
-# `hatch run` handles these. Directly: `uv pip install --group dev`, or `pip install
-# --group dev` on pip 25.1 or newer.
+# `hatch run` handles these. Directly: `uv pip install -e . --group dev`, or `pip install
+# -e . --group dev` on pip 25.1 or newer.
 [dependency-groups]
 test = [
     "pytest>=8",
@@ -110,7 +116,6 @@ include = [
     "/CHANGELOG.md",
     "/CONFORMANCE.md",
     "/CONTRIBUTING.md",
-    "/ROADMAP.md",
     "/SECURITY.md",
     "/LICENSE",
     "/NOTICE",
