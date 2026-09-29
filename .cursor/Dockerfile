@@ -1,8 +1,6 @@
 FROM ubuntu:24.04
 
-# No Python from apt: `requires-python` is `>=3.13` and Ubuntu 24.04 ships 3.12, so
-# install.sh has uv provide the interpreter. `ca-certificates` is for the HTTPS fetches
-# there (curl, git), which `--no-install-recommends` would otherwise leave without roots.
+# No apt Python: Ubuntu 24.04 ships 3.12, below `requires-python`; install.sh uses uv.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates \

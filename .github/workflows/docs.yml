@@ -8,19 +8,14 @@ on:
 permissions:
   contents: read
 
-# One deployment at a time, and never cancel one midway: a half-published site is worse
-# than a stale one.
+# Never cancel a deployment midway: a half-published site is worse than a stale one.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
   build:
-    # Pages is unavailable on a private repository outside a paid plan, and
-    # `configure-pages` fails the job rather than skipping. Gating on visibility means
-    # this starts publishing the moment the repository goes public. Nothing is lost
-    # meanwhile: CI runs `mkdocs build --strict` on every push, so a broken
-    # cross-reference is still caught -- only the deployment waits.
+    # Pages is unavailable on a private repo (free plan); configure-pages would fail.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -49,8 +44,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
-      # The narrowest set Pages deployment accepts: write the artifact, and mint the
-      # OIDC token that proves this workflow published it. No repository write access.
+      # The minimum Pages deployment accepts.
       pages: write
       id-token: write
     steps:

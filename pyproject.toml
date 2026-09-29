@@ -33,12 +33,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# No runtime dependencies, and this is a promise the test suite enforces
-# (tests/test_architecture.py::TestLayering::test_no_third_party_imports).
+# Enforced by tests/test_architecture.py::TestLayering::test_no_third_party_imports.
 dependencies = []
-
-# Read from `demangle.__version__`, so the number lives in exactly one place and
-# `import demangle; demangle.__version__` can never disagree with the metadata.
 dynamic = ["version"]
 
 [project.urls]
@@ -51,34 +47,21 @@ Changelog = "https://github.com/r0ny123/demangle/blob/main/CHANGELOG.md"
 demangle = "demangle.cli:main"
 
 [project.entry-points."demangle.languages"]
-# Built-ins are registered directly rather than through entry points; this group is
-# where third-party distributions advertise additional schemes.
+# Intentionally empty: built-ins register directly; third-party schemes use this group.
 
-# Development requirements are dependency groups (PEP 735), not optional-dependencies:
-# an extra is a *published* feature of the distribution, and a linter is not a feature
-# of a demangler. Groups stay in the source tree and never reach the built metadata.
-#
-# `hatch run` handles these. Directly: `uv pip install -e . --group dev`, or `pip install
-# -e . --group dev` on pip 25.1 or newer.
+# Dependency groups (PEP 735), not extras, so dev tooling stays out of published metadata.
 [dependency-groups]
 test = [
     "pytest>=8",
     "pytest-cov",
     "hypothesis>=6",
 ]
-# ruff replaces black, isort, flake8 and pyupgrade; ty replaces mypy. Both check the
-# whole tree in under a second, which is what makes gating every commit on them
-# reasonable.
-#
-# Both are pinned exactly: they add rules in patch releases, so an unpinned one reddens
-# unrelated changes on someone else's release schedule. Dependabot proposes each bump as
-# its own pull request. `format` is separate so the ruff pin has one home -- the
-# documentation build wants ruff too, to format the signatures it renders.
+# ruff and ty are pinned exactly: they add rules in patch releases. `format` is its own
+# group so the ruff pin has one home (docs also needs ruff to format signatures).
 format = [
     "ruff==0.16.9",
 ]
-# `test` belongs here: ty checks `tests/` too, and cannot type-check a file whose
-# imports it cannot resolve. Without it the lint job resolves nothing under `tests/`.
+# `test` is included so ty can resolve imports under `tests/`.
 lint = [
     { include-group = "format" },
     { include-group = "test" },
@@ -94,8 +77,6 @@ dev = [
     { include-group = "lint" },
 ]
 
-# -- build ---------------------------------------------------------------------
-
 [tool.hatch.version]
 path = "src/demangle/__init__.py"
 
@@ -103,8 +84,7 @@ path = "src/demangle/__init__.py"
 packages = ["src/demangle"]
 
 [tool.hatch.build.targets.sdist]
-# An sdist ships everything needed to test what you just built. Packagers build from one
-# and run the suite; a suite that cannot collect its corpora is worse than none.
+# Packagers run the suite from the sdist, so it must ship the tests and their corpora.
 include = [
     "/src",
     "/tests",
@@ -122,10 +102,6 @@ include = [
     "/mkdocs.yml",
 ]
 
-# -- development environments --------------------------------------------------
-
-# uv installs an environment in a fraction of the time pip takes; a cold `hatch run
-# check` is seconds rather than a minute. Nothing requires it -- Hatch falls back.
 [tool.hatch.envs.default]
 installer = "uv"
 dependency-groups = ["dev"]
@@ -137,27 +113,20 @@ lint = ["ruff check {args:.}", "ruff format --check {args:.}", "ty check {args:.
 fmt = ["ruff check --fix {args:.}", "ruff format {args:.}", "lint"]
 bench = "python benchmarks/bench.py {args}"
 differential = "python tools/differential.py {args}"
-# Everything a pull request is expected to pass, in one command.
 check = ["lint", "test", "differential", "bench --check"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.13", "3.14"]
 
-# `template` set to its own name so this environment does *not* inherit the default's
-# scripts, which would run the type checker against an environment holding only the
-# documentation tooling.
+# Own template: inheriting the default's scripts would run ty without its dependencies.
 [tool.hatch.envs.docs]
 template = "docs"
 installer = "uv"
 dependency-groups = ["docs"]
 
 [tool.hatch.envs.docs.scripts]
-# `--strict` on purpose: a warning here means a broken cross-reference, an undocumented
-# parameter, or a docstring the API reference could not resolve. All are defects.
 build = "mkdocs build --strict {args}"
 serve = "mkdocs serve {args}"
-
-# -- tooling -------------------------------------------------------------------
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -171,8 +140,7 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
 ignore = [
-    # The parsers mirror grammar productions; splitting them to satisfy a complexity
-    # metric would make them harder to check against the specification, not easier.
+    # Parsers mirror grammar productions; splitting them hides the correspondence.
     "C901",
 ]
 

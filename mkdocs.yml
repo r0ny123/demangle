@@ -5,14 +5,9 @@ repo_url: https://github.com/r0ny123/demangle
 repo_name: r0ny123/demangle
 edit_uri: edit/main/
 
-# The prose lives at the repository root, where GitHub renders it and where a reader who
-# never visits this site still finds it. The pages here pull those files in with the
-# snippets extension rather than copying them, so there is one copy of every sentence.
+# Pages include the root-level Markdown via snippets rather than copying it.
 docs_dir: docs
 
-# Using the library first, then how it is measured and built, then contributing to it.
-# The README's links are absolute GitHub URLs, because PyPI renders it too, so on the
-# Home page they lead to GitHub rather than to the pages listed here.
 nav:
   - Home: index.md
   - Working with the tree: analysing-a-binary.md
@@ -28,12 +23,7 @@ nav:
   - Fuzzing and the references: testing.md
   - Changelog: CHANGELOG.md
 
-# Every one of these is reported by default, and every one of them was reported on a
-# build that passed: `--strict` fails on warnings, and these are emitted at INFO. Three
-# had been sitting in the log -- a page the nav never listed, a README link to the
-# NOTICE file (which is a repository file and not a page of this site), and a C++ lambda
-# `[](auto &x)` left in an indented block, which Markdown reads as a link to `auto &x`.
-# Promoting them is what makes the docs job notice the next one.
+# Promoted from INFO so `--strict` fails on them.
 validation:
   nav:
     omitted_files: warn
