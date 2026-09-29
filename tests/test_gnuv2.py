@@ -26,7 +26,7 @@ from .test_conformance import GNUV2_TOTAL as LIBIBERTY_TOTAL
 
 #: How many of the 662 the *default* style claims. The rest are ARM/Lucid/HP-only shapes
 #: that GNU's reading refuses rather than guesses; `GnuV2Options(style=...)` reads them.
-DETECTED_UNDER_GNU = 507
+DETECTED_UNDER_GNU = 499
 
 #: The rest have no argument list to separate: vtables, `type_info`, static data, thunks.
 STRUCTURED = 624
@@ -390,98 +390,84 @@ class TestTheDefaultStyleClaims:
         assert demangle_gnuv2(mangled, style="lucid").text == "foo::bar::bar(void)"
 
 
-class TestTheThreeItStillClaimsWrongly:
-    """Why the last three false claims are kept, measured rather than asserted.
+class TestAnArgumentListWithoutItsMarker:
+    """`name__<type letters>` with no `F` and no class: a C name, not a g++ 2.x one.
 
-    Over the 345,601 symbols in every shared object a stock Ubuntu 24.04 ships, this
-    scheme claims and rewrites three names that are not C++: `PyInit__lldb`, `PyInit__sre`
-    and `drm_intel_gem_bo_map__wc`. Five others were removed by the two `_plausible` rules
-    above; these three are not removable, and this class is the proof rather than the
-    claim.
-
-    The obvious next rule -- require positive evidence before auto-claiming a bare
-    `name__`, the way `schemes/go` declines `fmt.Println` -- reads well and is wrong here.
-    A free overloaded function is the canonical thing pre-Itanium `gnu` mangles, and a
-    free function has no class, no template and no marker by construction. So the rule
-    cannot separate a false claim from libiberty's own vectors: it rejects both.
+    Over the symbols of every shared object a stock Ubuntu 24.04 ships, the default style
+    used to claim three C names -- `PyInit__lldb`, `PyInit__sre`, `drm_intel_gem_bo_map__wc`
+    -- because the reference reads whatever follows the `__` as an argument list when it
+    opens with nothing it recognises. g++ 2.x never writes that: a free function is
+    `name__F<args>` and a member `name__<class><args>`. Detection refuses the shape;
+    asked for by name, the reading is the reference's.
     """
 
-    #: What requiring evidence would cost, over the 590 distinct names of the corpus.
-    #: Both forms of the rule -- "any evidence at all", and the narrower "no evidence and
-    #: every parameter a builtin" -- drop exactly this set, because it is the same set.
-    EVIDENCE_RULE_WOULD_LOSE = 58
-
-    #: The three, spelled as they come out. Each is a well-formed v2 encoding of a
-    #: well-formed parameter list; there is nothing in them that says "not C++".
-    RESIDUE = (
-        ("PyInit__lldb", "PyInit(long, long, double, bool)"),
-        ("PyInit__sre", "PyInit(short, long double,...)"),
-        ("drm_intel_gem_bo_map__wc", "drm_intel_gem_bo_map(wchar_t, char)"),
+    @pytest.mark.parametrize(
+        ("name", "forced"),
+        [
+            ("PyInit__lldb", "PyInit(long, long, double, bool)"),
+            ("PyInit__sre", "PyInit(short, long double,...)"),
+            ("drm_intel_gem_bo_map__wc", "drm_intel_gem_bo_map(wchar_t, char)"),
+            ("foo__i", "foo(int)"),
+        ],
     )
+    def test_it_is_not_claimed_but_still_reads_by_name(self, name, forced):
+        assert not gnuv2.detect(name)
+        assert demangle.demangle(name) == name
+        assert demangle.demangle_strict(name, language="gnuv2") == forced
 
-    def test_the_three_are_still_claimed_and_this_is_known(self):
-        for name, spelled in self.RESIDUE:
-            assert gnuv2.detect(name), name
-            assert demangle.detect(name) == "gnuv2", name
-            assert demangle.demangle(name) == spelled, name
+    def test_the_marked_forms_are_still_claimed(self):
+        assert demangle.demangle("foo__Fi") == "foo(int)"
+        assert demangle.demangle("polar__Fdd") == "polar(double, double)"
+        assert demangle.demangle("foo__3Bari") == "Bar::foo(int)"
+        assert demangle.demangle("a__b__Fi") == "a__b(int)"
 
-    def test_refusing_them_by_requiring_evidence_would_cost_fifty_eight_real_symbols(self):
-        """The trade, both sides of it, off the corpus rather than off an argument.
-
-        `symbol.evidence` is what the parser records having actually decoded: a
-        length-prefixed class, a `Q`-qualified name, a template, a constructor or
-        destructor, an operator, one of the special forms. A name that is just an
-        identifier and a run of type letters has none, and that is the whole population
-        the proposed rule would decline.
-        """
-        lost = []
-        for mangled in sorted({row[0] for row in vectors()}):
-            if not gnuv2.detect(mangled):
-                continue
+    def test_no_name_in_either_corpus_has_the_shape(self):
+        """The rule costs nothing: every reading of that shape, over both corpora."""
+        names = {row[0] for row in vectors()}
+        for line in (CONFORMANCE / "gnuv2-real-world.txt").read_text(encoding="utf-8").splitlines():
+            if line and not line.startswith("#"):
+                names.add(line.split("\t")[0])
+        unmarked = []
+        for mangled in names:
             try:
                 symbol = demangle_gnuv2(mangled, style="gnu")
             except DemangleFailure:
                 continue
-            if not symbol.evidence:
-                lost.append(mangled)
+            if symbol.evidence == {"unmarked"}:
+                unmarked.append(mangled)
+        assert unmarked == []
 
-        assert len(lost) == self.EVIDENCE_RULE_WOULD_LOSE
-        # Not obscure corners of the grammar -- the plainest thing the mangling encodes.
-        assert "overload1arg__Fi" in lost
-        assert "polar__Fdd" in lost
-        assert "complexfunc5__FPFPc_PFl_i" in lost
+    def test_what_a_failed_guess_decoded_is_not_evidence_for_the_one_that_parsed(self):
+        """Each `__` is tried in turn, and the evidence is rolled back with the rest.
 
-    def test_the_residue_is_indistinguishable_from_what_that_rule_would_lose(self):
-        """The reason no rule of that shape can work: the two populations are one.
-
-        `overload1arg__Fi` is a real libiberty vector and `drm_intel_gem_bo_map__wc` is a
-        Mesa C function, and on every property a plausibility rule could test they agree:
-        no evidence, and a parameter list of nothing but fundamental types.
+        HP's `__dl__2T5XTi__SFPv` reads under `gnu` as `__dl__2T5XTi(void *) static`; the
+        class that made it look plausible came from a guess that had already failed.
         """
-        builtins = {
-            "void",
-            "bool",
-            "char",
-            "signed char",
-            "unsigned char",
-            "wchar_t",
-            "short",
-            "unsigned short",
-            "int",
-            "unsigned int",
-            "long",
-            "unsigned long",
-            "long long",
-            "unsigned long long",
-            "float",
-            "double",
-            "long double",
-            "...",
-        }
-        for mangled in ("overload1arg__Fi", "polar__Fdd", *[name for name, _ in self.RESIDUE]):
-            symbol = demangle_gnuv2(mangled, style="gnu")
-            assert not symbol.evidence, mangled
-            assert builtins.issuperset(symbol.parameters or ()), mangled
+        for name in ("__dl__2T5XTi__SFPv", "elem__6vectorXTiSM__SCFPPd"):
+            assert demangle_gnuv2(name, style="gnu").evidence == frozenset()
+            assert not gnuv2.detect(name)
+        assert demangle_gnuv2("__dl__2T5XTi__SFPv", style="hp").text == "T5<int>::operator delete(void *) static"
+
+
+class TestRustV0:
+    def test_a_damaged_v0_name_is_not_read_as_this_one(self):
+        """A `_R` name the Rust reader refuses falls through, as `_Z` does from Itanium."""
+        for name in (
+            "_RNvCs1Y7DaGC1cwg_7ustc___r14___rust_realloc",
+            "_RINvNtCsicaZO8UCM9y_3std2rt10lang_startuECsipD1KD37Gle__6consts",
+            "__RNvCs1Y7DaGC1cwg_7ustc___r14___rust_realloc",
+        ):
+            assert not gnuv2.detect(name), name
+            with pytest.raises(DemanglingError):
+                demangle.parse(name, language="rust")
+        assert demangle.demangle("_RNvCs1Y7DaGC1cwg_7ustc___r14___rust_realloc") == (
+            "_RNvCs1Y7DaGC1cwg_7ustc___r14___rust_realloc"
+        )
+
+    def test_codewarrior_s_type_info_marker_is_not_mistaken_for_it(self):
+        assert demangle.demangle("__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>") == (
+            "TObjOwnerDerivedFromIObj<CStringTable>::__RTTI"
+        )
 
 
 class TestBounds:

@@ -408,6 +408,7 @@ class _Work:
             self.capture,
             self.return_type,
             self.trailing,
+            set(self.evidence),
         )
 
     def restore(self, saved):
@@ -429,12 +430,14 @@ class _Work:
             self.capture,
             self.return_type,
             self.trailing,
+            evidence,
         ) = saved
         self.typevec = list(typevec)
         self.ktypevec = list(ktypevec)
         self.btypevec = list(btypevec)
         self.proctypevec = list(proctypevec)
         self.tmpl_argvec = None if tmpl_argvec is None else list(tmpl_argvec)
+        self.evidence = set(evidence)
 
 
 class _Depth:
@@ -1707,6 +1710,7 @@ def _demangle_signature(work, cur, declp):
     expect_func = False
     expect_return_type = False
     oldmangled = None
+    start = cur.i
 
     while success and not cur.done():
         code = cur.at()
@@ -1823,6 +1827,8 @@ def _demangle_signature(work, cur, declp):
         else:
             if work.auto or work.gnu:
                 # Whatever this is, it is the first argument: GNU marks nothing.
+                if cur.i == start:
+                    work.evidence.add("unmarked")
                 func_done = True
                 success = _demangle_args_capturing(work, cur, declp)
             else:
@@ -2252,7 +2258,8 @@ class GnuV2Symbol:
         self.special = special
         self.suffix = suffix
         #: `class`, `qualified`, `template`, `operator`, `structor`, `special`; empty
-        #: is no evidence to `detect`.
+        #: is no evidence to `detect`. `unmarked` alone (arguments with no `F` and no
+        #: class before them) is evidence against.
         self.evidence = evidence
 
     def __repr__(self):

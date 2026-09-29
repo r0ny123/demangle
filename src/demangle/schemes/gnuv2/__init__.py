@@ -66,6 +66,9 @@ _FOREIGN_MARKERS = frozenset({"__ct", "__dt", "__vt", "__RTTI"})
 #: Evidence that a *name* was decoded rather than a run of type letters.
 _NAMED_SOMETHING = frozenset({"class", "qualified", "template"})
 
+#: What a reading records when its argument list opened with no `F` and nothing before it.
+_UNMARKED_ONLY = frozenset({"unmarked"})
+
 
 def _screen(name):
     """The cheap necessary conditions, so that `detect` parses almost nothing.
@@ -148,6 +151,11 @@ def _plausible(symbol):
     if len(parameters) > 1 and any(parameter == "void" for parameter in parameters):
         # `void` is a parameter list only when it is the whole of it (`PyInit__csv`).
         return False
+    if symbol.evidence == _UNMARKED_ONLY:
+        # `name__<types>` with no `F`, no class and nothing else decoded: g++ 2.x marks
+        # every free function with `F`, so this is a C name that ends in type letters
+        # (`PyInit__sre`, `drm_intel_gem_bo_map__wc`).
+        return False
     if symbol.qualifiers and not (symbol.evidence & _NAMED_SOMETHING):
         # Member qualifiers without a class: an `S` or `C` in a foreign encoding (`_TtU__FQD__Si`).
         return False
@@ -204,6 +212,10 @@ def detect(name, style="gnu"):
     if name.startswith(("_Z", "__Z")):
         # Itanium refusals fall through here, and `__Z...` is full of `__` separators;
         # no g++ 2.x name opens with `_Z`.
+        return False
+    if name.startswith(("_R", "__R")) and name[name.index("R") + 1 : name.index("R") + 2].isupper():
+        # Rust v0 refusals, likewise: `_R` and a capital is a name reserved to the
+        # implementation, and every one met here was a damaged Rust symbol.
         return False
     if len(name) > _DETECT_MAX or not _screen(name):
         return False

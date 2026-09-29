@@ -16,6 +16,16 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
+- **Auto-detect no longer reads C names as pre-Itanium C++.** A name whose `__` is
+  followed directly by type letters, with neither g++ 2.x's `F` nor a class
+  (`PyInit__lldb`, `drm_intel_gem_bo_map__wc`), is left alone; `language="gnuv2"`
+  still reads it as the reference does. Over 101,625 non-`_Z` symbols from a stock
+  Ubuntu library directory, false claims fall from 3 to 0.
+- **A malformed Rust v0 name** (`_R` or `__R` and a capital) is no longer read as
+  pre-Itanium C++ once the Rust reader refuses it, as `_Z` names already were not.
+- **gnuv2: evidence from a failed guess at the `__` split** no longer counts toward
+  the guess that parses. Eight HP-style names the default style was spelling wrongly
+  are now returned unchanged; `GnuV2Options(style="hp")` reads them.
 - **An MSVC name nested deeper than the interpreter's stack** raises `LimitExceeded`
   from `demangle_strict()`, `parse()` and `demangle_type()`, rather than a `ParseError`
   claiming the name is unreadable. `demangle()` still returns the input.
