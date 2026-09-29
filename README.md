@@ -34,10 +34,9 @@ native code, no compiler required.
 'CActor::~CActor()'
 ```
 
-- **No toolchain.** Every other option in Python binds to a native demangler —
-  `cxxfilt` and `pycxxfilt` wrap LLVM or libstdc++, `undname` wraps Wine through CFFI —
-  which means a C compiler at install time, a platform-specific wheel, and for MSVC
-  nothing maintained at all. This is Python and nothing else.
+- **No toolchain.** No C compiler at install time, no platform-specific wheel, no
+  native library to find at run time: one pure-Python wheel that runs wherever Python
+  does.
 - **A tree, not just a string.** `parse()` answers with nodes to walk, so the namespace,
   the template arguments and the parameter types are fields rather than a regular
   expression against C++ declaration syntax, which nests and so cannot be parsed that
