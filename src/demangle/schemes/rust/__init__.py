@@ -18,13 +18,14 @@ the tree cannot spell a symbol differently from `demangle()`.
 import re
 
 from ...core.ast import Node
+from ...core.decorations import split_decorations
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from ._dispatch import ManglingType, RustDemangler, TypeNotFoundError
 from ._legacy import UnableToLegacyDemangle
-from ._v0 import _PATH_TAGS, OutputTooLong, UnableTov0Demangle
+from ._v0 import _LLVM_MARKER, _PATH_TAGS, OutputTooLong, RecursedTooDeep, UnableTov0Demangle, _strip_llvm_suffix
 
 _DEMANGLER = RustDemangler()
 
@@ -72,8 +73,10 @@ def detect(name):
       is not a name anything has.
 
     The leading underscore is optional -- some symbol tables have already had it
-    stripped -- but only where there is evidence. A bare `ZN...E` with neither mark is
-    left alone, because `ZN` is a perfectly ordinary start to a C identifier.
+    stripped, and rustc-demangle reads `ZN4testE` as `test`. Without the underscore
+    nothing else claims the name, so the evidence asked for there is the grammar itself:
+    `ZN`, a digit, and a path the legacy reader consumes whole. None of the 652,000
+    symbols in this box's libraries and binaries starts `ZN` at all.
 
     Deliberately narrower than rustc-demangle, which accepts any `_ZN` name and treats
     the hash as optional. It can afford to: it is only ever handed names a caller has
@@ -90,6 +93,9 @@ def detect(name):
         return opening in _V0_PATH_START
     if not name.startswith(("_ZN", "__ZN", "ZN")):
         return False
+    version = name.find("@")
+    if version > 0:
+        name = name[:version]
     marker = name.rfind(_LEGACY_HASH_MARKER)
     if marker >= 0:
         start = marker + len(_LEGACY_HASH_MARKER)
@@ -100,7 +106,16 @@ def detect(name):
             and name[start + _LEGACY_HASH_DIGITS : start + _LEGACY_HASH_DIGITS + 1] == "E"
         ):
             return True
-    return _LEGACY_ESCAPE.search(name) is not None
+    if _LEGACY_ESCAPE.search(name) is not None:
+        return True
+    return name[0] == "Z" and name[2:3].isdigit() and _reads_as_legacy(name)
+
+
+def _reads_as_legacy(name):
+    try:
+        return bool(_DEMANGLER.demangle(name, DEFAULT_LIMITS.max_output))
+    except (UnableToLegacyDemangle, TypeNotFoundError):
+        return False
 
 
 def _is_hex(text):
@@ -135,17 +150,26 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     # Checked before anything else looks at the string.
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
+    # rustc-demangle drops a `.llvm.<hash>` before anything else, and its hash alphabet
+    # includes `@`: `_RC3foo.llvm.9D1C9369@@16` is `foo`. Splitting the ELF version off
+    # first, as `core` does for other schemes, stranded the `@@16` after the name.
+    name = mangled
+    version = name.find("@")
+    if version > 0 and name.find(_LLVM_MARKER, 0, version) >= 0:
+        name = _strip_llvm_suffix(name)
+    name, decoration = split_decorations(name)
     # `keep_hash` is the one thing a style changes here; see `options.py`.
     keep_hash = bool(getattr(options, "keep_hash", False))
     if _wants_structure(builder):
-        tree = _guard(mangled, limits, _DEMANGLER.structure, keep_hash)
-        _check_length(mangled, tree.size, limits)
-        _refuse_empty(mangled, tree.size)
-        return tree
-    expanded = _guard(mangled, limits, _DEMANGLER.demangle, keep_hash)
-    _check_length(mangled, len(expanded), limits)
-    _refuse_empty(mangled, len(expanded))
-    return builder.raw(expanded)
+        handle = _guard(name, limits, _DEMANGLER.structure, keep_hash)
+        _check_length(name, handle.size, limits)
+        _refuse_empty(name, handle.size)
+    else:
+        expanded = _guard(name, limits, _DEMANGLER.demangle, keep_hash)
+        _check_length(name, len(expanded), limits)
+        _refuse_empty(name, len(expanded))
+        handle = builder.raw(expanded)
+    return builder.decorated(handle, decoration) if decoration else handle
 
 
 def _refuse_empty(mangled, length):
@@ -174,11 +198,13 @@ def _guard(mangled, limits, demangle_with, keep_hash=False):
     so the translation lives here rather than twice.
     """
     try:
-        return demangle_with(mangled, limits.max_output, keep_hash)
+        return demangle_with(mangled, limits.max_output, keep_hash, limits.max_depth)
     except OutputTooLong as exc:
         raise LimitExceeded(mangled, "output length", limits.max_output) from exc
     except TypeNotFoundError as exc:
         raise NotMangledError(mangled, "not a Rust mangled name") from exc
+    except RecursedTooDeep as exc:
+        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from exc
     except (UnableTov0Demangle, UnableToLegacyDemangle) as exc:
         raise ParseError(mangled, None, str(exc)) from exc
     except RecursionError as exc:
@@ -207,10 +233,9 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Rust legacy (_ZN) and v0 (_R) symbol mangling",
     aliases=("rs",),
-    # Legacy Rust is Itanium mangling; only this plugin strips the hash. `core/decorations`
-    # must never split on `.`: it is Rust grammar (`..`, `{{vtable.shim}}`), and this
-    # scheme applies rustc-demangle's own suffix rule itself.
-    symbol_table_decorations=True,
+    # False because `parse` splits the ELF version itself, after rustc-demangle's
+    # `.llvm.` rule; `detect` looks through the version.
+    symbol_table_decorations=False,
     first_characters="_Z",
     priority=50,
 )

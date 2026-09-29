@@ -8,6 +8,9 @@ than against `rustfilt`, whose command line scans a line for something that look
 symbol and so answers a different question.
 """
 
+import sys
+import threading
+from dataclasses import replace
 from typing import ClassVar
 
 import pytest
@@ -20,20 +23,13 @@ from .conftest import load_corpus
 #: rustc-demangle's own vectors.
 UPSTREAM = load_corpus("rustc-upstream.txt")
 
-#: Vectors whose expected column this does not produce, held by name. Spellings are
-#: checked against `rustfilt`, not the library's `#[test]` assertions: on two of them the
-#: two disagree, and the tool is what a user meets.
+#: Vectors whose expected column this does not produce, held by name.
 KNOWN_DIFFERENCES = {
     # Detection, not spelling: not rustc's `17h` + sixteen hex digits hash shape, so the
-    # C++ scheme reads it. rustc-demangle is only handed names already known to be Rust.
+    # C++ scheme reads it. rustc-demangle is only handed names already known to be Rust;
+    # asked for Rust by name, this prints `foo` as it does.
     "_ZN3foo20h05af221e174051e9abcE": "foo::h05af221e174051e9abc",
     "_ZN3foo5h05afE": "foo::h05af",
-    # `rustfilt` prints this too; the vector records the library's `Display`, which
-    # reports the suffix separately.
-    "_RC3foo.llvm.9D1C9369@@16": "foo@@16",
-    # No underscore, hash or `$...$` escape: claiming it would claim any C identifier
-    # starting `ZN`. `rustfilt` echoes it back too.
-    "ZN4testE": "ZN4testE",
 }
 
 
@@ -198,30 +194,37 @@ class TestABaseSixtyTwoNumberIsSixtyFourBitsWide:
         assert demangle.demangle_strict("_RNvCs_1a1f", language="rust") == "a::f"
 
 
-class TestTheRecordedDifferencesAgainstTheTool:
-    """The four are checked against `rustfilt`, not against the library's assertion.
+class TestTheRecordedDifferences:
+    """The two upstream vectors this reads differently, and two it no longer does.
 
-    `rustfilt` is rustc-demangle's own command-line front end, and on two of the four it
-    prints what this prints -- so calling those four "shortfalls" would be wrong twice
-    over. The expectations are recorded here rather than run, because `rustfilt` is not a
-    dependency of the test suite; `tools/differential.py --live --tool rustfilt` re-checks
-    them wherever it is installed.
+    Measured with `tools/rustc-demangle-reference`, which hands the whole name to
+    `try_demangle`. `rustfilt` is not the measure here: it scans a line for `_ZN` or `_R`
+    and a run of symbol characters, so it neither sees `ZN4testE` nor the `@@16` inside
+    `.llvm.9D1C9369@@16`.
     """
 
-    RUSTFILT: ClassVar = {
+    REFERENCE: ClassVar = {
         "_ZN3foo20h05af221e174051e9abcE": "foo",
         "_ZN3foo5h05afE": "foo",
-        "_RC3foo.llvm.9D1C9369@@16": "foo@@16",
-        "ZN4testE": "ZN4testE",
+        "_RC3foo.llvm.9D1C9369@@16": "foo",
+        "ZN4testE": "test",
     }
 
     def test_two_of_them_are_what_this_prints_too(self):
-        agree = [name for name, spelled in self.RUSTFILT.items() if demangle.demangle(name) == spelled]
+        agree = [name for name, spelled in self.REFERENCE.items() if demangle.demangle(name) == spelled]
         assert sorted(agree) == ["ZN4testE", "_RC3foo.llvm.9D1C9369@@16"]
 
+    def test_all_four_are_what_this_prints_when_rust_is_asked_for(self):
+        for name, spelled in self.REFERENCE.items():
+            assert demangle.demangle(name, language="rust") == spelled
+
     def test_the_other_two_are_the_c_plus_plus_reading_of_an_ambiguous_name(self):
-        """`foo::h05af` is a name C++ can have, and nothing in the symbol says which it is."""
-        for name in ("_ZN3foo20h05af221e174051e9abcE", "_ZN3foo5h05afE"):
+        """`foo::h05af` is a name C++ can have, and nothing in the symbol says which it is.
+
+        rustc only ever writes `17h` and sixteen hex digits, so a shorter or longer run is
+        not evidence of Rust -- and claiming one would read C++'s `a::hbad` as `a`.
+        """
+        for name in ("_ZN3foo20h05af221e174051e9abcE", "_ZN3foo5h05afE", "_ZN1a4hbadE"):
             assert demangle.detect(name) == "itanium"
             assert demangle.demangle(name) == demangle.demangle(name, language="itanium")
 
@@ -229,6 +232,77 @@ class TestTheRecordedDifferencesAgainstTheTool:
         """Sixteen hex digits behind `17h`, which is every hash in a real binary."""
         assert demangle.detect("_ZN3foo17h05af221e174051e9E") == "rust"
         assert demangle.demangle("_ZN3foo17h05af221e174051e9E") == "foo"
+
+    def test_a_short_hash_is_kept_when_the_hash_is_kept(self):
+        assert demangle.demangle("_ZN3foo5h05afE", language="rust", style=TestKeepingTheHash.KEEP) == "foo::h05af"
+
+
+class TestAnLlvmHashCarriesTheElfVersion:
+    """rustc-demangle drops `.llvm.<hash>` first, and its hash alphabet includes `@`.
+
+    So a version written after the hash goes with it. `core` splits the ELF version off
+    before a scheme sees the name, which left `foo@@16`; the scheme now splits it itself,
+    after the reference's rule. Expectations are `tools/rustc-demangle-reference`'s.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("_RC3foo.llvm.9D1C9369@@16", "foo"),
+            ("_RNvCs1_1a1f.llvm.0123ABCD@", "a::f"),
+            ("_ZN3foo17h05af221e174051e9E.llvm.9D1C9369@@16", "foo"),
+        ],
+    )
+    def test_the_version_inside_the_hash_goes_with_it(self, mangled, expected):
+        assert demangle.demangle(mangled) == expected
+        assert demangle.demangle(mangled, language="rust") == expected
+        assert demangle.parse(mangled).spell() == expected
+
+    def test_a_legacy_name_asked_for_as_rust(self):
+        assert demangle.demangle("_ZN3foo3barE.llvm.9D1C9369@@16", language="rust") == "foo::bar"
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            # Not a hash (`V`), so the version is a decoration as for any ELF symbol.
+            ("_RNvC1a1f@@V1", "a::f@@V1"),
+            ("_ZN3foo17h05af221e174051e9E@@GLIBC_2.17", "foo@@GLIBC_2.17"),
+            ("_RC3foo@@V.llvm.ABC", "foo@@V.llvm.ABC"),
+        ],
+    )
+    def test_a_version_on_its_own_is_still_passed_through(self, mangled, expected):
+        assert demangle.detect(mangled) == "rust"
+        assert demangle.demangle(mangled) == expected
+
+
+class TestABareZnIsReadWhenItParses:
+    """rustc-demangle takes `ZN...E` as it takes `_ZN...E`: dbghelp strips the underscore.
+
+    Nothing else claims a name without it, so the grammar is the evidence: `ZN`, a
+    digit, and a path the legacy reader consumes to its `E`. None of the 652,000 symbols
+    in this box's libraries and binaries starts `ZN`.
+    """
+
+    @pytest.mark.parametrize(
+        ("mangled", "expected"),
+        [
+            ("ZN4testE", "test"),
+            ("ZN3foo3barE", "foo::bar"),
+            ("ZN4testE.llvm.9D1C9369", "test"),
+            ("ZN4testE@@V1", "test@@V1"),
+        ],
+    )
+    def test_it_is_claimed_and_read(self, mangled, expected):
+        assert demangle.detect(mangled) == "rust"
+        assert demangle.demangle(mangled) == expected
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["ZN", "ZNE", "ZN4test", "ZN4testEv", "ZN3foo3barEv", "ZNK3fooE", "ZNSt3fooE", "ZNever"],
+    )
+    def test_what_does_not_parse_is_left_alone(self, mangled):
+        assert demangle.detect(mangled) is None
+        assert demangle.demangle(mangled) == mangled
 
 
 class TestWhatOpensAVZeroName:
@@ -354,3 +428,80 @@ class TestKeepingTheHash:
                 assert demangle.parse(mangled, style=self.KEEP).spell(style=self.KEEP) == text
             checked += 1
         assert checked, "no vector was read under the option; has the corpus moved?"
+
+
+def _on_a_deep_stack(work):
+    """Run `work` where the interpreter's stack is not the binding bound."""
+    seen = []
+    previous_limit = sys.getrecursionlimit()
+    previous_size = threading.stack_size(256 << 20)
+    try:
+        sys.setrecursionlimit(100_000)
+        thread = threading.Thread(target=lambda: seen.append(work()))
+        thread.start()
+        thread.join()
+    finally:
+        threading.stack_size(previous_size)
+        sys.setrecursionlimit(previous_limit)
+    assert len(seen) == 1, "the work raised"
+    return seen[0]
+
+
+class TestV0NestingFollowsMaxDepth:
+    """v0 reads as deep as `max_depth` says, as Itanium does.
+
+    It held a private ceiling of 256 whatever the caller passed, so `RELAXED_LIMITS`
+    stopped where `DEFAULT_LIMITS` did and the refusal was a parse error, not the bound.
+    rustc-demangle's own ceiling is a fixed 500.
+    """
+
+    DEFAULT = demangle.DEFAULT_LIMITS.max_depth
+
+    @staticmethod
+    def nested(levels):
+        return "_R" + "Nv" * levels + "C1a" + "1b" * levels
+
+    def _bound_reported(self, mangled, limits):
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="rust", limits=limits)
+        assert caught.value.limit_name == "recursion depth"
+        return caught.value.limit_value
+
+    def test_the_default_still_stops_where_it_did(self):
+        assert demangle.demangle_strict(self.nested(self.DEFAULT - 1)).endswith("::b")
+        assert self._bound_reported(self.nested(self.DEFAULT), demangle.DEFAULT_LIMITS) == self.DEFAULT
+        assert demangle.demangle(self.nested(self.DEFAULT)) == self.nested(self.DEFAULT)
+
+    def test_relaxed_limits_read_past_it(self):
+        spelled = demangle.demangle_strict(self.nested(400), limits=demangle.RELAXED_LIMITS)
+        assert spelled == "a" + "::b" * 400
+
+    @pytest.mark.parametrize("asked", [8, 64, 2048])
+    def test_a_caller_is_told_its_own_figure(self, asked):
+        limits = replace(demangle.RELAXED_LIMITS, max_depth=asked)
+        assert _on_a_deep_stack(lambda: self._bound_reported(self.nested(asked + 10), limits)) == asked
+
+    def test_just_under_a_raised_bound_is_read(self):
+        limits = replace(demangle.RELAXED_LIMITS, max_depth=2048)
+        spelled = _on_a_deep_stack(lambda: demangle.demangle_strict(self.nested(2047), limits=limits))
+        assert spelled == "a" + "::b" * 2047
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "_R" + "Nv" * 4000 + "C1a" + "1b" * 4000,
+            "_RINvC1a1f" + "R" * 4000 + "uE",
+            "_R" + "INvC1a1f" * 4000 + "u" + "E" * 4000,
+            "_RIC0K" + "R" * 4000 + "h1_E",
+            "_RINvC1a1f" + "F" * 4000 + "Eu" * 4000 + "E",
+            "_RNvC1a1f" + "Nv" * 4000 + "C1b" + "1c" * 4000,
+        ],
+        ids=["path", "reference", "generic", "const", "fn-type", "instantiating-crate"],
+    )
+    def test_nesting_past_the_interpreters_stack_is_refused_cleanly(self, mangled):
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="rust", limits=demangle.RELAXED_LIMITS)
+        assert caught.value.limit_name == "recursion depth"
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.parse(mangled, language="rust", limits=demangle.RELAXED_LIMITS)
+        assert demangle.demangle(mangled, limits=demangle.RELAXED_LIMITS) == mangled

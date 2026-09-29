@@ -57,7 +57,7 @@ of what compilers shipped.
 | Corpus | Reference | Exact |
 |---|---|---|
 | LLVM's own Itanium vectors, `DemangleTestCases.inc` <sup>[21](#21-llvms-own-itanium-vectors)</sup> | LLVM's demangler | 29913 / 29928 |
-| Rust — rustc-demangle's own `#[test]` vectors <sup>[23](#23-rustc-demangles-own-vectors)</sup> | rustc-demangle's own assertions | 47 / 51 |
+| Rust — rustc-demangle's own `#[test]` vectors <sup>[23](#23-rustc-demangles-own-vectors)</sup> | rustc-demangle's own assertions | 49 / 51 |
 | MSVC — real compiler output, `clang++ --target=x86_64-pc-windows-msvc` | `llvm-undname` 18.1.3 | 161 / 161 |
 | MSVC — Boost 1.84's NuGet packages, a sample <sup>[19](#19-msvc-over-whole-libraries)</sup> | `llvm-undname` 18.1.3 | 5843 / 5843 |
 | MSVC names `llvm-undname` reads wrongly | the declaration | 9 / 9 |
@@ -476,17 +476,16 @@ running the reference over the input space, since no specification describes it.
 
 ### 23. rustc-demangle's own vectors
 
-Of the four this does not match, two are not differences from the *tool*: `rustfilt`
-prints `foo@@16` for `_RC3foo.llvm.9D1C9369@@16` and echoes `ZN4testE` back unread,
-exactly as this does, where the vectors record the library's own `Display`. The other two
-are detection rather than spelling: `_ZN3foo5h05afE` carries a hash that is not rustc's
-`17h` and sixteen hex digits, so this reads it as the C++ `foo::h05af` it could equally
-be. rustc-demangle can afford the wider rule because it is only handed names a caller has
-already decided are Rust's; this is offered every symbol in a binary.
+The two this does not match are detection rather than spelling: `_ZN3foo5h05afE` and
+`_ZN3foo20h05af221e174051e9abcE` carry a hash that is not rustc's `17h` and sixteen hex
+digits, so this reads them as the C++ `foo::h05af…` they could equally be; asked for Rust
+by name, it prints `foo` as the crate does. rustc-demangle can afford the wider rule
+because it is only handed names a caller has already decided are Rust's; this is offered
+every symbol in a binary.
 
 Against the crate rather than its vectors: `tools/rustc-demangle-reference/` is a front
 end over `rustc-demangle` 0.1.28 itself, and over the 5,753 distinct Rust symbols in the
-corpora this spells 5,752 identically. The one is the `@@16` above.
+corpora this spells every one identically.
 
 ## Whole symbol tables
 

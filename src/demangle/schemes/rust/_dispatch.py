@@ -1,7 +1,7 @@
 from enum import Enum
 
 from ._legacy import LegacyDemangler
-from ._v0 import V0Demangler
+from ._v0 import _DEFAULT_MAX_DEPTH, V0Demangler
 
 
 class ManglingType(Enum):
@@ -36,29 +36,30 @@ class RustDemangler:
     microseconds, so per-name construction does not show up in the benchmark.
     """
 
-    def demangle(self, inpstr: str, limit: int, keep_hash: bool = False) -> str:
+    def demangle(self, inpstr: str, limit: int, keep_hash: bool = False, max_depth: int = _DEFAULT_MAX_DEPTH) -> str:
         """Spell `inpstr`, in whichever of the two manglings it uses.
 
         Args:
             inpstr: the mangled name.
             limit: the most characters the printer may write.
             keep_hash: spell the disambiguating hash rather than dropping it.
+            max_depth: the deepest v0 nesting to read, as `Limits.max_depth`.
         """
-        return self._for(inpstr, keep_hash).demangle(inpstr, limit)
+        return self._for(inpstr, keep_hash, max_depth).demangle(inpstr, limit)
 
-    def structure(self, inpstr: str, limit: int, keep_hash: bool = False):
+    def structure(self, inpstr: str, limit: int, keep_hash: bool = False, max_depth: int = _DEFAULT_MAX_DEPTH):
         """Demangle to a tree rather than to text.
 
         Same parser, same pass; only what it emits into differs. The tree renders to
         exactly what `demangle` returns for the same input -- `keep_hash` included, since
         both are one stream of fragments.
         """
-        return self._for(inpstr, keep_hash).structure(inpstr, limit)
+        return self._for(inpstr, keep_hash, max_depth).structure(inpstr, limit)
 
-    def _for(self, inpstr, keep_hash=False):
+    def _for(self, inpstr, keep_hash=False, max_depth=_DEFAULT_MAX_DEPTH):
         if self.determine_type(inpstr) == ManglingType.LEGACY:
             return LegacyDemangler(keep_hash)
-        return V0Demangler(keep_hash)
+        return V0Demangler(keep_hash, max_depth)
 
     def determine_type(self, inpstr: str) -> ManglingType:
         """Say which of the two manglings `inpstr` uses, by its prefix alone.

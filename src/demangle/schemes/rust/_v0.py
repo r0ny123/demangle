@@ -3,6 +3,7 @@ import string
 import unicodedata
 from typing import NoReturn, Optional
 
+from ...core.limits import DEFAULT_LIMITS
 from . import nodes
 
 
@@ -29,6 +30,18 @@ class UnableTov0Demangle(Exception):
 
     def __str__(self):
         return f"[{self.given_str}] {self.message}"
+
+
+class RecursedTooDeep(UnableTov0Demangle):
+    """Nesting passed the caller's `Limits.max_depth`: a bound, not a malformed name."""
+
+    def __init__(self, max_depth):
+        super().__init__("Recursion limit exceeded")
+        self.max_depth = max_depth
+
+
+#: rustc-demangle holds a fixed `MAX_DEPTH` of 500; this follows the caller's `Limits`.
+_DEFAULT_MAX_DEPTH = DEFAULT_LIMITS.max_depth
 
 
 #: Shared with `_legacy`: both schemes accept a vendor suffix on the same terms.
@@ -81,9 +94,10 @@ class V0Demangler:
     `RustDemangler` builds a fresh one per name for that reason -- see its docstring.
     """
 
-    __slots__ = ("inpstr", "keep_hash", "suffix")
+    __slots__ = ("inpstr", "keep_hash", "max_depth", "suffix")
 
-    def __init__(self, keep_hash: bool = False):
+    def __init__(self, keep_hash: bool = False, max_depth: int = _DEFAULT_MAX_DEPTH):
+        self.max_depth = max_depth
         self.inpstr = ""
         self.suffix = ""
         self.keep_hash = keep_hash
@@ -118,7 +132,7 @@ class V0Demangler:
 
         self.inpstr = _strip_llvm_suffix(self.inpstr)
 
-        parser = Parser(self.inpstr, 0, self.keep_hash)
+        parser = Parser(self.inpstr, 0, self.keep_hash, self.max_depth)
         try:
             Printer(parser, sink, 0).print_path(True)
         except OutputTooLong:
@@ -148,7 +162,7 @@ class V0Demangler:
         without printing it costs nothing on the path that answers, and keeps a
         malformed name reported as malformed rather than as a bound the caller set.
         """
-        probe = Parser(self.inpstr, 0, self.keep_hash)
+        probe = Parser(self.inpstr, 0, self.keep_hash, self.max_depth)
         probe.skip_path()
         if (len(probe.inn) > probe.next_val) and probe.inn[probe.next_val].isupper():
             probe.skip_path()
@@ -486,17 +500,15 @@ _BASE_62.update({char: 36 + index for index, char in enumerate(string.ascii_uppe
 
 
 class Parser:
-    # Must fire well below CPython's recursion limit (each level costs several frames).
-    MAX_RECURSION_COUNT = 256
+    __slots__ = ("depth", "end", "inn", "keep_hash", "max_depth", "next_val")
 
-    __slots__ = ("depth", "end", "inn", "keep_hash", "next_val")
-
-    def __init__(self, inn: str, next_val: int, keep_hash: bool = False) -> None:
+    def __init__(self, inn: str, next_val: int, keep_hash: bool = False, max_depth: int = _DEFAULT_MAX_DEPTH) -> None:
         self.inn = inn
         self.next_val = next_val
         # On the parser rather than the printer because a backref builds a new printer from
         # it, and a crate root reached through one must spell its disambiguator the same way.
         self.keep_hash = keep_hash
+        self.max_depth = max_depth
         self.depth = 0
         self.end = len(inn)
 
@@ -590,7 +602,7 @@ class Parser:
         if i >= s_start:
             raise UnableTov0Demangle(self.inn)
 
-        return Parser(self.inn, i, self.keep_hash)
+        return Parser(self.inn, i, self.keep_hash, self.max_depth)
 
     def ident(self, build=True):
         """A `<identifier>`: an optional `u`, a decimal length, an optional `_`, the text.
@@ -654,8 +666,8 @@ class Parser:
 
     def skip_path(self):
         depth = self.depth
-        if depth >= self.MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle(self.inn)
+        if depth >= self.max_depth:
+            raise RecursedTooDeep(self.max_depth)
         self.depth = depth + 1
         try:
             at = self.next_val
@@ -719,8 +731,8 @@ class Parser:
 
     def skip_type(self):
         depth = self.depth
-        if depth >= self.MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle(self.inn)
+        if depth >= self.max_depth:
+            raise RecursedTooDeep(self.max_depth)
         self.depth = depth + 1
         try:
             self.eat("w")
@@ -787,8 +799,8 @@ class Parser:
     def skip_pattern(self):
         """Advance past one `<pattern>`, the value set a pattern type narrows to."""
         depth = self.depth
-        if depth >= self.MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle(self.inn)
+        if depth >= self.max_depth:
+            raise RecursedTooDeep(self.max_depth)
         self.depth = depth + 1
         try:
             at = self.next_val
@@ -814,8 +826,8 @@ class Parser:
         skip pass runs before anything is printed, on input nobody has validated yet.
         """
         depth = self.depth
-        if depth >= self.MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle(self.inn)
+        if depth >= self.max_depth:
+            raise RecursedTooDeep(self.max_depth)
         self.depth = depth + 1
         try:
             if self.eat("B"):
@@ -994,16 +1006,13 @@ class TreeSink:
 
 
 class Printer:
-    # Must fire well below CPython's recursion limit, or a self-referential backref chain
-    # raises RecursionError before this guard.
-    RUST_MAX_RECURSION_COUNT = 256
-
     #: `emit` is the sink's own bound method, stored per instance to avoid a forwarding
     #: frame per emitted fragment.
-    __slots__ = ("_plain", "bound_lifetime_depth", "emit", "parser", "recursion", "sink")
+    __slots__ = ("_plain", "bound_lifetime_depth", "emit", "max_depth", "parser", "recursion", "sink")
 
     def __init__(self, parser, sink, bound, recursion=0):
         self.parser = parser
+        self.max_depth = parser.max_depth
         self.sink = sink
         self.emit = sink.emit
         self._plain = not isinstance(sink, TreeSink)
@@ -1012,8 +1021,8 @@ class Printer:
 
     def check_recursion_limit(self):
         """Check and increment recursion counter. Must be paired with decrement."""
-        if self.recursion >= self.RUST_MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle("Recursion limit exceeded")
+        if self.recursion >= self.max_depth:
+            raise RecursedTooDeep(self.max_depth)
         self.recursion += 1
 
     def invalid(self) -> NoReturn:
@@ -1181,8 +1190,8 @@ class Printer:
         trait -- it takes it from here rather than re-reading the input.
         """
         recursion = self.recursion
-        if recursion >= self.RUST_MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle("Recursion limit exceeded")
+        if recursion >= self.max_depth:
+            raise RecursedTooDeep(self.max_depth)
         self.recursion = recursion + 1
         try:
             p = self.parser
@@ -1313,8 +1322,8 @@ class Printer:
         the path is the type, and a wrapper carrying nothing would only be in the way.
         """
         recursion = self.recursion
-        if recursion >= self.RUST_MAX_RECURSION_COUNT:
-            raise UnableTov0Demangle("Recursion limit exceeded")
+        if recursion >= self.max_depth:
+            raise RecursedTooDeep(self.max_depth)
         self.recursion = recursion + 1
         try:
             p = self.parser

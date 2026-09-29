@@ -16,6 +16,9 @@ the reference demanglers, and a **Performance** section.
   from `demangle_strict()`, `parse()` and `demangle_type()` rather than a `ParseError`
   claiming the name is unreadable. `demangle()` still returns the input. Every MSVC
   corpus reads the same under the default limits.
+- **Rust v0 nesting follows `Limits.max_depth`** rather than a fixed 256, with the
+  same `LimitExceeded("recursion depth")` report past it or past the interpreter's
+  stack.
 
 ### Fixed
 
@@ -31,6 +34,12 @@ the reference demanglers, and a **Performance** section.
 - **Pre-Itanium C++: evidence from a failed guess at the `__` split** no longer counts
   toward the guess that parses. Eight HP-style names the default style was spelling
   wrongly are now returned unchanged; `GnuV2Options(style="hp")` reads them.
+- **Rust: a `.llvm.<hash>` suffix that runs into an ELF version**
+  (`_RC3foo.llvm.9D1C9369@@16`) is dropped whole, as rustc-demangle does, instead of
+  leaving `foo@@16`.
+- **Rust: a legacy name with its leading underscore stripped** (`ZN4testE`) is
+  detected and read when the whole name parses as a legacy Rust path. rustc-demangle's
+  own vectors: 47 / 51 to 49 / 51.
 
 ### Removed
 
