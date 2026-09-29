@@ -250,6 +250,7 @@ class TestAGeneratedSymbolIsTheLinkerText:
         """`type:[]sync/atomic.Pointer[net.T]` ends in `]` and is not an instantiation of
         anything; `go:itab.*os.File,io.Reader` is not in package `itab`."""
         tree = demangle.parse(symbol, language="go")
+        assert isinstance(tree, GoTree)
         assert next(tree.find("path"), None) is None
         assert next(tree.find("receiver"), None) is None
         assert next(tree.find("template"), None) is None

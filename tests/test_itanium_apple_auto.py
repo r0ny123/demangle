@@ -27,6 +27,8 @@ from demangle.core.errors import DemanglingError
 UPSTREAM = "_ZN1n8transferIiEEDaPT_PNS_1SIiEES5_"
 APPLE = "_ZN1n8transferIiEEDaPT_PNS_1SIiEES6_"
 SPELLED = "auto n::transfer<int>(int*, n::S<int>*, n::S<int>*)"
+PROTOBUF_BOTTLE = "__ZNK6google8protobuf20FileDescriptorTables16FindNestedSymbolINS0_12_GLOBAL__N_115ParentNameQueryEEEDaPKvNSt3__117basic_string_viewIcNS8_11char_traitsIcEEEE"
+ABSEIL_BOTTLE = "__ZN4absl12lts_2026081718container_internal15map_slot_policyINSt3__16vectorIiNS3_9allocatorIiEEEES7_E8transferINS5_INS3_4pairIKS7_S7_EEEEEEDaPT_PNS1_13map_slot_typeIS7_S7_EESJ_"
 
 
 def read(name, **options):
@@ -98,7 +100,7 @@ class TestWhatTheBottlesCarry:
             # common rule the second argument comes back as `std::__1::basic_string_view<
             # char, std::__1::basic_string_view::char_traits<char>>`.
             (
-                "__ZNK6google8protobuf20FileDescriptorTables16FindNestedSymbolINS0_12_GLOBAL__N_115ParentNameQueryEEEDaPKvNSt3__117basic_string_viewIcNS8_11char_traitsIcEEEE",
+                PROTOBUF_BOTTLE,
                 "auto google::protobuf::FileDescriptorTables::FindNestedSymbol<google::protobuf::(anonymous namespace)::ParentNameQuery>(void const*, std::__1::basic_string_view<char, std::__1::char_traits<char>>) const",
             ),
             # Abseil's raw_hash_map: `template <class Allocator> static auto transfer(
@@ -106,7 +108,7 @@ class TestWhatTheBottlesCarry:
             # parameter's `SJ_` is one past what the common rule numbers, so every
             # demangler refused the name.
             (
-                "__ZN4absl12lts_2026081718container_internal15map_slot_policyINSt3__16vectorIiNS3_9allocatorIiEEEES7_E8transferINS5_INS3_4pairIKS7_S7_EEEEEEDaPT_PNS1_13map_slot_typeIS7_S7_EESJ_",
+                ABSEIL_BOTTLE,
                 "auto absl::lts_20260817::container_internal::map_slot_policy<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>::transfer<std::__1::allocator<std::__1::pair<std::__1::vector<int, std::__1::allocator<int>> const, std::__1::vector<int, std::__1::allocator<int>>>>>(std::__1::allocator<std::__1::pair<std::__1::vector<int, std::__1::allocator<int>> const, std::__1::vector<int, std::__1::allocator<int>>>>*, absl::lts_20260817::container_internal::map_slot_type<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>*, absl::lts_20260817::container_internal::map_slot_type<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>*)",
             ),
         ],
@@ -120,6 +122,5 @@ class TestWhatTheBottlesCarry:
         common rule and comes back as the declaration both references print, which is
         not one libc++ has -- the documented limit, and the reason the Mach-O
         underscore decides the default."""
-        absl, protobuf = (name for name, _ in self.test_the_bottle_symbol_reads_as_declared.pytestmark[0].args[1][::-1])
-        assert demangle.demangle(absl[1:]) == demangle.demangle(absl)
-        assert demangle.demangle(protobuf[1:]).endswith("std::__1::basic_string_view::char_traits<char>>) const")
+        assert demangle.demangle(ABSEIL_BOTTLE[1:]) == demangle.demangle(ABSEIL_BOTTLE)
+        assert demangle.demangle(PROTOBUF_BOTTLE[1:]).endswith("std::__1::basic_string_view::char_traits<char>>) const")
