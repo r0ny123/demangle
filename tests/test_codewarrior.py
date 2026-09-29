@@ -142,6 +142,16 @@ class TestWhatItRefusesToClaim:
             assert not codewarrior.detect(name), name
             assert demangle.demangle(name) == name
 
+    def test_a_name_another_scheme_refused_is_not_claimed(self):
+        for name in (
+            "_RINvNtCsicaZO8UCM9y_3std2rt10lang_startuECsipD1KD37Gle__6consts",
+            "__RNvCs1Y7DaGC1cwg_7ustc__6consts",
+            "_ZN3foo__6consts",
+        ):
+            assert not codewarrior.detect(name), name
+            assert demangle.demangle(name) == name
+        assert codewarrior.detect("__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>")
+
     def test_no_name_from_any_other_scheme_s_corpus_is_read_as_this_one(self):
         """Over every checked-in corpus but the two pre-Itanium ones: none taken."""
         claimed = []

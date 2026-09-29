@@ -116,6 +116,9 @@ def _plausible(symbol):
     return True
 
 
+_OTHER_SCHEME = re.compile(r"__?(?:Z|R[A-Z])")
+
+
 def detect(name):
     """Whether `name` is a CodeWarrior symbol, decided by reading it.
 
@@ -127,6 +130,9 @@ def detect(name):
     if "__" not in name:
         return False
     if len(name) > _DETECT_MAX or not _screen(name):
+        return False
+    # Itanium and Rust v0 refusals fall through to here; `__RTTI__` is CodeWarrior's own.
+    if _OTHER_SCHEME.match(name) and not name.startswith("__RTTI__"):
         return False
     try:
         symbol = demangle_codewarrior(name)
