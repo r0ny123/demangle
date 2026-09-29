@@ -74,10 +74,8 @@ def main():
         "# with the expected column produced by GNU binutils' D demangler,\n"
         "# `c++filt --format=dlang`.\n"
         "#\n"
-        "# This corpus holds the names the scheme currently reads *exactly*. It is a floor,\n"
-        "# not a claim of completeness: D landed the same way as the C-family schemes -- see\n"
-        "# CONFORMANCE.md for where it stands. What this file does is stop that number going\n"
-        "# down.\n"
+        "# This corpus holds the names the scheme currently reads *exactly*.\n"
+        "# Pinned exactly in tests/test_conformance.py.\n"
         "#\n"
     )
     arguments.out.write_text(header + "".join(f"{n}\t{e}\n" for n, e in sample), encoding="utf-8")

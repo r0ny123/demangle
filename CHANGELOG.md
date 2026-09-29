@@ -11,8 +11,11 @@ the reference demanglers, and a **Performance** section.
 ### Changed
 
 - **MSVC nesting follows `Limits.max_depth`**, as Itanium's does, instead of a fixed
-  cap of 64: `RELAXED_LIMITS` now reads deeper names, and a refusal names the caller's
-  own bound. Every MSVC corpus reads the same under the default limits.
+  cap of 64: `RELAXED_LIMITS` reads deeper names, a refusal names the caller's own
+  bound, and a name nested deeper than the interpreter's stack raises `LimitExceeded`
+  from `demangle_strict()`, `parse()` and `demangle_type()` rather than a `ParseError`
+  claiming the name is unreadable. `demangle()` still returns the input. Every MSVC
+  corpus reads the same under the default limits.
 
 ### Fixed
 
@@ -23,17 +26,16 @@ the reference demanglers, and a **Performance** section.
   Ubuntu library directory, false claims fall from 3 to 0.
 - **A malformed Rust v0 name** (`_R` or `__R` and a capital) is no longer read as
   pre-Itanium C++ once the Rust reader refuses it, as `_Z` names already were not.
-- **gnuv2: evidence from a failed guess at the `__` split** no longer counts toward
-  the guess that parses. Eight HP-style names the default style was spelling wrongly
-  are now returned unchanged; `GnuV2Options(style="hp")` reads them.
-- **An MSVC name nested deeper than the interpreter's stack** raises `LimitExceeded`
-  from `demangle_strict()`, `parse()` and `demangle_type()`, rather than a `ParseError`
-  claiming the name is unreadable. `demangle()` still returns the input.
+  CodeWarrior's auto-detect likewise leaves alone a `_Z` or `_R`-and-capital name that
+  its own reader refused, so neither pre-Itanium reader claims them.
+- **Pre-Itanium C++: evidence from a failed guess at the `__` split** no longer counts
+  toward the guess that parses. Eight HP-style names the default style was spelling
+  wrongly are now returned unchanged; `GnuV2Options(style="hp")` reads them.
 
 ### Removed
 
-- **`ROADMAP.md`.** Its one open item, the measured shortfall against the upstream
-  corpora and the schemes deliberately not covered moved to `CONFORMANCE.md`, and the
+- **`ROADMAP.md`.** Its one open item -- the measured shortfall against the upstream
+  corpora -- and the schemes deliberately not covered moved to `CONFORMANCE.md`, and the
   worst-case cost of hostile input to `SECURITY.md`. The rest was history, which this
   file and the git log already carry.
 
@@ -42,31 +44,26 @@ the reference demanglers, and a **Performance** section.
 ### Added
 
 - **Ada: real-world corpus and generator from the GNAT runtime.**
-  `tools/generate_ada_corpus.py` extracts Ada mangled symbols from `libgnat`
-  and `libgnarl`, verifies them against GNU binutils' `c++filt --format=gnat`,
-  and samples `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact
-  match under auto-detection).
-- **Broader conformance and documentation checks.** The MSVC type grammar has a
-  dedicated enumeration sweep, and documentation examples are checked.
-- **`ItaniumOptions.inherited_constructor_substitution`.** Forces the numbering an
-  inheriting constructor's base class type is read by: g++ counts it as a substitution
-  candidate and clang does not. Left unset, a name is read by clang's rule and read
-  again by g++'s when a back reference runs past the table.
+  `tools/generate_ada_corpus.py` extracts Ada mangled symbols from `libgnat` and
+  `libgnarl`, verifies them against GNU binutils' `c++filt --format=gnat`, and samples
+  `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact match under
+  auto-detection).
+- **Broader conformance and documentation checks.** The MSVC type grammar has a dedicated
+  enumeration sweep, and documentation examples are checked.
 
 ### Changed
 
-- **Faster symbol reading.** Detection uses fewer interpreter frames, Rust v0
-  back references are spelled once per symbol, and D back references avoid a
-  repeated scan of identifier spans. The benchmark baseline was updated.
-- **Development tools.** Ruff and ty were updated after local lint and type
-  checks; tests no longer depend on pytest's internal `pytestmark` layout.
+- **Faster symbol reading.** Detection uses fewer interpreter frames, Rust v0 back
+  references are spelled once per symbol, and D back references avoid a repeated scan
+  of identifier spans. The benchmark baseline was updated.
+- **Development tools.** Ruff and ty were updated after local lint and type checks;
+  tests no longer depend on pytest's internal `pytestmark` layout.
 - **The README is a front page again, and the conformance evidence has a page of
   its own.** It had grown to 876 lines, 55% of them the two corpus tables and the
   twenty notes behind them. Those move to `CONFORMANCE.md`, which the site and the
   sdist both carry; the README keeps the quick tour, the examples and a summary.
-  `tests/test_readme.py` checks the pinned counts across both
-  files, so which page holds a row is editorial rather than something a test
-  decides.
+  `tests/test_readme.py` checks the pinned counts across both files, so which
+  page holds a row is editorial rather than something a test decides.
 - **The notes behind the conformance numbers are numbered and titled.** They hung
   off the tables on glyphs -- a dagger, a pilcrow, four different asterisks -- with
   no way to jump to one, and two different notes shared a glyph, so an Ada row's
@@ -84,20 +81,20 @@ the reference demanglers, and a **Performance** section.
   puts its ellipsis on the type (`typename... $T0`), a template template parameter is
   `template<typename, int> class $TT0`, and the numbering is one sequence across kinds,
   so `Ty Ty Tn i` is `$T0, $T1, $N2`. The llvm style is unchanged.
+### Fixed
+
 - **Itanium: an inheriting constructor is read under both compilers' numberings.**
   clang does not enter the base class type of `CI1`/`CI2` in the substitution table and
   g++ does; only g++'s was read, so a clang name such as `_ZN1DCI21CEN1C4KindES1_` came
-  back with `C` where the source says `C::Kind`. See
-  `ItaniumOptions.inherited_constructor_substitution`.
-
-### Fixed
-
-- **More precise parsing across Itanium, MSVC, D, Rust, Delphi, and pre-Itanium
-  C++.** This includes template substitutions in Itanium, MSVC
-  pointer qualifiers and base-class descriptors, D back-reference bounds,
-  Rust v0 integer decoding, and Delphi detection of ordinary `@` text.
-- **Release checks.** A published release must use a tag matching the package
-  version, and the test suite passes type checking with the pinned toolchain.
+  back with `C` where the source says `C::Kind`. A name is read by clang's rule and
+  again by g++'s when a back reference runs past the table, and
+  `ItaniumOptions.inherited_constructor_substitution` forces either.
+- **More precise parsing across Itanium, MSVC, D, Rust, Delphi, and pre-Itanium C++.**
+  This includes template substitutions in Itanium, MSVC pointer qualifiers and
+  base-class descriptors, D back-reference bounds, Rust v0 integer decoding, and Delphi
+  detection of ordinary `@` text.
+- **Release checks.** A published release must use a tag matching the package version,
+  and the test suite passes type checking with the pinned toolchain.
 - **The published documentation site's links to two of its own pages.** The home
   page is a snippet include of the README, so a link written `docs/adding-a-scheme.md`
   resolved from `docs/` and looked for `docs/docs/adding-a-scheme.md`; the worked
@@ -105,7 +102,7 @@ the reference demanglers, and a **Performance** section.
   them, and `mkdocs build --strict` had been failing on it.
 - **The node classes a parse tree is made of are documented.** The README teaches
   `from demangle.core.ast import Builtin, Pointer` and matches on them, and the API
-  reference rendered three of the module's twenty-four names. All nineteen node
+  reference rendered three of the module's twenty-three names. All nineteen node
   classes are rendered now, and `tests/test_docs.py` checks that every member a page
   asks for exists -- which found `demangle.schemes.gnuv2._parser.detect`, a name that
   module does not have.
@@ -3701,7 +3698,7 @@ a scheme-agnostic core.
   renderer because its declarator spelling genuinely differs from the C-family one.
 - **Rust** legacy (`_ZN`) and v0 (`_R`) demangling, including punycode identifiers and
   v0 structural const arguments.
-- **Symbol-table decorations** — ELF version suffixes and compiler clone suffixes —
+- **Symbol-table decorations** -- ELF version suffixes and compiler clone suffixes --
   handled as structure rather than as each grammar's problem.
 
 ### Conformance

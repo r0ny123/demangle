@@ -4,10 +4,8 @@
 # with the expected column produced by GNU binutils' GNAT demangler,
 # `c++filt --format=gnat`.
 #
-# This corpus holds the names the scheme currently reads *exactly*. It is a floor,
-# not a claim of completeness: Ada landed the same way as the C-family schemes -- see
-# CONFORMANCE.md for where it stands. What this file does is stop that number going
-# down.
+# This corpus holds the names the scheme currently reads *exactly*.
+# Pinned exactly in tests/test_conformance.py.
 #
 _ada_ada__exceptions__is_null_occurrence	ada.exceptions.is_null_occurrence
 _ada_ada__strings__hash_case_insensitive	ada.strings.hash_case_insensitive

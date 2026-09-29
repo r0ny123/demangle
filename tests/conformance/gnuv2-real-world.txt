@@ -5,10 +5,10 @@
 # libraries), omniORB 3.0.4, kchart 1.1.1, gtkmm 1.2.10, libsigc++ 1.0.4 and libxml++
 # 1.0.4, plus every thunk among them. The expected spelling is what libiberty's
 # `cplus_demangle` prints under the `gnu` style with DMGL_PARAMS | DMGL_ANSI -- the
-# `tools/cplus-dem-reference` build of gcc 8.5's libiberty, the last that carried the
-# pre-Itanium demangler. Names the reference refuses are left out, as are the 396 thunks
-# with a positive delta, `__thunk_n8_...`, which gcc 2.95 wrote with an `n` and libiberty
-# does not read: tests/test_gnuv2.py pins those against the compiler's own `make_thunk`.
+# `tools/cplus-dem-reference` build of GCC 8.3.0's libiberty. Names the reference
+# refuses are left out, as are the 396 thunks with a positive delta, `__thunk_n8_...`,
+# which gcc 2.95 wrote with an `n` and libiberty does not read: tests/test_gnuv2.py pins
+# those against the compiler's own `make_thunk`.
 #
 # Two columns: the mangled name, a tab, the expected spelling.
 AtEOF__Q23KIO12TCPSlaveBase	KIO::TCPSlaveBase::AtEOF(void)

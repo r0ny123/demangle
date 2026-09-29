@@ -1,14 +1,14 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Seventeen of the entries
-# have a source in tools/corpus_sources/reference_defects/: it is compiled with the
-# compiler named on the entry, the symbol is read out of the object file with `nm`, and
-# the spelling is what that source says the symbol's type is. Two more come from the
-# general corpus sources named on them, and five are symbols out of shipped libraries,
-# where the declaration is the library's own header or its published signature and the
-# reading is spelled out in the entry's comment. That is the only ground truth a
-# demangler has, and it is what settles a split between references.
+# the expected column is derived from the *declaration* instead. Twenty-five of the 37
+# entries have a source in tools/corpus_sources/reference_defects/: it is compiled with
+# the compiler named on the entry, the symbol is read out of the object file with `nm`,
+# and the spelling is what that source says the symbol's type is. Two more come from the
+# general corpus sources named on them, and ten are symbols out of shipped libraries and
+# Homebrew bottles, where the declaration is the library's own header or its published
+# signature and the reading is spelled out in the entry's comment. That is the only
+# ground truth a demangler has, and it is what settles a split between references.
 #
 # Almost all of these are one defect. A <template-param> is a substitution candidate in
 # its own right (ABI 5.1.10), and the entry it contributes is *the parameter*, not the
@@ -23,11 +23,11 @@
 #
 # What each reference does, measured over the 217,730 distinct Itanium symbols in the
 # shared libraries shipped on Ubuntu 24.04 (libLLVM 17/18/20, libclang-cpp, liblldb,
-# libstdc++, libgphobos and the rest). Fixing this changed the output for 315 of them:
+# libstdc++, libgphobos and the rest):
 #
-#   llvm-cxxfilt 18.1.3  differs from the corrected answer on 312 of the 315.
-#   GNU c++filt 2.42     refuses 227 of the 315. Of the 88 it reads, it agrees with the
-#                        corrected answer on 84. Of the 4 left, 3 are the
+#   llvm-cxxfilt 18.1.3  differs from the corrected answer on 322.
+#   GNU c++filt 2.42     refuses 227 of the 322. Of the 95 it reads, it agrees with the
+#                        corrected answer on 91. Of the 4 left, 3 are the
 #                        `_Prepare_execution` constructor shape, where libstdc++'s own
 #                        header settles it against both references; 1 is a generic
 #                        lambda's own parameter, which GNU numbers `auto:1` and the
@@ -35,7 +35,7 @@
 #
 # style: llvm
 #
-# pairs: 20
+# pairs: 37
 #
 # tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
 # `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,

@@ -260,7 +260,7 @@ def test_regression_corpus():
 def test_reference_defect_corpus():
     """Names where following a reference would mean printing a type the source disproves.
 
-    The one corpus here whose expected column is not a reference demangler's output. See
+    The Itanium corpus whose expected column is not a reference demangler's output. See
     `REFERENCE_DEFECTS_TOTAL` and the file's own header.
     """
     total, exact = _score("itanium-reference-defects.txt", "llvm")
@@ -561,7 +561,7 @@ class TestAgainstLibcxxabisOwnCorpus:
         answers `operator()<int>(int)`.
 
         This corpus is llvm-cxxfilt's test file, so it cannot be corrected in place: its
-        value is that it is the reference measuring itself. The ten are named here
+        value is that it is the reference measuring itself. The fifteen are named here
         instead, so that one of them starting to pass is as visible as one of them
         starting to fail.
         """
@@ -570,28 +570,29 @@ class TestAgainstLibcxxabisOwnCorpus:
             for mangled, expected in load_corpus("itanium-libcxxabi.txt")
             if demangle.demangle(mangled) != expected
         ]
-        assert sorted(missed) == [
-            # bare types, refused as symbols
-            "PFvRmOE",
-            "PKFvRiE",
-            "PVFvRmOE",
-            # the reference's model of a recorded <template-param>
-            "_Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE",
-            "_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_",
-            # GCC 12's closure-prefix numbering, read by the ABI's rule
-            "_ZNK1xMUlTyT_E_clIiEEDaS_",
-            "_ZZ11inline_funcvENKUlTyTyT_T0_E_clIiiEEDaS_S0_",
-            "_ZZ11inline_funcvENKUlTyTyT_T1_T0_E_clIiiiEEDaS_S0_S1_",
-            "_ZZ18test_assign_throwsI20small_throws_on_copyLb0EEvvENKUlRNSt3__13anyEOT_E_clIRS0_EEDaS3_S5_",
-            "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E0_clIiiEEDaS3_Qaa1CIDtfp_EELb1E",
-            "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E1_clIiiEEDaS3_Q1CIDtfp_EE",
-            "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E_clIiiEEDaS3_Q1CIDtfp_EE",
-            "_ZZN5test71fIiEEvvENKUlTyT0_E_clIiiEEDaS1_",
-            # a self-referential conversion operator
-            "_Zcv1BIRT_EIS1_E",
-            # a bare type again
-            "i",
-        ]
+        assert sorted(missed) == sorted(
+            [
+                # bare types, refused as symbols
+                "i",
+                "PFvRmOE",
+                "PKFvRiE",
+                "PVFvRmOE",
+                # the reference's model of a recorded <template-param>
+                "_Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE",
+                "_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_",
+                "_ZZ11inline_funcvENKUlTyTyT_T0_E_clIiiEEDaS_S0_",
+                "_ZZ11inline_funcvENKUlTyTyT_T1_T0_E_clIiiiEEDaS_S0_S1_",
+                "_ZZ18test_assign_throwsI20small_throws_on_copyLb0EEvvENKUlRNSt3__13anyEOT_E_clIRS0_EEDaS3_S5_",
+                "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E0_clIiiEEDaS3_Qaa1CIDtfp_EELb1E",
+                "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E1_clIiiEEDaS3_Q1CIDtfp_EE",
+                "_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E_clIiiEEDaS3_Q1CIDtfp_EE",
+                "_ZZN5test71fIiEEvvENKUlTyT0_E_clIiiEEDaS1_",
+                # GCC 12's closure-prefix numbering, read by the ABI's rule
+                "_ZNK1xMUlTyT_E_clIiEEDaS_",
+                # a self-referential conversion operator
+                "_Zcv1BIRT_EIS1_E",
+            ]
+        )
 
     def test_the_four_bare_types_are_read_when_they_are_asked_for_as_types(self):
         """Refused as symbols, read as types. The corpus scores the symbol entry point."""

@@ -5,8 +5,8 @@
 # so that the checks that run over every corpus find it where they expect it.
 #
 # Source: https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-8.3.0/libiberty/testsuite/demangle-expected
-# GCC 8.3.0 is the last release carrying the pre-v3 demangler; it was removed in GCC 9.
-# Expected output is that file's own, which is what `c++filt --format=<style>` printed.
+# GCC 8.3.0 carries the pre-v3 demangler, as does 8.5.0; GCC 9 removed it. Expected
+# output is that file's own, which is what libiberty's `cplus_demangle` printed.
 AddAlignment__9ivTSolverUiP12ivInteractorP7ivTGlue	gnu	ivTSolver::AddAlignment(unsigned int, ivInteractor *, ivTGlue *)	ivTSolver::AddAlignment
 ArrowheadIntersects__9ArrowLineP9ArrowheadR6BoxObjP7Graphic	gnu	ArrowLine::ArrowheadIntersects(Arrowhead *, BoxObj &, Graphic *)	ArrowLine::ArrowheadIntersects
 ArrowheadIntersects__9ArrowLineP9ArrowheadO6BoxObjP7Graphic	gnu	ArrowLine::ArrowheadIntersects(Arrowhead *, BoxObj &&, Graphic *)	ArrowLine::ArrowheadIntersects

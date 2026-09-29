@@ -4,10 +4,8 @@
 # with the expected column produced by GNU binutils' D demangler,
 # `c++filt --format=dlang`.
 #
-# This corpus holds the names the scheme currently reads *exactly*. It is a floor,
-# not a claim of completeness: D landed the same way as the C-family schemes -- see
-# CONFORMANCE.md for where it stands. What this file does is stop that number going
-# down.
+# This corpus holds the names the scheme currently reads *exactly*.
+# Pinned exactly in tests/test_conformance.py.
 #
 _D101TypeInfo_E4core8demangle__T8DemangleTSQBcQBa15reencodeMangledFNaNbNfNkMAxaZ12PrependHooksZQCl7AddType6__initZ	initializer for TypeInfo_E4core8demangle__T8DemangleTSQBcQBa15reencodeMangledFNaNbNfNkMAxaZ12PrependHooksZQCl7AddType
 _D105TypeInfo_E4core8demangle__T8DemangleTSQBcQBa15reencodeMangledFNaNbNfNkMAxaZ12PrependHooksZQCl10IsDelegate6__initZ	initializer for TypeInfo_E4core8demangle__T8DemangleTSQBcQBa15reencodeMangledFNaNbNfNkMAxaZ12PrependHooksZQCl10IsDelegate
