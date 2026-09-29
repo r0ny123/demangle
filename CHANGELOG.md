@@ -8,6 +8,18 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Changed
+
+- **MSVC nesting follows `Limits.max_depth`**, as Itanium's does, instead of a fixed
+  cap of 64: `RELAXED_LIMITS` now reads deeper names, and a refusal names the caller's
+  own bound. Every MSVC corpus reads the same under the default limits.
+
+### Fixed
+
+- **An MSVC name nested deeper than the interpreter's stack** raises `LimitExceeded`
+  from `demangle_strict()`, `parse()` and `demangle_type()`, rather than a `ParseError`
+  claiming the name is unreadable. `demangle()` still returns the input.
+
 ### Removed
 
 - **`ROADMAP.md`.** Its one open item, the measured shortfall against the upstream

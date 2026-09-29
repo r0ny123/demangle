@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 import demangle
-from demangle.schemes.msvc._parser import demangle_msvc_symbol, parse_msvc_type
+from demangle.schemes.msvc._parser import demangle_msvc_symbol, parse_msvc_symbol, parse_msvc_type
 from demangle.schemes.msvc.nodes import render
 
 # Expected spellings are llvm-undname's; names are from LLVM's test corpus unless marked.
@@ -1121,7 +1121,6 @@ class MsvcDemanglerTestSuite(unittest.TestCase):
                 self.assertEqual(demangle_msvc_symbol(name), name)
 
     def test_a_deeply_nested_type_stops_at_the_depth_bound(self):
-        # must decline on the bound rather than on the interpreter's recursion limit
         shallow = "?f@@YAX" + "PA" * 30 + "D@Z"
         deep = "?f@@YAX" + "PA" * 300 + "D@Z"
 
@@ -1133,6 +1132,18 @@ class MsvcDemanglerTestSuite(unittest.TestCase):
         deep = "?f@@YAX" + "V?$A@" * 200 + "H" + "@" * 200 + "@@Z"
 
         self.assertEqual(demangle_msvc_symbol(deep), deep)
+
+    def test_the_depth_bound_is_the_callers(self):
+        name = "?f@@YAX" + "PA" * 30 + "D@Z"
+
+        self.assertEqual(demangle_msvc_symbol(name, demangle.Limits(max_depth=16)), name)
+        self.assertTrue(demangle_msvc_symbol(name, demangle.Limits(max_depth=64)).startswith("void __cdecl f(char "))
+
+    def test_a_name_deeper_than_the_interpreters_stack_is_declined(self):
+        deep = "?f@@YAX" + "PA" * 3000 + "D@Z"
+
+        self.assertEqual(demangle_msvc_symbol(deep, demangle.RELAXED_LIMITS), deep)
+        self.assertIsNone(parse_msvc_symbol(deep, demangle.RELAXED_LIMITS))
 
     def test_a_result_that_would_balloon_is_refused(self):
         # each layer re-uses every earlier argument back-reference, so the rendered result

@@ -344,13 +344,10 @@ class _LimitHit(Exception):
     be perfectly well formed and simply larger than the caller allowed, and a tool
     deciding whether to widen its `Limits` cannot tell the two apart from that message.
 
-    Carries the bound that *actually* stopped the parse. Both of this scheme's bounds are
-    the caller's narrowed by one of its own -- `min(limits.max_depth, MAX_DEPTH)` and
-    `min(limits.max_output, 8 * len(mangled) + 256)` -- so reading the caller's figure
-    back out of `limits` names a number that was never in force. It said "exceeded
-    recursion depth limit of 200000" for a parse that stopped at 64, which points a
-    caller at a limit that is already far above the ceiling and would change nothing if
-    raised.
+    Carries the bound that *actually* stopped the parse. The output bound is the caller's
+    narrowed by one of this scheme's own -- `min(limits.max_output, 32 * len(mangled) +
+    256)` -- so reading the caller's figure back out of `limits` can name a number that
+    was never in force.
     """
 
     def __init__(self, what, limit):
@@ -366,14 +363,12 @@ class _Bail(Exception):
 class _Demangler:
     """A cursor over one decorated name.
 
-    MAX_DEPTH bounds the mutually recursive name and type parser. A level costs several
-    interpreter frames here, so the bound is set low enough that CPython's own recursion
-    limit is never the thing that stops a parse - otherwise the answer would depend on how
-    deep the caller already is. max_render bounds the rendered result, which back-reference
-    reuse can otherwise grow multiplicatively.
+    `limits.max_depth` bounds the mutually recursive name and type parser, as it does
+    Itanium's. A level costs several interpreter frames, so the interpreter's recursion
+    limit may stop a deep name first; that is reported as the same bound (see
+    `parse_msvc_symbol_strict`). max_render bounds the rendered result, which
+    back-reference reuse can otherwise grow multiplicatively.
     """
-
-    MAX_DEPTH = 64
 
     def __init__(self, mangled, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         self.text = mangled
@@ -402,8 +397,7 @@ class _Demangler:
         self.at_argument = False
         self.member_cv = ""
         self.depth = 0
-        # `MAX_DEPTH` caps the caller's bound: a level costs several interpreter frames.
-        self.max_depth = min(limits.max_depth, self.MAX_DEPTH)
+        self.max_depth = limits.max_depth
         # Bounded relative to the name too: a two-character back-reference can double the
         # spelling per level. Over 1,025,085 real names the widest is 12x; 32x is clear.
         self.max_render = min(limits.max_output, 32 * len(mangled) + 256)
@@ -644,7 +638,7 @@ class _Demangler:
         try:
             probe.expect("?")
             probe.qualifiedName()
-        except (_Bail, RecursionError):
+        except _Bail:
             return False
         return not probe.eof() and probe.peek() in _DATA_ACCESS
 
@@ -878,8 +872,9 @@ class _Demangler:
         return name, "func"
 
     def qualifiedName(self):
-        """Count a name level against the depth bound; type() is what enforces it."""
         self.depth += 1
+        if self.depth > self.max_depth:
+            raise _LimitHit("recursion depth", self.max_depth)
         try:
             return self.qualifiedNameBody()
         finally:
@@ -1750,8 +1745,12 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTION
         return None
     try:
         return _Demangler(name, limits, options).parse()
-    except (_Bail, RecursionError):
+    except _Bail:
         return None
+    except RecursionError as error:
+        # The interpreter's stack ran out before `max_depth` did: the same fact about the
+        # name, so the same report, as `api._depth_exceeded` gives the other schemes.
+        raise _LimitHit("recursion depth", limits.max_depth) from error
 
 
 def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
@@ -1782,8 +1781,10 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         # -- is how every class type is written here. `??_R0?AVFoo@@@8` reads its type the
         # same way.
         tree = demangler.returnType()
-    except (_Bail, RecursionError):
+    except _Bail:
         return None
+    except RecursionError as error:
+        raise _LimitHit("recursion depth", limits.max_depth) from error
     if demangler.pos != len(demangler.text):
         return None
     return tree
@@ -1799,4 +1800,9 @@ def demangle_msvc_symbol(name, limits=DEFAULT_LIMITS):
     a caller labelling symbols is.
     """
     tree = parse_msvc_symbol(name, limits)
-    return name if tree is None else render(tree)
+    if tree is None:
+        return name
+    try:
+        return render(tree)
+    except RecursionError:
+        return name

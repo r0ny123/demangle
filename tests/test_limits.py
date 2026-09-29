@@ -207,54 +207,107 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
         assert demangle.demangle(self.NAME) != self.NAME
 
 
-class TestTheBoundReportedIsTheBoundInForce:
-    """A scheme may narrow the caller's limit; the report has to name what stopped it.
+def _on_a_deep_stack(work):
+    """Run `work` where the interpreter's stack is not the binding bound.
 
-    MSVC's parser holds a ceiling of its own -- `min(limits.max_depth, MAX_DEPTH)`, with
-    `MAX_DEPTH` 64 -- so that a level costing several interpreter frames can never make
-    the answer depend on how deep the caller's own stack already was. The error read the
-    *caller's* figure back out of `limits`, so a parse that stopped at 64 announced
-    "exceeded recursion depth limit of 200000": a number never in force, pointing at a
-    limit already far above the ceiling that would change nothing if raised.
+    A level of nesting costs several frames, so at CPython's default recursion limit
+    the stack may give out before `max_depth` does, and by how much depends on how deep
+    the caller already was. Raising it makes `max_depth` the bound a test observes.
     """
+    import sys
+    import threading
 
-    NAME = "?f@@YAX" + "PA" * 100 + "H@Z"
-
-    def _bound_reported(self, asked):
-        limits = replace(demangle.RELAXED_LIMITS, max_depth=asked)
-        with pytest.raises(demangle.LimitExceeded) as caught:
-            demangle.demangle_strict(self.NAME, limits=limits)
-        return caught.value.limit_value
-
-    @pytest.mark.parametrize("asked", [8, 16, 64])
-    def test_a_caller_tightening_below_the_ceiling_is_told_its_own_figure(self, asked):
-        assert self._bound_reported(asked) == asked
-
-    @pytest.mark.parametrize("asked", [2048, 200_000])
-    def test_a_caller_asking_past_the_ceiling_is_told_the_ceiling(self, asked):
-        from demangle.schemes.msvc._parser import _Demangler
-
-        assert self._bound_reported(asked) == _Demangler.MAX_DEPTH
-
-    def test_the_depth_counter_is_what_stops_it_rather_than_the_interpreter(self):
-        # The point of the ceiling: with a stack far deeper than CPython's default, the
-        # bound still fires at the same place, so the answer does not depend on the
-        # caller's stack. A converted RecursionError could not hold this.
-        import sys
-        import threading
-
-        seen = []
-
-        def run():
-            sys.setrecursionlimit(200_000)
-            seen.append(self._bound_reported(200_000))
-
-        thread = threading.Thread(target=run)
+    seen = []
+    previous_limit = sys.getrecursionlimit()
+    previous_size = threading.stack_size(256 << 20)
+    try:
+        sys.setrecursionlimit(100_000)
+        thread = threading.Thread(target=lambda: seen.append(work()))
         thread.start()
         thread.join()
-        from demangle.schemes.msvc._parser import _Demangler
+    finally:
+        threading.stack_size(previous_size)
+        sys.setrecursionlimit(previous_limit)
+    assert len(seen) == 1, "the work raised"
+    return seen[0]
 
-        assert seen == [_Demangler.MAX_DEPTH]
+
+class TestMsvcNestingFollowsMaxDepth:
+    """MSVC reads as deep as `max_depth` says, as Itanium does.
+
+    It held a private ceiling of 64 under the caller's bound, so `RELAXED_LIMITS` could
+    not read a name one level deeper than `DEFAULT_LIMITS`, and a caller who raised the
+    bound was told a figure it had not set. When the interpreter's stack gives out first
+    the name is refused the same way, as the bound in force.
+    """
+
+    DEFAULT = demangle.DEFAULT_LIMITS.max_depth
+
+    @staticmethod
+    def pointers(levels):
+        return "?f@@YAX" + "PA" * levels + "H@Z"
+
+    def _bound_reported(self, mangled, limits):
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="msvc", limits=limits)
+        return caught.value.limit_value
+
+    def test_nesting_just_under_the_default_is_read(self):
+        # `f` and the pointee take the level the last pointer would need.
+        spelled = _on_a_deep_stack(lambda: demangle.demangle_strict(self.pointers(self.DEFAULT - 1)))
+        assert spelled.endswith("int " + "*" * (self.DEFAULT - 1) + ")")
+
+    def test_nesting_just_over_the_default_is_refused_as_the_default(self):
+        assert _on_a_deep_stack(lambda: self._bound_reported(self.pointers(self.DEFAULT), demangle.DEFAULT_LIMITS)) == (
+            self.DEFAULT
+        )
+        assert demangle.demangle(self.pointers(self.DEFAULT)) == self.pointers(self.DEFAULT)
+
+    def test_a_name_past_the_default_reads_under_relaxed_limits(self):
+        deep = self.pointers(300)
+
+        def both():
+            return (
+                self._bound_reported(deep, demangle.DEFAULT_LIMITS),
+                demangle.demangle_strict(deep, limits=demangle.RELAXED_LIMITS),
+            )
+
+        refused, spelled = _on_a_deep_stack(both)
+        assert refused == self.DEFAULT
+        assert spelled.endswith("int " + "*" * 300 + ")")
+
+    @pytest.mark.parametrize("asked", [8, 16, 64, 2048])
+    def test_a_caller_is_told_its_own_figure(self, asked):
+        mangled = self.pointers(asked + 10)
+        limits = replace(demangle.RELAXED_LIMITS, max_depth=asked)
+        assert _on_a_deep_stack(lambda: self._bound_reported(mangled, limits)) == asked
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "?f@@YAX" + "PA" * 4000 + "H@Z",
+            "?f@@YAX" + "P6AX" * 4000 + "H" + "@Z" * 4000 + "@Z",
+            "?f@@YAX" + "V?$A@" * 4000 + "H" + "@@" * 4000 + "@Z",
+            # nested symbols and local scopes recurse through names, never through a type
+            "??$f@$1" * 4000 + "?x@@3HA" + "@@YAXXZ" * 4000,
+            "?g@?1?" * 4000 + "?f@@YAXXZ" + "@YAXXZ" * 4000,
+        ],
+        ids=["pointer", "function-pointer", "template", "address-argument", "local-scope"],
+    )
+    def test_nesting_past_the_interpreters_stack_is_refused_cleanly(self, mangled):
+        """At the default recursion limit these outrun the stack well before 2048 levels."""
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
+        assert caught.value.limit_name == "recursion depth"
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.parse(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
+        assert demangle.demangle(mangled, limits=demangle.RELAXED_LIMITS) == mangled
+
+    def test_a_type_past_the_interpreters_stack_is_refused_cleanly(self):
+        encoding = "PA" * 4000 + "H"
+        for mangled, call in ((encoding, demangle.demangle_type), ("." + encoding, demangle.demangle_strict)):
+            with pytest.raises(demangle.LimitExceeded):
+                call(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
 
 
 class TestDepthExhaustionIsReportedAsABound:
