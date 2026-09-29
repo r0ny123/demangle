@@ -321,6 +321,11 @@ class TestCacheStatistics:
         assert stats["hit_rate"] == 0.5
         assert stats["size"] >= 1
 
+    def test_the_cache_holds_a_large_librarys_symbol_table(self):
+        """It clears wholesale, so a table larger than it would never hit on a second pass;
+        libLLVM exports 56k names."""
+        assert demangle.cache_stats()["max_size"] >= 65536
+
     def test_the_very_first_call_in_a_process_counts_as_a_miss(self):
         """Loading the registry clears the cache, statistics included. The first call
         used to look the name up, *then* load, and lose the miss it had just recorded."""

@@ -19,6 +19,12 @@ the reference demanglers, and a **Performance** section.
 - **Rust v0 nesting follows `Limits.max_depth`** rather than a fixed 256, with the
   same `LimitExceeded("recursion depth")` report past it or past the interpreter's
   stack.
+- **Schemes load on first use.** A built-in scheme's module is imported only when a
+  name reaches it, and installed packages are searched in full only when one might
+  declare `demangle.languages`; the first `demangle()` in a process is about 25 ms
+  faster.
+- **The result cache holds 65,536 names** (was 16,384), so a second pass over a large
+  library's symbol table hits; about 440 bytes per C++ entry.
 
 ### Fixed
 
@@ -40,6 +46,8 @@ the reference demanglers, and a **Performance** section.
 - **Rust: a legacy name with its leading underscore stripped** (`ZN4testE`) is
   detected and read when the whole name parses as a legacy Rust path. rustc-demangle's
   own vectors: 47 / 51 to 49 / 51.
+- **A plugin registered in place of a built-in scheme** is no longer undone when that
+  scheme's module is imported later.
 
 ### Removed
 

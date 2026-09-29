@@ -7,6 +7,8 @@ several layers away.
 
 import pathlib
 import string
+import subprocess
+import sys
 
 import pytest
 
@@ -363,3 +365,87 @@ class TestDetectionOrderIsPinned:
         order = [plugin.name for plugin in available()]
         assert order.index("pascal") < order.index("swift")
         assert package.detect("_$SDL_MIXER$_Ld1") == "pascal"
+
+
+def _fresh(script):
+    """Run `script` in a new interpreter, where no scheme has been imported yet."""
+    source = pathlib.Path(__file__).resolve().parent.parent / "src"
+    run = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True, env={"PYTHONPATH": str(source)}
+    )
+    return run.stdout.split()
+
+
+class TestLazyBuiltIns:
+    """The registry orders and screens a built-in scheme before importing it, from what
+    `_BUILTIN_MODULES` says about it. That copy must say what the scheme itself does."""
+
+    def test_the_registry_describes_each_scheme_as_the_scheme_does(self):
+        import importlib
+
+        for name, module, *declared in (entry for entry in registry._BUILTIN_MODULES if len(entry) > 2):
+            plugin = importlib.import_module(module).PLUGIN
+            actual = [plugin.priority, plugin.first_characters, plugin.symbol_table_decorations, tuple(plugin.aliases)]
+            assert declared == actual, f"update {name}'s entry in core/registry.py to {actual}"
+
+    def test_a_name_imports_only_the_schemes_it_reaches(self):
+        loaded = _fresh(
+            "import sys, demangle\n"
+            "assert demangle.demangle('?f@@YAXH@Z') == 'void __cdecl f(int)'\n"
+            "assert 'jni' in demangle.languages() and 'gnat' in demangle.core.registry.aliases()\n"
+            "print(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
+        )
+        assert "msvc" in loaded
+        # Offered only names starting `J`, `-+_.lL`, `@` and `_`, which this is not.
+        assert {"jni", "objc", "delphi", "d"}.isdisjoint(loaded)
+
+    def test_detection_order_is_the_same_before_any_scheme_is_imported(self):
+        order = _fresh(
+            "from demangle.core import registry\nprint(*(plugin.name for plugin in registry.candidates('x')))\n"
+        )
+        expected = [name for name in TestDetectionOrderIsPinned.EXPECTED if not registry.get(name).first_characters]
+        assert order == expected
+
+    def test_a_replacement_survives_the_built_in_being_imported_later(self):
+        replaced = _fresh(
+            "import dataclasses, demangle\n"
+            "from demangle.core import registry\n"
+            "demangle.languages()\n"
+            "stand_in = registry._plugins['jni']\n"
+            "mine = dataclasses.replace(stand_in, description='mine')\n"
+            "demangle.register_language(mine)\n"
+            "import demangle.schemes.jni\n"
+            "print(registry.get('jni') is mine, registry.get('java') is mine)\n"
+        )
+        assert replaced == ["True", "True"]
+
+
+class TestPluginDiscoveryScreen:
+    """`importlib.metadata` is consulted only when a distribution might name the group."""
+
+    def test_an_environment_without_the_group_is_not_searched(self, tmp_path, monkeypatch):
+        (tmp_path / "other-1.0.dist-info").mkdir()
+        (tmp_path / "other-1.0.dist-info" / "entry_points.txt").write_text("[console_scripts]\nx = y:z\n")
+        monkeypatch.setattr("sys.path", [str(tmp_path), str(tmp_path / "missing")])
+        assert registry._may_advertise_plugins() is False
+
+    @pytest.mark.parametrize("folder", ["toy-1.0.dist-info", "Toy.egg-info"])
+    def test_a_distribution_naming_the_group_is(self, tmp_path, monkeypatch, folder):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "entry_points.txt").write_text(f"[{registry.ENTRY_POINT_GROUP}]\ntoy = toy:PLUGIN\n")
+        monkeypatch.setattr("sys.path", [str(tmp_path)])
+        assert registry._may_advertise_plugins() is True
+
+    def test_anything_it_cannot_read_is_left_to_importlib_metadata(self, tmp_path, monkeypatch):
+        archive = tmp_path / "bundle.zip"
+        archive.write_bytes(b"")
+        monkeypatch.setattr("sys.path", [str(archive)])
+        assert registry._may_advertise_plugins() is True
+
+        class Finder:
+            def find_distributions(self, context=None):
+                return []
+
+        monkeypatch.setattr("sys.path", [])
+        monkeypatch.setattr("sys.meta_path", [Finder(), *sys.meta_path])
+        assert registry._may_advertise_plugins() is True

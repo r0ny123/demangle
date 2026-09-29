@@ -201,3 +201,34 @@ def test_mixed_budgets_do_not_share_an_answer(corpus):
             assert demangle.demangle(name, limits=budgets[label]) == expected[(label, name)], (name, label)
 
     _run_threaded(work)
+
+
+def test_schemes_imported_on_first_use_from_several_threads_at_once():
+    """Built-in schemes are imported when a name first reaches them. Threads arriving at
+    the same unimported scheme at once must all get its answer, not a declined name."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    expected = {
+        "Java_java_lang_System_nanoTime": "java.lang.System.nanoTime",
+        "_D10TypeInfo_c6__vtblZ": "vtable for TypeInfo_c",
+        "@$beql$qrx5_GUIDt1": "operator ==(_GUID&, _GUID&)",
+        "._OBJC_CLASS_A_B209": "Objective-C class A_B209",
+    }
+    script = (
+        "import threading, demangle\n"
+        f"expected = {expected!r}\n"
+        f"barrier = threading.Barrier({THREADS})\n"
+        "seen = []\n"
+        "def work():\n"
+        "    barrier.wait()\n"
+        "    seen.append({name: demangle.demangle(name) for name in expected})\n"
+        f"threads = [threading.Thread(target=work) for _ in range({THREADS})]\n"
+        "[t.start() for t in threads]\n"
+        "[t.join() for t in threads]\n"
+        f"assert len(seen) == {THREADS} and all(answer == expected for answer in seen), seen\n"
+    )
+    source = Path(__file__).resolve().parent.parent / "src"
+    for _ in range(ROUNDS):
+        subprocess.run([sys.executable, "-c", script], check=True, env={"PYTHONPATH": str(source)})

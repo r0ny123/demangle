@@ -70,7 +70,11 @@ __all__ = [
 
 #: Keyed by everything that changes the answer, `limits` included: otherwise one caller's
 #: tight limits would poison the entry for every other caller of that name.
-_CACHE = BoundedCache(max_size=16384)
+#:
+#: Sized to hold one large library's symbol table (libLLVM exports 56k names): the cache
+#: clears wholesale, so a table larger than it never hits on a second pass. Measured at
+#: about 440 bytes per C++ entry, so full it holds under 30 MB.
+_CACHE = BoundedCache(max_size=65536)
 
 
 #: Emptied whenever a style or language is registered. By notification rather than a
