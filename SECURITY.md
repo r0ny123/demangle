@@ -19,7 +19,8 @@ do to a consuming application is in scope.
 Specifically in scope:
 
 - Unbounded memory or CPU use from a short input (algorithmic complexity attacks).
-- Uncaught exceptions escaping `demangle()`, which is documented never to raise.
+- An exception escaping `demangle()` for any string, which is documented to hand back a
+  name it cannot read rather than raise.
 - `RecursionError` or stack exhaustion escaping any entry point.
 - Non-deterministic output for identical input.
 - Control characters or other unexpected content reaching output that a caller would
@@ -33,7 +34,9 @@ Out of scope:
 
 ## Defences
 
-- `demangle()` never raises. Every failure returns the input unchanged.
+- `demangle()` never raises for a name it cannot read: every such failure returns the
+  input unchanged. What it does raise on is a mistake in the call itself — a `language`
+  or `style` that does not exist, or a name that is not a string.
 - Recursion depth, output length, substitution count and input length are all bounded,
   with defaults set well above anything a real compiler emits, and are configurable
   per call through `Limits`. Every registered scheme is checked against the input bound
@@ -63,12 +66,36 @@ Out of scope:
   text, arbitrary bytes, every truncation of a known-good name, and inputs constructed
   to defeat a naive parser.
 
+### Measured worst case
+
+How much work one symbol can cause is measured rather than assumed, by growing a
+repeated unit until it reaches the input bound, for every scheme, and recording wall
+time and peak allocation. Apart from the one bounded case below, nothing is superlinear.
+The worst shape in the package is a Swift name of 64KB, the largest the default
+`max_input` allows: about 586ms and 16MB, linear in the input from 5KB up, and every
+other scheme's worst is under that.
+
+That case is quadratic and bounded rather than removed. Every Itanium `<prefix>` is a
+substitution candidate and each entry holds the whole prefix, so N components record
+O(N²) characters without any single one crossing `max_output`: `_ZN` and 8,190
+components of `1a`, 16KB, took a second and 98MB. The characters the table records are
+now capped at sixteen times the output bound, a hundred times what the largest of the
+217,730 Itanium symbols in a stock Ubuntu 24.04 records.
+
+The fuzzing that found it — roughly 550,000 corpus mutations across every scheme,
+380,000 grammar-generated Itanium names, 120,000 grammar-generated Swift names and
+45,000 MSVC mutations — checks on each name that nothing but a `DemanglingError`
+escapes, that the tree renders exactly what the text path spelled in both styles, and
+that no substitution-table sentinel reaches a builder. The mutation runs are under an
+address-space cap, so a runaway allocation reports the name that caused it rather than
+being killed.
+
 ## Supported versions
 
 | Version | Supported |
 | --- | --- |
-| 0.2.x | yes |
-| earlier | no |
+| 0.3.x | yes |
+| < 0.3 | no |
 
 Until 1.0, security fixes land on the latest released minor version only. There is no
 long-term support branch and no backporting; upgrading to the current minor version is

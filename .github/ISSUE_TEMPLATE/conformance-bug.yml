@@ -20,8 +20,9 @@ body:
     attributes:
       label: What the reference prints
       description: >-
-        And which reference — llvm-cxxfilt, c++filt, llvm-undname, rustfilt,
-        swift-demangle, cwdemangle — with its version.
+        And which reference, with its version: llvm-cxxfilt, c++filt (with its --format,
+        such as --format=dlang or --format=gnat), llvm-undname, dbghelp's
+        UnDecorateSymbolName, rustfilt, swift-demangle, cwdemangle, tdump -um, or another.
       placeholder: "llvm-cxxfilt 18.1.3: std::vector<int, std::allocator<int>>::push_back(int const&)"
     validations:
       required: true

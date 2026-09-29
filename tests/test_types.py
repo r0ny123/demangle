@@ -887,7 +887,7 @@ class TestABackReferenceToAPackBoundParameter:
     """The entry a `<template-param>` contributes is the parameter, and a parameter bound
     to a pack is the pack.
 
-    That is the same rule the ROADMAP's heading 0 establishes against four compilers'
+    That is the same rule note 17 of CONFORMANCE.md establishes against the compilers'
     output for the unpacked case -- the entry is the parameter, not the argument bound to
     it where the entry was made -- and a pack parameter is not a different kind of
     parameter. `_Z1fIiJbcdEEvT_DpT0_` makes the three readings visible side by side:

@@ -704,7 +704,7 @@ class TestWhatTheThirdSittingFound:
 class TestAgainstLibibertysOwnCorpus:
     """The reference's vectors, not this project's.
 
-    `d-real-world.txt` is a corpus this project assembled, and the ROADMAP's claim of
+    `d-real-world.txt` is a corpus this project assembled, and the earlier claim of
     100% against `c++filt --format=dlang` was true of it before libiberty's own
     `d-demangle-expected` had been adopted -- which is larger, and which found 149 of its
     366 vectors failing when it was.

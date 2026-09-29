@@ -2,9 +2,18 @@
 
 All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
-[semantic versioning](https://semver.org/spec/v2.0.0.html).
+[semantic versioning](https://semver.org/spec/v2.0.0.html). Besides Keep a Changelog's
+categories, a release may have a **Conformance** section, for what was measured against
+the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
+
+### Removed
+
+- **`ROADMAP.md`.** Its one open item, the measured shortfall against the upstream
+  corpora and the schemes deliberately not covered moved to `CONFORMANCE.md`, and the
+  worst-case cost of hostile input to `SECURITY.md`. The rest was history, which this
+  file and the git log already carry.
 
 ## [0.3.0] - 2026-09-29
 
@@ -16,8 +25,11 @@ All notable changes to this project are recorded here. The format follows
   and samples `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact
   match under auto-detection).
 - **Broader conformance and documentation checks.** The MSVC type grammar has a
-  dedicated enumeration sweep, documentation examples are checked, and the API
-  reference now covers the parse-tree node classes.
+  dedicated enumeration sweep, and documentation examples are checked.
+- **`ItaniumOptions.inherited_constructor_substitution`.** Forces the numbering an
+  inheriting constructor's base class type is read by: g++ counts it as a substitution
+  candidate and clang does not. Left unset, a name is read by clang's rule and read
+  again by g++'s when a back reference runs past the table.
 
 ### Changed
 
@@ -29,8 +41,8 @@ All notable changes to this project are recorded here. The format follows
 - **The README is a front page again, and the conformance evidence has a page of
   its own.** It had grown to 876 lines, 55% of them the two corpus tables and the
   twenty notes behind them. Those move to `CONFORMANCE.md`, which the site and the
-  sdist both carry; the README keeps the quick tour, the examples and a summary,
-  and is 357 lines. `tests/test_readme.py` checks the pinned counts across both
+  sdist both carry; the README keeps the quick tour, the examples and a summary.
+  `tests/test_readme.py` checks the pinned counts across both
   files, so which page holds a row is editorial rather than something a test
   decides.
 - **The notes behind the conformance numbers are numbered and titled.** They hung
@@ -41,11 +53,25 @@ All notable changes to this project are recorded here. The format follows
 - **`ROADMAP.md` states what is done with task-list checkboxes** rather than
   strikethrough on a title, which renders as deleted rather than done, with an
   index of the six headings and their counts at the top.
+- **Itanium: a non-type template parameter's declarator is spaced as the references
+  space it.** In a `<template-param-decl>`, `Tn Pi` was `int*$N` and is `int* $N`, and
+  `Tn A3_i` was `int $N [3]` and is `int$N [3]`: a space before the name unless the type
+  has a part to put after it, as `llvm-cxxfilt` 18 and `c++filt` 2.42 both print.
+- **Itanium, gnu style: a generic lambda's declared template parameters are spelled as
+  `c++filt` spells them.** The name goes after the type (`int (*) [3] $N0`), a pack
+  puts its ellipsis on the type (`typename... $T0`), a template template parameter is
+  `template<typename, int> class $TT0`, and the numbering is one sequence across kinds,
+  so `Ty Ty Tn i` is `$T0, $T1, $N2`. The llvm style is unchanged.
+- **Itanium: an inheriting constructor is read under both compilers' numberings.**
+  clang does not enter the base class type of `CI1`/`CI2` in the substitution table and
+  g++ does; only g++'s was read, so a clang name such as `_ZN1DCI21CEN1C4KindES1_` came
+  back with `C` where the source says `C::Kind`. See
+  `ItaniumOptions.inherited_constructor_substitution`.
 
 ### Fixed
 
 - **More precise parsing across Itanium, MSVC, D, Rust, Delphi, and pre-Itanium
-  C++.** This includes template substitutions and inheritance in Itanium, MSVC
+  C++.** This includes template substitutions in Itanium, MSVC
   pointer qualifiers and base-class descriptors, D back-reference bounds,
   Rust v0 integer decoding, and Delphi detection of ordinary `@` text.
 - **Release checks.** A published release must use a tag matching the package
@@ -67,7 +93,7 @@ All notable changes to this project are recorded here. The format follows
   and both this library and libiberty resolve them; no compiler writes
   one. The span of every length-prefixed identifier is now recorded and a
   back reference target strictly inside a span is refused.
-  `tools/mutate.py --seed 30`.
+  Found by `tools/mutate.py --seed 30`.
 
 ## [0.2.0] - 2026-09-08
 

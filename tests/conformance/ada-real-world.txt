@@ -6,7 +6,7 @@
 #
 # This corpus holds the names the scheme currently reads *exactly*. It is a floor,
 # not a claim of completeness: Ada landed the same way as the C-family schemes -- see
-# ROADMAP.md for where it stands. What this file does is stop that number going
+# CONFORMANCE.md for where it stands. What this file does is stop that number going
 # down.
 #
 _ada_ada__exceptions__is_null_occurrence	ada.exceptions.is_null_occurrence

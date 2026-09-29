@@ -4,7 +4,7 @@ Copyright (c) 2026 demangle contributors
 This product is licensed under the MIT License; see LICENSE.
 
 It includes and derives from third-party work, listed below with the notices
-their licenses require.
+their licences require.
 
 ================================================================================
 Rust demangling -- src/demangle/schemes/rust/
@@ -79,6 +79,45 @@ The mangled names are LLVM's demangler test corpus (llvm/test/Demangle/ms-*.test
 used under the Apache License 2.0 with the LLVM exception. The expected column
 was produced by running llvm-undname over them.
 
+tests/conformance/msvc-arm64ec.txt, msvc-suppressions.txt, msvc-dbghelp.txt and
+msvc-name-only.txt are derived from the same names: the first inserts the ARM64EC
+marker into each, and the others record what llvm-undname's flags and
+dbghelp.dll's UnDecorateSymbolName print for them.
+
+================================================================================
+Itanium conformance corpus -- tests/conformance/itanium-libcxxabi.txt.gz
+--------------------------------------------------------------------------------
+Transcribed from LLVM's libcxxabi/test/DemangleTestCases.inc
+(https://github.com/llvm/llvm-project), mangled names and expected output both,
+used under the Apache License 2.0 with the LLVM exception.
+
+================================================================================
+GNU libiberty conformance corpora -- tests/conformance/d-libiberty.txt,
+tests/conformance/ada-libiberty.txt, tests/conformance/gnuv2-libiberty.txt
+--------------------------------------------------------------------------------
+Transcribed from GCC's libiberty test suite (https://gcc.gnu.org/): the D
+vectors from libiberty/testsuite/d-demangle-expected on GCC's master branch, and
+the Ada/GNAT and pre-Itanium C++ vectors from
+libiberty/testsuite/demangle-expected at GCC 8.3.0. Mangled names and expected
+output both come from those files, reformatted here as tab-separated rows. They
+are part of GCC, which is distributed under the GNU General Public License.
+
+================================================================================
+CodeWarrior conformance corpus -- tests/conformance/codewarrior-cwdemangle.txt
+--------------------------------------------------------------------------------
+Transcribed from the test module of cwdemangle
+(https://github.com/encounter/cwdemangle, lib/src/lib.rs): mangled names,
+options and expected output. That project dedicates it to the public domain
+under CC0-1.0.
+
+================================================================================
+Rust conformance corpus -- tests/conformance/rustc-upstream.txt
+--------------------------------------------------------------------------------
+Transcribed from the #[test] blocks of v0.rs, legacy.rs and lib.rs in
+rustc-demangle (https://github.com/rust-lang/rustc-demangle), mangled names and
+expected output both. rustc-demangle is dual-licensed under the MIT License and
+the Apache License 2.0.
+
 ================================================================================
 Specifications
 --------------------------------------------------------------------------------
@@ -107,6 +146,16 @@ test corpus (test/Demangle/Inputs/manglings.txt), used under the Apache License
 2.0 with the Runtime Library Exception. The expected column was produced by
 running swift-demangle 5.10.1 over them. The rest is a stratified sample of the
 symbols in the shipped Swift runtime and Foundation.
+
+================================================================================
+Swift conformance corpora -- tests/conformance/swift-upstream.txt,
+tests/conformance/swift-simplified.txt, tests/conformance/swift-refusals.txt
+--------------------------------------------------------------------------------
+Transcribed from the Swift compiler's test/Demangle/Inputs/manglings.txt and
+simplified-manglings.txt (https://github.com/swiftlang/swift), mangled names and
+expected output both, used under the Apache License 2.0 with the Runtime Library
+Exception. swift-refusals.txt holds the names from manglings.txt that
+swift-demangle itself refuses.
 
 ================================================================================
 Nim demangling -- src/demangle/schemes/nim/

@@ -11,7 +11,8 @@ page against those pins.
 [notes on the corpora](#notes-on-the-corpora) ·
 [whole symbol tables](#whole-symbol-tables) ·
 [printing the name without its signature](#printing-the-name-without-its-signature) ·
-[on trusting the references](#on-trusting-the-references)
+[on trusting the references](#on-trusting-the-references) ·
+[schemes not covered](#schemes-not-covered)
 
 ## Checked-in corpora
 
@@ -48,9 +49,25 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Ada/GNAT — libiberty's own vectors <sup>[12](#12-ada-and-gnat)</sup> | GNU `c++filt --format=gnat` | **34 / 34** |
 | JNI native method names, from real `native` declarations <sup>[15](#15-jni)</sup> | round trip <sup>[15](#15-jni)</sup> | **50 / 50** |
 
+Replayed and pinned the same way, by each scheme's own test module: more of the
+references' own vectors, and more samples of what compilers shipped.
+
+| Corpus | Reference | Exact |
+|---|---|---|
+| LLVM's own Itanium vectors, `DemangleTestCases.inc` <sup>[21](#21-llvms-own-itanium-vectors)</sup> | LLVM's demangler | 29913 / 29928 |
+| Rust — rustc-demangle's own `#[test]` vectors <sup>[23](#23-rustc-demangles-own-vectors)</sup> | rustc-demangle's own assertions | 47 / 51 |
+| MSVC — real compiler output, `clang++ --target=x86_64-pc-windows-msvc` | `llvm-undname` 18.1.3 | 161 / 161 |
+| MSVC — Boost 1.84's NuGet packages, a sample <sup>[19](#19-msvc-over-whole-libraries)</sup> | `llvm-undname` 18 | 5843 / 5843 |
+| MSVC names `llvm-undname` reads wrongly | the declaration | 9 / 9 |
+| D — libiberty's own vectors <sup>[22](#22-libibertys-own-d-vectors)</sup> | GNU `c++filt --format=dlang` | 366 / 366 |
+| Pre-Itanium C++ from gcc 2.95 binaries <sup>[20](#20-a-pre-itanium-thunk-for-a-positive-delta)</sup> | libiberty `cplus_demangle`, `gnu` style | 12661 / 12661 |
+| Ada/GNAT, from the shipped libgnat and libgnarl | GNU `c++filt --format=gnat` | 1438 / 1438 |
+| Delphi/C++Builder, a per-kind sample of the whole dump | recorded `tdump -um` | 68 / 68 |
+| Delphi/C++Builder constructs the export tables lack, hand-built <sup>[13](#13-delphi-and-cbuilder)</sup> | an independent unmangler | 53 / 53 |
+
 ## Notes on the corpora
 
-What the numbered marks in the table above point at, and the ones in
+What the numbered marks in the tables above point at, and the ones in
 [whole symbol tables](#whole-symbol-tables) below. Each says what a row is measured
 against where that is not simply "a reference demangler said so", or what the names
 it does not account for are.
@@ -81,11 +98,11 @@ with no flag.
 ### 3. Bare types under both references
 
 The same 1,076 encodings under both references, which spell them differently: each
-style reads every row of its own reference's corpus. The last three to close were a
-doubled `KK` cv-qualifier, which `c++filt` folds away and `llvm-cxxfilt` keeps — left
-alone for a while on the reasoning that no compiler emits `KK`, which was true of the
-literal spelling and false of what it means, since the same doubling arrives through an
-already-qualified template argument and the shipped libLLVM has three of those.
+style reads every row of its own reference's corpus. The last three to close each
+carried a doubled `KK` cv-qualifier, which `c++filt` folds away and `llvm-cxxfilt` keeps —
+left alone for a while on the reasoning that no compiler emits `KK`, which was true of
+the literal spelling and false of what it means, since the same doubling arrives through
+an already-qualified template argument and the shipped libLLVM has three of those.
 
 ### 4. ARM64EC hybrid names
 
@@ -108,16 +125,16 @@ is case-insensitive and the compiler upper-cases before mangling.
 
 ### 6. The Swift reference is built here
 
-**The Swift reference is built here, from source.** Nothing a distribution ships
-reads a Swift name — `llvm-cxxfilt` and `c++filt` both decline a `$s` outright — so
-`tools/swift-demangle-reference/` builds swiftlang/swift's own `lib/Demangling` at a
-pinned revision behind a line-per-name front end. The revision is a commit on `main` and
-not a release tag, because every release through 6.3.3 refuses part of the compiler's own
-vector file: 5.10.1 scores 455 of the 514 and 6.3.3 does not carry all of them. Its
-README has the measurements, and the one row where following it would be the defect —
-`NodePrinter` reads an extended existential shape one child too high and spells the type
-as `<null node pointer>`, a path its own test corpus never exercises — is pinned in
-`tests/conformance/swift-reference-defects.txt` against what the tree says instead.
+Nothing a distribution ships reads a Swift name — `llvm-cxxfilt` and `c++filt` both
+decline a `$s` outright — so `tools/swift-demangle-reference/` builds swiftlang/swift's
+own `lib/Demangling` at a pinned revision behind a line-per-name front end. The revision
+is a commit on `main` and not a release tag, because every release through 6.3.3 refuses
+part of the compiler's own vector file: 5.10.1 scores 455 of the 514 and 6.3.3 does not
+carry all of them. Its README has the measurements, and the one row where following it
+would be the defect — `NodePrinter` reads an extended existential shape one child too
+high and spells the type as `<null node pointer>`, a path its own test corpus never
+exercises — is pinned in `tests/conformance/swift-reference-defects.txt` against what
+the tree says instead.
 
 ### 7. Swift symbolic references
 
@@ -142,42 +159,47 @@ around it — checked one by one.
 ### 8. How Apple clang numbers a substitution table
 
 Apple's clang numbers the substitution table by a rule no other compiler uses: an
-undeduced `auto` return type, `Da`, is a candidate -- Clang 6.0's accident, kept by
-Apple's fork in every version since -- so every back-reference after one is one higher
+undeduced `auto` return type, `Da`, is a candidate — Clang 6.0's accident, kept by
+Apple's fork in every version since — so every back-reference after one is one higher
 than GCC or upstream clang would write, and llvm-cxxfilt and c++filt read every such
 Mach-O name by the wrong entries. Of the 17,310 names carrying a `Da` in the bottles,
 2,300 overrun the table under the common rule and 6,385 come back as a plausible wrong
 declaration; this reads a `__Z` name by Apple's rule, retries the other when a
 back-reference overruns or names something no type can be, and takes
-`ItaniumOptions.undeduced_auto_substitution` to force either. Checked against clang 18 under `-fclang-abi-compat=6`, which writes the
-same numbering, and against upstream clang targeting Darwin, which does not. Of the
-12,350 names in the bottles where this and `llvm-cxxfilt -_` part, 4,690 are that rule
-and 7,660 the template-parameter rebinding <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> describes, 7,573 of them one generic lambda
-in ceres; the 67 neither reads are `$tlv$init`, the thread-local initialiser a Mach-O
-linker names after its variable. A second batch of bottles -- Arrow, DuckDB, RocksDB,
-gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python, 295,281 more
-names -- parts from `llvm-cxxfilt -_` on 6,134: 677 are Apple's closure-prefix rule,
-described below, and every other one either the `auto` rule or the rebinding; Arrow's
-`VisitVoid` joins the reference-defects corpus, checked against its header, and so do
-a RocksDB and a DuckDB closure under the closure-prefix rule. 74 are `$tlv$init`, and 22 gRPC promise types spell past the 64K
-`Limits.max_output` -- one is 69,094 characters under `RELAXED_LIMITS`, and the
-reference refuses it outright.
+`ItaniumOptions.undeduced_auto_substitution` to force either. Checked against clang 18
+under `-fclang-abi-compat=6`, which writes the same numbering, and against upstream clang
+targeting Darwin, which does not.
+
+Of the 12,350 names in the first batch of bottles where this and `llvm-cxxfilt -_` part,
+4,690 are that rule and 7,660 the template-parameter rebinding
+<sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> describes, 7,573 of
+them one generic lambda in ceres. Not counted in the 12,350: 67 names neither reads,
+which are `$tlv$init`, the thread-local initialiser a Mach-O linker names after its
+variable. A second batch — Arrow, DuckDB, RocksDB, gRPC, Cap'n Proto, libtorrent,
+Xerces-C, RE2, libomp and Boost.Python, 295,281 more names — parts from
+`llvm-cxxfilt -_` on 6,134: 677 are Apple's closure-prefix rule, described below, and
+every other one either the `auto` rule or the rebinding. Arrow's `VisitVoid` joins the
+reference-defects corpus, checked against its header, and so do a RocksDB and a DuckDB
+closure under the closure-prefix rule. Not counted in the 6,134 either: 74 more
+`$tlv$init`, and 22 gRPC promise types whose spelling runs past the 64K
+`Limits.max_output`, so this refuses them by default — one is 69,094 characters under
+`RELAXED_LIMITS`, and the reference refuses it outright.
 
 The other place two compilers number the same name differently is a lambda in a
-variable's or a member's initializer. Its name goes through the variable --
-`ns::g3::'lambda'(...)`, written `2ns2g3M...` -- and the prefix before that `M` is a
+variable's or a member's initialiser. Its name goes through the variable —
+`ns::g3::'lambda'(...)`, written `2ns2g3M...` — and the prefix before that `M` is a
 substitution candidate under the ABI, upstream clang and GCC 13; GCC 12 and every
 version before it wrote the `M` and skipped the entry, and so does Apple's clang in
 every version, so every later back-reference is one lower. GCC 13 still emits the old
 spelling as an alias beside the new. Read by the ABI's rule, such a name's references
 resolve one entry early, and llvm-cxxfilt, LLVM's main branch and c++filt all print
-`operator()(ns::Box, ns::Box)` for a lambda declared over `ns::Box<int>` -- a template
-with no arguments, standing as a type -- and, for the 663 such names in Homebrew's
+`operator()(ns::Box, ns::Box)` for a lambda declared over `ns::Box<int>` — a template
+with no arguments, standing as a type — and, for the 663 such names in Homebrew's
 bottles of Apache Arrow, DuckDB and RocksDB, `std::function`'s allocator as an allocator
 of the member the lambda initialised. This reads a `__Z` name by Apple's rule and a
 `_Z` name by the ABI's, and where a back-reference then runs past the table or lands on
-something no type can be -- a closure prefix, or a template with no arguments after it
--- reads the name again under the other; `ItaniumOptions.closure_prefix_substitution`
+something no type can be — a closure prefix, or a template with no arguments after it
+— reads the name again under the other; `ItaniumOptions.closure_prefix_substitution`
 forces either. Established against g++ 13 under `-fabi-version=17` and `18`, against
 clang 18 targeting Linux and Darwin, and against the bottles' own symbols.
 
@@ -204,17 +226,17 @@ what makes it 1,324. Nothing in one of these names says which of the five compil
 wrote it, so the style is an option and the default is `gnu`; a caller who knows the
 binary passes `demangle.style("llvm", gnuv2={"style": "arm"})`. Because a name in this
 family is an ordinary C identifier with a `__` in it, this scheme is offered *last* and
-its detection reads the whole name rather than a prefix: over the 80,748 names in every
-other scheme's corpus it claims none, and over 339,117 symbols from this machine's own
-shared libraries it claims one — `drm_intel_gem_bo_map__wc`, where `wc` is a valid
-argument list and libiberty reads it exactly the same way. That reference is built here
-too: binutils 2.42 no longer ships the pre-Itanium styles and GCC 9 removed the
-demangler, so `tools/cplus-dem-reference/` compiles the 8.3.0 tree's own `cplus-dem.c`
-behind a line-per-name front end, pinned by tag and by checksum, and the enumeration and
-mutation fuzzers ask it. It reproduces the corpus 1,324 of 1,324, and over 420,000
-mutants of it this library never reads a name libiberty refuses; where the two part,
-libiberty is spelling a gap round something it should have refused, and its README has
-the families.
+its detection reads the whole name rather than a prefix: of the names in every other
+scheme's checked-in corpus it claims none, which `tests/test_gnuv2.py` checks on every
+run, and over 339,117 symbols from this machine's own shared libraries it claims one —
+`drm_intel_gem_bo_map__wc`, where `wc` is a valid argument list and libiberty reads it
+exactly the same way. That reference is built here too: binutils 2.42 no longer ships
+the pre-Itanium styles and GCC 9 removed the demangler, so `tools/cplus-dem-reference/`
+compiles the 8.3.0 tree's own `cplus-dem.c` behind a line-per-name front end, pinned by
+tag and by checksum, and the enumeration and mutation fuzzers ask it. It reproduces the
+corpus 1,324 of 1,324, and over 420,000 mutants of it this library never reads a name
+libiberty refuses; where the two part, libiberty is spelling a gap round something it
+should have refused, and its README has the families.
 
 ### 11. CodeWarrior
 
@@ -223,7 +245,7 @@ never read: `cplus-dem.c` has no CodeWarrior flag and `demangle-expected` has no
 for it, so the reference is `encounter/cwdemangle` — the tool decompilation projects for
 GameCube and Wii titles run, dedicated to the public domain — and the corpus is its own
 test module. Detection is held to the same bar as the pre-Itanium family above: **0**
-claims over the other schemes' 80,748 names and **0** over 339,117 real symbols.
+claims over the other schemes' corpora and **0** over 339,117 real symbols.
 
 Where the two pre-Itanium schemes overlap — and they do, the encodings being that close —
 GNU v2 is offered first, because a name valid under both should go to the commoner
@@ -249,14 +271,17 @@ machine's own libraries as Ada. So a name is claimed only when it carries someth
 wrote and a C compiler would not — `_ada_`, an `O`-operator, a `TK` task suffix, a `P`/`N`
 protected subprogram, a stream `S[RWIO]`, a controlled `D[FA]`, an `X` body-nested marker,
 a `___elabb`-style special name, a `_B`/`_E` entry body, an overload number — *and* the
-whole name is accounted for. Measured under that rule: **0** claims over the other
-schemes' 81,457 names and **0** over 339,117 real symbols.
+whole name is accounted for. Measured under that rule: **0** claims over every other
+scheme's corpus, libcxxabi's included, and **0** over 339,117 real symbols.
 
 The cost is that 4 of the 34 vectors — `yz__qrs`, `x__m1`, `x__m3`, `x__y__j`, lower-case
 identifiers joined by `__` and nothing else — are not auto-detected. They demangle under
 `language="ada"`. That is the same bargain the Go scheme makes: not claiming a name
 returns it unchanged, which is what an unreadable name does anyway, while claiming
 someone else's rewrites it into a plausible lie.
+
+The reference has a defect of its own here, and it is a crash rather than a reading:
+see [where a reference crashes](#where-a-reference-crashes).
 
 ### 13. Delphi and C++Builder
 
@@ -287,9 +312,13 @@ Nim has no reference demangler either, and its mangling is not injective: `mangl
 drops an underscore before a digit, so `len0_16` and `len016` are the same symbol. What
 carries correctness is the same round-trip property Go uses — re-mangling what we read
 must reproduce the bytes — plus agreement with the name the compiler recorded for a
-debugger. Seven names in the corpus cannot come back exactly, and all seven are that one
-documented loss; they are listed by name in `tests/conformance/nim-lossy.txt` rather than
-rounded off.
+debugger. Names that had an underscore before a digit cannot come back exactly, and are
+left out of the corpus and listed in `tests/conformance/nim-lossy.txt` instead: seven
+symbols, three of them the FarmHash helpers `len0_16`, `len17_32` and `len33_64` in
+`pure/hashes.nim` and four purpose-built. Across the 5,946 routine names in the Nim 1.6
+and 2.2 standard libraries eight have that shape — those three and five MySQL wrapper
+routines in `wrappers/mysql.nim`, which are `importc` and so emit raw C symbols — and
+they are the eight the whole-library row misses.
 
 ### 15. JNI
 
@@ -309,14 +338,14 @@ symbol in the shipped toolchain binaries, not just the recorded sample.
 
 ### 17. Where following a reference would be the defect
 
-**Where following a reference would be the defect.** A `<template-param>` recorded as a
-substitution candidate — and any component built over one — is the *parameter*, not the
-argument bound to it where the entry was made. The mangler canonicalises a template type
-parameter by level and index, so it reuses one entry across two different templates, and
-the two readings differ in any name that mentions a local entity. Freezing it prints a
-type the source disproves: `std::__insertion_sort<llvm::cfg::Update<llvm::BasicBlock*>*, C>`
-taking `llvm::BasicBlock*`, a generic lambda's `operator()<int>` taking `auto`, or a
-closure declared `[](auto x)` taking `int`.
+A `<template-param>` recorded as a substitution candidate — and any component built over
+one — is the *parameter*, not the argument bound to it where the entry was made. The
+mangler canonicalises a template type parameter by level and index, so it reuses one
+entry across two different templates, and the two readings differ in any name that
+mentions a local entity. Freezing it prints a type the source disproves:
+`std::__insertion_sort<llvm::cfg::Update<llvm::BasicBlock*>*, C>` taking
+`llvm::BasicBlock*`, a generic lambda's `operator()<int>` taking `auto`, or a closure
+declared `[](auto x)` taking `int`.
 
 Settled against ten reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3, checked
 in under `tools/corpus_sources/reference_defects/`, and pinned with five more symbols
@@ -345,22 +374,24 @@ constructor after the base, `D::C`, which is neither compiler's declaration. Thi
 both, by clang's rule with a retry under g++'s, and
 `ItaniumOptions.inherited_constructor_substitution` forces either.
 
-`llvm-cxxfilt` 18.1.3 freezes both, which is why the llvm-style whole-library rows above
-are no longer 100%: over the 217,730 distinct Itanium symbols in every shared library a
-stock Ubuntu 24.04 ships, it differs from this on 322. GNU `c++filt` 2.42 refuses 227 of
-those and agrees with this on 91 of the 95 it reads. Of the four left, three are the
-`std::once_flag::_Prepare_execution` shape, where libstdc++'s own header settles it
-against *both* references; the fourth is one open case of ours, in ROADMAP.md heading 0.
-Over the same 217,730 symbols this now differs from `c++filt` in the gnu style on 3.
+`llvm-cxxfilt` 18.1.3 freezes both, which is why the llvm-style rows under
+[whole symbol tables](#whole-symbol-tables) are not 100%: over the 217,730 distinct
+Itanium symbols in every shared library a stock Ubuntu 24.04 ships, it differs from this
+on 322. GNU `c++filt` 2.42 refuses 227 of those and agrees with this on 91 of the 95 it
+reads. Of the four left, three are the `std::once_flag::_Prepare_execution` shape, where
+libstdc++'s own header settles it against *both* references; the fourth is a generic
+lambda's own parameter in libclang-cpp, which `c++filt` numbers `auto:1&` where the llvm
+style writes `auto&` — the same reading spelled differently, and the gnu style spells it
+as `c++filt` does.
 
 ### 18. The gnu style over whole libraries
 
-The `gnu` style reads every one of the 44,093 names `c++filt` reads in
-`libLLVM.so.18.1` and spells all of them byte for byte as it does. Over all 217,730
-symbols there are three left, and all three are the `std::once_flag::_Prepare_execution`
-shape above, where the declaration in libstdc++'s own header says this is right and GNU
-is not — so what is left is not a gap. `c++filt` refuses 673 of those 217,730 outright,
-and this reads 457 of them.
+The `gnu` style reads every one of the 44,093 names `c++filt` reads in `libLLVM.so.18.1`
+and spells all of them byte for byte as it does. Over the 217,057 of the 217,730 Ubuntu
+symbols that `c++filt` reads, three differ, and all three are the
+`std::once_flag::_Prepare_execution` shape above, where the declaration in libstdc++'s
+own header says this is right and GNU is not — so what is left is not a gap. `c++filt`
+refuses 673 of those 217,730 outright, and this reads 457 of them.
 
 Five differences used to be listed here and are now reproduced: `&A::f` inside a template
 argument, which GNU prints without the parameter list the mangling carries; the
@@ -369,31 +400,32 @@ argument, which GNU prints without the parameter list the mangling carries; the
 applied to a type that already carries one, which the mangling really does say and which
 GNU folds away because no declaration spells `const const`.
 
-A third disagreement used to be here and is now reproduced instead. GNU omits the space
+A sixth is reproduced too, though it is a slip rather than a rule. GNU omits the space
 it otherwise puts between two closing angle brackets when the last template argument is
-an empty pack, which is a bookkeeping slip rather than a rule: libiberty decides on a
-field it updates on every append and does not restore when it rewinds the separator in
-front of an argument that printed nothing, so the character it tests is that separator's
-space. The same output shows both spellings in one name — `f<A<B<C>>, JE>` comes out
-`void f<A<B<C> >>(A<B<C> >)`. The `gnu` style exists to reproduce `c++filt`, slip and
-all, so it now does; the default `llvm` style spaces neither, as `llvm-cxxfilt` does.
+an empty pack, because libiberty decides on a field it updates on every append and does
+not restore when it rewinds the separator in front of an argument that printed nothing,
+so the character it tests is that separator's space. The same output shows both
+spellings in one name — `f<A<B<C>>, JE>` comes out `void f<A<B<C> >>(A<B<C> >)`. The
+`gnu` style exists to reproduce `c++filt`, slip and all, so it now does; the default
+`llvm` style spaces neither, as `llvm-cxxfilt` does.
 
 ### 19. MSVC over whole libraries
 
 436,546 of the 436,644 read exactly as `llvm-undname` reads them, and none reads
 differently. Of the 98 left, 91 are MD5-hashed names, which both hand back as they
 stand; six are local statics carrying a `.0`-style suffix, which the reference reads by
-stopping where the name ends and saying nothing about the rest -- it reads `?x@@3HAjunk`
-as `int x` -- and this refuses rather than drop; and one is a `?filt$0` exception-filter
+stopping where the name ends and saying nothing about the rest — it reads `?x@@3HAjunk`
+as `int x` — and this refuses rather than drop; and one is a `?filt$0` exception-filter
 name both hand back.
 Of the 471,881 from ITK, OpenCV, Qt 5, libzmq, leveldb and restbed, 467,844 read exactly
 and none differently; 151 carry the deduced return type the release refuses; 3,662 are a
 debug build's run-time-check data, `$rtcFrameData`, `$rtcName$N` and `$rtcVarDesc` after
 a function's whole decorated name, which the reference reads as the function and this
 refuses rather than drop, as with `.0`; 155 are `$initializer$` variables the reference
-misreads -- `??ALL$initializer$@DataSpace@H5@@...` comes back as
+misreads — `??ALL$initializer$@DataSpace@H5@@...` comes back as
 `H5::DataSpace::LL$initializer$::operator[]`, the identifier's first letter taken for an
-operator code -- and this refuses; and 67 are MD5-hashed names.
+operator code — and this refuses; and 67 are MD5-hashed names. That accounts for 471,879;
+the sweep's record does not break out the last two.
 Of Boost's 122,162, 116,870 read exactly as `llvm-undname` reads them and none reads
 differently; 722 carry a deduced return type, `?A_P` for `auto` and `?A_T` for
 `decltype(auto)`, which the release refuses and LLVM's main branch reads as this does;
@@ -406,6 +438,49 @@ All 396 are one form: a thunk gcc 2.95 wrote as `__thunk_n8_` for a positive del
 libiberty reads as a method named `n8_setInstance`. The compiler's own `make_thunk` is the
 authority, and `tests/conformance/gnuv2-real-world.txt` carries 12,661 of the rest.
 
+### 21. LLVM's own Itanium vectors
+
+`libcxxabi/test/DemangleTestCases.inc` is what the demangler behind `llvm-cxxfilt` is
+tested against, so this row is that reference measuring itself. Fifteen are left, none of
+them a name read wrongly, and `tests/test_conformance.py` names each one:
+
+- Four are bare `<type>` manglings with no `_Z` — `i`, `PKFvRiE` — refused *as symbols*
+  on purpose, as `llvm-cxxfilt` refuses them: a demangler offered every symbol in a binary
+  and willing to read `i` as `int` will rename half a C library. `demangle_type()` and
+  `demangle --types` read all four.
+- Nine record `llvm-cxxfilt`'s own reading of a recorded `<template-param>`, which
+  note [17](#17-where-following-a-reference-would-be-the-defect) settles against the
+  compilers' output.
+- One is a self-referential conversion operator, `_Zcv1BIRT_EIS1_E`, from LLVM's fuzz
+  corpus. It has no declaration; the reference prints `operator B<><>`, and this refuses
+  it, as `c++filt` 2.42 does.
+- One, `_ZNK1xMUlTyT_E_clIiEEDaS_`, is numbered by GCC 12's closure-prefix rule and the
+  vector reads it by the ABI's; see note [8](#8-how-apple-clang-numbers-a-substitution-table).
+
+### 22. libiberty's own D vectors
+
+`d-demangle-expected` reaches further than the shipped libgphobos does, and what its last
+vectors needed was not in the D ABI at all: the five characters the reference names
+inside a string, the different rule for a character literal, hex float and complex
+values, associative-array values written as pairs where the type says so, struct and
+function-literal values, `extern(Pascal)`, the anonymous and `__S<n>` path components it
+leaves out, and the malformed template instances it refuses outright. Each was derived by
+running the reference over the input space, since no specification describes it.
+
+### 23. rustc-demangle's own vectors
+
+Of the four this does not match, two are not differences from the *tool*: `rustfilt`
+prints `foo@@16` for `_RC3foo.llvm.9D1C9369@@16` and echoes `ZN4testE` back unread,
+exactly as this does, where the vectors record the library's own `Display`. The other two
+are detection rather than spelling: `_ZN3foo5h05afE` carries a hash that is not rustc's
+`17h` and sixteen hex digits, so this reads it as the C++ `foo::h05af` it could equally
+be. rustc-demangle can afford the wider rule because it is only handed names a caller has
+already decided are Rust's; this is offered every symbol in a binary.
+
+Against the crate rather than its vectors: `tools/rustc-demangle-reference/` is a front
+end over `rustc-demangle` 0.1.28 itself, and over the 5,753 distinct Rust symbols in the
+corpora this spells 5,752 identically. The one is the `@@16` above.
+
 ## Whole symbol tables
 
 Run live against the reference, not replayed.
@@ -417,7 +492,7 @@ Run live against the reference, not replayed.
 | `librustc_driver`, `libstd`, `libtest` | 20,697 | **100%** |
 | `libstdc++.so.6`, gnu style | 5,990 | **100%** |
 | `libLLVM.so.18.1`, gnu style | 44,093 | **100%** <sup>[18](#18-the-gnu-style-over-whole-libraries)</sup> |
-| Every shared library Ubuntu 24.04 ships, llvm style <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 217,409 | **322 differ** |
+| Every shared library Ubuntu 24.04 ships, llvm style <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 217,730 | **322 differ** |
 | Swift runtime + Foundation | 48,368 | **100%** |
 | Swift 6.1.2 toolchain, all 29 runtime libraries <sup>[6](#6-the-swift-reference-is-built-here)</sup> | 135,492 | **1 differ** |
 | Swift 6.1.2 toolchain C++ (`swift-frontend`, `liblldb`, `libsourcekitdInProc`), names not in the rows above <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | 185,532 | **62 differ** |
@@ -439,22 +514,30 @@ Run live against the reference, not replayed.
 | Homebrew bottles of Arrow, DuckDB, RocksDB, gRPC, Cap'n Proto, libtorrent, Xerces-C, RE2, libomp and Boost.Python (Apple clang, Mach-O) <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup> | 295,281 | **6,134 differ** <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup> |
 | Delphi/C++Builder BPL and DLL export tables <sup>[13](#13-delphi-and-cbuilder)</sup> | 11,363 | **100%** |
 
-About 2,393,000 real symbols. Every row is exact except the ten marked and the 6.1.2
-typeref row, whose 260 are names the reference cannot be handed at all <sup>[7](#7-swift-symbolic-references)</sup>.
+The rows add up to 2,684,162 names. Some are counted in more than one row — libLLVM is
+read in both styles, and libLLVM, libclang-cpp and libstdc++ are also among the Ubuntu
+row's shared libraries — so the distinct figure is lower: about 2,500,000.
 
-On the ten, every difference is either a name a reference reads wrongly <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> or
-a spelling policy still short of `c++filt` <sup>[18](#18-the-gnu-style-over-whole-libraries)</sup> -- all accounted for in the notes
-above, name by name. Two of the ten are their own case: the one <sup>[6](#6-the-swift-reference-is-built-here)</sup> in the Swift
-runtime row is the shape `tests/conformance/swift-reference-defects.txt` pins, and the
-396 <sup>[20](#20-a-pre-itanium-thunk-for-a-positive-delta)</sup> are one form of pre-Itanium thunk.
+Every row is exact except the ten marked and the 6.1.2 typeref row, whose 260 are names
+the reference cannot be handed at all <sup>[7](#7-swift-symbolic-references)</sup>. On
+the ten, every difference is accounted for in the notes above, name by name, and all but
+three rows' worth are a name a reference reads wrongly
+<sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup>
+<sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup>. The three are their own
+case: the one in the Swift runtime row
+<sup>[6](#6-the-swift-reference-is-built-here)</sup> is the shape
+`tests/conformance/swift-reference-defects.txt` pins; the 396
+<sup>[20](#20-a-pre-itanium-thunk-for-a-positive-delta)</sup> are one form of
+pre-Itanium thunk; and Nim's eight <sup>[14](#14-nim)</sup> are routine names with an
+underscore before a digit, which Nim's own mangling discards, so no reading can recover
+them.
 
 The 62 in the Swift toolchain's C++, the 74 in the development packages and 7,660 of the
 12,350 in the Homebrew bottles are the template-parameter rebinding
-`_Prepare_execution` shows -- `std::call_once`, Cap'n Proto's `kj::evalNow` and the
-`ArrayRefView` lambdas -- where this spells the parameter the header declares. Of those
-7,660, some 7,573 are one generic lambda in ceres's `ParallelInvoke`, whose `auto&` both
-references resolve to the enclosing template's argument; the other 4,690 of the 12,350
-are Apple's `auto` rule <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup>.
+`_Prepare_execution` shows — `std::call_once`, Cap'n Proto's `kj::evalNow` and the
+`ArrayRefView` lambdas — where this spells the parameter the header declares. The rest
+of the Homebrew differences are Apple's own numbering rules
+<sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup>.
 
 The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
 5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
@@ -479,12 +562,12 @@ against a live reference with `tools/differential.py`.
 ## Printing the name without its signature
 
 `-p` is `c++filt -p`: over the shipped libstdc++ and the GNU-style corpus the two agree
-on **6138 / 6224** names. The 86 are deliberate. `c++filt` strips the parameter list only
-from the outermost declaration, so a thunk keeps its target's — `non-virtual thunk to
-X::~X()` — and it drops a `[clone .cold]` suffix while keeping an `@@GLIBCXX_3.4` one.
-This strips throughout and keeps both suffixes, because a filter over a symbol table
-should not quietly discard part of the symbol. One more is a name `c++filt` refuses and
-this reads.
+on **6138 / 6224** names. Of the 86, 85 are deliberate. `c++filt` strips the parameter
+list only from the outermost declaration, so a thunk keeps its target's — `non-virtual
+thunk to X::~X()` — and it drops a `[clone .cold]` suffix while keeping an
+`@@GLIBCXX_3.4` one. This strips throughout and keeps both suffixes, because a filter over
+a symbol table should not quietly discard part of the symbol: 72 thunks and 13 clones.
+The last one is a name `c++filt` refuses and this reads.
 
 ## On trusting the references
 
@@ -497,3 +580,44 @@ So the split is deliberate: the **ABI specification** governs grammar and struct
 accepted only where they agreed (`tools/probe_substitutions.py` makes one print its own
 substitution table). Where they genuinely differ, the difference is a `style` rather than
 a silent winner.
+
+### Where a reference crashes
+
+One reference defect is a crash rather than a reading, and it is binutils' to fix.
+`c++filt` 2.42 aborts on an eight-character GNAT name:
+
+```
+$ printf 'aSO__bDF\n' | c++filt --format=gnat
+*** buffer overflow detected ***: terminated
+Aborted
+```
+
+Two stream-attribute expansions in one name are what overrun it: `aSO__bSO` goes the
+same way and `aSO__bSR` does not, because the buffer has seven characters of slack,
+`'Read` grows the name by three and `'Output` by five. `ada_demangle` sizes the buffer
+`strlen (mangled) + 7 + 1` on the reasoning that the expanding cases occur only once, but
+its loop comes back round for every `__`-separated component, so a long enough symbol
+writes about four bytes past the end for every five characters of its own. `nm
+--demangle=gnat` and `objdump --demangle=gnat` abort on an object file carrying such a
+symbol too. Only the GNAT format reaches it; `c++filt` left to detect the scheme does not.
+It is GCC PR 92453, rediscovered as GCC PR 103893 and binutils PR 28736, and still
+unfixed on GCC master.
+
+This reads the name as `a'Output.b.Finalize`, pinned in `tests/test_ada.py`, and
+`ask_tolerantly` in `tools/mutate.py` splits a batch down to the name that crashed the
+reference and leaves that one out of the comparison.
+
+## Schemes not covered
+
+The fourteen schemes this reads are the ones it set out to read. These were surveyed and
+are deliberately not planned:
+
+- **Zig, Erlang, Julia, V, Odin and Kotlin/Native** — not mangling schemes: they emit
+  readable or unencoded names.
+- **Borland C++Builder** — already covered: it is the Delphi scheme.
+- **Objective-C++** — already covered: it is Itanium with Objective-C types.
+- **Watcom C++**, **Sun Studio** (whose `libdemangle` is undocumented) and **gcj**
+  (libiberty's `DMGL_JAVA`) — extinct enough not to be worth the transcription.
+
+A request for one of these is still worth making if it comes with real names out of a
+binary, which is what would change the reasoning.

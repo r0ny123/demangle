@@ -30,8 +30,8 @@
 #                        corrected answer on 84. Of the 4 left, 3 are the
 #                        `_Prepare_execution` constructor shape, where libstdc++'s own
 #                        header settles it against both references; 1 is a generic
-#                        lambda whose own parameter reaches it through a substitution,
-#                        where GNU is right and this is not -- see ROADMAP.md heading 0.
+#                        lambda's own parameter, which GNU numbers `auto:1` and the
+#                        llvm style spells `auto` -- see CONFORMANCE.md note 17.
 #
 # style: llvm
 #

@@ -8,7 +8,7 @@ every other C-family scheme rests on too.
 
 Only the names this scheme reads *exactly* are recorded. The corpus is therefore a floor
 -- it stops the conformance figure going down -- and not a claim that Ada is finished; see
-ROADMAP.md for where it actually stands.
+CONFORMANCE.md for where it actually stands.
 """
 
 import argparse
@@ -100,7 +100,7 @@ def main():
         "#\n"
         "# This corpus holds the names the scheme currently reads *exactly*. It is a floor,\n"
         "# not a claim of completeness: Ada landed the same way as the C-family schemes -- see\n"
-        "# ROADMAP.md for where it stands. What this file does is stop that number going\n"
+        "# CONFORMANCE.md for where it stands. What this file does is stop that number going\n"
         "# down.\n"
         "#\n"
     )

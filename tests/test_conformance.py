@@ -703,8 +703,7 @@ class TestAgainstLibcxxabisOwnCorpus:
     against it.
 
     Checked in gzipped and pinned, so the number can only go up and cannot quietly stop
-    being accurate. What still fails is grouped in the ROADMAP rather than left as one
-    number.
+    being accurate. What still fails is named below rather than left as one number.
     """
 
     #: Raised as gaps close; never lowered silently. A drop means a vector that used to

@@ -446,11 +446,11 @@ ACCEPTED = {
         # <source-name> may hold. `tools/mutate.py --seed 40`.
         or _records_a_constrained_placeholder(name)
         # Or a back-reference naming the entry a `<template-param>` bound to a pack
-        # contributed. The entry is the parameter -- which is what heading 0 of the
-        # ROADMAP establishes against four compilers' output for the unpacked case, and
-        # a pack parameter is not a different kind of parameter -- so this resolves it
-        # to the pack, and a pack standing where one type goes is read one type per
-        # member, as the arm above describes. Both references instead record one
+        # contributed. The entry is the parameter -- which is what note 17 of
+        # CONFORMANCE.md establishes against the compilers' output for the unpacked
+        # case, and a pack parameter is not a different kind of parameter -- so this
+        # resolves it to the pack, and a pack standing where one type goes is read one
+        # type per member, as the arm above describes. Both references instead record one
         # *member* there, and not the same one: for `_Z1fIiJbcdEEvT_DpT0_S1_`,
         # `llvm-cxxfilt` says `bool` and `c++filt` says `double`, while all three agree
         # that the *next* entry, the `Dp` expansion's own, is the whole pack. Two
