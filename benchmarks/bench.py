@@ -42,9 +42,10 @@ BASELINE = Path(__file__).parent / "baseline.json"
 CONFORMANCE = ROOT / "tests" / "conformance"
 
 #: A regression has to be this much worse than the baseline to fail, so ordinary
-#: run-to-run noise does not redden CI. It is a tolerance on the *normalised* figure --
-#: see `calibrate` -- so it means a real 25% slowdown in the demangler, not 25% of the
-#: difference between two machines.
+#: run-to-run noise does not redden CI. It is a tolerance on a machine-independent ratio
+#: -- each phase relative to `PIVOT`, and the pivot itself relative to `calibrate` -- so
+#: it means a real 25% slowdown in the demangler, not 25% of the difference between two
+#: machines.
 TOLERANCE = 1.25
 
 #: The phase every other phase is measured against, and the reason the gate is worth
@@ -86,9 +87,11 @@ def calibrate():
     on raw wall time fails on the runner for reasons that have nothing to do with the
     change under test -- which is what happened the first time this ran in CI.
 
-    So every figure is divided by this. What the gate then compares is the *ratio*
-    between the demangler and the interpreter it is running on, which is a property of
-    the code rather than of the hardware.
+    So every figure is divided by this, and the result is recorded as `normalised`: the
+    *ratio* between the demangler and the interpreter it is running on, which is a
+    property of the code rather than of the hardware. The gate reads it for `PIVOT`
+    only; every other phase is judged relative to the pivot, for the reason given at
+    `PIVOT` and measured below.
 
     The workload is deliberately the same *kind* of work the demangler does -- string
     slicing, dictionary lookup, list building, attribute access -- so it tracks the same

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Bootstrap Hatch and uv without touching Ubuntu's PEP 668-managed system Python.
+# Bootstrap uv, a uv-managed Python 3.13 and Hatch. Ubuntu 24.04's own python3 is 3.12,
+# below `requires-python`, so nothing here uses it.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -11,8 +12,10 @@ if ! command -v uv >/dev/null 2>&1; then
     export PATH="${HOME}/.local/bin:${PATH}"
 fi
 
-uv tool install hatch
+uv python install 3.13
+# Hatch builds its environments on the interpreter it runs on, so it has to be 3.13.
+uv tool install --python 3.13 hatch
 
-# Warm the Hatch environment so lint, test, and check are ready to run.
-hatch env create default 2>/dev/null || true
+# The first `hatch run` creates the default environment, so lint and test are ready to
+# run once this passes.
 hatch run lint
