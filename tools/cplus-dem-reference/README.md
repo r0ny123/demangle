@@ -1,12 +1,12 @@
 # The pre-Itanium C++ reference
 
 `src/demangle/schemes/gnuv2/` is a port of libiberty's `cplus-dem.c`: the demangler for
-g++ before 3.0, Lucid's `lcc`, the ARM/cfront encoding, HP aCC and EDG. Until now it had
-no oracle on any current machine. binutils 2.42's `c++filt` offers `-s
-{none,auto,gnu-v3,java,gnat,dlang,rust}` and nothing older, and GCC 9 removed the
-pre-Itanium demangler from libiberty altogether -- `cplus-dem.c` is 5,032 lines at
-8.3.0 and 490 at 9.1.0 -- so every claim about this scheme rested on a corpus recorded
-once, with no way to put a *new* name to the implementation it was recorded from.
+g++ before 3.0, Lucid's `lcc`, the ARM/cfront encoding, HP aCC and EDG, and without this
+it has no oracle on any current machine. binutils 2.42's `c++filt` offers
+`-s {none,auto,gnu-v3,java,gnat,dlang,rust}` and nothing older, and GCC 9 removed the
+pre-Itanium demangler from libiberty altogether -- `cplus-dem.c` is 5,032 lines at 8.3.0
+and 490 at 9.1.0 -- so every claim about this scheme rested on a corpus recorded once,
+with no way to put a *new* name to the implementation it was recorded from.
 
 This builds that implementation out of GCC 8.3.0's own tree -- `cplus-dem.c` and the
 five helpers it calls, unmodified -- behind a line-per-name front end, so the
@@ -14,7 +14,8 @@ differential tools can ask it the way they ask `llvm-cxxfilt`: one name in, one 
 out, a name it cannot read handed back unchanged.
 
     tools/cplus-dem-reference/build.sh
-    tools/cplus-dem-reference/build/cplus-dem-reference [gnu|lucid|arm|hp|edg|auto] < names
+    tools/cplus-dem-reference/build/cplus-dem-reference [gnu|lucid|arm|hp|edg|auto] \
+        [--no-params] [--no-ansi] [--verbose] < names
 
 Needs a C compiler, `curl` and `sha256sum`, and one fetch from github.com. It is not
 built by default and is not a dependency of the test suite; `tools/enumerate.py` and
@@ -46,11 +47,12 @@ default of the scheme this is the oracle for.
 Over the 168,420 four-character argument lists `tools/enumerate.py --scheme gnuv2`
 offers, the constructor, template-function and name-boundary shapes beside them -- 5.5
 million strings at five characters, of which 667,000 read -- and 420,000 mutants of the
-corpus over five seeds, this library never reads a name libiberty refuses. Every divergence is in the other direction, and of one kind: libiberty reads
-what it is given. A type code it does not know, a template argument list with nothing in
-it, a scope with no name, an `operator` with no symbol -- each is spelled as the empty
-string, with the punctuation printed round the gap -- and whatever follows a finished
-argument list is taken for the start of another and printed straight after it:
+corpus over five seeds, this library never reads a name libiberty refuses. Every
+divergence is in the other direction, and of one kind: libiberty reads what it is given.
+A type code it does not know, a template argument list with nothing in it, a scope with
+no name, an `operator` with no symbol -- each is spelled as the empty string, with the
+punctuation printed round the gap -- and whatever follows a finished argument list is
+taken for the start of another and printed straight after it:
 
     __ct__3Foo2__C          Foo::__ct(__,  const)
     foo__H1Z0__c            char foo<>(void)

@@ -19,10 +19,10 @@ no reference to ask, because they are about this package rather than about the s
     table gets a verdict, not a traceback.
 
 The mutation operators are `tools/mutate.py`'s. The seeds are not: that tool can only
-damage names it has a reference to ask about, which is five schemes of the fourteen, and
-none of these invariants needs one. So this seeds from *every* conformance corpus --
-Swift, Nim, Free Pascal, Delphi, Go, Objective-C and JNI included, none of which had ever
-been fuzzed -- and takes each corpus's own characters as the alphabet to draw
+damage names it has a reference to ask about, which is seven schemes of the fourteen,
+and none of these invariants needs one. So this seeds from *every* conformance corpus --
+Nim, Free Pascal, Delphi, Go, Objective-C, JNI and CodeWarrior included, which nothing
+else fuzzes -- and takes each corpus's own characters as the alphabet to draw
 substitutions from, which is the alphabet its scheme actually writes.
 
 Exit status is non-zero when any invariant fails.

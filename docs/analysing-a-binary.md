@@ -82,20 +82,22 @@ for name in symbols("/usr/lib/x86_64-linux-gnu/libstdc++.so.6"):
     for function in tree.find("function"):
         for parameter in function.parameters:
             template = template_taken_by_const_reference(parameter)
-            if template is not None and "basic_string" in template.base.spell():
+            if template is not None and template.base.spell() in ("basic_string", "std::basic_string"):
                 element_types[template.arguments[0].spell()] += 1
 ```
 
-On the shipped libstdc++ that finds **282** functions. Across all templates rather than
-just strings there are **472** such parameters — 221 `basic_string`, 166
-`std::allocator`, 61 `std::basic_string`, 6 `basic_streambuf` — and the element types
-come out as 259 `char`, 201 `wchar_t`, 6 `unsigned long`, 2 `double`.
+On the shipped libstdc++, `element_types` comes out as **170** `char` and **112**
+`wchar_t`: 282 parameters, in 278 functions. The name is compared whole rather than
+searched for, because `"basic_string" in ...` is a question about characters again, and
+would take the four `basic_stringbuf<...>::__xfer_bufptrs` constructors with it.
 
 ## What the regular expression gets wrong
 
 The obvious approximation is to search the demangled string:
 
 ```python
+import re
+
 PATTERN = re.compile(r"basic_string<[^)]*const&")
 ```
 
@@ -103,18 +105,18 @@ Measured on the same library against the same question:
 
 | | structural | regular expression |
 |---|---|---|
-| functions found | 282 | 384 |
+| functions found | 278 | 384 |
 | false positives | — | **106** |
-| missed | — | 4 |
 
 The false positives are mostly `basic_string`'s own constructors, where the `const&`
-belongs to a different parameter entirely. The misses are types like
-`basic_stringbuf<...>::__xfer_bufptrs`, where the pattern's `[^)]*` runs into a `)` that
-appears inside a nested template argument.
+belongs to a different parameter entirely:
+`basic_string(char const*, unsigned long, std::allocator<char> const&)` matches, because
+nothing in the pattern knows where one parameter ends and the next begins. Making it know
+means matching brackets, and the element types carry `<`, `>` and `,` of their own.
 
-Both failure modes come from the same place: C++ declaration syntax nests, and nesting is
-what regular expressions cannot parse. The nesting is not incidental — it is how the type
-system is written down.
+That is the whole failure: C++ declaration syntax nests, and nesting is what regular
+expressions cannot parse. The nesting is not incidental — it is how the type system is
+written down.
 
 ## Other things the tree answers
 
@@ -160,7 +162,5 @@ Every scheme returns a tree, but the kinds differ with what each language has to
   a mixed binary does not need to know which language produced a tree to ask for its
   identifiers.
 
-See `ARCHITECTURE.md` for why the trees are built the way they are -- named rather than
-linked, because that file lives at the repository root and the copy beside this page is a
-one-line include of it -- and [adding-a-scheme.md](adding-a-scheme.md) to add a language
-of your own.
+See [Architecture](ARCHITECTURE.md) for why the trees are built the way they are, and
+[Adding a scheme](adding-a-scheme.md) to add one of your own.

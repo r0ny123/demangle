@@ -1,7 +1,7 @@
 # The Swift reference
 
 `src/demangle/schemes/swift/` is a port of `lib/Demangling/` from swiftlang/swift, and
-until now it had no oracle: nothing on this box demangles Swift. `llvm-cxxfilt` and
+without this it has no oracle: nothing on this box demangles Swift. `llvm-cxxfilt` and
 `c++filt` both decline a `$s` name outright, so every Swift claim in this repository
 rested on corpora somebody recorded once, with no way to re-derive them and no way to
 put a *new* name to the reference.
@@ -14,10 +14,12 @@ it cannot read handed back unchanged.
     tools/swift-demangle-reference/build.sh
     tools/swift-demangle-reference/build/swift-demangle-reference [--simplified] < names
 
-Needs a C++17 compiler, LLVM's headers, and one fetch from github.com. It is not built
-by default and is not a dependency of the test suite; the tools use it when it is there.
-`swift/` and `build/` are ignored, and the checkout is a blobless cone-mode sparse one
-over five directories -- about 16 MB, against a full clone of swiftlang/swift.
+Needs a C++17 compiler, LLVM's headers (`llvm-dev`) and one fetch from github.com -- no
+Swift toolchain, no CMake and no LLVM libraries. It is not built by default and is not a
+dependency of the test suite; `tools/enumerate.py` and `tools/mutate.py` run their Swift
+job when it is there and skip it when it is not. `swift/` and `build/` are ignored, and
+the checkout is a blobless cone-mode sparse one over five directories -- about 16 MB,
+against a full clone of swiftlang/swift.
 
 ## Why a commit and not a release tag
 
@@ -50,9 +52,11 @@ tag reaches it.
 Which also settles a claim this repository had been making. `README.md` credited the
 Swift corpora to "`swift-demangle` 5.10.1"; that is not what recorded them. 5.10.1
 spells `$s4main3fooyySiFyyXEfU_TA.1` as
-`closure #1 () -> () in main.foo(Swift.Int) -> ()partial apply forwarder with unmangled
-suffix ".1"` -- its own `manglings.txt` at that tag expects exactly that -- and the
-corpus carries the later spelling, `partial apply forwarder for closure #1 ...`.
+
+    closure #1 () -> () in main.foo(Swift.Int) -> ()partial apply forwarder with unmangled suffix ".1"
+
+Its own `manglings.txt` at that tag expects exactly that, and the corpus carries the
+later spelling, `partial apply forwarder for closure #1 ...`.
 
 ## The one row this reference does not match
 

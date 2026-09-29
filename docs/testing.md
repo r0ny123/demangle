@@ -2,12 +2,14 @@
 
 The checked-in corpora are real symbols, so they cover the shapes compilers *emit*.
 These tools cover the shapes a grammar *permits*, which is where the worst defects
-live, and they build the three references that have to be built here because no
-distribution ships one.
+live -- an encoding no compiler writes, read as something that looks like a declaration a
+person would believe -- and they build the three references that have to be built here
+because no distribution ships one.
 
 Run them against any change to a parser's shape rules. Everything below is optional for
-a one-line fix and expected for a parser change; [CONTRIBUTING](https://github.com/r0ny123/demangle/blob/main/CONTRIBUTING.md) has the
-checklist that says which.
+a one-line fix and expected for a parser change; the
+[pull request template](https://github.com/r0ny123/demangle/blob/main/.github/pull_request_template.md)
+has the checklist that says which.
 
 ## Enumeration
 
@@ -16,17 +18,12 @@ python tools/enumerate.py            # every scheme with a reference on this mac
 python tools/enumerate.py --length 6 # deeper, and much slower
 ```
 
-The corpora are real symbols, so they cover the shapes compilers *emit*. They do not
-cover the shapes a grammar *permits*, and that is where the worst defects live: an
-encoding no compiler writes, read as something that looks like a declaration a person
-would believe. `tools/enumerate.py` offers every string up to `--length` characters over
-a per-scheme alphabet to the library, puts the ones it reads to the reference demangler,
-and reports every disagreement -- including the direction that matters, where the
-reference hands the name back and this library answers.
-
-It is worth running against any change to a parser's shape rules. Seventeen defects came
-out of one sitting with it, in five schemes: `_Z1fIiEi` read as `int f<int>()`, `_RNvC_1f`
-as `::f`, `_D3fooC` as `foo`, `_D4testFMMfZv` as `test(scope scope float)`.
+`tools/enumerate.py` offers every string up to `--length` characters over a per-scheme
+alphabet to the library, puts the ones it reads to the reference demangler, and reports
+every disagreement -- including the direction that matters, where the reference hands
+the name back and this library answers. CI runs it at `--length 4`. Seventeen defects
+came out of one sitting with it, in five schemes: `_Z1fIiEi` read as `int f<int>()`,
+`_RNvC_1f` as `::f`, `_D3fooC` as `foo`, `_D4testFMMfZv` as `test(scope scope float)`.
 
 A disagreement that is the reference's own goes in `ACCEPTED` with the reason, not in a
 list of names -- the shapes are families, and a list goes stale the moment an alphabet
@@ -36,7 +33,8 @@ because agreeing with one build of one reference is not the same as being right.
 ## Mutation
 
 ```console
-python tools/mutate.py                  # the pinned draw, which is what CI runs
+python tools/mutate.py --count 20000    # what CI runs, with --quiet
+python tools/mutate.py                  # the default draw: 50,000 mutants per scheme
 python tools/mutate.py --count 200000   # more mutants per scheme
 python tools/mutate.py --seed 7         # a different draw; the default draw is fixed
 python tools/mutate.py --scheme types   # bare <type> encodings, through demangle_type
@@ -73,26 +71,6 @@ batch that dies is split until the one name that did it is found and recorded as
 refusal. Triage what it prints against the reference's source: a reading the grammar
 does not admit is pinned as a refusal in the scheme's tests, and one it does is a fix.
 
-```console
-python tools/invariants.py                # the same mutants, put to the library itself
-python tools/invariants.py --corpus swift # one corpus
-```
-
-`tools/invariants.py` borrows those mutation operators and asks what no reference can be
-asked: that a *style* decides a spelling and never whether a name parses, that
-`parse(name).spell()` is what `demangle(name)` returns in every style, and that
-`signature`, `demangleb` and `parse().to_dict()` raise nothing but a `DemanglingError` on
-a name `demangle` read. The first of those was broken for twelve corpus names when the
-tool was written -- the GNU style refused `std::pair`'s constrained constructor that the
-llvm style read.
-
-Because none of that needs a reference, it seeds from *every* corpus rather than from the
-five schemes `tools/mutate.py` can ask about, and takes each corpus's own characters as
-its alphabet -- so Swift, Nim, Free Pascal, Delphi, Go, Objective-C and JNI are fuzzed
-here and nowhere else. A tool that is quiet proves nothing on its own:
-`--seed 1 --count 20000 --corpus itanium-libcxxabi` reports the defect it was written for
-on the parser as it stood, and nothing on the parser as it is.
-
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
 corpora are pinned. It stands at zero: every divergence the default draw reports is
@@ -124,6 +102,28 @@ literal re-formatted rather than echoed and a D negative `char` that lost its si
 Rust `<base-62-number>` read wider than the reference reads one, an MSVC ARM64EC marker
 stripped until none was left, and MSVC qualifiers written in the order they were read
 rather than the order the reference writes them.
+
+## Invariants
+
+```console
+python tools/invariants.py                # the default draw, which is what CI runs
+python tools/invariants.py --corpus swift # one corpus
+```
+
+`tools/invariants.py` borrows those mutation operators and asks what no reference can be
+asked: that a *style* decides a spelling and never whether a name parses, that
+`parse(name).spell()` is what `demangle(name)` returns in every style, and that
+`signature`, `demangleb` and `parse().to_dict()` raise nothing but a `DemanglingError` on
+a name `demangle` read. The first of those was broken for twelve corpus names when the
+tool was written -- the GNU style refused `std::pair`'s constrained constructor that the
+llvm style read.
+
+Because none of that needs a reference, it seeds from *every* corpus rather than from the
+seven schemes `tools/mutate.py` can ask about, and takes each corpus's own characters
+as its alphabet -- so Nim, Free Pascal, Delphi, Go, Objective-C, JNI and CodeWarrior are
+fuzzed here and nowhere else. A tool that is quiet proves nothing on its own:
+`--seed 1 --count 20000 --corpus itanium-libcxxabi` reports the defect it was written for
+on the parser as it stood, and nothing on the parser as it is.
 
 ## The MSVC corpus a compiler wrote
 
@@ -157,56 +157,42 @@ answer.
 ## The Rust reference
 
 `llvm-cxxfilt` and `c++filt` each carry their own Rust reader -- LLVM's is a port of an
-older `rustc-demangle`, binutils' is independent of both -- so on Rust neither of the
-demanglers already on the machine is the implementation `src/demangle/schemes/rust/` is a
-port of. Where the three disagree, neither of those two settles it.
-
-`tools/rustc-demangle-reference/` is a twenty-line front end over the crate itself,
-answering one spelling per line the way the C++ demanglers do:
+older `rustc-demangle`, binutils' is independent of both -- so neither is the
+implementation `src/demangle/schemes/rust/` is a port of, and where the three disagree,
+neither settles it. `tools/rustc-demangle-reference/` is a small front end over the crate
+itself; `tools/enumerate.py` and `tools/mutate.py` use it when it has been built and fall
+back to `llvm-cxxfilt` when it has not. Its
+[README](https://github.com/r0ny123/demangle/blob/main/tools/rustc-demangle-reference/README.md)
+has what the build needs.
 
 ```console
 cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
 ```
 
-`tools/enumerate.py` and `tools/mutate.py` use it when it has been built and fall back to
-`llvm-cxxfilt` when it has not. It is not a dependency of the test suite; building it
-needs a Rust toolchain and one fetch from crates.io.
-
 ## The Swift reference
 
 Nothing a distribution ships reads a Swift name: `llvm-cxxfilt` and `c++filt` both
 decline a `$s` outright. So `tools/swift-demangle-reference/` builds swiftlang/swift's
-own `lib/Demangling` -- eleven files, unmodified, at a pinned revision -- behind the same
-line-per-name front end the Rust reference uses:
+own `lib/Demangling`, unmodified, at a pinned revision, and the fuzzers skip the Swift
+job when it has not been built, since there is nothing to fall back to. Its
+[README](https://github.com/r0ny123/demangle/blob/main/tools/swift-demangle-reference/README.md)
+has what the build needs, why the revision is a commit rather than a release tag, and the
+one row where the reference is wrong and this library does not follow it.
 
 ```console
 tools/swift-demangle-reference/build.sh
 ```
 
-It needs a C++17 compiler, LLVM's headers (`llvm-dev`) and one fetch from github.com.
-No Swift toolchain, no CMake, no LLVM libraries; the checkout is a blobless sparse one
-over five directories, about 16 MB. `tools/enumerate.py` and `tools/mutate.py` use it
-when it has been built and skip the Swift job when it has not, since there is nothing to
-fall back to.
-
-The revision is a commit on `main` rather than a release tag, and
-`tools/swift-demangle-reference/README.md` has the measurements that decide it, along
-with the one place the reference is wrong and this library does not follow it.
-
 ## The pre-Itanium C++ reference
 
-Nothing current reads a pre-Itanium name either: binutils 2.42's `c++filt` offers no
-`--format=gnu`, `lucid`, `arm` or `hp`, and GCC 9 removed the demangler from libiberty.
-So `tools/cplus-dem-reference/` builds it from GCC 8.3.0's tree -- `cplus-dem.c` and the
-five helpers it calls, unmodified, which is the tree `tests/conformance/gnuv2-libiberty.txt`
-was transcribed from -- behind the same line-per-name front end:
+Nothing current reads a pre-Itanium name either: binutils 2.42's `c++filt` offers none of
+the old styles, and GCC 9 removed the demangler from libiberty. So
+`tools/cplus-dem-reference/` builds it from GCC 8.3.0's tree, pinned by tag and by
+checksum, and the fuzzers skip the `gnuv2` job when it has not been built. Its
+[README](https://github.com/r0ny123/demangle/blob/main/tools/cplus-dem-reference/README.md)
+has what the build needs, what it reproduces, and the families where libiberty reads
+what this library refuses.
 
 ```console
 tools/cplus-dem-reference/build.sh
 ```
-
-It needs a C compiler, `curl`, `sha256sum` and one fetch from github.com; every file is
-pinned by tag and by checksum. `tools/enumerate.py` and `tools/mutate.py` use it when it
-has been built and skip the `gnuv2` job when it has not. Its README records what the
-build reproduces (the corpus, 1,324 of 1,324) and the two families where libiberty reads
-what this library refuses.

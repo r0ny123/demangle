@@ -6,7 +6,7 @@ uses, and `src/demangle/schemes/rust/_v0.py` is a port of it. `llvm-cxxfilt` and
 rustc-demangle and binutils' is independent -- so where the three disagree, neither of
 the two on this box is the one to follow.
 
-This is a twenty-line front end over the crate itself, so the differential tools can ask
+This is a small front end over the crate itself, so the differential tools can ask
 it the same way they ask the C++ demanglers. It is not built by default and is not a
 dependency of the test suite; the tools use it when it is there and fall back to
 `llvm-cxxfilt` when it is not.

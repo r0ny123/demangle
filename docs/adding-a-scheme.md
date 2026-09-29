@@ -36,6 +36,7 @@ PLUGIN = LanguagePlugin(
     name="toy",
     detect=detect,
     parse=parse,
+    node_kinds=("name",),
     description="A toy scheme, for illustration",
 )
 
@@ -43,7 +44,17 @@ register(PLUGIN)
 ```
 
 Add `("toy", "demangle.schemes.toy")` to `_BUILTIN_MODULES` in `core/registry.py`, and
-that is a working language.
+that is a working scheme. `node_kinds` is every `kind` a tree from it can hold -- here,
+only the `name` that `builder.name()` makes -- and it is the vocabulary
+`demangle.node_kinds()` publishes to callers walking a tree.
+
+Also required, because the test suite checks each of them for every registered scheme:
+
+- a `::: demangle.schemes.toy` section in `docs/reference/schemes.md`
+  (`tests/test_docs.py`), so there is something to read about it;
+- a `toy/` line in the layout in `ARCHITECTURE.md` (`tests/test_docs.py`);
+- a non-empty `node_kinds` (`tests/test_api_surface.py`, which also checks that every
+  kind a corpus produces is in it).
 
 ## Shipping one separately
 
@@ -71,13 +82,13 @@ builder.qualified([namespace, class_, method])
 ```
 
 What comes back is an opaque handle. Pass it to other builder methods; do not inspect it.
-Where a grammar genuinely needs the text of something already built, `builder.spell(
-handle)` is the one legal way to look.
+Where a grammar genuinely needs the text of something already built,
+`builder.spell(handle)` is the one legal way to look.
 
 This is what earns your scheme structured output for free: the same parser drives both
 the text path and the AST path.
 
-Declarator placement — `int (*)(char)`, `int (*) [10]` — is already handled in
+Declarator placement -- `int (*)(char)`, `int (*) [10]` -- is already handled in
 `core/spelling.py`. If your scheme spells C-like declarations, you get it by calling
 `pointer()`, `array()` and `function()` rather than reimplementing it.
 
@@ -96,13 +107,15 @@ Rust's legacy mangling *is* Itanium mangling, so `rust` has priority 50 and `ita
 200. If your scheme overlaps with an existing one, say so in the pull request.
 
 A scheme whose names have **no marker at all** goes last, and owes a number rather than
-an argument. `gnuv2` -- pre-Itanium C++ -- is priority 300 for that reason: its names are
-ordinary C identifiers with a `__` somewhere in them, so `detect` parses the whole name
-instead of testing a prefix, and what makes it safe to register is a measurement. Before
-it landed, it was scored over every checked-in corpus and over 339,117 symbols from real
-shared libraries, and both counts are asserted in `tests/test_gnuv2.py`. If your scheme
-is in that position, do the same: a claim that "false positives are unlikely" is not a
-test, and the corpora are already there to run against.
+an argument. `gnuv2` -- pre-Itanium C++ -- is priority 290 for that reason, and
+`codewarrior`, the other pre-Itanium mangling, 300 behind it: their names are ordinary C
+identifiers with a `__` somewhere in them, so `detect` parses the whole name instead of
+testing a prefix, and what makes it safe to register is a measurement. Before `gnuv2`
+landed it was scored over every checked-in corpus, which `tests/test_gnuv2.py` asserts,
+and over 339,117 symbols from real shared libraries, which
+[CONFORMANCE.md](CONFORMANCE.md) records. If your scheme is in
+that position, do the same: a claim that "false positives are unlikely" is not a test,
+and the corpora are already there to run against.
 
 ## What a scheme must guarantee
 
@@ -118,5 +131,6 @@ registered scheme, so a new plugin is covered by them the moment it registers.
 
 If a reference implementation exists, do not treat your reading of the specification as
 the last word. Add a corpus under `tests/conformance/` with the reference output recorded
-next to each name, and pin the pass count in `tests/test_conformance.py`. See
+next to each name, and pin its count as
+[Contributing](CONTRIBUTING.md#conformance-numbers) describes. See
 `tools/generate_corpus.py` for how the Itanium corpus is produced.

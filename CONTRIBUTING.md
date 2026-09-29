@@ -24,7 +24,7 @@ and `hatch run docs:serve` previews the documentation site.
 Without Hatch:
 
 ```console
-uv pip install -e . --group dev     # or: pip install --group dev  (pip 25.1+)
+uv pip install -e . --group dev     # or: pip install -e . --group dev  (pip 25.1+)
 pytest
 ```
 
@@ -48,22 +48,16 @@ apt-get install llvm clang g++ binutils
 
 ## Reporting a conformance bug
 
-The most valuable report is small and complete:
-
-1. the mangled name,
-2. what the reference demangler prints (`llvm-cxxfilt`, `llvm-undname`, or
-   `rustc-demangle`),
-3. what this library prints.
-
-Add the pair to the matching file in `tests/conformance/` and bump the pinned count in
-`tests/test_conformance.py` in the same commit, so the expected number always matches
-what the suite actually achieves.
+Use the [conformance bug form](https://github.com/r0ny123/demangle/issues/new?template=conformance-bug.yml):
+the name, what the reference prints, and what this library prints. If you fix one
+yourself, the name goes into a corpus and the pin moves with it, as
+[below](#conformance-numbers).
 
 ## The rules that matter
 
 Most of the codebase is ordinary Python. Three rules are not negotiable, because the
 design rests on them. Two are fully enforced by a test; the first is enforced as far as
-a test can reach, and ARCHITECTURE.md says where it does not:
+a test can reach, and [ARCHITECTURE.md](ARCHITECTURE.md) says where it does not:
 
 1. **Parsers never build their own output.** Write against the `Builder` protocol
    (`core/builder.py`). Building a string directly is locally convenient and breaks both
@@ -80,7 +74,7 @@ Substitution numbering is where correctness lives. The rules are ABI section 5.1
 are implemented in `schemes/itanium/substitutions.py`, which rejects any attempt to
 record a production the specification does not call a candidate.
 
-The specification's prose is genuinely ambiguous in places. Do not guess — ask the
+The specification's prose is genuinely ambiguous in places. Do not guess -- ask the
 reference implementation. `tools/probe_substitutions.py` appends `S_`, `S0_`, `S1_` to a
 name under construction, which makes the reference print its own substitution table
 back at you. Several decisions in the parser were settled that way, and each carries a
@@ -88,8 +82,9 @@ comment naming the probe that settled it.
 
 ## Adding a scheme
 
-See [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md). In short: three functions and a
-`LanguagePlugin`, in a new directory under `src/demangle/schemes/`.
+See [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md).
+In short: a `LanguagePlugin` with a name, a `detect` and a `parse`, in a new directory
+under `src/demangle/schemes/`.
 
 ## Before you open a pull request
 
@@ -109,21 +104,32 @@ python benchmarks/bench.py --check
 `tools/differential.py` with no arguments replays every checked-in corpus under the
 style and language it was recorded with, and exits non-zero if anything disagrees.
 
-Then, before you open it:
+The [pull request template](https://github.com/r0ny123/demangle/blob/main/.github/pull_request_template.md)
+has the checklist. What its items ask for, and why:
 
-- [ ] `hatch run check` passes, or the four commands above do.
-- [ ] New behaviour comes with a test; new *reference-derived* behaviour comes with a
-      corpus entry.
-- [ ] A conformance number that moved says which way and why in the commit message, with
-      the pin in `tests/test_conformance.py` updated in the same commit.
-- [ ] A benchmark that moved says so too.
-- [ ] A change to a parser's shape rules has been through the fuzzers.
+### Tests and corpus entries
 
-That last one is
-[Fuzzing and the reference demanglers](https://github.com/r0ny123/demangle/blob/main/docs/testing.md):
-what `tools/enumerate.py`, `tools/mutate.py` and `tools/invariants.py` ask that the
-corpora cannot, and how to build the references for Rust, Swift and pre-Itanium C++ that
-no distribution ships.
+New behaviour comes with a test. Behaviour taken from a reference demangler comes with a
+corpus entry as well: the name and the reference's spelling, in the matching file under
+`tests/conformance/`, so the claim is checked against what the reference said rather
+than against what the test's author believed it said.
+
+### Conformance numbers
+
+The conformance corpora's pass counts are pinned as exact numbers in
+`tests/test_conformance.py`, so a count that moves in either direction fails the suite.
+A pull request that moves one updates the pin in the same pull request and says in its
+description which way the number moved and why; so does one that moves a benchmark.
+
+### The fuzzers
+
+A change to a parser's *shape rules* -- what it accepts, rather than how it spells what
+it accepts -- has been through `tools/enumerate.py`, `tools/mutate.py` and
+`tools/invariants.py`. The corpora hold what compilers emit; these reach what a grammar
+permits, which is where a name no compiler writes gets read as a plausible declaration.
+[Fuzzing and the reference demanglers](https://github.com/r0ny123/demangle/blob/main/docs/testing.md)
+has what each asks and how to build the references for Rust, Swift and pre-Itanium C++
+that no distribution ships.
 
 ## CI and workflows
 
@@ -153,5 +159,3 @@ Two rules for anyone editing `.github/`:
   a reference implementation says so. Quote the section.
 - Names are spelled out. This is a codebase people read while holding an ABI document in
   the other hand; `substitution_table` beats `st`.
-- New behaviour comes with a test. New *reference-derived* behaviour comes with a corpus
-  entry.
