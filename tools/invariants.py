@@ -55,10 +55,7 @@ from demangle.core.errors import DemanglingError
 
 CONFORMANCE = Path(__file__).resolve().parent.parent / "tests" / "conformance"
 
-#: How many seeds contribute to the alphabet. Every corpus here is homogeneous -- one
-#: scheme, one mangler -- so the characters of the first few thousand names are the
-#: characters of all of them, and reading every one of 35,000 to build a set of forty
-#: is work for nothing.
+#: Each corpus is homogeneous, so the first few thousand names already cover its alphabet.
 _ALPHABET_SAMPLE = 2000
 
 #: What a mutant is offered, beyond `demangle` itself. Each is a call and the name it is

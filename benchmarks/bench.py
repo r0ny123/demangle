@@ -41,40 +41,22 @@ import demangle  # noqa: E402
 BASELINE = Path(__file__).parent / "baseline.json"
 CONFORMANCE = ROOT / "tests" / "conformance"
 
-#: A regression has to be this much worse than the baseline to fail, so ordinary
-#: run-to-run noise does not redden CI. It is a tolerance on a machine-independent ratio
-#: -- each phase relative to `PIVOT`, and the pivot itself relative to `calibrate` -- so
-#: it means a real 25% slowdown in the demangler, not 25% of the difference between two
-#: machines.
+#: Tolerance on a machine-independent ratio (each phase relative to `PIVOT`, the pivot
+#: relative to `calibrate`), so it means a real 25% slowdown in the demangler.
 TOLERANCE = 1.25
 
-#: The phase every other phase is measured against, and the reason the gate is worth
-#: trusting. Dividing by `calibrate()` -- a tight dictionary loop -- was supposed to
-#: cancel machine speed, and does not: measured over six runs on an idle machine, the
-#: calibration loop's *own* spread is 28.1% (22.1ms to 29.9ms), which makes it the
-#: noisiest single component of the measurement. Dividing by it therefore injects noise
-#: rather than removing it, and the normalised figures come out *less* stable than the
-#: raw seconds they were derived from:
+#: The phase every other phase is measured against. The calibration loop's own spread
+#: (28% over six idle runs) made calibration-normalised figures noisier than raw seconds:
 #:
 #:     phase        /calibration   /warm    raw seconds
 #:     cold             26.6%       7.1%       23.1%
 #:     negative         25.7%       7.2%       25.6%
 #:     structured       42.5%      24.2%       23.5%
 #:
-#: `warm` cancels what calibration cannot because it is the same *kind* of work in the
-#: same process -- `demangle()` over cached names -- so CPU boost state, allocator state
-#: and heap layout move both numbers together. A tight dictionary loop benefits from boost
-#: more than an allocating parser does, which is precisely the failure the docstring on
-#: `calibrate` already described without drawing the conclusion.
-#:
-#: `warm` itself is still judged against calibration; there is no third workload to judge
-#: it by, and a regression confined to the cached path alone would have to be read off the
-#: raw microseconds. That is the one blind spot, and it is a smaller one than gating four
-#: phases on a reference 28% noisier than the thing it normalises.
+#: `warm` is the same kind of work in the same process, so boost, allocator and heap state
+#: move both numbers together. `warm` itself is still judged against calibration.
 PIVOT = "warm"
 
-#: Iterations of the calibration loop. Enough to take a few milliseconds on any machine
-#: that can run the test suite, small enough not to lengthen the benchmark noticeably.
 CALIBRATION_ROUNDS = 200_000
 
 
@@ -168,19 +150,11 @@ def time_it(function, repeats=5):
 
 
 def benchmarks():
-    # `structured` stays on the purpose-built Itanium corpus: it is the one compiled at
-    # four language standards by two compilers, so it exercises the widest range of node
-    # shapes per name.
+    # Compiled at four standards by two compilers: the widest range of node shapes per name.
     itanium = corpus_names("itanium-real-world.txt")
 
-    # A representative subset across four schemes, not a couple of small ones. The
-    # earlier selection was 887 names -- about 40KB of text and a few hundred KB of
-    # cache entries -- which fits in L2 on any machine this runs on. That flatters
-    # the whole measurement: it is the shape of a microbenchmark, not of a tool
-    # walking a symbol table, where the working set is tens of thousands of distinct
-    # names and nothing stays resident. These seven files give ~14,000 names; the
-    # conformance directory holds more, but widening this set means re-recording
-    # the baseline, so that is a deliberate change rather than a drive-by.
+    # ~14,000 names, so the working set does not fit in L2 as a small sample would.
+    # Changing this set means re-recording the baseline.
     sampled = corpus_names(
         "itanium-real-world.txt",
         "itanium-libstdcxx.txt",
@@ -209,18 +183,11 @@ def benchmarks():
 
     parsed = []
 
-    #: How many times `structured` walks its corpus. One pass is about twenty
-    #: milliseconds, short enough that the ratio of two best-of-N measurements carried
-    #: 16% run-to-run spread -- more than half the regression tolerance, which would make
-    #: the gate flake rather than gate. Several passes make the measurement long enough
-    #: to be stable without making the suite slow.
+    # One pass (~20ms) carried 16% run-to-run spread, too close to the tolerance.
     structured_passes = 2
 
     def structured():
-        # The successes are counted, and `main` asserts the count. Suppressing failures
-        # and timing whatever is left means a change that made `parse()` raise
-        # immediately would time at a fraction of the baseline and be reported as an
-        # enormous *improvement*.
+        # Counted so `main` can reject a "speed-up" from `parse()` raising immediately.
         count = 0
         for _ in range(structured_passes):
             for name in itanium:
@@ -257,7 +224,7 @@ def run():
     for data in results.values():
         data["normalised"] = round(data["seconds"] / data["names"] / reference * 1e6, 3)
 
-    # And again against `warm`, which is what the gate actually reads. See `PIVOT`.
+    # What the gate reads; see `PIVOT`.
     pivot = results.get(PIVOT)
     if pivot:
         per_name = pivot["seconds"] / pivot["names"]
@@ -299,18 +266,14 @@ def calls():
         if not count:
             continue
         demangle.cache_clear()
-        # One pass first, and the cache is *not* cleared after it. `cold` and `negative`
-        # clear their own inside, so they are unaffected; `warm` is the phase whose whole
-        # premise is the entries the pass before it left, and clearing here counted a
-        # third of it as misses -- 120 calls a name where a cache hit costs eight. The
-        # timing path gets the same state from `time_it` running the function five times.
+        # Warm-up pass, cache deliberately not cleared after it: `warm` depends on those
+        # entries, matching the state `time_it`'s repeated runs give the timing path.
         function()
         profiler = cProfile.Profile()
         profiler.enable()
         function()
         profiler.disable()
-        # `total_calls` is set on the instance by `Stats.get_top_level_stats`, which the
-        # constructor calls; typeshed declares neither, so a checker cannot see it.
+        # `total_calls` is set by the constructor, undeclared in typeshed.
         counted[name] = (pstats.Stats(profiler).total_calls, count)  # ty: ignore[unresolved-attribute]
     return counted
 
@@ -346,22 +309,11 @@ def main():
             return 1
         baseline = json.loads(BASELINE.read_text())
         structured = results.get("structured", {})
-        # Two guards, and the first is the one that matters. `parsed` must equal the
-        # number of names the pass was given: a change that made `parse()` raise
-        # immediately would time at a fraction of the baseline and be reported as an
-        # enormous improvement, and this catches that within the run rather than against
-        # a record that goes stale every time the corpus is edited.
         if structured.get("parsed") != structured.get("names"):
             print(f"\nstructured benchmark parsed {structured.get('parsed')} of {structured.get('names')} names")
             print("a timing that improved because the work stopped happening is not an improvement")
             return 1
-        # The second catches the corpus itself shrinking, which would do the same thing
-        # more quietly. A deliberate change to it is a deliberate edit to the baseline.
-        #
-        # Asked of *every* phase, not only `structured`. It used to be asked of that one
-        # alone, and the cold corpus quietly lost four names without anything noticing --
-        # which is the whole failure this guard exists for, in the phase the headline
-        # figure comes from.
+        # A shrunken corpus would also time as an improvement.
         shrunk = [
             (name, results[name]["names"], baseline[name]["names"])
             for name in results
@@ -393,8 +345,7 @@ def main():
                 return True
             key = figure(measured, name)
             if key not in baseline[name]:
-                # An older baseline carries only `normalised`. Fall back to it rather
-                # than skipping the phase, so a stale file still gates something.
+                # An older baseline carries only `normalised`.
                 key = "normalised"
             return measured[name][key] > baseline[name][key] * TOLERANCE
 
@@ -404,12 +355,7 @@ def main():
             return 1
         suspects = [name for name in results if name != "calibration" and over_tolerance(results, name)]
         if suspects:
-            # Measure again before reporting. The normalised figures carry more spread on
-            # a shared machine than the tolerance leaves room for, so one reading over the
-            # line is not evidence. A real regression is there on the second reading too;
-            # noise usually is not. Same discipline as re-running a CI job once to
-            # confirm a failure rather than to wish it away -- once, and a second failure
-            # is real.
+            # One reading over the line on a shared machine is not evidence; confirm once.
             print(f"\nover tolerance on {', '.join(suspects)}; measuring again to confirm")
             second = run()
             regressions = []

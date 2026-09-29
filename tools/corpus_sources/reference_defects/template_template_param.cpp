@@ -5,8 +5,7 @@
 //
 // `f` is the shape where the shift runs off the end and the reference refuses the name
 // outright; `g` is the shape where it lands one short and answers `char<int>`, which is
-// not a type. g++ 13.3.0 and clang++ 18.1.3 emit byte-identical manglings for both.
-// GNU c++filt 2.42 agrees with the declarations, and so does this library.
+// not a type.
 
 template <class T>
 struct A {

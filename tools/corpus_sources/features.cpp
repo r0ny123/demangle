@@ -85,9 +85,7 @@ template <template <typename, int> class C, typename T> C<T, 3> templateTemplate
 template outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(int);
 
 // `Dn`, the nullptr type. The two references spell it differently -- llvm-cxxfilt writes
-// `std::nullptr_t` and GNU c++filt writes `decltype(nullptr)` -- and neither corpus
-// carried one, so nothing here had ever asked the question. Found by cross-checking the
-// references against each other rather than against us.
+// `std::nullptr_t` and GNU c++filt writes `decltype(nullptr)`.
 void takesNullptrType(decltype(nullptr));
 void takesNullptrType(decltype(nullptr)) {}
 void takesNullptrPointer(decltype(nullptr) *);

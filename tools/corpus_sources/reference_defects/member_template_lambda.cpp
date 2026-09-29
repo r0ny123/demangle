@@ -8,8 +8,7 @@
 // `'lambda'(int)`. GNU c++filt 2.42 agrees with the declaration.
 //
 // Four shapes: the parameter alone, after a parameter that *is* `T`, under `const&`,
-// and with a pack. Every one of them is emitted identically by g++ 13.3.0 and
-// clang++ 18.1.3.
+// and with a pack.
 struct S {
     template <class T> void g(T) {
         auto a = [](auto x) { return x; };

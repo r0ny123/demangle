@@ -1,18 +1,9 @@
 #!/bin/sh
-# Build the Swift reference demangler: swiftlang/swift's own lib/Demangling, at a pinned
-# revision, behind the line-per-name front end in main.cpp. See README.md for why the
-# revision is what it is.
-#
-#     tools/swift-demangle-reference/build.sh
-#
-# Needs a C++17 compiler, LLVM's headers (llvm-config on PATH, or LLVM_INCLUDEDIR set),
-# and one fetch from github.com. Nothing else: no Swift toolchain, no CMake, no LLVM
-# libraries -- lib/Demangling includes LLVM headers but links against none of it.
+# Build the Swift reference demangler (swiftlang/swift's lib/Demangling at a pinned
+# revision) behind main.cpp. See README.md for requirements and why this revision.
 set -eu
 
-# swiftlang/swift main as of 2026-08-30. Not a release tag on purpose: every release
-# through 6.3.3 refuses names the corpora contain, because upstream added them to
-# test/Demangle/Inputs/manglings.txt after 6.3.3 branched. README.md has the evidence.
+# Not a release tag on purpose: every release through 6.3.3 refuses names the corpora contain.
 REVISION=871a239941f3613c178b91c294f8584345f30f73
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -32,8 +23,6 @@ if [ "${LLVM_INCLUDEDIR-}" = "" ] || [ ! -f "$LLVM_INCLUDEDIR/llvm/ADT/StringRef
     exit 1
 fi
 
-# A blobless sparse checkout of the five directories the demangler needs: about 16 MB,
-# against a full clone of swiftlang/swift.
 if [ ! -d "$source/.git" ]; then
     mkdir -p "$source"
     git -C "$source" init -q
@@ -50,10 +39,7 @@ if [ "$(git -C "$source" rev-parse HEAD 2>/dev/null || true)" != "$REVISION" ]; 
     git -C "$source" checkout -q "$REVISION"
 fi
 
-# The three definitions are `swift_demangling_compile_flags` from
-# lib/Demangling/CMakeLists.txt, verbatim. Without the first, linking wants
-# llvm::DisableABIBreakingChecks; without the second, an old `_Tt...` name comes back
-# unread; without the third, nodeToString is not compiled in at all.
+# `swift_demangling_compile_flags` from lib/Demangling/CMakeLists.txt; README.md says why each is needed.
 flags="-std=c++17 -fno-exceptions -O2 -w
     -DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1
     -DSWIFT_SUPPORT_OLD_MANGLING=1

@@ -31,18 +31,13 @@ SOURCES = HERE / "corpus_sources" / "rust"
 EDITION = "2021"
 SCHEMES = ("legacy", "v0")
 OPTIMISATIONS = ("0", "2")
-#: More than one codegen unit is what makes the compiler internalise symbols and give
-#: them an `.llvm.<hash>` suffix, a spelling that exists in every release build and in no
-#: hand-written test file.
+#: More than one codegen unit makes the compiler give internalised symbols an
+#: `.llvm.<hash>` suffix.
 CODEGEN_UNITS = ("1", "16")
-#: Both an object file and a linked executable. The object holds this crate's own
-#: monomorphisations; the executable additionally holds everything the standard library
-#: contributed, which is where the long names live.
+#: The executable additionally holds the standard library's symbols, where the long names live.
 ARTEFACTS = ("obj", "bin")
 
-#: `-C symbol-mangling-version=legacy` is gated behind `-Z unstable-options`, which a
-#: release toolchain refuses without the bootstrap escape hatch. Nothing unstable is
-#: being asked of the compiler beyond naming a scheme it already implements.
+#: `-C symbol-mangling-version=legacy` is gated behind `-Z unstable-options`.
 BOOTSTRAP = {**os.environ, "RUSTC_BOOTSTRAP": "1"}
 
 PREFIXES = ("_R", "__R", "_ZN", "__ZN")

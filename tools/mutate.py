@@ -110,9 +110,8 @@ from enumerate import ACCEPTED, JOBS, library_reading, reference_answers
 
 CONFORMANCE = Path(__file__).resolve().parent.parent / "tests" / "conformance"
 
-#: Where each scheme's seeds come from, and the prefix a mutant has to keep to stay in
-#: that scheme. Mutating the prefix would mostly produce names no scheme claims, which
-#: tests the detector rather than the parser -- and the detector has its own tests.
+#: Each scheme's seed corpora and the prefix a mutant keeps, so mutants test the parser
+#: rather than the detector.
 SEEDS = {
     "itanium": (
         [
@@ -131,56 +130,29 @@ SEEDS = {
     "d": (["d-real-world.txt", "d-libiberty.txt"], "_D"),
     "ada": (["ada-libiberty.txt", "ada-real-world.txt"], ""),
     "msvc": (["msvc-llvm-corpus.txt", "msvc-arm64ec.txt", "msvc-clang.txt"], "?"),
-    # Only the `$s` corpus rows: `swift-real-world.txt` carries both manglings and the
-    # prefix a mutant has to keep can only be one of them. `swift-symbolic.txt` is hex
-    # and `swift-simplified.txt` is scored under other options, so neither seeds this.
+    # `swift-symbolic.txt` is hex and `swift-simplified.txt` uses other options.
     "swift": (["swift-real-world.txt", "swift-upstream.txt", "swift-refusals.txt"], "$s"),
-    # No prefix to keep: a pre-Itanium name is an ordinary identifier with a `__` in it.
-    # All four styles' rows seed this, read under `gnu` on both sides, which is what the
-    # scheme's default does with them too.
+    # All four styles' rows, read under `gnu` on both sides as the scheme's default does.
     "gnuv2": (["gnuv2-libiberty.txt"], ""),
 }
 
-#: A second reading of the *same* name, for schemes where a divergence from the first
-#: reference is not evidence on its own. Each entry is `(tool, normalise)`: the tool is
-#: asked about every name the first reference and this library disagree on, and where
-#: its answer -- put through `normalise` -- is what this library said, the two
-#: implementations that read the name agree and the first is the odd one out.
+#: `(tool, normalise)` asked where the first reference and this library disagree; if its
+#: normalised answer matches ours, the first reference is the odd one out.
 #:
-#: `llvm-cxxfilt` caps a Rust `<base-62-number>` at 64 bits, so an eleven-digit crate
-#: disambiguator is refused: `_RNvCsAAAAAAAAAAA_1a1f` is `a::f` here and unreadable
-#: there. binutils reads it, wrapping instead, and spells the same path -- annotating
-#: each disambiguator as `[hex]`, which it does for every name and which `normalise`
-#: takes back off. rustc emits a disambiguator that is a truncated 64-bit hash, so no
-#: compiler reaches the split; the ceiling is the reference's integer type and not a
-#: rule of the scheme, and Python has no such type to impose.
+#: `llvm-cxxfilt` caps a Rust `<base-62-number>` at 64 bits and refuses e.g.
+#: `_RNvCsAAAAAAAAAAA_1a1f`; binutils wraps instead and annotates disambiguators `[hex]`.
 SECOND_OPINION = {
     "rust": ("c++filt", lambda answer: re.sub(r"\[[0-9a-f]+\]", "", answer)),
 }
 
-#: A name to ask the reference about *instead*, where the reference cannot read the one
-#: in hand for a reason that is known and is not about the reading. Where its answer for
-#: the substitute is what this library said for the original, the marker was read as the
-#: marker and everything else agrees.
-#:
-#: `llvm-undname` 18 does not know the ARM64EC marker `$$h`: where one stands in a
-#: function's encoding it refuses the name, and where one stands inside an identifier it
-#: reads it as three more characters of the identifier. The marker says "this is the
-#: hybrid entry for that function" and changes no part of the declaration, which is
-#: exactly how `tests/conformance/msvc-arm64ec.txt` was built -- so the substitute is
-#: the name without it. Checked rather than skipped: a mutation that put a `$$h`
-#: somewhere it does not belong still has to agree. The substitute stands in only where
-#: the reference's own answer is not already ours: the library reads a name as it stands
-#: before it takes the marker out, and a `$$h` that is part of an identifier is read as
-#: one by both sides.
+#: A name to ask the reference about instead, where it cannot read the original for a
+#: known reason unrelated to the reading. `llvm-undname` 18 does not know the ARM64EC
+#: marker `$$h`, which changes no part of the declaration, so the substitute drops it.
 RESCUE = {
     "msvc": lambda name: name.replace("$$h", "", 1) if "$$h" in name else None,
 }
 
-#: Characters a substitution or insertion draws from: the scheme's own markers, so a
-#: mutant is a name the grammar could nearly have spelled rather than line noise.
-#: Drawn from `JOBS`, plus the digits and letters every scheme's lengths and identifiers
-#: need.
+#: Added to the scheme's own markers from `JOBS` for substitutions and insertions.
 _EXTRA = "0123456789_abcxyzABCXYZ$."
 
 
@@ -349,11 +321,7 @@ def run(scheme, count, seed, quiet, show, batch):
         return 0
     ours_gnu = readings(scheme, names, style="gnu") if second_tool else {}
 
-    # In batches: a reference is handed the names on stdin, and one process for half a
-    # million of them is a process that can die with nothing to show for it. Tolerantly,
-    # because a name this library reads can still kill a reference -- see
-    # `ask_tolerantly` -- and one that does must not take the rest of the scheme's run
-    # with it.
+    # Batched and tolerant: a name can kill a reference, which must not lose the whole run.
     casualties = set()
 
     def ask(what, wanted):
@@ -362,49 +330,23 @@ def run(scheme, count, seed, quiet, show, batch):
     theirs = ask(tool, names)
     second = ask(second_tool, names) if second_tool else {}
 
-    # Where the reference cannot read a name for a reason that is known and is not about
-    # the reading, ask it about the substitute instead and let that answer stand in. Done
-    # here rather than after the comparison so the substitute's answer goes through
-    # `ACCEPTED` as well: an ARM64EC name is *also* subject to every rule about the name
-    # underneath the marker.
+    # Before the comparison, so the substitute's answer also goes through `ACCEPTED`.
     rescue = RESCUE.get(scheme)
     if rescue is not None:
         substitutes = {name: rescue(name) for name in names}
-        # A substitute is often another name in the draw -- a mutant and the one it was
-        # mutated from -- and the reference has already answered about those.
         wanted = sorted({s for s in substitutes.values() if s and s not in theirs})
         stand_in = {**theirs, **ask(tool, wanted)}
         for name, substitute in substitutes.items():
             if substitute and theirs.get(name) != ours[name]:
-                # Over an answer the reference did give, unless it is the answer this
-                # library gave: the library reads the name as it stands first, and where
-                # the two agree on that reading the marker was part of an identifier --
-                # `?foo$$hbar@@YAXXZ` is `foo$$hbar` to both. Otherwise what the
-                # reference says about a name carrying the marker is not evidence either
-                # way, since it has no production for `$$h` at all: it read
-                # `?$oo_aad@@$$hYAXAEAD@Z` as `public: char && $oo_aad()`, taking the
-                # marker for part of a type.
-                #
-                # A substitute the reference also refuses is not a second opinion
-                # where this library too read `$$h` as three more characters of an
-                # identifier: the original answer -- a space `insertSpaceIfNeeded` did
-                # not print -- is the one to compare, and overwriting it with None made
-                # that a refusal. `tools/mutate.py --seed 20`. Where this library took
-                # the marker as the marker, its spelling carries no `$$h`, and the
-                # substitute is the name it read: the reference's refusal of *that* is
-                # the evidence, and goes through the rules about refusals as any other
-                # -- `?foo_pcrcd@@$$hYA_PCRCD@Z` returns `auto`, which `llvm-undname`
-                # 18 cannot read with or without the marker, and its answer about the
-                # marked name, `public: char volatile *volatile *& foo_pcrcd()`, is not
-                # a reading to be held against `auto`. `tools/mutate.py --seed 31`.
+                # Where both read `$$h` as part of an identifier (`?foo$$hbar@@YAXXZ`) the
+                # original answers stand; a refused substitute must not overwrite one
+                # where our spelling still carries `$$h` (`--seed 20`). Otherwise the
+                # reference's answer about the marked name is not evidence (`--seed 31`).
                 stand = stand_in.get(substitute)
                 if stand is not None or "$$h" not in ours[name]:
                     theirs[name] = stand
 
-    # A name that killed the reference is not a refusal and not a reading: there is no
-    # answer to compare, so it is left out of the comparison rather than counted as a
-    # disagreement. It is still worth naming -- a reference that aborts on a symbol is a
-    # finding about the reference, and the symbols in a binary are not always friendly.
+    # Neither a refusal nor a reading, so excluded from the comparison but still reported.
     if casualties:
         who = Path(tool.split()[0]).name
         print(f"{scheme:8} {len(casualties):>6} name(s) aborted {who}; not compared")

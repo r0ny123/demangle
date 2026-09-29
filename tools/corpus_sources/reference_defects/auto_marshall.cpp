@@ -4,7 +4,7 @@
 // substitution table; `S6_` inside `makeAllOfComposite<TemplateName>`'s signature names
 // the `T_` entry, and under that specialisation it is `am::TemplateName`. llvm-cxxfilt 18
 // resolves it to `am::Bindable<am::TemplateName>` -- the argument bound to `T_` where the
-// entry was made -- and so doubles the wrapper. GNU c++filt 2.42 refuses the name.
+// entry was made -- and so doubles the wrapper.
 //
 // Reduced from clang's own `makeMatcherAutoMarshall`, of which 227 instantiations in the
 // shipped libclang-cpp are read wrongly by llvm-cxxfilt.

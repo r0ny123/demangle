@@ -66,19 +66,12 @@ SUPPRESSIONS = ROOT / "tests" / "conformance" / "msvc-suppressions.txt"
 TARGET = ROOT / "tests" / "conformance" / "msvc-dbghelp.txt"
 NAME_ONLY_TARGET = ROOT / "tests" / "conformance" / "msvc-name-only.txt"
 
-#: `UNDNAME_NAME_ONLY`. Not in `IMPLEMENTED`: it is not a suppression that composes with
-#: the others but a whole reduced spelling, and what it reduces to is not what this
-#: library's `signature().qualified_name` answers. The file it writes is a *comparison*
-#: rather than an expectation -- see `write_name_only`.
+#: `UNDNAME_NAME_ONLY`: a whole reduced spelling, not a composable suppression, so it is
+#: recorded as a comparison rather than an expectation -- see `write_name_only`.
 NAME_ONLY = 0x1000
 
-#: The mask bits this library implements a field for, and the name the middle column
-#: gives each. Named for the `dbghelp` flag rather than for the field, because the
-#: reference is what the column records.
-#:
-#: `UNDNAME_NO_THISTYPE` is 0x60 -- `UNDNAME_NO_MS_THISTYPE | UNDNAME_NO_CV_THISTYPE` --
-#: and has to be passed as the pair. Neither half changes anything on its own; see
-#: `OTHER_BITS`.
+#: The mask bits this library implements a field for. `UNDNAME_NO_THISTYPE` has to be
+#: passed as the pair 0x60; neither half changes anything on its own.
 IMPLEMENTED = (
     ("no-leading-underscores", 0x00001, "UNDNAME_NO_LEADING_UNDERSCORES"),
     ("no-ms-keywords", 0x00002, "UNDNAME_NO_MS_KEYWORDS"),
@@ -86,12 +79,8 @@ IMPLEMENTED = (
     ("no-tag-kind", 0x08000, "UNDNAME_NO_ECSU"),
 )
 
-#: The bits that mean what one of `llvm-undname`'s five flags means. Not written to the
-#: corpus -- `msvc-suppressions.txt` already scores those five against `llvm-undname` --
-#: but compared against it, because two references disagreeing about a flag both claim to
-#: implement is a finding rather than a detail. `--report` prints the comparison.
-#:
-#: `--no-variable-type` is absent because the mask has nothing that means it.
+#: The bits matching `llvm-undname`'s flags: compared by `--report`, not written, since
+#: `msvc-suppressions.txt` already scores them. The mask has no `--no-variable-type`.
 CROSS_CHECKED = (
     ("no-calling-convention", 0x00010, "UNDNAME_NO_ALLOCATION_LANGUAGE"),
     ("no-return-type", 0x00004, "UNDNAME_NO_FUNCTION_RETURNS"),
@@ -99,9 +88,7 @@ CROSS_CHECKED = (
     ("no-member-type", 0x00200, "UNDNAME_NO_MEMBER_TYPE"),
 )
 
-#: Every other documented bit, with what it is supposed to do. `--report` asks each one
-#: over the whole corpus and says which changed nothing, so "we did not implement this"
-#: is backed by a measurement rather than by an omission.
+#: Every other documented bit; `--report` says which of them changed nothing.
 OTHER_BITS = (
     ("UNDNAME_NO_ALLOCATION_MODEL", 0x00008),
     ("UNDNAME_NO_MS_THISTYPE", 0x00020),
@@ -118,20 +105,13 @@ OTHER_BITS = (
 
 _CONVENTIONS = "cdecl|stdcall|fastcall|thiscall|vectorcall|clrcall|eabi|pascal|swiftcall|regcall"
 
-#: A calling convention or a trailing qualifier, spelled either way. The underscores are
-#: optional because `UNDNAME_NO_LEADING_UNDERSCORES` takes them off, and the rules below
-#: have to place a `cdecl` the same way they place a `__cdecl` or that flag's answers come
-#: out spaced differently from every other flag's. A bare `cdecl` or `restrict` is never
-#: anything else here: the reference writes neither without underscores under any other
-#: bit, and an identifier of that name would have to stand immediately before a `*`.
+#: Underscores optional because `UNDNAME_NO_LEADING_UNDERSCORES` removes them; a bare
+#: `cdecl` or `restrict` before a `*` cannot be an identifier.
 _ANY_CONVENTION = rf"(?:__)?(?:{_CONVENTIONS})"
 _ANY_QUALIFIER = r"(?:const|volatile|(?:__)?restrict)"
 
-#: How a `dbghelp` spelling is rewritten into the one this library prints, in order. Each
-#: is a spacing convention the two references chose differently; none of them adds,
-#: removes or reorders anything that is part of the declaration. Every rule is proved on
-#: every name it is used for -- see the module docstring -- so a rule that is wrong shows
-#: up as names dropped, never as a wrong answer recorded.
+#: How a `dbghelp` spelling is rewritten into the one this library prints, in order;
+#: spacing only, and proved per name (see the module docstring).
 RULES = (
     # `llvm-undname` does not print `__ptr64` at all. `UNDNAME_NO_PTR64` would say so, but
     # this `dbghelp` ignores that bit; see `OTHER_BITS` and `--report`.
@@ -145,22 +125,16 @@ RULES = (
     ("space-before-member-cv", lambda text: re.sub(r"\)(const|volatile)\b", r") \1", text)),
     # `int (__cdecl *)(void)`, not `int (__cdecl*)(void)`
     ("space-after-convention", lambda text: re.sub(rf"\b({_ANY_CONVENTION})(?=[*&])", r"\1 ", text)),
-    # `void (__cdecl * __cdecl fn(void))(int)`, not `void (__cdecl *__cdecl fn(void))(int)`.
-    # The convention on the other side of the sigil is the one the *declaration* carries,
-    # and it is written there because that is where the declarator goes.
+    # `void (__cdecl * __cdecl fn(void))(int)`, not `void (__cdecl *__cdecl fn(void))(int)`
     ("space-before-convention", lambda text: re.sub(rf"(?<=[*&])(?={_ANY_CONVENTION}\b)", " ", text)),
-    # The reference leaves standing the space a keyword it dropped occupied: `void (
-    # media::C::*&&` where the house spelling is `void (media::C::*&&`. No house spelling
-    # writes `(`, a space and then a letter, so closing that up cannot disturb `int ( *)()`
-    # -- the space there stands for a calling convention spelled with nothing at all.
+    # The reference leaves the space a dropped keyword occupied: `void ( media::C::*&&`.
+    # Only `(` then a letter is closed up, so `int ( *)()` is untouched.
     ("close-dropped-keyword", lambda text: re.sub(r"\( (?=[A-Za-z_])", "(", text)),
     ("strip", lambda text: text.rstrip()),
 )
 
-#: `UNDNAME_NO_LEADING_UNDERSCORES` respells `__ptr64` as `ptr64`, so the rule that drops
-#: the keyword has to know which flag produced the text it is reading or it walks straight
-#: past it. Nothing else in the mask respells a keyword, which is why this is a parameter
-#: to `normalise` rather than another entry in `RULES`.
+#: `UNDNAME_NO_LEADING_UNDERSCORES` respells `__ptr64` as `ptr64`; the only keyword any
+#: flag respells, hence a `normalise` parameter rather than a `RULES` entry.
 _STRIPPED_PTR64 = re.compile(r" ptr64\b")
 
 
@@ -184,9 +158,7 @@ def load_undecorator():
     undecorate.argtypes = [ctypes.c_char_p, ctypes.c_char_p, wintypes.DWORD, wintypes.DWORD]
     undecorate.restype = wintypes.DWORD
 
-    # The buffer is fixed and generous. UnDecorateSymbolName truncates rather than
-    # reporting that it needed more room, so a name that fills it would be recorded
-    # half-spelled; `undname` below refuses anything that reaches the end instead.
+    # UnDecorateSymbolName truncates silently, so `undname` refuses anything that fills it.
     size = 1 << 16
 
     def undname(mangled, mask=0):
@@ -217,11 +189,7 @@ def _dll_version(handle):
     import ctypes
     from ctypes import wintypes
 
-    # `ctypes.windll` exists only on Windows, so a checker running anywhere else is
-    # right that the module has no such member. Reaching it once, here, is what keeps
-    # that true statement from having to be repeated at every use: this file is only
-    # ever run on Windows -- the caller has already loaded `dbghelp.dll` -- so the
-    # platform is this function's precondition rather than a branch it takes.
+    # Windows-only member; the caller has already loaded dbghelp.dll.
     windll = ctypes.windll  # ty: ignore[unresolved-attribute]
 
     path = ctypes.create_unicode_buffer(1024)
@@ -318,15 +286,8 @@ def survey(undname, names):
     return house, reference, comparable, declined
 
 
-#: What each flag is allowed to take out of a spelling, and what it may put back. The
-#: check below reads both texts as tokens and compares the multisets, so a rewrite that
-#: left a space in the wrong place, or a `ptr64` the rule that drops the keyword walked
-#: past, shows up as a token that moved rather than as a file nobody re-read.
-#:
-#: The point is not to re-derive the reference's answer -- it is to notice when the answer
-#: is not the shape the flag promises, which is either an artefact of the rewrite or the
-#: reference doing something worth knowing about. Either way it gets reported, never
-#: silently recorded.
+#: What each flag may take out of a spelling, and what it may put back, compared as token
+#: multisets so a row not of the shape the flag promises is reported rather than recorded.
 _KEYWORDS = frozenset(
     {
         "__cdecl",
@@ -352,15 +313,11 @@ DELTA = {
     "no-tag-kind": (_TAGS, frozenset()),
 }
 
-# A bit added to IMPLEMENTED without a line here would record its rows with no check at
-# all, which is the one failure mode this file is arranged to prevent. Said out loud
-# rather than left to a KeyError halfway through a run.
 assert set(DELTA) == {flag for flag, _, _ in IMPLEMENTED}, "every implemented bit needs a DELTA entry"
 
 _TOKEN = re.compile(r"[A-Za-z_$][\w$]*|<<|>>|::|&&|\S")
 
-#: Spacings no house spelling has. A recorded row with one in it is the rewrite having
-#: missed something, not the reference having an opinion.
+#: Spacings no house spelling has: a row with one means the rewrite missed something.
 _ARTEFACTS = (
     ("a doubled space", re.compile(r"  ")),
     ("a space before `)`", re.compile(r" \)")),
@@ -458,8 +415,6 @@ def write_name_only(undname, version, comparable):
     for name in comparable:
         spelled = undname(name, NAME_ONLY)
         if spelled is not None:
-            # through the same rewrite as everything else, so what is left to see is the
-            # mode differing rather than the reference's spacing
             rows.append((name, normalise(spelled)))
     lines = [
         "# What `UnDecorateSymbolName` prints under `UNDNAME_NAME_ONLY`, over the names of",
