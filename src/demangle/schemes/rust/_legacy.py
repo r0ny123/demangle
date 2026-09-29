@@ -2,16 +2,11 @@ import string
 
 from ._v0 import _is_symbol_like, _strip_llvm_suffix
 
-#: Character-class tests written as set membership rather than `in string.digits`, which
-#: is a substring search, and rebuilt-per-call concatenations like `string.hexdigits +
-#: "@"`. These run once per character of every symbol offered to the scheme.
+#: Sets rather than `in string.digits` (a substring search); tested per character.
 _DIGITS = frozenset(string.digits)
 _HEXDIGITS = frozenset(string.hexdigits)
 
-#: What a `$uXXXX$` escape may hold: lowercase hex only, like the reference's
-#: `'0'..='9' | 'a'..='f'` test. Uppercase decodes fine with `int(_, 16)` but the
-#: reference leaves it literal, so `$u00AB$` is printed as-is while `$u00ab$`
-#: becomes the character.
+#: Lowercase only, as the reference's `'0'..='9' | 'a'..='f'`: it leaves `$u00AB$` literal.
 _LOWER_HEXDIGITS = frozenset(string.digits + "abcdef")
 
 
@@ -70,8 +65,6 @@ class LegacyDemangler:
 
         original_inpstr = inpstr
         disp = ""
-        # By prefix, not by the first `N` anywhere in the name -- see the note on the
-        # same change in `_v0`.
         if inpstr.startswith("__ZN"):
             inpstr = inpstr[4:]
         elif inpstr.startswith("_ZN"):
@@ -87,16 +80,14 @@ class LegacyDemangler:
 
         inn = inpstr
         for ele in range(self.elements):
-            # Scan the length prefix by index. Stripping it a character at a time with
-            # `rest = rest[1:]` copies the whole remainder per digit, which is quadratic
-            # in the length of the symbol -- and a release binary's symbols are long.
+            # By index: `rest = rest[1:]` per digit is quadratic in the symbol's length.
             prefix = 0
             limit = len(inn)
             while prefix < limit and inn[prefix] in _DIGITS:
                 prefix += 1
 
             if not prefix:
-                # no length prefix remains: the element count came from the pre-strip string
+                # No length prefix remains: the element count came from the pre-strip string.
                 raise UnableToLegacyDemangle(original_inpstr)
 
             num = int(inn[:prefix])
@@ -105,16 +96,14 @@ class LegacyDemangler:
             inn = rest[num:]
             rest = rest[:num]
 
-            # The trailing hash disambiguates monomorphisations; it is not part of the
-            # path a reader wants, and neither `rustfilt` nor Ghidra prints it.
+            # The trailing hash disambiguates monomorphisations; `rustfilt` and Ghidra
+            # omit it.
             is_hash = ele + 1 == self.elements and self.is_rust_hash(rest)
 
             if ele != 0 and not is_hash:
                 disp += "::"
 
             if is_hash:
-                # The component reads `h<16 hex digits>` once its length prefix has been
-                # consumed. What a caller wants is the value, not the marker.
                 self.hash = rest[1:]
                 break
 
@@ -123,11 +112,7 @@ class LegacyDemangler:
             if rest[:2] == "_$":
                 rest = rest[1:]
 
-            # Dispatched on the first character rather than by asking `startswith` three
-            # times and then scanning the whole remainder for a `$`: over the checked-in
-            # Rust corpora this loop cost 131,691 `startswith` calls, forty-three per
-            # name, and `rest[1:].find(...)` copied the rest of a component to look one
-            # character ahead. The branches and what each does are unchanged.
+            # Dispatched on the first character: the hot loop over every component.
             while rest:
                 head = rest[0]
                 if head == ".":
@@ -139,9 +124,8 @@ class LegacyDemangler:
                         rest = rest[1:]
 
                 elif head == "$":
-                    # The closing `$`, as an index into `rest`. Anything below 2 is
-                    # either no closing `$` at all or an empty escape, and both stop the
-                    # loop where the reference stops it.
+                    # Below 2 is no closing `$` or an empty escape; both stop the loop
+                    # where the reference does.
                     closing = rest.find("$", 1)
                     if closing < 2:
                         break
@@ -157,10 +141,8 @@ class LegacyDemangler:
                             break
 
                         c = int(digits, 16)
-                        # `char::from_u32` refuses surrogates and anything past
-                        # U+10FFFF, and the reference additionally keeps control
-                        # characters literal. Python's `chr` accepts surrogates,
-                        # so those are checked by hand.
+                        # `char::from_u32` refuses surrogates (which `chr` accepts) and
+                        # anything past U+10FFFF; the reference also keeps controls literal.
                         if c > 0x10FFFF or 0xD800 <= c <= 0xDFFF:
                             break
                         if c < 0x20 or 0x7F <= c <= 0x9F:
@@ -178,9 +160,8 @@ class LegacyDemangler:
                         continue
 
                 else:
-                    # Plain characters up to whichever marker comes first. Where there
-                    # is no `$` left the loop stops and the remainder is taken as it
-                    # stands, dots and all, which is what the reference does.
+                    # With no `$` left the remainder is taken as it stands, dots and all,
+                    # as the reference does.
                     dollar = rest.find("$")
                     if dollar == -1:
                         break
@@ -194,21 +175,13 @@ class LegacyDemangler:
             disp += rest
             self.spans.append((component, len(disp)))
 
-        # The trailing `17h<16 hex>` component the parse recorded and the spelling drops.
-        # It is the only thing telling two monomorphisations of one generic apart, so
-        # `{}` on rustc-demangle's own `Demangle` spells it and `{:#}` is what suppresses
-        # it. Before the vendor suffix, which is not part of the path.
-        # `is not None` rather than truth: a bare `h` is a hash with no digits, which the
-        # reference spells as `::h`, and the empty string is false.
+        # The hash, spelled as rustc-demangle's `{}` does (`{:#}` suppresses it), before
+        # the vendor suffix. `is not None`: a bare `h` is spelled `::h`.
         if self.keep_hash and self.hash is not None:
             disp += f"::h{self.hash}"
 
-        # `inn` is positioned on the `E` that closes the path, so what follows it is
-        # whatever the grammar did not account for. The reference carries it only when
-        # it is a vendor suffix -- introduced by `.`, and spelled in characters a symbol
-        # can hold -- and refuses the name otherwise. Dropping it instead, which is what
-        # this did, meant `_ZN3fooE.llvm moocow` read as plain `foo`: a name that is not
-        # the symbol and not the truth.
+        # What follows the closing `E` is kept only as a `.`-introduced vendor suffix, as
+        # the reference does; otherwise `_ZN3fooE.llvm moocow` would read as `foo`.
         if inn[:1] != "E":
             raise UnableToLegacyDemangle(original_inpstr)
         self.suffix = inn[1:]
@@ -232,12 +205,7 @@ class LegacyDemangler:
         return s.startswith("h") and _HEXDIGITS.issuperset(s[1:])
 
     def sanity_check(self, inpstr: str):
-        # The reference reads the symbol as *bytes* and rejects it outright if any of
-        # them has bit 7 set, so a non-ASCII name is refused whatever it contains. This
-        # was written as a per-character `ord(i) & 0x80` loop, which is not the same
-        # test: U+0100 is one character whose value has bit 7 clear, so it passed here
-        # and its identifier was printed -- where `rustfilt` echoes the symbol back
-        # unread. `str.isascii` is the reference's test, and runs in C.
+        # The reference refuses any byte with bit 7 set.
         if not inpstr.isascii():
             raise UnableToLegacyDemangle(inpstr)
 
@@ -259,8 +227,6 @@ class LegacyDemangler:
             c += length
             self.elements += 1
 
-        # The scan stopped somewhere other than an `E`: the path was never
-        # terminated, so this is not a mangled name. Without this `_ZN3std` read
-        # as `std`, where the reference echoes it back unread.
+        # The path was never terminated: `_ZN3std` is not `std`.
         if c >= limit:
             raise UnableToLegacyDemangle(inpstr)

@@ -73,10 +73,8 @@ class Style:
                     )
                 value = replace(current, **value)
             elif language not in changed:
-                # The object form adds rather than changes, so the mapping check above
-                # cannot see it -- but a typo must still fail rather than add dead
-                # options under a name nothing reads. Looked up lazily so this module
-                # keeps no import-time dependency on any scheme.
+                # The object form adds rather than changes, so a typo must be caught
+                # here. Imported lazily: no import-time dependency on any scheme.
                 from .registry import names as _known_languages
 
                 known = _known_languages()
@@ -94,10 +92,8 @@ def _build_styles():
     from ..schemes.rust.options import DEFAULT_OPTIONS as RUST_OPTIONS
     from ..schemes.swift.options import DEFAULT_OPTIONS as SWIFT_OPTIONS
 
-    # MSVC's, Swift's and pre-Itanium C++'s options are the same in both styles, and
-    # deliberately: they say how much of a name to print -- and, for pre-Itanium, which
-    # of the five compilers wrote it -- which is not something the two C++ references
-    # disagree about. They are here so `with_options(msvc=...)` has something to change.
+    # MSVC's, Swift's and pre-Itanium's options are the same in both styles: the two C++
+    # references do not disagree about them. Listed so `with_options(msvc=...)` works.
     llvm = Style(
         name="llvm",
         spelling_builder=SPELLING_BUILDER,
@@ -127,19 +123,11 @@ def _build_styles():
 
 _STYLES = None
 
-#: Guards the lazy build and every mutation of `_STYLES`. Two threads reaching
-#: `get_style` first would each have built a table, and whichever finished last would
-#: have discarded any style the other had registered into the first. The registry has
-#: taken the same care since it was written; this module had not.
+#: Guards the lazy build and every mutation of `_STYLES`.
 _lock = threading.RLock()
 
-#: Called when the set of styles changes. `api` puts its cache's `clear` here, because a
-#: style registered after a name was demangled must not be served the older spelling.
-#:
-#: A hook rather than a counter folded into the cache key: the key is built once per
-#: `demangle()` call, which is the hottest path in the package, and asking two modules
-#: "have you changed" there costs more than clearing a cache on the rare occasion that
-#: one has. Measured -- the counter version cost 58% of the warm path.
+#: Called when the set of styles changes; `api` registers its cache's `clear` here. A
+#: hook rather than a counter in the cache key, which would slow the hottest path.
 _on_change = []
 
 
@@ -170,9 +158,7 @@ def get_style(name):
     Raises:
         ValueError: `name` is not a registered style.
     """
-    # `_table()`'s own fast path, written out: every call into this package resolves a
-    # style first, so reaching an already-built table through a second interpreter frame
-    # is a frame per name demangled. The build, and the lock around it, stay there.
+    # `_table()`'s fast path inlined: every call into the package resolves a style.
     styles = _STYLES
     if styles is None:
         styles = _table()
@@ -201,5 +187,5 @@ def available_styles():
     return sorted(_table())
 
 
-#: The default style. LLVM's spelling: what modern debuggers and disassemblers show.
+#: LLVM's spelling: what modern debuggers and disassemblers show.
 DEFAULT_STYLE = "llvm"

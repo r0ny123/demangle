@@ -19,14 +19,11 @@ DIGITS = frozenset(string.digits)
 #: <seq-id> is base 36 with the digits ordered before the capitals.
 SEQ_ID_ALPHABET = string.digits + string.ascii_uppercase
 
-#: Longest <seq-id> worth reading. Base 36 in 12 digits already exceeds 4 * 10**18, far
-#: past any real substitution table, and the accumulation is quadratic in the digit
-#: count -- so an unbounded run lets a single symbol burn arbitrary time building an
-#: integer whose only use is to fail a bounds check.
+#: Longest <seq-id> worth reading: 12 base-36 digits exceed any real substitution table,
+#: and accumulation is quadratic in digit count.
 MAX_SEQ_ID_DIGITS = 12
 
-#: Likewise for decimal runs. CPython refuses `int()` on more than 4300 digits anyway,
-#: with a ValueError that is not this package's error type.
+#: Likewise for decimal runs; CPython's `int()` refuses more than 4300 digits anyway.
 MAX_NUMBER_DIGITS = 20
 _SEQ_ID_VALUES = {char: index for index, char in enumerate(SEQ_ID_ALPHABET)}
 
@@ -50,14 +47,10 @@ class Reader:
         self.text = text
         self.pos = 0
         self.length = len(text)
-        #: Whether a `length_prefixed()` read a length written with a leading zero, which
-        #: the grammars spell without one. Recorded rather than refused: `c++filt` 2.42
-        #: reads `_Z1f01A` as `f(A)` and `llvm-cxxfilt` 18 refuses it, so a name carrying
-        #: one is a place the two references split and no compiler settles. Read by
-        #: tools/enumerate.py.
+        #: Whether a `length_prefixed()` read had a leading zero. Recorded, not refused:
+        #: `c++filt` 2.42 reads `_Z1f01A` as `f(A)` and `llvm-cxxfilt` 18 refuses it.
+        #: Read by tools/enumerate.py.
         self.padded_length = False
-
-    # -- inspection ------------------------------------------------------------
 
     @property
     def eof(self):
@@ -117,8 +110,6 @@ class Reader:
     def startswith(self, literal):
         return self.pos + len(literal) <= self.length and self.text.startswith(literal, self.pos)
 
-    # -- consumption -----------------------------------------------------------
-
     def take(self):
         """Consume and return one character. Raises at the end of input."""
         if self.pos >= self.length:
@@ -147,17 +138,13 @@ class Reader:
 
     def expect(self, literal):
         """Consume `literal`, or raise."""
-        # The test is written out rather than delegated to `eat`: this is on the path of
-        # every production that has a fixed opening character, and reaching a three-line
-        # method through another one costs a whole interpreter frame to save three lines.
+        # `eat` inlined: this is on the path of every fixed-opening production.
         pos = self.pos
         end = pos + len(literal)
         if end <= self.length and self.text.startswith(literal, pos):
             self.pos = end
             return
         raise ParseError(self.text, pos, f"expected {literal!r}")
-
-    # -- numbers ---------------------------------------------------------------
 
     def digits(self):
         """Consume a run of decimal digits and return it, or raise if there are none.
@@ -196,8 +183,6 @@ class Reader:
         if pos == start:
             raise ParseError(text, start, "expected a number")
         if text[start] == "0":
-            # One comparison on the commonest production in the package, and a store
-            # only on input no compiler writes. See `padded_length`.
             self.padded_length = True
         count = int(text[start:pos])
         end = pos + count
@@ -237,8 +222,6 @@ class Reader:
         for char in raw:
             value = value * 36 + _SEQ_ID_VALUES[char]
         return value + 1
-
-    # -- diagnostics -----------------------------------------------------------
 
     def fail(self, message):
         raise ParseError(self.text, self.pos, message)

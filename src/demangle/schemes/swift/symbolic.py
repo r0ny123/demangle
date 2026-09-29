@@ -55,10 +55,8 @@ NON_UNIQUE_EXTENDED_EXISTENTIAL_TYPE_SHAPE = "non-unique extended existential ty
 DIRECT = "direct"
 INDIRECT = "indirect"
 
-#: Introducer byte -> `(kind, directness)`. Exactly the reference's switch, including
-#: which values it leaves out: 3 through 8 are reserved for protocol- and
-#: associated-conformance descriptors and are *not* emitted, and 0x0C reaches the
-#: switch only to fall through its default.
+#: Introducer byte -> `(kind, directness)`: exactly the reference's switch, which omits
+#: 3-8 (reserved, never emitted) and lets 0x0C fall through.
 KINDS = {
     0x01: (CONTEXT, DIRECT),
     0x02: (CONTEXT, INDIRECT),
@@ -73,8 +71,7 @@ RESERVED = frozenset({0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0C})
 #: Every byte that begins a symbolic reference, refused or not.
 INTRODUCERS = frozenset(KINDS) | RESERVED
 
-#: Written in front of a reference where the platform's relocations need the offset
-#: aligned. It carries nothing and is skipped.
+#: Alignment padding in front of a reference; skipped.
 PADDING = 0xFF
 
 #: The offset is a 32-bit signed little-endian integer, and it is relative to its own
@@ -176,8 +173,7 @@ def end_of_name(data, start=0):
             return pos
         if byte in INTRODUCERS:
             if pos + 1 + OFFSET_WIDTH > length:
-                # Truncated. The name cannot be read, and neither can the one after it,
-                # so the whole remainder is this name.
+                # Truncated: the whole remainder is this name.
                 return length
             pos += 1 + OFFSET_WIDTH
         else:

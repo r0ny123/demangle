@@ -36,12 +36,10 @@ _I32 = struct.Struct("<i")
 _U64 = struct.Struct("<Q")
 _U16 = struct.Struct("<H")
 
-#: `ContextDescriptorKind`, from `include/swift/ABI/MetadataValues.h`. Only the kinds
-#: that can appear in the parent chain of a nominal type are named; anything else stops
-#: the walk, because a fragment this cannot spell is worse than no fragment at all.
+#: `ContextDescriptorKind`, `include/swift/ABI/MetadataValues.h`. Only kinds that can
+#: parent a nominal type; anything else stops the walk.
 _MODULE = 0
-#: Stands for "this component is the module" in a built chain. A module carries no letter
-#: after its name, and a marker no descriptor kind can produce keeps that distinct.
+#: "This component is the module": a module has no letter, and no kind produces "".
 _MODULE_LETTER = ""
 _EXTENSION = 1
 _ANONYMOUS = 2
@@ -49,16 +47,12 @@ _ANONYMOUS = 2
 _ANONYMOUS_MARK = "XZ"
 _PROTOCOL = 3
 
-#: Type kinds, and the letter each is written with in a mangled name.
 _TYPE_LETTERS = {16: "C", 17: "V", 18: "O"}
 
-#: A type descriptor's kind-specific flags live in the high half of the flags word, and
-#: bit 2 of them says the name is followed by extended import information.
+#: Bit 2 of a type descriptor's kind-specific flags (high half): extended import info.
 _HAS_IMPORT_INFO = 1 << 2
 
-#: The letter a Clang-imported `typedef` is written with. `_buildDemanglingForContext`
-#: overrides the kind to `TypeAlias` when the symbol namespace says the descriptor came
-#: from a C type definition, and `a` is how a type alias is mangled.
+#: `_buildDemanglingForContext` treats a C `typedef` as a `TypeAlias`, mangled `a`.
 _TYPE_ALIAS = "a"
 _C_TYPE_DEFINITION = "t"
 
@@ -74,27 +68,18 @@ class Image:
     __slots__ = ("_segments", "imports", "symbols")
 
     def __init__(self, segments, imports=None, symbols=None):
-        #: `(address, bytes)` pairs, in no particular order. Overlaps are the caller's
-        #: business; the first that contains an address answers for it.
+        #: `(address, bytes)` pairs; the first that contains an address answers for it.
         self._segments = tuple(segments)
-        #: Pointer slots the loader would fill from *another* image, by address, each
-        #: naming the symbol it would be filled from. A file cannot hold the address,
-        #: but a descriptor's symbol carries its mangled name -- `$s4demo5PointVMn` --
-        #: which is all a resolver wants from it. Empty for an image nothing imports into.
+        #: Symbols the loader would fill slots from, by slot address: the file lacks the
+        #: address, but a descriptor symbol's mangled name is all a resolver needs.
         self.imports = dict(imports or {})
-        #: The descriptor symbols the image defines, by address: what the walk falls
-        #: back on for a descriptor it cannot spell from the layout alone -- a type
-        #: declared in an extension, whose parent is the extension descriptor, or an
-        #: opaque type descriptor, which has no name and is spelled by the declaration
-        #: it belongs to. Empty for a stripped image, where the walk is all there is.
+        #: Descriptor symbols the image defines, by address: the fallback for a
+        #: descriptor the layout alone cannot spell (in an extension, or opaque).
         self.symbols = dict(symbols or {})
 
     def read(self, address, length):
         """`length` bytes at virtual `address`, or None if they are not all mapped."""
         if length < 0:
-            # A negative length made the bounds test below vacuous, and the slice then
-            # ran the wrong way and came back as bytes -- where the contract is the bytes
-            # asked for, or None.
             return None
         for start, blob in self._segments:
             offset = address - start
@@ -148,9 +133,8 @@ def elf_image(data):
     dynamic = None
     for index in range(count):
         at = program_offset + index * entry_size
-        # A header the file is too short to hold ends the walk rather than raising: a
-        # truncated image is common enough -- a core dump, a partial download -- that
-        # answering from the segments that *are* there is more useful than refusing.
+        # A truncated image (core dump, partial download) is common: answer from what
+        # is there.
         if at + 0x38 > len(data):
             break
         kind = _U32.unpack_from(data, at)[0]
@@ -166,9 +150,8 @@ def elf_image(data):
     return Image([(vaddr, bytes(blob)) for vaddr, blob in segments], imports, _defined_descriptors(data))
 
 
-#: Relocation types by `e_machine`: `(RELATIVE, GLOB_DAT, ABS64)`. The first fills a slot
-#: with its addend; the other two fill it with a symbol's address, which the file holds
-#: when the symbol is defined in it and does not when it is imported.
+#: `(RELATIVE, GLOB_DAT, ABS64)` by `e_machine`. The last two fill a slot with a symbol's
+#: address, which the file lacks for an imported symbol.
 _RELOCATIONS_BY_MACHINE = {62: (8, 6, 1), 183: (1027, 1025, 257)}  # x86-64, AArch64
 
 
@@ -297,14 +280,11 @@ def _defined_descriptors(data):
     return symbols
 
 
-#: The descriptor symbols whose name is a context's own mangling with a suffix: a
-#: nominal type descriptor, a protocol descriptor, a module descriptor, an opaque
-#: type descriptor -- `$s4main1fQryFQOMQ`, whose context is `4main1fQryFQO`, the
-#: opaque result of `main.f()`.
+#: Descriptor symbols named as a context's own mangling plus a suffix: nominal type,
+#: protocol, module, opaque type (`$s4main1fQryFQOMQ` is `4main1fQryFQO` + `MQ`).
 _DESCRIPTOR_SUFFIXES = ("Mn", "Mp", "MXM", "MQ")
 
-#: A protocol the standard library abbreviates to a letter -- `SH` for `Swift.Hashable`,
-#: `ScA` for `_Concurrency.Actor` -- which is already a type on its own.
+#: A standard-library protocol abbreviation (`SH`, `ScA`), already a type on its own.
 _STANDARD_PROTOCOL = re.compile(r"Sc?[A-Za-z]")
 
 
@@ -337,10 +317,8 @@ def _fragment_from_symbol(symbol):
     return None
 
 
-#: Smallest a load command can be: the command word and its size. A command claiming
-#: less than this does not advance the walk, and a header claiming four billion of them
-#: then spins for as long as the process lives -- which is what a forty-byte file did
-#: before this bound existed.
+#: Smallest a load command can be. A command claiming less would not advance the walk,
+#: and a header claiming four billion of them would spin forever.
 _MIN_LOAD_COMMAND = 8
 
 
@@ -406,8 +384,7 @@ class ContextResolver:
             slot = target
             target = int.from_bytes(raw, "little")
             if not target:
-                # An empty slot is one the loader fills from another image; the symbol
-                # it fills it from names the descriptor, and so the fragment.
+                # An empty slot is filled from another image; that symbol names the fragment.
                 imported = self._imported(slot)
                 return imported
         elif reference.directness != DIRECT:
@@ -454,13 +431,8 @@ class ContextResolver:
             (flags,) = _U32.unpack_from(header, 0)
             kind = flags & 0x1F
             if kind == _ANONYMOUS:
-                # An anonymous context: the scope of a type declared inside a function
-                # or a closure. Its descriptor names nothing, and the runtime's
-                # `_buildDemanglingForContext` spells it "by its pointer identity":
-                # `(unknown context at $<address>)`, the address in hex. The same here,
-                # with the descriptor's virtual address, which is what the runtime's
-                # is short of relocation -- and the one thing the file can say about
-                # a context it was not given a name for.
+                # An anonymous context: `_buildDemanglingForContext` spells it
+                # `(unknown context at $<address>)`; the descriptor's address stands in.
                 chain.append((_ANONYMOUS_MARK, f"${at:x}".encode("ascii")))
                 at, prefix = self._parent(at + 4)
                 if prefix is not None:
@@ -474,8 +446,6 @@ class ContextResolver:
                 chain.append((_MODULE_LETTER, name))
                 break
             if kind == _PROTOCOL:
-                # A protocol descriptor's name is never followed by import info, and its
-                # own letter is `P`.
                 chain.append(("P", name))
                 at, prefix = self._parent(at + 4)
                 if prefix is not None:
@@ -483,10 +453,8 @@ class ContextResolver:
                 continue
             letter = _TYPE_ALIAS if namespace == _C_TYPE_DEFINITION else _TYPE_LETTERS.get(kind)
             if letter is None:
-                # An extension, or a kind this does not know. An extension's spelling is
-                # its extended type, which is itself a mangled name that would have to
-                # be read out of the descriptor -- references and all -- and writing
-                # the wrong one would be worse than declining.
+                # An extension (its spelling is a mangled name inside the descriptor) or
+                # an unknown kind: declining beats writing the wrong one.
                 return None
             chain.append((letter, name))
             at, prefix = self._parent(at + 4)
@@ -497,20 +465,14 @@ class ContextResolver:
 
         if prefix is None and (not chain or chain[-1][0] != _MODULE_LETTER):
             return None
-        # A parent the loader would fill in from another image: its symbol's own
-        # mangling stands where the walk would have gone on.
         pieces = [prefix] if prefix else []
         for letter, name in reversed(chain):
             if not name.isascii():
-                # Swift spells a non-ASCII identifier in punycode, and the descriptor
-                # holds it as raw UTF-8. Writing the bytes out with a length in front
-                # would be a mangling nothing can read back, so decline instead.
+                # A non-ASCII identifier would need punycode; the descriptor holds UTF-8.
                 return None
             pieces.append(f"{len(name)}{name.decode('ascii')}")
             if letter == _ANONYMOUS_MARK:
-                # `<context> <identifier> <empty type list> XZ`, the anonymous-context
-                # production, with the generic arguments the runtime would collect left
-                # empty: a file has none to collect.
+                # The anonymous-context production, with no generic arguments to collect.
                 pieces.append("yXZ")
             elif letter != _MODULE_LETTER:
                 pieces.append(letter)

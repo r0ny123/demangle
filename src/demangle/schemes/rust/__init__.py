@@ -28,26 +28,17 @@ from ._v0 import _PATH_TAGS, OutputTooLong, UnableTov0Demangle
 
 _DEMANGLER = RustDemangler()
 
-#: Legacy Rust appends a hash component, `17h<16 hex digits>`, as the last element of the
-#: path. Looking for it is what stops this plugin claiming every C++ symbol in a binary,
-#: since the `_ZN` prefix alone does not distinguish the two.
+#: Legacy Rust's trailing `17h<16 hex digits>` hash component: the `_ZN` prefix alone does
+#: not tell it from C++.
 _LEGACY_HASH_MARKER = "17h"
 _LEGACY_HASH_DIGITS = 16
 
-#: The escapes legacy Rust writes for characters `_ZN` cannot carry: `$LT$` for `<`,
-#: `$RF$` for `&`, `$u20$` for a space. Each is a `$`, a short run of letters and digits,
-#: and a closing `$`, and Itanium mangling has no production that spells one -- so a name
-#: that holds one is Rust's whatever else it looks like.
-#:
-#: Deliberately anchored at both ends. Clang writes `$_0` for a lambda inside a local
-#: name and that is a `$` in a C++ symbol; it has no closing `$`, so requiring the pair
-#: is what keeps this from claiming those.
+#: Legacy Rust's escapes (`$LT$`, `$RF$`, `$u20$`), which Itanium never spells. Anchored at
+#: both ends so clang's `$_0` lambda names are not claimed.
 _LEGACY_ESCAPE = re.compile(r"\$[A-Za-z0-9]{1,8}\$")
 
-#: What a v0 name is `_R` and: `<symbol-name> ::= _R <path> [<instantiating-crate>]`, and
-#: every `<path>` production opens with one of these seven letters. `B` is the
-#: back-reference, which cannot be the first thing in a name but is one character to test
-#: for and is refused a line later by the parser rather than by the screen.
+#: What follows `_R`: every `<path>` opens with one of these. `B` cannot come first but is
+#: left for the parser to refuse.
 _V0_PATH_START = frozenset(_PATH_TAGS | {"B"})
 
 
@@ -113,17 +104,12 @@ def detect(name):
 
 
 def _is_hex(text):
-    # `not text.strip(set)` is "every character is in set", in one C-level scan, where
-    # the generator this replaces was resumed once per character of every hash tested.
-    # Both cases: the parser's `is_rust_hash` takes them too (like the reference's
-    # `is_digit(16)`), and the two have to agree or one route reads the name and the
-    # other hands it to Itanium.
+    # Both cases, as the parser's `is_rust_hash` (like the reference's `is_digit(16)`):
+    # the two must agree, or one route reads the name and the other hands it to Itanium.
     return not text.strip("0123456789abcdefABCDEF")
 
 
-#: What each builder class answered to `_wants_structure`, asked once per class rather
-#: than once per name: the answer is a property of the builder's type, and this question
-#: is on the path every symbol takes.
+#: `_wants_structure`'s answer per builder class, asked once per class.
 _STRUCTURED = {}
 
 
@@ -146,14 +132,10 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     """Parse a Rust mangled name into `builder`."""
     if not mangled:
         raise NotMangledError(mangled, "empty name")
-    # The input bound, which this scheme did not enforce. Without it a caller's `Limits`
-    # said one thing and the parser did another: an 80,000-character name was read in
-    # full under `max_input=32`. It is checked before anything else looks at the string,
-    # which is the only place a bound on input size means what it says.
+    # Checked before anything else looks at the string.
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
-    # `keep_hash` is the one thing a style changes here; see `options.py` for what it
-    # reaches in each of the two manglings.
+    # `keep_hash` is the one thing a style changes here; see `options.py`.
     keep_hash = bool(getattr(options, "keep_hash", False))
     if _wants_structure(builder):
         tree = _guard(mangled, limits, _DEMANGLER.structure, keep_hash)
@@ -225,16 +207,10 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Rust legacy (_ZN) and v0 (_R) symbol mangling",
     aliases=("rs",),
-    # Before Itanium: legacy Rust mangling *is* Itanium mangling, and only this plugin
-    # knows how to strip the trailing hash and read the path correctly.
-    # Safe now that core/decorations.py splits only the ELF version suffix. It must
-    # never be taught to split on `.` again: `.` is Rust grammar -- legacy mangling
-    # writes `..` for `::` and spells shims `{{vtable.shim}}` -- and rustc-demangle's
-    # own suffix rule differs from GCC's anyway (cut after the mangled name's final `E`,
-    # drop a `.llvm.<hash>`, append anything else verbatim). This scheme implements that
-    # itself.
+    # Legacy Rust is Itanium mangling; only this plugin strips the hash. `core/decorations`
+    # must never split on `.`: it is Rust grammar (`..`, `{{vtable.shim}}`), and this
+    # scheme applies rustc-demangle's own suffix rule itself.
     symbol_table_decorations=True,
-    # `_R`, `__R`, `_ZN`, `__ZN` and a bare `ZN` are the only starts `detect` accepts.
     first_characters="_Z",
     priority=50,
 )

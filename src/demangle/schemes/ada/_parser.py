@@ -40,10 +40,7 @@ class DemangleFailure(Exception):
     """
 
 
-#: `O`-prefixed operator names, longest first so that `Oadd` is not read as `Oa`.
-#: Transcribed from the reference's `operators[][2]`, which is searched in order with a
-#: prefix compare -- no entry there is a prefix of another, so order is presentation
-#: only, but sorting by length keeps it that way if one is ever added.
+#: The reference's `operators[][2]`.
 _OPERATORS = {
     "Oabs": "abs",
     "Oand": "and",
@@ -66,11 +63,10 @@ _OPERATORS = {
     "Oexpon": "**",
 }
 
-#: Longest first, so `Oadd` wins over any shorter entry sharing its start.
+#: Longest first, so `Oadd` is not read as `Oa`.
 _OPERATOR_KEYS = sorted(_OPERATORS, key=len, reverse=True)
 
-#: `___`-introduced names for an operation the compiler generates rather than the
-#: programmer writing it. The reference's `special[][2]`.
+#: `___`-introduced compiler-generated operations: the reference's `special[][2]`.
 _SPECIAL = {
     "_elabb": "'Elab_Body",
     "_elabs": "'Elab_Spec",
@@ -81,14 +77,11 @@ _SPECIAL = {
 
 _SPECIAL_KEYS = sorted(_SPECIAL, key=len, reverse=True)
 
-#: `S` plus one of these is a stream attribute of the entity just named.
 _STREAM = {"R": "'Read", "W": "'Write", "I": "'Input", "O": "'Output"}
 
-#: `D` plus one of these is an operation on a controlled type.
 _CONTROLLED = {"F": ".Finalize", "A": ".Adjust"}
 
-#: What the library-level subprogram prefix is, and what it means: nothing, except that
-#: this really is Ada. Stripped before anything else, exactly as the reference does.
+#: Stripped before anything else, as the reference does.
 _LIBRARY_PREFIX = "_ada_"
 
 
@@ -106,15 +99,11 @@ class AdaSymbol:
     def __init__(self, text, parts, evidence, unread=""):
         self.text = text
         self.parts = tuple(parts)
-        #: What the reference stopped without reading. Several of its suffixes `break`
-        #: out of the loop and abandon whatever follows -- `...controllerDF__2` is
-        #: `....Finalize`, the `__2` simply dropped -- so a name can be "read" with
-        #: characters to spare. Faithful, and kept faithful; but `detect` uses this,
-        #: because a name it cannot fully account for is a name it should not claim.
+        #: What the reference stopped without reading: several suffixes abandon the
+        #: rest (`...controllerDF__2` drops the `__2`). `detect` declines such names.
         self.unread = unread
-        #: Which GNAT-specific encodings this name actually carried. Empty for a name
-        #: whose whole content was lower-case identifiers joined by `__` -- which is to
-        #: say, a name indistinguishable from an ordinary C one. `detect` reads this.
+        #: Which GNAT-specific encodings this name carried; empty for one
+        #: indistinguishable from a C name. `detect` reads this.
         self.evidence = frozenset(evidence)
 
     def __repr__(self):
@@ -166,14 +155,12 @@ def demangle_ada(mangled):
         return text[index] if index < size else ""
 
     while True:
-        # ---- an entity name is expected ----------------------------------------
         start = at
         if _is_lower(rest()):
             # "An identifier, which is always lower case."
             at += 1
-            # An underscore continues the identifier only when a lower-case letter or a
-            # digit follows it: `x_E` stops at the `_`, which is what makes `_E` reach
-            # the suffix tests as an exception marker rather than being eaten here.
+            # `_` continues the identifier only before a lower-case letter or digit, so
+            # `x_E` leaves `_E` for the exception-marker test.
             while (
                 _is_lower(rest()) or _is_digit(rest()) or (rest() == "_" and (_is_lower(rest(1)) or _is_digit(rest(1))))
             ):
@@ -196,10 +183,8 @@ def demangle_ada(mangled):
             # "Not a GNAT encoding."
             raise DemangleFailure("not a GNAT encoding")
 
-        # ---- suffixes, in the reference's order ---------------------------------
-        # These are sequential `if`s in the C, not a chain of `else if`s, and two of
-        # them can fire for one name. Kept in the same order and with the same
-        # independence, because reordering them changes which reading a name gets.
+        # Suffixes: sequential `if`s in the reference, two of which can fire for one
+        # name. Order and independence change readings; keep both.
         if rest() == "T" and rest(1) == "K":
             evidence.add("task")
             if rest(2) == "B" and rest(3) == "":
@@ -254,7 +239,6 @@ def demangle_ada(mangled):
             at += 2
             break
 
-        # ---- separators ---------------------------------------------------------
         if rest() == "_":
             if rest(1) == "_":
                 # "Standard separator.  Handled first."

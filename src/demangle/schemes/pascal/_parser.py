@@ -33,9 +33,8 @@ import re
 
 __all__ = ["DemangleFailure", "PascalSymbol", "detect", "parse_pascal_symbol"]
 
-#: The nine markers the compiler puts in front of a unit name, and what each one is.
-#: Transcribed from `rtti_mangledname`, `tstaticvarsym.mangledname`, `TVMTWriter` and the
-#: interface-table writers.
+#: Markers in front of a unit name, from `rtti_mangledname`, `tstaticvarsym.mangledname`,
+#: `TVMTWriter` and the interface-table writers.
 KINDS = {
     "RTTI": "run-time type information for",
     "INIT": "initialisation type information for",
@@ -48,30 +47,25 @@ KINDS = {
     "U": "variable",
 }
 
-#: Longest first, so `IIDSTR` is not read as `IID` with `STR` left over.
+#: Longest first, so `IIDSTR` is not read as `IID`.
 _KIND_PATTERN = re.compile(r"^(" + "|".join(sorted(KINDS, key=len, reverse=True)) + r")_\$(?!\$)")
 
-#: A unit's own initialisation and finalisation sections, which carry no other name.
 _SECTION = re.compile(r"^(INIT|FINALIZE)\$_\$([A-Za-z0-9_.]+)$")
 
-#: `_$<unit>$_Ld12`: an assembler-local label, not a declaration at all.
+#: An assembler-local label, not a declaration.
 _LABEL = re.compile(r"^_\$([A-Za-z0-9_.]+)\$_(L[a-z][0-9]+)$")
 
-#: What the compiler leaves behind when a name got too long to spell out. It appears in
-#: two places: as the whole of an over-long parameter list, and inside a generic type's
-#: name, where it is preceded by the parameter count.
+#: What replaces an over-long name part: a whole parameter list, or inside a generic
+#: type's name after the parameter count.
 _CHECKSUM = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}(?:\.[A-Za-z0-9_.]+)?$|^[0-9]+$")
 _ELIDED_PARAMETERS = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}$")
 
-#: The compiler's own initialisation and finalisation routines. They take no
-#: parameters but are still written with the parameter separator, so `AVL_TREE_$$_init$`
-#: is `AVL_TREE.init()` while `MYUNIT_$$_ADD$` is an empty parameter type and refused.
+#: Written with the parameter separator though parameterless: `AVL_TREE_$$_init$` is
+#: `AVL_TREE.init()`, while `MYUNIT_$$_ADD$` has an empty parameter and is refused.
 _UNIT_SECTIONS = frozenset({"init", "finalize", "init_implicit", "finalize_implicit"})
 
-#: What the compiler calls each overloadable operator, from `overloaded_names` in
-#: `compiler/symtable.pas`. A name of one of these forms is written with a `$` in front
-#: so that it stays distinct when the mangled name is lower-cased for a section name --
-#: which is also what makes it recognisable here.
+#: `overloaded_names` in `compiler/symtable.pas`. Written with a leading `$`, which keeps
+#: them distinct when lower-cased for a section name.
 OPERATORS = {
     "plus": "+",
     "minus": "-",
@@ -110,7 +104,6 @@ OPERATORS = {
 #: The other two names the compiler writes with a leading `$`.
 CLASS_ROUTINES = {"class_constructor": "class constructor", "class_destructor": "class destructor"}
 
-#: The tables a `RTTI_$` symbol may carry for an enumeration.
 _TABLES = {"_o2s": "ordinal-to-string table", "_s2o": "string-to-ordinal table"}
 
 _INDIRECT = "$indirect"
@@ -165,20 +158,15 @@ class PascalSymbol:
         self.parameters = tuple(parameters)
         self.result = result
         self.indirect = indirect
-        #: The scope exactly as it was written. Kept because the split is not reversible:
-        #: enclosing classes are joined with `_$_` and enclosing procedures with a bare
-        #: `_`, and a method with no enclosing procedure still ends in `_$_`.
+        #: The scope as written; the split is not reversible (classes join with `_$_`,
+        #: procedures with `_`).
         self.raw_scope = raw_scope
-        #: True when the compiler replaced the parameter list with a checksum, so the
-        #: empty `parameters` means "not recorded" rather than "none".
+        #: True when a checksum replaced the parameter list, so empty `parameters` means
+        #: "not recorded" rather than "none".
         self.elided = elided
-        #: The name and signature exactly as written, for the same reason as `raw_scope`:
-        #: an elided parameter list is a checksum this cannot expand, and dropping it
-        #: would make the reading unable to account for the symbol.
+        #: The name and signature as written, since an elided list cannot be expanded.
         self.raw_signature = raw_signature
-        #: For a `WRPR`, the entry index and the method it forwards to, as already-spelled
-        #: text. A wrapper's suffix is a whole mangled name rather than a signature, so it
-        #: does not fit the other fields.
+        #: For a `WRPR`, the entry index and forwarded-to method as spelled text.
         self.wrapped = wrapped
 
     @property
@@ -193,13 +181,11 @@ def _split_signature(suffix):
     A generic type is written `NAME$<count>$CRC<hex>`, so a piece that is only a count or
     a checksum belongs to the type in front of it and is not a parameter of its own.
     """
-    # A routine written with a leading `$` is an operator or a class
-    # constructor/destructor; the `$` is part of its name, not a separator.
+    # A leading `$` (operator, class constructor/destructor) is part of the name.
     leading = ""
     if suffix.startswith("$"):
         leading, suffix = "$", suffix[1:]
-    # Over about twelve characters the compiler replaces the whole parameter list with a
-    # checksum, so a name followed by nothing but one is a signature it did not spell.
+    # Over about twelve characters the compiler replaces the parameter list with a checksum.
     at = suffix.find("$")
     if at > 0 and _ELIDED_PARAMETERS.match(suffix[at + 1 :]):
         return leading + suffix[:at], None, None
@@ -228,8 +214,7 @@ def _split_signature(suffix):
                 at += 2
                 continue
             if name in _UNIT_SECTIONS:
-                # The compiler's own sections end in a lone separator with no
-                # parameter behind it; anywhere else that is an empty parameter.
+                # A lone trailing separator is legal only for the compiler's own sections.
                 parameters.append(rest[at])
                 at += 1
                 continue
@@ -264,7 +249,6 @@ def spell_routine_name(name):
 
 def _spell_signature(qualified, parameters, result):
     if parameters is None:
-        # The compiler elided the list; saying so beats inventing one.
         return qualified + "(<parameters elided by the compiler>)"
     out = qualified
     if parameters:
@@ -358,13 +342,11 @@ def parse_pascal_symbol(name):
             raise DemangleFailure("not a wrapper name")
         return wrapper
 
-    # Enclosing classes are joined with `_$_`; a method with nothing else around it
-    # leaves an empty last piece, and anything in that position is instead the chain of
-    # enclosing procedures, joined with a bare `_`.
+    # A method with nothing else around it leaves an empty last piece; anything there
+    # instead is the chain of enclosing procedures, joined with a bare `_`.
     scope = [piece for piece in raw_scope.split("_$_") if piece] if raw_scope else []
 
-    # A program's own symbols carry `P$` so that a program and a unit of the same name
-    # do not collide.
+    # `P$` keeps a program's symbols apart from a unit of the same name.
     is_program = unit.startswith("P$")
     spelled_unit = unit[2:] if is_program else unit
     qualified = ".".join([spelled_unit, *scope])

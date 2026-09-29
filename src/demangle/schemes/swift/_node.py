@@ -403,17 +403,14 @@ ALL_KINDS = frozenset(
         "UniqueExtendedExistentialTypeShapeSymbolicReference",
         "NonUniqueExtendedExistentialTypeShapeSymbolicReference",
         "SymbolicExtendedExistentialType",
-        # Built by the *runtime's* symbolic-reference resolver rather than by
-        # `lib/Demangling`, so no mangled text reaches it. Listed because this set
-        # mirrors `DemangleNodes.def`, and a name missing from it reads as a gap.
+        # Built only by the runtime's resolver; listed because this set mirrors
+        # `DemangleNodes.def`.
         "ObjectiveCProtocolSymbolicReference",
-        # `DemangleNodes.def` names these three not directly but through
-        # `#define REF_STORAGE(Name, ...) NODE(Name)` over `swift/AST/ReferenceStorage.def`.
+        # Via `REF_STORAGE` over `swift/AST/ReferenceStorage.def`.
         "Weak",
         "Unowned",
         "Unmanaged",
-        # In `DemangleNodes.def` up to 5.10.1 and not after: upstream deleted the flag,
-        # and the shipped runtime still holds symbols carrying it. See
+        # Removed upstream after 5.10.1, still in the shipped runtime's symbols. See
         # tools/swift-demangle-reference/README.md.
         "MetatypeParamsRemoved",
         "HasSymbolQuery",
@@ -479,8 +476,7 @@ CONTEXT_KINDS = frozenset(
     ]
 )
 
-#: Attributes that wrap a whole symbol rather than appearing inside its type. They are
-#: popped off the stack before anything else, which is why they are a set of their own.
+#: Attributes that wrap a whole symbol; popped off the stack before anything else.
 FUNCTION_ATTR_KINDS = frozenset(
     [
         "FunctionSignatureSpecialization",
@@ -560,13 +556,8 @@ _REQUIREMENT_KINDS = frozenset(
 )
 
 #: `isContext` also answers yes for `BuiltinTupleType`, which is not a `CONTEXT_NODE`.
-#:
 #: The set above is every `CONTEXT_NODE` in `DemangleNodes.def` at the revision
-#: `tools/swift-demangle-reference/` builds, 52 of them, and `tests/test_swift.py` pins
-#: the count. It was six short: the four borrow and mutate accessors, the isolated
-#: deallocator and the property-wrapped field init accessor -- kinds this demangler
-#: already produced but did not count as contexts, so a descriptor or a thunk over one
-#: of them, `$s4main1xSivyTq`, popped nothing and refused the name.
+#: `tools/swift-demangle-reference/` builds; `tests/test_swift.py` pins the count.
 CONTEXT_KINDS = CONTEXT_KINDS | {"BuiltinTupleType"}
 
 

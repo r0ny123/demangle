@@ -76,23 +76,14 @@ class Node:
     __slots__ = ("size",)
     kind = "node"
 
-    #: The fields a positional `match` sees, in constructor order. `match Pointer(inner)`
-    #: is what "returns a walkable tree" means to a Python caller now.
-    #:
-    #: Written out on every class in this module rather than computed, so that a type
-    #: checker reading a caller's `match` statement can see it -- one derived in
-    #: `__init_subclass__` is invisible to every static tool. A scheme's own nodes get the
-    #: derived one, which is why `__init_subclass__` is still here; and
-    #: `tests/test_api_surface.py` checks each declaration against the constructor it has
-    #: to agree with, so neither can drift from the other.
+    #: The fields a positional `match` sees, in constructor order. Written out on every
+    #: class here so type checkers see it; a scheme's own nodes get one derived in
+    #: `__init_subclass__`. `tests/test_api_surface.py` keeps the two in agreement.
     __match_args__ = ()
 
-    #: Upper bound on the rendered length of this subtree, filled in by `AstBuilder` as
-    #: it constructs. An over-estimate is fine and deliberate -- it is used to enforce a
-    #: resource bound, where erring high is the safe direction.
-    #: Carried rather than computed so the output bound can be checked in constant time:
-    #: the tree is a DAG with shared subtrees, and walking it to measure would be
-    #: exponential in exactly the cases the bound exists to stop.
+    # `size`: an upper bound on this subtree's rendered length, set by `AstBuilder`.
+    # Carried so the output bound is checked in constant time on a tree with shared
+    # subtrees; erring high is the safe direction.
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -252,8 +243,7 @@ def _emit(node, shared, ids):
         return {"$ref": ids[key]}
     out = {"kind": node.kind}
     if key in shared:
-        # Registered before the fields are walked, so a node that somehow reaches itself
-        # writes a reference rather than recurring for ever.
+        # Registered first, so a node that reaches itself writes a reference.
         ids[key] = len(ids)
         out["id"] = ids[key]
     for field in node._fields():
@@ -292,9 +282,6 @@ def _match_args(cls):
             return ()
         names.append(name)
     return tuple(names)
-
-
-# -- leaves -------------------------------------------------------------------
 
 
 class Builtin(Node):
@@ -357,9 +344,6 @@ class Literal(Node):
         return builder.literal(self.type.build(builder) if self.type else None, self.value)
 
 
-# -- composition --------------------------------------------------------------
-
-
 class Expression(Node):
     """A constant expression appearing in a type or a template argument.
 
@@ -420,10 +404,8 @@ class Template(Node):
     def __init__(self, base, arguments, angle_space=True):
         self.base = base
         self.arguments = tuple(arguments)
-        #: Whether a style that separates consecutive closing angle brackets should do
-        #: so here. False where the last argument was a pack with no members: GNU
-        #: c++filt writes `A<B<int>>` for that and `A<B<int> >` for everything else, and
-        #: the pack is not in the tree to be asked about later.
+        #: Whether a style separating consecutive `>` should do so here. False after an
+        #: empty trailing pack, where GNU c++filt writes `A<B<int>>`.
         self.angle_space = angle_space
 
     def children(self):
@@ -456,9 +438,6 @@ class Qualify(Node):
 
     def build(self, builder):
         return builder.qualify(self.inner.build(builder), self.qualifiers, cv=self.cv)
-
-
-# -- declarators --------------------------------------------------------------
 
 
 class _Unary(Node):
@@ -655,16 +634,12 @@ class Special(Node):
         return builder.special(self.label, self.inner.build(builder))
 
 
-# -- the builder ---------------------------------------------------------------
-
-
 def _sized(node, size):
     node.size = size
     return node
 
 
-#: An empty pack of concrete arguments, which is what a declarator applied to one
-#: becomes. Built once: it carries no state and every occurrence means the same thing.
+#: An empty pack, which is what a declarator applied to one becomes. Stateless, so shared.
 _EMPTY_PACK = _sized(ParameterPack(()), 0)
 
 
@@ -731,18 +706,14 @@ class AstBuilder(Builder):
 
     __slots__ = ("_leaves", "_style")
 
-    #: Bound on distinct leaves held. A binary's symbol table draws from a small pool of
-    #: identifiers, so this is not reached in ordinary use; it exists so a tool walking a
-    #: corpus of unrelated binaries cannot accumulate without end. Cleared wholesale for
-    #: the reason `BoundedCache` gives: tracking recency costs work on every hit, which is
-    #: the operation being optimised.
+    #: Bound on distinct leaves held, so a tool walking unrelated binaries cannot
+    #: accumulate without end. Cleared wholesale, as `BoundedCache` explains.
     MAX_LEAVES = 4096
 
     def __init__(self, style=None):
         self._leaves = {}
-        # The style's *name* where it has a registered one, so re-registering under that
-        # name is picked up rather than remembered; the style object itself where it was
-        # composed for one call and no name would find it. See `builder_for`.
+        # A registered name where there is one, so re-registering is picked up; else the
+        # one-off style object. See `builder_for`.
         self._style = style
 
     def _leaf(self, cls, text):
@@ -805,8 +776,7 @@ class AstBuilder(Builder):
         return _sized(RValueReference(inner), inner.size + 4)
 
     def member_pointer(self, owner, inner):
-        # The owner distributes too: a pointer to a member of no class at all is no
-        # pointer, and reporting a size for one left a separator behind.
+        # A pointer to a member of no class at all is no pointer.
         if _distributes_to_nothing(owner) or _distributes_to_nothing(inner):
             return _EMPTY_PACK
         return _sized(MemberPointer(owner, inner), owner.size + inner.size + 5)
@@ -825,15 +795,9 @@ class AstBuilder(Builder):
         return _sized(Pack(inner), inner.size + 3)
 
     def parameter_pack(self, members):
-        # Nested packs are spliced, which `SpellingBuilder.pack_of` has always done and
-        # this builder did not. Two things went wrong without it. A pack whose one
-        # member is an empty pack has a non-zero `size` and renders to nothing, so
-        # `_drops_out` kept it and the parameter list printed the separator for an
-        # argument that is not there -- `f(int, , nn::Up)` where the reference and the
-        # spelling path both print `f(int, nn::Up)`. And a pack's *arity* is what an
-        # expansion over it ranges across, so an unspliced pack of one empty pack made
-        # `Dp` produce one member here and none there: the two builders disagreeing
-        # about how many parameters a signature has.
+        # Nested packs are spliced, as `SpellingBuilder.pack_of` does: otherwise a pack
+        # of one empty pack prints a stray separator (`f(int, , nn::Up)`) and `Dp`
+        # expands to a different arity than the spelling path.
         flattened = []
         for member in members:
             if type(member) is ParameterPack:
@@ -866,12 +830,8 @@ class AstBuilder(Builder):
 
 AST_BUILDER = AstBuilder()
 
-#: One tree builder per style, held by style name. Not one for all of them: a parser
-#: sometimes has to flatten a subtree to text while building the tree -- a conversion
-#: operator names a type, and the name is text -- and flattening under the default style
-#: while building under another gives a spelling that is neither. `A::operator
-#: std::vector<int, std::allocator<int> >` came back with LLVM's `>>` nested inside GNU's
-#: `> >` for exactly that reason.
+#: One tree builder per style: a parser sometimes flattens a subtree to text mid-build
+#: (a conversion operator's type), and that must use the same style as the tree.
 _BUILDERS = {None: AST_BUILDER}
 
 

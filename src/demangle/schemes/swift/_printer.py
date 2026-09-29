@@ -27,11 +27,10 @@ from .options import DEFAULT_OPTIONS, SwiftOptions
 
 __all__ = ["print_root"]
 
-#: Beyond this the reference gives up rather than recursing; a malformed name can nest
-#: without bound.
+#: The reference gives up beyond this depth; a malformed name can nest without bound.
 MAX_DEPTH = 768
 
-#: `genericParameterName`'s alphabet, and the module prefix LLDB gives its own symbols.
+#: The module prefix LLDB gives its own symbols.
 LLDB_EXPRESSIONS_MODULE_NAME_PREFIX = "__lldb_expr_"
 
 _SIMPLE_TYPES = frozenset(
@@ -81,8 +80,7 @@ _SIMPLE_TYPES = frozenset(
         "SugaredInlineArray",
         "SugaredDictionary",
         "SugaredParen",
-        # A type that spells itself with no operator a suffix could bind to, so nothing
-        # around it needs bracketing: `$_Sg` is `0?`, not `(0)?`.
+        # No operator a suffix could bind to, so no brackets: `$_Sg` is `0?`, not `(0)?`.
         "BuiltinFixedArray",
         "BuiltinBorrow",
         "Integer",
@@ -128,8 +126,7 @@ _AUTO_DIFF_KINDS = {
     ord("p"): "pullback",
 }
 
-# Function-signature specialisation parameter kinds, repeated here because the printer
-# reads them back out of the tree.
+# Function-signature specialisation parameter kinds, as in `_demangler`.
 _PARAM_CONSTANT_PROP_FUNCTION = 0
 _PARAM_CONSTANT_PROP_GLOBAL = 1
 _PARAM_CONSTANT_PROP_INTEGER = 2
@@ -166,9 +163,8 @@ def generic_parameter_name(depth, index):
     return "".join(name)
 
 
-#: What `demangleSymbolAsString(text)` prints with: the struct's own defaults, which
-#: differ from the tool's in one flag -- no sugar. So a propagated function is spelled
-#: `Swift.Optional<Swift.String>` inside a name whose own types say `Swift.String?`.
+#: `demangleSymbolAsString(text)`'s defaults, which differ from the tool's in one flag:
+#: no sugar, so a propagated function says `Swift.Optional<Swift.String>`.
 _PAYLOAD_OPTIONS = SwiftOptions(synthesize_sugar_on_types=False)
 
 
@@ -256,17 +252,13 @@ class Printer:
 
     def __init__(self, options=DEFAULT_OPTIONS):
         self.options = options
-        #: Whether `specialized ` has already been written, for the short form of a
-        #: specialisation prefix. The reference latches it on the printer for the same
-        #: reason: the layers nest and the word belongs to the outermost.
+        #: Whether `specialized ` has been written; the reference latches it so nested
+        #: specialisation layers say it once.
         self._said_specialized = False
         self.out = []
-        #: Characters written so far. `print_entity` decides whether to write a `.` by
-        #: whether the last call produced anything, and the reference measures that in
-        #: characters -- a node that writes an empty string must not count as output.
+        #: Characters written so far. `print_entity` writes a `.` only if the last call
+        #: produced characters, as the reference measures it.
         self.length = 0
-
-    # -- output ----------------------------------------------------------------
 
     def write(self, text):
         self.out.append(text)
@@ -274,8 +266,6 @@ class Printer:
 
     def result(self):
         return "".join(self.out)
-
-    # -- structure -------------------------------------------------------------
 
     def is_simple_type(self, node):
         kind = node.kind
@@ -316,8 +306,6 @@ class Printer:
         the caller's control flow depends on it.
         """
         return True
-
-    # -- sugar -----------------------------------------------------------------
 
     def find_sugar(self, node):
         """Which of the four sugared spellings, if any, a bound generic type has."""
@@ -381,8 +369,6 @@ class Printer:
             self.write(" : ")
             self.print(node.child(1).child(1), depth + 1)
             self.write("]")
-
-    # -- functions -------------------------------------------------------------
 
     def print_function_parameters(self, labels, parameters, depth, show_types=True):
         """The parameter list, with or without the types in it.
@@ -455,19 +441,17 @@ class Printer:
         sendable = asynchronous = sending_result = False
         thrown = nonisolated_caller = None
         differentiability = None
-        # The order here is the order the demangler *adds* these, which is the reverse
-        # of the order they are written in the mangling.
+        # The reverse of the mangling's order: the order the demangler adds these.
         if node.child(at).kind == "ClangType":
             at += 1
         if node.child(at).kind == "SendingResultFunctionType":
             at += 1
             sending_result = True
-        # A function's isolation, of which it has at most one.
         if node.child(at).kind == "IsolatedAnyFunctionType":
             self.print(node.child(at), depth + 1)
             at += 1
         if node.child(at).kind == "NonIsolatedCallerFunctionType":
-            # Held back rather than printed here: it goes after the differentiability.
+            # Held back: it goes after the differentiability.
             nonisolated_caller = node.child(at)
             at += 1
         if node.child(at).kind == "GlobalActorFunctionType":
@@ -496,16 +480,15 @@ class Printer:
         show_types = self.options.show_function_argument_types
         self.print_function_parameters(labels, node.child(arguments_at), depth, show_types)
         if not show_types:
-            # Everything after the parameter list belongs to the *type* -- `async`, the
-            # thrown error, the result -- and this spelling is not one. The reference
+            # Everything after the parameter list belongs to the *type*; the reference
             # returns here.
             return
         if asynchronous:
             self.write(" async")
         if thrown is not None:
             self.print(thrown, depth + 1)
-        # The arrow is written here rather than by the `ReturnType` handler, because a
-        # sending result puts a word between the two: `-> sending T`.
+        # Written here, not by `ReturnType`: a sending result puts a word between
+        # (`-> sending T`).
         returns = node.child(arguments_at + 1)
         self.write(" -> ")
         if sending_result:
@@ -600,7 +583,7 @@ class Printer:
                 child = child.first
                 if child.kind != "DependentGenericParamType":
                     continue
-                # Note the order: the reference compares index against child 0.
+                # The reference compares index against child 0.
                 if at_index == child.first.index and at_depth == child.child(1).index:
                     return True
             return False
@@ -655,8 +638,6 @@ class Printer:
                     self.write(", ")
                 self.print(node.child(at), depth + 1)
         self.write(">")
-
-    # -- specialisations -------------------------------------------------------
 
     def print_function_sig_specialization_params(self, node, depth):
         """One parameter of a function-signature specialisation.
@@ -760,7 +741,6 @@ class Printer:
                 at += 1
                 self.write("]")
             else:
-                # One of the flag combinations, printed by the node itself.
                 self.print(node.child(at), depth + 1)
                 at += 1
 
@@ -780,8 +760,7 @@ class Printer:
             ):
                 continue
             if kind in (_PARAM_CONSTANT_PROP_FUNCTION, _PARAM_CONSTANT_PROP_GLOBAL):
-                # The operand is itself a mangled name; the reference demangles it and
-                # falls back to the raw text when it cannot.
+                # A mangled name; the reference demangles it, falling back to the raw text.
                 self.write(_spell_payload(child.text))
             elif kind == _PARAM_CONSTANT_PROP_STRING and child.text and child.text.startswith("_"):
                 # `_` escapes a string constant that would otherwise start with a digit.
@@ -793,15 +772,11 @@ class Printer:
 
     def print_specialization_prefix(self, node, description, depth, param_prefix=""):
         if not self.options.display_generic_specializations:
-            # `specialized f()`, once, however many specialisation layers wrap the
-            # symbol: the reference latches the word so that a generic specialisation of
-            # a function-signature specialisation does not say it twice.
             if not self._said_specialized:
                 self.write("specialized ")
                 self._said_specialized = True
             return
         if node.first is not None and node.first.kind == "RepresentationChanged":
-            # Nothing about the arguments changed, so there is no argument list to print.
             self.write("representation changed of ")
             return
         self.write(description)
@@ -831,8 +806,6 @@ class Printer:
             argument += 1
         self.write("> of ")
 
-    # -- the main switch -------------------------------------------------------
-
     def print(self, node, depth, as_prefix_context=False):
         """Spell `node`, returning a context to be printed after it, or `None`.
 
@@ -857,8 +830,7 @@ class Printer:
         literal = _JUST_TEXT.get(kind)
         if literal is not None:
             if kind in _THUNK_LEADS and not self.options.shorten_thunk:
-                # The short form of these is nothing at all: what they lead is the
-                # symbol they wrap, and the words say only which wrapper it is.
+                # The short form of a wrapper is nothing: what it leads is the symbol it wraps.
                 return None
             self.write(literal)
             return None
@@ -880,11 +852,8 @@ class Printer:
         if handler is not None:
             return handler(self, node, depth, as_prefix_context)
 
-        # Every kind the reference prints is covered above; anything left is a node the
-        # printer has no spelling for, which the reference reaches as an assertion.
+        # Anything left has no spelling; the reference asserts.
         raise _Invalid
-
-    # -- entities --------------------------------------------------------------
 
     def print_abstract_storage(self, node, depth, as_prefix_context, extra_name):
         if node.kind == "Variable":
@@ -1025,8 +994,7 @@ class Printer:
         self.print_function_type(labels, found, depth)
 
 
-#: `<text>` then the first child. Much of the printer is this shape: a runtime record
-#: names what it is and then what it is *of*.
+#: `<text>` then the first child.
 _PREFIX_THEN_FIRST_CHILD = {
     "Static": "static ",
     "CurryThunk": "curry thunk of ",
@@ -1126,7 +1094,6 @@ _PREFIX_THEN_FIRST_CHILD = {
     "Uniquable": "uniquable ",
 }
 
-#: Nodes whose whole spelling is a fixed string, children ignored.
 _JUST_TEXT = {
     "NonObjCAttribute": "@nonobjc ",
     "ObjCAttribute": "@objc ",
@@ -1177,8 +1144,7 @@ _JUST_TEXT = {
 }
 
 #: The `_JUST_TEXT` kinds the reference writes only `if (!Options.ShortenThunk)`.
-#: `BackDeploymentFallback` is not among them: it names what a symbol *is* rather than
-#: what wraps it.
+#: Not `BackDeploymentFallback`: it names what a symbol is, not what wraps it.
 _THUNK_LEADS = frozenset(
     {
         "MergedFunction",
@@ -1192,8 +1158,8 @@ _THUNK_LEADS = frozenset(
     }
 )
 
-#: How each declaration kind is spelled: type style, whether it has a name of its own, an
-#: extra name to append, and a name to use instead of the node's.
+#: Per declaration kind: type style, whether it has its own name, an extra name to
+#: append, and a name to use instead of the node's.
 _ENTITY_KINDS = {
     "Variable": ("colon", True, "", ""),
     "Function": ("function", True, "", ""),
@@ -1215,7 +1181,6 @@ _ENTITY_KINDS = {
     "IVarDestroyer": ("none", False, "__ivar_destroyer", ""),
 }
 
-#: Accessors, each printing the storage it belongs to with its own name appended.
 _ABSTRACT_STORAGE = {
     "OwningAddressor": "owningAddressor",
     "OwningMutableAddressor": "owningMutableAddressor",
@@ -1243,8 +1208,7 @@ _ABSTRACT_STORAGE = {
 #: `<macro kind> @<name> expansion #<n>`, keyed by node kind.
 _MACRO_EXPANSION_NAMES = {
     "AccessorAttachedMacroExpansion": "accessor macro @",
-    # `memberAttribute`, not `member attribute`: the words are the role names from
-    # `swift/Basic/MacroRoles.def` verbatim, and that one is spelled as an identifier.
+    # Verbatim from `swift/Basic/MacroRoles.def`, where this role is an identifier.
     "MemberAttributeAttachedMacroExpansion": "memberAttribute macro @",
     "MemberAttachedMacroExpansion": "member macro @",
     "PeerAttachedMacroExpansion": "peer macro @",
@@ -1337,9 +1301,8 @@ _simple("Global", lambda self, node, depth: self.print_children(node, depth))
 _simple("TypeList", lambda self, node, depth: self.print_children(node, depth))
 _simple("AnyProtocolConformanceList", lambda self, node, depth: _print_conformance_list(self, node, depth))
 _simple("ConstrainedExistentialRequirementList", lambda self, node, depth: self.print_children(node, depth, ", "))
-# `DisplayModuleNames` off writes nothing at all for the module -- not even an empty
-# string -- because the `.` after a context is written only where the context produced
-# output. That is what turns `Monads.Either` into `Either` without leaving a leading dot.
+# The `.` after a context is written only if it produced output, so writing nothing
+# (not even "") turns `Monads.Either` into `Either`.
 _simple(
     "Module",
     lambda self, node, depth: self.write(node.text) if self.options.display_module_names else None,
@@ -1444,8 +1407,7 @@ def _print_macro_unique_name(self, node, depth, as_prefix_context):
 
 @_handler("ExplicitClosure")
 def _print_explicit_closure(self, node, depth, as_prefix_context):
-    # A closure's signature is its type, so the flag that hides a function's parameters
-    # hides this too -- `closure #1 in f()` rather than `closure #1 () in f()`.
+    # The flag that hides a function's parameters hides a closure's signature too.
     style = "function" if self.options.show_function_argument_types else "none"
     return self.print_entity(
         node, depth, as_prefix_context, style, False, "closure #", _c_int(_c_int(node.child(1).index) + 1)
@@ -1913,8 +1875,6 @@ for _kind, _lead in (("AutoDiffFunction", ""), ("AutoDiffDerivativeVTableThunk",
                 signature = node.child(at)
                 break
             self.print(node.child(at), depth + 1)
-        # `ShortenThunk` ends the derivative at the function it is of; the simplified
-        # spelling of every derivative in the 6.1.2 runtime stops there.
         if not self.options.shorten_thunk:
             return None
         self.write(" with respect to parameters ")
@@ -1938,8 +1898,6 @@ def _print_auto_diff_self_reordering(self, node, depth, as_prefix_context):
     to_type = node.child(at)
     at += 1
     if not self.options.shorten_thunk:
-        # The short form is the thunk's source type alone: not its kind, not what it
-        # reorders to.
         self.write("for ")
         self.print(from_type, depth + 1)
         return None
@@ -1961,10 +1919,8 @@ def _print_auto_diff_self_reordering(self, node, depth, as_prefix_context):
 
 @_handler("AutoDiffSubsetParametersThunk")
 def _print_auto_diff_subset(self, node, depth, as_prefix_context):
-    # The four trailing children are the kind and three index subsets, and at least one
-    # ahead of them names the thing being thunked. Without that one, `at` walks off the
-    # front and the "from" clause comes out empty -- `$sTJSdSSSpSrSUSP` spelled as a
-    # thunk for nothing, which is a reading no name has.
+    # The four trailing children are the kind and three index subsets; at least one more
+    # must name what is thunked, or the "from" clause comes out empty.
     if len(node.children) < 5:
         raise _Invalid
     self.write("autodiff subset parameters thunk for ")
@@ -2266,15 +2222,9 @@ for _kind, _lead in (("ImplErrorResult", "@error "), ("ImplYield", "@yields ")):
 for _kind in ("ImplParameter", "ImplResult"):
 
     def _print_impl_parameter(self, node, depth, as_prefix_context):
-        # `convention, marker*, type`. Differentiability is always one of the markers,
-        # empty text and all, so a plain parameter has three children and each further
-        # marker -- `sending`, `isolated`, the compiler-inserted leading one -- adds one.
-        #
-        # The reference spells the markers at three children and at four, and at five or
-        # more spells none of them: `$sBAIgHgIL_BAIegHgIL_TR` carries both `isolated` and
-        # `sil_implicit_leading_param` and prints neither, while `$sBAIeNghHgI_...`
-        # carries only the first and prints it. Following the count rather than deciding
-        # per marker is what makes both of those come out right.
+        # `convention, marker*, type`; differentiability is always a marker. The
+        # reference spells the markers at three and four children and none at five or
+        # more (`$sBAIgHgIL_BAIegHgIL_TR`), so this follows the count, not each marker.
         self.print(node.first, depth + 1)
         self.write(" ")
         if len(node.children) in (3, 4):
@@ -2518,9 +2468,7 @@ for _kind, _lead in (
         self.write(_l)
         self.print_optional_index(node.child(2))
         self.print(node.first, depth + 1)
-        # The two children are the conforming type and the protocol, and the reference
-        # writes " to " between them. Without it the two run together --
-        # `#0 Alib.P` for what is `#0 A to lib.P` -- which reads as one name.
+        # The reference writes " to " between conforming type and protocol.
         self.write(" to ")
         self.print(node.child(1), depth + 1)
         return None
@@ -2702,7 +2650,7 @@ def print_root(root, options=DEFAULT_OPTIONS):
     try:
         printer.print(root, 0)
     except (_Invalid, IndexError, AttributeError, KeyError, RecursionError):
-        # The reference asserts on a malformed tree; refusing is the safe equivalent.
+        # The reference asserts on a malformed tree.
         return ""
     return printer.result()
 
@@ -2710,8 +2658,7 @@ def print_root(root, options=DEFAULT_OPTIONS):
 for _kind, _lead in (("OutlinedCopy", "outlined copy of "), ("OutlinedConsume", "outlined consume of ")):
 
     def _print_outlined_copy(self, node, depth, as_prefix_context, _l=_lead):
-        # These two, alone among the outlined value operations, may carry a generic
-        # signature as a second child.
+        # Alone among the outlined value operations, these may carry a generic signature.
         self.write(_l)
         self.print(node.first, depth + 1)
         if len(node.children) > 1:

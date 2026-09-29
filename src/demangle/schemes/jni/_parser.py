@@ -38,11 +38,11 @@ from ...core.limits import DEFAULT_LIMITS
 
 __all__ = ["PREFIX", "JniSymbol", "descriptor_types", "parse_jni_symbol"]
 
-#: What every native method's symbol starts with. `JNI_OnLoad` and `JNI_OnUnload` are
-#: plain C names the VM looks up literally and are deliberately not claimed.
+#: `JNI_OnLoad` and `JNI_OnUnload` are plain C names the VM looks up, deliberately not
+#: claimed.
 PREFIX = "Java_"
 
-#: The JVM's primitive type descriptors, from the class file format (JVMS 4.3.2).
+#: JVMS 4.3.2.
 PRIMITIVES = {
     "B": "byte",
     "C": "char",
@@ -55,8 +55,7 @@ PRIMITIVES = {
     "Z": "boolean",
 }
 
-#: A well-formed escape: `_1`, `_2`, `_3`, or `_0` and four hex digits. `_` followed by
-#: anything else is the separator that stood for a `/`.
+#: `_` followed by anything else is the separator that stood for a `/`.
 _ESCAPE = re.compile(r"_(?:([123])|0([0-9a-fA-F]{4}))")
 
 _UNESCAPED = {"1": "_", "2": ";", "3": "["}
@@ -75,9 +74,8 @@ class JniSymbol:
         self.raw = raw
         self.declaring = declaring
         self.method = method
-        #: `None` where the symbol carries no signature at all, which is the common case:
-        #: only an *overloaded* native carries one. Not `()`, which would say the method
-        #: takes nothing.
+        #: `None` where the symbol carries no signature (only an overloaded native does);
+        #: `()` would say the method takes nothing.
         self.parameters = parameters
         joined = f"{declaring}.{method}" if declaring else method
         self.text = joined if parameters is None else f"{joined}({', '.join(parameters)})"
@@ -95,8 +93,6 @@ def unescape(text):
             continue
         found = _ESCAPE.match(text, at)
         if found is None:
-            # A bare `_` is a `/`: the package separator, which the mangling writes with
-            # no escape at all because it is the one character it can spare.
             out.append("/")
             at += 1
             continue
@@ -107,12 +103,8 @@ def unescape(text):
             continue
         unit = int(hexadecimal, 16)
         if 0xD800 <= unit <= 0xDBFF:
-            # `_0XXXX` is one UTF-16 code unit, and a character outside the Basic
-            # Multilingual Plane -- a CJK Extension B ideograph, an emoji -- is two of
-            # them: javac writes `_0d83d_0de00` for U+1F600. Taken one at a time they
-            # came out as two lone surrogates, a string Python will not encode, so a
-            # caller writing the result to a file, a socket or JSON got a
-            # `UnicodeEncodeError` out of a function documented never to raise.
+            # A character outside the BMP is two `_0XXXX` code units (`_0d83d_0de00` for
+            # U+1F600); decoded singly they give lone surrogates Python cannot encode.
             trailing = _ESCAPE.match(text, at)
             if trailing is None or trailing.group(1) is not None:
                 raise DemangleFailure("a high surrogate with no low surrogate after it")
@@ -123,8 +115,7 @@ def unescape(text):
             at = trailing.end()
             continue
         if 0xDC00 <= unit <= 0xDFFF:
-            # A low surrogate on its own is not a character, and no Java identifier
-            # holds one: `Character.isJavaIdentifierPart` is false for it.
+            # No Java identifier holds a lone low surrogate.
             raise DemangleFailure("a low surrogate with no high surrogate before it")
         out.append(chr(unit))
     return "".join(out)
@@ -148,9 +139,7 @@ def descriptor_types(text):
         char = text[at]
         at += 1
         if char == "V":
-            # `V` is the return type, not a parameter type (JVMS 4.3.2). The JNI
-            # overload signature carries only parameters, so it never appears here --
-            # neither bare nor as an array element.
+            # `V` is a return type only (JVMS 4.3.2), never a parameter or array element.
             raise DemangleFailure("void is not a parameter type")
         if char in PRIMITIVES:
             spelled = PRIMITIVES[char]
@@ -176,15 +165,9 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
     if not body:
         raise DemangleFailure("nothing after the prefix")
 
-    # The overload separator, which is not simply the first `__`. A `_` written in a
-    # name is mangled `_1`, so a name never contributes one on its own -- but a `/`
-    # *immediately before an escape* does: `com/example/Foo/\u03c0` mangles to
-    # `com_example_Foo__003c0`, where the `__` is a package separator and the start of a
-    # character escape rather than the overload marker.
-    #
-    # What tells them apart is what follows: after the real separator comes a JVM
-    # descriptor. So each candidate is tried in turn and the first whose tail is one is
-    # taken, which is the only reading that can be checked rather than guessed.
+    # Not simply the first `__`: a `/` before an escape also writes one
+    # (`com/example/Foo/π` is `com_example_Foo__003c0`). The real separator is
+    # followed by a JVM descriptor, so each candidate is tried in turn.
     path = None
     parameters = None
     at = body.find("__")
@@ -195,9 +178,7 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
                 head_path = unescape(head)
                 if "//" in head_path:
                     raise DemangleFailure("no component between separators")
-                # An *empty* tail is a valid signature: an overloaded method taking no
-                # arguments is written `Java_pkg_C_m__`, with the empty argument list
-                # the long name promises.
+                # An empty tail is valid: an overloaded method taking no arguments.
                 candidate = descriptor_types(unescape(tail))
             except DemangleFailure:
                 candidate = None
@@ -206,21 +187,15 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
                 break
         at = body.find("__", at + 1)
     if path is None:
-        # No separator, or none whose tail is a descriptor: the whole run is the name.
         path = unescape(body)
         if "//" in path:
-            # Which it can only be if every component is a real one. A `__` that is not
-            # the overload separator comes from a `/` before an escape, and that leaves
-            # no empty component behind -- so an empty one means the `__` *was* the
-            # separator and what followed it was not a descriptor.
+            # A non-separator `__` leaves no empty component, so an empty one means the
+            # `__` was the separator and its tail was not a descriptor.
             raise DemangleFailure("no component between separators")
     declaring, _, method = path.rpartition("/")
     if not method:
         raise DemangleFailure("no method name")
     if not declaring:
-        # A native method is always declared in a class, so there is always at least one
-        # separator. Without this, any C function whose name merely starts `Java_` --
-        # `Java_helper`, say -- would be claimed and rewritten, which is the one outcome
-        # this library treats as worse than declining.
+        # A native method is always in a class; otherwise any C `Java_helper` is claimed.
         raise DemangleFailure("no declaring class")
     return JniSymbol(name, declaring.replace("/", "."), method, parameters)

@@ -17,17 +17,12 @@ suffix identifies *which* copy of a function a symbol is, which is information a
 usually wants to keep.
 """
 
-#: The character introducing an ELF version suffix. `@@` marks the default version of a
-#: symbol and `@` a non-default one; both are appended after the mangled name.
-#:
-#: Only schemes that never use `@` themselves may split on it. MSVC decorated names are
-#: full of `@` -- it is their scope separator -- so this must never be applied to them,
-#: which is why the plugin has to opt in rather than this being done for everything.
+#: Introduces an ELF version suffix (`@@` default version, `@` non-default). Plugins opt
+#: in, since MSVC names use `@` as their scope separator.
 VERSION_SEPARATOR = "@"
 
-#: Compiler-generated clone suffixes, all introduced by a dot. A dot can also stand inside
-#: a mangled name (see `split_decorations`), so this says how a suffix the parser has
-#: already found begins; it is not something to cut a name at.
+#: Introduces a clone suffix. A dot can also stand inside a mangled name, so this is
+#: how an already-found suffix begins, not somewhere to cut.
 CLONE_SEPARATOR = "."
 
 

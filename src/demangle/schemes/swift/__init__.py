@@ -49,12 +49,10 @@ def detect(name):
     if not name:
         return False
     if name.startswith("__"):
-        # The Mach-O form: one underscore more than the compiler wrote, which
-        # `swift-demangle` takes off before reading. `__$s` is `_$s`, itself a prefix.
+        # Mach-O adds one underscore, which `swift-demangle` takes off.
         name = name[1:]
     if async_main_entry_point_length(name):
-        # `async_Main`, the one Swift symbol with no prefix: the entry point of an
-        # `async` `@main`, which the reference's `isSwiftSymbol` claims by name.
+        # The reference's `isSwiftSymbol` claims the `async` `@main` entry point by name.
         return True
     return name.startswith(MANGLING_PREFIXES) or name.startswith("_T")
 
@@ -76,11 +74,8 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
-    # A Mach-O symbol table carries one more leading underscore than the compiler
-    # wrote, so `__T04demo5PointVMn`, `__$s...` and `__TtC...` are `_T0...`, `_$s...`
-    # and `_TtC...` -- and `swift-demangle` strips exactly one underscore from a name
-    # that opens with two before reading it. `_$s` needs no such help: the compiler's
-    # own prefix for a Mach-O symbol is listed as a prefix in its own right.
+    # Mach-O adds one leading underscore, which `swift-demangle` strips from a name that
+    # opens with two. `_$s` is a prefix in its own right.
     name = mangled[1:] if mangled.startswith("__") else mangled
     try:
         root = demangle_symbol(name)
@@ -155,12 +150,8 @@ PLUGIN = LanguagePlugin(
     description="Swift symbol mangling",
     options_type=SwiftOptions,
     aliases=(),
-    # `priority` is ascending: *lower is offered first*. After D, before Rust. `$s` and
-    # `_T0` collide with nothing; `_$S` collides with Free Pascal, which is offered
-    # earlier and wins those.
-    # `$s`, `_$s`, `$S`, `_$S`, `_T0`, `_Tt` and `@__swiftmacro_` -- and `async_Main`,
-    # the entry point of an `async` `@main`, which is the one Swift symbol with no
-    # prefix at all.
+    # Lower is offered first: after D, before Rust. `_$S` collides with Free Pascal,
+    # which is offered earlier and wins.
     first_characters="$_@a",
     priority=45,
 )
@@ -191,9 +182,7 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     """
     if isinstance(name, str):
         raise TypeError("demangle_symbolic reads bytes; a name holding a reference is not text")
-    # latin-1 maps every byte to the code point of the same value and back again, so the
-    # grammar can be read a character at a time without the bytes ever being interpreted
-    # as text. Swift spells a non-ASCII identifier in punycode, so nothing here is lost.
+    # latin-1 maps each byte to one code point; non-ASCII identifiers are punycode anyway.
     text = name.decode("latin-1")
     if whole_symbol is None:
         whole_symbol = detect(text)
@@ -204,10 +193,7 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     if root is None:
         return None
     if root.kind == "Suffix":
-        # `demangleType` hands back the whole input as a `Suffix` node when nothing at
-        # all parsed. That is the reference saying it could not read the name, and it
-        # comes back as None here rather than as the words `with unmangled suffix`
-        # wrapped around the bytes -- which is not a demangling of anything.
+        # A whole-input `Suffix` node is the reference saying it could not read the name.
         return None
     spelled = print_root(root)
     return spelled or None

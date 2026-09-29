@@ -33,8 +33,7 @@ class _Ada(Node):
         return "".join(part if isinstance(part, str) else part.render() for part in self.parts)
 
     def spell(self, declarator="", style=None):
-        # Accepted to match `Node.spell` and ignored: an Ada symbol names an entity and
-        # carries no signature, so there is no declarator position to fill.
+        # Ada symbols carry no signature; accepted to match `Node.spell`.
         return rendered(self.render)
 
     def build(self, builder):
@@ -71,8 +70,7 @@ class Symbol(_Ada):
     kind = "symbol"
 
 
-#: A part the parser produced that begins with one of these is an attribute rather than
-#: a path component: it is the *kind* of the entity just named, not another name.
+#: A part starting with one of these is an attribute of the entity just named, not a name.
 _ATTRIBUTE_STARTS = ("'", ".")
 
 

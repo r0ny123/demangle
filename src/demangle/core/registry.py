@@ -13,8 +13,7 @@ import threading
 
 from .plugin import LanguagePlugin
 
-#: Built-in schemes, as (name, import path) pairs. Imported on first use, so naming one
-#: language does not cost the import of every other.
+#: Built-in schemes, as (name, import path) pairs, imported on first use.
 _BUILTIN_MODULES = (
     ("rust", "demangle.schemes.rust"),
     ("itanium", "demangle.schemes.itanium"),
@@ -37,21 +36,16 @@ ENTRY_POINT_GROUP = "demangle.languages"
 
 _lock = threading.RLock()
 
-#: Called when the set of plugins changes; see the note on `style._on_change`. Replacing
-#: a language and then being served the previous one's spelling out of a cache is the
-#: same defect as replacing a style and being served the old one.
+#: Called when the set of plugins changes; see `style._on_change`.
 _on_change = []
 _plugins = {}
 _aliases = {}
 _ordered = None
-#: First character -> the plugins that could claim a name starting with it, built on
-#: demand and thrown away whenever the registry changes.
+#: First character -> the plugins that could claim a name starting with it; rebuilt on
+#: demand after any change.
 _by_first = None
-#: Set only once loading has *finished*. A separate "currently loading on this thread"
-#: marker handles re-entrancy, because a plugin module calls `register()` while being
-#: imported and must not recurse back into loading. Using one flag for both meant a
-#: second thread arriving mid-import saw a half-populated registry and got
-#: `unknown language 'msvc'` from a library that supports it.
+#: Set only once loading has *finished*. Re-entrancy (a plugin module calling `register()`
+#: during import) has its own marker, so another thread never sees a half-loaded registry.
 _loaded = False
 _loading_thread = None
 
@@ -67,9 +61,7 @@ def register(plugin):
     if not isinstance(plugin, LanguagePlugin):
         raise TypeError(f"expected a LanguagePlugin, got {type(plugin).__name__}")
     with _lock:
-        # Every alias is checked before any is recorded: a rejected plugin has to leave
-        # the table as it found it, or its earlier aliases point at a plugin that was
-        # never registered and `get` fails on a name the loader only warned about.
+        # Check every alias before recording any, so a rejected plugin leaves no trace.
         for alias in plugin.aliases:
             if alias in _plugins and alias != plugin.name:
                 raise ValueError(f"alias {alias!r} collides with a registered language name")
@@ -90,8 +82,7 @@ def _load():
     if _loaded:
         return
     if _loading_thread == threading.get_ident():
-        # Re-entered from a plugin module's own import. Returning lets that module
-        # finish registering; the outer call completes the rest.
+        # Re-entered from a plugin module's own import; the outer call completes the rest.
         return
     with _lock:
         if _loaded:

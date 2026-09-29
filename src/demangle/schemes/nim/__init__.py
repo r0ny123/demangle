@@ -69,10 +69,8 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Nim symbol mangling",
     aliases=(),
-    # `priority` is ascending: *lower is offered first*. Offered early, alongside Go, and
-    # its `detect` carries the weight instead: this scheme has no prefix of its own and
-    # has to recognise a whole name, so the predicate is what keeps it off other
-    # schemes' symbols. tests/test_core.py pins the order against every corpus.
+    # Lower is offered first. With no prefix of its own, `detect` is what keeps this
+    # off other schemes' symbols. tests/test_core.py pins the order.
     priority=10,
 )
 """The scheme as the registry holds it, registered when this package is imported."""

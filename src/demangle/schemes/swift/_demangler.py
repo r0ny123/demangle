@@ -39,24 +39,17 @@ BUILTIN_TYPE_NAME_PREFIX = "Builtin."
 
 _MAX_NUM_WORDS = 26
 _MAX_REPEAT_COUNT = 2048
-#: The reference reads a number into an `int`, and returns its "no number" sentinel the
-#: moment the next digit would overflow one.
+#: The reference reads numbers into a C `int`.
 _INT_MAX = 2**31 - 1
-#: How many resolved fragments may stand inside one another. A fragment a resolver
-#: hands back may hold references of its own -- a nested type names its parent -- but
-#: one that keeps naming another without end is a resolver answering itself, which
-#: recursed until the interpreter gave up.
+#: How deep resolved fragments may nest; a resolver that keeps answering itself would
+#: otherwise recurse without end.
 _MAX_NESTING = 64
 
-#: `getManglingPrefixLength`: the prefixes a Swift symbol may carry. `_T0` is the Swift 4
-#: mangling and still appears in shipped binaries; `$e` is Embedded Swift, whose names
-#: are read exactly as `$s` ones are; the leading `_` and `@__swiftmacro_` forms come
-#: from platforms whose linkers add one.
+#: `getManglingPrefixLength`. `_T0` is Swift 4; `$e` is Embedded Swift, read as `$s`.
 MANGLING_PREFIXES = ("_T0", "$S", "_$S", "$s", "_$s", "$e", "_$e", "@__swiftmacro_")
 
-#: Types the standard library mangles as `S` and one letter, from the compiler's
-#: `StandardTypesMangling.def`. The kind matters: the printer spells a protocol
-#: differently from a structure once it is inside an existential.
+#: `StandardTypesMangling.def`, `S` and one letter. The kind matters: a protocol prints
+#: differently from a structure inside an existential.
 STANDARD_TYPES = {
     "A": ("Structure", "AutoreleasingUnsafeMutablePointer"),
     "a": ("Structure", "Array"),
@@ -108,7 +101,7 @@ STANDARD_TYPES = {
     "z": ("Protocol", "BinaryInteger"),
 }
 
-#: Written `Sc` and one letter. Same source file, second level.
+#: `StandardTypesMangling.def`, `Sc` and one letter.
 CONCURRENCY_TYPES = {
     "A": ("Protocol", "Actor"),
     "C": ("Structure", "CheckedContinuation"),
@@ -204,10 +197,8 @@ def _prefix_length(name):
     return 0
 
 
-#: The symbol the compiler gives an `async` `@main` entry point. It carries no mangling
-#: prefix at all -- the name is the whole of it -- but the funclets split off it do carry
-#: the ordinary suffixes, `async_MainTY1_` and `async_MainTu`, so the reference stands a
-#: node in for the name and reads what follows as it reads any symbol.
+#: `getAsyncMainEntryPointNameLength`'s name: unmangled, but its funclets carry the
+#: ordinary suffixes (`async_MainTY1_`).
 ASYNC_MAIN_ENTRY_POINT_NAME = "async_Main"
 
 
@@ -256,10 +247,8 @@ class Demangler:
 
     def __init__(self, text, resolver=None):
         self.text = text
-        #: Called with `(SymbolicReference, offset-of-its-offset-field)` and expected to
-        #: return a mangled fragment naming what the reference points at, or None. With
-        #: no resolver a symbolic reference refuses the name, which is what the reference
-        #: demangler does too.
+        #: Called with `(SymbolicReference, offset-of-its-offset-field)`; returns a mangled
+        #: fragment for the target, or None. Without one a symbolic reference is refused.
         self.resolver = resolver
         self.pos = 0
         self.end = len(text)
@@ -268,10 +257,8 @@ class Demangler:
         #: The word table for identifier substitutions, capped as the reference caps it.
         self.words = []
         self.is_old_function_type_mangling = False
-        #: How many resolved fragments this demangler stands inside; see `_MAX_NESTING`.
+        #: How many resolved fragments this demangler stands inside.
         self.nesting = 0
-
-    # -- reading ---------------------------------------------------------------
 
     def peek(self):
         return self.text[self.pos] if self.pos < self.end else ""
@@ -307,8 +294,6 @@ class Demangler:
         self.pos = self.end
         return rest
 
-    # -- the node stack --------------------------------------------------------
-
     def push(self, node):
         self.stack.append(node)
 
@@ -329,8 +314,6 @@ class Demangler:
     def add_substitution(self, node):
         if node is not None:
             self.substitutions.append(node)
-
-    # -- building --------------------------------------------------------------
 
     def add_child(self, parent, child):
         if parent is None or child is None:
@@ -362,8 +345,6 @@ class Demangler:
     def swift_type(self, kind, name):
         return self.make_type(self.with_children(kind, Node("Module", text=STDLIB_NAME), Node("Identifier", text=name)))
 
-    # -- numbers ---------------------------------------------------------------
-
     def natural(self):
         """A run of digits, or `None` where the reference returns its -1000 sentinel.
 
@@ -380,13 +361,8 @@ class Demangler:
         if pos == start:
             return None
         if pos - start > 9:
-            # The reference accumulates into an `int` and answers "no number" the moment
-            # the next digit would overflow one, with that digit still unread -- and no
-            # production takes a digit there, so whatever asked for the number refuses.
-            # Ported as written rather than left to `int()`, whose own cap is 4,300
-            # digits: past it `int()` raised, and short of it a run of eleven read as a
-            # number the reference never sees. The walk is only taken past nine digits,
-            # which no name a compiler wrote has.
+            # The reference answers "no number" once the next digit would overflow an
+            # `int`, leaving that digit unread; `int()` would accept far more.
             number = 0
             for at in range(start, pos):
                 number = number * 10 + (ord(text[at]) - 48)
@@ -411,16 +387,12 @@ class Demangler:
         found = self.index()
         return None if found is None else Node(kind, index=found)
 
-    # -- entry points ----------------------------------------------------------
-
     def demangle_symbol(self):
         """`demangleSymbol`: read a whole name and assemble the `Global` node."""
         length = _prefix_length(self.text)
         if length == 0:
-            # An `async` `@main` entry point, whose name is not mangled at all. A node
-            # stands in for it so that the funclet suffixes after it read as they do
-            # after any other symbol: `async_MainTY1_` is a suspend-resume partial
-            # function *for* the entry point.
+            # A node stands in for the unmangled name so funclet suffixes after it read
+            # as they do after any symbol.
             length = async_main_entry_point_length(self.text)
             if length == 0:
                 return None
@@ -434,11 +406,8 @@ class Demangler:
             return None
 
         top = Node("Global")
-        # IRGen's own `.<n>` disambiguator is pushed last and so sits on top of the
-        # stack, where it hid the function attributes underneath it: nothing was popped,
-        # the closure was never moved inside the forwarder that applies it, and the
-        # name came out as its parts in stack order. Taken off first and put back at the
-        # end, which is where it is spelled.
+        # IRGen's `.<n>` suffix is pushed last; take it off first so the function
+        # attributes beneath it are reached, and put it back at the end.
         suffix = self.pop("Suffix")
         parent = top
         while True:
@@ -450,8 +419,7 @@ class Demangler:
                 parent = attribute
 
         for node in self.stack:
-            # A `Type` wrapper is dropped at the top level: `Global` holds what the type
-            # *is*, not the fact that it is one.
+            # `Global` holds what the type is, not a `Type` wrapper.
             parent.add(node.first if node.kind == "Type" and node.children else node)
 
         if suffix is not None:
@@ -476,7 +444,7 @@ class Demangler:
         while True:
             char = self.next_char()
             if char == "\xff":
-                # Alignment padding in front of a symbolic reference. Skipped.
+                # Alignment padding in front of a symbolic reference.
                 continue
             handler = _OPERATORS.get(char)
             if handler is not None:
@@ -484,9 +452,6 @@ class Demangler:
             if char == "":
                 return None
             if char in _SYMBOLIC_REFERENCE_BYTES:
-                # A symbolic reference points into the binary's own metadata, which a
-                # name on its own does not carry. Without a resolver the reference
-                # refuses it, and so does this.
                 return self.demangle_symbolic_reference(ord(char))
             self.push_back()
             return self.demangle_identifier()
@@ -543,8 +508,6 @@ class Demangler:
         found = self.pop()
         return found if found is not None and not self.stack else None
 
-    # -- substitutions ---------------------------------------------------------
-
     def demangle_multi_substitutions(self):
         """`A`, which may name several substitutions at once.
 
@@ -568,11 +531,8 @@ class Demangler:
             if "A" <= char <= "Z":
                 return self.push_multi_substitutions(repeat, ord(char) - ord("A"))
             if char == "_":
-                # The number was an index, not a count. 27 rather than 26 because the
-                # single-letter form already covers 0-25 -- and a bare `A_` is index 26,
-                # the reference's `-1 + 27`: the first one past the letters, written with
-                # no digits at all. Refusing it lost every name with twenty-seven
-                # substitutions in play, which a closure nested three deep reaches.
+                # An index: single letters cover 0-25, so a bare `A_` is 26 (the
+                # reference's `-1 + 27`).
                 at = (-1 if repeat is None else repeat) + 27
                 if at >= len(self.substitutions):
                     return None
@@ -626,8 +586,6 @@ class Demangler:
                 self.push(node)
         return node
 
-    # -- identifiers -----------------------------------------------------------
-
     def demangle_identifier(self):
         """A length-prefixed identifier, possibly built out of earlier ones.
 
@@ -643,9 +601,7 @@ class Demangler:
         has_word_substitutions = False
         punycoded = False
         char = self.peek()
-        # `_is_digit`, `_is_letter` and `_is_lower` are written out in this method: it
-        # runs for every identifier in every name and each of them is a frame around one
-        # comparison. They stay defined for their other callers.
+        # `_is_digit`, `_is_letter` and `_is_lower` inlined: this runs for every identifier.
         if not ("0" <= char <= "9"):
             return None
         if char == "0":
@@ -725,8 +681,7 @@ class Demangler:
                 start = at
             previous = char
 
-    #: `a` through `z` map to the operator characters an identifier may encode. A space
-    #: means the letter is not one, which is a refusal rather than a guess.
+    #: `a`-`z` to the operator characters an identifier may encode; a space refuses.
     _OPERATOR_CHARS = "& @/= >    <*!|+?%-~   ^ ."
 
     def demangle_operator_identifier(self):
@@ -763,8 +718,6 @@ class Demangler:
             self.add_child(result, Node("Identifier", text=char))
             return self.add_child(result, self.pop())
         return self.with_children("LocalDeclName", self.index_as_node(), self.pop(is_decl_name))
-
-    # -- contexts --------------------------------------------------------------
 
     def pop_module(self):
         identifier = self.pop("Identifier")
@@ -859,8 +812,6 @@ class Demangler:
         if signature is not None:
             extension = self.add_child(extension, signature)
         return extension
-
-    # -- functions -------------------------------------------------------------
 
     def demangle_plain_function(self):
         signature = self.pop("DependentGenericSignature")
@@ -971,8 +922,6 @@ class Demangler:
                 return Node("Identifier", text=child.text)
         return Node("FirstElementMarker")
 
-    # -- lists -----------------------------------------------------------------
-
     def _pop_list(self, root, element):
         """The shape every list in the mangling shares.
 
@@ -1039,8 +988,6 @@ class Demangler:
         name = self.pop(is_decl_name)
         context = self.pop_context()
         return self.make_type_or_none(self.with_children("Protocol", context, name))
-
-    # -- protocol conformances -------------------------------------------------
 
     def demangle_retroactive_protocol_conformance_ref(self):
         module = self.pop_module()
@@ -1133,8 +1080,6 @@ class Demangler:
             found.children.reverse()
         return found
 
-    # -- bound generics --------------------------------------------------------
-
     def demangle_bound_generics(self):
         """The argument lists, outermost last, and any retroactive conformances.
 
@@ -1193,15 +1138,9 @@ class Demangler:
         if not nominal.children:
             return None
         if nominal.kind == "AnonymousContext":
-            # The scope of a type declared inside a function, reached through a
-            # symbolic reference. The reference stops here: it takes the context's
-            # first child for its parent, which for this kind is the identifier, and
-            # refuses. The runtime's own builder, `_buildDemanglingForContext`, gives
-            # an anonymous context no generic arguments of its own -- they belong to
-            # whatever encloses it -- and that is what the mangler wrote: one list per
-            # declaration, and this is not one. So the arguments pass through to the
-            # parent, which is the second child, and `LockedState<()>.(unknown context
-            # at $5084e8)._Buffer` is spelled as the runtime would spell it.
+            # An anonymous context. The reference refuses here; like the runtime's
+            # `_buildDemanglingForContext`, the arguments pass through to the real
+            # parent (the second child).
             bound_parent = self.demangle_bound_generic_args(nominal.child(1), lists, at)
             if bound_parent is None:
                 return None
@@ -1237,8 +1176,6 @@ class Demangler:
         if kind is None:
             return None
         return self.with_children(kind, self.make_type(nominal), args)
-
-    # -- SIL-level function types ----------------------------------------------
 
     def demangle_impl_param_convention(self, kind):
         attribute = _IMPL_PARAM_CONVENTIONS.get(self.next_char())
@@ -1401,8 +1338,6 @@ class Demangler:
 
         return self.make_type(found)
 
-    # -- metadata --------------------------------------------------------------
-
     def demangle_metatype(self):
         """`M` -- one of the many runtime records that describe a type."""
         char = self.next_char()
@@ -1460,8 +1395,6 @@ class Demangler:
                 return None
             return self.with_children("AssociatedTypeGenericParamRef", base, path)
         return None
-
-    # -- archetypes and dependent types ----------------------------------------
 
     def demangle_archetype(self):
         """`Q` -- a generic parameter, an associated type, or an opaque return type."""
@@ -1621,14 +1554,11 @@ class Demangler:
         self.add_child(conformance, identifier)
         return conformance
 
-    # -- thunks and specialisations --------------------------------------------
-
     def demangle_thunk_or_specialization(self):
         """`T` -- the largest operator, covering everything the compiler synthesises."""
         char = self.next_char()
-        # `TT` is the namespace for thunks that come from a thunk instruction, and `TTI`
-        # is the only one so far. Read before the tables below because `T` is in none of
-        # them and would otherwise fall through to a refusal.
+        # `TT` (thunk-instruction thunks, only `TTI` so far) is in none of the tables
+        # below and would otherwise be refused.
         if char == "T":
             if self.next_char() != "I":
                 return None
@@ -1967,9 +1897,7 @@ class Demangler:
         for parameter in reversed(specialized.children):
             if parameter.kind != "FunctionSignatureSpecializationParam" or not parameter.children:
                 continue
-            # A `p` parameter carries a *run* of kinds -- `pSSi3Si0` is a propagated
-            # struct, an integer and another struct, all of argument one -- so every kind
-            # child is served, innermost first, rather than only the first.
+            # A `p` parameter may carry several kinds; serve each, innermost first.
             fixed = len(parameter.children)
             filled = parameter
             for child in reversed(parameter.children[:fixed]):
@@ -1992,10 +1920,8 @@ class Demangler:
                     continue
                 elif kind not in _PARAM_KINDS_WITH_PAYLOAD:
                     continue
-                # The identifier node itself, not its text in a payload: a payload is
-                # what the *mangling* wrote inline -- a string's encoding, an integer's
-                # digits -- and the printer tells the two apart by node kind when it
-                # walks a parameter that carries several kinds at once.
+                # The node, not its text: the printer tells an identifier from an inline
+                # payload by node kind.
                 filled = self.add_child(filled, self.pop("Identifier"))
             if filled is None:
                 return None
@@ -2010,19 +1936,16 @@ class Demangler:
         if char == "c":
             return self.add_child(parameter, _param_kind(_PARAM_CLOSURE_PROP))
         if char == "E":
-            # `c` for a closure that escapes.
             return self.add_child(parameter, _param_kind(_PARAM_ESCAPING_CLOSURE_PROP))
         if char == "C":
-            # The same closure as an earlier argument, named by its index.
             self.add_child(parameter, _param_kind(_PARAM_CLOSURE_PROP_PREVIOUS_ARG))
             previous = self.natural()
             if previous is None:
                 return None
             return self.add_child(parameter, Node("FunctionSignatureSpecializationParamPayload", index=previous))
         if char == "p":
-            # A *run* of propagated constants, not one: `pSSi3Si0` is a struct, an
-            # integer and a struct, all describing the same argument. The run ends at the
-            # first letter that is not one of these, which is put back for the caller.
+            # A run of propagated constants for one argument: `pSSi3Si0` is a struct, an
+            # integer and a struct. The first other letter is put back for the caller.
             while True:
                 inner = self.next_char()
                 if inner == "S":
@@ -2095,8 +2018,6 @@ class Demangler:
         specialized.add(Node("SpecializationPassID", index=pass_id))
         return specialized
 
-    # -- witnesses -------------------------------------------------------------
-
     def demangle_witness(self):
         """`W` -- the tables and accessors that implement a conformance."""
         char = self.next_char()
@@ -2134,8 +2055,7 @@ class Demangler:
             return self.with_children("BaseWitnessTableAccessor", conformance, protocol)
         if char == "O":
             marker = self.next_char()
-            # The three enum-payload operations carry the case index after the marker,
-            # and it goes last -- after the signature, where there is one.
+            # The enum-payload operations carry a case index after the marker.
             kind = _OUTLINED_ENUM_OPERATIONS.get(marker)
             if kind is not None:
                 if marker == "g":
@@ -2174,8 +2094,6 @@ class Demangler:
         if char == "J":
             return self.demangle_differentiability_witness()
         return None
-
-    # -- special types ---------------------------------------------------------
 
     def demangle_special_type(self):
         """`X` -- types with a spelling of their own rather than a name."""
@@ -2299,8 +2217,6 @@ class Demangler:
         if signature is not None:
             return self.with_children("ExtendedExistentialTypeShape", signature, found)
         return self.with_child("ExtendedExistentialTypeShape", found)
-
-    # -- entities --------------------------------------------------------------
 
     def demangle_metatype_representation(self):
         return {
@@ -2568,9 +2484,8 @@ class Demangler:
     def demangle_macro_expansion(self):
         char = self.next_char()
         if char == "X":
-            # `MX<line>_<column>_` -- where in the source the expansion came from, which
-            # is a context for the expansions that follow it rather than an entity of its
-            # own. Both numbers are indices, so each is one less than it reads.
+            # `MX<line>_<column>_`: a source location, the context of the expansions that
+            # follow. Both are indices, one less than they read.
             line = self.index()
             column = self.index()
             if line is None or column is None:
@@ -2638,17 +2553,12 @@ class Demangler:
         return None
 
 
-#: Bytes 1-0xC introduce a symbolic reference: a four-byte offset into the binary's own
-#: metadata. A name on its own does not carry what they point at, so they are refused.
+#: Bytes 1-0xC introduce a symbolic reference: a four-byte offset into the binary.
 _SYMBOLIC_REFERENCE_BYTES = frozenset(chr(byte) for byte in range(1, 0xD))
 
-#: Popped in this order by `pop_function_type`, and skipped in this order by
-#: `pop_function_param_labels`. The two must agree; both are the reference's order.
-#:
-#: Each slot is a set because two of them accept more than one node: a function's
-#: isolation is written as a global actor, as `@isolated(any)`, or as
-#: `nonisolated(nonsending)`, and never as more than one; and a `throws` is either bare
-#: or names the error type it throws.
+#: Popped in this order by `pop_function_type` and skipped in this order by
+#: `pop_function_param_labels` (the reference's order). A slot is a set where it has
+#: alternative spellings: isolation, and a bare or typed `throws`.
 _FUNCTION_ANNOTATIONS = (
     frozenset({"SendingResultFunctionType"}),
     frozenset({"GlobalActorFunctionType", "IsolatedAnyFunctionType", "NonIsolatedCallerFunctionType"}),
@@ -2811,9 +2721,7 @@ _WITNESS_OF_CONFORMANCE = {
 }
 
 _OUTLINED_VALUE_WITNESSES = {
-    # The uppercase letters are the same operations performed without going through the
-    # type's value witness table, which is what a specialised or embedded build emits.
-    # They print the same words.
+    # Upper case: the same operations without the value witness table, printed alike.
     "B": "OutlinedInitializeWithTakeNoValueWitness",
     "C": "OutlinedInitializeWithCopyNoValueWitness",
     "D": "OutlinedAssignWithTakeNoValueWitness",
@@ -2830,9 +2738,8 @@ _OUTLINED_VALUE_WITNESSES = {
     "h": "OutlinedDestroy",
 }
 
-#: `WO` operations over an enum payload. Separate from the table above because each
-#: carries the case index after its marker -- except `g`, which reads the tag rather than
-#: naming a case.
+#: `WO` operations over an enum payload, each carrying a case index after its marker --
+#: except `g`, which reads the tag.
 _OUTLINED_ENUM_OPERATIONS = {
     "g": "OutlinedEnumGetTag",
     "i": "OutlinedEnumTagStore",
@@ -2935,8 +2842,7 @@ _GENERIC_REQUIREMENTS = {
     "J": ("inverse", "compound-assoc"),
 }
 
-#: `ValueWitnessMangling.def`, in file order -- the index is the enumerator's value, and
-#: the printer looks the spelling back up by it.
+#: `ValueWitnessMangling.def`, in file order: the index is the enumerator's value.
 _VALUE_WITNESS_NAMES = [
     "AllocateBuffer",
     "AssignWithCopy",
@@ -3004,17 +2910,14 @@ _MACRO_EXPANSIONS = {
     "p": ("PeerAttachedMacroExpansion", True, False),
     "c": ("ConformanceAttachedMacroExpansion", True, False),
     "e": ("ExtensionAttachedMacroExpansion", True, False),
-    # `swift/Basic/MacroRoles.def` spells `q` as an experimental role, which changes
-    # nothing here: the compiler mangles it either way and a demangler has to read what
-    # is on disk.
+    # `MacroRoles.def` calls `q` experimental; the compiler mangles it regardless.
     "q": ("PreambleAttachedMacroExpansion", True, False),
     "b": ("BodyAttachedMacroExpansion", True, False),
     "u": ("MacroExpansionUniqueName", False, False),
 }
 
-#: What may stand as the context of a macro expansion. A source location is one of them:
-#: `isMacroExpansionNodeKind` counts it, so an expansion nests inside the place it came
-#: from rather than inside the enclosing declaration.
+#: Kinds that may be a macro expansion's context. `isMacroExpansionNodeKind` counts a
+#: source location, so an expansion nests inside the place it came from.
 _MACRO_EXPANSION_KINDS = frozenset(kind for kind, _, _ in _MACRO_EXPANSIONS.values()) | {"MacroExpansionLoc"}
 
 # Function-signature specialisation parameter kinds. The low values are alternatives; the
@@ -3038,9 +2941,8 @@ _PARAM_SROA = 1 << 8
 _PARAM_GUARANTEED_TO_OWNED = 1 << 9
 _PARAM_EXISTENTIAL_TO_GENERIC = 1 << 10
 
-#: Kinds whose payload is an identifier waiting on the stack. `ConstantPropStruct` is
-#: not among them: it takes a *type* and then leaves the identifier for the kind mangled
-#: beside it, which is what lets one parameter carry several of them.
+#: Kinds whose payload is an identifier on the stack. Not `ConstantPropStruct`: it takes
+#: a type and leaves the identifier to the kind mangled beside it.
 _PARAM_KINDS_WITH_PAYLOAD = frozenset(
     [
         _PARAM_CONSTANT_PROP_FUNCTION,

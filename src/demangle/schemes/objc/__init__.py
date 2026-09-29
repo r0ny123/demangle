@@ -94,14 +94,10 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Objective-C method, class and runtime symbol names",
     aliases=("objective-c", "objectivec"),
-    # `priority` is ascending: *lower is offered first*. After Nim and Free Pascal, and
-    # before every scheme with a prefix of its own: an Objective-C symbol names itself in
-    # the clear, so nothing else can want it, but the `_i_`/`_c_` method form is shaped
-    # like an ordinary C identifier and must not be offered a name another scheme would
-    # have recognised.
+    # Lower is offered first: after Nim and Free Pascal, before prefixed schemes, since
+    # the `_i_`/`_c_` form looks like a C identifier another scheme might recognise.
     priority=30,
-    # `-[`, `+[`, and the `_`, `.` and `l` that begin every runtime symbol and every
-    # block. Checked against every corpus by `tests/test_core.py`.
+    # Checked against every corpus by `tests/test_core.py`.
     first_characters="-+_.lL",
 )
 """The scheme as the registry holds it, registered when this package is imported."""

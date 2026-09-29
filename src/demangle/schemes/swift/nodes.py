@@ -20,8 +20,7 @@ from .options import DEFAULT_OPTIONS
 
 __all__ = ["SwiftName", "build"]
 
-#: Swift kinds worth a node of their own, and what to call them. Everything else becomes
-#: text inside its parent, which keeps a walk over a real symbol tractable.
+#: Swift kinds that get a node of their own; everything else is text in its parent.
 INTERESTING = {
     "Global": "symbol",
     "Module": "module",
@@ -66,7 +65,7 @@ class SwiftName(Node):
 
     def __init__(self, kind, swift_kind, parts):
         self.kind = kind
-        #: The compiler's own kind name, for a caller that needs the finer distinction.
+        #: The compiler's own kind name, for the finer distinction.
         self.swift_kind = swift_kind
         self.parts = tuple(parts)
         total = 0
@@ -81,7 +80,7 @@ class SwiftName(Node):
         return "".join(part if isinstance(part, str) else part.render() for part in self.parts)
 
     def spell(self, declarator="", style=None):
-        # Accepted to match `Node.spell` and ignored: Swift has no declarator position.
+        # Swift has no declarator position; accepted to match `Node.spell`.
         return rendered(self.render)
 
     def build(self, builder):

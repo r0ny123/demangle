@@ -18,7 +18,6 @@ class OutputTooLong(Exception):
     """
 
 
-#: `u64::MAX`. See `Parser.integer_62`.
 _U64_MAX = (1 << 64) - 1
 
 
@@ -32,20 +31,13 @@ class UnableTov0Demangle(Exception):
         return f"[{self.given_str}] {self.message}"
 
 
-#: ASCII punctuation, for the vendor-suffix test below. `_legacy` imports this rule
-#: rather than keeping its own copy: the two schemes carry a suffix on the same terms,
-#: and two copies of a rule are two chances to disagree about it.
+#: Shared with `_legacy`: both schemes accept a vendor suffix on the same terms.
 _PUNCTUATION = frozenset(string.punctuation)
 
-#: The same set as one C-level match: ASCII alphanumeric or ASCII punctuation, all the
-#: way to the end. Written as a generator over the characters it was resumed once each,
-#: on a test taken for every name carrying a vendor suffix.
 _SYMBOL_LIKE = re.compile(r"[0-9A-Za-z" + re.escape(string.punctuation) + r"]*\Z")
 
-#: Characters LLVM's internaliser writes in the hash of a `.llvm.<hash>` suffix. Upper
-#: case only, and `@` because a versioned symbol keeps its `@@VERS` inside the run. This
-#: is the reference's set verbatim: a *lower* case run is not one of these suffixes, and
-#: reading it as one silently deletes text that belongs to the symbol.
+#: The reference's set verbatim: upper-case hex plus `@` (a versioned symbol keeps its
+#: `@@VERS` inside the run). A lower-case run is not an LLVM suffix and must not be cut.
 _LLVM_HASH_CHARACTERS = frozenset(string.digits + "ABCDEF@")
 
 _LLVM_MARKER = ".llvm."
@@ -112,10 +104,6 @@ class V0Demangler:
     def _run(self, inpstr, sink):
         self.suffix = ""
 
-        # The prefix is stripped by what it is, not by looking for the first `R` in the
-        # name. `str.index` happened to be right for `_R` and `__R` and wrong in
-        # principle for everything else, and a mangling scheme is a bad place to keep a
-        # rule that is only accidentally true.
         if inpstr.startswith("__R"):
             self.inpstr = inpstr[3:]
         elif inpstr.startswith("_R"):
@@ -131,34 +119,17 @@ class V0Demangler:
         self.inpstr = _strip_llvm_suffix(self.inpstr)
 
         parser = Parser(self.inpstr, 0, self.keep_hash)
-        # Printing the symbol path *is* the pass that finds where it ends, so there is
-        # no `skip_path` in front of it. There used to be one, to establish the residual
-        # before anything was written; it read the whole path a second time -- 4,972 of
-        # the 49,597 `skip_path` calls the checked-in Rust corpora cost, and every
-        # recursion under them.
-        #
-        # What that ordering did buy is which refusal a name gets when it is malformed
-        # *and* too long for the caller's `max_output`: the residual check came first,
-        # so the answer was "not this scheme" rather than "you set a bound". That is
-        # restored below rather than given up, on the one path where the two differ.
         try:
             Printer(parser, sink, 0).print_path(True)
         except OutputTooLong:
             self._refuse_if_malformed(inpstr)
             raise
-        # An <instantiating-crate> is a second <path>, and only a <path> can follow the
-        # first one. It is skipped rather than printed, so it keeps its own pass. Every
-        # path production opens with a capital.
+        # An <instantiating-crate> is a second <path>; it is skipped, not printed.
         if (len(parser.inn) > parser.next_val) and parser.inn[parser.next_val].isupper():
             parser.skip_path()
 
-        # Whatever the grammar did not consume. The reference keeps it only when it is a
-        # vendor suffix -- introduced by `.`, and made of characters a symbol can hold --
-        # and refuses the name otherwise. Refusing matters: without this the parser
-        # silently dropped the rest of the input, so `_RNvC1a1b1b` read as `a::b` and
-        # `_RNvC1a1b` + forty thousand more characters read as `a::b` as well. A name
-        # that means something other than what it says is the one outcome this package
-        # treats as worse than declining to read it.
+        # The reference keeps unconsumed input only as a `.`-introduced vendor suffix and
+        # refuses the name otherwise, so `_RNvC1a1b1b` is not read as `a::b`.
         residual = parser.inn[parser.next_val :]
         if residual and not (residual.startswith(".") and _is_symbol_like(residual)):
             raise UnableTov0Demangle(inpstr)
@@ -189,20 +160,13 @@ class V0Demangler:
         if not inpstr or not inpstr[0].isupper():
             raise UnableTov0Demangle(inpstr)
 
-        # The reference reads the symbol as *bytes* and refuses it if any has bit 7 set,
-        # so a non-ASCII name is refused whatever it holds -- v0 spells non-ASCII
-        # identifiers in punycode and never carries one literally. Written as a
-        # per-character `ord(i) & 0x80` loop this was a different test: U+0100 is one
-        # character whose value has bit 7 clear, so `_RC1\u0100` printed as `\u0100`
-        # here where `rustfilt` echoes it back unread. `str.isascii` is the reference's
-        # test, and runs in C rather than over 700,000 interpreted `ord` calls.
+        # The reference refuses any byte with bit 7 set; v0 spells non-ASCII identifiers in
+        # punycode, never literally.
         if not inpstr.isascii():
             raise UnableTov0Demangle(inpstr)
 
 
 class Ident:
-    #: One per identifier of every symbol read, so the dict a plain instance would carry
-    #: is worth removing.
     __slots__ = ("ascii", "disp", "out", "out_len", "punycode", "small_punycode_len")
 
     def __init__(self, ascii: str, punycode: str) -> None:
@@ -299,10 +263,8 @@ class Ident:
             except (ValueError, OverflowError):
                 return False
 
-            # `char::from_u32` refuses surrogates; Python's `chr` accepts them, so a
-            # punycode body spelling one decoded to a lone surrogate here -- which then
-            # crashed `demangleb` trying to encode it -- where the reference falls back
-            # to `punycode{...}`.
+            # `char::from_u32` refuses surrogates, which `chr` accepts; the reference falls
+            # back to `punycode{...}`.
             if 0xD800 <= n <= 0xDFFF:
                 return False
 
@@ -313,10 +275,7 @@ class Ident:
             try:
                 punycode_bytes[count]
             except IndexError:
-                # Input exhausted with every code point placed: the success exit. It
-                # must be distinguishable from the failure exits by the caller, or a
-                # correctly decoded identifier is discarded and every non-ASCII name
-                # falls back to `punycode{...}`.
+                # Input exhausted with every code point placed: the only success exit.
                 return True
 
             delta = delta // damp
@@ -330,9 +289,7 @@ class Ident:
             bias = k + ((base - t_min + 1) * delta) // (delta + skew)
 
     def display(self) -> None:
-        # Almost every identifier in a real symbol is plain ASCII, and for those the
-        # decode cannot succeed -- it returns False on the first character. Asking first
-        # skips allocating the 128-element buffer once per identifier.
+        # Most identifiers are plain ASCII: skip allocating the decode buffer.
         if not self.punycode:
             self.disp += self.ascii
             return
@@ -351,27 +308,14 @@ class Ident:
                 self.disp += self.ascii
 
 
-#: Unicode general categories whose members Rust refuses to print literally. libcore's
-#: `printable.rs` table is generated from exactly this set of categories, with the space
-#: character carved back out, and `char::escape_debug` renders anything the table rejects
-#: as `\u{...}`. Reproducing the categories rather than the table means our answer tracks
-#: whichever Unicode version CPython was built against, which can differ from rustc's for
-#: codepoints assigned in between; nothing a compiler emits lives in that gap.
+#: Unicode general categories whose members Rust refuses to print literally: libcore's
+#: `printable.rs` is generated from these, with the space carved back out.
 _UNPRINTABLE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp", "Zs"})
 
-#: The `Grapheme_Extend` property, which `escape_debug` escapes so that a combining mark
-#: cannot silently attach itself to the opening quote. It is `Mn | Me |
-#: Other_Grapheme_Extend`, and the last is not derivable from anything the standard
-#: library exposes -- it is an explicit list in Unicode's `PropList.txt`, most of whose
-#: members are category `Mc` (U+09BE BENGALI VOWEL SIGN AA and U+09D7 among them) and
-#: two `Lm` (the halfwidth katakana sound marks). So the categories stand in for the
-#: first two and the list is carried for the third. The list is not copied from the
-#: property file: it is every code point rustc-demangle escapes and the two categories
-#: do not, found by putting all 1,112,064 scalar values to the reference as a `char`
-#: const and comparing. What that sweep leaves are the code points assigned after the
-#: Unicode version CPython carries (9,906 under 15.1 against the reference's 16.0),
-#: which this escapes as unassigned where the reference prints them, and U+1171E, which
-#: 16.0 moved from `Mn` to `Mc`; both close with a newer CPython.
+#: `Grapheme_Extend`, which `escape_debug` escapes, is `Mn | Me | Other_Grapheme_Extend`.
+#: The third is not derivable from `unicodedata`, so it is carried as an explicit list:
+#: every code point rustc-demangle escapes that the two categories do not, found by
+#: sweeping all scalar values through the reference.
 _GRAPHEME_EXTEND_CATEGORIES = frozenset({"Mn", "Me"})
 _OTHER_GRAPHEME_EXTEND = frozenset(
     [
@@ -434,9 +378,8 @@ _OTHER_GRAPHEME_EXTEND = frozenset(
     ]
 )
 
-#: The characters `char::escape_debug` gives a short escape rather than `\u{...}`.
-#: Both quote characters are here because the reference escapes each one inside its own
-#: kind of literal; `print_quoted_escaped_chars` undoes that for the opposite quote.
+#: `char::escape_debug`'s short escapes. Both quotes are here because the reference
+#: escapes each inside its own kind of literal; `print_quoted_escaped_chars` undoes that.
 _SHORT_ESCAPES = {
     "\0": r"\0",
     "\t": r"\t",
@@ -499,25 +442,16 @@ def parse_hex_str(nibbles: str) -> Optional[str]:
         return None
 
 
-#: `<const>` leaf tags, grouped by how the bytes after the tag are read. The tag is the
-#: const's *type*, spelled exactly as in `<basic-type>`, and the grammar in RFC 2603
-#: gives the unsigned integers a bare `<hex-digits>` body while the signed ones may carry
-#: a leading `n` for the sign. `bool`, `char` and `str` share the unsigned shape but are
+#: `<const>` leaf tags by body shape (RFC 2603): unsigned integers take bare
+#: `<hex-digits>`, signed ones an optional leading `n`; `bool`, `char` and `str` are
 #: rendered differently, so they are kept apart.
 _CONST_UNSIGNED = ("h", "t", "m", "y", "o", "j")
 _CONST_SIGNED = ("a", "s", "l", "x", "n", "i")
 _CONST_DATA_ONLY = ("b", "c", "e")
 
 
-#: `<basic-type>` tags. A module-level dict rather than an `lru_cache`d function that
-#: rebuilt this literal on every miss: the lookup is one of the hottest in the scheme,
-#: reached once per type on both the skip pass and the print pass.
-#: What opens a `<path>`, and so what a `<type>` that is one begins with. A type is a
-#: path more often than it is anything else -- 58% of the types in the Rust corpus, `I`
-#: and `N` between them -- and both the printer and the skipper reach that case by
-#: falling off the end of their tag chains, so one membership test up front is the
-#: difference between one comparison and ten. `B` is deliberately absent: in a type
-#: position it is a backref to a *type*, which each of them handles itself.
+#: What opens a `<path>`. `B` is deliberately absent: in a type position it is a
+#: backref to a *type*, which each caller handles itself.
 _PATH_TAGS = frozenset("CNMXYI")
 
 _BASIC_TYPES = {
@@ -545,9 +479,6 @@ _BASIC_TYPES = {
 }
 
 
-#: Base-10 and base-62 digit values. A dict lookup replaces a chain of `in`, `islower`
-#: and two `ord` calls per character; `digit_62` alone runs 184,000 times over 2,000 real
-#: symbols, so the difference is measurable rather than theoretical.
 _BASE_10 = {char: index for index, char in enumerate(string.digits)}
 _BASE_62 = dict(_BASE_10)
 _BASE_62.update({char: 10 + index for index, char in enumerate(string.ascii_lowercase)})
@@ -555,8 +486,7 @@ _BASE_62.update({char: 36 + index for index, char in enumerate(string.ascii_uppe
 
 
 class Parser:
-    # Bound the mutually recursive skip_* validation pass; must fire well below
-    # CPython's own recursion limit (each level consumes several interpreter frames).
+    # Must fire well below CPython's recursion limit (each level costs several frames).
     MAX_RECURSION_COUNT = 256
 
     __slots__ = ("depth", "end", "inn", "keep_hash", "next_val")
@@ -564,14 +494,10 @@ class Parser:
     def __init__(self, inn: str, next_val: int, keep_hash: bool = False) -> None:
         self.inn = inn
         self.next_val = next_val
-        # Carried on the parser rather than the printer because a backref builds a new
-        # parser and a new printer from it, and the crate root reached through one has
-        # to spell its disambiguator the same way as one reached directly.
+        # On the parser rather than the printer because a backref builds a new printer from
+        # it, and a crate root reached through one must spell its disambiguator the same way.
         self.keep_hash = keep_hash
         self.depth = 0
-        # `inn` is never reassigned, so its length is a constant for this parser. It was
-        # being recomputed in `peek`, `eat` and `next_func` -- over a million `len` calls
-        # across two thousand real symbols.
         self.end = len(inn)
 
     def eat(self, b: str) -> bool:
@@ -600,12 +526,6 @@ class Parser:
                 raise UnableTov0Demangle(self.inn)
         return self.inn[start : self.next_val - 1]
 
-    # There were a `peek` and a digit reader for each base here, each one interpreter
-    # frame around three bytecodes, and between them they ran some 1.5 million times over
-    # the Rust corpus. Every caller now does the bounds test and the table lookup itself,
-    # which is why they are gone rather than merely unused: what they accepted is written
-    # out at each site, and `peek` raising at the end of input is preserved there.
-
     def integer_62(self) -> int:
         """`<base-62-number> ::= {<0-9a-zA-Z>} "_"`, valued one more than its digits spell.
 
@@ -621,13 +541,8 @@ class Parser:
         inn, end = self.inn, self.end
         at = self.next_val
         if at >= end:
-            # Past the end: what `digit_62` would have raised.
             raise UnableTov0Demangle(inn)
         if inn[at] == "_":
-            # A field written with no digits at all, which is the value zero. Only 497 of
-            # the 22,152 calls over the checked-in Rust corpora are this, so it is out of
-            # the loop for the loop's sake rather than for its own: what is left has no
-            # `first` flag to set and clear on every turn.
             self.next_val = at + 1
             return 0
         x = 0
@@ -637,9 +552,7 @@ class Parser:
                 raise UnableTov0Demangle(inn)
             x = x * 62 + d
             at += 1
-            # The cursor is written once, on the way out, rather than once per digit --
-            # nothing reads it after a refusal, since no caller in this scheme catches
-            # one -- and the digits are 21,655 of those 22,152 calls.
+            # Nothing reads the cursor after a refusal, so it is written once on the way out.
             if at >= end:
                 raise UnableTov0Demangle(inn)
             if inn[at] == "_":
@@ -653,21 +566,10 @@ class Parser:
         if at >= self.end or self.inn[at] != tag:
             return 0
         self.next_val = at + 1
-        # `opt_integer_62` adds one of its own, through a `checked_add` of its own.
         value = self.integer_62()
         if value >= _U64_MAX:
             raise UnableTov0Demangle(self.inn)
         return value + 1
-
-    # `disambiguator` was here, a one-line delegation to `opt_integer_62("s")`. It ran
-    # 82,000 times over the Rust corpus for an interpreter frame around a call, so the
-    # nine sites that wanted it call `opt_integer_62("s")` themselves. The production is
-    # `<disambiguator> ::= "s" <base-62-number>` and that is what they read.
-    #
-    # Three quarters of those calls -- 59,000 of the 82,000 -- find no `s` at all and
-    # return zero, so the sites on the two hot paths test for the tag before making the
-    # call rather than paying a frame to be told the production is absent. The test is
-    # `opt_integer_62`'s own first two lines, and the call still reads the number.
 
     def namespace(self) -> Optional[str]:
         at = self.next_val
@@ -708,21 +610,14 @@ class Parser:
         if is_punycode:
             at += 1
 
-        # The reference reads the first digit unconditionally -- `self.digit_10()?` --
-        # so anything that is not a digit is a failure here, not an identifier of length
-        # zero. Reading it as zero made `_RNvC_1f` a function `f` in a crate with no
-        # name, spelled `::f`, and `_RNvC1CC_` a name whose instantiating crate is
-        # nonsense, spelled `C`: the `_` was swallowed as the optional separator and
-        # nothing was left over for the residual check to refuse. A length written `0`
-        # is a different thing and still legal -- `_RNvC0_1f` is `::f` to the reference
-        # too -- which is why this tests for "not a digit" rather than for falsehood.
+        # The reference reads the first digit unconditionally, so a non-digit is a failure,
+        # not a zero length (`_RNvC_1f` must not read as `::f`). A written `0` is legal.
         if at >= end:
             raise UnableTov0Demangle(inn)
         length = _BASE_10.get(inn[at])
         if length is None:
             raise UnableTov0Demangle(inn)
         at += 1
-        # A leading `0` is the whole length; only a non-zero first digit continues.
         if length:
             while True:
                 if at >= end:
@@ -757,11 +652,6 @@ class Parser:
 
         return Ident(ident, "") if build else None
 
-    # The three `skip_*` productions kept the depth guard in a wrapper that called an
-    # inner method, which is two interpreter frames per production on a pass whose whole
-    # job is to validate. Guard and body share a frame now, with the same `finally`
-    # restoring the depth on the way out.
-
     def skip_path(self):
         depth = self.depth
         if depth >= self.MAX_RECURSION_COUNT:
@@ -773,15 +663,9 @@ class Parser:
                 raise UnableTov0Demangle(self.inn)
             val = self.inn[at]
             self.next_val = at + 1
-            # Ordered by how often each arm is taken over the Rust corpus: a nested path
-            # is 54% of them and a crate root another 17%, and both used to be found by
-            # walking a chain written in the grammar's order.
             if val == "N":
-                # `namespace` inlined: it is one character, and this runs 59,000 times
-                # over the Rust corpus for a frame around a bounds test. The input is
-                # ASCII -- `sanity_check` refuses anything else before a parser is built
-                # -- so "a letter" and "upper or lower" are the same test here, and the
-                # skip pass has no use for which it was.
+                # `namespace` inlined (hot path). The input is ASCII, so "a letter" is
+                # the whole test; the skip pass does not care which case.
                 at = self.next_val
                 if at >= self.end or not self.inn[at].isalpha():
                     raise UnableTov0Demangle(self.inn)
@@ -839,8 +723,6 @@ class Parser:
             raise UnableTov0Demangle(self.inn)
         self.depth = depth + 1
         try:
-            # `w` marks a splat argument and decorates the type that follows rather than
-            # being one, so it is skipped like the marker it is.
             self.eat("w")
             at = self.next_val
             if at >= self.end:
@@ -853,11 +735,8 @@ class Parser:
                 self.next_val = at
                 self.skip_path()
             elif n == "R" or n == "Q":
-                # The lifetime is optional; the referent is not. Skipping the lifetime
-                # without then skipping the referent leaves it to be read as whatever comes
-                # next, desynchronising every later offset -- and because an impl path is
-                # reached through this skipper, `<&'_ u8 as Trait>::method` is then rejected
-                # outright.
+                # The referent is not optional: skipping only the lifetime would
+                # desynchronise every later offset.
                 if self.eat("L"):
                     self.integer_62()
                 self.skip_type()
@@ -953,8 +832,6 @@ class Parser:
                 self.eat("n")
                 self.hex_nibbles()
             elif ty_tag in ("R", "Q"):
-                # `Re<hex>_` is a string literal rather than a reference to a nested const,
-                # so only the non-`e` spelling continues into another `<const>`.
                 if ty_tag == "R" and self.eat("e"):
                     self.hex_nibbles()
                 else:
@@ -994,9 +871,8 @@ def _generic_fields(collected):
     return base, collected[1:]
 
 
-#: What `Printer.node` returns when the sink keeps no structure. `contextlib` builds a
-#: generator and a wrapper object per use, which is real work to reach two no-ops -- and
-#: `node` is entered once per grammar production, so it showed up as 8% of the text path.
+#: What `Printer.node` returns when the sink keeps no structure; cheaper than
+#: `contextlib` on a path entered once per grammar production.
 class _NoScope:
     __slots__ = ()
 
@@ -1010,11 +886,6 @@ class _NoScope:
 _NO_SCOPE = _NoScope()
 
 
-#: And what it returns when the sink *does* keep structure. The same argument as the
-#: no-op above, which was made for the text path and left the tree path on `contextlib`:
-#: a generator, a `_GeneratorContextManager` around it and two `next` calls to reach an
-#: `open` and a `close`. Over the Rust corpora that is 89,796 scopes paying for five
-#: frames each to do two things.
 class _Scope:
     """Brackets one production so a tree sink learns where it began and ended.
 
@@ -1045,8 +916,6 @@ class _Scope:
         return False
 
 
-#: Stands in for the list a real scope hands back, so `built[0]` reads as None on the
-#: text path.
 _NO_NODE = (None,)
 
 
@@ -1058,16 +927,10 @@ class TextSink:
     thousand of them.
     """
 
-    #: What each back-referenced subtree spelled, keyed by what decides that spelling.
-    #: A `B` names a production written earlier in the same symbol, and the printer
-    #: resolves one by printing that production again -- so a symbol naming the same
-    #: subtree ten times prints it ten times. Over the checked-in Rust corpus 30.6% of
-    #: all `print_path` entries repeat an (offset, bound-lifetime-depth, in-value)
-    #: triple that has already been printed, and one symbol from a release build repeats
-    #: 447 of them. The spelling is a function of exactly that triple -- everything else
-    #: the printer reads is fixed for the symbol -- so the text is kept and emitted
-    #: again rather than derived again. One sink serves one symbol, which is what bounds
-    #: this: it is not a cache that outlives anything.
+    #: What each back-referenced subtree spelled, keyed by (offset, bound-lifetime-depth,
+    #: in-value), the only printer state that spelling depends on: a `B` is resolved by
+    #: printing its target again, and real symbols repeat the same targets many times.
+    #: Lives for one symbol.
     __slots__ = ("_parts", "_remaining", "memo")
 
     def __init__(self, limit):
@@ -1131,21 +994,18 @@ class TreeSink:
 
 
 class Printer:
-    # Must fire well below CPython's own recursion limit (default 1000), or a
-    # self-referential backref chain raises RecursionError before this guard.
+    # Must fire well below CPython's recursion limit, or a self-referential backref chain
+    # raises RecursionError before this guard.
     RUST_MAX_RECURSION_COUNT = 256
 
-    #: `emit` is an instance attribute holding the sink's own bound method, which is why
-    #: it is a slot rather than a method on the class. The printer emits one fragment per
-    #: grammar terminal -- a hundred thousand of them over the Rust corpus -- and a
-    #: forwarding method is a whole interpreter frame to reach `list.append`.
+    #: `emit` is the sink's own bound method, stored per instance to avoid a forwarding
+    #: frame per emitted fragment.
     __slots__ = ("_plain", "bound_lifetime_depth", "emit", "parser", "recursion", "sink")
 
     def __init__(self, parser, sink, bound, recursion=0):
         self.parser = parser
         self.sink = sink
         self.emit = sink.emit
-        # Asked once per printer rather than once per production.
         self._plain = not isinstance(sink, TreeSink)
         self.bound_lifetime_depth = bound
         self.recursion = recursion
@@ -1320,9 +1180,6 @@ class Printer:
         production needs a piece of itself back -- an impl wanting its own self-type and
         trait -- it takes it from here rather than re-reading the input.
         """
-        # The depth guard is written out here, and in `print_type`, rather than called:
-        # between them these two run 75,000 times over the Rust corpus, and the guard is
-        # a comparison and an increment inside a whole interpreter frame.
         recursion = self.recursion
         if recursion >= self.RUST_MAX_RECURSION_COUNT:
             raise UnableTov0Demangle("Recursion limit exceeded")
@@ -1335,7 +1192,6 @@ class Printer:
             tag = p.inn[at]
             p.next_val = at + 1
             if tag == "N":
-                # `namespace` inlined, as in `skip_path`, and for the same reason.
                 at = p.next_val
                 if at >= p.end:
                     raise UnableTov0Demangle(p.inn)
@@ -1384,10 +1240,7 @@ class Printer:
                 with self.node(nodes.RustName) as built:
                     self.emit(name.disp)
                     if p.keep_hash and disambiguator:
-                        # `features[9f05e0465351d495]`. Plain hex and not padded, and
-                        # nothing at all where the crate wrote no disambiguator, which is
-                        # what `{}` on rustc-demangle's own `Demangle` prints -- the
-                        # formatting `{:#}` exists to suppress.
+                        # Plain unpadded hex, as rustc-demangle's `{}` (not `{:#}`) prints.
                         self.emit(f"[{disambiguator:x}]")
                 return built[0]
 
@@ -1419,9 +1272,6 @@ class Printer:
                     p.opt_integer_62("s")
                     p.skip_path()
 
-                # An inherent impl (`M`) names only the type; a trait impl (`X`, `Y`)
-                # names a trait as well. Both are kept as fields so a caller can ask what
-                # a method implements without matching on the rendered `" as "`.
                 seen = []
                 with self.node(lambda parts: nodes.Impl(parts, *_impl_fields(seen))) as built:
                     self.emit("<")
@@ -1449,8 +1299,6 @@ class Printer:
                 self.print_lifetime_from_index(lt)
             return built[0]
         if self.eat("K"):
-            # Generic argument position: an expression here is not already inside another
-            # one, so a structural const has to brace itself to stay unambiguous.
             with self.node(lambda parts: nodes.Value(parts, "const")) as built:
                 self.print_const(False)
             return built[0]
@@ -1470,9 +1318,7 @@ class Printer:
         self.recursion = recursion + 1
         try:
             p = self.parser
-            # `w` marks the argument that follows as a splat: `fn(#[splat] (u8, u32))`.
-            # The feature is unstable and so is its mangling, which is why it takes a
-            # letter that could have been a type tag rather than one that could not.
+            # `w` marks a splat argument: `fn(#[splat] (u8, u32))`.
             if self.eat("w"):
                 self.emit("#[splat] ")
             at = p.next_val
@@ -1487,7 +1333,6 @@ class Printer:
                 return built[0]
 
             if tag in _PATH_TAGS:
-                # The tag belongs to the path, which reads it again.
                 p.next_val = at
                 return self.print_path(False)
 
@@ -1524,8 +1369,6 @@ class Printer:
 
                     if tag == "A":
                         self.emit("; ")
-                        # `[T; N]` already reads as an expression context, so the length
-                        # never needs braces however structural it is.
                         with self.node(lambda parts: nodes.Value(parts, "length")):
                             self.print_const(True)
                     self.emit("]")
@@ -1573,7 +1416,6 @@ class Printer:
                 return result
 
             if tag == "W":
-                # A pattern type: the values of the type this one narrows.
                 with self.node(lambda parts: nodes.Type(parts, "pattern")) as built:
                     self.print_type()
                     self.emit(" is ")
@@ -1654,9 +1496,8 @@ class Printer:
             name.display()
             self.emit(name.disp)
             self.emit(" = ")
-            # An existential projection binds an associated type, but a trait may also
-            # have associated *consts*, and those are bound the same way with a `K` in
-            # front: `dyn Trait<LEN = 1>`. rustc-demangle 0.1.28 `v0.rs::print_dyn_trait`.
+            # Associated consts are bound like associated types, with a `K` in front:
+            # `dyn Trait<LEN = 1>`. rustc-demangle 0.1.28 `v0.rs::print_dyn_trait`.
             if self.eat("K"):
                 self.print_const(False)
             else:
@@ -1694,8 +1535,6 @@ class Printer:
         try:
             parser = self.parser
             if self.eat("B"):
-                # The brace decision belongs to whatever the backref resolves to, so
-                # `in_value` is passed through untouched.
                 printer = self.backref_printer()
                 printer.print_const(in_value)
                 return
@@ -1726,9 +1565,8 @@ class Printer:
             elif ty_tag == "c":
                 self.print_const_char()
             elif ty_tag == "e":
-                # A bare `str` const, as opposed to the `&str` that `Re..._` encodes.
-                # There is no Rust syntax for it, so the reference writes the deref of a
-                # string literal and braces the result.
+                # A bare `str` const (not the `&str` of `Re..._`) has no Rust syntax, so
+                # the reference writes the deref of a string literal, braced.
                 open_brace_if_outside_expr()
                 self.emit("*")
                 self.print_const_str_literal()
@@ -1756,8 +1594,7 @@ class Printer:
                 self.emit(")")
             elif ty_tag == "V":
                 open_brace_if_outside_expr()
-                # `in_value` is True for the path so an enum variant of a generic type
-                # comes out as `Option::<usize>::None` rather than `Option<usize>::None`.
+                # `in_value` so a variant of a generic enum reads `Option::<usize>::None`.
                 self.print_path(True)
                 self.print_const_variant_data()
             else:
@@ -1836,9 +1673,8 @@ class Printer:
         nibbles = self.parser.hex_nibbles()
         value = parse_hex_uint(nibbles)
         if value is None:
-            # Wider than `u64`: the reference gives up on decimal rather than failing,
-            # because a `u128` const is perfectly legal, and echoes the nibbles as
-            # written -- padding included, since it no longer knows what was padding.
+            # Wider than `u64` (a legal `u128` const): the reference echoes the nibbles
+            # as written, padding included.
             self.emit("0x")
             self.emit(nibbles)
             return
@@ -1860,8 +1696,6 @@ class Printer:
 
     def print_const_char(self):
         value = parse_hex_uint(self.parser.hex_nibbles())
-        # `char::from_u32` rejects both out-of-range scalars and the surrogate range;
-        # Python's `chr` accepts surrogates, so that half has to be checked by hand.
         if value is None or value > 0x10FFFF or 0xD800 <= value <= 0xDFFF:
             self.invalid()
         self.print_quoted_escaped_chars("'", chr(value))
