@@ -1,7 +1,8 @@
 """The scheme-agnostic half of the library.
 
-Nothing here imports a mangling scheme, and a new scheme is written against these
-modules and nothing else:
+Nothing here imports a mangling scheme at import time -- `style` reaches for the
+schemes' option defaults lazily, the first time a style is asked for -- and a new
+scheme is written against these modules and nothing else:
 
 - `builder` -- the contract between a parser and its output, and the reason one parser
   can serve both `demangle()` and `parse()` with no second implementation to drift.

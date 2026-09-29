@@ -17,8 +17,7 @@ class BoundedCache:
     Wholesale clearing rather than LRU eviction is deliberate. Tracking recency costs a
     linked-list update on every *hit*, which is the operation being optimised; dropping
     everything at a high-water mark costs nothing on hits and re-warms quickly, because
-    symbol access in a binary is heavily clustered. `functools.lru_cache` is also unable
-    to cache a raised exception, which the strict entry points need.
+    symbol access in a binary is heavily clustered.
     """
 
     __slots__ = ("_data", "hits", "max_size", "misses")

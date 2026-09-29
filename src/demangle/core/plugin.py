@@ -1,8 +1,8 @@
 """The contract a mangling scheme implements.
 
-A language is a `LanguagePlugin`. Nothing in `core` imports a language module, and no
-language imports another, so a scheme can be developed, tested, replaced or shipped
-separately from everything else here.
+A language is a `LanguagePlugin`. Nothing in `core` imports a language module at import
+time, and no language imports another, so a scheme can be developed, tested, replaced or
+shipped separately from everything else here.
 
 Adding one means providing three things and registering them. It does not mean
 understanding the rest of the codebase, which is the point: the project should be

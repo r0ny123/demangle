@@ -495,9 +495,9 @@ class ItaniumParser:
         #: The index the last `S<n>_` named, or None after an abbreviation.
         self._last_entry_index = None
         #: Whether an `S<n>_` named the entry a `<template-param>` bound to a pack
-        #: contributed, and got the pack. The entry is the parameter, which is what
-        #: heading 0 of the ROADMAP establishes against four compilers' output for the
-        #: unpacked case; both references instead record one *member* of the pack there,
+        #: contributed, and got the pack. The entry is the parameter, which note 17 of
+        #: CONFORMANCE.md establishes against the compilers' output for the unpacked
+        #: case; both references instead record one *member* of the pack there,
         #: and not the same one -- `llvm-cxxfilt` the first, `c++filt` the last. Read by
         #: tools/enumerate.py, which accepts that three-way disagreement. See
         #: `_note_pack_binding`.

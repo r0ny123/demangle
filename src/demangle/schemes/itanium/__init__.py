@@ -46,6 +46,7 @@ PLUGIN = LanguagePlugin(
     first_characters="_",
     priority=200,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

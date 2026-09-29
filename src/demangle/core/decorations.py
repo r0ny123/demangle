@@ -25,8 +25,9 @@ usually wants to keep.
 #: which is why the plugin has to opt in rather than this being done for everything.
 VERSION_SEPARATOR = "@"
 
-#: Compiler-generated clone suffixes, all introduced by a dot. The dot cannot appear in
-#: an Itanium mangled name, so finding one is unambiguous.
+#: Compiler-generated clone suffixes, all introduced by a dot. A dot can also stand inside
+#: a mangled name (see `split_decorations`), so this says how a suffix the parser has
+#: already found begins; it is not something to cut a name at.
 CLONE_SEPARATOR = "."
 
 
@@ -37,10 +38,13 @@ def split_decorations(name):
     *before* parsing: `@` appears in no scheme this applies to, so the first one is
     necessarily the start of the suffix.
 
-    Clone suffixes deliberately are not. A `.` is not reserved: Clang names a coroutine
-    frame type `_ZN6modern9coroutineEi.Frame`, with the dot inside a length-prefixed
-    identifier, so cutting at the first `.` truncates the name mid-production. A clone
-    suffix can only be recognised as what is *left over* once the grammar has consumed
+    Clone suffixes deliberately are not. A `.` is not reserved: GCC names a coroutine's
+    frame type `_ZN6modern9coroutineEi.Frame` and writes that as a length-prefixed
+    identifier, so the coroutine's actor is
+    `_ZN6modern9coroutineEPZNS_9coroutineEiE28_ZN6modern9coroutineEi.Frame.actor` --
+    where the first `.` is inside the identifier and only the second begins the clone
+    suffix. Cutting at the first `.` truncates the name mid-production. A clone suffix
+    can only be recognised as what is *left over* once the grammar has consumed
     everything it can, which means the parser has to do it.
 
     The suffix is returned with its separator intact, so joining is concatenation.

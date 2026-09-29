@@ -812,7 +812,10 @@ class _Parser:
 
 
 def parse_delphi_symbol(name, limits=DEFAULT_LIMITS):
-    """Parse `name`, returning a `DelphiSymbol`, or raise `DemangleFailure`."""
+    """Parse `name`, returning a `DelphiSymbol`, or raise `DemangleFailure`.
+
+    A name that exceeds `limits` raises `LimitExceeded` instead.
+    """
     if not name or name[0] != "@":
         raise DemangleFailure("not a Delphi mangled name")
     if _MSVC_FASTCALL.match(name):

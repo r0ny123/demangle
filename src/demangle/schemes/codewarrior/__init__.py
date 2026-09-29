@@ -211,5 +211,6 @@ PLUGIN = LanguagePlugin(
     # gets the whole scheme regardless. tests/test_core.py pins the order.
     priority=300,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)

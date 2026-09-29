@@ -1,19 +1,13 @@
 # Core
 
-The scheme-agnostic half. Nothing here imports a scheme, and a new mangling scheme is
-written against these and nothing else.
+The scheme-agnostic half. Nothing here imports a scheme at import time, and a new mangling
+scheme is written against these and nothing else.
 
 ## The builder protocol
-
-The contract between a parser and its output, and the reason one parser can serve both
-`demangle()` and `parse()` without a second implementation to keep in sync.
 
 ::: demangle.core.builder
 
 ## Spelling
-
-C++ does not write a type before the name, it writes it *around* the name. This is the
-module that keeps the hole in the right place.
 
 ::: demangle.core.spelling
     options:
@@ -24,13 +18,8 @@ module that keeps the hole in the right place.
 
 ## The tree
 
-`Node` itself is documented once, on the [public API page](api.md#the-tree), because
-that is where a caller meets it -- two renderings of one class give `mkdocs-autorefs`
-two primary URLs for it and every cross-reference then picks one at random. What is here
-is the rest of `core.ast`: the node classes a tree is made of, the builder a scheme hands
-them to, and the wrapper that carries what the linker appended to a name.
-
-The classes are the vocabulary of a `match` statement. Every one of them declares
+The node classes a tree is made of -- `Node` and `Decorated` are also exported from
+`demangle` -- and the builder a scheme hands them to. Every class declares
 `__match_args__`, so a caller can match on the shape of a subtree rather than compare
 `node.kind` against a string:
 
@@ -43,12 +32,13 @@ match demangle.parse("_Z1fPi").parameters[0]:
         print("pointer to", spelling)
 ```
 
-`demangle.node_kinds()` answers the same question the other way round, for a caller
-switching on the `kind` string instead: it lists the kinds a given scheme can produce.
+A scheme's own node kinds are under its section on the [schemes page](schemes.md), and
+`demangle.node_kinds()` lists the `kind` strings a scheme can produce.
 
 ::: demangle.core.ast
     options:
       members:
+        - Node
         - Builtin
         - Name
         - Raw
@@ -77,6 +67,10 @@ switching on the `kind` string instead: it lists the kinds a given scheme can pr
 
 ## Plugins
 
+A distribution can add a scheme of its own by calling `register`, which the package
+exports as `demangle.register_language`, or by advertising a `demangle.languages` entry
+point. [Adding a scheme](../adding-a-scheme.md) is the walk-through.
+
 ::: demangle.core.plugin
 
 ::: demangle.core.registry
@@ -90,9 +84,20 @@ switching on the `kind` string instead: it lists the kinds a given scheme can pr
 
 ## Symbol-table decorations
 
-What the linker and the compiler append to a name, which belongs to no mangling scheme.
-
 ::: demangle.core.decorations
+
+## Styles
+
+`Style` and `register_style` are also exported from `demangle`, and `demangle.style()`
+composes a style for one call.
+
+::: demangle.core.style
+    options:
+      members:
+        - Style
+        - register_style
+        - get_style
+        - available_styles
 
 ## Caching
 

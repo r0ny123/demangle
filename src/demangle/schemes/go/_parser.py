@@ -46,9 +46,12 @@ __all__ = [
     "unescape_path",
 ]
 
-#: Prefixes the linker gives its own generated symbols. `go:` and `type:` are current;
-#: `go.` and `type.` are what Go wrote before 1.20 and still appear in older binaries.
 GENERATED_PREFIXES = ("go:", "type:", "go.", "type.")
+"""Prefixes the linker gives its own generated symbols.
+
+`go:` and `type:` are current; `go.` and `type.` are what Go wrote before 1.20 and still
+appear in older binaries.
+"""
 
 _HEX = "0123456789abcdefABCDEF"
 

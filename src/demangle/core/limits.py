@@ -40,11 +40,14 @@ class Limits:
 
 
 DEFAULT_LIMITS = Limits()
+"""The bounds every entry point uses unless it is passed others."""
 
-#: Bounds for callers that trust their input and want the ceiling out of the way.
-#: Still finite: "trusted" is a statement about intent, not about correctness.
-#:
-#: `max_depth` here is not reachable at the interpreter's default recursion limit -- see
-#: the note on the field. It is left high on purpose: it says what this package will
-#: allow, and a caller who raises `sys.setrecursionlimit()` gets it.
 RELAXED_LIMITS = Limits(max_depth=2048, max_output=1 << 22, max_substitutions=1 << 16, max_input=1 << 22)
+"""Bounds for callers that trust their input and want the ceiling out of the way.
+
+Still finite: "trusted" is a statement about intent, not about correctness.
+
+`max_depth` here is not reachable at the interpreter's default recursion limit -- see
+the note on `Limits.max_depth`. It is left high on purpose: it says what this package
+will allow, and a caller who raises `sys.setrecursionlimit()` gets it.
+"""

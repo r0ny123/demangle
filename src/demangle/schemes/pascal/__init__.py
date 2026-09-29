@@ -79,6 +79,7 @@ PLUGIN = LanguagePlugin(
     # shape is distinctive, but it is still a shape rather than a marker.
     priority=20,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

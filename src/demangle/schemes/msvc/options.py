@@ -138,3 +138,4 @@ class MsvcOptions:
 
 
 DEFAULT_OPTIONS = MsvcOptions()
+"""What both shipped styles use: every piece kept, as both references print by default."""

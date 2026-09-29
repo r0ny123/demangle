@@ -12,8 +12,12 @@ one of them is stable ground that later versions can build on without breaking:
     demangle_type(enc, language=...)  a bare type encoding, spelled       -- raises
     parse_type(enc, language=...)     a bare type encoding, as a tree     -- raises
 
-Each of those has a `...b` form taking and returning bytes, because a symbol table holds
-bytes rather than text.
+"Raises" means over an unreadable name. Apart from `detect`, which answers None to
+anything, each also raises `TypeError` or `ValueError` for an argument that is wrong
+rather than unreadable -- an unknown `language`, say.
+
+Each single-name entry point has a `...b` form taking and returning bytes, because a
+symbol table holds bytes rather than text.
 
 The split between `demangle` and `demangle_strict` is the important one. A tool
 labelling every symbol in a binary meets far more non-mangled names than mangled ones,
@@ -159,17 +163,20 @@ def demangle(
 ) -> str:
     """Return the readable spelling of `mangled`, or `mangled` unchanged.
 
-    Never raises for any *string*: a name this library cannot read comes back exactly as
-    it went in, because a wrong expansion is worse than a mangled name -- it matches
-    neither the original symbol nor the real declaration, so it corrupts every
-    downstream lookup that trusted it. That promise is about the name, not about the
-    argument's type: passing something that is not a `str` is a mistake in the calling
-    code and is reported as one.
+    Never raises over the *name*: whatever string it is given, a name this library
+    cannot read comes back exactly as it went in, because a wrong expansion is worse
+    than a mangled name -- it matches neither the original symbol nor the real
+    declaration, so it corrupts every downstream lookup that trusted it. That promise is
+    about the name, not about the other arguments: a `mangled` that is not a `str`, or a
+    `language`, `style` or `limits` that names nothing, is a mistake in the calling code
+    and is reported as one.
 
     Args:
         mangled: the symbol name. Any string; need not be mangled.
         language: force a scheme by name, or None to detect.
-        style: output spelling policy -- `"llvm"` (default) or `"gnu"`.
+        style: output spelling policy -- a style name (`"llvm"`, the default, or
+            `"gnu"`), a `Style` object such as `style()` returns, or None for the
+            default.
         limits: resource bounds for the parse.
 
     Returns:
@@ -177,6 +184,8 @@ def demangle(
 
     Raises:
         TypeError: `mangled` is not a `str`. Use `demangleb()` for bytes.
+        ValueError: `language` or `style` is not a registered name, or `limits` is not
+            a `Limits`.
     """
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
@@ -278,10 +287,16 @@ def demangle_strict(
 ) -> str:
     """Return the readable spelling of `mangled`, raising when it cannot be read.
 
+    Takes the same arguments as `demangle()`. Every failure to read the name is a
+    `DemanglingError`; a plugin that fails some other way is wrapped in a `ParseError`,
+    with the original chained.
+
     Raises:
         NotMangledError: the name matches no known scheme.
         ParseError: the name has a known prefix but does not follow the grammar.
         LimitExceeded: a resource bound was hit.
+        TypeError: `mangled` is not a `str`. Use `demangleb_strict()` for bytes.
+        ValueError: `language` or `style` is not a registered name.
     """
     resolved_style = get_style(style)
     builder = resolved_style.spelling_builder
@@ -301,14 +316,8 @@ def parse(
     parameter types -- rather than the spelling. The result is a `core.ast.Node`
     supporting `.walk()`, `.find(kind)` and `.spell()`.
 
-    Raises the same errors as `demangle_strict`.
-
-    Note:
-        Every scheme returns a tree, but the kinds differ with what each language has to
-        say. C++ trees carry declarator shape -- pointers, references, parameter lists --
-        because C++ types wrap the name they declare. Rust has no declarator syntax, so
-        its trees carry path structure instead: `symbol`, `path`, `impl`, `namespace`.
-        `name`, `template` and `literal` mean the same thing in all three.
+    Raises the same errors as `demangle_strict`. Which kinds of node a tree can hold
+    differs from scheme to scheme; see `node_kinds()`.
     """
     resolved = get_style(style)
     return _parse_handle(mangled, builder_for(resolved), language, resolved, limits)
@@ -341,11 +350,15 @@ def demangle_type(
     Args:
         mangled: the type encoding.
         language: which scheme to read it as -- required. See `languages()`.
-        style: output spelling policy -- `"llvm"` (default) or `"gnu"`.
+        style: output spelling policy -- a style name (`"llvm"`, the default, or
+            `"gnu"`), a `Style` object such as `style()` returns, or None for the
+            default.
         limits: resource bounds for the parse.
 
     Raises:
-        ValueError: `language` is unknown, or names a scheme with no type grammar.
+        ValueError: `language` is unknown, or names a scheme with no type grammar, or
+            `style` is not a registered name.
+        TypeError: `mangled` is not a `str`. Use `demangleb_type()` for bytes.
         NotMangledError: the encoding is empty.
         ParseError: the encoding does not follow the scheme's type grammar.
         LimitExceeded: a resource bound was hit.
@@ -630,8 +643,9 @@ def demangleb(
 
     Like `demangle()`, never raises for a name it cannot read -- it hands the bytes back
     exactly as they arrived, including any that are not valid UTF-8. Raises `TypeError`
-    if given something that is not bytes-like, which is a mistake in the calling code
-    rather than a property of the symbol.
+    if given something that is not bytes-like, and `ValueError` for the arguments
+    `demangle()` refuses, which are mistakes in the calling code rather than properties
+    of the symbol.
 
         >>> import demangle
         >>> demangle.demangleb(b"_ZN3foo3barEv")

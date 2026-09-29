@@ -235,9 +235,11 @@ def main(argv=None):
     if arguments.list_languages:
         from .core.registry import available
 
-        for plugin in available():
+        plugins = available()
+        width = max((len(plugin.name) for plugin in plugins), default=0)
+        for plugin in plugins:
             aliases = f" (aliases: {', '.join(plugin.aliases)})" if plugin.aliases else ""
-            print(f"{plugin.name:10} {plugin.description}{aliases}")
+            print(f"{plugin.name:{width}} {plugin.description}{aliases}")
         return 0
 
     if arguments.list_styles:

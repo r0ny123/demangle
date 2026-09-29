@@ -47,10 +47,12 @@ __all__ = [
     "demangle_gnuv2",
 ]
 
-#: The demangling styles this shares its code with, spelled as `c++filt --format=` does.
-#: `auto` is the reference's `auto_demangling`, which is GNU's reading plus EDG's
-#: parameterised-type prefixes; it is not a search over the other four.
 STYLES = ("auto", "gnu", "lucid", "arm", "hp", "edg")
+"""The demangling styles this shares its code with, spelled as `c++filt --format=` does.
+
+`auto` is the reference's `auto_demangling`, which is GNU's reading plus EDG's
+parameterised-type prefixes; it is not a search over the other four.
+"""
 
 #: The character g++ wrote between a class and a static member, and around the `_$_` of
 #: a destructor. `$` on assemblers that took it, `.` on those that did not; the reference
@@ -2462,7 +2464,11 @@ def _demangle_nested(work, name):
 
 
 def demangle_gnuv2(mangled, style="gnu", params=True, ansi=True):
-    """Read one pre-Itanium C++ name. Raises `DemangleFailure` where it is not one."""
+    """Read one pre-Itanium C++ name. Raises `DemangleFailure` where it is not one.
+
+    An unknown `style` is the caller's mistake rather than the name's, and raises
+    `ValueError`.
+    """
     if style not in STYLES:
         raise ValueError(f"unknown style {style!r}; expected one of {', '.join(STYLES)}")
     work = _Work(style, params=params, ansi=ansi)

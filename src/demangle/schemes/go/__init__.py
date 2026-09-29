@@ -112,6 +112,7 @@ PLUGIN = LanguagePlugin(
     # and mean it, while the number said first.
     priority=10,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

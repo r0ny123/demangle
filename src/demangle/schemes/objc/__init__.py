@@ -104,6 +104,7 @@ PLUGIN = LanguagePlugin(
     # block. Checked against every corpus by `tests/test_core.py`.
     first_characters="-+_.lL",
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

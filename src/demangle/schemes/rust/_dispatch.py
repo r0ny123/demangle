@@ -5,6 +5,8 @@ from ._v0 import V0Demangler
 
 
 class ManglingType(Enum):
+    """Which of Rust's two manglings a name uses: legacy (`_ZN...E`) or v0 (`_R...`)."""
+
     LEGACY = 0
     V0 = 1
 
@@ -35,12 +37,12 @@ class RustDemangler:
     """
 
     def demangle(self, inpstr: str, limit: int, keep_hash: bool = False) -> str:
-        """Demangle the given string
+        """Spell `inpstr`, in whichever of the two manglings it uses.
 
         Args:
-            inpstr (str): String to be demangled
-            limit (int): most characters the printer may write
-            keep_hash (bool): spell the disambiguating hash rather than dropping it
+            inpstr: the mangled name.
+            limit: the most characters the printer may write.
+            keep_hash: spell the disambiguating hash rather than dropping it.
         """
         return self._for(inpstr, keep_hash).demangle(inpstr, limit)
 
@@ -59,16 +61,16 @@ class RustDemangler:
         return V0Demangler(keep_hash)
 
     def determine_type(self, inpstr: str) -> ManglingType:
-        """Determine the type of the given string
+        """Say which of the two manglings `inpstr` uses, by its prefix alone.
 
         Args:
-            inpstr (str): Input String
-
-        Raises:
-            TypeNotFoundError: If the string can't be determined
+            inpstr: the mangled name.
 
         Returns:
-            ManglingType: type of the string
+            `ManglingType.LEGACY` or `ManglingType.V0`.
+
+        Raises:
+            TypeNotFoundError: `inpstr` starts the way neither mangling does.
 
         Note:
             A bare `R` is accepted here, like the bare `ZN` below it: some symbol tables

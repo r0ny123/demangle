@@ -285,6 +285,7 @@ PLUGIN = LanguagePlugin(
     first_characters="?.",
     priority=100,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

@@ -6,9 +6,9 @@ over a *file* is not "demangle this name" but "substitute every symbol-shaped wo
 copy everything else through" -- which is what `c++filt`, `demumble` and `rustfilt` all
 do, and what the `demangle` command does with no arguments.
 
-It lived inside the command until now, so a Python caller who wanted it had to shell out
-to our own CLI or re-implement the tokenizer. rustc-demangle ships `demangle_stream` as a
-crate function rather than only inside `rustfilt`, and this is the same thing:
+rustc-demangle ships `demangle_stream` as a crate function rather than only inside
+`rustfilt`, and this is the same thing, so a Python caller need neither shell out to the
+command nor re-implement its tokeniser:
 
     >>> import demangle
     >>> demangle.demangle_text("0000000000001139 T _ZN3foo3barEv\\n")
@@ -173,8 +173,9 @@ def demangle_text(
 ) -> str:
     """Substitute every symbol in `text`, copying everything else through unchanged.
 
-    Never raises for any string, for the reason `demangle()` does not: this is run over
-    whole files, and one unreadable word must not end the run.
+    Never raises over the text, for the reason `demangle()` does not: this is run over
+    whole files, and one unreadable word must not end the run. Like `demangle()`, it
+    raises `ValueError` when `language` or `style` is not a registered name.
     """
     _resolve_language(language)
     get_style(style)

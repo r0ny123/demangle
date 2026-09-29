@@ -32,6 +32,8 @@ class Style:
     """A named set of output policy choices."""
 
     name: str
+    """What the style is registered and looked up under -- `"llvm"`, `"gnu"`."""
+
     spelling_builder: Any
     """The builder used when a caller asks for text. Must be a `Builder`."""
 
@@ -48,7 +50,13 @@ class Style:
         Each keyword is a language name and each value is either that language's whole
         options object or a mapping of the fields to change in the one already in force:
 
-            demangle(name, style=styles.get("llvm").with_options(msvc={"calling_convention": False}))
+            >>> import demangle
+            >>> from demangle.core.style import get_style
+            >>> narrow = get_style("llvm").with_options(msvc={"calling_convention": False})
+            >>> demangle.demangle("?f@@YAXH@Z", style=narrow)
+            'void f(int)'
+
+        `demangle.style()` is the same thing spelled from the package.
 
         The result is a `Style` object rather than a registered name, which is what keeps
         it a *per-call* policy: `demangle()` does not cache a call that passes one, so one
@@ -157,7 +165,11 @@ def _table():
 
 
 def get_style(name):
-    """Look up a style by name. `None` gives the default."""
+    """Look up a style by name. `None` gives the default, and a `Style` is returned as is.
+
+    Raises:
+        ValueError: `name` is not a registered style.
+    """
     # `_table()`'s own fast path, written out: every call into this package resolves a
     # style first, so reaching an already-built table through a second interpreter frame
     # is a frame per name demangled. The build, and the lock around it, stay there.
@@ -185,6 +197,7 @@ def register_style(style):
 
 
 def available_styles():
+    """The registered style names, sorted. `demangle.styles()` is this."""
     return sorted(_table())
 
 

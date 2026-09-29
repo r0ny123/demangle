@@ -171,5 +171,6 @@ PLUGIN = LanguagePlugin(
     # is still weaker than a prefix. tests/test_ada.py pins the order.
     priority=280,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)

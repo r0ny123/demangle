@@ -473,6 +473,8 @@ class _Unary(Node):
 
 
 class Pointer(_Unary):
+    """A pointer to `inner`: `int*`."""
+
     __slots__ = ()
     kind = "pointer"
     __match_args__ = ("inner",)
@@ -482,6 +484,8 @@ class Pointer(_Unary):
 
 
 class Reference(_Unary):
+    """An lvalue reference to `inner`: `int&`."""
+
     __slots__ = ()
     kind = "reference"
     __match_args__ = ("inner",)
@@ -491,6 +495,8 @@ class Reference(_Unary):
 
 
 class RValueReference(_Unary):
+    """An rvalue reference to `inner`: `int&&`."""
+
     __slots__ = ()
     kind = "rvalue_reference"
     __match_args__ = ("inner",)
@@ -701,8 +707,11 @@ class AstBuilder(Builder):
     One instance serves every call. The only state is the leaf table below, which is a
     cache and does not make an answer depend on what was parsed before it.
 
-    Each method records the rendered size of what it built, which is what makes `size()`
-    constant time -- see the note on `Node.size`.
+    Each method records on the node it builds an upper bound on that subtree's rendered
+    length, which is what makes `size()` constant time. Over-estimating is deliberate --
+    the number enforces `max_output`, where erring high is the safe direction -- and it
+    is carried rather than measured because the tree is a graph with shared subtrees, and
+    walking it would be exponential in exactly the cases the bound exists to stop.
 
     Leaves are interned; nothing else is. Measured over the 5,913 trees of the shipped
     libstdc++: leaves are 55% of all nodes and repeat 49 times over on average -- 15,654

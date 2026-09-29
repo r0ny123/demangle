@@ -50,5 +50,5 @@ class GnuV2Options:
             raise ValueError(f"unknown style {self.style!r}; expected one of {', '.join(STYLES)}")
 
 
-#: What `demangle()` uses when a caller names no options: GNU's reading, spelled in full.
 DEFAULT_OPTIONS = GnuV2Options()
+"""What `demangle()` uses when a caller names no options: GNU's reading, spelled in full."""

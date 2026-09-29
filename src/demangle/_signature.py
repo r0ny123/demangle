@@ -10,13 +10,16 @@ arguments and inside function types as well as between the parts a caller means.
 So the split is done on the tree the parser already built. Two shapes of tree, because
 the schemes come in two kinds:
 
-* C++, both manglings, build a declaration -- a function node with its name inside its
-  own type, or a declarator standing beside one. The fields are read off it directly.
-* Swift, D, Go, Nim, Free Pascal and Delphi build a node that *is* its own fragments, in
-  output order: `parts` interleaves the literal text the printer wrote with the subtrees
-  it wrote between them. That interleaving is the structure -- a `.` in `parts`
-  separates two components and a `.` inside a name does not -- so reading it gives the
-  same answer the printer gave, which splitting the printer's output could not.
+* Itanium and MSVC build a declaration -- a function node with its name inside its own
+  type, or a declarator standing beside one. The fields are read off it directly.
+* Swift, D, Go, Nim, Free Pascal, Delphi, Ada, JNI and the pre-Itanium C++ schemes
+  (`gnuv2`, `codewarrior`) build a node that *is* its own fragments, in output order:
+  `parts` interleaves the literal text the printer wrote with the subtrees it wrote
+  between them. That interleaving is the structure -- a `.` in `parts` separates two
+  components and a `.` inside a name does not -- so reading it gives the same answer
+  the printer gave, which splitting the printer's output could not.
+
+Rust's path and Objective-C's class and selector are read off their nodes as they stand.
 
 Text is the last resort, for the places where a tree has already flattened the answer,
 and even there with a reader that counts brackets and that declines a spelling which is
@@ -25,12 +28,15 @@ a phrase rather than a name.
 What each scheme can say still differs, and the difference is real rather than a gap to
 be filled in later:
 
-* C++ encodes parameter types, the return type where the ABI writes one, cv- and
-  ref-qualifiers, and for MSVC the calling convention and the declared access.
+* C++, in all four of its manglings here -- Itanium, MSVC, pre-Itanium g++ and its
+  relatives, CodeWarrior -- encodes parameter types, the return type where the mangling
+  writes one, cv- and ref-qualifiers, and for MSVC the calling convention and the
+  declared access.
 * Swift encodes the whole function type, so parameters, result and `throws` all come
   back. D, Free Pascal and Delphi encode their parameter types, and Free Pascal a
-  function's result.
-* Rust, Go, Nim and Objective-C encode a path, or a class and a selector, and no
+  function's result; JNI encodes them for an overloaded method, the one form that needs
+  them.
+* Rust, Go, Nim, Ada and Objective-C encode a path, or a class and a selector, and no
   signature at all. `parameters` is `None` for them, which is not the same as `()`: one
   says "the name does not carry this", the other says "it carries an empty list".
 
@@ -109,8 +115,10 @@ class Signature:
     parameters: tuple[str, ...] | None
     """The parameter types, spelled, or `None` where the name encodes no parameter list.
 
-    `()` and `None` mean different things: a C++ function taking no arguments has `()`,
-    and a Rust path has `None` because Rust does not put the signature in the symbol.
+    `()` and `None` mean different things: an Itanium function taking no arguments has
+    `()`, and a Rust path has `None` because Rust does not put the signature in the
+    symbol. MSVC and pre-Itanium g++ spell an empty list `(void)`, and it comes back as
+    they spell it: `('void',)`.
     """
 
     return_type: str | None
@@ -399,7 +407,8 @@ _ELIDED = "<parameters elided by the compiler>"
 def _from_parts(reading, found, node):
     """Read a node that is its own fragments, in output order.
 
-    Swift, D, Go, Nim, Free Pascal and Delphi all build their trees this way: `parts`
+    Most schemes build their trees this way -- every one but Itanium, MSVC, Rust and
+    Objective-C, whose shapes are read above: `parts`
     interleaves the literal text a printer emitted with the subtrees it emitted between
     them. That interleaving is the structure -- a `.` in `parts` separates two
     components and a `.` inside a name does not -- so reading it gives the same answer

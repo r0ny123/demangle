@@ -94,7 +94,7 @@ class ItaniumOptions:
 
     closure_prefix_substitution: bool | None = None
     """Count a closure prefix -- the `ns::g1` of `ns::g1::'lambda'(...)`, a lambda in a
-    variable's or a member's initializer, written `2ns2g1M...` -- as a substitution
+    variable's or a member's initialiser, written `2ns2g1M...` -- as a substitution
     candidate, the way the ABI says and upstream clang and GCC 13 do.
 
     The other numbering, and the other place two compilers number the same name
@@ -311,6 +311,7 @@ class ItaniumOptions:
 
 
 DEFAULT_OPTIONS = ItaniumOptions()
+"""The `llvm` style's options: every field at its default."""
 GNU_OPTIONS = ItaniumOptions(
     expand_std_abbreviations=True,
     gnu_nullptr_spelling=True,
@@ -330,3 +331,4 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_objc_protocol_spelling=True,
     gnu_exception_spec_first=True,
 )
+"""The `gnu` style's options: every field on which GNU c++filt differs, set its way."""
