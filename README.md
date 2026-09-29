@@ -43,7 +43,7 @@ native code, no compiler required.
   way.
 - **Measured, not asserted.** Every scheme is scored against the reference demangler for
   its mangling, over about 2,400,000 symbols out of shipped libraries, and every name
-  that differs is accounted for by name. [CONFORMANCE.md](CONFORMANCE.md) has the
+  that differs is accounted for by name. [CONFORMANCE.md](https://github.com/r0ny123/demangle/blob/main/CONFORMANCE.md) has the
   numbers and what each is measured against.
 - **Safe on untrusted input.** `demangle()` never raises, for any input; recursion depth,
   output size, substitution count and input length are all bounded, and every bound is
@@ -52,8 +52,7 @@ native code, no compiler required.
 ## Install
 
 ```console
-pip install demangle          # once released to PyPI
-pip install git+https://github.com/r0ny123/demangle    # until then
+pip install demangle
 ```
 
 Python 3.13 or newer. That is the whole dependency list.
@@ -242,7 +241,7 @@ The MSVC scheme has nine such options: the five flags `llvm-undname` has —
 is the references' doing rather than a convenience:
 [`MsvcOptions`](https://github.com/r0ny123/demangle/blob/main/src/demangle/schemes/msvc/options.py) says which is which, field by
 field, and each kind is scored against its own reference in
-[CONFORMANCE.md](CONFORMANCE.md). Every one of them has a command-line flag.
+[CONFORMANCE.md](https://github.com/r0ny123/demangle/blob/main/CONFORMANCE.md). Every one of them has a command-line flag.
 
 Swift has the bundle Xcode and LLDB show instead of the full spelling — `Either` for
 `Monads.Either`, `(_:)` for `(Swift.Int) -> Swift.UInt`, `specialized f()` for a page of
@@ -288,7 +287,7 @@ demangler present. Beyond them, whole symbol tables are run live against the ref
 about 2,400,000 real symbols from shipped libraries, and every name that differs is
 accounted for one by one.
 
-**[CONFORMANCE.md](CONFORMANCE.md) is the whole picture** — what each corpus is measured
+**[CONFORMANCE.md](https://github.com/r0ny123/demangle/blob/main/CONFORMANCE.md) is the whole picture** — what each corpus is measured
 against, the notes behind every number, the live runs, and the places where following a
 reference would itself be the defect.
 
@@ -299,7 +298,7 @@ the bounds on depth, output size, substitution count and input length are the de
 rather than a hardening pass. Results are deterministic, and the property-based suite
 runs every parser against arbitrary text, mangling-alphabet text, arbitrary bytes, every
 truncation of a known-good name, and inputs built to blow up a naive parser.
-[SECURITY.md](SECURITY.md) has the threat model, what is in scope, and how to report
+[SECURITY.md](https://github.com/r0ny123/demangle/blob/main/SECURITY.md) has the threat model, what is in scope, and how to report
 privately.
 
 ## Performance
@@ -336,14 +335,14 @@ one real task through `parse()` end to end — finding every function in libstdc
 takes a string by const reference, and measuring what the regular-expression version of
 the same question gets wrong.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture and
+See [ARCHITECTURE.md](https://github.com/r0ny123/demangle/blob/main/ARCHITECTURE.md) for the full picture and
 [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md) to add a language
 of your own. The API reference is published at <https://r0ny123.github.io/demangle/>.
 
 ## Contributing
 
 New schemes, corpus contributions, and conformance bug reports are all welcome — see
-[CONTRIBUTING.md](CONTRIBUTING.md). A good bug report is a mangled name, what the
+[CONTRIBUTING.md](https://github.com/r0ny123/demangle/blob/main/CONTRIBUTING.md). A good bug report is a mangled name, what the
 reference prints, and what this library prints.
 
 Fixing a spelling or adding a language should not require understanding the whole

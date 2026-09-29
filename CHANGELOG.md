@@ -6,8 +6,26 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-29
+
+### Added
+
+- **Ada: real-world corpus and generator from the GNAT runtime.**
+  `tools/generate_ada_corpus.py` extracts Ada mangled symbols from `libgnat`
+  and `libgnarl`, verifies them against GNU binutils' `c++filt --format=gnat`,
+  and samples `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact
+  match under auto-detection).
+- **Broader conformance and documentation checks.** The MSVC type grammar has a
+  dedicated enumeration sweep, documentation examples are checked, and the API
+  reference now covers the parse-tree node classes.
+
 ### Changed
 
+- **Faster symbol reading.** Detection uses fewer interpreter frames, Rust v0
+  back references are spelled once per symbol, and D back references avoid a
+  repeated scan of identifier spans. The benchmark baseline was updated.
+- **Development tools.** Ruff and ty were updated after local lint and type
+  checks; tests no longer depend on pytest's internal `pytestmark` layout.
 - **The README is a front page again, and the conformance evidence has a page of
   its own.** It had grown to 876 lines, 55% of them the two corpus tables and the
   twenty notes behind them. Those move to `CONFORMANCE.md`, which the site and the
@@ -26,6 +44,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- **More precise parsing across Itanium, MSVC, D, Rust, Delphi, and pre-Itanium
+  C++.** This includes template substitutions and inheritance in Itanium, MSVC
+  pointer qualifiers and base-class descriptors, D back-reference bounds,
+  Rust v0 integer decoding, and Delphi detection of ordinary `@` text.
+- **Release checks.** A published release must use a tag matching the package
+  version, and the test suite passes type checking with the pinned toolchain.
 - **The published documentation site's links to two of its own pages.** The home
   page is a snippet include of the README, so a link written `docs/adding-a-scheme.md`
   resolved from `docs/` and looked for `docs/docs/adding-a-scheme.md`; the worked
@@ -49,11 +73,6 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
-- **Ada: real-world corpus and generator from the GNAT runtime.**
-  `tools/generate_ada_corpus.py` extracts Ada mangled symbols from `libgnat`
-  and `libgnarl`, verifies them against GNU binutils' `c++filt --format=gnat`,
-  and samples `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact
-  match under auto-detection).
 - **`tools/sweep_rust_chars.py`: every Unicode scalar value as a Rust `char`
   const.** `escape_debug` follows CPython's `unicodedata` tables, rustc-demangle
   its own; the gap moves as either side updates. The tool builds the 1,112,064
@@ -3666,6 +3685,7 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/r0ny123/demangle/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/r0ny123/demangle/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/r0ny123/demangle/releases/tag/v0.1.0

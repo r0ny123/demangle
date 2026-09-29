@@ -56,7 +56,7 @@ from .core.registry import register as register_language
 from .core.style import Style, register_style
 from .filter import Found, demangle_stream, demangle_text, find_symbols
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "DEFAULT_LIMITS",
