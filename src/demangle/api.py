@@ -530,16 +530,11 @@ def _depth_exceeded(mangled, limits):
     """A `RecursionError` from a parser, reported as the bound it is.
 
     Two bounds govern how deep a name may nest, and `max_depth` is only one of them. At
-    the defaults it is the one that binds, first for every shape measured: pointer
-    nesting stops at 255 levels, template and function-pointer nesting at 127. The other
-    is the interpreter's own stack. A production costs several Python frames, so at the
-    default recursion limit of 1000 the stack binds first only when `max_depth` has been
-    raised (`Limits.max_depth` gives the depths) or when the caller's own stack is
-    already deep. Under `RELAXED_LIMITS`,
-    whose `max_depth` is 2048, the stack binds first.
-
-    Which of the two binds first depends on `max_depth`, the shape of the name and how
-    deep the caller's own stack already is. Both are the same fact -- this name nests
+    the defaults it is the one that binds, first for every shape measured; see
+    `Limits.max_depth` for the depths. The other is the interpreter's own stack. A
+    production costs several Python frames, so at the default recursion limit of 1000
+    the stack binds first only when `max_depth` has been raised or when the caller's own
+    stack is already deep. Both are the same fact -- this name nests
     further than this process will follow -- so both are reported the same way. Wrapped
     as `ParseError: itanium parser failed: RecursionError(...)`, it would read as a
     defect in the parser rather than a bound doing its job, and leak an implementation
@@ -597,7 +592,9 @@ def detect(mangled: str) -> str | None:
 
     Most schemes are recognised by a prefix, so this reports what the name looks like,
     not that it will parse. The schemes whose names carry no marker -- `gnuv2`,
-    `codewarrior` and `ada` -- parse the whole name to claim it.
+    `codewarrior` and `ada` -- parse the whole name to claim it, and so does a legacy
+    Rust name written without its underscore (a bare `ZN...`), which is read up to
+    `max_input` to decide.
     Never raises: like `demangle()`, it is called on every symbol in a table.
     """
     if not isinstance(mangled, str):

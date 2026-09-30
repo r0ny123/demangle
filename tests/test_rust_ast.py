@@ -19,6 +19,8 @@ import demangle
 from demangle.core.errors import DemanglingError
 from demangle.schemes.rust.nodes import Symbol
 
+from .test_parity import STYLE_SAMPLES
+
 CONFORMANCE = pathlib.Path(__file__).parent / "conformance"
 
 
@@ -119,16 +121,11 @@ class TestSharedKinds:
     produced one to ask for its identifiers.
     """
 
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "_ZNSt6vectorIiSaIiEE9push_backERKi",
-            "?f@@YAXH@Z",
-            "_RNvCsdEttCVZFADF_8features10btree_work",
-        ],
-    )
-    def test_every_scheme_yields_named_components(self, name):
-        assert [node.text for node in demangle.parse(name).find("name")]
+    @pytest.mark.parametrize("language", sorted(STYLE_SAMPLES))
+    def test_every_scheme_yields_named_components(self, language):
+        """Ada spells its components `component`; every other scheme says `name`."""
+        tree = demangle.parse(STYLE_SAMPLES[language], language=language)
+        assert [node.text for node in tree.find("component" if language == "ada" else "name")]
 
 
 class TestUnchangedGuarantees:

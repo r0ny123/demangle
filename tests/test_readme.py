@@ -16,6 +16,7 @@ import pytest
 import demangle
 
 from . import test_conformance as pins
+from .test_parity import STYLE_SAMPLES
 
 README = Path(__file__).parent.parent / "README.md"
 CONFORMANCE = Path(__file__).parent.parent / "CONFORMANCE.md"
@@ -170,10 +171,11 @@ class TestExamples:
         function = next(tree.find("function"))
         assert len(function.parameters) == 1
 
-    def test_every_scheme_returns_a_tree_as_the_readme_says(self, readme):
+    @pytest.mark.parametrize("language", sorted(STYLE_SAMPLES))
+    def test_every_scheme_returns_a_tree_as_the_readme_says(self, readme, language):
         assert "All schemes return full trees" in readme
-        for name in ("_ZNSt6vectorIiSaIiEE9push_backERKi", "?f@@YAXH@Z", "_RNvCsdEttCVZFADF_8features10btree_work"):
-            assert len(list(demangle.parse(name).walk())) > 1, name
+        tree = demangle.parse(STYLE_SAMPLES[language], language=language)
+        assert len(list(tree.walk())) > 1
 
 
 class TestWorkedExample:

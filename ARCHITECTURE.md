@@ -166,9 +166,9 @@ scheme with a fixed first character declares it (`first_characters`), and a name
 starting with anything else never reaches it. A scheme whose names are ordinary C
 identifiers has none, so it declares a `DETECT_SCREEN`: the markers and openings that a
 name must hold for its `detect` to say yes, and a name with none of them is not offered
-to it. The schemes whose names carry no marker at all -- the pre-Itanium C++
-manglings, whose `detect` has to parse -- are offered last, behind everything a prefix
-settles.
+to it. The schemes whose names carry no marker at all -- Ada and the two pre-Itanium
+C++ manglings, whose `detect` has to parse -- are offered last, behind everything a
+prefix settles.
 
 [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md)
 is the walk-through.
@@ -187,7 +187,7 @@ Design rules, in the order they matter:
 5. **No regular expressions in the hot parse loops.** The Itanium, MSVC, Rust and Swift
    parsers advance by character dispatch; a regular expression appears there only to
    test a whole token or a suffix. The smaller schemes (JNI, Objective-C, Pascal,
-   Delphi, CodeWarrior, Ada) use them over short names.
+   Delphi, CodeWarrior, Ada, Nim) use them over short names.
 
 `benchmarks/` measures all of this against real symbol corpora, and
 `benchmarks/bench.py --check` runs in CI on every pull request, so a regression fails

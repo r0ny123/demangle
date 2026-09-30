@@ -32,8 +32,8 @@ class LanguagePlugin:
     The exception is a scheme whose names carry no marker, `gnuv2`, `codewarrior` and
     `ada` among them. Its `detect` screens with a substring test and then parses the
     whole name, and it must not err towards accepting: it is ordered after the
-    marked schemes, and what justifies it is a measured false-positive count of zero over the other
-    schemes' corpora and over real symbol tables.
+    marked schemes, and what justifies it is a measured false-positive count of zero over
+    the other schemes' corpora and over real symbol tables.
     """
 
     parse: Callable[..., Any]
@@ -62,7 +62,8 @@ class LanguagePlugin:
     caller building on it has to read the source to learn what to switch on -- which is
     what `swift-demangle`'s `kind=` dumps and libiberty's hundred `DEMANGLE_COMPONENT_*`
     enumerators exist to avoid. `demangle.node_kinds()` is the whole of it, and
-    `tests/test_api_surface.py::TestThePublishedVocabulary` checks it against every corpus so it cannot drift.
+    `tests/test_api_surface.py::TestThePublishedVocabulary`
+    checks it against every corpus so it cannot drift.
     """
 
     description: str = ""

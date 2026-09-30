@@ -250,7 +250,8 @@ claims over the other schemes' corpora and **0** over 339,117 real symbols.
 
 Where the two pre-Itanium schemes overlap — and they do, the encodings being that close —
 GNU v2 is offered first (priority 290 to CodeWarrior's 300), because a name valid under
-both should go to the commoner mangling. `AtEnd__13ivRubberGroup` parses either way and they differ only in spelling.
+both should go to the commoner mangling. `AtEnd__13ivRubberGroup` parses either way and
+they differ only in spelling.
 What is unambiguously CodeWarrior — a template argument list written literally into the
 symbol, `@LOCAL@`, `$localstatic`, a `__dt` the `gnu` style does not know — GNU v2 refuses
 and it falls through. `language="codewarrior"` gets the whole scheme regardless.

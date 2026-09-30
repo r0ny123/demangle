@@ -4,14 +4,14 @@ Five manglings, one demangler, because that is how libiberty implements them: on
 `cplus-dem.c` under five style flags. See `_parser.py` for the port and for what is
 measured against the reference's own vectors.
 
-Detection is the hard part, and the reason this scheme is offered last. A GNU v2 symbol
-is an ordinary C identifier with a `__` somewhere in it -- `AtEnd__13ivRubberGroup` is a
-name a C compiler would have accepted -- so there is no prefix to key on, and a scheme
-that guessed would rewrite other people's symbols into plausible lies. Three things keep
+Detection is the hard part, and the reason this scheme is offered almost last. A GNU
+v2 symbol is an ordinary C identifier with a `__` somewhere in it --
+`AtEnd__13ivRubberGroup` is a name a C compiler would have accepted -- so there is no
+prefix to key on, and a scheme that guessed would rewrite other people's symbols into plausible lies. Three things keep
 it honest:
 
-* it is offered *after* every other scheme, Itanium included, so it only ever sees names
-  nothing else claimed;
+* it is offered *after* every other scheme except CodeWarrior, Itanium included, so it
+  only ever sees names nothing else claimed;
 * `detect` runs the whole parse rather than a shape test, and a name that does not parse
   end to end is not claimed;
 * a reading that decodes nothing -- one where the demangler consumed the name and gave

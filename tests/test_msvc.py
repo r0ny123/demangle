@@ -106,7 +106,8 @@ DECLINED = [
     # a special name takes a signature or a storage class by which code it is, never both
     "??_7A@B@ad@@YAXPEBQEAD@Z",  # vftable given a function signature
     "??7Base@@6B@",  # operator! given the vftable storage class
-    "?foo_pbqbd@@YAXPEBBBD@Z",  # reference under an enclosing qualifier, which C++ has no form for
+    # reference under an enclosing qualifier, which C++ has no form for
+    "?foo_pbqbd@@YAXPEBBBD@Z",
     "??_?@@YAXXZ",  # unknown extended operator
     # the declarator placeholder is a NUL; an identifier carrying one would otherwise be
     # mistaken for the slot a pointer writes itself into, yielding "class a(*)b"
@@ -567,7 +568,8 @@ COMPLETING_DECLINED = [
     "??_Bx@@5?9",
     "??__Jx@@5?0",
     "??__EFoo@@3HA",  # what runs code takes a signature, never a storage class
-    "??_C@_12ABCDEFGH@hi?$AA@",  # a wide literal is two bytes to the character, so never an odd count
+    # a wide literal is two bytes to the character, so never an odd count
+    "??_C@_12ABCDEFGH@hi?$AA@",
     # more wide characters than the declared length has room for; LLVM's main branch
     # refuses these (18.1 counted past zero and printed strings no compiler wrote)
     "??_C@_1K@GINHBNC@?$AAh?$AAe?$AAl?$AAl?$AAo?$AA?$AA@",
@@ -664,7 +666,8 @@ class MsvcFinalFormsTestSuite(unittest.TestCase):
     def test_shapes_these_forms_do_not_allow_are_refused(self):
         for mangled in (
             "?overloaded_fn@@$$J00YAXXZ",  # the marker counts with one digit, not two
-            "??0?$Class@$$B$0?9@@QAE@XZ",  # "$$B" introduces a type, and an integer is not one
+            # "$$B" introduces a type, and an integer is not one
+            "??0?$Class@$$B$0?9@@QAE@XZ",
             "??BFoo@@QBE@XZ",  # a conversion operator's return names what it converts to
             # the reference takes any byte as a convention; this requires a letter, so a
             # name mangled with something else declines
@@ -692,10 +695,14 @@ class MsvcLaterFormsTestSuite(unittest.TestCase):
 
     def test_the_shapes_these_forms_do_not_allow_are_refused(self):
         for mangled in (
-            "??__E?i@C@0HA@@YAXXZ",  # what it runs for is named plainly, not by a special name
-            "??__EFooTypeWithQuals@@3U?$S@$$A8@@GBAHXZ@1@A",  # it runs code, so it takes a signature
-            "?overloaded_fn@@$$JYAXXZ",  # the marker counts characters, so a digit belongs here
-            "??__K_deg@@YAXU0@@Z",  # a literal operator's suffix is not recorded, so 0 names nothing
+            # what it runs for is named plainly, not by a special name
+            "??__E?i@C@0HA@@YAXXZ",
+            # it runs code, so it takes a signature
+            "??__EFooTypeWithQuals@@3U?$S@$$A8@@GBAHXZ@1@A",
+            # the marker counts characters, so a digit belongs here
+            "?overloaded_fn@@$$JYAXXZ",
+            # a literal operator's suffix is not recorded, so 0 names nothing
+            "??__K_deg@@YAXU0@@Z",
             "?i@@3PAY0?0HA",  # an array does not have a negative extent
             "??_7A@@6B?0@@",  # nor is a base named by anything but a name
         ):

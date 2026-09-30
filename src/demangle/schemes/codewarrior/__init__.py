@@ -15,11 +15,12 @@ type spelling is the reference's own -- `const char*`, not `char const *`.
 
 Detection has the same problem `gnuv2` has and answers it the same way: a CodeWarrior
 symbol is an ordinary C identifier with a `__` in it, so `detect` parses the whole name
-rather than testing a prefix, and this scheme is offered second-to-last -- after
-everything with a marker, and *before* `gnuv2`, which would otherwise read
-`__dt__6CActorFv` as a function called `__dt` and be wrong about it. Measured over every
-corpus in `tests/conformance/` and over the system's own C libraries: see
-`tests/test_codewarrior.py`, which pins the count both ways.
+rather than testing a prefix, and this scheme is offered last -- after everything with
+a marker and after `gnuv2`, which goes first because a name valid under both should go
+to the commoner mangling. A `__dt` that the gnu style does not know falls through to
+this scheme, so `__dt__6CActorFv` is read here rather than as a function called `__dt`.
+Measured over every corpus in `tests/conformance/` and over the system's own C
+libraries: see `tests/test_codewarrior.py`, which pins the count both ways.
 """
 
 import re
