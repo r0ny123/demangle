@@ -310,6 +310,29 @@ class TestParseOptions:
         assert [node.text for node in tree.find("name")] == ["core", "fmt", "Formatter", "pad"]
 
 
+#: Every entry point that takes `limits`, as a call of one argument.
+_LIMITS_ENTRY_POINTS = [
+    lambda limits: demangle.demangle("_Z1gv", limits=limits),
+    lambda limits: demangle.demangle("_Z1gv", style=demangle.style(), limits=limits),
+    lambda limits: demangle.demangle("not mangled", limits=limits),
+    lambda limits: demangle.demangle_strict("_Z1gv", limits=limits),
+    lambda limits: demangle.parse("_Z1gv", limits=limits),
+    lambda limits: demangle.demangle_type("i", language="itanium", limits=limits),
+    lambda limits: demangle.parse_type("i", language="itanium", limits=limits),
+    lambda limits: demangle.demangleb(b"_Z1gv", limits=limits),
+    lambda limits: demangle.demangleb_strict(b"_Z1gv", limits=limits),
+    lambda limits: demangle.parseb(b"_Z1gv", limits=limits),
+    lambda limits: demangle.demangleb_type(b"i", language="itanium", limits=limits),
+    lambda limits: demangle.parseb_type(b"i", language="itanium", limits=limits),
+    lambda limits: demangle.signature("_Z1gv", limits=limits),
+    lambda limits: demangle.signatureb(b"_Z1gv", limits=limits),
+    lambda limits: demangle.demangle_all([], limits=limits),
+    lambda limits: demangle.demangle_text("no symbols here", limits=limits),
+    lambda limits: demangle.find_symbols("no symbols here", limits=limits),
+    lambda limits: demangle.demangle_stream([], io.StringIO(), limits=limits),
+]
+
+
 class TestCacheStatistics:
     def test_every_documented_key_is_present(self):
         demangle.cache_clear()
@@ -327,18 +350,42 @@ class TestCacheStatistics:
         hits on every name; libLLVM exports 56k names."""
         assert demangle.cache_stats()["max_size"] // 2 >= 65536
 
-    def test_long_names_cannot_grow_the_cache_past_its_weight(self, monkeypatch):
-        """Bounded in characters as well as entries, whatever `Limits` lets through."""
+    @pytest.mark.parametrize("letter", ["o", "\U0001f600"], ids=["ascii", "astral"])
+    def test_long_names_cannot_grow_the_cache_past_its_weight(self, monkeypatch, letter):
+        """Bounded in bytes as well as entries, whatever `Limits` lets through: a string
+        with a character outside the BMP takes four bytes for every character."""
         from demangle import api
         from demangle.core.cache import BoundedCache
 
-        cache = BoundedCache(max_size=1000, max_weight=10_000, weigh=api._CACHE._weigh)
+        def stored(text):
+            return len(text) * (1 if max(text) < "\u0100" else 2 if max(text) < "\U00010000" else 4)
+
+        cache = BoundedCache(max_size=1000, max_weight=20_000, weigh=api._CACHE._weigh)
         monkeypatch.setattr(api, "_CACHE", cache)
         for index in range(200):
-            demangle.demangle("_ZN" + "3foo" * 100 + f"{len(str(index)) + 1}x{index}" + "Ev")
-        held = sum(len(key[0]) + len(value) for part in (cache._young, cache._old) for key, value in part.items())
-        assert held <= 10_000 + 2 * 2_000
+            demangle.demangle("_ZN" + f"3fo{letter}" * 100 + f"{len(str(index)) + 1}x{index}" + "Ev")
+        entries = [stored(key[0]) + stored(value) for part in (cache._young, cache._old) for key, value in part.items()]
+        assert sum(entries) <= 20_000 + 2 * max(entries)
         assert len(cache) < 20
+
+    def test_an_answer_computed_across_a_clear_is_not_stored(self, monkeypatch):
+        """Registering a language or style clears the cache; a call that began parsing
+        before that must not store what it read with the plugins from before."""
+        from demangle.core import registry
+        from demangle.core.plugin import LanguagePlugin
+
+        parses = []
+
+        def parse(mangled, builder, *rest):
+            parses.append(mangled)
+            demangle.cache_clear()
+            return builder.name("read")
+
+        plugin = LanguagePlugin(name="clears", detect=lambda name: False, parse=parse)
+        monkeypatch.setattr(registry, "_plugins", {**registry._plugins, "clears": plugin})
+        assert demangle.demangle("x", language="clears") == "read"
+        assert demangle.demangle("x", language="clears") == "read"
+        assert parses == ["x", "x"]
 
     @pytest.mark.parametrize("name", ["_Z1fv", "_ZN" + "3foo" * 400 + "Ev"])
     def test_a_bad_argument_is_refused_whether_or_not_the_call_is_cached(self, name):
@@ -379,32 +426,23 @@ class TestCacheStatistics:
         assert demangle.demangle("_Z1gv") == "g()"
 
     @pytest.mark.parametrize("limits", [None, "bogus", {"max_depth": 1}, 256])
-    @pytest.mark.parametrize(
-        "call",
-        [
-            lambda limits: demangle.demangle("_Z1gv", limits=limits),
-            lambda limits: demangle.demangle("_Z1gv", style=demangle.style(), limits=limits),
-            lambda limits: demangle.demangle("not mangled", limits=limits),
-            lambda limits: demangle.demangle_strict("_Z1gv", limits=limits),
-            lambda limits: demangle.parse("_Z1gv", limits=limits),
-            lambda limits: demangle.demangle_type("i", language="itanium", limits=limits),
-            lambda limits: demangle.parse_type("i", language="itanium", limits=limits),
-            lambda limits: demangle.demangleb(b"_Z1gv", limits=limits),
-            lambda limits: demangle.demangleb_strict(b"_Z1gv", limits=limits),
-            lambda limits: demangle.parseb(b"_Z1gv", limits=limits),
-            lambda limits: demangle.demangleb_type(b"i", language="itanium", limits=limits),
-            lambda limits: demangle.parseb_type(b"i", language="itanium", limits=limits),
-            lambda limits: demangle.signature("_Z1gv", limits=limits),
-            lambda limits: demangle.signatureb(b"_Z1gv", limits=limits),
-            lambda limits: demangle.demangle_all([], limits=limits),
-            lambda limits: demangle.demangle_text("no symbols here", limits=limits),
-            lambda limits: demangle.find_symbols("no symbols here", limits=limits),
-            lambda limits: demangle.demangle_stream([], io.StringIO(), limits=limits),
-        ],
-    )
+    @pytest.mark.parametrize("call", _LIMITS_ENTRY_POINTS)
     def test_every_entry_point_refuses_limits_that_are_not_a_limits(self, call, limits):
         with pytest.raises(ValueError, match="Limits instance"):
             call(limits)
+
+    @pytest.mark.parametrize("call", _LIMITS_ENTRY_POINTS)
+    def test_every_entry_point_refuses_an_unhashable_limits_at_the_call(self, call):
+        """A `Limits` subclass that cannot be hashed cannot key the cache; refused where
+        it is passed, not at the first `next()` of a generator or never, for a text
+        with no symbol in it."""
+        from demangle.core.limits import Limits
+
+        class Unhashable(Limits):
+            __hash__ = None
+
+        with pytest.raises(ValueError, match="limits must be hashable, got an unhashable Unhashable"):
+            call(Unhashable())
 
     def test_the_very_first_call_in_a_process_counts_as_a_miss(self):
         """Loading the registry clears the cache, statistics included. The first call

@@ -75,34 +75,31 @@ __all__ = [
 #: names), which a second pass then finds in full. Measured at about 440 bytes per C++
 #: entry, so full it holds under 60 MB.
 #:
-#: Also weighed in characters, name plus result, because `Limits` lets 64K through in each
-#: direction and a count alone would not bound hostile input: 48M characters in a
-#: generation holds libLLVM's table several times over and caps the whole near 100 MB.
-_CACHE = BoundedCache(max_size=131072, max_weight=96 << 20, weigh=lambda key, value: len(key[0]) + len(value))
+#: Also weighed in bytes, name plus result, because `Limits` lets 64K characters through in
+#: each direction and a count alone would not bound hostile input: 48 MB in a generation
+#: holds libLLVM's table several times over and caps the whole near 100 MB. A non-ASCII
+#: `str` is counted at four bytes a character, its most; `isascii` answers without a scan.
+_CACHE = BoundedCache(
+    max_size=131072,
+    max_weight=96 << 20,
+    weigh=lambda key, value: (len(key[0]) + len(value)) << (0 if key[0].isascii() and value.isascii() else 2),
+)
 
 
 #: Emptied whenever a style or language is registered. By notification rather than a
-#: generation counter in the key, which would slow the hottest path.
+#: generation counter in the key, which would slow the hottest path; a miss reads the
+#: cache's `epoch` before it parses, so an answer from before the change is not stored.
 _style_module.notify_on_change(_CACHE.clear)
 _registry.notify_on_change(_CACHE.clear)
 
 #: The default limits' slot in a cache key. Private, so nothing a caller passes can
-#: share it: `None` did, and one call with `limits=None` cached the name unread for
-#: every later call with the default.
+#: share it.
 _DEFAULT_LIMITS_KEY = object()
 
 
 def _refuse_non_string(mangled):
-    """Report a non-`str` argument as the caller's mistake it is.
-
-    Bytes used to be handed straight back, unchanged and unremarked, so a tool reading
-    an ELF string table -- where names *are* bytes -- saw every symbol come back exactly
-    as it went in and concluded the library did not work. The strict entry points were
-    worse: they reached the registry's first-character screen and raised
-    `TypeError: 'in <string>' requires string as left operand, not int`, which names
-    neither the problem nor the fix, and which the documented "raises only
-    `DemanglingError`" contract said could not happen.
-    """
+    """Report a non-`str` argument as the caller's mistake it is; bytes are pointed
+    at `demangleb()`, since a symbol table holds bytes."""
     if isinstance(mangled, _BYTES_LIKE):
         raise TypeError(f"expected str, got {type(mangled).__name__}; symbol tables hold bytes, so use demangleb()")
     raise TypeError(f"expected str, got {type(mangled).__name__}")
@@ -142,13 +139,23 @@ def _refuse_limits(limits) -> NoReturn:
     raise ValueError(f"limits must be a Limits instance, got {limits!r}")
 
 
+def _refuse_unhashable_limits(limits) -> NoReturn:
+    raise ValueError(f"limits must be hashable, got an unhashable {type(limits).__name__}") from None
+
+
 def _check_limits(limits):
-    """Refuse a `limits` that is not a `Limits`, before it can reach a parser or a key.
+    """Refuse a `limits` that is not a hashable `Limits`, before it can reach a parser
+    or a key.
 
     The default is tested by identity first, so the common call pays for nothing else.
     """
-    if limits is not DEFAULT_LIMITS and not isinstance(limits, Limits):
-        _refuse_limits(limits)
+    if limits is not DEFAULT_LIMITS:
+        if not isinstance(limits, Limits):
+            _refuse_limits(limits)
+        try:
+            hash(limits)
+        except TypeError:
+            _refuse_unhashable_limits(limits)
 
 
 def _refuse_unhashable(language, limits) -> NoReturn:
@@ -161,10 +168,12 @@ def _refuse_unhashable(language, limits) -> NoReturn:
         hash(language)
     except TypeError:
         raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
+    if not isinstance(limits, Limits):
+        _refuse_limits(limits)
     try:
         hash(limits)
     except TypeError:
-        raise ValueError(f"unhashable limits {limits!r}; pass a Limits instance") from None
+        _refuse_unhashable_limits(limits)
     raise TypeError("arguments to demangle() must be hashable")
 
 
@@ -240,6 +249,7 @@ def demangle(
             _refuse_unhashable(language, limits)
         if cached is not MISSING:
             return cached
+        epoch = _CACHE.epoch
 
     # `get_style`'s lookup, inline where the key already holds a registered name.
     styles = _style_module._STYLES
@@ -253,7 +263,7 @@ def demangle(
     else:
         tried = candidates(mangled)
         if not tried:
-            return mangled if key is None else _CACHE.put(key, mangled)
+            return mangled if key is None else _CACHE.put(key, mangled, epoch)
         base = _undecorated(mangled)
 
     for candidate in tried:
@@ -268,7 +278,7 @@ def demangle(
                 continue
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
         except LimitExceeded:
-            # A limit is not "this name is not mine": offering it to the next scheme
+            # A limit is not "this name is not mine": offering it to the next scheme would
             # read `_ZN11Expressions2f2ILi1EEEvPApsT__i` as a pre-Itanium name.
             break
         except Exception as exc:
@@ -276,9 +286,9 @@ def demangle(
             # Detection may be wrong and a plugin may be buggy; either way try the next.
             continue
         result = builder.spell(handle)
-        return result if key is None else _CACHE.put(key, result)
+        return result if key is None else _CACHE.put(key, result, epoch)
 
-    return mangled if key is None else _CACHE.put(key, mangled)
+    return mangled if key is None else _CACHE.put(key, mangled, epoch)
 
 
 def demangle_strict(
@@ -526,15 +536,14 @@ def _depth_exceeded(mangled, limits):
 
     Which of the two binds first therefore depends on the shape of the name and on how
     deep the caller's own stack already was. Both are the same fact -- this name nests
-    further than this process will follow -- so both are reported the same way. Before
-    this, one arrived as `LimitExceeded` and the other as
-    `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
-    the parser rather than a bound doing its job, and leaks an implementation detail
-    into a message a caller was meant to be able to act on.
+    further than this process will follow -- so both are reported the same way. Wrapped
+    as `ParseError: itanium parser failed: RecursionError(...)`, it would read as a
+    defect in the parser rather than a bound doing its job, and leak an implementation
+    detail into a message a caller was meant to be able to act on.
 
     A caller who needs the deeper limits to be reachable can raise
     `sys.setrecursionlimit()`; on the versions this package supports, a Python-to-Python
-    call does not consume the C stack, so that is safer than it once was.
+    call does not consume the C stack.
     """
     return LimitExceeded(mangled, "recursion depth", limits.max_depth)
 

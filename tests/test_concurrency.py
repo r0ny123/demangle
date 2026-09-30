@@ -237,7 +237,7 @@ def test_schemes_imported_on_first_use_from_several_threads_at_once():
 def test_a_cache_turning_over_under_many_threads_serves_only_right_answers(corpus, monkeypatch):
     """A small cache turns a generation over every few dozen names, so threads race the
     turnover itself: one moving the young generation to old while others read or promote
-    through it. An entry may be lost -- that costs a parse -- but never swapped."""
+    through it. Turnover is exact, so the bound holds, and an entry is never swapped."""
     from demangle import api
     from demangle.core.cache import BoundedCache
 
@@ -251,8 +251,7 @@ def test_a_cache_turning_over_under_many_threads_serves_only_right_answers(corpu
             assert demangle.demangle(name) == expected[name], name
 
     _run_threaded(work)
-    # Bounded, give or take a generation lost to a race between two turnovers.
-    assert len(small) <= small.max_size + THREADS
+    assert len(small) <= small.max_size
     assert small.hits > 0
     assert small.misses > 0
 
@@ -283,3 +282,76 @@ def test_styles_resolved_on_first_use_from_several_threads_at_once():
     source = Path(__file__).resolve().parent.parent / "src"
     for _ in range(ROUNDS):
         subprocess.run([sys.executable, "-c", script], check=True, env={"PYTHONPATH": str(source)})
+
+
+def test_a_weighed_cache_stays_within_its_weight_under_many_threads():
+    """Threads adding at once must not lose each other's weight; under free threading
+    an unguarded `+=` did, and the cache held half as much again as its bound. The
+    threads stop together, since one left running alone turns the excess over."""
+    from demangle.core.cache import BoundedCache
+
+    entry = 2_000
+    value = "v" * (entry // 2)
+    for _ in range(ROUNDS):
+        cache = BoundedCache(max_size=1 << 30, max_weight=100_000, weigh=lambda key, held: len(key) + len(held))
+        stop = threading.Event()
+
+        def work(seed, cache=cache, stop=stop):
+            index = 0
+            while not stop.is_set():
+                cache.put(f"{seed}-{index}".ljust(entry // 2, "k"), value)
+                index += 1
+
+        threads = [threading.Thread(target=work, args=(seed,)) for seed in range(THREADS)]
+        for thread in threads:
+            thread.start()
+        stop.wait(0.05)
+        stop.set()
+        for thread in threads:
+            thread.join()
+        young = sum(len(key) + len(held) for key, held in cache._young.items())
+        assert cache._young_weight == young
+        assert young + sum(len(key) + len(held) for key, held in cache._old.items()) <= 100_000 + 2 * entry
+
+
+def test_a_registration_during_a_parse_leaves_no_stale_answer(monkeypatch):
+    """A call that parsed with the plugin from before a registration must not store its
+    answer after the registration cleared the cache, where it would be served forever."""
+    from demangle.core import registry
+    from demangle.core.limits import Limits
+    from demangle.core.plugin import LanguagePlugin
+
+    name = "_ZN5outer5inner4funcIiEEvT_"
+    replaced = threading.Event()
+    used = []
+
+    def work(seed):
+        index = 0
+        while not replaced.is_set():
+            limits = Limits(max_depth=300 + THREADS * index + seed)
+            used.append(limits)
+            demangle.demangle(name, limits=limits)
+            index += 1
+
+    def refuse(*arguments):
+        raise ValueError("mine")
+
+    mine = LanguagePlugin(name="itanium", detect=lambda text: text.startswith("_Z"), parse=refuse, priority=1)
+    # Registered into copies, which `undo` puts back.
+    monkeypatch.setattr(registry, "_plugins", dict(registry._plugins))
+    monkeypatch.setattr(registry, "_ordered", None)
+    monkeypatch.setattr(registry, "_by_first", None)
+    threads = [threading.Thread(target=work, args=(seed,)) for seed in range(THREADS)]
+    for thread in threads:
+        thread.start()
+    try:
+        demangle.register_language(mine)
+    finally:
+        replaced.set()
+        for thread in threads:
+            thread.join()
+    try:
+        assert [limits for limits in used if demangle.demangle(name, limits=limits) != name] == []
+    finally:
+        monkeypatch.undo()
+        demangle.cache_clear()

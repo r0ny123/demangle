@@ -264,6 +264,15 @@ class TestBoundedCache:
         assert cache.get(0) is MISSING
         assert cache.stats["hits"] == 0
 
+    def test_a_value_computed_before_a_clear_is_not_stored_after_it(self):
+        cache = BoundedCache()
+        epoch = cache.epoch
+        cache.clear()
+        assert cache.put("stale", 1, epoch) == 1
+        assert "stale" not in cache
+        cache.put("fresh", 2, cache.epoch)
+        assert cache.get("fresh") == 2
+
     def test_tracks_hit_rate(self):
         cache = BoundedCache()
         cache.put("k", 1)
@@ -577,6 +586,36 @@ class TestLazyBuiltIns:
             "print(registry.get('gnu') is mine, registry.get('c++') is mine)\n"
         )
         assert results == ["True", "True"]
+
+    @pytest.mark.parametrize("order", ["before-load", "after-load", "before-import"])
+    def test_a_plugins_own_aliases_win_over_a_built_ins_whenever_it_registers(self, order):
+        """`gnu` is Itanium's alias until a caller's plugin declares it, before or after
+        the registry loads or Itanium is imported."""
+        results = _fresh(
+            "import demangle\n"
+            "from demangle.core import registry\n"
+            "from demangle.core.plugin import LanguagePlugin\n"
+            + ("demangle.demangle('x')\n" if order == "after-load" else "")
+            + "mine = registry.register(LanguagePlugin(name='d', detect=bool, parse=print, aliases=('gnu',)))\n"
+            + ("import demangle.schemes.itanium\n" if order == "before-import" else "")
+            + "print(registry.get('gnu') is mine, registry.get('c++').name, registry.aliases()['gnu'])\n"
+        )
+        assert results == ["True", "itanium", "d"]
+
+    @pytest.mark.parametrize("loaded_first", [False, True], ids=["before-load", "after-load"])
+    def test_an_alias_naming_a_built_in_is_refused_before_loading_too(self, loaded_first):
+        results = _fresh(
+            "import demangle\n"
+            "from demangle.core import registry\n"
+            "from demangle.core.plugin import LanguagePlugin\n"
+            + ("demangle.demangle('x')\n" if loaded_first else "")
+            + "try:\n"
+            "    registry.register(LanguagePlugin(name='mine', detect=bool, parse=print, aliases=('rust',)))\n"
+            "except ValueError as error:\n"
+            "    print('refused')\n"
+            "print(registry.get('rust').name)\n"
+        )
+        assert results == ["refused", "rust"]
 
     @pytest.mark.parametrize("loaded_first", [False, True], ids=["before-load", "after-load"])
     def test_the_built_in_can_be_registered_back_over_a_replacement(self, loaded_first):

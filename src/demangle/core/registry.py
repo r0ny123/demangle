@@ -74,6 +74,8 @@ _BUILTIN_MODULES = (
     ("ada", "demangle.schemes.ada", 280, "", True, ("gnat",), (("__",), ("_ada_",))),
 )
 
+_BUILTIN_NAMES = frozenset(entry[0] for entry in _BUILTIN_MODULES)
+
 #: The entry-point group third-party packages advertise plugins under.
 ENTRY_POINT_GROUP = "demangle.languages"
 
@@ -108,7 +110,8 @@ def register(plugin):
     if not isinstance(plugin, LanguagePlugin):
         raise TypeError(f"expected a LanguagePlugin, got {type(plugin).__name__}")
     with _lock:
-        if _registers_itself(plugin):
+        builtin = _registers_itself(plugin)
+        if builtin:
             # A built-in's module registering its own `PLUGIN` as it is imported, which
             # can happen at any time -- a style's options import it mid-parse -- so it
             # never displaces a plugin a caller registered under its name, whether that
@@ -121,13 +124,18 @@ def register(plugin):
                     _ordered = None
                     _by_first = None
                 return plugin
-        # Check every alias before recording any, so a rejected plugin leaves no trace.
-        for alias in plugin.aliases:
-            if alias in _plugins and alias != plugin.name:
-                raise ValueError(f"alias {alias!r} collides with a registered language name")
+        else:
+            # Check every alias before recording any, so a rejected plugin leaves no
+            # trace. A built-in's name counts before the registry has loaded it too.
+            for alias in plugin.aliases:
+                if (alias in _plugins or alias in _BUILTIN_NAMES) and alias != plugin.name:
+                    raise ValueError(f"alias {alias!r} collides with a registered language name")
         _plugins[plugin.name] = plugin
-        for alias in plugin.aliases:
-            _aliases[alias] = plugin.name
+        if builtin:
+            _offer_builtin_aliases(plugin.name, plugin.aliases)
+        else:
+            for alias in plugin.aliases:
+                _aliases[alias] = plugin.name
         # A re-registered name wins back over any alias that had shadowed it.
         _aliases.pop(plugin.name, None)
         _ordered = None
@@ -216,9 +224,7 @@ def _load():
                 else:
                     # A caller's plugin already holds the name: it answers to the
                     # built-in's aliases too, as it would had it been registered later.
-                    for alias in entry[5]:
-                        if alias not in _plugins:
-                            _aliases.setdefault(alias, entry[0])
+                    _offer_builtin_aliases(entry[0], entry[5])
             _load_entry_points()
             _loaded = True
         finally:
@@ -232,10 +238,20 @@ def _install_stand_in(stand_in):
     global _by_first, _ordered
     _stand_ins[stand_in.name] = stand_in
     _plugins[stand_in.name] = stand_in
-    for alias in stand_in.aliases:
-        _aliases[alias] = stand_in.name
+    _offer_builtin_aliases(stand_in.name, stand_in.aliases)
     _ordered = None
     _by_first = None
+
+
+def _offer_builtin_aliases(name, aliases):
+    """Point a built-in's aliases at `name`, except those a caller's plugin has taken.
+
+    A caller's registration claims its aliases whether it came before or after the
+    built-in took its place, so a built-in never takes one back.
+    """
+    for alias in aliases:
+        if alias not in _plugins:
+            _aliases.setdefault(alias, name)
 
 
 def _load_entry_points():

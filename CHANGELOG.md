@@ -42,8 +42,9 @@ the reference demanglers, and a **Performance** section.
   no scheme and takes under a millisecond; one on an MSVC name imports only MSVC's.
 - **The result cache keeps two generations of 65,536 names** (was one of 16,384,
   emptied when full), so a second pass over a large library's symbol table hits and a
-  name still in use survives turnover. It is bounded in characters as well as entries,
-  so long hostile names cannot grow it past about 100 MB.
+  name still in use survives turnover. It is bounded in bytes as well as entries, so
+  long hostile names cannot grow it past about 100 MB, and the bound holds under free
+  threading.
 - **Faster on every path.** Names that are not mangled are rejected about 2x faster by
   `demangle()` and 3x by `detect()`: a scheme with no fixed first character declares
   what a name must contain before it could claim it, and is not asked about names
@@ -74,10 +75,17 @@ the reference demanglers, and a **Performance** section.
 - **A plugin registered in place of a built-in scheme** is no longer undone when that
   scheme's module is imported later, including by a style loading its options during a
   parse, whether it was registered before or after the first call; it also answers to
-  the built-in's aliases. Registering the built-in's own `PLUGIN` again puts it back.
+  the built-in's aliases. A plugin's own aliases win over a built-in's in either order,
+  and an alias naming a built-in scheme is refused before the first call as after it.
+  Registering the built-in's own `PLUGIN` again puts it back.
 - **A `limits` that is not a `Limits`**, `None` included, raises `ValueError` from every
   entry point that takes one. `demangle(name, limits=None)` shared the default limits'
-  cache entry, so one such call made later default calls return that name unread.
+  cache entry, so one such call made later default calls return that name unread. A
+  `Limits` subclass that cannot be hashed is refused at the call too, not at the first
+  `next()` of `demangle_all()` or `find_symbols()`.
+- **A `demangle()` parsing while a language or style was registered** no longer stores
+  its answer after the registration emptied the cache, where the stale reading would
+  have been served from then on.
 
 ### Removed
 
