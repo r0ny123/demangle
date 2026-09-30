@@ -301,13 +301,14 @@ Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
 
 | Workload | Throughput |
 |---|---|
-| Cold — every name distinct | ~24,000 names/sec |
+| Cold — every name distinct | ~22,000 names/sec |
 | Warm — names repeat, as in a real symbol table | ~2,700,000 names/sec |
-| Non-mangled names rejected | ~830,000 names/sec |
+| Non-mangled names rejected | ~1,200,000 names/sec |
 | Full AST construction | ~18,000 names/sec |
 
-Treat these as ratios rather than absolutes. The gap between cold and warm is the point:
-symbol tables repeat themselves relentlessly, and results are cached.
+Taken from `benchmarks/baseline.json`; treat them as ratios rather than absolutes. The
+gap between cold and warm is the point: symbol tables repeat themselves relentlessly, and
+results are cached.
 
 `bench.py --check` gates CI against the committed baseline. It compares figures
 normalised against a calibration workload measured in the same run, so the gate reports
