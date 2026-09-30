@@ -544,17 +544,17 @@ of the first batch's differences are Apple's own numbering rules, and the second
 batch's 6,134 are those, the closure-prefix rule and the same rebinding
 <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup>.
 
-The purpose-built corpus reached 100% while libstdc++ was demangling *one symbol in
-5,913* — the first one carried an ELF version suffix, a shape no hand-written test thinks
-to include. Nearly every defect fixed here came from reading real shipped binaries.
+The purpose-built corpus scores 100% on its own, and libstdc++ stays the harder test:
+one symbol in 5,913 carries an ELF version suffix, a shape no hand-written test thinks
+to include. Real shipped binaries surface defects a purpose-built corpus does not.
 
 The libstdc++ row is against GNU rather than LLVM because `llvm-cxxfilt` 18 reads 78 of
 those 5,990 names as unreadable and echoes them back: the transaction-safe clone prefix
 `_ZGTt`, and the `DF` floating-point productions. Checking against GNU over the whole
-library rather than over the recorded sample is what found two real gaps here — `DF16b`
+library rather than over the recorded sample surfaces two gaps a sample misses: `DF16b`
 is `std::bfloat16_t` and `DF<n>x` is `_FloatNx` terminated by its own `x`, and GNU puts
 a space before a template argument list whose name ends with `<`, so `operator<< <int>`.
-No name in either checked-in corpus carried any of them.
+No name in either checked-in corpus carries any of them.
 
 The purpose-built corpus still earns its place: compiled by **both** `clang++` and `g++`
 across C++11 through C++23 at two optimisation levels, it reaches constructs a released

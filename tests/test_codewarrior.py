@@ -203,8 +203,7 @@ class TestASpellingThatCannotBeADeclaration:
     The same bar `gnuv2` holds a reading to, and the same reason: these two grammars read
     the same run of type letters out of the same C names. `f__Fcsv` is `char, short,
     void` to both of them, and `void` is a parameter list only when it is the whole of
-    it. Found while closing the `gnuv2` half -- with that one fixed, this scheme picked
-    the name up instead.
+    it.
     """
 
     def test_void_among_others_is_refused(self):
@@ -216,16 +215,14 @@ class TestASpellingThatCannotBeADeclaration:
         assert demangle.demangle("__ct__3FooFv") == "Foo::Foo()"
 
     def test_nothing_follows_an_ellipsis(self):
-        """`...` ends the list. With `gnuv2` refusing `foo__Fex`, this scheme picked it
-        up instead, as `foo(..., long long)`."""
+        """`...` ends the list, so `foo__Fex` is not `foo(..., long long)`."""
         for name in ("foo__Fex", "foo__Fei"):
             assert not codewarrior.detect(name), name
             assert demangle.demangle(name) == name
         assert demangle.demangle("foo__Fie", language="codewarrior") == "foo(int, ...)"
 
     def test_a_qualified_name_in_the_names_own_seat_is_read_or_refused_not_echoed(self):
-        """`Q23foo3bar__Fv` is `foo::bar()`; it came back as a function called
-        `Q23foo3bar`. A count with too few names behind it is refused, and so is the
+        """`Q23foo3bar__Fv` is `foo::bar()`, not a function called `Q23foo3bar`. A count with too few names behind it is refused, and so is the
         `Q2_` spelling, which this compiler never wrote."""
         assert demangle.demangle("Q23foo3bar__Fv", language="codewarrior") == "foo::bar()"
         for name in ("Q23foo__Fv", "Q2_3foo3bar__Fv"):

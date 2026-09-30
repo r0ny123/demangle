@@ -42,9 +42,9 @@ Out of scope:
   by `tests/test_limits.py`, so a scheme added later has to keep the promise rather than
   quietly not be covered.
 - Bounds are enforced *while* a name is read, not checked on the finished result. A
-  bound observed only afterwards is a report: a fourteen-character Rust name asking for
-  fourteen million bound lifetimes took fourteen seconds to build the string that the
-  output bound then rejected.
+  bound observed only afterwards is a report: a short Rust name can ask for millions of
+  bound lifetimes, and the string that the output bound would then reject has already
+  been built.
 - Hitting a bound ends the reading. It is not a "this name is not mine": the scheme
   claimed the name and then ran out of the budget the caller set, so the name is offered
   to no other scheme. Passing it on meant a laxer one read the mangling itself — an
@@ -72,16 +72,15 @@ Out of scope:
 How much work one symbol can cause is measured rather than assumed, by growing a
 repeated unit until it reaches the input bound, for every scheme, and recording wall
 time and peak allocation. Apart from the one bounded case below, nothing is
-superlinear. The worst shape in the package is a Swift name of 64K characters, the
-largest the default `max_input` allows: about 586ms and 16MB, linear in the input from
-5KB up, and every other scheme's worst is under that.
+superlinear. The worst shape in the package is a Swift name at the largest length the
+default `max_input` allows (64K characters), and it is linear in the input; every other
+scheme's worst is cheaper.
 
 That case is quadratic and bounded rather than removed. Every Itanium `<prefix>` is a
 substitution candidate and each entry holds the whole prefix, so N components record
-O(N²) characters without any single one crossing `max_output`: `_ZN` and 8,190
-components of `1a`, 16KB, took a second and 98MB. The characters the table records are
-capped at sixteen times the output bound, a hundred times what the largest of the
-217,730 Itanium symbols in a stock Ubuntu 24.04 records.
+O(N²) characters without any single one crossing `max_output`. The characters the table
+records are capped at sixteen times the output bound, a hundred times what the largest
+of the 217,730 Itanium symbols in a stock Ubuntu 24.04 records.
 
 The fuzzing that found it — roughly 550,000 corpus mutations across every scheme,
 380,000 grammar-generated Itanium names, 120,000 grammar-generated Swift names and

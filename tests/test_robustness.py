@@ -375,8 +375,8 @@ class TestResourceBounds:
     def test_substitution_blowup_is_bounded(self):
         """Each entry built from two copies of the last: output doubles every few bytes.
 
-        Enforcing the bound by measuring the finished string meant building it first;
-        ~180 bytes of input reached 1.86 GB. The bound is checked as the type is built.
+        The bound is checked as the type is built, not by measuring the finished string,
+        which would mean building it first.
         """
         name = "_Z1fPi" + "".join("MS_S_" if i == 0 else f"MS{i - 1}_S{i - 1}_" for i in range(40))
         assert demangle.demangle(name) == name
@@ -388,13 +388,11 @@ class TestResourceBounds:
         entries -- and each entry is the whole prefix, so their sizes sum to O(N^2).
 
         No single entry exceeds `max_output`, which is why that bound never fired.
-        `_ZN` and 8,190 components of `1a` is 16KB of input that read in a second and
-        allocated 98MB. It is refused in twenty milliseconds and about a megabyte now,
-        and the ceiling does not move as the input grows.
+        `_ZN` followed by thousands of components of `1a` is refused, and the ceiling
+        on what the table records does not move as the input grows.
 
-        Not a spelling change: all 217,730 distinct Itanium symbols in the shared
-        libraries of a stock Ubuntu 24.04 demangle to exactly what they did, and the
-        worst of them records 10,209 characters against a budget of 1,048,576.
+        The cap does not change any spelling: every distinct Itanium symbol in the shared
+        libraries of a stock Ubuntu 24.04 stays well inside the budget.
         """
         for components in (1000, 8190, 32000):
             name = "_ZN" + "1a" * components + "E"

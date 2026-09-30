@@ -1135,107 +1135,106 @@ the reference demanglers, and a **Performance** section.
   added six more: a pack expansion whose pattern names no pack -- or reaches one only
   through an inner expansion, which consumes it -- dropped its dots when the enclosing
   template had a pack, where `ParameterPackExpansion::printLeft` prints the child and
-  then the `...` whatever is in scope, so `DpPFvDpT_E` is `void (*)(int, char)...`; a constructor or destructor scoped by
-  a constructor, destructor, closure, unnamed type, structured binding or literal
-  operator repeated a name `CtorDtorName` has none of, so `_ZN1AD1IiED0Ev` is
-  `A::~A<int>::~()`; a structured binding with no names, `DCE`, spelled `[]`; template
-  arguments after a name that already carries them, `_Z1fN1AIiEIcEE` and through a
-  back reference `_Z1fN1AIiEENS0_IcEE`, spelled `A<int><char>` where `<template-prefix>`
-  names a template and `llvm-cxxfilt` refuses both; an abbreviation with template
-  arguments as a function's own name, `_ZSbIwEvS_`, was entered in the substitution
-  table as an `<unscoped-template-name>`, which `Sb` is not, shifting every later back
-  reference; and in D, the parameters a
-  component carries inside a *type's* name are its scope whenever they parse, with the
-  `this` modifiers left out as `dlang_parse_qualified`'s `suffix_modifiers` leaves
-  them, where asking for a component to follow handed a `std.utf` struct's parameters
-  to the enclosing function's list. Three accept rules record the references' side:
-  Clang 18 makes `_BitInt` a substitution candidate and every shipped reference
-  refuses the result; `llvm-cxxfilt` 20 reads `cp` calls and a template parameter
-  inside a constrained parameter declaration exactly as this does where 18 refuses;
-  and `llvm-undname` drops the qualifier from an array element in a variable's type
-  that it prints in a parameter's. Draws nine and ten added six: a special name's local
-  entity -- `GV`, `TH`, `TW`, `GR` -- took a function type after it, so `_ZGVZ1fvE1gv`
-  was a guard variable for a function, where `parseSpecialName` reads an <object name>
-  and returns; a requires-clause with no template arguments before it spelled `j<>`;
-  `fp` with no `_` read as a parameter, and `fpK_`, a qualified one, was refused; the
-  explicit object marker `H` in a nested name read as a type put `this` on the
-  parameters of the function the type belonged to; and MSVC's `$$C` twice in a row on
-  an array element was folded into one where `llvm-undname` refuses it. One more accept
-  rule: both references resolving a substitution-table entry made under one local
-  function's template scope to that scope's argument where a mutant reads it under
-  another's, the `insort` defect the reference-defects corpus records. Draws eleven to
-  fourteen added four: a `bool` literal whose value was neither `0` nor `1`, `Lb6E`, was
-  spelled `true` where `llvm-cxxfilt` refuses it; an expression argument to a vendor
-  extended expression was bracketed as it is inside `<...>`, so Clang's own `__uuidof`
-  test symbol came out `__uuidof((HasMember >> member))` where a call's argument takes
-  no bracket; under the GNU style a functional cast of a braced list, `cv1AilLi1ELi2EE`,
-  was `(A)({1, 2})` where `d_print_comp` writes `(A){1, 2}`; and a D `__postblitMFZ`
-  anywhere but last in a name was left as `__postblit()`, where `dlang_lname` matches
-  the thirteen characters as one thing wherever they stand. The same draws reached the
-  recorded-parameter defect from its other side -- `llvm-cxxfilt` spelling a closure's
-  own `auto` as the enclosing template's argument, `'lambda'(int)` for `[](auto x)`
-  inside `S::g<int>` -- and following it turned two shipped lambdas into the wrong
-  declaration before the reduced source, compiled by both g++ 13.3.0 and clang++
-  18.1.3, settled it the way ROADMAP heading 0 already had: four shapes of it are now
-  in `tests/conformance/itanium-reference-defects.txt`, from
+  then the `...` whatever is in scope, so `DpPFvDpT_E` is `void (*)(int, char)...`; a
+  constructor or destructor scoped by a constructor, destructor, closure, unnamed type,
+  structured binding or literal operator repeated a name `CtorDtorName` has none of, so
+  `_ZN1AD1IiED0Ev` is `A::~A<int>::~()`; a structured binding with no names, `DCE`,
+  spelled `[]`; template arguments after a name that already carries them,
+  `_Z1fN1AIiEIcEE` and through a back reference `_Z1fN1AIiEENS0_IcEE`, spelled
+  `A<int><char>` where `<template-prefix>` names a template and `llvm-cxxfilt` refuses
+  both; an abbreviation with template arguments as a function's own name, `_ZSbIwEvS_`,
+  was entered in the substitution table as an `<unscoped-template-name>`, which `Sb` is
+  not, shifting every later back reference; and in D, the parameters a component carries
+  inside a *type's* name are its scope whenever they parse, with the `this` modifiers
+  left out as `dlang_parse_qualified`'s `suffix_modifiers` leaves them, where asking for
+  a component to follow handed a `std.utf` struct's parameters to the enclosing
+  function's list. Three accept rules record the references' side: Clang 18 makes
+  `_BitInt` a substitution candidate and every shipped reference refuses the result;
+  `llvm-cxxfilt` 20 reads `cp` calls and a template parameter inside a constrained
+  parameter declaration exactly as this does where 18 refuses; and `llvm-undname` drops
+  the qualifier from an array element in a variable's type that it prints in a
+  parameter's. Draws nine and ten added six: a special name's local entity -- `GV`,
+  `TH`, `TW`, `GR` -- took a function type after it, so `_ZGVZ1fvE1gv` was a guard
+  variable for a function, where `parseSpecialName` reads an <object name> and returns;
+  a requires-clause with no template arguments before it spelled `j<>`; `fp` with no `_`
+  read as a parameter, and `fpK_`, a qualified one, was refused; the explicit object
+  marker `H` in a nested name read as a type put `this` on the parameters of the
+  function the type belonged to; and MSVC's `$$C` twice in a row on an array element was
+  folded into one where `llvm-undname` refuses it. One more accept rule: both references
+  resolving a substitution-table entry made under one local function's template scope to
+  that scope's argument where a mutant reads it under another's, the `insort` defect the
+  reference-defects corpus records. Draws eleven to fourteen added four: a `bool`
+  literal whose value was neither `0` nor `1`, `Lb6E`, was spelled `true` where
+  `llvm-cxxfilt` refuses it; an expression argument to a vendor extended expression was
+  bracketed as it is inside `<...>`, so Clang's own `__uuidof` test symbol came out
+  `__uuidof((HasMember >> member))` where a call's argument takes no bracket; under the
+  GNU style a functional cast of a braced list, `cv1AilLi1ELi2EE`, was `(A)({1, 2})`
+  where `d_print_comp` writes `(A){1, 2}`; and a D `__postblitMFZ` anywhere but last in
+  a name was left as `__postblit()`, where `dlang_lname` matches the thirteen characters
+  as one thing wherever they stand. The same draws reached the recorded-parameter defect
+  from its other side -- `llvm-cxxfilt` spelling a closure's own `auto` as the enclosing
+  template's argument, `'lambda'(int)` for `[](auto x)` inside `S::g<int>` -- and
+  following it turned two shipped lambdas into the wrong declaration before the reduced
+  source, compiled by both g++ 13.3.0 and clang++ 18.1.3, settled it the way ROADMAP
+  heading 0 already had: four shapes of it are now in
+  `tests/conformance/itanium-reference-defects.txt`, from
   `tools/corpus_sources/reference_defects/member_template_lambda.cpp`, and the accept
   rule for a back reference read across two local scopes already covered the shape. Two
-  more accept rules record the references' side: both
-  reference tools split their input on a space, a bracket, a `+` or a `-` before
-  demangling anything, so a name carrying one reaches neither demangler whole; and a
-  `char` array in a braced initialiser, `char [6]{(char)72, (char)101, ...}` to both,
-  is the string it spells here. Draws fifteen to eighteen, at 60,000 mutants each,
-  added three: the friend marker `F` goes before the internal-linkage `L`, not after,
-  as `parseUnqualifiedName` consumes them, so `_ZN1ALF3fooEv` is refused where it read
-  `A::friend foo()`; a conversion operator whose type ran ahead of arguments that never
-  came, `_Zcv1BIRT_E`, kept the provisional `operator B<auto&>` where both references
-  refuse it; and a D back reference into a digit run stopped at the first `0` and read
-  an anonymous component, where `dlang_symbol_backref` reads the whole run as the
-  length and refuses the overrun. Four more accept rules: `sy`, the C++26 pack-index
-  expression Clang writes and neither shipped `llvm-cxxfilt` reads; the `LZ` external
-  name that only `c++filt` reads, on a name it refuses for another reason; a back
-  reference after a `_BitInt`, which the two sides count differently; and an MSVC member
-  pointer whose two qualifier letters a mutant set apart, where `llvm-undname` keeps
-  one and this keeps both -- clang-cl writes them alike. Draws nineteen to twenty-two
-  added three: a template parameter declaration inside an argument list qualifies the
-  argument after it, and a list ending on one, `ITyE`, is refused as `llvm-cxxfilt`
-  refuses it, where this read `unary<>`; a requires-clause has no place inside a
-  nested name, and `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE` is refused where this
-  read the clause between two components and threw it away; and a D back reference
-  reads a plain identifier at its target, as `dlang_symbol_backref` does, so a target
-  whose body is a template instance is spelled as it stands rather than read as the
-  template. Draws twenty-three to twenty-six added four: an Objective-C protocol is a
-  source name inside its `objcproto` qualifier, read as `parseBareSourceName` reads
-  it, so `objcproto15` -- a length with nothing after it -- is refused where this
-  spelled `id<15>`; a D compiler scope `__S<n>` is followed by an identifier with a
-  length, and a `0` there is refused as `dlang_identifier` refuses it rather than
-  skipped as the anonymous component; a D symbol argument in the `_D` form needs its
-  type or its `Z`, as `dlang_parse_mangle` does, so a length-bounded region that is a
-  qualified name and nothing more is spelled as it stands; and the `_D` form needs a
-  symbol name after the prefix at all, so `S_DaZv` is refused where it spelled an empty
-  argument. One accept rule: qualifiers before a function type out of the ABI's order
-  or repeated, `KV` and `VKK`, which no compiler writes and the three implementations
-  spell three ways. Draws twenty-seven to thirty added one, found with an instrumented
-  build of libiberty's own source: a length-prefixed D template body is read against
-  the whole of what remains and its length checked afterwards, as `dlang_parse_template`
-  does, where this bounded the body first -- on a mutant of `demangle.fn!(sym,
-  val("null"))` the reference reads `sym` greedily as a nested function whose parameter
-  list runs fifty-six characters past the body, then refuses the name at the `v` that
-  follows, and the bound had let the greedy reading fail, be put back, and the name
-  read. One accept rule: `parseFunctionType` steps over a `v` wherever it stands among
-  a function type's parameters, `int (*)(int)` for `PFiivE`, where `c++filt` and this
-  spell the `void` that is written. Draws thirty-three to thirty-eight added two: a
-  pre-Itanium virtual table whose class count is larger than what remains, `_vt.6i`,
-  is `i virtual table` -- `gnu_special`'s `break` on a too-large count leaves only the
-  `switch`, and what follows is the next piece of the name -- where leaving the whole
-  loop here handed the `i` to the caller as a parameter list, ` virtual table(int)`;
-  and a D symbol argument whose last component is anonymous takes its type as the
-  symbol's own and spells nothing for it, as a whole symbol already did, where
-  `mangled_symbol` spelled `reserveNoSync(ulong)` for a `core.internal.gc` mutant the
-  reference spells `reserveNoSync`. A gnuv2 draw of 200,000 found the accept rule for
-  the reference's second argument list after an ellipsis blind to a class name with an
-  unbalanced `<` in it, which the rule's template-argument stripper took for a group
-  and removed to the end. The remaining
+  more accept rules record the references' side: both reference tools split their input
+  on a space, a bracket, a `+` or a `-` before demangling anything, so a name carrying
+  one reaches neither demangler whole; and a `char` array in a braced initialiser, `char
+  [6]{(char)72, (char)101, ...}` to both, is the string it spells here. Draws fifteen to
+  eighteen, at 60,000 mutants each, added three: the friend marker `F` goes before the
+  internal-linkage `L`, not after, as `parseUnqualifiedName` consumes them, so
+  `_ZN1ALF3fooEv` is refused where it read `A::friend foo()`; a conversion operator
+  whose type ran ahead of arguments that never came, `_Zcv1BIRT_E`, kept the provisional
+  `operator B<auto&>` where both references refuse it; and a D back reference into a
+  digit run stopped at the first `0` and read an anonymous component, where
+  `dlang_symbol_backref` reads the whole run as the length and refuses the overrun. Four
+  more accept rules: `sy`, the C++26 pack-index expression Clang writes and neither
+  shipped `llvm-cxxfilt` reads; the `LZ` external name that only `c++filt` reads, on a
+  name it refuses for another reason; a back reference after a `_BitInt`, which the two
+  sides count differently; and an MSVC member pointer whose two qualifier letters a
+  mutant set apart, where `llvm-undname` keeps one and this keeps both -- clang-cl
+  writes them alike. Draws nineteen to twenty-two added three: a template parameter
+  declaration inside an argument list qualifies the argument after it, and a list ending
+  on one, `ITyE`, is refused as `llvm-cxxfilt` refuses it, where this read `unary<>`; a
+  requires-clause has no place inside a nested name, and
+  `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE` is refused where this read the clause
+  between two components and threw it away; and a D back reference reads a plain
+  identifier at its target, as `dlang_symbol_backref` does, so a target whose body is a
+  template instance is spelled as it stands rather than read as the template. Draws
+  twenty-three to twenty-six added four: an Objective-C protocol is a source name inside
+  its `objcproto` qualifier, read as `parseBareSourceName` reads it, so `objcproto15` --
+  a length with nothing after it -- is refused where this spelled `id<15>`; a D compiler
+  scope `__S<n>` is followed by an identifier with a length, and a `0` there is refused
+  as `dlang_identifier` refuses it rather than skipped as the anonymous component; a D
+  symbol argument in the `_D` form needs its type or its `Z`, as `dlang_parse_mangle`
+  does, so a length-bounded region that is a qualified name and nothing more is spelled
+  as it stands; and the `_D` form needs a symbol name after the prefix at all, so
+  `S_DaZv` is refused where it spelled an empty argument. One accept rule: qualifiers
+  before a function type out of the ABI's order or repeated, `KV` and `VKK`, which no
+  compiler writes and the three implementations spell three ways. Draws twenty-seven to
+  thirty added one, found with an instrumented build of libiberty's own source: a
+  length-prefixed D template body is read against the whole of what remains and its
+  length checked afterwards, as `dlang_parse_template` does, where this bounded the body
+  first -- on a mutant of `demangle.fn!(sym, val("null"))` the reference reads `sym`
+  greedily as a nested function whose parameter list runs fifty-six characters past the
+  body, then refuses the name at the `v` that follows, and the bound had let the greedy
+  reading fail, be put back, and the name read. One accept rule: `parseFunctionType`
+  steps over a `v` wherever it stands among a function type's parameters, `int (*)(int)`
+  for `PFiivE`, where `c++filt` and this spell the `void` that is written. Draws
+  thirty-three to thirty-eight added two: a pre-Itanium virtual table whose class count
+  is larger than what remains, `_vt.6i`, is `i virtual table` -- `gnu_special`'s `break`
+  on a too-large count leaves only the `switch`, and what follows is the next piece of
+  the name -- where leaving the whole loop here handed the `i` to the caller as a
+  parameter list, ` virtual table(int)`; and a D symbol argument whose last component is
+  anonymous takes its type as the symbol's own and spells nothing for it, as a whole
+  symbol already did, where `mangled_symbol` spelled `reserveNoSync(ulong)` for a
+  `core.internal.gc` mutant the reference spells `reserveNoSync`. A gnuv2 draw of
+  200,000 found the accept rule for the reference's second argument list after an
+  ellipsis blind to a class name with an unbalanced `<` in it, which the rule's
+  template-argument stripper took for a group and removed to the end. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
@@ -1972,9 +1971,10 @@ the reference demanglers, and a **Performance** section.
   `std::istream` read as Itanium and `Swift.Int` read as Swift, and no evidence in the
   string decides between them. Detection is not merely unimplemented here, it is
   impossible, which is why every reference puts this behind a flag of its own --
-  `c++filt -t`, libiberty's `DMGL_TYPES`, `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`. On the command line `--types` reads one encoding per argument or per
-  line rather than filtering symbols out of mixed text, because a type encoding is an
-  ordinary word and `I like Pi` must not become `I like int*`.
+  `c++filt -t`, libiberty's `DMGL_TYPES`, `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`.
+  On the command line `--types` reads one encoding per argument or per line rather than
+  filtering symbols out of mixed text, because a type encoding is an ordinary word and
+  `I like Pi` must not become `I like int*`.
 
   `demangleb_type()` and `parseb_type()` go with them, because a type encoding is read
   out of a binary as often as a symbol is -- an Itanium `typeinfo` name sits in

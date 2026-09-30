@@ -1158,8 +1158,7 @@ class TestProductionsTakenFromLibcxxabi:
         it must be unreadable. `peek`, `take` and `eof` honoured that; `expect`, `eat`,
         `startswith`, `peek2` and `remaining` indexed the string and did not. So `S` at
         the very end took the `_` of `_block_invoke` as its terminator and
-        `___ZN1a1bES_block_invoke` came back as `a::b(a)` -- 4,931 truncated encodings
-        across the corpora read as though they were whole, every one of them spelling
+        `___ZN1a1bES_block_invoke` would read as `a::b(a)`, a truncated encoding spelling
         something that looks like a declaration.
 
         Both references leave every one of these alone.

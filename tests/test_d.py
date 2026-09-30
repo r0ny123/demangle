@@ -717,12 +717,11 @@ class TestAgainstLibibertysOwnCorpus:
         assert self._score() == self.EXPECTED_EXACT
 
     def test_every_vector_is_answered_promptly(self):
-        """The corpus holds a real symbol that took over 35 seconds.
+        """No corpus symbol takes a second, however many `Q` back references it holds.
 
-        `std.format.formattedWrite`, 2,695 characters with 441 `Q` back references in
-        it. The parser was not looping -- three hundred thousand calls in all -- it was
-        assembling a string far larger than any caller would accept, and `max_output`
-        was checked on the finished string. A bound observed after the work is a report.
+        A long name with many back references must not assemble a string far larger than
+        any caller would accept; `max_output` is enforced while reading, not on the
+        finished string.
         """
         import time
 
@@ -806,14 +805,12 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
         assert demangle.demangle(seed, language="d") == "a.__dgliteral10()"
 
 
-class TestWhatAskingTheReferenceAboutRefusalsFound:
+class TestRefusalsTheReferenceAlsoRefuses:
     """`tools/mutate.py --refusals`: the mutants this scheme refuses that c++filt reads.
 
-    The gate only ever puts names this scheme *reads* to the reference, so a name it
-    refused and the reference read was invisible to it. Asked the other way round over
-    20,000 mutants, seventeen came back read. Two were this scheme's, and are fixed; the
-    rest are libiberty reading past the grammar, and are pinned here as refusals so a
-    change to either side shows up.
+    The gate only puts names this scheme *reads* to the reference, so `--refusals` asks
+    the other way round. Where libiberty reads past the grammar, the name is pinned here
+    as a refusal, so a change to either side shows up.
     """
 
     @pytest.mark.parametrize(

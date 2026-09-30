@@ -7,20 +7,22 @@ symbol cannot be read a piece at a time, and how a piece is *spelled* depends on
 sits in the tree. `_demangler.py` and `_printer.py` are those two files; `nodes.py`
 records the structure of the printer's traversal.
 
-Conformance is exact against `swift-demangle` from the 5.10.1 toolchain:
+Conformance is exact against a reference built from Swift's own demangler at a pinned
+`main` commit (see `tools/swift-demangle-reference/README.md`):
 
 * every `$s` symbol in the shipped Swift runtime and Foundation -- 48,368 of them --
   spelled identically, with nothing refused;
-* all 376 cases in the compiler's own `test/Demangle/Inputs/manglings.txt`, which is a
-  much harder set: SIL function types, function-signature specialisations, key paths,
-  autodiff thunks, macro expansions, and the Swift 3 mangling.
+* every case in the compiler's own `test/Demangle/Inputs/manglings.txt` -- the 514 rows
+  of `tests/conformance/swift-upstream.txt` -- which is a much harder set: SIL function
+  types, function-signature specialisations, key paths, autodiff thunks, macro
+  expansions, and the Swift 3 mangling.
 
 The Swift 3 mangling -- `_T` followed by anything but `0` -- is a different grammar with
 its own demangler in the compiler, and `_old_demangler.py` is a port of that one. It
 still matters: the ObjC runtime holds a Swift class's name in that form, so it turns up
 in any Apple binary with interop in it. It builds the same tree, so the printer spells it
-with no idea which mangling it came from, and all 247 of the compiler's own Swift 3 test
-cases come out exactly.
+with no idea which mangling it came from, and the compiler's own Swift 3 test cases come
+out exactly.
 """
 
 from ...core.ast import Node

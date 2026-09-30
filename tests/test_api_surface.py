@@ -309,8 +309,7 @@ class TestTheTreeAsData:
         The structure is a graph: Itanium's substitutions make one component reachable
         from several places, and a Rust node names its children twice over -- `parts`
         orders them, `base` and `arguments` say what they are. Written out in full at
-        every occurrence it doubles per level, and one real Rust toolchain symbol cost
-        4.7 seconds and 363MB before this.
+        every occurrence it doubles per level.
         """
         assert demangle.parse("_Z1fPiS_").to_dict() == {
             "kind": "function",

@@ -518,10 +518,9 @@ class TestBounds:
             demangle.demangle_strict("", language="gnuv2")
 
 
-class TestWhatAskingTheReferenceAboutRefusalsFound:
-    """`tools/mutate.py --refusals` over 3,000 mutants: what libiberty reads that this
-    refuses. All of it is libiberty spelling a gap round something it should have refused
-    -- the shapes `ACCEPTED["gnuv2"]` in `tools/enumerate.py` names -- but for one."""
+class TestRefusalsTheReferenceReads:
+    """Names libiberty reads and this refuses: libiberty spelling a gap round something
+    it should have refused, the shapes `ACCEPTED["gnuv2"]` in `tools/enumerate.py` names."""
 
     @pytest.mark.parametrize("mangled", ["foo__H1Zi_X01i_", "foo__H1Zt2TA2ZiZt4N__A1im9_X01i_"])
     def test_a_return_type_marker_with_nothing_after_it_is_refused(self, mangled):

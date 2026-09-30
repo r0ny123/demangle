@@ -204,7 +204,7 @@ class TestEveryDeclaratorDistributesOverAPack:
         ],
     )
     def test_the_expansion_the_compiler_actually_writes_is_unchanged(self, mangled, expected):
-        """Both references agree on these, and did before this too."""
+        """Both references agree on these."""
         assert demangle.demangle_strict(mangled) == expected
         assert demangle.demangle_strict(mangled, style="gnu") == expected
 

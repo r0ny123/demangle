@@ -81,19 +81,16 @@ def calibrate():
     and hide itself.
 
     Measured: running the suite against three times as many busy processes as cores --
-    a machine roughly 2.8x slower -- moves `cold` from 20.3us to 57.7us but its
-    normalised figure only from 500 to 487, and `structured` from 68.6us to 186.1us but
-    1693 to 1569. The raw numbers would fail any tolerance worth having; the normalised
-    ones sit within 8%.
+    a machine roughly 2.8x slower -- leaves the normalised figures within 8% where the
+    raw ones would fail any tolerance worth having.
 
-    What it does *not* do is track mild variation in machine state. Measured again on a
-    quiet machine: the calibration moved 39ms to 33ms across a few days while
-    `structured` stayed at 66-67us, which shows up as a 20% "regression" in a figure that
-    is a ratio. The two workloads track each other under load, when contention dominates
-    both; they do not track each other when the difference is CPU boost state, because a
-    tight dictionary loop benefits from it more than an allocating parser does. Run to
-    run on this hardware the normalised figures carry about 14% spread, which is over half
-    the tolerance.
+    What it does *not* do is track mild variation in machine state. On a quiet machine
+    the calibration can drift while `structured` stays put, which shows up as a 20%
+    "regression" in a figure that is a ratio. The two workloads track each other under
+    load, when contention dominates both; they do not track each other when the
+    difference is CPU boost state, because a tight dictionary loop benefits from it more
+    than an allocating parser does. Run to run the normalised figures carry about 14%
+    spread, which is over half the tolerance.
 
     That is why `--check` confirms a regression before reporting one, and why the
     tolerance is not tightened further. A real regression reproduces; noise mostly does
@@ -182,7 +179,7 @@ def benchmarks():
 
     parsed = []
 
-    # One pass (~20ms) carried 16% run-to-run spread, too close to the tolerance.
+    # One pass carries 16% run-to-run spread, too close to the tolerance.
     structured_passes = 2
 
     def structured():

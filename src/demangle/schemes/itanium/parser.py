@@ -204,7 +204,7 @@ _COMPLEX_WORDS = (
 
 #: Cap on the characters one name's prefix entries may build, as a multiple of `max_output`.
 #: Each <prefix> is a 5.1.10 candidate holding the whole prefix so far, so they sum to
-#: O(N^2) (`_ZN` then 8,190 `1a` allocated 98MB). 16x is ~100x the largest real symbol's need.
+#: O(N^2). 16x is ~100x the largest real symbol's need.
 _PREFIX_BUDGET = 16
 
 #: What opens a `<prefix>` component other than an `<unqualified-name>`: substitution,

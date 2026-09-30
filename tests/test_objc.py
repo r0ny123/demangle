@@ -257,11 +257,9 @@ class TestTree:
 class TestTheMethodShapeScreen:
     """`_i_`/`_c_` after every strip `_candidates` makes, computed without the list.
 
-    `detect` is offered every symbol in a binary, and asking the question by building
-    the candidate list and running a generator over it was two thirds of what it cost:
-    1.13us a name over the shipped libstdc++, against 0.43 for the same predicate
-    written out. These pin that it *is* the same predicate -- the strips are one or two
-    characters off the front, and each of them is a case here.
+    `detect` is offered every symbol in a binary, so the question is answered without
+    building the candidate list. These pin that it *is* the same predicate -- the strips
+    are one or two characters off the front, and each of them is a case here.
     """
 
     @pytest.mark.parametrize(

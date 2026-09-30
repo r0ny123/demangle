@@ -696,10 +696,9 @@ class AstBuilder(Builder):
     and, because allocating fewer objects is less work than allocating more, about 6%
     faster as well.
 
-    Interning composite nodes too was measured and rejected. It collapses the tree much
-    further -- to 2.4MB where leaf interning gives 4.2MB -- but a composite hashes by
-    walking its children, so building that table costs seven times the whole parse. Seven
-    times slower to save memory a caller may not be short of is the wrong trade.
+    Composite nodes are not interned: a composite hashes by walking its children, so
+    building that table would cost several times the whole parse to save memory a caller
+    may not be short of.
     `Node.__eq__` still compares composites by value, so a caller wanting to deduplicate
     a particular result can.
     """
