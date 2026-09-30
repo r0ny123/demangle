@@ -29,12 +29,15 @@ jobs:
         os: [ubuntu-latest]
         python: ["3.13", "3.14"]
         include:
+          # The ceiling, so the top of the range is not only ever run on Linux.
           - os: macos-latest
             python: "3.14"
+          # The floor, for the same reason.
           - os: windows-latest
             python: "3.13"
-          # Free-threaded, for tests/test_concurrency. Not 3.13t: hypothesis's PyO3
-          # extension has no cp313t wheel, so the test group cannot install there.
+          # Free-threaded, for tests/test_concurrency. Not 3.13t: coverage and hypothesis
+          # ship compiled wheels, and neither publishes a cp313t one (cp314t onwards),
+          # so the test group has no prebuilt install there.
           - os: ubuntu-latest
             python: "3.14t"
     steps:

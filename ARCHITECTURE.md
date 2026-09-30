@@ -124,9 +124,7 @@ demangle/
 ```
 
 `core` never imports from `schemes`; `schemes/*` never import from each other. Both are
-enforced by a test -- including a test that the enforcement itself fires on a
-constructed violation, because the first version of the rule had a hole in it and looked
-fine.
+enforced by a test, which is itself tested against a constructed violation.
 
 One exception, and it is in the test: `core/style.py` names the built-in option objects
 inside a function body, so the import is lazy and cycle-free.
@@ -161,13 +159,16 @@ Nothing in `core` knows the list of schemes at import time: `core/registry.py` f
 built-ins lazily and third-party plugins through the `demangle.languages` entry-point
 group, so a separate distribution can add a scheme without a patch to this one.
 
-Detection is the part with a cost model. `demangle()` on a name nobody claims offers it
-to every registered `detect` before giving up, and that path runs on every non-mangled
-symbol in a binary -- which, in a typical binary, is most of them. So `detect` is
-expected to be a prefix test, a scheme with a fixed first character declares it so the
-registry can skip `detect` altogether, and the schemes whose names carry no marker --
-the pre-Itanium C++ manglings, whose `detect` has to parse -- are offered last, behind
-everything a prefix settles.
+Detection is the part with a cost model. It runs on every non-mangled symbol in a
+binary -- in a typical binary, most of them -- so `detect` is expected to be a prefix
+test, and the registry narrows what a name is offered to before any `detect` runs. A
+scheme with a fixed first character declares it (`first_characters`), and a name
+starting with anything else never reaches it. A scheme whose names are ordinary C
+identifiers has none, so it declares a `DETECT_SCREEN`: the markers and openings that a
+name must hold for its `detect` to say yes, and a name with none of them is not offered
+to it. The schemes whose names carry no marker at all -- the pre-Itanium C++
+manglings, whose `detect` has to parse -- are offered last, behind everything a prefix
+settles.
 
 [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md)
 is the walk-through.

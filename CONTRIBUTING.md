@@ -9,13 +9,14 @@ Everyone taking part follows the [Code of Conduct](https://github.com/r0ny123/de
 
 The project builds with [Hatch](https://hatch.pypa.io/) and installs with
 [uv](https://docs.astral.sh/uv/). You need neither -- plain pip works -- but together
-they turn the whole check into one command.
+they turn the local check into one command.
 
 ```console
 git clone https://github.com/r0ny123/demangle
 cd demangle
 
-# Creates the environment and runs everything a pull request must pass.
+# Creates the environment, then runs lint, the tests, the differential check and the
+# benchmark gate. CI runs more; see "Before you open a pull request".
 hatch run check
 ```
 
@@ -79,7 +80,8 @@ a test can reach, and [ARCHITECTURE.md](ARCHITECTURE.md) says where it does not:
 
 1. **Parsers never build their own output.** Write against the `Builder` protocol
    (`core/builder.py`); ARCHITECTURE.md says why.
-2. **`core` never imports a scheme, and schemes never import each other.**
+2. **`core` never imports a scheme, and schemes never import each other**
+   ([ARCHITECTURE.md](ARCHITECTURE.md#layout)).
 3. **No third-party dependencies.** The dependency-free promise is the reason a lot of
    people can use this at all. CI asserts it against a clean install of the built wheel,
    not just against the source tree.
@@ -113,6 +115,11 @@ pytest
 python tools/differential.py
 python benchmarks/bench.py --check
 ```
+
+That is what `check` covers. CI also runs the three fuzzers against the built references,
+the cross-version reference check, `mkdocs build --strict`, and a build of the
+distributions with the wheel installed in a clean environment, so a pull request can fail
+there with `check` passing.
 
 `tools/differential.py` with no arguments replays every checked-in corpus under the
 style and language it was recorded with, and exits non-zero if anything disagrees.
@@ -162,11 +169,13 @@ Trusted Publishing, so there is no long-lived API token in repository secrets.
 
 The test matrix is deliberately not a cross product. Both supported versions run on
 Linux; macOS and Windows get one row each, the ceiling and the floor, so neither end of
-the range is only ever exercised on Linux. This is a pure-Python library, and everything
-that has ever differed between platforms differed in the harness -- a glob, a
-subprocess, a console encoding -- which one row per operating system catches as well as a full
-cross product would. Add a row when a defect shows up that only that row would have
-caught, and say so in the comment next to it.
+the range is only ever exercised on Linux. A fourth row runs Ubuntu on the free-threaded
+3.14t build, for `tests/test_concurrency.py`. This is a pure-Python library, and
+everything that has ever differed between platforms differed in the harness -- a glob, a
+subprocess, a console encoding -- which one row per operating system catches as well as
+a full cross product would. Each extra row has a comment in `ci.yml` saying why it is
+there. Add a row when a defect shows up that only that row would have caught, and say so
+in its comment.
 
 Two rules for anyone editing `.github/`:
 
