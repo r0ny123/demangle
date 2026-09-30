@@ -326,9 +326,28 @@ class TestCacheStatistics:
         hits on every name; libLLVM exports 56k names."""
         assert demangle.cache_stats()["max_size"] // 2 >= 65536
 
+    def test_long_names_cannot_grow_the_cache_past_its_weight(self, monkeypatch):
+        """Bounded in characters as well as entries, whatever `Limits` lets through."""
+        from demangle import api
+        from demangle.core.cache import BoundedCache
+
+        cache = BoundedCache(max_size=1000, max_weight=10_000, weigh=api._CACHE._weigh)
+        monkeypatch.setattr(api, "_CACHE", cache)
+        for index in range(200):
+            demangle.demangle("_ZN" + "3foo" * 100 + f"{len(str(index)) + 1}x{index}" + "Ev")
+        held = sum(len(key[0]) + len(value) for part in (cache._young, cache._old) for key, value in part.items())
+        assert held <= 10_000 + 2 * 2_000
+        assert len(cache) < 20
+
+    @pytest.mark.parametrize("name", ["_Z1fv", "_ZN" + "3foo" * 400 + "Ev"])
+    def test_a_bad_argument_is_refused_whether_or_not_the_call_is_cached(self, name):
+        with pytest.raises(ValueError, match="unhashable limits"):
+            demangle.demangle(name, limits={"max_depth": 1})  # ty: ignore[invalid-argument-type]
+        with pytest.raises(ValueError, match="unknown language"):
+            demangle.demangle(name, language=["itanium"])  # ty: ignore[invalid-argument-type]
+
     def test_a_name_named_on_every_page_of_a_table_misses_once(self, monkeypatch):
-        """Emptied wholesale at the high-water mark, the cache dropped the one name every
-        page of a table repeats along with everything else, once per turnover."""
+        """A name still in use survives each turnover of the cache's generations."""
         from demangle import api
         from demangle.core.cache import BoundedCache
 

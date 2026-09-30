@@ -52,6 +52,8 @@ Out of scope:
   `_ZN11Expressions2f2ILi1EEEvPApsT(int)`, a declaration built out of the encoding by
   the pre-Itanium scheme. A caller who lowers a limit is defending against hostile input,
   which is the last place to start guessing.
+- The result cache `demangle()` keeps is bounded in characters as well as entries, so
+  a stream of long hostile names cannot grow it past about 100 MB.
 - `KeyboardInterrupt`, `SystemExit` and `MemoryError` are never swallowed by the
   best-effort paths — they mean the process is in trouble, not that a name is
   malformed.

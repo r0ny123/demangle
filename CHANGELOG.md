@@ -39,7 +39,8 @@ the reference demanglers, and a **Performance** section.
   no scheme and takes under a millisecond; one on an MSVC name imports only MSVC's.
 - **The result cache keeps two generations of 65,536 names** (was one of 16,384,
   emptied when full), so a second pass over a large library's symbol table hits and a
-  name still in use survives turnover. Worst case is about 60 MB.
+  name still in use survives turnover. It is bounded in characters as well as entries,
+  so long hostile names cannot grow it past about 100 MB.
 - **Names that are not mangled are rejected about 2x faster** by `demangle()` and 3x
   by `detect()`: a scheme with no fixed first character declares what a name must
   contain before it could claim it, and is not asked about names without it.

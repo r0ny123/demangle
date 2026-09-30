@@ -32,14 +32,32 @@ class BoundedCache:
     two turnovers at worst drops a generation early.
     """
 
-    __slots__ = ("_generation", "_old", "_young", "hits", "max_size", "misses")
+    __slots__ = (
+        "_budget",
+        "_generation",
+        "_old",
+        "_weigh",
+        "_young",
+        "_young_weight",
+        "hits",
+        "max_size",
+        "max_weight",
+        "misses",
+    )
 
-    def __init__(self, max_size=8192):
+    def __init__(self, max_size=8192, max_weight=None, weigh=None):
+        """`weigh(key, value)`, with `max_weight`, also bounds what the entries hold."""
         self.max_size = max_size
+        self.max_weight = max_weight
+        self._weigh = weigh
         #: Entries per generation; at least one, so a `max_size` under 2 still caches (two).
         self._generation = max(max_size // 2, 1)
+        #: Weight per generation: a generation turns over once it reaches this, so the
+        #: whole holds at most `max_weight` and two entries.
+        self._budget = float("inf") if max_weight is None or weigh is None else max(max_weight // 2, 1)
         self._young = {}
         self._old = {}
+        self._young_weight = 0
         self.hits = 0
         self.misses = 0
 
@@ -56,15 +74,19 @@ class BoundedCache:
 
     def put(self, key, value):
         young = self._young
-        if len(young) >= self._generation:
+        if len(young) >= self._generation or self._young_weight >= self._budget:
             self._old = young
             self._young = young = {}
+            self._young_weight = 0
         young[key] = value
+        if self._weigh is not None:
+            self._young_weight += self._weigh(key, value)
         return value
 
     def clear(self):
         self._young = {}
         self._old = {}
+        self._young_weight = 0
         self.hits = 0
         self.misses = 0
 

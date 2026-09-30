@@ -74,7 +74,11 @@ __all__ = [
 #: Sized so one generation holds a large library's whole symbol table (libLLVM exports 56k
 #: names), which a second pass then finds in full. Measured at about 440 bytes per C++
 #: entry, so full it holds under 60 MB.
-_CACHE = BoundedCache(max_size=131072)
+#:
+#: Also weighed in characters, name plus result, because `Limits` lets 64K through in each
+#: direction and a count alone would not bound hostile input: 48M characters in a
+#: generation holds libLLVM's table several times over and caps the whole near 100 MB.
+_CACHE = BoundedCache(max_size=131072, max_weight=96 << 20, weigh=lambda key, value: len(key[0]) + len(value))
 
 
 #: Emptied whenever a style or language is registered. By notification rather than a
@@ -202,6 +206,11 @@ def demangle(
         )
     else:
         key = None
+        # The same refusal a cached call gives, so caching never decides what is accepted.
+        try:
+            hash((language, limits))
+        except TypeError:
+            _refuse_unhashable(language, limits)
     if key is not None:
         # An unhashable argument surfaces here as a `TypeError`; not checked in advance,
         # which would hash `limits` twice on every warm call.
