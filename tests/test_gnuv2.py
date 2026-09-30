@@ -183,6 +183,41 @@ class TestAnItaniumPrefixIsNeverClaimed:
         assert demangle.demangle(name, style=forced) == name
 
 
+class TestTheLeadingUnderscoresScreen:
+    """`__` and a letter opens a special form (`__vt_`, `__thunk_`, `__ti`, `__tf`), a
+    constructor (`__Q`, `__K`, `__H`, `__t`), a DLL import (`__imp_`) -- or nothing, and
+    then g++ 2.x's reading needs a second `__` to split the name at. `detect` turns the
+    last kind away without parsing it: `__libc_start_main` and the rest of a C library's
+    reserved names, which were most of what this scheme parsed over a real symbol table."""
+
+    def _turned_away(self, name):
+        return (
+            name[:2] == "__"
+            and name[2:3].isalpha()
+            and name[2] not in "tvQKH"
+            and name.find("__", 3) < 0
+            and not name.startswith("__imp_")
+        )
+
+    def test_every_name_it_turns_away_is_one_the_parse_refuses(self):
+        names = [row[0] for row in vectors()]
+        names += [f"__{name}" for name in names] + [f"__x{name.replace('__', '_')}" for name in names]
+        names += ["__libc_start_main", "__cxa_atexit", "__vtbl", "__ti", "__imp", "__i", "__Ab_", "__a__"]
+        turned_away = [name for name in names if self._turned_away(name)]
+        assert len(turned_away) > 500
+        for name in turned_away:
+            with pytest.raises(DemangleFailure):
+                demangle_gnuv2(name)
+            assert not gnuv2.detect(name), name
+
+    @pytest.mark.parametrize(
+        "name",
+        ["__Q23foo3bar", "__t6vector1Zdi", "__vt_3foo", "__ti3foo", "__tf3foo", "__3fooi", "__imp_foo__Fv"],
+    )
+    def test_the_forms_that_need_no_second_separator_still_read(self, name):
+        assert gnuv2.detect(name)
+
+
 class TestWhatItRefusesToClaim:
     """The number that decides whether this is safe to have registered at all."""
 

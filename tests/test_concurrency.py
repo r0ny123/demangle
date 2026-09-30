@@ -232,3 +232,54 @@ def test_schemes_imported_on_first_use_from_several_threads_at_once():
     source = Path(__file__).resolve().parent.parent / "src"
     for _ in range(ROUNDS):
         subprocess.run([sys.executable, "-c", script], check=True, env={"PYTHONPATH": str(source)})
+
+
+def test_a_cache_turning_over_under_many_threads_serves_only_right_answers(corpus, monkeypatch):
+    """A small cache turns a generation over every few dozen names, so threads race the
+    turnover itself: one moving the young generation to old while others read or promote
+    through it. An entry may be lost -- that costs a parse -- but never swapped."""
+    from demangle import api
+    from demangle.core.cache import BoundedCache
+
+    names = corpus[:1500]
+    expected = {name: demangle.demangle(name) for name in names}
+    small = BoundedCache(max_size=64)
+    monkeypatch.setattr(api, "_CACHE", small)
+
+    def work(seed):
+        for name in _shuffled(names, seed) + names[:200]:
+            assert demangle.demangle(name) == expected[name], name
+
+    _run_threaded(work)
+    # Bounded, give or take a generation lost to a race between two turnovers.
+    assert len(small) <= small.max_size + THREADS
+    assert small.hits > 0
+    assert small.misses > 0
+
+
+def test_styles_resolved_on_first_use_from_several_threads_at_once():
+    """Each style's per-language options are imported when a scheme first needs them.
+    Threads asking under both styles at once, in a fresh process, must all get the
+    answer one thread gets."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    names = ["_ZNSs4sizeEv", "?f@@YAXH@Z", "$sSiN", "_RNvCs1234_7mycrate3foo", "f__Fi", "__dt__6CActorFv"]
+    expected = {(name, style): demangle.demangle(name, style=style) for name in names for style in ("llvm", "gnu")}
+    script = (
+        "import threading, demangle\n"
+        f"expected = {expected!r}\n"
+        f"barrier = threading.Barrier({THREADS})\n"
+        "seen = []\n"
+        "def work():\n"
+        "    barrier.wait()\n"
+        "    seen.append({key: demangle.demangle(key[0], style=key[1]) for key in expected})\n"
+        f"threads = [threading.Thread(target=work) for _ in range({THREADS})]\n"
+        "[t.start() for t in threads]\n"
+        "[t.join() for t in threads]\n"
+        f"assert len(seen) == {THREADS} and all(answer == expected for answer in seen), seen\n"
+    )
+    source = Path(__file__).resolve().parent.parent / "src"
+    for _ in range(ROUNDS):
+        subprocess.run([sys.executable, "-c", script], check=True, env={"PYTHONPATH": str(source)})

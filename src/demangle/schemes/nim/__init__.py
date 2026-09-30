@@ -26,7 +26,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import DemangleFailure, NimSymbol, detect, parse_nim_symbol
+from ._parser import _COMPILER_PREFIXES, DemangleFailure, NimSymbol, detect, parse_nim_symbol
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -61,6 +61,10 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         return nodes.build(symbol)
     return builder.raw(symbol.text)
 
+
+#: What `detect` needs to see, for the registry to screen on without calling it: a `__`
+#: or a compiler-generated opening. See `core.registry._screened`.
+DETECT_SCREEN = (("__",), _COMPILER_PREFIXES)
 
 PLUGIN = LanguagePlugin(
     name="nim",

@@ -707,7 +707,7 @@ class AstBuilder(Builder):
     __slots__ = ("_leaves", "_style")
 
     #: Bound on distinct leaves held, so a tool walking unrelated binaries cannot
-    #: accumulate without end. Cleared wholesale, as `BoundedCache` explains.
+    #: accumulate without end. Cleared wholesale when full.
     MAX_LEAVES = 4096
 
     def __init__(self, style=None):

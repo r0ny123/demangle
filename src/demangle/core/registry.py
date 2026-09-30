@@ -20,23 +20,58 @@ from .plugin import LanguagePlugin
 #: Built-in schemes, imported on first use. A two-field entry, `(name, import path)`, is
 #: imported when the registry loads. The longer form also carries what detection needs --
 #: priority, first characters, symbol-table decorations and aliases, as the scheme's
-#: `PLUGIN` declares them -- so the scheme stays unimported until a name reaches it.
-#: `tests/test_core.py` checks those fields against every `PLUGIN`.
+#: `PLUGIN` declares them, and the scheme's `DETECT_SCREEN` (see `_screened`) -- so the
+#: scheme stays unimported until a name reaches it. `tests/test_core.py` checks those
+#: fields against every scheme.
 _BUILTIN_MODULES = (
-    ("rust", "demangle.schemes.rust", 50, "_Z", False, ("rs",)),
-    ("itanium", "demangle.schemes.itanium", 200, "_", True, ("gnu", "gcc", "clang", "cxx", "c++")),
-    ("msvc", "demangle.schemes.msvc", 100, "?.", False, ("microsoft", "ms", "vc")),
-    ("swift", "demangle.schemes.swift", 45, "$_@a", False, ()),
-    ("d", "demangle.schemes.d", 40, "_", False, ("dlang",)),
-    ("go", "demangle.schemes.go", 10, "", False, ("golang",)),
-    ("pascal", "demangle.schemes.pascal", 20, "", False, ("fpc", "freepascal")),
-    ("delphi", "demangle.schemes.delphi", 35, "@", False, ("borland", "bcc", "c++builder", "embarcadero")),
-    ("nim", "demangle.schemes.nim", 10, "", False, ()),
-    ("objc", "demangle.schemes.objc", 30, "-+_.lL", False, ("objective-c", "objectivec")),
-    ("jni", "demangle.schemes.jni", 15, "J", False, ("java",)),
-    ("codewarrior", "demangle.schemes.codewarrior", 300, "", True, ("cw", "metrowerks", "mwcc")),
-    ("gnuv2", "demangle.schemes.gnuv2", 290, "", True, ("gnu-v2", "cfront", "cplus-dem")),
-    ("ada", "demangle.schemes.ada", 280, "", True, ("gnat",)),
+    ("rust", "demangle.schemes.rust", 50, "_Z", False, ("rs",), None),
+    ("itanium", "demangle.schemes.itanium", 200, "_", True, ("gnu", "gcc", "clang", "cxx", "c++"), None),
+    ("msvc", "demangle.schemes.msvc", 100, "?.", False, ("microsoft", "ms", "vc"), None),
+    ("swift", "demangle.schemes.swift", 45, "$_@a", False, (), None),
+    ("d", "demangle.schemes.d", 40, "_", False, ("dlang",), None),
+    ("go", "demangle.schemes.go", 10, "", False, ("golang",), (("/", "(*"), ("go:", "type:", "go.", "type."))),
+    ("pascal", "demangle.schemes.pascal", 20, "", False, ("fpc", "freepascal"), (("$",), ())),
+    ("delphi", "demangle.schemes.delphi", 35, "@", False, ("borland", "bcc", "c++builder", "embarcadero"), None),
+    ("nim", "demangle.schemes.nim", 10, "", False, (), (("__",), ("NTI", "Marker_", "TM_", "ty"))),
+    (
+        "objc",
+        "demangle.schemes.objc",
+        30,
+        "-+_.lL",
+        False,
+        ("objective-c", "objectivec"),
+        (
+            ("objc", "OBJC", "_block_invoke", "block_literal", "block_descriptor"),
+            (
+                "-",
+                "+",
+                "_i_",
+                "_c_",
+                "._i_",
+                "._c_",
+                "__i_",
+                "__c_",
+                "l__i_",
+                "l__c_",
+                "L__i_",
+                "L__c_",
+                ".__i_",
+                ".__c_",
+            ),
+        ),
+    ),
+    ("jni", "demangle.schemes.jni", 15, "J", False, ("java",), None),
+    ("codewarrior", "demangle.schemes.codewarrior", 300, "", True, ("cw", "metrowerks", "mwcc"), (("__",), ())),
+    (
+        "gnuv2",
+        "demangle.schemes.gnuv2",
+        290,
+        "",
+        True,
+        ("gnu-v2", "cfront", "cplus-dem"),
+        (("__",), (("_", ("$", ".")),)),
+    ),
+    ("ada", "demangle.schemes.ada", 280, "", True, ("gnat",), (("__",), ("_ada_",))),
 )
 
 #: The entry-point group third-party packages advertise plugins under.
@@ -49,8 +84,8 @@ _on_change = []
 _plugins = {}
 _aliases = {}
 _ordered = None
-#: First character -> the plugins that could claim a name starting with it; rebuilt on
-#: demand after any change.
+#: First character -> `candidates`' answers for names starting with it; rebuilt on demand
+#: after any change. See `_bucket`.
 _by_first = None
 #: Set only once loading has *finished*. Re-entrancy (a plugin module calling `register()`
 #: during import) has its own marker, so another thread never sees a half-loaded registry.
@@ -168,7 +203,7 @@ def _load():
                 if len(entry) == 2:
                     import_module(entry[1])
                 elif entry[0] not in _plugins:
-                    _install_stand_in(_stand_in(*entry))
+                    _install_stand_in(_stand_in(*entry[:6]))
                     installed = True
             _load_entry_points()
             _loaded = True
@@ -291,13 +326,25 @@ def _order():
 def candidates(mangled):
     """The plugins worth offering `mangled` to, in detection order.
 
-    Most schemes start their names with one of a handful of characters, and a caller
-    labelling a symbol table offers this every symbol in it -- the great majority of
-    which are not mangled at all. Screening on the first character skips the schemes
-    that could not match without calling into them.
+    A caller labelling a symbol table offers this every symbol in it -- the great
+    majority of which are not mangled at all -- so it narrows the list twice before
+    anything calls into a scheme, both times on evidence the scheme has declared.
 
-    The order is `available()`'s, filtered; a scheme that declares no first characters
-    is always offered, so adding one changes nothing for a scheme that does not opt in.
+    First on the name's first character: most schemes start their names with one of a
+    handful, and a name starting with anything else is not offered to them.
+
+    Then on what the name contains. Six schemes -- Go, Nim, Free Pascal, Ada and the two
+    pre-Itanium C++ ones -- have no first character, because their names are ordinary C
+    identifiers, and were offered every name there is. But each asks for evidence no
+    ordinary identifier has: a `__`, a `$`, a `/`. A built-in declares that as its
+    `DETECT_SCREEN`, and a name holding none of the markers any scheme in its list asks
+    for is offered only to the schemes that declared none. One pass over the name
+    replaces a call into each, and it is the call that cost: the markers were each a
+    single C-level scan already.
+
+    The order is `available()`'s, filtered; a scheme that declares neither first
+    characters nor a screen is always offered, so adding one changes nothing for a scheme
+    that does not opt in.
 
     The cache is read without taking the lock, because this runs once for every symbol a
     caller offers the library and the locked path was most of what detection cost: two
@@ -317,15 +364,27 @@ def candidates(mangled):
         _load()
         return _order()
     cached = _by_first
-    if cached is not None:
-        found = cached.get(mangled[0])
-        if found is not None:
-            return found
-    return _screen(mangled[0])
+    found = None if cached is None else cached.get(mangled[0])
+    if found is None:
+        found = _bucket(mangled[0])
+    offered, unscreened, markers, openings = found
+    if offered is unscreened:
+        return offered
+    if openings and mangled.startswith(openings):
+        return offered
+    for marker in markers:
+        if marker in mangled:
+            return offered
+    return unscreened
 
 
-def _screen(first):
-    """Build and record the candidate list for names starting with `first`.
+def _bucket(first):
+    """Build and record `candidates`' answers for names starting with `first`.
+
+    Four fields: every plugin whose first characters admit `first`; those of them with
+    no screen; and the union of the screens of the rest -- their markers, and those of
+    their openings that start with `first`, since no other can match. `offered is
+    unscreened` where nothing would be screened out.
 
     The order is read inside the lock, not before it. Read outside, a `register`
     landing in the window between the two would be invisible: the screen would be built
@@ -341,10 +400,57 @@ def _screen(first):
             cache = _by_first = {}
         found = cache.get(first)
         if found is None:
-            found = cache[first] = tuple(
+            offered = tuple(
                 plugin for plugin in ordered if not plugin.first_characters or first in plugin.first_characters
             )
+            screens = [screen for screen in map(_screened, offered) if screen is not None]
+            unscreened = tuple(plugin for plugin in offered if _screened(plugin) is None)
+            markers = {}
+            openings = {}
+            for screen in screens:
+                markers.update(dict.fromkeys(screen[0]))
+                for opening in screen[1]:
+                    prefix, needs = (opening, ()) if isinstance(opening, str) else opening
+                    if prefix[0] != first:
+                        continue
+                    if needs and prefix == first:
+                        # Every name here starts with it, so only the markers are left.
+                        markers.update(dict.fromkeys(needs))
+                    else:
+                        # A longer prefix's own markers are left to `detect`.
+                        openings[prefix] = None
+            if not screens or first in openings:
+                # Nothing screened, or an opening every name here begins with.
+                found = (offered, offered, (), ())
+            else:
+                found = (offered, unscreened, tuple(markers), tuple(openings))
+            cache[first] = found
         return found
+
+
+def _screened(plugin):
+    """The screen `plugin`'s `detect` passes names through first, or None.
+
+    A pair, `(markers, openings)`: `detect` answers False for every name that contains
+    none of the `markers` and starts with none of the `openings`. An opening is a string,
+    or a `(prefix, markers)` pair for one that counts only with one of its own markers
+    somewhere in the name as well. Built-in schemes declare it as `DETECT_SCREEN`, and
+    `_BUILTIN_MODULES` carries a copy so a scheme need not be imported to be skipped.
+
+    It holds for a name's undecorated form as well, which is the other thing a scheme
+    with symbol-table decorations is asked about: that is a prefix of the name, so a
+    marker in it is a marker in the name and an opening it begins with the name begins
+    with too. Only the built-in plugin is screened -- a replacement registered under the
+    same name declares nothing, and is offered everything.
+    """
+    for entry in _BUILTIN_MODULES:
+        if entry[0] == plugin.name and len(entry) > 6:
+            if plugin is _stand_ins.get(plugin.name):
+                return entry[6]
+            module = sys.modules.get(entry[1])
+            if module is not None and getattr(module, "PLUGIN", None) is plugin:
+                return entry[6]
+    return None
 
 
 def names():

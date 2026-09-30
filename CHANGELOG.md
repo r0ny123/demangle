@@ -33,12 +33,17 @@ the reference demanglers, and a **Performance** section.
 - **Rust v0 nesting follows `Limits.max_depth`** rather than a fixed 256, with the
   same `LimitExceeded("recursion depth")` report past it or past the interpreter's
   stack.
-- **Schemes load on first use.** A built-in scheme's module is imported only when a
-  name reaches it, and installed packages are searched in full only when one might
-  declare `demangle.languages`; the first `demangle()` in a process is about 25 ms
-  faster.
-- **The result cache holds 65,536 names** (was 16,384), so a second pass over a large
-  library's symbol table hits; about 440 bytes per C++ entry.
+- **Schemes load on first use.** A built-in scheme, and each style's options for it,
+  are imported only when a name reaches them, and installed packages are searched in
+  full only when one might declare `demangle.languages`. A first call on `main` imports
+  no scheme and takes under a millisecond; one on an MSVC name imports only MSVC's.
+- **The result cache keeps two generations of 65,536 names** (was one of 16,384,
+  emptied when full), so a second pass over a large library's symbol table hits and a
+  name still in use survives turnover. Worst case is about 60 MB.
+- **Names that are not mangled are rejected about 2x faster** by `demangle()` and 3x
+  by `detect()`: a scheme with no fixed first character declares what a name must
+  contain before it could claim it, and is not asked about names without it.
+- **Warm `demangle()` calls are about 1.5x faster.**
 - **Cold Itanium demangling is about 1.25x faster** on real symbol tables (a third fewer
   instructions per name), with byte-identical output.
 

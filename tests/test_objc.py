@@ -288,3 +288,19 @@ class TestTheMethodShapeScreen:
         assert _method_prefixed(name) is expected
         listed = any(candidate.startswith(("_i_", "_c_")) for candidate in _candidates(name)) if name else False
         assert listed is expected
+
+    def test_the_registry_s_openings_are_every_prefix_the_screen_accepts(self):
+        """`DETECT_SCREEN` spells `_method_prefixed` as openings the registry can test
+        without importing this scheme; a name it accepts must start with one of them."""
+        from demangle.schemes.objc import DETECT_SCREEN
+        from demangle.schemes.objc._parser import _method_prefixed
+
+        openings = DETECT_SCREEN[1]
+        heads = ["", "_", "__", ".", "._", ".__", "l_", "L_", "l__", "x", "l", "L"]
+        names = [f"{head}{body}" for head in heads for body in ("_i_A_b", "_c_A_b", "i_A_b", "_x_A")]
+        for name in names:
+            if _method_prefixed(name):
+                assert name.startswith(openings), name
+        assert demangle.detect("-[NSString length]") == "objc"
+        assert demangle.core.registry.candidates("_memcpy") == demangle.core.registry.candidates("_ZN1f")
+        assert "objc" not in [plugin.name for plugin in demangle.core.registry.candidates("_memcpy")]

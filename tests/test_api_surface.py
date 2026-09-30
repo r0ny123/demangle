@@ -397,6 +397,7 @@ class TestTheTreeAsData:
         assert Literal.__match_args__ == ("type", "value")
 
 
+@pytest.mark.sweep
 class TestEveryNodeAnswersTheNodeProtocol:
     """`walk()` hands a caller nodes, and every one of them has to be usable.
 
@@ -419,8 +420,8 @@ class TestEveryNodeAnswersTheNodeProtocol:
     def _sampled(self, step):
         directory = pathlib.Path(__file__).parent / "conformance"
         names = []
-        for path in sorted(directory.glob("*.txt")):
-            names.extend(name for name, _ in load_corpus(path.name)[::step])
+        for path in sorted([*directory.glob("*.txt"), *directory.glob("reported/*.txt")]):
+            names.extend(name for name, _ in load_corpus(path.relative_to(directory).as_posix())[::step])
         return names
 
     @pytest.mark.parametrize("style", ["llvm", "gnu"])
@@ -444,11 +445,12 @@ class TestEveryNodeAnswersTheNodeProtocol:
 
 
 class TestThePublishedVocabulary:
+    @pytest.mark.sweep
     def test_every_kind_a_corpus_produces_is_published(self):
         """The list cannot rot: the corpora are what keep it honest."""
         directory = pathlib.Path(__file__).parent / "conformance"
-        for path in sorted(directory.glob("*.txt")):
-            for mangled, _ in load_corpus(path.name):
+        for path in sorted([*directory.glob("*.txt"), *directory.glob("reported/*.txt")]):
+            for mangled, _ in load_corpus(path.relative_to(directory).as_posix()):
                 language = demangle.detect(mangled)
                 if language is None:
                     continue

@@ -56,6 +56,11 @@ _MAY_CARRY_EVIDENCE = re.compile(r"_ada_|___|[A-Z]|__[0-9]|\.[0-9]")
 _TRAILING_OVERLOAD = re.compile(r"__\d+(_\d+)*(X[nb]*)?")
 
 
+#: What `detect` needs to see, for the registry to screen on without calling it: a `__`,
+#: or the library-level `_ada_` opening. See `core.registry._screened`.
+DETECT_SCREEN = (("__",), (_LIBRARY_PREFIX,))
+
+
 def detect(name):
     """Whether `name` is a GNAT symbol, decided by reading it *and* by what it carries.
 

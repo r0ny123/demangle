@@ -64,6 +64,10 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     return builder.raw(symbol.text)
 
 
+#: What `detect` needs to see, for the registry to screen on without calling it: a `$`.
+#: See `core.registry._screened`.
+DETECT_SCREEN = (("$",), ())
+
 PLUGIN = LanguagePlugin(
     name="pascal",
     node_kinds=("name", "parameters", "path", "symbol"),

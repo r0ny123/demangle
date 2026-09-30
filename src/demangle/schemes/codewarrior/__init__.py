@@ -116,6 +116,10 @@ def _plausible(symbol):
     return True
 
 
+#: What `detect` needs to see, for the registry to screen on without calling it: a `__`.
+#: See `core.registry._screened`.
+DETECT_SCREEN = (("__",), ())
+
 _OTHER_SCHEME = re.compile(r"__?(?:Z|R[A-Z])")
 
 
@@ -126,8 +130,11 @@ def detect(name):
     whether it parsed. Screened first, so that the great majority of symbols cost a
     substring search and nothing else.
     """
-    # Every name the reference reads has a `__` in it.
+    # Every name the reference reads has a `__` in it, and a special name (`__dt__...`)
+    # a second one after its own: `__libc_start_main` is neither.
     if "__" not in name:
+        return False
+    if name[:2] == "__" and name.find("__", 2) < 0 and name[2:4] != "op":
         return False
     if len(name) > _DETECT_MAX or not _screen(name):
         return False

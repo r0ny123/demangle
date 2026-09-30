@@ -17,6 +17,7 @@ from demangle.core import registry
 from demangle.core.ast import AST_BUILDER as A
 from demangle.core.cache import MISSING, BoundedCache
 from demangle.core.errors import DemanglingError, ParseError, TruncatedError
+from demangle.core.plugin import LanguagePlugin
 from demangle.core.reader import Reader
 from demangle.core.spelling import SPELLING_BUILDER as B
 
@@ -221,11 +222,47 @@ class TestBoundedCache:
         assert cache.get("key") is None
         assert cache.get("absent") is MISSING
 
-    def test_clears_wholesale_at_the_high_water_mark(self):
+    def test_a_full_generation_ages_out_rather_than_everything(self):
+        """Clearing wholesale threw the working set away with the rest."""
         cache = BoundedCache(max_size=4)
         for index in range(5):
             cache.put(index, index)
-        assert len(cache) == 1
+        assert [index for index in range(5) if index in cache] == [2, 3, 4]
+
+    def test_never_holds_more_than_max_size(self):
+        cache = BoundedCache(max_size=6)
+        for index in range(100):
+            cache.put(index, index)
+            assert len(cache) <= 6
+
+    def test_an_entry_in_use_survives_every_turnover(self):
+        cache = BoundedCache(max_size=4)
+        cache.put("hot", 1)
+        for index in range(50):
+            assert cache.get("hot") == 1
+            cache.put(index, index)
+        assert "hot" in cache
+        assert 0 not in cache
+
+    def test_a_hit_in_either_generation_is_a_hit(self):
+        cache = BoundedCache(max_size=4)
+        cache.put("old", 1)
+        cache.put("x", 2)
+        cache.put("young", 3)
+        assert cache.get("young") == 3
+        assert cache.get("old") == 1
+        assert cache.get("absent") is MISSING
+        assert (cache.stats["hits"], cache.stats["misses"]) == (2, 1)
+
+    def test_clear_empties_both_generations_and_the_counts(self):
+        cache = BoundedCache(max_size=4)
+        for index in range(3):
+            cache.put(index, index)
+        cache.get(0)
+        cache.clear()
+        assert len(cache) == 0
+        assert cache.get(0) is MISSING
+        assert cache.stats["hits"] == 0
 
     def test_tracks_hit_rate(self):
         cache = BoundedCache()
@@ -287,11 +324,99 @@ class TestFirstCharacterScreen:
             everyone = [p.name for p in registry.available() if p in registry.candidates(name)]
             assert screened == everyone
 
-    def test_a_scheme_declaring_nothing_is_always_offered(self):
-        for plugin in registry.available():
-            if plugin.first_characters:
+    def test_a_scheme_declaring_nothing_is_always_offered(self, monkeypatch):
+        plain = LanguagePlugin(name="plain", detect=lambda name: False, parse=lambda *args: None)
+        monkeypatch.setattr(registry, "_plugins", {**registry._plugins, "plain": plain})
+        monkeypatch.setattr(registry, "_ordered", None)
+        monkeypatch.setattr(registry, "_by_first", None)
+        for name in ("anything at all", "_Z1fv", "?f@@YAXH@Z", "x"):
+            assert plain in registry.candidates(name)
+
+
+class TestDetectScreen:
+    """`DETECT_SCREEN` lets the registry skip a scheme with no first character of its own
+    unless the name carries a marker it asks for. Like the first-character screen, it
+    loses symbols silently if it is wrong, so what is checked is the property it claims:
+    no name without the markers or an opening is ever claimed by the scheme."""
+
+    def _names(self):
+        names = [name for name in TestFirstCharacterScreen()._corpus_names() if name]
+        # The forms a symbol table adds, and the leading underscores a Mach-O one does.
+        names += [f"{name}@@VERS_1.0" for name in names] + [f"_{name}" for name in names]
+        alphabet = string.ascii_letters + string.digits + "_$?@.%&*<>-+~/("
+        names += list(alphabet) + [a + b + c for a in alphabet for b in alphabet for c in "_$."]
+        return names
+
+    @staticmethod
+    def _passes(screen, name):
+        markers, openings = screen
+        if any(marker in name for marker in markers):
+            return True
+        for opening in openings:
+            prefix, needs = (opening, ()) if isinstance(opening, str) else opening
+            if name.startswith(prefix) and (not needs or any(need in name for need in needs)):
+                return True
+        return False
+
+    def test_no_screened_scheme_claims_a_name_its_screen_turns_away(self, subtests):
+        from demangle.api import _undecorated
+
+        names = self._names()
+        assert len(names) > 60000
+        screened = [(plugin, registry._screened(plugin)) for plugin in registry.available()]
+        assert {plugin.name for plugin, screen in screened if screen} >= {"go", "gnuv2", "codewarrior"}
+        for plugin, screen in screened:
+            if screen is None:
                 continue
-            assert plugin in registry.candidates("anything at all")
+            with subtests.test(name=plugin.name):
+                missed = []
+                for name in names:
+                    if self._passes(screen, name):
+                        continue
+                    base = _undecorated(name)
+                    if plugin.detect(name) or (base and plugin.symbol_table_decorations and plugin.detect(base)):
+                        missed.append(name)
+                assert missed == [], missed[:5]
+
+    def test_a_plain_c_name_is_offered_to_no_scheme_without_a_first_character(self):
+        assert registry.candidates("memcpy") == ()
+        assert registry.candidates("g_object_ref@@GLIB_2.0") == ()
+        assert [plugin.name for plugin in registry.candidates("?f@@YAXH@Z")] == ["msvc"]
+
+    def test_a_marker_offers_the_name_to_every_scheme_in_the_list(self):
+        """All or nothing: the markers are one pass, and each scheme still decides."""
+        offered = [plugin.name for plugin in registry.candidates("f__Fv")]
+        assert offered == ["go", "nim", "pascal", "ada", "gnuv2", "codewarrior"]
+        assert demangle.detect("f__Fv") == "gnuv2"
+        assert demangle.detect("main.(*T).M") == "go"
+        assert demangle.detect("fmt.Println") is None
+        assert demangle.detect("github.com/x/y.F") == "go"
+        assert demangle.detect("go:buildid") == "go"
+
+    def test_an_opening_with_markers_of_its_own_needs_one_of_them(self):
+        """g++ 2.x's special forms open `_` and carry a `$` or `.`; an Itanium name does
+        neither, so it is not offered to the six schemes that would each turn it away."""
+        assert [plugin.name for plugin in registry.candidates("_ZN3foo3barEv")] == ["d", "swift", "rust", "itanium"]
+        assert "gnuv2" in [plugin.name for plugin in registry.candidates("_$_3foo")]
+        assert demangle.detect("_$_3foo") == "gnuv2"
+        assert demangle.detect("_vt.3foo") == "gnuv2"
+
+    def test_an_opening_counts_only_in_its_own_first_characters_list(self):
+        assert [plugin.name for plugin in registry.candidates("_ada_main")][-3:] == ["ada", "gnuv2", "codewarrior"]
+        assert registry.candidates("type:int") != ()
+        assert registry.candidates("typo") != ()  # Nim's `ty` opening
+        assert registry.candidates("tapo") == ()
+
+    def test_a_replacement_under_a_built_in_name_is_not_screened(self, monkeypatch):
+        import dataclasses
+
+        mine = dataclasses.replace(registry.get("go"), description="mine")
+        assert registry._screened(registry.get("go")) is not None
+        assert registry._screened(mine) is None
+        monkeypatch.setattr(registry, "_plugins", {**registry._plugins, "go": mine})
+        monkeypatch.setattr(registry, "_ordered", None)
+        monkeypatch.setattr(registry, "_by_first", None)
+        assert mine in registry.candidates("memcpy")
 
 
 class TestDetectionOrderIsPinned:
@@ -384,8 +509,15 @@ class TestLazyBuiltIns:
         import importlib
 
         for name, module, *declared in (entry for entry in registry._BUILTIN_MODULES if len(entry) > 2):
-            plugin = importlib.import_module(module).PLUGIN
-            actual = [plugin.priority, plugin.first_characters, plugin.symbol_table_decorations, tuple(plugin.aliases)]
+            scheme = importlib.import_module(module)
+            plugin = scheme.PLUGIN
+            actual = [
+                plugin.priority,
+                plugin.first_characters,
+                plugin.symbol_table_decorations,
+                tuple(plugin.aliases),
+                getattr(scheme, "DETECT_SCREEN", None),
+            ]
             assert declared == actual, f"update {name}'s entry in core/registry.py to {actual}"
 
     def test_a_name_imports_only_the_schemes_it_reaches(self):
@@ -395,13 +527,12 @@ class TestLazyBuiltIns:
             "assert 'jni' in demangle.languages() and 'gnat' in demangle.core.registry.aliases()\n"
             "print(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
         )
-        assert "msvc" in loaded
-        # Offered only names starting `J`, `-+_.lL`, `@` and `_`, which this is not.
-        assert {"jni", "objc", "delphi", "d"}.isdisjoint(loaded)
+        # Nothing else starts `?`, and the name has no marker a screened scheme asks for.
+        assert loaded == ["msvc"]
 
     def test_detection_order_is_the_same_before_any_scheme_is_imported(self):
         order = _fresh(
-            "from demangle.core import registry\nprint(*(plugin.name for plugin in registry.candidates('x')))\n"
+            "from demangle.core import registry\nprint(*(plugin.name for plugin in registry.candidates('x__$/')))\n"
         )
         expected = [name for name in TestDetectionOrderIsPinned.EXPECTED if not registry.get(name).first_characters]
         assert order == expected

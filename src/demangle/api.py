@@ -71,10 +71,10 @@ __all__ = [
 #: Keyed by everything that changes the answer, `limits` included: otherwise one caller's
 #: tight limits would poison the entry for every other caller of that name.
 #:
-#: Sized to hold one large library's symbol table (libLLVM exports 56k names): the cache
-#: clears wholesale, so a table larger than it never hits on a second pass. Measured at
-#: about 440 bytes per C++ entry, so full it holds under 30 MB.
-_CACHE = BoundedCache(max_size=65536)
+#: Sized so one generation holds a large library's whole symbol table (libLLVM exports 56k
+#: names), which a second pass then finds in full. Measured at about 440 bytes per C++
+#: entry, so full it holds under 60 MB.
+_CACHE = BoundedCache(max_size=131072)
 
 
 #: Emptied whenever a style or language is registered. By notification rather than a
@@ -183,18 +183,26 @@ def demangle(
         _refuse_non_string(mangled)
     if not mangled:
         return mangled
-    resolved_style = get_style(style)
-    # A `Style` object (or a `str` subclass) is not cached: two objects can share a name,
-    # and a style does not hash by value. `__class__ is str` and the registry flag rather
-    # than `isinstance`/`_load()` because this is the hottest line in the package.
-    #
     # Loaded before the cache is touched: loading registers plugins, which clears it.
+    # The registry flag rather than `_load()`, and `__class__ is str` rather than
+    # `isinstance`, because this is the hottest path in the package.
     if not _registry._loaded:
         _registry._load()
-    if style is not None and style.__class__ is not str:
-        key = None
+    # A `Style` object (or a `str` subclass) is not cached: two objects can share a name,
+    # and a style does not hash by value. A name is looked up before it is resolved, so a
+    # hit costs no style lookup; one that is not registered misses, and is refused below.
+    if style.__class__ is str or style is None:
+        # The default limits keyed as None: a `Limits` hashes through a Python-level
+        # `__hash__`, twice on every miss, and nearly every call passes the default.
+        key = (
+            mangled,
+            language,
+            DEFAULT_STYLE if style is None else style,
+            None if limits is DEFAULT_LIMITS else limits,
+        )
     else:
-        key = (mangled, language, resolved_style.name, limits)
+        key = None
+    if key is not None:
         # An unhashable argument surfaces here as a `TypeError`; not checked in advance,
         # which would hash `limits` twice on every warm call.
         try:
@@ -204,19 +212,27 @@ def demangle(
         if cached is not MISSING:
             return cached
 
+    # `get_style`'s lookup, inline where the key already holds a registered name.
+    styles = _style_module._STYLES
+    resolved_style = None if key is None or styles is None else styles.get(key[2])
+    if resolved_style is None:
+        resolved_style = get_style(style)
     builder = resolved_style.spelling_builder
-    plugin = None if language is None else _resolve(language)
-    if plugin is not None:
-        tried, base = (plugin,), None
+    if language is not None:
+        tried = (_resolve(language),)
+        base = None
     else:
-        tried, base = candidates(mangled), _undecorated(mangled)
+        tried = candidates(mangled)
+        if not tried:
+            return mangled if key is None else _CACHE.put(key, mangled)
+        base = _undecorated(mangled)
 
     for candidate in tried:
         try:
             # `_claims` inlined for the hot path; a `detect` that throws is caught by this
             # loop's own handler with the same effect.
             if (
-                plugin is None
+                language is None
                 and not candidate.detect(mangled)
                 and (base is None or not candidate.symbol_table_decorations or not candidate.detect(base))
             ):
@@ -542,10 +558,17 @@ def detect(mangled: str) -> str | None:
         return None
     if not mangled:
         return None
+    tried = candidates(mangled)
+    if not tried:
+        return None
     base = _undecorated(mangled)
-    for plugin in candidates(mangled):
-        if _claims(plugin, mangled, base):
-            return plugin.name
+    for plugin in tried:
+        # `_claims` inlined, as in `demangle`.
+        try:
+            if plugin.detect(mangled) or (base is not None and plugin.symbol_table_decorations and plugin.detect(base)):
+                return plugin.name
+        except Exception as exc:
+            reraise_if_operational(exc)
     return None
 
 

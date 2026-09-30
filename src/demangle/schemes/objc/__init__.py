@@ -47,12 +47,22 @@ from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
 from ._parser import (
+    _METHOD_PREFIXES,
+    _SCREEN_MARKERS,
     DemangleFailure,
     ObjcSymbol,
     detect,
     gnu_method_readings,
     mangle_gnu_method,
     parse_objc_symbol,
+)
+
+#: What `detect` needs to see, for the registry to screen on without calling it: one of
+#: its markers, an Apple method's `-`/`+`, or a method prefix under the decorations
+#: `_method_prefixed` strips. See `core.registry._screened`.
+DETECT_SCREEN = (
+    _SCREEN_MARKERS,
+    ("-", "+", *(f"{strip}{prefix}" for strip in ("", ".", "_", "l_", "L_", "._") for prefix in _METHOD_PREFIXES)),
 )
 
 #: What each builder class answered to `_wants_structure`, asked once per class.

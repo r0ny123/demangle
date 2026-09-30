@@ -322,9 +322,33 @@ class TestCacheStatistics:
         assert stats["size"] >= 1
 
     def test_the_cache_holds_a_large_librarys_symbol_table(self):
-        """It clears wholesale, so a table larger than it would never hit on a second pass;
-        libLLVM exports 56k names."""
-        assert demangle.cache_stats()["max_size"] >= 65536
+        """One generation, half of `max_size`, holds it whole, so a second pass over it
+        hits on every name; libLLVM exports 56k names."""
+        assert demangle.cache_stats()["max_size"] // 2 >= 65536
+
+    def test_a_name_named_on_every_page_of_a_table_misses_once(self, monkeypatch):
+        """Emptied wholesale at the high-water mark, the cache dropped the one name every
+        page of a table repeats along with everything else, once per turnover."""
+        from demangle import api
+        from demangle.core.cache import BoundedCache
+
+        monkeypatch.setattr(api, "_CACHE", BoundedCache(max_size=20))
+        hot = "_ZNSaIcED1Ev"
+        for index in range(200):
+            demangle.demangle(f"_Z1f{index}", language="itanium")
+            demangle.demangle(hot)
+        stats = demangle.cache_stats()
+        assert (stats["hits"], stats["misses"]) == (199, 201)
+
+    def test_the_default_limits_and_an_equal_object_answer_alike(self):
+        """The default is keyed apart from any other `Limits`, equal or not."""
+        from demangle.core.limits import DEFAULT_LIMITS, Limits
+
+        demangle.cache_clear()
+        name = "_ZN3foo3barEv"
+        assert demangle.demangle(name, limits=DEFAULT_LIMITS) == demangle.demangle(name, limits=Limits())
+        assert demangle.demangle(name, limits=DEFAULT_LIMITS) == "foo::bar()"
+        assert demangle.cache_stats()["hits"] == 1
 
     def test_the_very_first_call_in_a_process_counts_as_a_miss(self):
         """Loading the registry clears the cache, statistics included. The first call
@@ -341,6 +365,97 @@ class TestCacheStatistics:
             [sys.executable, "-c", script], capture_output=True, text=True, check=True, env={"PYTHONPATH": str(source)}
         )
         assert run.stdout.split() == ["1", "1"]
+
+
+def _schemes_imported_by(script):
+    """The scheme packages imported after `script` runs in a fresh interpreter."""
+    source = pathlib.Path(__file__).resolve().parent.parent / "src"
+    script += "\nprint(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
+    run = subprocess.run(
+        [sys.executable, "-c", "import sys, demangle\n" + script],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PYTHONPATH": str(source)},
+    )
+    return run.stdout.split()
+
+
+class TestStylesImportOnlyWhatIsUsed:
+    """A style's per-language options live in each scheme's package, and building the two
+    built-in styles used to import six of them on the first call, whatever the name."""
+
+    def test_a_first_call_on_an_msvc_name_imports_no_swift(self):
+        assert _schemes_imported_by("assert demangle.demangle('?f@@YAXH@Z') == 'void __cdecl f(int)'") == ["msvc"]
+
+    def test_a_first_call_on_a_plain_c_name_imports_no_scheme(self):
+        assert _schemes_imported_by("assert demangle.demangle('main') == 'main'") == []
+
+    def test_a_first_call_on_an_itanium_name_imports_only_the_schemes_asked_before_it(self):
+        loaded = _schemes_imported_by("assert demangle.demangle('_ZN3foo3barEv', style='gnu') == 'foo::bar()'")
+        # D, Swift and Rust also open `_` and are asked first; nothing else is imported.
+        assert loaded == ["d", "itanium", "rust", "swift"]
+
+    def test_composing_a_style_imports_only_the_language_it_changes(self):
+        loaded = _schemes_imported_by(
+            "narrow = demangle.style('llvm', msvc={'calling_convention': False})\n"
+            "assert sorted(narrow.language_options) == sorted(demangle.core.style.get_style('gnu').language_options)"
+        )
+        assert loaded == ["msvc"]
+
+    def test_listing_a_style_s_languages_imports_none_of_them(self):
+        loaded = _schemes_imported_by(
+            "from demangle.core.style import get_style\n"
+            "assert list(get_style('llvm').language_options) == "
+            "['itanium', 'msvc', 'swift', 'gnuv2', 'codewarrior', 'rust']\n"
+            "assert 'swift' in get_style('gnu').language_options and len(get_style('gnu').language_options) == 6"
+        )
+        assert loaded == []
+
+    def test_each_language_resolves_to_its_scheme_s_own_object(self):
+        from demangle.core.style import get_style
+        from demangle.schemes.itanium.options import DEFAULT_OPTIONS, GNU_OPTIONS
+        from demangle.schemes.swift.options import DEFAULT_OPTIONS as SWIFT_OPTIONS
+
+        assert get_style("llvm").options_for("itanium") is DEFAULT_OPTIONS
+        assert get_style("gnu").options_for("itanium") is GNU_OPTIONS
+        assert get_style("gnu").options_for("swift") is SWIFT_OPTIONS
+        assert get_style("gnu").options_for("go") is None
+        assert get_style("gnu").language_options["swift"] is SWIFT_OPTIONS
+        with pytest.raises(KeyError):
+            get_style("gnu").language_options["go"]
+
+    def test_a_composed_style_keeps_the_rest_of_its_base(self):
+        from demangle.core.style import get_style
+
+        narrow = demangle.style("gnu", msvc={"calling_convention": False})
+        assert narrow.options_for("itanium") is get_style("gnu").options_for("itanium")
+        assert narrow.options_for("msvc").calling_convention is False
+        assert get_style("gnu").options_for("msvc").calling_convention is True
+        assert narrow != get_style("gnu")
+        assert demangle.style("gnu") == get_style("gnu")
+
+    def test_resolving_from_many_threads_at_once_gives_one_object(self):
+        import threading
+
+        from demangle.core.style import _LazyOptions, _options
+
+        for _ in range(20):
+            options = _LazyOptions({"rust": _options("rust"), "msvc": _options("msvc")})
+            seen = []
+            barrier = threading.Barrier(8)
+
+            def resolve(options=options, seen=seen, barrier=barrier):
+                barrier.wait()
+                seen.append((options["rust"], options.get("msvc")))
+
+            threads = [threading.Thread(target=resolve) for _ in range(8)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            assert len(set(map(id, (pair[0] for pair in seen)))) == 1
+            assert len(set(map(id, (pair[1] for pair in seen)))) == 1
 
 
 class TestIntrospection:

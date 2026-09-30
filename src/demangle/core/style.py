@@ -22,6 +22,7 @@ returns a new style rather than changing the shared default, and a style object 
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from importlib import import_module
 from typing import Any
 
 from .spelling import LEGACY_SPELLING_BUILDER, SPELLING_BUILDER
@@ -62,17 +63,18 @@ class Style:
         it a *per-call* policy: `demangle()` does not cache a call that passes one, so one
         caller's narrower spelling cannot be served to another asking for the default.
         """
-        changed = dict(self.language_options)
+        options = self.language_options
+        changed = {}
         for language, value in languages.items():
             if isinstance(value, Mapping):
-                current = changed.get(language)
+                current = options.get(language)
                 if current is None:
                     raise ValueError(
                         f"style {self.name!r} carries no options for {language!r} to change; "
                         f"pass that language's options object instead of a mapping"
                     )
                 value = replace(current, **value)
-            elif language not in changed:
+            elif language not in options:
                 # The object form adds rather than changes, so a typo must be caught
                 # here. Imported lazily: no import-time dependency on any scheme.
                 from .registry import names as _known_languages
@@ -81,42 +83,96 @@ class Style:
                 if language not in known:
                     raise ValueError(f"unknown language {language!r}; known languages are {known}")
             changed[language] = value
-        return replace(self, language_options=changed)
+        if isinstance(options, _LazyOptions):
+            # Only the languages changed are imported, not every one the style names.
+            return replace(self, language_options=options.with_values(changed))
+        return replace(self, language_options={**options, **changed})
+
+
+class _LazyOptions(Mapping):
+    """A style's per-language options, each imported the first time it is asked for.
+
+    An options object lives in its scheme's package, and importing
+    `demangle.schemes.swift.options` imports the whole Swift demangler first. Building
+    the two built-in styles eagerly therefore imported six schemes on the first call into
+    the package, whatever the name -- undoing the registry's care to import only the
+    schemes a name reaches. Resolved one language at a time instead, a scheme's options
+    are imported when that scheme parses something, which is when its package is loaded
+    anyway.
+
+    Reads take no lock. `import_module` serialises the import itself, every thread that
+    races on a language resolves the same object, and the only write is storing it.
+    """
+
+    __slots__ = ("_resolved", "_sources")
+
+    def __init__(self, sources, resolved=None):
+        #: Language -> `(module, attribute)` still to be imported.
+        self._sources = sources
+        #: Language -> its options object, once imported or given.
+        self._resolved = {} if resolved is None else resolved
+
+    def __getitem__(self, language):
+        value = self._resolved.get(language, _UNRESOLVED)
+        if value is _UNRESOLVED:
+            source = self._sources.get(language)
+            if source is None:
+                raise KeyError(language)
+            value = getattr(import_module(source[0]), source[1])
+            self._resolved[language] = value
+        return value
+
+    def get(self, language, default=None):
+        value = self._resolved.get(language, _UNRESOLVED)
+        if value is not _UNRESOLVED:
+            return value
+        return self[language] if language in self._sources else default
+
+    def __contains__(self, language):
+        return language in self._sources or language in self._resolved
+
+    def __iter__(self):
+        return iter({**self._sources, **self._resolved})
+
+    def __len__(self):
+        return len(self._sources.keys() | self._resolved.keys())
+
+    def __repr__(self):
+        return repr(dict(self))
+
+    def with_values(self, changed):
+        """A copy with `changed` in force, importing nothing it does not have to."""
+        return _LazyOptions(self._sources, {**self._resolved, **changed})
+
+
+_UNRESOLVED = object()
+
+
+def _options(package, attribute="DEFAULT_OPTIONS"):
+    return (f"demangle.schemes.{package}.options", attribute)
+
+
+#: MSVC's, Swift's and pre-Itanium's options are the same in both styles: the two C++
+#: references do not disagree about them. Listed so `with_options(msvc=...)` works.
+_SHARED_OPTIONS = {
+    "msvc": _options("msvc"),
+    "swift": _options("swift"),
+    "gnuv2": _options("gnuv2"),
+    "codewarrior": _options("codewarrior"),
+    "rust": _options("rust"),
+}
 
 
 def _build_styles():
-    from ..schemes.codewarrior.options import DEFAULT_OPTIONS as CODEWARRIOR_OPTIONS
-    from ..schemes.gnuv2.options import DEFAULT_OPTIONS as GNUV2_OPTIONS
-    from ..schemes.itanium.options import DEFAULT_OPTIONS, GNU_OPTIONS
-    from ..schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
-    from ..schemes.rust.options import DEFAULT_OPTIONS as RUST_OPTIONS
-    from ..schemes.swift.options import DEFAULT_OPTIONS as SWIFT_OPTIONS
-
-    # MSVC's, Swift's and pre-Itanium's options are the same in both styles: the two C++
-    # references do not disagree about them. Listed so `with_options(msvc=...)` works.
     llvm = Style(
         name="llvm",
         spelling_builder=SPELLING_BUILDER,
-        language_options={
-            "itanium": DEFAULT_OPTIONS,
-            "msvc": MSVC_OPTIONS,
-            "swift": SWIFT_OPTIONS,
-            "gnuv2": GNUV2_OPTIONS,
-            "codewarrior": CODEWARRIOR_OPTIONS,
-            "rust": RUST_OPTIONS,
-        },
+        language_options=_LazyOptions({"itanium": _options("itanium"), **_SHARED_OPTIONS}),
     )
     gnu = Style(
         name="gnu",
         spelling_builder=LEGACY_SPELLING_BUILDER,
-        language_options={
-            "itanium": GNU_OPTIONS,
-            "msvc": MSVC_OPTIONS,
-            "swift": SWIFT_OPTIONS,
-            "gnuv2": GNUV2_OPTIONS,
-            "codewarrior": CODEWARRIOR_OPTIONS,
-            "rust": RUST_OPTIONS,
-        },
+        language_options=_LazyOptions({"itanium": _options("itanium", "GNU_OPTIONS"), **_SHARED_OPTIONS}),
     )
     return {"llvm": llvm, "gnu": gnu}
 

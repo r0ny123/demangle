@@ -24,6 +24,10 @@ from ...core.registry import register
 from . import nodes
 from ._parser import GENERATED_PREFIXES, GoSymbol, escape_path, parse_go_symbol, unescape_path
 
+#: What `detect` needs to see, for the registry to screen on without calling it: a path's
+#: `/`, a receiver's `(*`, or a linker-generated opening. See `core.registry._screened`.
+DETECT_SCREEN = (("/", "(*"), GENERATED_PREFIXES)
+
 
 def detect(name):
     """Whether `name` is Go-shaped beyond reasonable doubt.

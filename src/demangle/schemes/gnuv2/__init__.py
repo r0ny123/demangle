@@ -60,6 +60,10 @@ _SYMBOL_RE = re.compile(r"[A-Za-z0-9_$.<>#,*&]+")
 #: Not `$` or `.`: those are mangled scope markers, so one left in the output is not a name.
 _NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
+#: What may follow a leading `__` in a name with no second one: `__vt_`, `__thunk_`,
+#: `__ti`/`__tf`, and a constructor's `__Q`, `__K`, `__H` or `__t`.
+_SPECIAL_OPENINGS = frozenset("tvQKH")
+
 #: Names written by a compiler this style cannot read. See `_plausible`.
 _FOREIGN_MARKERS = frozenset({"__ct", "__dt", "__vt", "__RTTI"})
 
@@ -68,6 +72,12 @@ _NAMED_SOMETHING = frozenset({"class", "qualified", "template"})
 
 #: What a reading records when its argument list opened with no `F` and nothing before it.
 _UNMARKED_ONLY = frozenset({"unmarked"})
+
+
+#: What `detect` needs to see, for the registry to screen on without calling it: a `__`,
+#: or the special forms' `_` opening with a `$` or `.` after it. See
+#: `core.registry._screened`.
+DETECT_SCREEN = (("__",), (("_", ("$", ".")),))
 
 
 def _screen(name):
@@ -216,6 +226,17 @@ def detect(name, style="gnu"):
     if name.startswith(("_R", "__R")) and name[name.index("R") + 1 : name.index("R") + 2].isupper():
         # Rust v0 refusals, likewise: `_R` and a capital is a name reserved to the
         # implementation, and every one met here was a damaged Rust symbol.
+        return False
+    if (
+        name[:2] == "__"
+        and style == "gnu"
+        and name[2:3].isalpha()
+        and name[2] not in _SPECIAL_OPENINGS
+        and name.find("__", 3) < 0
+        and not name.startswith("__imp_")
+    ):
+        # `__libc_start_main`: after `__` and a letter that opens no special form,
+        # constructor or DLL import, g++ 2.x's reading needs a second `__` to split at.
         return False
     if len(name) > _DETECT_MAX or not _screen(name):
         return False

@@ -171,6 +171,32 @@ class TestWhatItRefusesToClaim:
         assert claimed == []
 
 
+class TestTheSecondSeparatorScreen:
+    """A special name (`__dt__6CActorFv`) has a `__` of its own, so `detect` turns a name
+    that opens `__` and has no second one away without parsing it -- `__libc_start_main`
+    and the rest of a C library's reserved names, which were most of what this scheme
+    parsed over a real symbol table. The parse would refuse every one of them anyway."""
+
+    def _turned_away(self, name):
+        return name[:2] == "__" and name.find("__", 2) < 0 and name[2:4] != "op"
+
+    def test_every_name_it_turns_away_is_one_the_parse_refuses(self):
+        names = [row[0] for row in vectors()]
+        names += [f"__{row[0]}" for row in vectors()] + [f"__{row[0].replace('__', '_')}" for row in vectors()]
+        names += ["__libc_start_main", "__cxa_atexit", "__stack_chk_fail", "__x", "___x", "__opx", "__o"]
+        turned_away = [name for name in names if self._turned_away(name)]
+        assert len(turned_away) > 40
+        for name in turned_away:
+            with pytest.raises(DemangleFailure):
+                demangle_codewarrior(name)
+            assert not codewarrior.detect(name), name
+
+    def test_special_names_still_read(self):
+        assert codewarrior.detect("__dt__6CActorFv")
+        assert codewarrior.detect("__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>")
+        assert not codewarrior.detect("__libc_start_main")
+
+
 class TestASpellingThatCannotBeADeclaration:
     """`void` among other parameters, which no declaration contains.
 
