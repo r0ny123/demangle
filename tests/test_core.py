@@ -116,9 +116,9 @@ class TestDeclaratorPlacement:
 class TestTheTwoBuildersAgreeAboutPacks:
     """Nested packs splice, in both builders, because two answers depend on it.
 
-    The tree builder used to keep `ParameterPack((ParameterPack(()),))` as a pack of one
-    member. That pack has a non-zero `size` and renders to nothing, so the two questions
-    the parser asks about a pack got different answers from the two builders: "did this
+    Keeping `ParameterPack((ParameterPack(()),))` as a pack of one member would give it
+    a non-zero `size` while it renders to nothing, so the two questions the parser asks
+    about a pack could get different answers from the two builders: "did this
     parameter drop out entirely" (`size == 0`) and "how many members does an expansion
     over this range across" (`len(members)`). `_Z1fIJEJT_EiEviT0_N2nn2UpE` -- an empty
     pack, then a pack holding a reference to it -- printed `f(int, , nn::Up)` through the
@@ -422,10 +422,9 @@ class TestDetectScreen:
 class TestDetectionOrderIsPinned:
     """The order plugins are offered names in, asserted rather than reasoned about.
 
-    `priority` is ascending -- lower is offered first -- and the comments beside every
-    shape-test scheme used to say the opposite of what its number did: `go` was
-    documented as "last" and was in fact first. Nothing caught that, because nothing
-    stated the order anywhere a test could read it.
+    `priority` is ascending -- lower is offered first -- so the comment beside every
+    shape-test scheme must agree with its number: `go` is first, not "last". This test
+    states the order where it can be read.
 
     It is not cosmetic. Free Pascal and Swift both claim `_$SDL_MIXER$_Ld1`, and Free
     Pascal is right about it only because it is asked first. Anyone "fixing" the

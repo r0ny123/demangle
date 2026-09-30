@@ -69,7 +69,7 @@ demangle.demangle_strict(name)  # raises DemanglingError instead
 
 `demangle()` is built for the case where you are labelling every symbol in a binary and
 most of them are not mangled at all. It never raises: a name it cannot read comes back
-exactly as it went in, because a wrong expansion is worse than a mangled one -- it
+exactly as it went in, because a wrong expansion is worse than a mangled one — it
 matches neither the symbol nor the declaration.
 
 ### The structure, when you need it

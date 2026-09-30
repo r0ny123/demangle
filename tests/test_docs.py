@@ -139,7 +139,7 @@ class TestEveryExampleInTheDocsIsWhatTheCodeDoes:
     """The README's examples are run by `tests/test_readme.py`; these are the others.
 
     `docs/reference/api.md` prints what a call returns, in the same `call` then
-    `# result` shape, and nothing checked those until now.
+    `# result` shape, and this checks those.
     """
 
     def test_every_documented_result_is_the_result(self, subtests):

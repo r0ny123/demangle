@@ -2,9 +2,9 @@
 
 `src/demangle/schemes/swift/` is a port of `lib/Demangling/` from swiftlang/swift, and
 without this it has no oracle: nothing a distribution ships demangles Swift.
-`llvm-cxxfilt` and `c++filt` both decline a `$s` name outright, so every Swift claim in
-this repository rested on corpora somebody recorded once, with no way to re-derive them
-and no way to put a *new* name to the reference.
+`llvm-cxxfilt` and `c++filt` both decline a `$s` name outright, so the corpora are the
+only evidence unless there is a way to re-derive them and to put a *new* name to the
+reference.
 
 This builds that reference out of Swift's own demangler -- the eleven files in
 `lib/Demangling/`, unmodified -- behind a line-per-name front end, so the differential
@@ -37,9 +37,8 @@ One of 5.10.1's misses is not a miss but an abort: `$sTJSdSSSpSrSUSP` takes its 
 down with `std::bad_alloc`, so scoring it needs one process per name. That name is a
 malformed autodiff subset-parameters thunk, and the fix upstream made for it -- a
 `getNumChildren() < 5` guard in `NodePrinter` -- is the reason the row exists in
-`manglings.txt` at all. This library had the same defect, in the milder form: it spelled
-the name as a thunk *for nothing*, with an empty "from" clause. Building this reference
-is what found it.
+`manglings.txt` at all. This library has the same defect in a milder form: it spells
+the name as a thunk *for nothing*, with an empty "from" clause.
 
 5.10.1's other 58 misses are not defects in it. They are names for constructs that did
 not exist yet -- `sending`, typed `throws`, `@isolated(any)`, `~Copyable`,

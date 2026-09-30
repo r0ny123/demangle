@@ -66,8 +66,8 @@ class TestTheStreamFilter:
         assert demangle.demangle_text(VECTOR, style="gnu").endswith("std::allocator<int> >::push_back(int const&)")
 
     def test_a_bad_language_or_style_is_refused_before_any_symbol_is_seen(self):
-        """Plain prose never reaches `demangle()`, so a typo'd argument used to pass
-        silently until the first line that happened to hold a symbol."""
+        """Plain prose never reaches `demangle()`, so a typo'd argument must be refused
+        up front, not pass silently until the first line that happens to hold a symbol."""
         bad: list[dict[str, Any]] = [{"language": "cobol"}, {"style": "nonexistent"}]
         for arguments in bad:
             with pytest.raises(ValueError):
@@ -406,15 +406,13 @@ class TestEveryNodeAnswersTheNodeProtocol:
     Checked on every node of every corpus tree rather than on a sample of kinds, because
     what goes wrong here is a class nobody thought to check -- and one did.
 
-    `render()` used to be a method most node classes had and no class *declared*: the
+    `render()` is declared by `Node` and defined for every node class. The
     schemes whose spelling does not fit C++ declarator syntax carry their fragments as
-    text and render by concatenating them, so their own tests use it, and `core.ast`'s
-    nodes and four of MSVC's did not have it at all. A Rust tree answered `render()` on
-    every node until the symbol carried an ELF version suffix, which wraps it in a
-    `Decorated` that did not. Walking a tree and asking each node for its text raised
-    `AttributeError` partway through. `Node.render()` is defined for all of them now,
-    and this pins that it agrees with `spell()` everywhere -- which it did on all
-    1,851,583 nodes of the corpora, in both styles, when it was written.
+    text and render by concatenating them, so their own tests use it. A Rust tree with an
+    ELF version suffix wraps it in a `Decorated`, which must answer too, or walking a
+    tree and asking each node for its text raises `AttributeError` partway through.
+    This pins that `render()` agrees with `spell()` everywhere, in both styles, over all
+    the nodes of the corpora.
     """
 
     def _sampled(self, step):

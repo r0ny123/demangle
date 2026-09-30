@@ -660,8 +660,7 @@ def _do_type(work, cur, result, allow_empty):
 def _do_type_member(work, cur, decl):
     """`M`: a pointer to member, whose class name goes inside the parentheses.
 
-    The reference's `case 'M'`, whose `member` flag is always set because the `case 'O'`
-    that used to clear it is gone; kept as written.
+    The reference's `case 'M'`. `member` is always set here, as in the reference.
     """
     type_quals = 0
     member = cur.at() == "M"

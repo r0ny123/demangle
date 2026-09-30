@@ -88,7 +88,7 @@ def test_the_tree_renders_what_the_text_path_spells(mangled, style):
 def test_a_template_name_is_not_a_type():
     """`S_` in `_Z1gI1AIXadL_ZN1AplERS_EEEEvv` is entry 0 of the shared table, the
     function template `g`, and `RS_` would make `g&` a parameter type. llvm-cxxfilt
-    prints exactly that and c++filt drops the parameters; this used to print `g&` too.
+    prints exactly that and c++filt drops the parameters; this library prints neither.
     A template with no arguments after it is nothing a type can be, so the name is
     refused under both styles rather than read as a declaration nothing could have."""
     assert demangle.demangle("_Z1gI1AIXadL_ZN1AplERS_EEEEvv") == "_Z1gI1AIXadL_ZN1AplERS_EEEEvv"

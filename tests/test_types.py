@@ -708,8 +708,8 @@ class TestAConstructorOfAnUnnamedType:
     last source name it read, template arguments aside, so c++filt prints
     `A::{unnamed type#1}::~A()` and `std::vector<X>::{unnamed type#1}::~vector()`, and
     ICU ships `MicroProps::{unnamed type#1}::~MicroProps()`. A parameter type inside
-    the closure's signature is a name of its own, and reading it used to clear the
-    flag that says the scope has none: `_ZN1AUlN1XEE_D1Ev` came back
+    the closure's signature is a name of its own, and reading it must not clear the
+    flag that says the scope has none, or `_ZN1AUlN1XEE_D1Ev` would come back as
     `A::'lambda'(X)::~'lambda'(X)()`."""
 
     @pytest.mark.parametrize(
@@ -788,8 +788,8 @@ class TestADependentElaboratedTypeSpecifier:
     `c++filt` 2.42 refuses all three; `llvm-cxxfilt` reads them and spells them as here.
 
     The whole of `<name>` stands after the keyword. A `<source-name>` opens with its
-    length, which a guard here used to read as the index of a `Ts <index> _` marker on a
-    `<template-param>` -- so `Ts3Foo` was refused. That marker is not a production; see
+    length, which must not be read as the index of a `Ts <index> _` marker on a
+    `<template-param>`, or `Ts3Foo` would be refused. That marker is not a production; see
     `test_a_parameter_carries_no_pack_marker`.
     """
 

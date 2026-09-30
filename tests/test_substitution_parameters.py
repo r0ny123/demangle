@@ -165,12 +165,11 @@ class TestOutOfScope:
     def test_a_parameter_past_the_end_is_refused_through_a_substitution_too(self):
         """`f<int>` has one argument, so `T0_` names one that is not in scope.
 
-        This used to answer `void f<int>(auto)`, and `S0_` -- the entry `T0_` itself
-        contributed -- answered the same way, which was the property under test. Both
+        Neither answers `void f<int>(auto)`; `S0_` -- the entry `T0_` itself
+        contributed -- must not either, which is the property under test. Both
         `c++filt` 2.42 and `llvm-cxxfilt` 18.1 hand both names back: an index past the
         end of the argument list binds to nothing and nothing later will supply it, and
-        `auto` is a type the encoding does not contain. The property still holds, and
-        now holds of a refusal.
+        `auto` is a type the encoding does not contain. The property holds as a refusal.
         """
         for mangled in ("_Z1fIiEvT0_", "_Z1fIiEvT0_S0_"):
             with pytest.raises(DemanglingError):

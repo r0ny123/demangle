@@ -122,15 +122,15 @@ class TestNeverRaises:
         assert answered(value)
 
     def test_non_string_input_is_reported_rather_than_ignored(self):
-        """A wrong argument type is the caller's mistake, and is now said out loud.
+        """A wrong argument type is the caller's mistake, and is said out loud.
 
-        This used to hand the argument straight back. That read as safe and was not: a
-        tool reading an ELF string table -- where names *are* bytes -- got every symbol
+        Handing the argument straight back would read as safe and not be: a tool
+        reading an ELF string table -- where names *are* bytes -- would get every symbol
         back exactly as it went in, with no error and no expansion, and nothing to tell
-        it why. The strict entry points were worse, reaching the registry's
-        first-character screen and raising `TypeError: 'in <string>' requires string as
-        left operand, not int`, which names neither the problem nor the fix, and which
-        the documented "raises only DemanglingError" contract said could not happen.
+        it why. The strict entry points raise the same `TypeError` rather than reaching
+        the registry's first-character screen, whose message names neither the problem
+        nor the fix and would break the documented "raises only DemanglingError"
+        contract.
 
         The "never raises" promise is about the *name* -- any string, mangled or not --
         not about the type of the argument.

@@ -5,8 +5,8 @@ g++ before 3.0, Lucid's `lcc`, the ARM/cfront encoding, HP aCC and EDG, and with
 it has no oracle on any current machine. binutils 2.42's `c++filt` offers
 `-s {none,auto,gnu-v3,java,gnat,dlang,rust}` and nothing older, and GCC 9 removed the
 pre-Itanium demangler from libiberty altogether -- `cplus-dem.c` is 5,032 lines at 8.3.0
-and 490 at 9.1.0 -- so every claim about this scheme rested on a corpus recorded once,
-with no way to put a *new* name to the implementation it was recorded from.
+and 490 at 9.1.0 -- so a corpus recorded once is the only evidence for this scheme unless there is a way
+to put a *new* name to the implementation it was recorded from.
 
 This builds that implementation out of GCC 8.3.0's own tree -- `cplus-dem.c` and the
 libiberty sources it links against, unmodified -- behind a line-per-name front end, so
@@ -71,11 +71,9 @@ list, and the reference's function name being a proper prefix of ours up to a `_
 each checked against every recorded spelling in the corpus, which none of them matches,
 so that what the tools report is what is left.
 
-What was left was one defect of this library's own, fixed. `gnu_special` advances the
-cursor as it reads a virtual table's class, and on a class it cannot read it returned to
-the caller with the cursor past it, so `demangle_prefix` read the *tail* of the name as
-a function: `_vt$t3Foo1Z_bar__Fi` came back `_bar(int)`. libiberty does the same --
-`_vt$t8BDDHookV1__pt__2_cFv` is `_c::_pt(void)` to it -- and a function named after the
-end of a virtual table's symbol is not a reading of that symbol. A `_vt`, `__vt_`,
-`__thunk_`, `__ti` or `__tf` prefix says what the name is, so a body that does not read
-as that now refuses the name. The corpus is untouched by the rule.
+One rule is this library's own. A `_vt`, `__vt_`, `__thunk_`, `__ti` or `__tf` prefix
+says what the name is, so a body that does not read as that refuses the name:
+`_vt$t3Foo1Z_bar__Fi` is refused rather than read as the function `_bar(int)` from the
+tail. libiberty does read it so -- `_vt$t8BDDHookV1__pt__2_cFv` is `_c::_pt(void)` to
+it -- but a function named after the end of a virtual table's symbol is not a reading of
+that symbol. The corpus is untouched by the rule.

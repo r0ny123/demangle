@@ -195,7 +195,7 @@ class TestABaseSixtyTwoNumberIsSixtyFourBitsWide:
 
 
 class TestTheRecordedDifferences:
-    """The two upstream vectors this reads differently, and two it no longer does.
+    """The recorded differences from the upstream vectors, measured against the reference.
 
     Measured with `tools/rustc-demangle-reference`, which hands the whole name to
     `try_demangle`. `rustfilt` is not the measure here: it scans a line for `_ZN` or `_R`
@@ -241,8 +241,8 @@ class TestAnLlvmHashCarriesTheElfVersion:
     """rustc-demangle drops `.llvm.<hash>` first, and its hash alphabet includes `@`.
 
     So a version written after the hash goes with it. `core` splits the ELF version off
-    before a scheme sees the name, which left `foo@@16`; the scheme now splits it itself,
-    after the reference's rule. Expectations are `tools/rustc-demangle-reference`'s.
+    before a scheme sees the name, which would leave `foo@@16`; the scheme splits it
+    itself, after the reference's rule. Expectations are `tools/rustc-demangle-reference`'s.
     """
 
     @pytest.mark.parametrize(
@@ -371,7 +371,7 @@ class TestSevenEdgesSettledAgainstTheReference:
         assert demangle.demangleb(mangled.encode(), language="rust") == expected.encode()
 
     def test_an_empty_hash_is_still_a_hash_when_the_hash_is_kept(self):
-        """`""` is false, so `keep_hash` used to drop what the reference spells `::h`."""
+        """`""` is false, so `keep_hash` keeps what the reference spells `::h`."""
         assert demangle.demangle("_ZN4test1hE", language="rust", style=TestKeepingTheHash.KEEP) == "test::h"
 
     def test_an_uppercase_hash_is_claimed_as_the_parser_reads_it(self):

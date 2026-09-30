@@ -202,7 +202,7 @@ class TestSafety:
 
     @pytest.mark.parametrize("value", [".", "go:", "type:", "a/b.", ".foo"])
     def test_an_empty_package_or_name_is_refused(self, value):
-        """`.` used to read as the empty string: a dot dropped, not a name read. Only a
+        """`.` is not the empty string: a dot dropped is not a name read. Only a
         generated symbol may go without a package, and it still needs a name."""
         with pytest.raises(DemanglingError):
             parse_go_symbol(value)

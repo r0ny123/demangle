@@ -10,7 +10,8 @@
 - [ ] New behaviour comes with a test; new *reference-derived* behaviour comes with a
       corpus entry.
 - [ ] A conformance number that moved is stated under *Numbers that moved*, which way
-      and why, with the pin in `tests/test_conformance.py` updated in the same PR.
+      and why, with the pin (in `tests/test_conformance.py` or the scheme's own test
+      module) updated in the same PR.
 - [ ] A benchmark that moved is stated under *Numbers that moved*.
 - [ ] A change to a parser's shape rules has been through the fuzzers:
       `tools/enumerate.py`, `tools/mutate.py` and `tools/invariants.py`.

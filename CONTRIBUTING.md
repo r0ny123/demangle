@@ -137,9 +137,9 @@ than against what the test's author believed it said.
 ### Conformance numbers
 
 The pass counts of the corpora outside `reported/` are pinned as exact numbers in
-`tests/test_conformance.py`, so a count that moves in either direction fails the suite,
-listing the first ten names that miss and the `tools/differential.py` command that shows
-them all.
+`tests/test_conformance.py` or the scheme's own test module, so a count that moves in
+either direction fails the suite, listing the first ten names that miss and the
+`tools/differential.py` command that shows them all.
 A pull request that moves one updates the pin in the same pull request and says in its
 description which way the number moved and why; so does one that moves a benchmark.
 

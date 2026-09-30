@@ -8,7 +8,7 @@ built earlier, a template argument list nested three deep, a return type that is
 itself a function pointer. Those need a name a compiler actually emitted, and there
 is no alphabet short enough to reach them by counting.
 
-So this starts from the checked-in corpora -- 640,892 real symbols -- and damages
+So this starts from the checked-in corpora and damages
 them: truncate, delete, duplicate, transpose, substitute a character from the
 scheme's own alphabet, or splice the head of one name onto the tail of another. A
 mutant keeps almost all of its parent's structure, so it lands *near* the emitted

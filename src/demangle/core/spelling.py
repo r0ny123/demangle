@@ -149,7 +149,7 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False, tight_before_group=
         left = inner.left
         tight = (" ", "(", "*") if tight_after_star and inner.is_function else (" ", "(")
         spacer = "" if tight_before_group or not left or left.endswith(tight) else " "
-        # The bound now follows the `)`, so it is spaced against that: `int vector[4] (*) [3]`.
+        # The bound follows the `)`, so it is spaced against that: `int vector[4] (*) [3]`.
         right = ")" + _respace_bound(")", inner.right) if inner.is_array else ")" + inner.right
         return Spelling(left + spacer + "(" + token, right, ref_kind=ref_kind)
     return Spelling(inner.left + token, inner.right, ref_kind=ref_kind)

@@ -102,9 +102,7 @@ def load_reference_dump(text, source="<dump>"):
     * `? ! 'key'` then `: value` -- the explicit form, used when the key is long;
 
     and either can be folded onto further indented lines, which YAML reads back as a
-    single space. A line that is neither is an error rather than something to skip: the
-    reader this replaced recognised only the first shape and silently dropped 87 of the
-    dump's 11,373 entries, which is where a whole-table figure of 11,286 came from.
+    single space. A line that is neither is an error rather than something to skip.
 
     Checked scalar for scalar against PyYAML over the whole dump.
     """

@@ -74,10 +74,10 @@ class Reader:
         the end, which is the one thing this class exists to prevent. The productions
         that do it say so at the site.
 
-        Takes no argument, where it used to take an offset defaulting to zero. It is
-        called around fifty times per name demangled -- more than any other method in
-        the package -- and CPython charges for a default it then has to bind: dropping
-        the parameter is a fifth off the cost of the call. `ahead` is the offset form.
+        It is called around fifty times per name demangled -- more than any other method
+        in the package -- and CPython charges for a default it then has to bind, so it
+        takes no argument: that is a fifth off the cost of the call. `ahead` is the
+        offset form.
         """
         pos = self.pos
         return self.text[pos] if pos < self.length else ""

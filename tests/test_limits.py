@@ -111,7 +111,7 @@ class TestBoundsAreEnforcedWhileWorking:
         assert isinstance(result, str)
 
     def test_a_deeply_nested_msvc_name_reports_the_bound_it_hit(self):
-        """It used to say the name was unreadable, which is a different claim."""
+        """It says which bound was hit, not that the name is unreadable."""
         with pytest.raises(demangle.LimitExceeded):
             demangle.demangle_strict("?f@@YAX" + "PA" * 5000 + "H@Z")
 
@@ -319,7 +319,7 @@ class TestDepthExhaustionIsReportedAsABound:
     well under the default `max_depth` of 256. Which binds first depends on the shape of
     the name and on how deep the caller's stack already was.
 
-    One used to arrive as `LimitExceeded` and the other as
+    Both arrive as `LimitExceeded`, not one of them as
     `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
     the parser rather than a bound doing its job.
 

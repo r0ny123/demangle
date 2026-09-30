@@ -48,9 +48,8 @@ hands the result to `builder.name()` imports nothing, and only review catches th
 
 ### Expressions
 
-Expressions were the last place the rule did not hold: the parser assembled
-`f"sizeof ({...})"` itself, so an expression inside a type reached the tree as one
-opaque node. They now go through `Builder.expression(form, parts)`, where `parts`
+An expression inside a type goes through `Builder.expression(form, parts)`, so it
+reaches the tree as structure rather than one opaque node. `parts`
 interleaves the production's fixed text with its operands' handles and `form` names the
 shape -- `binary`, `conditional`, `call`, `sizeof`.
 

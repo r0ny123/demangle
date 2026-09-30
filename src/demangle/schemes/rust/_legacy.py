@@ -196,11 +196,11 @@ class LegacyDemangler:
         """`h` followed by hex digits, which is the reference's whole test.
 
         `s` has already had its length prefix consumed, so the hash component of
-        `_ZN3foo17h0123456789abcdefE` arrives here as `h0123456789abcdef`. There used to
-        be an arm here for the length-prefixed spelling as well, testing `s` for `17h`;
-        it could never fire. The prefix scan takes the *maximal* run of digits, so `s`
-        never begins with one -- `19` followed by `17h...` reads as the length 1917, and
-        the name is refused before this is reached at all.
+        `_ZN3foo17h0123456789abcdefE` arrives here as `h0123456789abcdef`. There is no
+        arm for the length-prefixed spelling, testing `s` for `17h`; it could never fire.
+        The prefix scan takes the *maximal* run of digits, so `s` never begins with one --
+        `19` followed by `17h...` reads as the length 1917, and the name is refused before
+        this is reached at all.
         """
         return s.startswith("h") and _HEXDIGITS.issuperset(s[1:])
 

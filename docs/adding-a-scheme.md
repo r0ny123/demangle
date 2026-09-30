@@ -145,8 +145,8 @@ A scheme whose names have **no marker at all** goes last, and owes a number rath
 an argument. `gnuv2` -- pre-Itanium C++ -- is priority 290 for that reason, and
 `codewarrior`, the other pre-Itanium mangling, 300 behind it: their names are ordinary C
 identifiers with a `__` somewhere in them, so `detect` parses the whole name instead of
-testing a prefix, and what makes it safe to register is a measurement. Before `gnuv2`
-landed it was scored over every checked-in corpus, which `tests/test_gnuv2.py` asserts,
+testing a prefix, and what makes it safe to register is a measurement. `gnuv2` is
+scored over every other scheme's checked-in corpus, which `tests/test_gnuv2.py` asserts,
 and over 339,117 symbols from real shared libraries, which
 [CONFORMANCE.md](CONFORMANCE.md) records. If your scheme is in that position, do the
 same: a claim that "false positives are unlikely" is not a test, and the corpora are

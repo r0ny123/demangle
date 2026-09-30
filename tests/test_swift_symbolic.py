@@ -117,8 +117,8 @@ class TestFindingWhereANameEnds:
 
 class TestAResolverThatAnswersItself:
     """A fragment a resolver hands back may hold references of its own, and each is
-    resolved in turn; one that names another without end used to recurse until the
-    interpreter gave up, and `demangle_symbolic` let the `RecursionError` out."""
+    resolved in turn; one that names another without end must not recurse until the
+    interpreter gives up and `demangle_symbolic` lets the `RecursionError` out."""
 
     REFERENCE = b"\x01\x00\x00\x00\x00"
 

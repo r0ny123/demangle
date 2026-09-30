@@ -1,14 +1,14 @@
 """Expressions in the tree.
 
-An expression inside a type used to arrive as one opaque node: `decltype(a + b)` was a
-string, and a caller wanting the operands had to parse C++ back out of it. They are now
+An expression inside a type is structure, not one opaque node: a caller wanting the
+operands of `decltype(a + b)` need not parse C++ out of a string. Expressions are
 reported through `Builder.expression`, which takes the shape and the operands and lets
 the builder decide what they become.
 
 The invariant is the same one the Rust tree rests on: the parts a parser reports are the
 spelling, in order, so the text a tree renders cannot drift from the text `demangle()`
 produces. What is checked here is that the structure is real -- that `a + b` has two
-operands and a form saying it is binary -- and that adding it changed no spelling.
+operands and a form saying it is binary -- and that no spelling changed.
 """
 
 import pytest
@@ -189,9 +189,9 @@ class TestStillRefusesWhatItShould:
         ],
     )
     def test_a_type_is_not_an_expression(self, mangled):
-        """`_expression` used to end by reading whatever could open a `<type>` as one.
+        """`_expression` does not end by reading whatever could open a `<type>` as one.
 
-        Its comment said array bounds and non-type template arguments arrive there.
+        A comment there once said array bounds and non-type template arguments arrive there.
         Instrumented over the conformance corpora and every Itanium symbol on this
         machine -- 137,561 names -- it fired exactly zero times, because both of those
         productions read their operand themselves: `A <number> _` through `digits`,
@@ -638,7 +638,7 @@ class TestAFloatingPointLiteral:
         so the reference never saw the defect; `c++filt` brackets the digits unread. The
         twelve zero digits that lead every padded x87 value are what tell it from a quad,
         at the price of one quad: a denormal below 2^-16414, whose leading digits are
-        zero too, now reads as the x87 value it also spells. The quad row in
+        zero too, reads as the x87 value it also spells. The quad row in
         `test_the_llvm_spelling` is a denormal large enough to keep its leading digits.
         """
         assert demangle.demangle(mangled) == expected
@@ -1250,8 +1250,7 @@ class TestTemplateParameterLevels:
     def test_a_level_that_is_not_in_scope_is_refused(self, mangled):
         """Nothing is eight templates deep, so there is no parameter for this to be.
 
-        `llvm-cxxfilt` refuses both of these. Naming one anyway -- the numbering used to
-        be printed as `T1` -- is a type that appears nowhere in the symbol, which is the
+        `llvm-cxxfilt` refuses both of these. Naming one anyway -- printing the numbering as `T1`, say -- is a type that appears nowhere in the symbol, which is the
         one thing worse than declining.
         """
         assert demangle.demangle(mangled) == mangled

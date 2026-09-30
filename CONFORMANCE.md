@@ -230,7 +230,8 @@ its detection reads the whole name rather than a prefix: of the names in every o
 scheme's checked-in corpus it claims none, which `tests/test_gnuv2.py` checks on every
 run, and over 339,117 symbols from this machine's own shared libraries it claims none:
 `drm_intel_gem_bo_map__wc`, where `wc` is a valid argument list, is left alone, though
-`language="gnuv2"` reads it as libiberty does. That reference is built by `tools/cplus-dem-reference/`, whose
+`language="gnuv2"` reads it as libiberty does. That reference is built by
+`tools/cplus-dem-reference/`, whose
 [README](https://github.com/r0ny123/demangle/blob/main/tools/cplus-dem-reference/README.md)
 has the build. It reproduces the corpus 1,324 of 1,324, and over 420,000 mutants of it
 this library never reads a name libiberty refuses; where the two part, libiberty is
@@ -427,8 +428,8 @@ a function's whole decorated name, which the reference reads as the function and
 refuses rather than drop, as with `.0`; 155 are `$initializer$` variables the reference
 misreads — `??ALL$initializer$@DataSpace@H5@@...` comes back as
 `H5::DataSpace::LL$initializer$::operator[]`, the identifier's first letter taken for an
-operator code — and this refuses; and 67 are MD5-hashed names. The record accounts for 471,879 of
-the 471,881.
+operator code — and this refuses; and 67 are MD5-hashed names. The record accounts for
+471,879 of the 471,881.
 
 Of Boost's 122,162, 116,870 read exactly as `llvm-undname` reads them and none reads
 differently; 722 carry a deduced return type, `?A_P` for `auto` and `?A_T` for

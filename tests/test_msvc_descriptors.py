@@ -2,8 +2,8 @@
 
 A `type_info` points at a string, and the linker spells that string as a `.` followed by
 a bare type encoding: `.PEAX`, `.?AVFoo@@`. It is not a decorated name -- there is no `?`
-and nothing is declared -- so this scheme used to refuse every one of them, and a PE
-symbol dump full of them said nothing.
+and nothing is declared -- so a scheme that reads only decorated names refuses every one of them, and a PE
+symbol dump full of them says nothing. This one reads them.
 
 The marker goes where a *declarator* goes rather than after the type, which for anything
 that wraps its name is a different place: `int (*`RTTI Type Descriptor Name')[2]`, not

@@ -258,8 +258,8 @@ class TestAConstraintParameterUnderTheGnuStyle:
     GNU c++filt substitutes the argument bound to a `<template-param>` inside a
     requires-clause; llvm-cxxfilt spells the parameter by its own mangled name, because
     not every enclosing template's parameters are in scope. Resolving one that is not
-    bound used to refuse the whole name, so twelve corpus names read under `--style llvm`
-    and came back mangled under `--style gnu` -- among them `std::pair`'s constrained
+    bound must not refuse the whole name, or corpus names would read under `--style llvm`
+    and come back mangled under `--style gnu` -- among them `std::pair`'s constrained
     constructor, which is what GCC 13 emits for the real `std::pair`. GNU c++filt 2.42
     refuses every one of these itself, so there is no reference answer to follow here;
     what there is, is the rule that a style cannot decide the grammar.

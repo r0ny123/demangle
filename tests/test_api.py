@@ -107,8 +107,8 @@ class TestStyles:
             demangle.demangle("_Z1fv", language="cobol")
 
     def test_an_argument_that_cannot_be_hashed_is_reported_as_a_bad_argument(self):
-        """A list where a name belongs used to surface as `TypeError: unhashable type`
-        from inside the cache, which names the mechanism rather than the mistake."""
+        """A list where a name belongs is a `ValueError` about the argument, not a
+        `TypeError: unhashable type` from inside the cache, which names the mechanism."""
         unhashable: Any = ["a list"]
         with pytest.raises(ValueError, match="unknown language"):
             demangle.demangle("_Z1fv", language=unhashable)
@@ -119,7 +119,7 @@ class TestStyles:
 
     def test_a_style_subclass_with_the_same_name_is_not_served_from_the_cache(self):
         """The cache is keyed on a style's *name*, so two objects sharing one must both
-        stay out of it -- a subclass included, which used to be keyed like a name."""
+        stay out of it -- a subclass included."""
         from demangle.core.spelling import SPELLING_BUILDER, SpellingBuilder
         from demangle.core.style import Style
 
@@ -371,8 +371,8 @@ class TestCacheStatistics:
         assert demangle.cache_stats()["hits"] == 1
 
     def test_limits_none_does_not_share_the_default_limits_cache_slot(self):
-        """The default used to be keyed as `None`, so `limits=None` -- which no parser
-        can read -- cached the name unread for every later call with the default."""
+        """The default is not keyed as `None`, so `limits=None` -- which no parser can
+        read -- cannot cache the name unread for later calls with the default."""
         demangle.cache_clear()
         with pytest.raises(ValueError, match="Limits instance"):
             demangle.demangle("_Z1gv", limits=None)  # ty: ignore[invalid-argument-type]
@@ -408,7 +408,7 @@ class TestCacheStatistics:
 
     def test_the_very_first_call_in_a_process_counts_as_a_miss(self):
         """Loading the registry clears the cache, statistics included. The first call
-        used to look the name up, *then* load, and lose the miss it had just recorded."""
+        loads before it looks the name up, so the miss it records is kept."""
         source = pathlib.Path(__file__).resolve().parent.parent / "src"
         script = (
             "import demangle\n"
@@ -439,7 +439,7 @@ def _schemes_imported_by(script):
 
 class TestStylesImportOnlyWhatIsUsed:
     """A style's per-language options live in each scheme's package, and building the two
-    built-in styles used to import six of them on the first call, whatever the name."""
+    built-in styles imports only the schemes the name needs."""
 
     def test_a_first_call_on_an_msvc_name_imports_no_swift(self):
         assert _schemes_imported_by("assert demangle.demangle('?f@@YAXH@Z') == 'void __cdecl f(int)'") == ["msvc"]

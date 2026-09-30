@@ -33,6 +33,7 @@ the reference demanglers, and a **Performance** section.
 - **Rust v0 nesting follows `Limits.max_depth`** rather than a fixed 256, with the
   same `LimitExceeded("recursion depth")` report past it or past the interpreter's
   stack.
+
 ### Performance
 
 - **Schemes load on first use.** A built-in scheme, and each style's options for it,

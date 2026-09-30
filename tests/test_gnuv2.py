@@ -429,7 +429,7 @@ class TestAnArgumentListWithoutItsMarker:
     """`name__<type letters>` with no `F` and no class: a C name, not a g++ 2.x one.
 
     Over the symbols of every shared object a stock Ubuntu 24.04 ships, the default style
-    used to claim three C names -- `PyInit__lldb`, `PyInit__sre`, `drm_intel_gem_bo_map__wc`
+    claims none of three C names -- `PyInit__lldb`, `PyInit__sre`, `drm_intel_gem_bo_map__wc`
     -- because the reference reads whatever follows the `__` as an argument list when it
     opens with nothing it recognises. g++ 2.x never writes that: a free function is
     `name__F<args>` and a member `name__<class><args>`. Detection refuses the shape;

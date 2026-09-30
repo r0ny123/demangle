@@ -297,7 +297,7 @@ class TestTheNameThatAbortsTheReference:
 
     `tools/mutate.py --seed 37` found it as a mutant of a GNAT runtime symbol, and it
     took the whole Ada run down: the reference answered 6,933 of 20,000 names and the
-    tool could pair none of them. `ask_tolerantly` now splits a batch down to the name
+    tool could pair none of them. `ask_tolerantly` splits a batch down to the name
     that did it and leaves that one out of the comparison, which is why the seed
     completes.
 

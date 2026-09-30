@@ -29,8 +29,7 @@ class RustDemangler:
     reading, its suffix and its path spans on `self`, so a single shared instance
     lets two threads overwrite each other's parse -- and the failure is silent. It
     does not raise; it returns another symbol's name, which is then memoised under
-    the first symbol's key. Measured before this changed: 160 wrong answers out of
-    5,710 symbols across eight threads.
+    the first symbol's key.
 
     A parser is two attribute stores to allocate, against a parse that is tens of
     microseconds, so per-name construction does not show up in the benchmark.
