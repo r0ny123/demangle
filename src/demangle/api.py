@@ -265,7 +265,7 @@ def demangle(
     else:
         tried = candidates(mangled)
         if not tried:
-            return mangled if key is None else _CACHE.put(key, mangled, epoch)
+            return mangled
         base = _undecorated(mangled)
 
     for candidate in tried:
