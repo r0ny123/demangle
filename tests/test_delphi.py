@@ -286,7 +286,7 @@ class TestLimitsAndRefusal:
 
         Every prefix of a real symbol is a name some tool will eventually hand this --
         a stripped table, a truncated read -- and each one must come back with an answer
-        or a refusal. Cutting the corpus at every offset is what found the loop.
+        or a refusal.
         """
         for mangled, _expected in ROWS:
             for cut in range(1, len(mangled)):

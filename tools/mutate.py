@@ -32,8 +32,8 @@ Usage
 is non-zero unless the count is exactly that, so the gate holds in both directions, like
 the conformance corpora: a new divergence fails, and so does a stale pin after one is
 fixed. The count is a property of `--seed`, `--count` and the seed corpora together;
-the pin CI uses is for the defaults, `--seed 0 --count 20000`. Growing a seed corpus
-changes which mutants are drawn.
+the pin CI uses is for `--seed 0` with `--count 20000`, not for the default `--count`.
+Growing a seed corpus changes which mutants are drawn.
 
 A divergence is either fixed in the library or covered by an `ACCEPTED` rule in
 `tools/enumerate.py`, which names the reason the reference's answer is not evidence.

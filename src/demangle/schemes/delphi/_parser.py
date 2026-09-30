@@ -850,7 +850,7 @@ def detect(name):
     yields a name that is neither the symbol nor a declaration, the one answer this
     package treats as worse than leaving a name alone.
 
-    `_SYMBOL_CHARACTERS` is what the 11,484 recorded exports are made of and nothing
+    `_SYMBOL_CHARACTERS` is what the 11,363 readable recorded exports are made of and nothing
     else. See the module docstring for why that is the whole alphabet: a name is
     `@`-delimited qualifiers -- Pascal identifiers -- with `$`, `%`, `&` and `#` as the
     encoding's own markers. A `.` is not among them, which is what turns `@feat.00`

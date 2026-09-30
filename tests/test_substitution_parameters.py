@@ -19,9 +19,9 @@ re-resolve; where the production was *written* is the only thing worth keeping.
 
 Freezing either produces a type the source disproves -- spelled plausibly, matching no
 declaration -- which is the failure this package exists to avoid. llvm-cxxfilt 18.1.3
-freezes both, and reads 312 of the 217,730 distinct Itanium symbols in the shared
-libraries on a stock Ubuntu 24.04 wrongly as a result; GNU c++filt 2.42 mostly does not,
-but freezes it for the constructor case below.
+freezes both, and differs from this on 322 of the 217,730 distinct Itanium symbols in
+the shared libraries of a stock Ubuntu 24.04 as a result; GNU c++filt 2.42 mostly does
+not, but freezes it for the constructor case below.
 
 Every vector in `TestAgainstTheDeclaration` was produced by a compiler on this machine
 from a source in `tools/corpus_sources/reference_defects/`, so what it must spell is

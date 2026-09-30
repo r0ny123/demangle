@@ -719,9 +719,9 @@ class _Parser:
 
         The test is "read one and see", which means a full speculative parse whose result
         is then thrown away. `scope_type` runs it for every component of the path, and
-        the region it reads contains scopes that run it again -- so the same position was
-        read over and over, and a real 2,695-character D symbol out of
-        `std.format.formattedWrite` took seconds rather than milliseconds.
+        the region it reads contains scopes that run it again -- so without memoising, the same
+        position is read over and over, and a long symbol such as one from
+        `std.format.formattedWrite` takes seconds rather than milliseconds.
 
         Whether a symbol name starts at a position is a property of the position, so
         asking twice can only get the same answer. The one piece of parser state that

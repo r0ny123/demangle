@@ -74,8 +74,8 @@ class ParameterReference:
     `I` -- `nn::Update<nn::BB*>*` -- and GNU c++filt prints exactly that. Resolving the
     entry to what `T_` meant where it was recorded gives `nn::BB*` instead: a different
     type, spelled plausibly, which is the failure this package exists to avoid.
-    llvm-cxxfilt 18 has that bug on 312 of the 217,730 distinct Itanium symbols in the
-    shared libraries of a stock Ubuntu 24.04.
+    llvm-cxxfilt 18 has that bug, and differs from this on 322 of the 217,730 distinct
+    Itanium symbols in the shared libraries of a stock Ubuntu 24.04.
 
     The level is carried as well as the index, because `TL<k>_<n>_` names a parameter of
     an enclosing template and the entry stands for that parameter, not for level 0's.

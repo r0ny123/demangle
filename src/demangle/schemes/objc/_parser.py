@@ -160,7 +160,7 @@ def _apple_method(name):
 
 
 #: The pair search is quadratic in underscores over attacker-controlled input, so it is
-#: bounded (unbounded, `_i_` + `a_` * 800 took 28 s). Real GNU-runtime method symbols
+#: bounded (`_i_` + `a_` * 800 is enough to make an unbounded search crawl). Real GNU-runtime method symbols
 #: carry at most six.
 _MAX_SEPARATORS = 64
 
@@ -684,10 +684,8 @@ def _method_prefixed(name):
 
     The same question as `any(c.startswith(_METHOD_PREFIXES) for c in _candidates(name))`
     and the same answer, without building the list: `detect` is offered every symbol in
-    a binary and this was two thirds of what it cost -- 1.13us a name over the shipped
-    libstdc++, of which 0.57 was `_candidates` and most of the rest the generator over
-    it. Every strip that production makes is one or two characters off the front, so the
-    offsets are what it does, written out.
+    a binary, so the list is not worth allocating. Every strip that production makes is
+    one or two characters off the front, so the offsets are what it does, written out.
     """
     if name.startswith(_METHOD_PREFIXES):
         return True

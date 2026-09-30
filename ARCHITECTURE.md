@@ -125,8 +125,8 @@ demangle/
 `core` never imports from `schemes`; `schemes/*` never import from each other. Both are
 enforced by a test, which is itself tested against a constructed violation.
 
-One exception, and it is in the test: `core/style.py` names the built-in option objects
-inside a function body, so the import is lazy and cycle-free.
+`core/style.py` imports no scheme: it names each scheme's option module by dotted path
+and imports it on first use, so `core` stays free of `schemes` at import time.
 
 ## Why declarator placement is its own module
 

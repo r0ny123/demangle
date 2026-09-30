@@ -365,21 +365,19 @@ def candidates(mangled):
 
     Then on what the name contains. Six schemes -- Go, Nim, Free Pascal, Ada and the two
     pre-Itanium C++ ones -- have no first character, because their names are ordinary C
-    identifiers, and were offered every name there is. But each asks for evidence no
-    ordinary identifier has: a `__`, a `$`, a `/`. A built-in declares that as its
-    `DETECT_SCREEN`, and a name holding none of the markers any scheme in its list asks
-    for is offered only to the schemes that declared none. One pass over the name
-    replaces a call into each, and it is the call that cost: the markers were each a
-    single C-level scan already.
+    identifiers. But each asks for evidence no ordinary identifier has: a `__`, a `$`,
+    a `/`. A built-in declares that as its `DETECT_SCREEN`, and a name holding none of
+    the markers any scheme in its list asks for is offered only to the schemes that
+    declared none. One pass over the name replaces a call into each scheme, and each
+    marker is a single C-level scan.
 
     The order is `available()`'s, filtered; a scheme that declares neither first
     characters nor a screen is always offered, so adding one changes nothing for a scheme
     that does not opt in.
 
     The cache is read without taking the lock, because this runs once for every symbol a
-    caller offers the library and the locked path was most of what detection cost: two
-    acquisitions -- one here and one inside `available` -- and two more interpreter
-    frames, to reach a single dictionary lookup. It is safe to read unlocked because the
+    caller offers the library, and the locked path would take two acquisitions -- one
+    here and one inside `available` -- to reach a single dictionary lookup. It is safe to read unlocked because the
     values are finished tuples that are never edited afterwards, keys are only ever
     added, and `register` discards the whole dictionary rather than changing it. A
     reader therefore sees a complete answer or none at all, and none at all falls

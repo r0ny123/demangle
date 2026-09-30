@@ -17,8 +17,7 @@ profiles and only the first is what a naive benchmark reports:
 `--calls` is a second instrument for the same corpora, and it exists because the clock
 here cannot resolve everything worth doing. This machine's spread between runs of the
 same code is 15-25% (see `PIVOT` below), so a change that removes a tenth of the work is
-invisible to `--check`: six interleaved before/after runs of one such change put both
-sides at 75-77us per name with 63-82us of noise around them. The number of Python-level
+invisible to `--check`. The number of Python-level
 calls a corpus costs is exactly reproducible on a given interpreter, and fewer calls for
 the same output is strictly less work, so it reports what the clock cannot. It is a
 report and not a gate: the count moves with the interpreter version as well as with this
@@ -67,7 +66,7 @@ def calibrate():
     factor does not make them so: it only tolerates a difference up to its own size.
     A shared CI runner is comfortably 1.5-2x slower than a developer laptop, so a gate
     on raw wall time fails on the runner for reasons that have nothing to do with the
-    change under test -- which is what happened the first time this ran in CI.
+    change under test.
 
     So every figure is divided by this, and the result is recorded as `normalised`: the
     *ratio* between the demangler and the interpreter it is running on, which is a
@@ -100,7 +99,7 @@ def calibrate():
     tolerance is not tightened further. A real regression reproduces; noise mostly does
     not.
 
-    One further caveat: `negative` runs in about two milliseconds, short enough that
+    One further caveat: `negative` runs briefly enough that
     best-of-N finds a clean scheduling slot even on a loaded machine, so it
     under-inflates and reads as much *faster* under load. That direction never fails the
     gate, and a real regression would show in `cold` and `structured` as well, so it is a

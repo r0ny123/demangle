@@ -68,8 +68,9 @@ does not admit is pinned as a refusal in the scheme's tests, and one it does is 
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
 corpora are pinned. It stands at zero: every divergence the default draw reports is
-covered by an accept rule naming the reason a reference's answer is not evidence. An accept rule for a reason nobody has established is how a defect gets
-filed as a reference's, so a rule is written only once diffing the mutant against its
+covered by an accept rule naming the reason a reference's answer is not evidence. An
+accept rule for a reason nobody has established is how a defect gets filed as a
+reference's, so a rule is written only once diffing the mutant against its
 seed has named the shape. Zero is not a claim that nothing is left, either: a divergence
 not in this draw is not one that does not exist, which is what `--seed` and `--count`
 are for.

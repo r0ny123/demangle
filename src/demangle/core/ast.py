@@ -111,8 +111,8 @@ class Node:
         substitutions make a component reachable from several places, and a Rust node
         names its own children twice over -- `parts` orders them and `base` and
         `arguments` say what they are -- so writing each occurrence out in full doubles
-        per level. One real symbol from the Rust toolchain took 4.7 seconds and 363MB
-        that way, and there is no bound on how much worse it can get.
+        per level. A real symbol from the Rust toolchain costs seconds and hundreds
+        of megabytes that way, and there is no bound on how much worse it can get.
         """
         return rendered(lambda: _emit(self, _shared_nodes(self), {}))
 
@@ -667,8 +667,8 @@ def _sizes(nodes):
     Written as a loop rather than `sum(node.size for node in nodes)`. A generator is a
     frame resumed once per element, and this is asked of every qualified name, every
     template argument list, every parameter list and every pack -- seven times per name
-    over the Itanium corpus. Measured at 234ns for three nodes against 68ns for the
-    loop. `spelling.py` says the same thing about its joins.
+    over the Itanium corpus. The loop is several times faster for three nodes.
+    `spelling.py` says the same thing about its joins.
     """
     total = 0
     for node in nodes:

@@ -340,7 +340,7 @@ class _LimitHit(Exception):
     """A resource bound stopped the parse, rather than the grammar refusing the name.
 
     Kept apart from `_Bail` so the caller can report it as what it is. Reported as "not
-    a decorated name this demangler can read" it was actively misleading: the name may
+    a decorated name this demangler can read" it would mislead: the name may
     be perfectly well formed and simply larger than the caller allowed, and a tool
     deciding whether to widen its `Limits` cannot tell the two apart from that message.
 

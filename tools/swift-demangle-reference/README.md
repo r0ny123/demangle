@@ -93,8 +93,9 @@ The three `-D`s in `build.sh` are `swift_demangling_compile_flags` from
 - `LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1` -- without it the link wants
   `llvm::DisableABIBreakingChecks`, which lives in libLLVMSupport.
 - `SWIFT_SUPPORT_OLD_MANGLING=1` -- without it `OldDemangler.cpp` compiles to nothing
-  and every `_Tt`/`_T` name comes back unread. Roughly half of `swift-real-world.txt`
-  is in the old mangling.
+  and every `_Tt`/`_T` name comes back unread. 203 of the 8,494 names in
+  `swift-real-world.txt` are in the old mangling (`_T` followed by anything but `0`);
+  `_T0` is the Swift 4 mangling, which the current demangler reads.
 - `SWIFT_STDLIB_HAS_TYPE_PRINTING=1` -- without it `NodePrinter.cpp` compiles to
   nothing and there is no `nodeToString` to link against.
 

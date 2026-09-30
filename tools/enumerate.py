@@ -12,8 +12,7 @@ to the reference demangler, and every disagreement is reported -- including the 
 where the reference hands the name back and this library answers, which is the
 direction that matters. A false reading is worse than no reading.
 
-Seventeen defects came out of this in one sitting, in five schemes. Each was a
-malformed name spelled as a plausible declaration:
+It finds malformed names spelled as plausible declarations:
 
     _Z1fIiEi                  ->  int f<int>()          a signature with no parameters
     _Z1f1AT_                  ->  f(A, auto)            a template parameter with no scope

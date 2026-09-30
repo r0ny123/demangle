@@ -93,12 +93,9 @@ class _LazyOptions(Mapping):
     """A style's per-language options, each imported the first time it is asked for.
 
     An options object lives in its scheme's package, and importing
-    `demangle.schemes.swift.options` imports the whole Swift demangler first. Building
-    the two built-in styles eagerly therefore imported six schemes on the first call into
-    the package, whatever the name -- undoing the registry's care to import only the
-    schemes a name reaches. Resolved one language at a time instead, a scheme's options
-    are imported when that scheme parses something, which is when its package is loaded
-    anyway.
+    `demangle.schemes.swift.options` imports the whole Swift demangler first. Resolving
+    one language at a time keeps a scheme's options from being imported until that scheme
+    parses something, so importing only what a name reaches holds for styles too.
 
     Reads take no lock. `import_module` serialises the import itself, every thread that
     races on a language resolves the same object, and the only write is storing it.

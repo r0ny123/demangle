@@ -85,45 +85,17 @@ def python_files(subdirectory):
     return sorted((SOURCE / subdirectory).rglob("*.py"))
 
 
-def _is_top_level_import(path, name):
-    """Whether `name` is imported at the top level of `path`.
-
-    `core/style.py` may name scheme option objects inside a function body, where
-    the import stays lazy and cycle-free. A top-level import there would be a real
-    layering inversion, so the rule checks those and excuses only the lazy ones.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    package = ["demangle", *path.relative_to(SOURCE).parts[:-1]]
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            if any(alias.name == name or name.startswith(alias.name + ".") for alias in node.names):
-                return True
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                base = package[: len(package) - node.level + 1]
-                module = ".".join([*base, node.module] if node.module else base)
-            else:
-                module = node.module or ""
-            candidates = [module, *(f"{module}.{a.name}" for a in node.names if a.name != "*")]
-            if name in candidates:
-                return True
-    return False
-
-
 class TestLayering:
     def test_core_never_imports_a_scheme(self):
         """`core` is the contract; a dependency on any scheme inverts the layering.
 
-        The one exception is `style`, which names the built-in option objects inside a
-        function body so the import stays lazy and cycle-free. Only a top-level import
-        there counts; anything deeper is the lazy form the layering allows.
+        `registry` and `style` name scheme modules by dotted path and import them on
+        first use, so neither has an import statement for one.
         """
         offenders = []
         for path in python_files("core"):
             for name in imports_of(path):
                 if "schemes" not in name:
-                    continue
-                if path.name == "style.py" and not _is_top_level_import(path, name):
                     continue
                 offenders.append(f"{path.name} imports {name}")
         assert offenders == []

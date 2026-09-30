@@ -12,9 +12,9 @@ class OutputTooLong(Exception):
 
     Raised *while* printing rather than checked afterwards, which is the difference
     between a bound and a report. `_RMC0FGZZZZ_Eu` is fourteen characters and asks for
-    fourteen million bound lifetimes: checking the length of the finished string meant
-    building all of it first, which took fourteen seconds, and one more character would
-    have taken a quarter of an hour. The count comes out of a base-62 field, so the
+    fourteen million bound lifetimes: checking the length of the finished string would mean
+    building all of it first, and one more character multiplies that work sixty-two-fold.
+    The count comes out of a base-62 field, so the
     input grows by one character while the work grows sixty-two-fold.
     """
 

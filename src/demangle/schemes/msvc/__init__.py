@@ -7,8 +7,7 @@ is recorded next to every name in tests/conformance.
 
 Structured output
 -----------------
-This parser predates the builder protocol -- it was proven in production before this
-package existed -- and does not write to a builder. It cannot: MSVC spells a declaration
+This parser builds its own nodes rather than writing to a builder. It cannot: MSVC spells a declaration
 differently enough that the shared spelling builder has nowhere to put a calling
 convention, and the alternative to a scheme-specific renderer would be a scheme-specific
 branch in `core`.

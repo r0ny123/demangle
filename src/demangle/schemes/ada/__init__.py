@@ -22,8 +22,9 @@ reading and abandon the rest. Measured under that rule: **0** claims over the 81
 names in every other corpus here, and **0** over 339,117 symbols from this machine's
 libraries.
 
-The cost is that a name with no such marker -- `yz__qrs`, and 5 of the 34 reference
-vectors -- is not auto-detected. It demangles when a caller says `language="ada"`, which
+The cost is that a name with no such marker -- `yz__qrs`, and four of the 34
+reference vectors -- is not auto-detected (`x_E` is not counted: the reference itself
+declines it). It demangles when a caller says `language="ada"`, which
 is the same bargain the Go scheme makes and for the same reason: failing to claim a name
 returns it unchanged, which is what an unreadable name does anyway, while claiming
 someone else's rewrites it into a plausible lie. `tests/test_ada.py` pins both numbers,
