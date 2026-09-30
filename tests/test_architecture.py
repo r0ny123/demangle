@@ -36,8 +36,8 @@ def imports_of(path):
     Relative imports are resolved against the file's own package, so
     `from ..msvc import x` inside `schemes/rust/` comes back as
     `demangle.schemes.msvc` and can be compared on path segments. Comparing the raw
-    `"..msvc"` on substrings let the most obvious cross-scheme import -- a top-level
-    one -- walk straight through the rule meant to forbid it.
+    `"..msvc"` on substrings would let the most obvious cross-scheme import -- a
+    top-level one -- walk straight through the rule meant to forbid it.
 
     A `from` import also records the name behind the `import`, so
     `from demangle.core import spelling` comes back as both `demangle.core` and
@@ -288,10 +288,10 @@ class TestTheTreeSpellsWhatTheTextPathSpells:
     the two drift apart are cross-cutting -- a builder that forgets to distribute over a
     pack, a tree assembled from parsed fields rather than from the fragments.
 
-    It has caught three: a pack holding an empty pack (`core/ast.py`), a declarator over
-    an empty pack (`core/spelling.py`), and a Free Pascal program's `program variable `
-    lead, which the tree looked for under the unit's raw name and a program's unit is
-    spelled without its `P$`.
+    The shapes that pin it are a pack holding an empty pack (`core/ast.py`), a
+    declarator over an empty pack (`core/spelling.py`), and a Free Pascal program's
+    `program variable ` lead, which the tree must look for under the unit's spelled
+    name, since a program's unit is spelled without its `P$`.
     """
 
     @pytest.mark.sweep
@@ -349,8 +349,8 @@ class TestTheToolsAndTheSuiteAgree:
     `tools/differential.py` excuses a name from its corpus replay; `test_conformance.py`
     pins the same set for the suite. They are edited in different files for different
     reasons, and a name excused in one and not the other means one of the two has stopped
-    watching it -- which is how a deliberate shortfall came to be reported as a clean
-    100% by the tool while the suite was failing on it.
+    watching it -- so a deliberate shortfall could be reported as a clean 100% by
+    the tool while the suite fails on it.
     """
 
     @staticmethod

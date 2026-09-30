@@ -5,17 +5,16 @@ disassembler labels functions from a worker pool, a symbolication service serves
 request per thread. So "the same name always gives the same answer" has to hold when
 several threads are asking at once, not only when one is.
 
-This file exists because it did not. The Rust scheme held one parser at module scope
-and both of its grammars keep the name they are reading on `self`, so two threads
-overwrote each other mid-parse. It did not raise. It returned *another symbol's* name --
-160 times out of 5,710 across eight threads -- and `demangle()` then memoised that
-answer under the first symbol's key, so the wrong result outlived the threads that
-produced it. `SECURITY.md` calls non-deterministic output for identical input a
+This file guards that. A parser held at module scope is a hazard wherever its grammar
+keeps the name it is reading on `self`: two threads overwrite each other mid-parse.
+That does not raise. It returns *another symbol's* name, and `demangle()` then
+memoises that answer under the first symbol's key, so the wrong result outlives the
+threads that produced it. `SECURITY.md` calls non-deterministic output for identical input a
 vulnerability, and it is right to: a tool that renames a function from a symbol table
 writes that lie into its database.
 
 The property is deliberately the strong one. Not "no exception escaped" -- the race
-never raised. Every thread must agree, character for character, with the answer a
+does not raise. Every thread must agree, character for character, with the answer a
 single thread computes for the same name.
 """
 
@@ -43,7 +42,7 @@ CORPORA = (
     "delphi-real-world.txt",
 )
 
-#: The race this catches showed up at 3% of names, so a few hundred per scheme suffice.
+#: The race this catches shows at about 3% of names, so a few hundred per scheme suffice.
 PER_CORPUS = 300
 THREADS = 8
 ROUNDS = 3
@@ -171,7 +170,7 @@ def test_the_registry_survives_being_loaded_from_several_threads_at_once():
 def test_mixed_budgets_do_not_share_an_answer(corpus):
     """Threads asking for different `Limits` must not be served each other's answers.
 
-    A limit now has a path of its own: a name that exceeds one is refused, and the
+    A limit has a path of its own: a name that exceeds one is refused, and the
     refusal is cached like any other answer. The cache is keyed on the limits as well as
     the name, so the entry a tightened budget leaves must not reach a caller who asked
     for a relaxed one -- and a shared key would show up exactly here, where the same
@@ -286,7 +285,7 @@ def test_styles_resolved_on_first_use_from_several_threads_at_once():
 
 def test_a_weighed_cache_stays_within_its_weight_under_many_threads():
     """Threads adding at once must not lose each other's weight; under free threading
-    an unguarded `+=` did, and the cache held half as much again as its bound. The
+    an unguarded `+=` would, and the cache would hold half as much again as its bound. The
     threads stop together, since one left running alone turns the excess over."""
     from demangle.core.cache import BoundedCache
 

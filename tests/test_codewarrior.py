@@ -174,8 +174,8 @@ class TestWhatItRefusesToClaim:
 class TestTheSecondSeparatorScreen:
     """A special name (`__dt__6CActorFv`) has a `__` of its own, so `detect` turns a name
     that opens `__` and has no second one away without parsing it -- `__libc_start_main`
-    and the rest of a C library's reserved names, which were most of what this scheme
-    parsed over a real symbol table. The parse would refuse every one of them anyway."""
+    and the rest of a C library's reserved names, which are most of what a real symbol
+    table offers this scheme. The parse would refuse every one of them anyway."""
 
     def _turned_away(self, name):
         return name[:2] == "__" and name.find("__", 2) < 0 and name[2:4] != "op"

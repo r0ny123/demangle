@@ -163,10 +163,10 @@ class TestLibibertySpellingAnEmptyFirstArgument:
 
 class TestAnItaniumPrefixIsNeverClaimed:
     """The Itanium reader is offered every `_Z` and `__Z` name first; one it refuses
-    was offered on down the list, and a Mach-O `__Z` name is full of the `__` this
+    is offered on down the list, and a Mach-O `__Z` name is full of the `__` this
     grammar reads as a separator. `__ZNKSt3__110__function6__funcI...`, refused by the
-    Itanium reader under a forced numbering rule, read as the method `__ZNKSt3` of a
-    class named after the rest of it."""
+    Itanium reader under a forced numbering rule, would read as the method `__ZNKSt3` of
+    a class named after the rest of it."""
 
     def test_a_mach_o_itanium_name_the_itanium_reader_refuses_comes_back_as_itself(self):
         from demangle.schemes.gnuv2 import detect
@@ -188,7 +188,7 @@ class TestTheLeadingUnderscoresScreen:
     constructor (`__Q`, `__K`, `__H`, `__t`), a DLL import (`__imp_`) -- or nothing, and
     then g++ 2.x's reading needs a second `__` to split the name at. `detect` turns the
     last kind away without parsing it: `__libc_start_main` and the rest of a C library's
-    reserved names, which were most of what this scheme parsed over a real symbol table."""
+    reserved names, which are most of what a real symbol table offers this scheme."""
 
     def _turned_away(self, name):
         return (
@@ -238,8 +238,8 @@ class TestWhatItRefusesToClaim:
     def test_a_spelling_that_cannot_be_a_declaration_is_not_a_reading(self):
         """Two shapes the grammar produces and no C++ declaration contains.
 
-        Both were found by offering every symbol in the 957 shared objects a stock Ubuntu
-        24.04 ships -- 345,601 names -- to the whole registry and looking at what came
+        Both are found by offering every symbol in the 957 shared objects a stock Ubuntu
+        24.04 ships -- 345,601 names -- to the whole registry and looking at what comes
         back changed. They are the naming conventions an analyst actually meets:
         `g_cclosure_marshal_<RET>__<ARGS>` is GLib's generated marshaller, in every GTK
         binary, and `PyInit_<module>` covers every CPython extension whose name begins
@@ -283,14 +283,14 @@ class TestWhatItRefusesToClaim:
         assert demangle.demangle("foo__FPFe_vi") == "foo(void (*)(...), int)"
 
     def test_a_special_form_that_does_not_read_is_not_read_as_something_else(self):
-        """`_vt$t3Foo1Z_bar__Fi` came back `_bar(int)`.
+        """`_vt$t3Foo1Z_bar__Fi` is refused, not read as `_bar(int)`.
 
         `gnu_special` reads a virtual table's class and fails on the junk template with
         the cursor past it, and `demangle_prefix` then reads the tail of the name as a
         function. libiberty does the same -- `_vt$t8BDDHookV1__pt__2_cFv` is
         `_c::_pt(void)` to it -- and a function named after the end of a virtual table's
-        symbol is not a reading of that symbol. Found by `tools/mutate.py --scheme gnuv2`
-        against the libiberty reference; the same for a thunk and a `type_info` name.
+        symbol is not a reading of that symbol. `tools/mutate.py --scheme gnuv2` against the
+        libiberty reference reaches it; the same holds for a thunk and a `type_info` name.
         """
         for name in (
             "_vt$t3Foo1Z_bar__Fi",
@@ -475,8 +475,8 @@ class TestAnArgumentListWithoutItsMarker:
     def test_what_a_failed_guess_decoded_is_not_evidence_for_the_one_that_parsed(self):
         """Each `__` is tried in turn, and the evidence is rolled back with the rest.
 
-        HP's `__dl__2T5XTi__SFPv` reads under `gnu` as `__dl__2T5XTi(void *) static`; the
-        class that made it look plausible came from a guess that had already failed.
+        HP's `__dl__2T5XTi__SFPv` reads under `gnu` as `__dl__2T5XTi(void *) static`; a
+        class that made it look plausible would come from a guess that has already failed.
         """
         for name in ("__dl__2T5XTi__SFPv", "elem__6vectorXTiSM__SCFPPd"):
             assert demangle_gnuv2(name, style="gnu").evidence == frozenset()
@@ -539,8 +539,8 @@ class TestAVirtualTableWithACountTooLarge:
     count larger than what remains is a `.<digits>` static-local marker to it: the
     reference's `break` leaves only the `switch`, the count is dropped, and what follows
     is read as the next piece, so `_vt.6i` is `i virtual table`. Leaving the whole loop
-    here left the `i` for the caller, which read it as a parameter list and spelled
-    ` virtual table(int)` -- a blank class and a signature a table does not have.
+    would leave the `i` for the caller, which would read it as a parameter list and
+    spell ` virtual table(int)` -- a blank class and a signature a table does not have.
     `tools/mutate.py --seed 35`."""
 
     @pytest.mark.parametrize(
@@ -572,9 +572,9 @@ class TestATemplateValueArgumentWithNoTypeInFrontOfIt:
     `drm_intel_gem_bo_map__cpu` is a C function rather than a call taking a
     `__restrict *`. The refusal is lifted only in front of a template *value* argument,
     where no C name can reach: the whole shape sits inside a `t <count> <name> <count>`
-    production. Left unread, what followed was resynchronised as a class name and
-    `__opi__t2TA2Z5__pt__1_i` came back as `_::operator int(int)`, naming a class called
-    `_` -- an answer this package treats as worse than none. `tools/mutate.py --seed 54`.
+    production. Left unread, what follows would be resynchronised as a class name and
+    `__opi__t2TA2Z5__pt__1_i` would read as `_::operator int(int)`, naming a class
+    called `_` -- an answer this package treats as worse than none. `tools/mutate.py --seed 54`.
     """
 
     @pytest.mark.parametrize(

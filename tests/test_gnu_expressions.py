@@ -146,8 +146,9 @@ def test_an_unexpanded_type_pack_expansion_is_bracketed_under_gnu():
 def test_an_unexpanded_pack_over_a_declarator_type_puts_the_ellipsis_after_the_whole_type():
     """`ParameterPackExpansion` prints its child whole and then the dots.
 
-    This put them in the declarator's name slot -- `void (*...)()`, `int... [3]` --
-    which neither reference prints. GNU brackets the type first, and was already right.
+    Putting them in the declarator's name slot -- `void (*...)()`, `int... [3]` --
+    would print what neither reference prints. GNU brackets the type first, which
+    avoids the problem.
     """
     for mangled, llvm, gnu in (
         ("_Z1fDpFvvEv", "f(void ()..., void)", "f((void ())..., void)"),
@@ -242,11 +243,11 @@ def test_a_comma_separated_list_keeps_its_space_under_gnu():
     ],
 )
 def test_a_fold_expression_is_spelled_the_way_each_reference_spells_it(mangled, llvm, gnu):
-    """Found by mutation: the fold branch printed llvm's spacing under both styles.
+    """The fold branch must not print llvm's spacing under both styles.
 
     Every column here is what the named reference answers on this machine. The GNU
     spelling differs in both halves -- no spaces around the operator, and the initialiser
-    bracketed by kind rather than by precedence -- and this printed neither.
+    bracketed by kind rather than by precedence.
     """
     assert demangle.demangle_strict(mangled, style="llvm") == llvm
     assert demangle.demangle_strict(mangled, style="gnu") == gnu
@@ -292,9 +293,10 @@ class TestAConstraintParameterUnderTheGnuStyle:
     def test_a_template_id_inside_a_clause_does_not_become_the_parameter_scope(self):
         """A clause names no entity, so what it mentions must not install a `T_` scope.
 
-        `R 11SmallerThan I Li1234E E` is a nested requirement; its `1234` became what the
-        *next* requirement's `T_` resolved to, so a type requirement naming `T` printed
-        `typename 1234` -- a plausible spelling of something the name does not say.
+        `R 11SmallerThan I Li1234E E` is a nested requirement; its `1234` must not become
+        what the *next* requirement's `T_` resolves to, or a type requirement naming `T`
+        would print `typename 1234` -- a plausible spelling of something the name does
+        not say.
         """
         mangled = (
             "_Z1fIiEviQrqXcvT__EXfp_Xeqfp_cvS0__EXplcvS0__ELi1ER5SmallXmicvS0__ELi1ENXmlcvS0__ELi2EN"
@@ -309,9 +311,9 @@ class TestAConstraintParameterUnderTheGnuStyle:
 class TestAConversionToABracedListUnderTheGnuStyle:
     """`cv <type> il ... E`, a functional cast of a braced list: `d_print_comp` writes
     the type in brackets and the list straight after it, `(A){1, 2}`, where the general
-    conversion rule bracketed the operand as well, `(A)({1, 2})`. Reached by
-    `tools/mutate.py --seed 11` through a `test7` vector of libcxxabi's whose
-    `llvm-cxxfilt` spelling, `(test7::C)({1, true})`, is unchanged."""
+    conversion rule would bracket the operand as well, `(A)({1, 2})`.
+    `tools/mutate.py --seed 11` reaches it through a `test7` vector of libcxxabi's whose
+    `llvm-cxxfilt` spelling, `(test7::C)({1, true})`, is not affected."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -338,9 +340,9 @@ class TestAConversionToABracedListUnderTheGnuStyle:
 
 class TestTheObjectOfAMemberAccessIsAnOperand:
     """`d_print_subexpr` runs over the object of a `.` or `->` as over any operand:
-    bracketed unless it is a name, a parameter or an initialiser list. This printed the
-    object without asking and wrote `a->ua.i` where `c++filt` writes `(a->ua).i`;
-    `tools/mutate.py --seed 6` reached it through a name only `c++filt` reads."""
+    bracketed unless it is a name, a parameter or an initialiser list. Printing the
+    object without asking would write `a->ua.i` where `c++filt` writes `(a->ua).i`;
+    `tools/mutate.py --seed 6` reaches it through a name only `c++filt` reads."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -369,8 +371,7 @@ class TestSizeofDotDotDotIsANumberToCxxfilt:
     parameter is bound to a pack, 0 for anything else, a function parameter and an empty
     pack included -- and for `sP` the argument count with expansions counted by their
     members. `llvm-cxxfilt` spells the operator and its operands, `sizeof...(int, char)`,
-    which this wrote under both styles. Found by a gnu-primary mutation draw, on a
-    libcxxabi vector the gnu style had never been asked about."""
+    which belongs to the llvm style only."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -404,9 +405,9 @@ class TestSizeofDotDotDotIsANumberToCxxfilt:
 class TestAFoldsPackOperandUnderTheGnuStyle:
     """`d_print_comp` prints a fold's pack operand through `d_print_subexpr` like any
     operand and writes no ellipsis of its own: `(x+...+y)` for a name, `((0)+...+(int))`
-    for a literal and a parameter bound to one type. This wrote `(y...)` and
-    `(int...)`, llvm-cxxfilt's spelling for the one-type case; llvm-cxxfilt refuses
-    the fold with no pack at all. A gnu-primary mutation draw."""
+    for a literal and a parameter bound to one type. `(y...)` and
+    `(int...)` are llvm-cxxfilt's spelling for the one-type case and belong to the
+    llvm style only; llvm-cxxfilt refuses the fold with no pack at all."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -429,9 +430,9 @@ class TestAFoldsPackOperandUnderTheGnuStyle:
 
 class TestADesignatedInitialiserUnderTheGnuStyle:
     """`.n=(42)`, `.n=x`, `[1]=(42)`, `[1 ... 3]=(42)`, `.n.m=(42)`: no spaces round
-    the `=`, and the value an operand `d_print_subexpr` brackets by kind. This wrote
-    llvm-cxxfilt's `.n = 42` under both styles. A gnu-primary mutation draw, on the
-    libcxxabi vector `_Z1fIXtl1Edi1nLi4EEEEvv`."""
+    the `=`, and the value an operand `d_print_subexpr` brackets by kind. llvm-cxxfilt's
+    `.n = 42` belongs to the llvm style only. The libcxxabi vector
+    `_Z1fIXtl1Edi1nLi4EEEEvv` carries one."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -452,8 +453,8 @@ class TestADesignatedInitialiserUnderTheGnuStyle:
         assert demangle.demangle("_Z1fIXtl1EdXLi1ELi3ELi42EEEEvv") == "void f<E{[1 ... 3] = 42}>()"
 
 
-class TestFourMoreSpellingsFromTheGnuPrimaryDraw:
-    """Each is `c++filt`'s, checked against it, and each left llvm-cxxfilt's spelling
+class TestGnuSpellingsOfLessCommonOperands:
+    """Each is `c++filt`'s, checked against it, and each keeps llvm-cxxfilt's spelling
     under the llvm style."""
 
     @pytest.mark.parametrize(
@@ -504,8 +505,8 @@ class TestAnArgumentListsRequiresClauseUnderTheGnuStyle:
     """`I ... Q <constraint> E` on the entity's own template arguments: `llvm-cxxfilt`
     prints nothing for it, and `c++filt` prints it after the parameters with the
     arguments bound, `void f<int>(int) requires C<int>` -- and after the encoding's own
-    clause where both are present. This printed nothing under both styles, which was
-    the one name short in the purpose-built gnu corpus: `modern::measured`, whose
+    clause where both are present. Printing nothing under both styles would leave
+    one name short in the purpose-built gnu corpus: `modern::measured`, whose
     constraint is `Sized<std::__cxx11::basic_string<...>>`."""
 
     @pytest.mark.parametrize(
@@ -573,8 +574,7 @@ class TestAGreaterThanIsBracketedWhereverItStands:
     operator in an extra layer of parens so that it does not get confused with the '>'
     which ends the template parameters" -- wherever it stands, not only inside an
     argument list, and on top of whatever brackets its position earns. `>>` gets no
-    such layer, so at the top of a template argument it stands bare where this used
-    to bracket it. Every spelling here is `c++filt` 2.42's."""
+    such layer, so at the top of a template argument it stands bare. Every spelling here is `c++filt` 2.42's."""
 
     @pytest.mark.parametrize(
         "mangled, gnu, llvm",
@@ -687,8 +687,8 @@ class TestAPackExpansionInAnExpressionUnderTheGnuStyle:
 class TestACastsOperandIsBracketedByKind:
     """`cv <type> <expression>` prints its operand through `d_print_subexpr`: a name, a
     parameter or a braced list bare, anything else in brackets. `T(t)` is written
-    `cvT_fp_` by both compilers, so `(int){parm#1}` is the common case, and this
-    bracketed it."""
+    `cvT_fp_` by both compilers, so `(int){parm#1}` is the common case, and it is not
+    bracketed."""
 
     @pytest.mark.parametrize(
         "mangled, expected",

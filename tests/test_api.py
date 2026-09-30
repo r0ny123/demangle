@@ -184,8 +184,8 @@ class TestBatch:
 class TestDecorations:
     """Symbol-table decorations: what the linker and compiler append to a name.
 
-    Only covered incidentally through the libstdc++ corpus before, which meant the
-    splitting rules -- the part that has broken twice -- had no direct test.
+    The splitting rules are the part most easily broken, so they are tested directly
+    rather than incidentally through the libstdc++ corpus.
     """
 
     @pytest.mark.parametrize(
@@ -220,7 +220,7 @@ class TestDecorations:
         assert demangle.demangle(name).startswith("<core::iter::adapters::skip::Skip<I>")
 
     def test_a_rust_symbol_with_a_trailing_suffix_is_still_rust(self):
-        """Anchoring the hash to the end lost every one of these to the C++ parser."""
+        """A hash anchored to the end of the name would hand every one of these to the C++ parser."""
         name = "_ZN3std2io5stdio19OUTPUT_CAPTURE_USED17hb12710559afcc79aE.0"
         assert demangle.detect(name) == "rust"
         assert demangle.demangle(name) == "std::io::stdio::OUTPUT_CAPTURE_USED.0"
@@ -235,7 +235,7 @@ class TestDecorations:
 
 
 class TestStyleRegistration:
-    """`Style` and `register_style` are public and were entirely untested."""
+    """`Style` and `register_style` are public, so each is tested directly."""
 
     def test_a_custom_style_can_be_registered_and_used(self):
         from demangle.core.spelling import SpellingBuilder
@@ -263,8 +263,8 @@ class TestStyleRegistration:
         assert get_style(get_style("gnu")) is get_style("gnu")
 
     def test_with_options_refuses_an_unknown_language_in_either_form(self):
-        """The mapping form always checked; the object form quietly added dead options
-        under a name nothing reads."""
+        """Both forms check the name: an object must not add dead options under a name
+        nothing reads, any more than a mapping may."""
         from demangle.core.style import get_style
         from demangle.schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
 

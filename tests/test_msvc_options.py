@@ -144,10 +144,10 @@ class TestTheMaskBitsLlvmUndnameHasNoFlagFor:
     """`UnDecorateSymbolName`'s four other suppressions, replayed as `MsvcOptions`.
 
     Microsoft's mask has considerably more in it than `llvm-undname`'s five flags, and for
-    the rest there is one reference and it runs on Windows. `dbghelp.dll` was asked, once
+    the rest there is one reference and it runs on Windows. `dbghelp.dll` is asked, once
     per bit, over the same 609 names; `tests/conformance/msvc-dbghelp.txt` records what
     each bit changed, and `tools/generate_msvc_dbghelp_corpus.py` says how the reference's
-    spelling was rewritten into this one -- and proved, name by name -- before it was
+    spelling is rewritten into this one -- and proves, name by name -- before it is
     written down.
 
     These four do not reach the way the five next door reach, and the difference is
@@ -324,8 +324,8 @@ class TestTheBitsWithNoFieldOfTheirOwn:
     """The rest of the mask, and why none of it became an `MsvcOptions` field.
 
     "We did not implement this" and "the reference does nothing with it" are different
-    claims, and for nine of these bits only the second is true: `dbghelp` spelled all 609
-    names identically with the bit set and with it clear, so there was no answer to score
+    claims, and for nine of these bits only the second is true: `dbghelp` spells all 609
+    names identically with the bit set and with it clear, so there is no answer to score
     a field against. The tenth, `UNDNAME_NAME_ONLY`, does plenty -- and what it does is
     measured below rather than followed. Re-derive either with
     `tools/generate_msvc_dbghelp_corpus.py --report`.
@@ -365,8 +365,8 @@ class TestTheBitsWithNoFieldOfTheirOwn:
     def test_name_only_is_not_the_qualified_name(self):
         """`UNDNAME_NAME_ONLY` reduces further than `signature().qualified_name` does.
 
-        The issue that asked for these flags took the bit to be reachable already through
-        `qualified_name`. It is not, quite. The reference reduces every symbol *nested*
+        The bit is not quite reachable through `qualified_name`. The reference reduces
+        every symbol *nested*
         inside the name as well -- the function a local name lives in, and a template
         argument that points at one, come back as bare names -- while `qualified_name`
         reads the qualified name off the tree and leaves what is nested inside it alone:
@@ -386,7 +386,7 @@ class TestTheBitsWithNoFieldOfTheirOwn:
         assert len(groups["nested"]) == MSVC_NAME_ONLY_REDUCES_A_NESTED_SYMBOL
 
     def test_the_bit_discards_a_vftables_base_path(self):
-        """Which is why no field was added for it, rather than an oversight.
+        """Which is why it has no field, rather than an oversight.
 
         `??_7A@B@@6BC@D@@@` and its two longer relatives name three different vtables, and
         `UNDNAME_NAME_ONLY` answers all three with `B::A::`vftable'`. That is the same loss
@@ -420,11 +420,11 @@ class TestTheOptionsReachABareType:
     """`demangle_type(..., language="msvc")` spells a type under the style it was given.
 
     It is the entry point `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY` corresponds to, and
-    it took an options object and dropped it: every flag was silently inert there, however
-    the caller composed the style. The declaration-level five have nothing to say about
+    it must honour an options object: a flag silently inert there would leave every
+    composition of the style without effect. The declaration-level five have nothing to say about
     most bare types -- a function reached as a pointer's pointee keeps its convention, and
     that is what a bare `P6AHXZ` is -- but the lexical four apply to a type exactly as they
-    apply inside a declaration, and now do.
+    apply inside a declaration.
     """
 
     def test_a_tag_kind_is_dropped_from_a_bare_type(self):
@@ -438,9 +438,9 @@ class TestTheOptionsReachABareType:
         assert demangle.demangle_type(".PEAUS@@", language="msvc", style=narrow) == "S *"
 
     def test_the_descriptor_symbol_reaches_the_flags_as_the_type_does(self):
-        """`demangle(".?AVFoo@@")` went through `parse`, which handed `parse_msvc_type`
-        its limits and not its options, so every flag was inert on the symbol path while
-        `demangle_type` honoured it on the same encoding."""
+        """`demangle(".?AVFoo@@")` goes through `parse`, which must hand `parse_msvc_type`
+        its options as well as its limits, or every flag is inert on the symbol path
+        while `demangle_type` honours it on the same encoding."""
         narrow = demangle.style("llvm", msvc={"tag_kind": False})
         assert demangle.demangle(".?AVFoo@@", language="msvc") == "class Foo `RTTI Type Descriptor Name'"
         assert demangle.demangle(".?AVFoo@@", language="msvc", style=narrow) == "Foo `RTTI Type Descriptor Name'"

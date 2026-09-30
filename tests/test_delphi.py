@@ -171,10 +171,10 @@ class TestClaimsNothingItShouldNot:
         """A fragment of an MSVC symbol is not a Delphi export.
 
         There is no `?` in any of the 11,363 recorded exports, and this parser copies
-        characters through rather than checking an alphabet -- so it read them.
-        `demangle_text` over a listing tokenises
+        characters through rather than checking an alphabet -- so without a screen it
+        would read them. `demangle_text` over a listing tokenises
         `??R<lambda_1>@?0??define_lambda@@YAHXZ@QBE@XZ` at the angle brackets the token
-        cannot hold, and what was left came back as
+        cannot hold, and what is left would spell
         `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ`: a Delphi declaration built out
         of half an MSVC symbol.
         """
@@ -254,12 +254,13 @@ class TestLimitsAndRefusal:
         ],
     )
     def test_an_argument_list_ending_in_a_qualifier_is_refused_rather_than_hanging(self, mangled):
-        """`while char in "xw"` never ended when `char` was `""`.
+        """An empty `char` at the end of the input must end the `"xw"` loop.
 
-        An empty string is a substring of every string, so at the end of the input the
-        loop matched, emitted another `volatile `, advanced nothing, and matched again.
-        `demangle()` and `detect()` -- both documented never to raise, and both run over
-        every symbol in a table -- ran until the buffer exhausted memory.
+        An empty string is a substring of every string, so a bare `while char in "xw"`
+        would match at the end of the input, emit another `volatile `, advance nothing,
+        and match again. `demangle()` and `detect()` -- both documented never to raise,
+        and both run over every symbol in a table -- would run until the buffer
+        exhausted memory.
         """
         with pytest.raises(DemangleFailure):
             parse_delphi_symbol(mangled)
@@ -267,22 +268,23 @@ class TestLimitsAndRefusal:
         assert demangle.demangle(mangled) == mangled
 
     def test_a_truncated_indirection_is_refused_rather_than_recursing(self):
-        """`"" in "Mrhp"` was True too, so a name ending in `p` read the end of the
-        input as another pointer, all the way down to `max_depth`. The bound caught it,
-        but a truncated name is not a name that was too deep."""
+        """`"" in "Mrhp"` is True too, so a name ending in `p` would read the end of the
+        input as another pointer, all the way down to `max_depth`. The bound would catch
+        it, but a truncated name is not a name that was too deep."""
         with pytest.raises(DemangleFailure, match="unknown type"):
             parse_delphi_symbol("@a$qp")
 
     @pytest.mark.parametrize("mangled", ["@oo$qt$i", "@a$qit$", "@a$qit%"])
     def test_a_malformed_back_reference_index_is_refused_not_a_valueerror(self, mangled):
-        """`int(digit, 36)` on `$` raised `ValueError` straight out of `detect`, which
-        the scheme documents as raising `DemangleFailure` and nothing else."""
+        """`int(digit, 36)` on `$` raises `ValueError`, which must not come straight out
+        of `detect`: the scheme documents it as raising `DemangleFailure` and nothing
+        else."""
         with pytest.raises(DemangleFailure, match="back-reference"):
             parse_delphi_symbol(mangled)
         assert detect(mangled) is False
 
     def test_every_truncation_of_every_recorded_name_terminates(self, subtests):
-        """The bug class, rather than the three names that happened to expose it.
+        """The whole class, rather than three names that expose it.
 
         Every prefix of a real symbol is a name some tool will eventually hand this --
         a stripped table, a truncated read -- and each one must come back with an answer

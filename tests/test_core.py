@@ -122,9 +122,9 @@ class TestTheTwoBuildersAgreeAboutPacks:
     about a pack could get different answers from the two builders: "did this
     parameter drop out entirely" (`size == 0`) and "how many members does an expansion
     over this range across" (`len(members)`). `_Z1fIJEJT_EiEviT0_N2nn2UpE` -- an empty
-    pack, then a pack holding a reference to it -- printed `f(int, , nn::Up)` through the
-    tree and `f(int, nn::Up)` through the text. A grammar fuzzer found it; llvm-cxxfilt
-    18.1.3 prints the latter.
+    pack, then a pack holding a reference to it -- would print `f(int, , nn::Up)`
+    through the tree and `f(int, nn::Up)` through the text; llvm-cxxfilt 18.1.3 prints
+    the latter.
     """
 
     def test_a_pack_holding_an_empty_pack_is_empty(self):
@@ -151,7 +151,7 @@ class TestTheTwoBuildersAgreeAboutPacks:
             ("gnu", "void f<, , int>(int, , nn::Up)"),
         ],
     )
-    def test_the_name_that_found_it(self, style, expected):
+    def test_an_empty_pack_then_a_pack_holding_it(self, style, expected):
         name = "_Z1fIJEJT_EiEviT0_N2nn2UpE"
         assert demangle.demangle_strict(name, style=style) == expected
         assert demangle.parse(name, style=style).spell(style=style) == expected
@@ -187,9 +187,9 @@ class TestEveryDeclaratorDistributesOverAPack:
         "mangled", ["_Z1fIJEEviA3_T_", "_Z1fIJEEviU9enable_ifT_", "_Z1fIJEEviMT_i", "_Z1fIJEEviMiT_"]
     )
     def test_a_declarator_over_an_empty_pack_is_refused(self, mangled):
-        """These read `void f<>(int)` once: the parameter vanished with the pack it was
-        built over. `c++filt` refuses them; `llvm-cxxfilt` prints ` [3]` and `int ::*`,
-        a declarator round nothing. Both builders refuse now, as one."""
+        """Read, these would give `void f<>(int)`: the parameter vanishes with the pack it
+        was built over. `c++filt` refuses them; `llvm-cxxfilt` prints ` [3]` and `int ::*`,
+        a declarator round nothing. Both builders refuse, as one."""
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled)
         assert demangle.demangle(mangled) == mangled
@@ -232,7 +232,7 @@ class TestBoundedCache:
         assert cache.get("absent") is MISSING
 
     def test_a_full_generation_ages_out_rather_than_everything(self):
-        """Clearing wholesale threw the working set away with the rest."""
+        """Clearing wholesale would throw the working set away with the rest."""
         cache = BoundedCache(max_size=4)
         for index in range(5):
             cache.put(index, index)
@@ -413,7 +413,7 @@ class TestDetectScreen:
 
     def test_an_opening_with_markers_of_its_own_needs_one_of_them(self):
         """g++ 2.x's special forms open `_` and carry a `$` or `.`; an Itanium name does
-        neither, so it is not offered to the six schemes that would each turn it away."""
+        neither, so it is offered to none of the schemes that would turn it away."""
         assert [plugin.name for plugin in registry.candidates("_ZN3foo3barEv")] == ["d", "swift", "rust", "itanium"]
         assert "gnuv2" in [plugin.name for plugin in registry.candidates("_$_3foo")]
         assert demangle.detect("_$_3foo") == "gnuv2"
@@ -441,8 +441,8 @@ class TestDetectionOrderIsPinned:
     """The order plugins are offered names in, asserted rather than reasoned about.
 
     `priority` is ascending -- lower is offered first -- so the comment beside every
-    shape-test scheme must agree with its number: `go` is first, not "last". This test
-    states the order where it can be read.
+    shape-test scheme must agree with its number. This test states the order where it
+    can be read.
 
     It is not cosmetic. Free Pascal and Swift both claim `_$SDL_MIXER$_Ld1`, and Free
     Pascal is right about it only because it is asked first. Reordering the
@@ -569,9 +569,9 @@ class TestLazyBuiltIns:
     @pytest.mark.parametrize("loaded_first", [False, True], ids=["before-load", "after-load"])
     @pytest.mark.parametrize("name", ["itanium", "msvc", "swift", "gnuv2", "codewarrior", "rust"])
     def test_a_replacement_survives_the_style_importing_the_built_in(self, name, loaded_first):
-        """Registered before the first call there was no stand-in yet, so the built-in's
-        own `register`, run when the style imported its options mid-parse, took the name
-        back. One scheme per process: importing one can import another."""
+        """Registered before the first call there is no stand-in yet, and the built-in's
+        own `register`, run when the style imports its options mid-parse, must not take
+        the name back. One scheme per process: importing one can import another."""
         results = _fresh(
             "import demangle\n"
             "from demangle.core import registry\n"

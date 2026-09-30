@@ -7,8 +7,8 @@ the shared libraries shipped on Ubuntu 24.04, all of them in LLVM's `sandboxir`.
 llvm-cxxfilt prints the whole declaration the mangling carries -- `&A::f(int)`. GNU
 c++filt prints what the source wrote, `&A::f`, and brackets the declaration for every
 shape where it cannot: `&(A::f() const)`, `&(void A::f<int>())`, `&(f())`. The rule is
-read off c++filt rather than guessed, which is what the vectors below are: each one was
-run through both references on this machine and the two columns are what they printed.
+read off c++filt rather than guessed, which is what the vectors below are: each one is
+run through both references on this machine and the two columns are what they print.
 
     llvm-cxxfilt   Ubuntu LLVM version 18.1.3
     c++filt        GNU Binutils for Ubuntu 2.42
@@ -114,8 +114,8 @@ def test_the_shape_as_it_appears_in_a_shipped_library():
 def test_the_option_is_what_selects_it_and_llvm_style_is_unaffected():
     """Turning it off leaves the operand to the general rule, which brackets it.
 
-    That is `gnu_expression_spelling`, still on in the style: with neither, the spelling
-    is llvm-cxxfilt's. The two options answer different questions -- "may the parameter
+    That is `gnu_expression_spelling`, which stays on in the style: with neither, the
+    spelling is llvm-cxxfilt's. The two options answer different questions -- "may the parameter
     list be dropped" and "does this operand need brackets" -- and this is what shows it.
     """
     mangled = "_Z1gI1AIXadL_ZN1A1fEvEEEEvv"

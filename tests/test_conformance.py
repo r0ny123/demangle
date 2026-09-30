@@ -340,7 +340,7 @@ def _reported():
 
 @pytest.mark.parametrize("corpus", _reported())
 def test_every_reported_name_reads_as_recorded(corpus):
-    """Names somebody reported, each fixed and kept fixed. No count: every row must hold.
+    """Names somebody reported. No count: every row must hold.
 
     `<scheme>.txt` is read under that language in the llvm style, `<scheme>-<style>.txt`
     in the style it names, so detection is not what is under test.
@@ -389,21 +389,20 @@ def test_the_tree_spells_what_the_fast_path_spells(corpus, style):
     """The two builders must never disagree, over every name recorded here.
 
     `tests/test_api.py` checks this on five hand-picked names, and five names cannot
-    find a disagreement that needs a particular shape to appear. One did: a declarator
-    applied to a pack with no members renders to nothing, and the tree builder measures
-    a subtree rather than rendering it -- so it reported a width for a parameter that
-    had dropped out, and the separator was left behind:
+    find a disagreement that needs a particular shape to appear. One such shape is a
+    declarator applied to a pack with no members, which renders to nothing: the tree
+    builder measures a subtree rather than rendering it, so it would report a width for
+    a parameter that had dropped out and leave the separator behind:
 
         f(std::launch, std::function<void ()>&&, )
 
-    One name, in one corpus, out of 44,556. That is the size of corpus the property
+    One name, in one corpus of 44,556, has it. That is the size of corpus the property
     needs; running it costs a few seconds.
 
-    Under every style, not just the default. The second one it found needed that: the
-    tree builder flattened a conversion operator's type with whatever style was default
-    rather than the one the tree was being built under, so under `gnu` a name came back
-    as `operator std::vector<int, std::allocator<int>>` inside a spelling that wrote
-    `> >` everywhere else.
+    Under every style, not just the default: the tree builder must flatten a
+    conversion operator's type with the style the tree is being built under, not the
+    default, or under `gnu` a name would read `operator std::vector<int,
+    std::allocator<int>>` inside a spelling that writes `> >` everywhere else.
     """
     for mangled, _ in load_corpus(corpus):
         try:
@@ -418,14 +417,15 @@ def test_the_tree_spells_what_the_fast_path_spells(corpus, style):
 def test_a_style_does_not_decide_whether_a_name_parses(corpus):
     """A style is a spelling policy. It must not change what the grammar accepts.
 
-    It did, for twelve names -- eleven of libcxxabi's own C++20 vectors and `std::pair`'s
-    constrained constructor, which is what GCC 13 emits for the real `std::pair`. GNU
-    c++filt substitutes the argument bound to a `<template-param>` inside a
-    requires-clause where llvm-cxxfilt spells the parameter symbolically, so the GNU
-    style resolves one -- and a clause names parameters of enclosing templates that are
-    not all in scope. Failing to resolve refused the whole name, so `--style llvm` read
-    it and `--style gnu` handed the symbol back mangled. What cannot be substituted now
-    falls back to the spelling the other style uses.
+    The pressure point is the requires-clause. GNU c++filt substitutes the argument
+    bound to a `<template-param>` inside one where llvm-cxxfilt spells the parameter
+    symbolically, so the GNU style resolves it -- and a clause names parameters of
+    enclosing templates that are not all in scope. Failing to resolve must not refuse
+    the whole name, or `--style llvm` would read it and `--style gnu` hand the symbol
+    back mangled; what cannot be substituted falls back to the spelling the other style
+    uses. Twelve names exercise this: eleven of libcxxabi's own C++20 vectors and
+    `std::pair`'s constrained constructor, which is what GCC 13 emits for the real
+    `std::pair`.
 
     Checked over every corpus rather than over the C++ ones, because the invariant
     belongs to the library and not to one scheme.
@@ -455,11 +455,11 @@ def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
     """`demangle_text` over a spelling this library produced should leave it alone.
 
     It is the second pass a user gets by accident -- a log file that already went through
-    the filter, a demangled name pasted into a report -- and it was corrupting output:
-    `@escaping`, `@autoclosure` and `@Swift.MainActor` lost their `@` to Delphi's
-    unit-scope routine, and `@GLIBCXX_3.4` and `@@CXXABI_FLOAT128`, which this library
-    prints on every versioned symbol, lost theirs to the same rule. 89 of the first 20,000
-    corpus names were affected. `FILTER_REWRITES_AGAIN` is what is left.
+    the filter, a demangled name pasted into a report -- and it must not corrupt the
+    output: `@escaping`, `@autoclosure` and `@Swift.MainActor` keep their `@` rather than
+    read as Delphi's unit-scope routine, and so do `@GLIBCXX_3.4` and
+    `@@CXXABI_FLOAT128`, which this library prints on every versioned symbol.
+    `FILTER_REWRITES_AGAIN` holds the names that remain.
     """
     rewritten = []
     for mangled, _ in load_corpus(corpus):
@@ -493,10 +493,10 @@ FILTER_REPORTS_PIECES = {
 def test_the_filter_reports_no_piece_of_a_name_it_reads_whole(corpus):
     """A fragment that happens to demangle is a reading of something that is not there.
 
-    `@?0??define_lambda@@YAHXZ@QBE@XZ` -- what the token had left of an MSVC symbol after
-    the angle bracket it cannot hold -- came back as
+    `@?0??define_lambda@@YAHXZ@QBE@XZ` -- what the token has left of an MSVC symbol after
+    the angle bracket it cannot hold -- must not read as
     `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ`, a Delphi declaration built out of
-    half somebody else's name. This is the guard that found it.
+    half somebody else's name. This is the guard against it.
     """
     pieces = []
     for mangled, _ in load_corpus(corpus):
@@ -516,12 +516,11 @@ class TestAgainstLibcxxabisOwnCorpus:
     """LLVM's own Itanium vectors -- the reference measuring itself.
 
     `DemangleTestCases.inc` is what `libcxxabi`'s demangler is tested against, and that
-    demangler is the code behind `llvm-cxxfilt`. 29,928 pairs, an order of magnitude more
-    than anything this project had assembled, and the flagship scheme's real score
-    against it.
+    demangler is the code behind `llvm-cxxfilt`. 29,928 pairs, and the flagship scheme's
+    real score against it.
 
-    Checked in gzipped and pinned, so the number can only go up and cannot quietly stop
-    being accurate. What still fails is named below rather than left as one number.
+    Checked in gzipped and pinned, so the number cannot quietly stop being accurate.
+    What fails is named below rather than left as one number.
     """
 
     #: Never lowered silently; the named shortfall below says why it is not 29,928.
@@ -546,7 +545,7 @@ class TestAgainstLibcxxabisOwnCorpus:
         assert total - len(missed) == self.EXPECTED_EXACT, _describe("itanium-libcxxabi.txt", "llvm", None, missed)
 
     def test_the_shortfall_is_fifteen_names_and_this_says_which(self):
-        """Fifteen left, in four groups, and none of them is a name read wrongly.
+        """Fifteen fail, in four groups, and none of them is a name read wrongly.
 
         **Four bare types.** `i`, `PKFvRiE`, `PVFvRmOE` and `PFvRmOE` are `<type>`
         manglings with no `_Z`. They are refused *as symbols* on purpose, as

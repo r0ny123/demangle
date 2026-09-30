@@ -70,8 +70,8 @@ class TestTheHybridMarker:
 
         So a name carrying two is not one it can produce, and
         `getArm64ECDemangledFunctionName` -- which removes the *first* and no more --
-        leaves a name that still does not read. This stripped them one at a time until
-        none was left, so `?f@@$$h$$hYAXXZ` came back `void __cdecl f(void)`.
+        leaves a name that still does not read. Stripping them one at a time until
+        none is left would turn `?f@@$$h$$hYAXXZ` into `void __cdecl f(void)`.
         """
         for name in ("?f@@$$h$$hYAXXZ", "?priv_stat_foo@S@@$$h$$hYA?CHXZ", "?f@@$$hYAX$$hXZ"):
             assert demangle.demangle(name) == name, name

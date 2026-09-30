@@ -54,9 +54,9 @@ class TestShape:
         """A template parameter in expression position is not wrapped in an `Expression`.
 
         The wrapper would carry nothing its child does not -- the child already says it is
-        a builtin, a name, a literal -- and it sat on the most common productions in the
-        grammar. What matters is that the operand is still reachable and still says what
-        it is, which is what this checks.
+        a builtin, a name, a literal -- and it would sit on the most common productions
+        in the grammar. What matters is that the operand is reachable and says what it
+        is, which is what this checks.
         """
         binary = only("_Z1fIiEvDTplT_T_E", "binary")
         assert [operand.kind for operand in binary.operands] == ["builtin", "builtin"]
@@ -72,7 +72,7 @@ class TestShape:
 
 
 class TestSpellingIsUnchanged:
-    """The refactor's whole risk. Spot-checks here; the corpora cover the rest."""
+    """The whole risk of building a tree. Spot-checks here; the corpora cover the rest."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -109,7 +109,7 @@ class TestBuilderContract:
         assert tree.spell() == demangle.demangle("_Z1fIiEvDTplT_T_E")
 
 
-class TestStillRefusesWhatItShould:
+class TestRefusesWhatItShould:
     @pytest.mark.parametrize("mangled", ["_Z1fIiEvDTplT_E", "_Z1fIiEvDTqu", "_Z1fIiEvDT"])
     def test_a_truncated_expression_raises_rather_than_inventing_one(self, mangled):
         with pytest.raises(DemanglingError):
@@ -129,10 +129,9 @@ class TestStillRefusesWhatItShould:
         `c++filt` 2.42 and `llvm-cxxfilt` 18.1 hand it straight back. The reference reads
         the production as a do-while for exactly this reason.
 
-        It was accepted here and spelled `int f<int>()`, which is what the *well formed*
-        `_Z1fIiEiv` says: two manglings came back as one name, and one of them was not a
-        mangling. Found by enumerating every Itanium name up to five characters over a
-        grammar-shaped alphabet and asking both references about each one this reads.
+        Accepting it would spell `int f<int>()`, which is what the *well formed*
+        `_Z1fIiEiv` says: two manglings would read as one name, and one of them is not a
+        mangling.
         """
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled, language="itanium")
@@ -148,8 +147,8 @@ class TestStillRefusesWhatItShould:
         `llvm-cxxfilt` refuses `S_` alone there. libiberty's `d_name` carries a comment
         saying the grammar does not permit the case and that it does not bother to
         check, so `c++filt` reads `_ZZ1fPiES_` as `f(int*)::int*`, a local entity that
-        is a type, and this did too. The last two are a fuzzer's finds in libiberty's
-        own test suite, which both references refuse; this answered
+        is a type, and a reading that followed it would too. The last two are refused
+        by both references; reading `S_` there would answer
         `operator=(void () &&)::void () &&` for the first.
         """
         with pytest.raises(DemanglingError):
@@ -191,14 +190,14 @@ class TestStillRefusesWhatItShould:
     def test_a_type_is_not_an_expression(self, mangled):
         """`_expression` does not end by reading whatever could open a `<type>` as one.
 
-        A comment there once said array bounds and non-type template arguments arrive there.
-        Instrumented over the conformance corpora and every Itanium symbol on this
-        machine -- 137,561 names -- it fired exactly zero times, because both of those
-        productions read their operand themselves: `A <number> _` through `digits`,
+        Array bounds and non-type template arguments do not arrive there. Over the
+        conformance corpora and every Itanium symbol on this machine -- 137,561 names --
+        such a fallback fires exactly zero times, because both of those productions read
+        their operand themselves: `A <number> _` through `digits`,
         `A _ <expression> _` through `expression_text`, and `<template-arg>`'s type
         alternative in `template_arg`'s own branch.
 
-        What it did do was give malformed input a spelling. `decltype(signed char)` and
+        What it would do is give malformed input a spelling. `decltype(signed char)` and
         `_BitInt(signed char)` are not things, and `f(signed char [signed char])` is an
         array whose bound is a type. `llvm-cxxfilt`'s `parseExpr` has no type
         alternative at all and `c++filt` reads none of these either -- including the
@@ -231,7 +230,7 @@ class TestStillRefusesWhatItShould:
 
         It appears in `<prefix>` and nowhere else, so a nested name whose last component
         is a back reference is not a nested name. Both references refuse every shape of
-        it, and the readings were the kind a person would believe: `_ZNSaEv` as
+        it, and the readings on offer are the kind a person would believe: `_ZNSaEv` as
         `std::allocator()`, `_ZN1aSaEv` as `a::std::allocator()` -- a `std::` nested
         inside an `a::` -- and `_ZN1aS_Ev` as `a::a()`.
         """
@@ -249,8 +248,8 @@ class TestStillRefusesWhatItShould:
         `<data-member-prefix> ::= <member source-name> [<template-args>] M` and
         `<closure-prefix> ::= [<prefix>] <unqualified-name> M` are both `<prefix>`
         productions, so something still has to be named inside the member or the
-        closure. The `M` carries no spelling, and skipping it silently made
-        `_Z1fN1aME` -- "a member of `a`, and here is which one" -- come back as `f(a)`.
+        closure. The `M` carries no spelling, and skipping it silently would make
+        `_Z1fN1aME` -- "a member of `a`, and here is which one" -- read as `f(a)`.
         `c++filt` refuses all of these; `llvm-cxxfilt` reads the ones whose prefix is a
         source name and refuses the one whose prefix is a substitution, which is the
         grammar half-applied.
@@ -283,15 +282,14 @@ class TestStillRefusesWhatItShould:
         ```
 
         Reading a `<substitution>`, a `<decltype>` or a `<template-param>` anywhere in the
-        prefix spelled a scope inside a scope that cannot contain it: `_ZN1aSt1bEv` as
+        prefix would spell a scope inside a scope that cannot contain it: `_ZN1aSt1bEv` as
         `a::std::b()`, `_ZN1aSa1bEv` as `a::std::allocator::b()`, `_ZN1a1bS_1cEv` as
         `a::b::a::c()`, `_ZN1aDtfp_E1bEv` as `a::decltype(fp)::b()`. Every one is a
         declaration a person would believe and none is a name any compiler writes. Both
         references refuse all of them.
 
-        Found by mutating real libstdc++ symbols: a deleted or duplicated character in a
-        long `_ZNSb...` name leaves an abbreviation stranded mid-prefix, and 34 of the
-        first sitting's divergences were this one shape.
+        Mutating real libstdc++ symbols reaches it: a deleted or duplicated character in
+        a long `_ZNSb...` name leaves an abbreviation stranded mid-prefix.
         """
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled, language="itanium")
@@ -339,9 +337,9 @@ class TestStillRefusesWhatItShould:
     def test_there_is_one_internal_linkage_marker_and_not_a_run_of_them(self, mangled):
         """`<unqualified-name> ::= [<module-name>] [L] <name body> [<abi-tags>]`.
 
-        The marker carries no spelling of its own, and this read the rest of the name
-        recursively -- which accepted a run of them, so `_Z1fLL1A` and `_Z1fLLL1A` both
-        came back as `f(A)`, the spelling the well-formed `_Z1fL1A` has. Both references
+        The marker carries no spelling of its own, so the rest of the name must not be
+        read recursively -- that would accept a run of them, and `_Z1fLL1A` and
+        `_Z1fLLL1A` would both read as `f(A)`, the spelling the well-formed `_Z1fL1A` has. Both references
         refuse the second one.
         """
         with pytest.raises(DemanglingError):
@@ -368,8 +366,8 @@ class TestStillRefusesWhatItShould:
         The `auto` fallback is for the two readings where nothing is bound on purpose: a
         generic lambda's invented parameters (ABI 5.1.8) and a conversion operator's type
         read ahead of its arguments. An empty argument list is neither -- it is a list
-        that was read and is empty -- and `_Z1fIET_a` came back as `auto f<>(signed
-        char)`, which reads as a declaration. Both references refuse it.
+        that was read and is empty -- and `_Z1fIET_a` would read as `auto f<>(signed
+        char)`, which looks like a declaration. Both references refuse it.
 
         Marked by *where the reading is* rather than by what is in scope, because the two
         are indistinguishable from the tables: a lambda's level and an empty argument
@@ -394,9 +392,9 @@ class TestStillRefusesWhatItShould:
     def test_a_literal_with_no_value_is_not_a_value(self, mangled):
         """`L <type> <value> E`, and the value is not optional.
 
-        `_Z1fILaEE` came back as `f<(signed char)0>` -- a zero that is nowhere in the
+        `_Z1fILaEE` would read as `f<(signed char)0>` -- a zero that is nowhere in the
         name, and the same spelling the well-formed `_Z1fILa0EE` has, so two manglings
-        arrived as one name and one of them was not a mangling. Both references hand
+        would arrive as one name and one of them is not a mangling. Both references hand
         every one of these back.
 
         `Dn` is the exception, and it is decided by the two characters written rather
@@ -419,8 +417,8 @@ class TestStillRefusesWhatItShould:
         """`LDnE` is the type on its own; `LDn0E` is a value of it.
 
         `c++filt` writes `decltype(nullptr)` for the first and `(decltype(nullptr))0`
-        for the second; `llvm-cxxfilt` writes `nullptr` for both. This wrote
-        `(decltype(nullptr))0` for both under `gnu`, which is one of them.
+        for the second; `llvm-cxxfilt` writes `nullptr` for both. Writing
+        `(decltype(nullptr))0` for both under `gnu` would be right for only one of them.
         """
         assert demangle.demangle_strict(mangled, language="itanium", style="llvm") == llvm
         assert demangle.demangle_strict(mangled, language="itanium", style="gnu") == gnu
@@ -429,8 +427,8 @@ class TestStillRefusesWhatItShould:
     def test_a_template_parameter_with_no_arguments_in_scope_names_nothing(self, mangled):
         """`T_` indexes the enclosing `<template-args>`. A plain function has none.
 
-        Both references hand every one of these back. This read them as `auto` -- so
-        `_Z1f1AT_` was `f(A, auto)`, which is a declaration a reader would believe, of a
+        Both references hand every one of these back. Reading them as `auto` would make
+        `_Z1f1AT_` `f(A, auto)`, which is a declaration a reader would believe, of a
         type the encoding does not contain.
 
         The fallback that spells `auto` is right for the two readings that legitimately
@@ -447,7 +445,7 @@ class TestStillRefusesWhatItShould:
     def test_a_conversion_operator_needs_the_arguments_its_type_ran_ahead_of(self, mangled):
         """The conversion operator's reading is provisional: `_reread_conversion` makes
         it again once the arguments bind it. When none follow, nothing ever will, and
-        both references refuse the name where this spelled `operator B<auto&>`.
+        both references refuse the name, and it is not spelled `operator B<auto&>`.
         `tools/mutate.py --seed 18`."""
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled, language="itanium")
@@ -492,19 +490,18 @@ class TestStillRefusesWhatItShould:
         """`f(void)` is `f()` only when the `void` is the `v` the grammar writes.
 
         Both references read it by position: the first signature type, if it is a
-        literal `void`, *is* the empty list. This asked instead whether every parameter
-        spelled `void` after the fact, which is a different question and got two shapes
-        wrong.
+        literal `void`, *is* the empty list. Asking instead whether every parameter
+        spells `void` after the fact is a different question and gets two shapes wrong.
 
         `_Z1fIvEvT_` is `template <class T> void f(T)` instantiated with `void`. Both
-        references spell it `void f<void>(void)`; this spelled `void f<void>()`, dropping
+        references spell it `void f<void>(void)`; spelling it `void f<void>()` would drop
         a parameter that is in the name -- and there is no reference behind that answer,
         which is the part that makes it a defect rather than a choice. A list of several
         voids is not an empty one either: `_Z1fvv` is `f(void, void)` to `c++filt` and
-        refused outright by `llvm-cxxfilt`, and came back here as `f()`, which is what
+        refused outright by `llvm-cxxfilt`, and would read as `f()`, which is what
         `_Z1fv` says.
 
-        Every row now matches at least one reference, and matches `llvm-cxxfilt`
+        Every row matches at least one reference, and matches `llvm-cxxfilt`
         wherever it reads the name at all. The two it does not are the two it refuses.
         """
         assert demangle.demangle_strict(mangled, language="itanium") == expected
@@ -521,17 +518,17 @@ class TestStillRefusesWhatItShould:
     def test_a_conversion_operator_has_no_return_type_to_read(self, mangled, expected):
         """It encodes none however template it is: what it returns is in its name.
 
-        This read one anyway and threw it away, which spent the first type of the
-        signature. Invisible while that type is the `v` of an empty parameter list --
-        discarding it and spelling `()` from what was left came to the same thing -- and
-        wrong the moment the operator takes a parameter, where `_ZN1ScviEiv` came back
-        as `S::operator int()` rather than `S::operator int(int, void)`.
+        Reading one anyway and throwing it away would spend the first type of the
+        signature. That is invisible while that type is the `v` of an empty parameter
+        list -- discarding it and spelling `()` from what was left comes to the same
+        thing -- and wrong the moment the operator takes a parameter, where
+        `_ZN1ScviEiv` would read `S::operator int()` rather than
+        `S::operator int(int, void)`.
 
         Distinct from the return type GNU *omits* on the function a local name is scoped
-        by: that one is in the input and has to be read before it can be dropped. The two
-        shared a flag, so fixing this by not reading turned `_M_construct<char const*>`'s
-        `v` into a first parameter under `gnu`. They are separate flags now, and the
-        pinned gnu score is what says so.
+        by: that one is in the input and has to be read before it can be dropped. They are
+        separate flags: sharing one would turn `_M_construct<char const*>`'s `v` into a
+        first parameter under `gnu`, which the pinned gnu score would show.
         """
         assert demangle.demangle_strict(mangled, language="itanium") == expected
 
@@ -540,7 +537,7 @@ class TestAVendorExtendedTypeTakesOneTypeArgument:
     """`u <source-name> I <type> E`, as `llvm-cxxfilt` reads it: a type transformation
     over one type, spelled as a call. The ABI writes `[<template-args>]`, but no compiler
     emits anything else there, `llvm-cxxfilt` refuses `u7__decayIllE` outright and
-    `c++filt` 2.42 refuses the whole form. Reading a full argument list spelled
+    `c++filt` 2.42 refuses the whole form. Reading a full argument list would spell
     `__decay(long, long, ...)` for a name neither reads; `tools/mutate.py --seed 3`."""
 
     @pytest.mark.parametrize(
@@ -564,8 +561,8 @@ class TestAFloatingPointLiteral:
     """`L <d|e|f> <hex> E`: the value's bytes in hex, most significant first.
 
     `llvm-cxxfilt` decodes them and prints the number with glibc's `%a`; `c++filt`
-    brackets the hex after the type. This printed `(double)4048f5c28f5c28f6` in both
-    styles -- neither reference's spelling -- and no conformance corpus carries one,
+    brackets the hex after the type. Printing `(double)4048f5c28f5c28f6` in both
+    styles would be neither reference's spelling, and no conformance corpus carries one,
     because the test suites the corpora come from predate floating-point template
     arguments. The llvm spellings here are `llvm-cxxfilt` 18's on x86-64, and the
     printer is checked against it over 4,580 random and boundary values.
@@ -632,10 +629,10 @@ class TestAFloatingPointLiteral:
     def test_the_x87_format_at_the_width_gplusplus_pads_it_to(self, mangled, expected):
         """Every one of these names was read off a g++ 13 or clang 18 object file.
 
-        The padded forms read as IEEE quads here -- thirty-two digits is a quad's width
-        too -- and `1.5L` came back `0x0.000000003fffcp-16382L`, a wrong number.
+        The padded forms must not read as IEEE quads -- thirty-two digits is a quad's
+        width too -- or `1.5L` would spell `0x0.000000003fffcp-16382L`, a wrong number.
         `llvm-cxxfilt` on x86-64 refuses them for not being the twenty digits it expects,
-        so the reference never saw the defect; `c++filt` brackets the digits unread. The
+        so the reference says nothing about it; `c++filt` brackets the digits unread. The
         twelve zero digits that lead every padded x87 value are what tell it from a quad,
         at the price of one quad: a denormal below 2^-16414, whose leading digits are
         zero too, reads as the x87 value it also spells. The quad row in
@@ -684,9 +681,9 @@ class TestAFloatingPointLiteral:
     )
     def test_an_uppercase_digit_is_refused(self, mangled):
         """The ABI says lowercase, and LLVM's main branch refuses anything else. 18.1
-        tested with `isxdigit` and then subtracted `'a'` regardless, so `3F800000` came
-        back `0x1p-64f` there -- and this read it as `0x1p+0f`, a value no compiler wrote
-        under a name none writes. `c++filt` brackets the digits as they stand."""
+        tests with `isxdigit` and then subtracts `'a'` regardless, so `3F800000` comes
+        out `0x1p-64f` there -- and reading it as `0x1p+0f` would give a value no
+        compiler wrote under a name none writes. `c++filt` brackets the digits as they stand."""
         assert demangle.demangle(mangled) == mangled
         assert demangle.demangle(mangled, style="gnu") == mangled
 
@@ -754,8 +751,8 @@ class TestAStringLiteralArgument:
 
 class TestALiteralsValueIsANumber:
     """`L <type> <value number> E`: digits, with `n` in front of a negative value.
-    Taking whatever stood before the `E` read `Li4JE` as `4J` and `LinE` as `-`, which
-    is what `c++filt` prints and `llvm-cxxfilt` refuses; neither is a number.
+    Taking whatever stands before the `E` would read `Li4JE` as `4J` and `LinE` as `-`,
+    which is what `c++filt` prints and `llvm-cxxfilt` refuses; neither is a number.
     `tools/mutate.py --seed 6`."""
 
     @pytest.mark.parametrize(
@@ -783,7 +780,7 @@ class TestALiteralsValueIsANumber:
 
     @pytest.mark.parametrize("mangled", ["_Z1fILb6EEvv", "_Z1fILb01EEvv", "_ZN1S1fILb6EEEv1XILUlvE0_EE"])
     def test_any_other_bool_value_is_refused(self, mangled):
-        """`Lb6E` was spelled `true`. `llvm-cxxfilt` refuses a bool that is neither `0`
+        """`Lb6E` is not spelled `true`. `llvm-cxxfilt` refuses a bool that is neither `0`
         nor `1`, and no compiler writes one; `c++filt` prints `(bool)6`. Seed 11."""
         assert demangle.demangle(mangled) == mangled
 
@@ -791,9 +788,9 @@ class TestALiteralsValueIsANumber:
 class TestAModifierOverAnEmptyPack:
     """`_Z1fIJEPT_E` writes `P` over `T_`, and `T_` is the empty pack `J E`: there is
     nothing to point to. `c++filt` refuses the name; `llvm-cxxfilt` prints `f<*>`, the
-    modifier alone; this printed `f<>`, the argument dropped as an empty pack is
-    dropped -- a name with one argument fewer than it has. Found by
-    `tools/enumerate.py --length 6`, whose gate-length run never reaches the shape."""
+    modifier alone; printing `f<>` would drop the argument as an empty pack is
+    dropped -- a name with one argument fewer than it has. `tools/enumerate.py
+    --length 6` reaches the shape; its gate-length run does not."""
 
     @pytest.mark.parametrize(
         "mangled",
@@ -825,7 +822,7 @@ class TestAPixelVectorOfDimensionZero:
     """`Dv0_p` is AltiVec `__vector pixel` of length 0. llvm-cxxfilt refuses a
     dimension that does not open on 1-9 and c++filt refuses `p` altogether, so
     both hand the name back. A compiler does not write a pixel vector of length
-    0. `Dv0_i` is still read: c++filt prints `__vector(0)`. `tools/mutate.py
+    0. `Dv0_i` is read: c++filt prints `__vector(0)`. `tools/mutate.py
     --seed 10`."""
 
     def test_refused(self):
@@ -843,9 +840,8 @@ class TestAPixelVectorOfDimensionZero:
 class TestAQualifiedFunctionTypeReturningAnArray:
     """`KFA_iE` / `FA_iRE` as a parameter. C++ has no function returning an array;
     llvm-cxxfilt writes the qualifier after the `[]`, this before them, `c++filt`
-    refuses. The types job already accepts the bare encodings; length six under
-    `_Z1f` reaches them as a parameter. Found by `tools/enumerate.py --length 6`,
-    twelve unexplained names."""
+    refuses. The types job accepts the bare encodings; `tools/enumerate.py --length 6`
+    under `_Z1f` reaches them as a parameter."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -863,8 +859,8 @@ class TestImaginaryOverASubstitutedOrMemberPointerDeclarator:
     """`G` over a substitution that names a function or array, or over a member pointer
     to a function. llvm-cxxfilt drops the `()` / `[]` or leaves a parenthesis unclosed;
     `c++filt` refuses. This keeps the declarator, as it does for the written-out
-    `_Z1fGFaE` / `_Z1fGPFvE` shapes the tool already accepts. Found by
-    `tools/enumerate.py --length 6` under `_Z1f`, twenty-four unexplained names."""
+    `_Z1fGFaE` / `_Z1fGPFvE` shapes the tool accepts.
+    `tools/enumerate.py --length 6` under `_Z1f` reaches them."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -882,8 +878,8 @@ class TestImaginaryOverASubstitutedOrMemberPointerDeclarator:
 class TestAnAbbreviationBeforeAStructorBehindALinkageMarker:
     """`_ZNSiLD1Ev`: an internal-linkage `L` between the abbreviation and its destructor.
     Nothing writes one there; `llvm-cxxfilt` reads it and spells the scope in full, as
-    it does without the marker, and this spelled it short. `c++filt` refuses it.
-    `tools/enumerate.py --length 6`, the one unexplained name under `_ZN`."""
+    it does without the marker, so spelling it short would differ. `c++filt` refuses
+    it. `tools/enumerate.py --length 6` reaches it under `_ZN`."""
 
     def test_the_scope_is_spelled_in_full(self):
         full = "std::basic_istream<char, std::char_traits<char>>::~basic_istream()"
@@ -898,7 +894,7 @@ class TestAnAbbreviationBeforeAStructorBehindALinkageMarker:
 class TestAnExpansionWhosePatternNamesNoPack:
     """`Dp <type>` where the type mentions no pack spells `type...` whatever packs the
     enclosing template has. `ParameterPackExpansion::printLeft` prints the child and,
-    finding no pack in it, the dots; keying on the enclosing scope dropped them from
+    finding no pack in it, the dots; keying on the enclosing scope would drop them from
     `_Z1fIJifcEEvDpC1E`, which both references spell `E complex...`.
     `tools/mutate.py --seed 7`."""
 
@@ -959,7 +955,8 @@ class TestASpecialisationTakesNoFurtherArguments:
     """`<template-prefix>` names a template, and a name that already carries
     `<template-args>` is not one: `llvm-cxxfilt` refuses `_Z1fN1AIiEIcEE` and, through a
     back reference to the specialisation, `_Z1fN1AIiEENS0_IcEE` -- "can't have a name
-    with template args followed by template args" -- where this spelled `A<int><char>`.
+    with template args followed by template args" -- where a reading would spell
+    `A<int><char>`.
     `tools/mutate.py --seed 7`."""
 
     @pytest.mark.parametrize(
@@ -978,11 +975,11 @@ class TestASpecialisationTakesNoFurtherArguments:
     def test_an_abbreviation_is_not_a_candidate(self):
         """`Sa`, `Sb` and the rest are substitutions, not `<unscoped-template-name>`s
         the encoder entered: `llvm-cxxfilt` refuses `_ZSbIwEvS_`, where recording
-        `std::basic_string` at `S_` read it and shifted every later back reference in
-        `_ZSbIwSt11char_traitsIwESaIwEEC1EOS2_`. `St` with a name is one, as before:
+        `std::basic_string` at `S_` would shift every later back reference in
+        `_ZSbIwSt11char_traitsIwESaIwEEC1EOS2_`. `St` with a name is one:
         `S_` in `_ZSt4sortIPiEvT_S_IcE` is `std::sort`, the template, which a second
         argument list then specialises -- and bare, with no arguments, it is nothing a
-        type can be, so `_ZSt4sortIPiEvT_S_` is refused where it once read
+        type can be, so `_ZSt4sortIPiEvT_S_` is refused, not read as
         `(int*, std::sort)`."""
         for mangled in ("_ZSbIwEvS_", "_ZSaIwEvS_", "_ZSt4sortIPiEvT_S_"):
             assert demangle.demangle(mangled) == mangled
@@ -1024,9 +1021,8 @@ class TestASpecialisationTakesNoFurtherArguments:
 class TestAFunctionParameterEndsInAnUnderscore:
     """`fp <top-level CV-qualifiers> [<number>] _`, and `fL <level> p` the same. The
     qualifiers are read and dropped as `parseFunctionParam` drops them, so `fpK_` is
-    `fp` -- which this refused -- and the `_` is not optional: `fp` alone read as a
-    parameter spelled `decltype(fp == nullptr)` for `DTeqfpLDnEE`, which both
-    references refuse. `tools/mutate.py --seed 10`."""
+    `fp`, and the `_` is not optional: reading `fp` alone as a parameter would spell
+    `decltype(fp == nullptr)` for `DTeqfpLDnEE`, which both references refuse. `tools/mutate.py --seed 10`."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -1048,7 +1044,7 @@ class TestAFunctionParameterEndsInAnUnderscore:
 
 class TestARequiresClauseConstrainsArguments:
     """`I <template-arg>+ [Q <constraint>] E`: a list of nothing but a clause is not one.
-    `llvm-cxxfilt` refuses `_ZN5test21jIQ4TrueITL0__EEEvz`, which this spelled
+    `llvm-cxxfilt` refuses `_ZN5test21jIQ4TrueITL0__EEEvz`, which must not read as
     `test2::j<>`. `tools/mutate.py --seed 9`."""
 
     def test_refused(self):
@@ -1062,7 +1058,7 @@ class TestTheExplicitObjectMarkerBelongsToTheEntity:
     """`N H <prefix> <unqualified-name> E`: the `H` says the function's first parameter
     is its explicit object parameter -- and only for the entity's own name.
     `parseNestedName` takes it in a type as well and does nothing with it; read in a
-    template argument, it put `this` on the parameter list of the function the
+    template argument, it would put `this` on the parameter list of the function the
     argument belonged to. `tools/mutate.py --seed 9`."""
 
     def test_in_the_entitys_name(self):
@@ -1083,11 +1079,11 @@ class TestTheExplicitObjectMarkerBelongsToTheEntity:
 class TestOperatorNamesAsCallees:
     """`on <operator-name>` -- a callee named by the operator it is.
 
-    This is how an unresolved `a + b` inside a `decltype` is written. The two letters
-    were falling through to the type productions, which read them as the builtin codes
-    they happen also to be: `o` is `unsigned __int128` and `n` is `__int128`. The result
-    was a signature naming two types that appear nowhere in the symbol, produced without
-    any error to say so -- the worst way for a demangler to be wrong.
+    This is how an unresolved `a + b` inside a `decltype` is written. Falling through
+    to the type productions, the two letters would read as the builtin codes they
+    happen also to be: `o` is `unsigned __int128` and `n` is `__int128`. The result
+    would be a signature naming two types that appear nowhere in the symbol, produced
+    without any error to say so -- the worst way for a demangler to be wrong.
     """
 
     def test_a_binary_operator_callee(self):
@@ -1109,7 +1105,7 @@ class TestOperatorNamesAsCallees:
 
 
 class TestProductionsTakenFromLibcxxabi:
-    """Four shapes libcxxabi's own vectors found, each read from its parser.
+    """Four shapes from libcxxabi's own vectors, each read from its parser.
 
     They are grouped because what they have in common is the source: LLVM's
     `ItaniumDemangle.h`, rather than the ABI document, which describes none of the
@@ -1155,9 +1151,9 @@ class TestProductionsTakenFromLibcxxabi:
 
         This shape is the only place a parser moves the end of input: a regex says where
         the encoding stops, `reader.length` is shortened to there, and the literal after
-        it must be unreadable. `peek`, `take` and `eof` honoured that; `expect`, `eat`,
-        `startswith`, `peek2` and `remaining` indexed the string and did not. So `S` at
-        the very end took the `_` of `_block_invoke` as its terminator and
+        it must be unreadable. `expect`, `eat`, `startswith`, `peek2` and
+        `remaining` must honour that as `peek`, `take` and `eof` do. Otherwise `S` at
+        the very end would take the `_` of `_block_invoke` as its terminator and
         `___ZN1a1bES_block_invoke` would read as `a::b(a)`, a truncated encoding spelling
         something that looks like a declaration.
 
@@ -1181,8 +1177,8 @@ class TestProductionsTakenFromLibcxxabi:
     def test_a_vendor_qualifier_and_its_cv_qualifiers_are_one_component(self):
         """`U3AS1Ki` enters one substitution, so `S0_` is the pointer and not the type.
 
-        Two entries put `S0_` on `int const AS1` instead, and the second parameter lost
-        its pointer -- a wrong answer rather than a refusal, which is worse.
+        Two entries would put `S0_` on `int const AS1` instead, and the second parameter
+        would lose its pointer -- a wrong answer rather than a refusal, which is worse.
         """
         assert demangle.demangle("_Z1fPU3AS1KiS0_") == "f(int const AS1*, int const AS1*)"
         assert demangle.demangle("_Z1fPU3AS1KiS_") == "f(int const AS1*, int const AS1)"
@@ -1213,8 +1209,8 @@ class TestTemplateParameterLevels:
 
     The table behind `T_` is a stack: level 0 is the innermost `<template-args>`, and
     each generic lambda and each template template parameter declaration opens a level
-    of its own. Held flat, the levels overwrote each other and a `TL` reference came out
-    as the numbering it carried -- `T`, `T1` -- which names nothing at all.
+    of its own. Held flat, the levels would overwrite each other and a `TL` reference would come
+    out as the numbering it carries -- `T`, `T1` -- which names nothing at all.
 
     All three vectors are libcxxabi's, and the expectations are `llvm-cxxfilt`'s.
     """
@@ -1287,8 +1283,9 @@ class TestAnAutoBelongsToTheLambdasOwnLevel:
     parameter of the lambda's own list. `T_` inside a lambda that stands on top of an
     enclosing `<template-args>` is level 0, the enclosing list, and where that list has
     no such argument the reference names nothing: `_Z1fIEvDTLUlT_E_EE` asks `f<>` for an
-    argument and `_Z1fIiEvDTLUlT0_E_EE` asks `f<int>` for a second. Both read `(auto)`
-    here, an `auto` the lambda did not declare; `llvm-cxxfilt` refuses each and spells
+    argument and `_Z1fIiEvDTLUlT0_E_EE` asks `f<int>` for a second. Reading
+    either as `(auto)` would give an `auto` the lambda did not declare; `llvm-cxxfilt`
+    refuses each and spells
     `auto` only for a miss at the lambda's own level, `TL0__` under `f<int>` or `T_`
     where nothing encloses the lambda at all. `tools/mutate.py --seed 4`.
     """
@@ -1351,9 +1348,9 @@ class TestAnAutoBelongsToTheLambdasOwnLevel:
 class TestAnExpansionOverAnEmptyPack:
     """`sp` over a pack with no members produces no argument, not an empty one.
 
-    `Dp` already did this in a type list. In an expression the argument stayed, so
-    `getT<$_5>()()(std::forward<>(fp))` was printed where the reference prints
-    `getT<$_5>()()()` -- and the comma that would have preceded it has to go too.
+    `Dp` does this in a type list, and `sp` must too: otherwise
+    `getT<$_5>()()(std::forward<>(fp))` would be printed where the reference prints
+    `getT<$_5>()()()` -- and the comma that would precede it has to go too.
     """
 
     def test_the_argument_and_its_comma_both_disappear(self):
@@ -1393,12 +1390,12 @@ class TestTheQualifiedFormOfAnUnresolvedName:
 
 
 class TestTheNameAConstructorRepeats:
-    """A constructor spells its class, and the class name was being cut short.
+    """A constructor spells its class, and the class name must not be cut short.
 
     `Foo<int>::Foo` is right -- a constructor drops the template arguments and the ABI
-    tags the class name carries -- and the cut was made by searching the *spelling* for
-    the first `<` or `[`. Every class whose name is an operator has one of those inside
-    it, so `_ZNssC1Ev` came back as `operator<=>::operator()`: a constructor of a class
+    tags the class name carries -- but the cut must not be made by searching the
+    *spelling* for the first `<` or `[`. Every class whose name is an operator has one
+    of those inside it, so `_ZNssC1Ev` would come out as `operator<=>::operator()`: a constructor of a class
     the encoding does not mention. Expectations are `llvm-cxxfilt` 18.1.3's; GNU
     `c++filt` 2.42 refuses most of these and reads `_ZN1XixC1Ev` as `X::operator[]::X()`,
     naming a class that is not the one in scope.
@@ -1458,18 +1455,17 @@ class TestTheNameAConstructorRepeats:
         `llvm-cxxfilt` 18.1.3 writes no name at all -- `operator foo::()` and
         `operator foo::~()` -- because it holds a vendor extended operator in the same
         node as a conversion operator, and that node has no base name to repeat. GNU
-        `c++filt` 2.42 drops the `operator` and writes `operator foo::foo()`. This
-        followed neither and repeated the name in full, a third reading of a name that
-        has no declaration; it follows `llvm-cxxfilt` now, as the conversion operator
-        does -- see `TestAConversionOperatorHasNoNameToRepeat`."""
+        `c++filt` 2.42 drops the `operator` and writes `operator foo::foo()`. Repeating
+        the name in full would be a third reading of a name that has no declaration;
+        this follows `llvm-cxxfilt`, as the conversion operator does -- see `TestAConversionOperatorHasNoNameToRepeat`."""
         assert demangle.demangle_strict(mangled, language="itanium") == expected
 
 
 class TestAVendorExpressionsArgumentIsACallsArgument:
     """`<expression> ::= u <source-name> <template-arg>* E`, spelled as a call. An
-    `X <expression> E` argument was spelled as it is inside `<...>`, where a `>>` or a
-    `>` is bracketed so it cannot close the list, and `__uuidof((HasMember >> member))`
-    came out for Clang's own `_Z15test_uuidofExprI9HasMemberEvDTu8__uuidofXrsT_6memberEEE`.
+    `X <expression> E` argument must not be spelled as it is inside `<...>`, where a
+    `>>` or a `>` is bracketed so it cannot close the list: `__uuidof((HasMember >>
+    member))` would come out for Clang's own `_Z15test_uuidofExprI9HasMemberEvDTu8__uuidofXrsT_6memberEEE`.
     A call's argument needs no such bracket and `llvm-cxxfilt` writes none. Seed 11."""
 
     @pytest.mark.parametrize(
@@ -1505,20 +1501,20 @@ class TestAConversionOperatorHasNoNameToRepeat:
     operator, a vendor or literal operator, a constructor or destructor, a closure, an
     unnamed type and a structured binding leave it empty, so `llvm-cxxfilt` spells
     `_ZN1AcviD0Ev` as `A::operator int::~()` and `_ZN1AD1IiED0Ev` as `A::~A<int>::~()`.
-    No compiler writes one, and repeating the name in full was a third reading beside
-    the two references' -- `c++filt` writes the type's own name. `tools/mutate.py
+    No compiler writes one, and repeating the name in full would be a third reading
+    beside the two references' -- `c++filt` writes the type's own name. `tools/mutate.py
     --seed 2` and `--seed 8`.
 
-    Every case here converted to a builtin until `tools/mutate.py --seed 55`, and that
-    is what hid a second bug. The flag was raised before the operator's *operand* was
-    read, and a conversion to a class name reads that name through this same function,
-    whose first act is to clear the flag. `cvi` survived because a builtin reads no
-    name; `cv1A` did not, so `_ZN1Scv1AC2Ev` came back `S::operator A::operator A()`.
-    With template arguments the answer was not merely a third reading but a broken one:
-    `_ZN1Scv7MuncherISsEC2Ev` was `S::operator Muncher<std::string>::string>()`, whose
-    brackets do not balance, because the name is cut at the spelling's last `::` and
-    that falls inside the argument list. The flag is set after the operand now, which is
-    what the closure branch beside it already did and for the same reason."""
+    The flag is set after the operator's *operand* is read, not before: a conversion to
+    a class name reads that name through this same function, whose first act is to
+    clear the flag. A conversion to a builtin cannot tell the difference, because a
+    builtin reads no name (`cvi`); `cv1A` can, and `_ZN1Scv1AC2Ev` would come out
+    `S::operator A::operator A()`. With template arguments the answer would not merely
+    be a third reading but a broken one: `_ZN1Scv7MuncherISsEC2Ev` would be
+    `S::operator Muncher<std::string>::string>()`, whose brackets do not balance,
+    because the name is cut at the spelling's last `::` and that falls inside the
+    argument list. The closure branch beside it sets the flag after its operand for the
+    same reason."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -1571,8 +1567,8 @@ class TestAConversionOperatorHasNoNameToRepeat:
         ["_ZN1Scv7MuncherISsEC2Ev", "_ZN1Scv7MuncherIJSaISsEESaIS1_EEC2ERKS3_", "_ZN1Scv1AC2Ev"],
     )
     def test_the_brackets_balance(self, mangled):
-        """The broken reading was visible without a reference at all: it closed angle
-        brackets it never opened, because the name was cut out of the middle of an
+        """A broken reading is visible without a reference at all: it would close angle
+        brackets it never opened, because the name is cut out of the middle of an
         argument list."""
         for style in ("llvm", "gnu"):
             spelled = demangle.demangle(mangled, style=style)
@@ -1581,11 +1577,12 @@ class TestAConversionOperatorHasNoNameToRepeat:
 
 
 class TestAFriendDeclaredInsideItsClass:
-    """`<unqualified-name> ::= F <name>`, and the marker was being dropped.
+    """`<unqualified-name> ::= F <name>`, and the marker must not be dropped.
 
-    It was read and spelled for a source name and an operator, and read and silently
-    discarded for a constructor, a destructor and an unnamed type -- so `_ZN1AFC1Ev` came
-    back as `A::A()`, which is a different declaration from the one the encoding spells.
+    It is read and spelled for a source name and an operator, and must not be read and
+    silently discarded for a constructor, a destructor and an unnamed type -- or
+    `_ZN1AFC1Ev` would read as `A::A()`, a different declaration from the one the
+    encoding spells.
     The two references put the marker in different places, so both spellings are pinned:
     `llvm-cxxfilt` 18.1.3 writes the word before the name and GNU `c++filt` 2.42 writes a
     bracketed suffix, after the ABI tags and before the template arguments.
@@ -1635,7 +1632,7 @@ class TestAFriendDeclaredInsideItsClass:
     def test_the_marker_goes_before_the_internal_linkage_one(self, mangled):
         """`parseUnqualifiedName` consumes `F` and then `L`, in that order, and
         `llvm-cxxfilt` 18 and 20 refuse `LF` where `FL` reads. Reading the marker after
-        `L` spelled `A::friend foo()` for a name neither reference reads.
+        `L` would spell `A::friend foo()` for a name neither reference reads.
         `tools/mutate.py --seed 15` and `--seed 16`."""
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled, language="itanium")
@@ -1676,7 +1673,7 @@ class TestADeclarationInsideAnArgumentListQualifiesAnArgument:
     """`<template-arg> ::= <template-param-decl> <template-arg>`: `parseTemplateArg`
     reads the declaration and then an argument as one `TemplateParamQualifiedArg`. A
     list ending on the declaration, `ITyE`, is refused by `llvm-cxxfilt` 18 and 20 where
-    this read `unary<>` -- and `Str<>` for a `cv` inside a decltype. `tools/mutate.py
+    reading it would give `unary<>` -- and `Str<>` for a `cv` inside a decltype. `tools/mutate.py
     --seed 20`."""
 
     @pytest.mark.parametrize(
@@ -1698,7 +1695,7 @@ class TestARequiresClauseHasNoPlaceInsideANestedName:
     """The grammar puts a requires-clause in two places: an argument list's
     `I ... Q <constraint> E` and an encoding's, after the parameters. A <nested-name>
     has none, and `llvm-cxxfilt` refuses `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE`
-    where this read the clause between two components, threw it away, and answered
+    where reading the clause between two components and throwing it away would answer
     `llvm::(anonymous namespace)::U`. `tools/mutate.py --seed 20`."""
 
     def test_the_clause_between_two_components_is_refused(self):
@@ -1719,10 +1716,10 @@ class TestARequiresClauseHasNoPlaceInsideANestedName:
 class TestAConstructorInsideADestructorDoesNotRepeatTheOuterClass:
     """A destructor of `Link` whose first parameter is a constructor of
     `std::basic_string<wchar_t, ...>`. The inner nested name is a substitution
-    plus template arguments plus `C2`; the outer `D0` had already marked the
-    prefix as having no base name to repeat. That flag leaked in, so the inner
-    constructor printed as `::` (llvm) or `::Link` (gnu) instead of
-    `::basic_string`. `_ZN1AD0EN1BC1Ev` still agrees. `tools/mutate.py --seed 28`.
+    plus template arguments plus `C2`; the outer `D0` has marked the
+    prefix as having no base name to repeat, and that flag must not leak into the inner
+    constructor, which would print as `::` (llvm) or `::Link` (gnu) instead of
+    `::basic_string`. `_ZN1AD0EN1BC1Ev` agrees. `tools/mutate.py --seed 28`.
     """
 
     @pytest.mark.parametrize(
@@ -1761,8 +1758,8 @@ class TestARequiresClauseFollowsAFunctionTypeReturn:
     requires-clause is a suffix of the declaration, after the whole
     declarator -- `f test2::A<int>(...)() requires True<T>` -- not of the
     inner `()`. Putting it in the parameter list's tail before
-    `returns.right` spelled `requires True<T>()`. llvm-cxxfilt puts the
-    `()` first; c++filt refuses. `_Z1fIiEvzQ4TrueIT_E` still agrees.
+    `returns.right` would spell `requires True<T>()`. llvm-cxxfilt puts the
+    `()` first; c++filt refuses. `_Z1fIiEvzQ4TrueIT_E` agrees.
     `tools/mutate.py --seed 21`.
     """
 
@@ -1883,10 +1880,10 @@ class TestAPackExpansionInAnExpression:
     names a pack -- a `T_` bound to one -- is read once per member, `sp sc T_ fp_` over
     `{int, char}` being `static_cast<int>(fp), static_cast<char>(fp)`; a pattern that
     names none is `x...` whatever the scope holds, which is how a function parameter
-    pack is written, `decltype(g(t...))` being `cl 1g sp fp_ E`. This tested the scope
-    for a pack instead of the pattern and, finding one, spelled the pattern once as it
-    stood: the dots gone from every `g(fp...)`, and `static_cast<int, char>(fp)` for the
-    other. Every name here was compiled with g++ 13 and Clang 18 from the source in
+    pack is written, `decltype(g(t...))` being `cl 1g sp fp_ E`. Testing the scope
+    for a pack instead of the pattern would, on finding one, spell the pattern once as
+    it stands: the dots gone from every `g(fp...)`, and `static_cast<int, char>(fp)`
+    for the other. Every name here was compiled with g++ 13 and Clang 18 from the source in
     the comment, and both references print the expected spelling."""
 
     @pytest.mark.parametrize(
@@ -1950,8 +1947,8 @@ class TestANewExpressionsInitialiser:
     )
     def test_nothing_else_stands_where_the_initialiser_does(self, mangled):
         """`pi`, the braced form, or the `E` that closes a new-expression with none:
-        libiberty's `d_expression` and LLVM's `parseNewExpr` take nothing else, and this
-        read any expression there, answering `new int((int)())` for `nw_icvi_E`.
+        libiberty's `d_expression` and LLVM's `parseNewExpr` take nothing else, and
+        reading any expression there would answer `new int((int)())` for `nw_icvi_E`.
         `tools/mutate.py --count 200000`."""
         assert demangle.demangle(mangled) == mangled
         assert demangle.demangle(mangled, style="gnu") == mangled
@@ -1985,8 +1982,8 @@ class TestANewExpressionsInitialiser:
 class TestAGreaterThanInsideATemplateArgumentList:
     """`BinaryExpr::printLeft` wraps a `>` or `>>` that stands inside a template
     argument list with no bracket yet opened round it, so it cannot be read as the end
-    of the list: `(1 > 0) && true`, `(1 >> 2) == 3`, `1 ? (2 > 3) : 4`. This wrapped
-    one only at the top of the argument, so `enable_if<(N > 0) && C>` came out
+    of the list: `(1 > 0) && true`, `(1 >> 2) == 3`, `1 ? (2 > 3) : 4`. Wrapping
+    one only at the top of the argument would print `enable_if<(N > 0) && C>` as
     `N > 0 && C`. Every bracket a construct opens ends the rule inside it -- a call's
     arguments, a cast, `sizeof`, the operand brackets an operator earns -- and braces
     do not. Every spelling here is `llvm-cxxfilt` 18's, and 20 agrees."""
@@ -2048,8 +2045,8 @@ class TestAGreaterThanInsideATemplateArgumentList:
 class TestSizeofNoexceptAndDeleteAreUnaryOperands:
     """`sizeof`, `alignof`, `noexcept`, `new` and `delete` are unary to llvm-cxxfilt's
     printer, and an operand position as tight brackets them: `!(sizeof (int))` and
-    `(sizeof (int)).m`, where `typeid` is postfix and stands bare. This left them
-    primary, `!sizeof (int)`. `_Z3t18IiEv1IIXntstT_EE` was compiled with Clang 18 from
+    `(sizeof (int)).m`, where `typeid` is postfix and stands bare. Leaving them
+    primary would print `!sizeof (int)`. `_Z3t18IiEv1IIXntstT_EE` was compiled with Clang 18 from
     `I<!sizeof(T)>`."""
 
     @pytest.mark.parametrize(
@@ -2078,10 +2075,10 @@ class TestSizeofNoexceptAndDeleteAreUnaryOperands:
 class TestAFoldsPackIsExpanded:
     """llvm-cxxfilt prints a fold's pack through `ParameterPackExpansion` inside
     brackets of its own: the pattern once per member when it names a pack, and the
-    pattern with its ellipsis when it does not. This spelled a pattern that names a
-    pack once, with the whole pack inside it, `(sizeof (int, char)...)`. The first
+    pattern with its ellipsis when it does not. Spelling a pattern that names a
+    pack once, with the whole pack inside it, would give `(sizeof (int, char)...)`. The first
     three names were compiled with Clang 18 from `(sizeof(T) + ...)` and its
-    relatives; c++filt spells the pattern once, and the gnu style still does."""
+    relatives; c++filt spells the pattern once, and the gnu style does."""
 
     @pytest.mark.parametrize(
         "mangled, expected",
@@ -2159,8 +2156,8 @@ class TestAnEntityNamedWithABareZ:
     `parseTemplateArg` and not in `parseExprPrimary`, so `_Z1xILZ1yEEvv` reads and
     `_Z1xIXLZ1yEEEvv` -- the same entity inside an expression -- does not. `c++filt`
     reads both, and so does this. No compiler writes the second; by the time expressions
-    could carry an entity, `L_Z` was what was written. `tools/mutate.py --seed 35` found
-    it as a pointer-to-member conversion that looked like the disagreement and was not.
+    could carry an entity, `L_Z` was what was written. A pointer-to-member conversion
+    reached by `tools/mutate.py --seed 35` can look like the disagreement and is not.
     """
 
     @pytest.mark.parametrize(
@@ -2206,9 +2203,9 @@ class TestAPointerToMemberConversionInAClassNttp:
     no `mc` production at all and hands every one of these back; `llvm-cxxfilt` reads it
     and spells it exactly as this does.
 
-    `tools/mutate.py --seed 35` reported one of these as a divergence, which it is not:
-    what the mutant had actually damaged was the `L_Z` of the entity inside it. See
-    `TestStillRefusesWhatItShould.test_an_embedded_entity_is_named_by_a_whole_mangled_name`.
+    `tools/mutate.py --seed 35` can report one of these as a divergence, which it is
+    not: what the mutant damages is the `L_Z` of the entity inside it. See
+    `TestRefusesWhatItShould.test_an_embedded_entity_is_named_by_a_whole_mangled_name`.
     """
 
     @pytest.mark.parametrize(

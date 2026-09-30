@@ -2,13 +2,13 @@
 
 A `type_info` points at a string, and the linker spells that string as a `.` followed by
 a bare type encoding: `.PEAX`, `.?AVFoo@@`. It is not a decorated name -- there is no `?`
-and nothing is declared -- so a scheme that reads only decorated names refuses every one of them, and a PE
-symbol dump full of them says nothing. This one reads them.
+and nothing is declared -- so a scheme that reads only decorated names refuses every
+one of them, and a PE symbol dump full of them says nothing. This one reads them.
 
 The marker goes where a *declarator* goes rather than after the type, which for anything
 that wraps its name is a different place: `int (*`RTTI Type Descriptor Name')[2]`, not
-`int (*)[2] `RTTI Type Descriptor Name''. The descriptor *object*, `??_R0<type>@8`, was
-already read and had the same rule and the same bug.
+`int (*)[2] `RTTI Type Descriptor Name''. The descriptor *object*, `??_R0<type>@8`, follows the
+same rule.
 
 Claiming a leading `.` in a symbol table full of `.text`, `.rodata`, `.L1234` and
 `.constprop.0` is the risk here, and it is answered by measurement rather than by
@@ -151,10 +151,10 @@ class TestABaseClassDescriptorsFourNumbers:
     a flag word.
 
     That is what the 82 recorded descriptors show -- every one has a non-negative first
-    number, and most carry `-1` second -- and what `llvm-undname` enforces. The first
-    was allowed to be negative here, which bought nothing and cost two readings:
-    `?A@` is a negated zero, so the two names below spelled one descriptor two ways; and
-    a real negative resynchronised the parse into a class path with a component the name
+    number, and most carry `-1` second -- and what `llvm-undname` enforces. Allowing
+    the first to be negative would buy nothing and cost two readings: `?A@` is a
+    negated zero, so the two names below would spell one descriptor two ways; and a real
+    negative would resynchronise the parse into a class path with a component the name
     does not hold. `tools/mutate.py --seed 60`.
     """
 

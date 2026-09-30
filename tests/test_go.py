@@ -47,7 +47,7 @@ class TestRoundTrip:
         """Guards against a corpus that covers everything except the encoded part.
 
         The shipped Go toolchain contains no escaped symbol at all, so a corpus read only
-        from it would pass every test here while the decoder was broken.
+        from it would pass every test here while the decoder is broken.
         """
         assert sum(1 for mangled, _ in ROWS if "%" in mangled) >= 10
 
@@ -212,13 +212,13 @@ class TestSafety:
 class TestAGeneratedSymbolIsTheLinkerText:
     """What follows `go:` or `type:` is not a package-qualified declaration.
 
-    It is a type string, or two of them, or the name of an object the linker made. It
-    was read as a declaration: the first `.` after the last `/` was the package
-    separator, so `type:.eq.[2]string` -- no slash, and a leading dot -- lost its dot
-    and came back `type:eq.[2]string`, thirteen corpus rows pinning the loss; and with
-    a slash the "package" was whatever stood before the last one, `go:itab.*os.File,io`
-    and the like, which the tree reported as the symbol's package. Every symbol here is
-    go1.24.7 output.
+    It is a type string, or two of them, or the name of an object the linker made.
+    Read as a declaration, the first `.` after the last `/` would be the package
+    separator, so `type:.eq.[2]string` -- no slash, and a leading dot -- would lose its
+    dot and read `type:eq.[2]string`, thirteen corpus rows pinning the loss; and with
+    a slash the "package" would be whatever stands before the last one,
+    `go:itab.*os.File,io` and the like, which the tree would report as the symbol's
+    package. Every symbol here is go1.24.7 output.
     """
 
     @pytest.mark.parametrize(
@@ -311,7 +311,7 @@ class TestEscapesOutsideTheLeadingPath:
 class TestThePackageEndsBeforeAnyTypeString:
     """`example.com/x.F[go.shape.[]internal/sync.node]` is in `example.com/x`: the last
     `/` of the *package* is not the last `/` of the symbol once a receiver or an
-    instantiation carries a path of its own. The tree said `example.com/x.F[go.shape.[]internal/sync`.
+    instantiation carries a path of its own. The package is not `example.com/x.F[go.shape.[]internal/sync`.
     """
 
     @pytest.mark.parametrize(

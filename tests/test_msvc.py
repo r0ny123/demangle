@@ -924,7 +924,7 @@ PROBED_DECLINED = [
 ]
 
 
-#: Spellings the mutation fuzzer found, each read off `llvm-undname` 18.1.3.
+#: Spellings the mutation fuzzer reaches, each read off `llvm-undname` 18.1.3.
 MUTATION_RULES = [
     # `outputQualifiers` tests a bitmask, const first, so read order never reaches output.
     ("?s4@PR13182@@3PCDD", "char const volatile *PR13182::s4"),
@@ -1002,10 +1002,10 @@ class MsvcClangEmittedTestSuite(unittest.TestCase):
     def test_a_dynamic_initializer_name_may_be_qualified(self):
         """`demangleInitFiniStub` reads a whole declarator and names the stub with it.
 
-        So the variable's scopes go *inside* the quotes. This read the leading identifier
-        and refused anything after it, which is every namespace-scope object with a
-        non-trivial constructor -- `ns::Thrower g;` in a namespace is one -- and every
-        function-local static, whose scope is written the same way.
+        So the variable's scopes go *inside* the quotes. Reading only the leading
+        identifier and refusing anything after it would refuse every namespace-scope
+        object with a non-trivial constructor -- `ns::Thrower g;` in a namespace is one
+        -- and every function-local static, whose scope is written the same way.
         """
         for mangled, expected in [
             ("??__Eg@inner@outer@@YAXXZ", "void __cdecl `dynamic initializer for 'outer::inner::g''(void)"),
@@ -1056,7 +1056,7 @@ class MsvcClangEmittedTestSuite(unittest.TestCase):
 
 
 class MsvcMutationRuleTestSuite(unittest.TestCase):
-    """What `tools/mutate.py` found by damaging the reference's own corpus."""
+    """What `tools/mutate.py` reaches by damaging the reference's own corpus."""
 
     def test_the_spellings_match_the_reference(self):
         for mangled, expected in MUTATION_RULES:
@@ -1202,7 +1202,7 @@ if __name__ == "__main__":
 
 class TestOneElementQualifierAtATime(unittest.TestCase):
     """`$$C` qualifies an array element once; a second in a row is not a type.
-    `llvm-undname` refuses `?f@@YAXAEAY111$$CB$$CBH@Z`, which folding the two read as
+    `llvm-undname` refuses `?f@@YAXAEAY111$$CB$$CBH@Z`, which folding the two would read as
     `int const (&)[2][2]`. `tools/mutate.py --seed 9`."""
 
     def test_refused(self):
@@ -1215,8 +1215,8 @@ class TestOneElementQualifierAtATime(unittest.TestCase):
 class TestAnExternCMarkerIsNotFollowedByAVariable(unittest.TestCase):
     """`$$J0` marks a function mangled although it is extern "C". A data-storage
     letter after it is not a function encoding. llvm-undname refuses
-    `?overloaded_fn@@$$J04HA`; this printed `int overloaded_fn`.
-    `?overloaded_fn@@$$J0YAXXZ` still reads. `tools/mutate.py --seed 23`.
+    `?overloaded_fn@@$$J04HA`, so printing `int overloaded_fn` for it would be wrong.
+    `?overloaded_fn@@$$J0YAXXZ` reads. `tools/mutate.py --seed 23`.
     """
 
     def test_refused(self):
@@ -1237,7 +1237,7 @@ class TestDollarCOverAPointerThatIsAlreadyConst(unittest.TestCase):
     """`$$CB` over `S` -- const over `int *const volatile`. This spells the
     qualifier once; llvm-undname appends another `const`. No compiler writes
     `$$C` on a pointer that already carries it. The neighbour without `$$C`
-    still agrees. `tools/mutate.py --seed 23`.
+    agrees. `tools/mutate.py --seed 23`.
     """
 
     def test_the_qualifier_is_not_spelled_twice(self):
@@ -1291,7 +1291,7 @@ class TestAMemberPointersPointeeKeepsItsExtensionQualifiers(unittest.TestCase):
     `tools/corpus_sources/msvc/msvc.cpp`, read back out of a
     `clang++ --target=x86_64-pc-windows-msvc` object file, and pinned against their
     declarations in `tests/conformance/msvc-reference-defects.txt`. `tools/mutate.py
-    --seed 42` reached the same gap from the other end.
+    --seed 42` reaches the same gap from the other end.
     """
 
     def test_a_member_pointers_pointee_keeps_both_words(self):
@@ -1348,9 +1348,9 @@ class TestADynamicInitialiserOverANestedSymbolName(unittest.TestCase):
 class TestAPointerToAMemberOfArrayType(unittest.TestCase):
     """`PEQA@@Y03H` is a pointer to a member of `A` whose type is `int[4]`, and the
     declarator an array brackets is the member pointer's: `int (A::*)[4]`. The array's
-    renderer bracketed a declarator it could see opened with `*` or `&`, and `A::*`
-    opens with the owner's name, so this wrote `int A::*[4]` -- an array of pointers to
-    member, a different type. Every spelling here is `llvm-undname` 18's; the first was
+    renderer brackets a declarator it can see opens with `*` or `&`, and `A::*` opens
+    with the owner's name, so a renderer that tested only that would write `int A::*[4]`
+    -- an array of pointers to member, a different type. Every spelling here is `llvm-undname` 18's; the first was
     compiled by Clang 18 for the MSVC target from `int (A::*)[sizeof(T)]`."""
 
     CASES = (
@@ -1377,7 +1377,7 @@ class TestAPointerToAMemberOfArrayType(unittest.TestCase):
 
 
 class MsvcWindowsBuildTestSuite(unittest.TestCase):
-    """Four shapes the LLVM 18.1.8 Windows release wrote that nothing here had seen.
+    """Four shapes the LLVM 18.1.8 Windows release writes, in none of the older corpora.
 
     436,644 decorated names from its static libraries, put to `llvm-undname` 18.1.3;
     every expected value below is what it printed.
@@ -1431,8 +1431,8 @@ class MsvcWindowsBuildTestSuite(unittest.TestCase):
 
     def test_a_letter_escape_in_a_string_literal(self):
         """`?A` through `?Z` are 0xC1 through 0xDA and `?a` through `?z` 0xE1 through
-        0xFA: `demangleCharLiteral`'s two tables, which UTF-8 text lands in. Only the
-        digit escapes were read, and 34 literals were refused for a letter."""
+        0xFA: `demangleCharLiteral`'s two tables, which UTF-8 text lands in. Digit
+        escapes alone are not enough: 34 literals in the release carry a letter."""
         self.assertEqual(demangle_msvc_symbol("??_C@_02BDPOGFEI@?C?$LE?$AA@"), '"\\xC3\\xB4"')
         self.assertEqual(demangle_msvc_symbol("??_C@_02ABCDEFGH@?A?Z?$AA@"), '"\\xC1\\xDA"')
         self.assertEqual(demangle_msvc_symbol("??_C@_02ABCDEFGH@?a?z?$AA@"), '"\\xE1\\xFA"')
@@ -1464,7 +1464,7 @@ class MsvcWindowsBuildTestSuite(unittest.TestCase):
                 "?f@@YA?AV?$function@$$A6AXXZ@std@@XZ",
                 "class std::function<void __cdecl(void)> __cdecl f(void)",
             ),
-            # `memorizeIdentifier` rendered the recorded name with default flags, so a
+            # `memorizeIdentifier` renders the recorded name with default flags, so a
             # back-reference spells the convention where the original dropped it
             (
                 "?f@@YAXP6A?AV?$function@$$A6AXXZ@std@@XZV1@@Z",
@@ -1482,7 +1482,7 @@ class MsvcWindowsBuildTestSuite(unittest.TestCase):
 
 
 class MsvcBoostBuildTestSuite(unittest.TestCase):
-    """What Boost 1.84's MSVC 14.3 libraries write that the LLVM release did not.
+    """What Boost 1.84's MSVC 14.3 libraries write and the LLVM release does not.
 
     98,822 decorated names from the twelve `boost_*-vc143` NuGet packages, put to
     `llvm-undname` 18 and to LLVM's main branch. The release refuses a deduced return
@@ -1528,9 +1528,9 @@ class MsvcBoostBuildTestSuite(unittest.TestCase):
     def test_a_vcall_thunk_carries_a_calling_convention(self):
         """`??_9C@@$B<slot>A<convention>`: after the slot, a literal `A` and then a
         convention read as any function's is. A 32-bit build writes `E`, `__thiscall`,
-        for every one of them, and this took that letter for a second literal `A` --
+        for every one of them, and taking that letter for a second literal `A` --
         `demangleVcallThunkNode` consumes one `A` and then `demangleCallingConvention`
-        -- so the three in Boost's x86 test framework were refused.
+        -- would refuse the three in Boost's x86 test framework.
         """
         cases = [
             (
@@ -1555,8 +1555,8 @@ class MsvcBoostBuildTestSuite(unittest.TestCase):
         MD5, and nothing of the original is in the symbol: the spelling is the name
         itself, as the reference prints it. A hashed *function* is still a scope, and
         409 of Boost's names are a catch block's variable inside one; the reference
-        spells the scope the way it spells the name, and this read only a hash that
-        opened the whole symbol.
+        spells the scope the way it spells the name, and reading only a hash that opens
+        the whole symbol would refuse them.
         """
         cases = [
             (
@@ -1609,8 +1609,8 @@ class MsvcSpellingWiderThanEightTimesItsNameTestSuite(unittest.TestCase):
         )
 
     def test_a_cleanup_block_inside_such_a_function_reads_too(self):
-        """`?dtor$0@?0??<function>@4HA`, which read for a short function and was refused
-        for a long one, its scope being the whole spelling of that function."""
+        """`?dtor$0@?0??<function>@4HA`, which must read for a long function as it does for a
+        short one, its scope being the whole spelling of that function."""
         self.assertEqual(demangle_msvc_symbol("?dtor$0@?0??f@@YAXXZ@4HA"), "int `void __cdecl f(void)'::`1'::dtor$0")
         nested = demangle_msvc_symbol("?dtor$0@?0?" + self.NAME + "@4HA")
         self.assertTrue(nested.startswith("int `public: struct _Iterator012<struct std::bidirectional_iterator_tag, "))
@@ -1629,14 +1629,14 @@ class MsvcSpellingWiderThanEightTimesItsNameTestSuite(unittest.TestCase):
 
 class MsvcLlvmMainTestSuite(unittest.TestCase):
     """LLVM's own `llvm/test/Demangle/ms-*.test` at its main branch, 706 checks, put to
-    this reader. Fifteen did not hold; four were the tests' own trailing junk and
-    whitespace, and eleven were these two things.
+    this reader. Fifteen differ from the file as written: four are the tests' own trailing
+    junk and whitespace, and eleven are the two behaviours below.
     """
 
     def test_an_auto_non_type_template_argument_takes_every_form(self):
         """`$M <type> <nttp>`: after the deduced type comes any form an argument takes,
         written without its `$` -- an integer, a symbol's address, a pointer to member
-        -- and only the value is spelled. This read the integer form alone.
+        -- and only the value is spelled. The integer form alone is not enough.
         llvm-undname 18 refuses all of them; the expected values are LLVM main's own
         `ms-auto-templates.test`.
         """
@@ -1680,8 +1680,8 @@ class MsvcLlvmMainTestSuite(unittest.TestCase):
         """`memorizeIdentifier(S->Name->getUnqualifiedIdentifier())` after the symbol
         behind `$1` is read: for a plain name it changes nothing, since reading the name
         recorded it, and for a template name it records what a symbol's own template
-        name is otherwise the one exception to. `ms-cxx14.test`'s `Zoo`, which this
-        refused. The record is the reference's, deduplicated: `?2` is still nothing.
+        name is otherwise the one exception to. `ms-cxx14.test`'s `Zoo`, which is
+        refused without it. The record is the reference's, deduplicated: `?2` is still nothing.
         """
         self.assertEqual(
             demangle_msvc_symbol("?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A"), "struct Foo<&int x<int>, &int x<int>> Zoo"
@@ -1694,8 +1694,8 @@ class MsvcLlvmMainTestSuite(unittest.TestCase):
 
 class TestAQualifierOnABackReferencedDeducedReturn(unittest.TestCase):
     """`?C?4@` is volatile in front of a back reference to `<auto>`. llvm-undname
-    drops the qualifier, as it does for `?B?<auto>@@`. The encoding is kept. Found by
-    `tools/mutate.py --seed 15`.
+    drops the qualifier, as it does for `?B?<auto>@@`. The encoding is kept. `tools/mutate.py --seed 15`
+    reaches it.
     """
 
     def test_the_volatile_is_kept(self):

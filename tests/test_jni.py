@@ -128,8 +128,9 @@ class TestACharacterOutsideTheBasicMultilingualPlane:
     """`_0XXXX` is one UTF-16 code unit, so a supplementary character is two escapes.
 
     javac writes `_0d83d_0de00` for U+1F600, and taken one escape at a time the pair
-    came out as two lone surrogates -- a string Python will not encode, so a caller
-    writing the result anywhere got a `UnicodeEncodeError` out of `demangle()`.
+    would come out as two lone surrogates -- a string Python will not encode, so a
+    caller writing the result anywhere would get a `UnicodeEncodeError` out of
+    `demangle()`.
     """
 
     @pytest.mark.parametrize(

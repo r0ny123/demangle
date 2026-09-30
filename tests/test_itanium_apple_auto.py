@@ -1,10 +1,10 @@
 """Apple's clang counts an undeduced `auto` as a substitution candidate; nothing else does.
 
-Found by putting the Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB,
-ceres, ICU and glog -- 108,839 Mach-O symbols, all Apple clang's output -- to
-llvm-cxxfilt and c++filt. Of the 17,310 names carrying a `Da`, 2,300 were refused with a
-back-reference past the substitution table, by this and by both references, and 6,385
-more read as a plausible-looking wrong declaration under all three -- `std::__1::
+Take the Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU
+and glog -- 108,839 Mach-O symbols, all Apple clang's output. Of the 17,310 names
+carrying a `Da`, 2,300 are refused with a back-reference past the substitution table
+under the common rule, by this and by both references, and 6,385 more read as a
+plausible-looking wrong declaration under all three -- `std::__1::
 basic_string_view<char, std::__1::basic_string_view::char_traits<char>>`, a type libc++
 does not declare.
 

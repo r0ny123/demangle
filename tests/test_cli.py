@@ -147,14 +147,14 @@ class TestPipeline:
 class TestTheStreamFilter:
     """With no arguments the command is a filter, not a line reader.
 
-    It was a line reader, and that made the README's own first example a no-op:
+    A line reader would make the README's own first example a no-op:
 
         $ printf '0000000000001139 T _ZN3foo3barEv\n' | demangle
         0000000000001139 T _ZN3foo3barEv
 
     `nm` writes an address and a type letter before the name, so a whole line is never
     a symbol. `c++filt`, `demumble` and `rustfilt` all substitute symbol-shaped words
-    and copy the rest through, and now so does this.
+    and copy the rest through, and so does this.
     """
 
     @staticmethod
@@ -474,7 +474,7 @@ class TestTheReturnTypeFlags:
         """MSVC writes the return type around the declarator, so it is a scheme option.
 
         `int (__cdecl * __cdecl g(int))(int)` is the same shape as the Itanium case
-        above and was already right; this pins that both flags reach it.
+        above; this pins that both flags reach it.
         """
         _, out, _ = run(capsys, ["--no-return-type", "?g@@YAP6AHH@ZH@Z"])
         assert out.strip() == "__cdecl g(int)"
@@ -492,7 +492,7 @@ class TestStripUnderscore:
     Every expectation here was taken from both references, which agree on all of them.
 
     What the flag is *for* here is narrower than it looks, because the Itanium, Swift and
-    Rust readers already tolerate the extra underscore a Mach-O symbol carries -- `__Z1fv`
+    Rust readers tolerate the extra underscore a Mach-O symbol carries -- `__Z1fv`
     and `_$s...` read with or without it. The schemes that do not are the ones whose
     prefix is not itself an underscore: an MSVC name opens with `?`, and it does not read
     until the underscore is gone.

@@ -1,11 +1,11 @@
 """Resource bounds, and the cache that must not outlive what it was keyed on.
 
 `SECURITY.md` promises that recursion depth, output length, substitution count and
-input length are all bounded, and that a caller can tighten any of them per call. It was
-a promise about the package that only some of the package kept: MSVC read a
-hundred-thousand-character name under `max_input=32` and then rejected it on output
-length a fifth of a second later, and Rust read one under `max_input=32` and answered.
-A bound checked after the work it was meant to prevent is a report, not a bound.
+input length are all bounded, and that a caller can tighten any of them per call. A
+bound checked after the work it was meant to prevent is a report, not a bound: an MSVC
+name of a hundred thousand characters under `max_input=32` must be refused at the
+input, not read and then rejected on output length a fifth of a second later, and a
+Rust one must not be answered.
 
 The tests here are written per *plugin* rather than per scheme name, so a scheme added
 later has to keep the promise too rather than quietly not being covered.
@@ -116,7 +116,7 @@ class TestBoundsAreEnforcedWhileWorking:
             demangle.demangle_strict("?f@@YAX" + "PA" * 5000 + "H@Z")
 
     def test_an_msvc_symbol_nested_in_a_template_argument_keeps_the_callers_bound(self):
-        """The parser spun up for a nested symbol ran with the default limits, so a
+        """A parser spun up for a nested symbol must run with the caller's limits, or a
         tight `max_depth` could be dodged by putting the deep part in a template argument."""
         nested = "?g@@YAXPAPAPAPAPAPAH@Z"
         tight = Limits(max_depth=5)
@@ -127,13 +127,14 @@ class TestBoundsAreEnforcedWhileWorking:
         assert demangle.demangle_strict(f"??$f@H$1{nested}@@YAXXZ", language="msvc").startswith("void __cdecl f<")
 
     def test_an_msvc_md5_name_is_held_to_max_output(self):
-        """Every other path went through the length check; the hashed one just returned."""
+        """Every path goes through the length check, the hashed one included."""
         with pytest.raises(demangle.LimitExceeded):
             demangle.demangle_strict("??@" + "A" * 1000 + "@", language="msvc", limits=Limits(max_output=10))
 
     def test_an_msvc_array_with_a_thousand_extents_reports_the_bound_it_hit(self):
-        """`DOI@` is a count of 1000, and each extent nested without a depth check: a
-        `RecursionError`, swallowed into a `ParseError` that called the name unreadable."""
+        """`DOI@` is a count of 1000, and each extent nests, so it needs a depth check:
+        without one it is a `RecursionError`, swallowed into a `ParseError` that calls
+        the name unreadable."""
         with pytest.raises(demangle.LimitExceeded):
             demangle.demangle_strict("?arr@@3QAYDOI@" + "1" * 1000 + "HB", language="msvc")
 
@@ -141,7 +142,7 @@ class TestBoundsAreEnforcedWhileWorking:
 class TestNothingEverAnswersWithNothing:
     """`demangle()` returns the spelling or the name. The empty string is neither.
 
-    `_RCCC` returned `""`, which would have a tool label a function with a blank.
+    `_RCCC` must not return `""`, which would have a tool label a function with a blank.
     """
 
     @pytest.mark.parametrize(
@@ -164,7 +165,7 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
     NAME = "_ZNSt6vectorIiSaIiEE9push_backERKi"
 
     def test_two_styles_with_the_same_name_do_not_collide(self):
-        """The key held `style.name`, and a caller may pass a `Style` object instead."""
+        """The key is not `style.name` alone, because a caller may pass a `Style` object."""
         llvm_ish = Style(name="house", spelling_builder=SPELLING_BUILDER)
         gnu_ish = Style(
             name="house",
@@ -174,7 +175,7 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
         assert demangle.demangle(self.NAME, style=llvm_ish) != demangle.demangle(self.NAME, style=gnu_ish)
 
     def test_registering_a_style_invalidates_what_was_cached_under_it(self):
-        """Replacing `llvm` left every name demangled beforehand answering the old way."""
+        """Replacing `llvm` must not leave every name demangled beforehand answering the old way."""
         before = demangle.demangle(self.NAME)
         replacement = Style(
             name="cache-probe",
@@ -235,9 +236,9 @@ def _on_a_deep_stack(work):
 class TestMsvcNestingFollowsMaxDepth:
     """MSVC reads as deep as `max_depth` says, as Itanium does.
 
-    It held a private ceiling of 64 under the caller's bound, so `RELAXED_LIMITS` could
-    not read a name one level deeper than `DEFAULT_LIMITS`, and a caller who raised the
-    bound was told a figure it had not set. When the interpreter's stack gives out first
+    A private ceiling of 64 under the caller's bound would stop `RELAXED_LIMITS` reading
+    a name one level deeper than `DEFAULT_LIMITS`, and a caller who raised the bound
+    would be told a figure it had not set. When the interpreter's stack gives out first
     the name is refused the same way, as the bound in force.
     """
 
@@ -313,21 +314,24 @@ class TestMsvcNestingFollowsMaxDepth:
 class TestDepthExhaustionIsReportedAsABound:
     """Two ceilings govern nesting, and both mean the same thing about the name.
 
-    `max_depth` is one. The interpreter's own recursion limit is the other, and it is
-    the lower of the two in practice -- a production costs several Python frames, so at
-    the default limit an Itanium name gives out around 141 levels of nested template,
-    well under the default `max_depth` of 256. Which binds first depends on the shape of
-    the name and on how deep the caller's stack already was.
+    `max_depth` is one. The interpreter's own recursion limit is the other. At
+    `DEFAULT_LIMITS` `max_depth` binds first: an Itanium name of nested templates is
+    refused at 128 levels, each costing two of the 256. The interpreter's limit binds
+    only when `max_depth` is raised past what the stack can hold -- a production costs
+    several Python frames, so at CPython's default recursion limit the same name gives
+    out around 141 levels under `RELAXED_LIMITS`, whose `max_depth` of 2048 would allow
+    1024. Which binds depends on the shape of the name and on how deep the caller's
+    stack already was.
 
     Both arrive as `LimitExceeded`, not one of them as
     `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
     the parser rather than a bound doing its job.
 
     The nesting below is deeper than the *limit in force*, and that matters rather than
-    being belt and braces. These names were 400 deep, which is under `RELAXED_LIMITS`'
-    `max_depth` of 2048, so on CPython the only thing stopping them was the interpreter's
-    stack -- and on PyPy, whose stack is far deeper, nothing stopped them at all and the
-    names parsed. Deriving the count from `max_depth` tests the bound this asserts the
+    being belt and braces. A name 400 deep is under `RELAXED_LIMITS`' `max_depth` of
+    2048, so on CPython the only thing stopping it would be the interpreter's stack --
+    and on PyPy, whose stack is far deeper, nothing would stop it at all and the name
+    would parse. Deriving the count from `max_depth` tests the bound this asserts the
     existence of, on any interpreter, and cannot drift if the limit is retuned.
     """
 
@@ -360,14 +364,14 @@ class TestALimitRefusesRatherThanTruncates:
     """A bound must end the reading, not hand the name to a laxer scheme.
 
     `demangle()` tries the schemes that claim a name in priority order and moves on when
-    one fails. A `LimitExceeded` was being treated as one of those failures, and it is a
-    different statement: the scheme *did* claim the name and then ran out of the budget
-    the caller set. Offering the same text on is how an Itanium name that spends more
-    substitutions than a tightened budget allows came back as a declaration built by the
+    one fails. A `LimitExceeded` is not one of those failures, and it is a different
+    statement: the scheme *did* claim the name and then ran out of the budget the caller
+    set. Offering the same text on is how an Itanium name that spends more substitutions
+    than a tightened budget allows would come back as a declaration built by the
     pre-Itanium scheme out of the mangling itself.
 
-    Nine corpus names did this, found by tightening each bound in turn over all 77,749 of
-    them and asking which came back *different* rather than refused. A caller who lowers
+    Nine corpus names would do this: tighten each bound in turn over all 77,749 of them
+    and ask which come back *different* rather than refused. A caller who lowers
     a limit is defending against hostile input, which is the last place to start guessing.
     """
 
@@ -397,10 +401,10 @@ class TestALimitRefusesRatherThanTruncates:
 
     @pytest.mark.parametrize(("field", "value"), [("max_depth", 4), ("max_output", 8)])
     def test_a_type_descriptor_reports_the_bound_as_one(self, field, value):
-        """The descriptor branch sat in front of the translation and leaked `_LimitHit`.
+        """The descriptor branch must not leak `_LimitHit`.
 
-        `api` wrapped it in the arm meant for a plugin with a defect, so a caller who
-        lowered a bound was told `msvc parser failed: _LimitHit('recursion depth')` --
+        Wrapped by `api` in the arm meant for a plugin with a defect, it would tell a
+        caller who lowered a bound `msvc parser failed: _LimitHit('recursion depth')` --
         the wrong type, and a message accusing this library of a bug for doing what was
         asked.
         """
@@ -413,7 +417,7 @@ class TestALimitRefusesRatherThanTruncates:
 
     @pytest.mark.sweep
     def test_no_corpus_name_answers_differently_under_a_tighter_bound(self, subtests):
-        """The property the nine were found by, over a sample of every corpus."""
+        """The property that finds them, over a sample of every corpus."""
         names = [
             mangled for corpus in ("itanium-libstdcxx.txt", "gnuv2-libiberty.txt") for mangled, _ in load_corpus(corpus)
         ]
