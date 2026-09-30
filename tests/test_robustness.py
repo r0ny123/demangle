@@ -4,10 +4,8 @@ A mangled name is attacker-controlled in any tool that opens files it did not pr
 These tests assert the properties that make the library safe to point at a hostile
 binary.
 
-Every property here asserts the *real* invariant, not merely that a `str` came back. An
-earlier version of this file checked only `isinstance(result, str)`, and a demangler
-stubbed to return `""` for every input -- one that had silently lost every symbol it was
-given -- passed fourteen of its sixteen tests. `assert isinstance(x, str)` is not a test.
+Every property here asserts the *real* invariant, not merely that a `str` came back: a
+demangler stubbed to return `""` for every input must fail them.
 """
 
 import contextlib
@@ -292,8 +290,8 @@ class TestTheCursorNeverPassesTheEndOfInput:
     The invariant is stronger than that one bug and is checked as such: whatever the
     input, `pos` never exceeds `length`. It is asserted by watching every write to `pos`,
     which is the only way an overshoot can happen, so a new production cannot reintroduce
-    one anywhere. Over the corpus and the same names truncated inside a window, this
-    reported 633 violations before the fix and none after.
+    one anywhere. It holds over the corpus and the same names truncated inside a
+    window.
     """
 
     @staticmethod

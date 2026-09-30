@@ -8,8 +8,8 @@ built earlier, a template argument list nested three deep, a return type that is
 itself a function pointer. Those need a name a compiler actually emitted, and there
 is no alphabet short enough to reach them by counting.
 
-So this starts from the checked-in corpora and damages
-them: truncate, delete, duplicate, transpose, substitute a character from the
+So this starts from the checked-in corpora and damages them:
+truncate, delete, duplicate, transpose, substitute a character from the
 scheme's own alphabet, or splice the head of one name onto the tail of another. A
 mutant keeps almost all of its parent's structure, so it lands *near* the emitted
 space rather than in the grammar's cheap corners, which is where a substitution
@@ -28,70 +28,39 @@ Usage
     tools/mutate.py --count 200000         more mutants per scheme (default 50000)
     tools/mutate.py --seed 7               a different draw; the default draw is fixed
 
-`--refusals` looks the other way. The comparison above only ever sees a name this library
-*reads*: a name it refuses and the reference reads never enters it, so a gap here is
-invisible to it by construction. This mode puts the refused mutants to the reference and
-prints what it says about them. It is a triage list and not a gate -- everything on it is
-either a gap here or the reference reading junk it should have refused, and telling the
-two apart is a person's job with the reference's source open. Its first run found a
-parameter list that is nothing but the ellipsis (`?f@@YAXZZ`, which clang emits) refused
-by the MSVC scheme, and six node kinds the Swift scheme produced but did not count as
-contexts, so that a descriptor over any of them refused the name; its second, two D
-shapes the grammar admits. What it reports and does not find is pinned in the schemes'
-tests as refusals, each with the reference's reason.
+`--expect` is the divergence count the run must produce, 0 by default. The exit status
+is non-zero unless the count is exactly that, so the gate holds in both directions, like
+the conformance corpora: a new divergence fails, and so does a stale pin after one is
+fixed. The count is a property of `--seed`, `--count` and the seed corpora together;
+the pin CI uses is for the defaults, `--seed 0 --count 20000`. Growing a seed corpus
+changes which mutants are drawn.
+
+A divergence is either fixed in the library or covered by an `ACCEPTED` rule in
+`tools/enumerate.py`, which names the reason the reference's answer is not evidence.
+Two rules originate here: a cv-qualified function type reached through a substitution,
+where each reference contradicts its own answer for the same type written out, and a D
+symbol whose length prefix ends inside an identifier (`_D1a0MFZv`), which libiberty
+refuses although it reads both neighbours, `_D1a0i` and `_D1a0FZv`.
+
+A draw with no divergence does not show that none exist. Two are open and pinned by
+nothing but this note:
+
+- A `<template-param>` naming an argument pack outside a `Dp` expansion. `_Z1fIJfdEEvT_`
+  is `void f<float, double>(float)` to both references and `(float, double)` here;
+  defaulting the pack index to 0 breaks eleven of libcxxabi's own vectors.
+- A destructor whose class is named by a vendor extended operator, `v1 <source-name>`.
+  `llvm-cxxfilt` writes `~()`, `c++filt` writes the name without `operator`, and this
+  writes the name the encoding gives.
+
+`--refusals` looks the other way. The comparison above only sees a name this library
+*reads*: a name it refuses and the reference reads never enters it. This mode puts the
+refused mutants to the reference and prints what it says about them. It is a triage
+list and not a gate -- everything on it is either a gap here or the reference reading
+junk it should have refused, and telling the two apart is a person's job with the
+reference's source open. What it reports is pinned in the schemes' tests as refusals,
+each with the reference's reason.
 
     tools/mutate.py --refusals --scheme msvc --show 100
-
-Exit status is non-zero unless the divergence count is exactly `--expect`, which is 0 by
-default -- so this gates a commit in both directions, like the conformance corpora do: a
-new divergence fails, and so does a stale pin after one is fixed. The number is a
-property of `--seed` and `--count` together; the pin CI uses is for the defaults.
-
-What the pin currently stands at
---------------------------------
-Zero, at `--seed 0 --count 20000`. Every divergence this draw reports is either a defect
-that was fixed or an `ACCEPTED` rule in `tools/enumerate.py` naming the reason a
-reference's answer is not evidence. `--expect` defaults to 0, so the gate is now "no
-divergence at all", and a name this library reads differently from the reference for a
-reason nobody has written down fails it.
-
-That is not a claim that nothing is left: a divergence *not in this draw* is not a
-divergence that does not exist. Three such are named at the end of this docstring, and
-`--seed` and `--count` are there to go looking.
-
-What this draw has found and what became of it
-----------------------------------------------
-Five divergences this draw reported are gone because the defect was this library's and
-was fixed: a constructor whose class is named by an operator (`_ZNssC1Ev` read as
-`operator<=>::operator()`, the class name cut at the first `<`), the `F` friend marker
-read and then dropped from a constructor, and a fold expression printed with llvm's
-spacing and bracketing under the GNU style. Two more are now `ACCEPTED` rules in
-`tools/enumerate.py`, each with the reason a reference's answer is not evidence: a
-cv-qualified function type reached through a substitution, where each reference
-contradicts its own answer for the same type written out, and the D one below.
-
-The D divergence was carried here for several sittings as "a deep chain of `Q` back
-references round a `___dgliteral1`", which was wrong -- that was the shape of the
-*mutant*, not of the disagreement. Diffing the mutant against the seed it came from
-named the edit: one duplicated `_` inside `13__dgliteral10`, which leaves the length
-prefix covering `___dgliteral1` and hands the `0` after it to the grammar as the
-anonymous `<SymbolName>`. `_D1a0MFZv` is the whole of it in nine characters -- `a` here,
-refused by `c++filt --format=dlang` -- and libiberty reads both neighbours, `_D1a0i` and
-`_D1a0FZv`, so the refusal is an inconsistency inside the reference rather than a rule.
-Shrinking the mutant by deletion had found a *different* shape with the same symptom, an
-`S` template argument opening on a template instance; that one is real too and is pinned
-in `tests/test_d.py`, but it is not what this draw reaches. A reproducer that reproduces
-the symptom is not yet the cause.
-
-The draw is a property of the seed *and the corpora*, so growing a seed corpus changes
-which mutants are drawn. Two divergences earlier draws reported are simply not in this
-one and are still open, pinned by nothing but this note: a `<template-param>` naming an
-argument pack outside a `Dp` expansion -- `_Z1fIJfdEEvT_` is `void f<float,
-double>(float)` to both references and `(float, double)` here, and making the default
-pack index 0 breaks eleven of libcxxabi's own vectors -- and a destructor whose class is
-named by a vendor extended operator, `v1 <source-name>`, where `llvm-cxxfilt` writes
-`~()`, `c++filt` writes the name without `operator`, and this writes the name the
-encoding gives.
 """
 
 import argparse

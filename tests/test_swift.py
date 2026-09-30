@@ -222,8 +222,7 @@ class TestWhatSwiftAddedAfterThisWasWritten:
         assert spell("$s4main1fyySiFSiTKmuSi_").startswith("key path unapplied method ")
 
     def test_the_checked_objc_completion_handler(self):
-        """`TZ`. The reference calls this one *checked*; it was `predefined` when this
-        scheme was written, and the node was renamed with it."""
+        """`TZ`. The reference calls this one *checked*."""
         assert spell("$sSiSSTZ0_").startswith("checked @objc completion handler block implementation")
         assert spell("$sSiSSTz0_").startswith("@objc completion handler block implementation")
 
@@ -459,11 +458,8 @@ class TestGrammarFacts:
 
 
 class TestTheNodeKindRegistry:
-    """`ALL_KINDS` mirrors the compiler's `DemangleNodes.def`, and nothing enforced it.
-
-    It had drifted: five kinds the demangler builds were missing from it, and two more
-    that upstream had renamed were listed under the old names. A frozen set nothing reads
-    cannot be wrong in a way a test catches, so these two read it.
+    """Every node kind the demangler builds, over the corpus and the shapes below, is
+    listed in `ALL_KINDS`, the registry that mirrors the compiler's `DemangleNodes.def`.
     """
 
     def test_every_kind_the_demangler_builds_is_registered(self, subtests):

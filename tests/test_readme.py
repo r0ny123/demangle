@@ -1,8 +1,7 @@
 """The README's factual claims, checked against the code.
 
-Three separate documents had drifted from the pinned conformance numbers at once, which
-is what happens to any figure a human has to remember to update. These tests make the
-drift a test failure instead.
+A figure a human has to remember to update drifts from the pinned conformance numbers.
+These tests make that drift a test failure.
 
 The conformance tables moved to `CONFORMANCE.md` when the README was cut down to what a
 reader meets first, so the count checks read both files and the example checks read the

@@ -436,9 +436,8 @@ class TestDetectionOrderIsPinned:
     states the order where it can be read.
 
     It is not cosmetic. Free Pascal and Swift both claim `_$SDL_MIXER$_Ld1`, and Free
-    Pascal is right about it only because it is asked first. Anyone "fixing" the
-    priorities to match the old comments would have broken those six names, and this is
-    the test that would have told them so.
+    Pascal is right about it only because it is asked first. Reordering the
+    priorities changes what that name detects as, and this test says so.
     """
 
     EXPECTED = (

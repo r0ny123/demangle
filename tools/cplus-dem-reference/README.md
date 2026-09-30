@@ -5,8 +5,8 @@ g++ before 3.0, Lucid's `lcc`, the ARM/cfront encoding, HP aCC and EDG, and with
 it has no oracle on any current machine. binutils 2.42's `c++filt` offers
 `-s {none,auto,gnu-v3,java,gnat,dlang,rust}` and nothing older, and GCC 9 removed the
 pre-Itanium demangler from libiberty altogether -- `cplus-dem.c` is 5,032 lines at 8.3.0
-and 490 at 9.1.0 -- so a corpus recorded once is the only evidence for this scheme unless there is a way
-to put a *new* name to the implementation it was recorded from.
+and 490 at 9.1.0 -- so a corpus recorded once is the only evidence for this scheme
+unless there is a way to put a *new* name to the implementation it was recorded from.
 
 This builds that implementation out of GCC 8.3.0's own tree -- `cplus-dem.c` and the
 libiberty sources it links against, unmodified -- behind a line-per-name front end, so

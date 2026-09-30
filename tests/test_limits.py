@@ -95,11 +95,11 @@ HOSTILE_NAMES = [
 
 
 class TestBoundsAreEnforcedWhileWorking:
-    """A bound has to stop the work, not describe it afterwards.
+    """A bound stops the work rather than describing it afterwards.
 
-    Each of these was a denial of service. The numbers are wide on purpose -- this is a
-    test of asymptotics, not of one machine's speed -- but every case took seconds to
-    days before the fix and milliseconds after.
+    Each case is a denial-of-service shape and must be answered within the limit. The
+    numbers are wide on purpose -- this is a test of asymptotics, not of one machine's
+    speed.
     """
 
     @pytest.mark.parametrize(("name", "mangled"), HOSTILE_NAMES, ids=[label for label, _ in HOSTILE_NAMES])

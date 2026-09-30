@@ -1584,11 +1584,11 @@ class MsvcBoostBuildTestSuite(unittest.TestCase):
 
 
 class MsvcSpellingWiderThanEightTimesItsNameTestSuite(unittest.TestCase):
-    """The rendered result was bounded at eight times the name's length, and a name a
-    compiler writes can pass that: a back-reference is two characters standing for a
-    whole rendered type. Over 1,025,085 names from LLVM, Boost, ITK, OpenCV and Qt the
-    widest is twelve times, and 80 pass eight; every one was refused. The bound is now
-    thirty-two times, still under the absolute `max_output`.
+    """The rendered result is bounded at thirty-two times the name's length (plus a small
+    constant), and always under the absolute `max_output`. A name a compiler writes can
+    spell far wider than it is long, because a back-reference is two characters standing
+    for a whole rendered type. Over 1,025,085 names from LLVM, Boost, ITK, OpenCV and Qt
+    the widest is twelve times.
     """
 
     NAME = (

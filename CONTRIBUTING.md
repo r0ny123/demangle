@@ -169,7 +169,7 @@ Trusted Publishing, so there is no long-lived API token in repository secrets.
 
 The test matrix is deliberately not a cross product. Both supported versions run on
 Linux; macOS and Windows get one row each, the ceiling and the floor, so neither end of
-the range is only ever exercised on Linux. A fourth row runs Ubuntu on the free-threaded
+the range is only ever exercised on Linux. A fifth row runs Ubuntu on the free-threaded
 3.14t build, for `tests/test_concurrency.py`. This is a pure-Python library, and
 everything that has ever differed between platforms differed in the harness -- a glob, a
 subprocess, a console encoding -- which one row per operating system catches as well as

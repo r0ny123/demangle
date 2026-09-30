@@ -4,12 +4,11 @@
 `tools/mutate.py` asks a reference demangler what a mutant means. Some properties have
 no reference to ask, because they are about this package rather than about the scheme:
 
-  * A style is a spelling policy. Whether a name parses at all must not depend on it --
-    and it did, for twelve names in the corpora, because the GNU style resolves a
-    `<template-param>` inside a requires-clause where the llvm style spells it
-    symbolically, and refused the name where nothing was bound. `std::pair`'s
-    constrained constructor, which is what GCC 13 emits for the real `std::pair`, read
-    under `--style llvm` and came back mangled under `--style gnu`.
+  * A style is a spelling policy. Whether a name parses at all must not depend on it.
+    The GNU style resolves a `<template-param>` inside a requires-clause where the llvm
+    style spells it symbolically, so it can refuse a name where nothing is bound;
+    `std::pair`'s constrained constructor, which GCC 13 emits, is the case that
+    exposes it.
   * The tree and the text are one stream. `parse(name).spell()` is what `demangle(name)`
     returns, in every style; `tests/test_conformance.py` checks that over the corpora and
     this checks it over names no compiler wrote.
@@ -27,10 +26,9 @@ substitutions from, which is the alphabet its scheme actually writes.
 
 Exit status is non-zero when any invariant fails.
 
-The draw is seeded, so a finding reproduces exactly. The three defects this was written
-for were all the first invariant, and `--seed 1 --count 20000 --corpus itanium-libcxxabi`
-reports them on the parser as it stood before the fix and nothing on the parser as it is:
-that is what says the instrument works, rather than that it is quiet.
+The draw is seeded, so a finding reproduces exactly. `--seed 1 --count 20000 --corpus
+itanium-libcxxabi` reproduces the three defects this guards against, all of the first
+invariant, on a parser that still has them; on the parser as it is, it reports nothing.
 
 Usage
 -----

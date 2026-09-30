@@ -439,7 +439,7 @@ ACCEPTED = {
     ),
     "swift": lambda name, ours, first, second: (
         # `Tg...m` (`MetatypeParamsRemoved`), which 5.10.1 emitted and the pinned revision
-        # no longer reads; see tools/swift-demangle-reference/README.md.
+        # does not read; see tools/swift-demangle-reference/README.md.
         (first is None and _METATYPE_PARAMS_REMOVED.search(name) is not None)
         # Or an extended existential shape, which `NodePrinter` prints as
         # `<null node pointer>`; see swift-reference-defects.txt.

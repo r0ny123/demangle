@@ -36,9 +36,9 @@ Two builders ship:
 | `SpellingBuilder` | `Spelling` pairs, immediately concatenable | `demangle()` -- the hot path |
 | `AstBuilder` | `Node` trees | `parse()` -- structured access |
 
-The parser is written once and stays honest about the grammar; the cost model is chosen
-by the caller. Adding a third backend -- emitting JSON, or a token stream for a
-syntax highlighter -- means writing one class and touching no parser.
+The parser is written once and stays honest about the grammar; the cost model is chosen by
+the caller. Adding a third backend -- emitting JSON, or a token stream for a syntax
+highlighter -- means writing one class and touching no parser.
 
 This is the single most important thing to understand about the codebase. A change that
 makes a parser build strings directly, however locally convenient, breaks it. A test

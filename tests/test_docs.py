@@ -76,12 +76,11 @@ def rendered_members():
 
 
 class TestEveryDocumentedNameExists:
-    """The converse of the class below, and it had drifted the same way.
+    """The converse of the class below: a documented name must exist.
 
     `mkdocstrings` renders nothing for a `members:` entry naming something the module
     does not have, and does not fail the build over it, so the page quietly shows one
-    member fewer than it asks for. The pre-Itanium parser's section listed a `detect`
-    that the scheme's package defines and `_parser` does not.
+    member fewer than it asks for.
     """
 
     def test_every_rendered_target_is_a_module(self, subtests):
@@ -158,9 +157,8 @@ class TestEveryExampleInTheDocsIsWhatTheCodeDoes:
 class TestTheArchitecturesLayoutIsTheLayout:
     """The tree in ARCHITECTURE.md, against the tree on disk.
 
-    It had drifted by four schemes and five core modules: `gnuv2`, `codewarrior`, `ada`
-    and `jni` all landed without being listed, so a reader taking the diagram for the map
-    would have concluded the package reads ten manglings rather than fourteen.
+    Every scheme and core module on disk appears in the diagram, so a reader taking it
+    for the map sees all fourteen manglings.
     """
 
     ARCHITECTURE = ROOT / "ARCHITECTURE.md"
