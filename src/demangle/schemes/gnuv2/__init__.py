@@ -1,7 +1,7 @@
 """Pre-Itanium C++: GNU g++ before 3.0, cfront/ARM, Lucid, HP aCC and EDG.
 
-Five manglings, one demangler, because that is how libiberty implements them: the same
-2,500 lines of `cplus-dem.c` under five style flags. See `_parser.py` for the port and
+Five manglings, one demangler, because that is how libiberty implements them: one
+`cplus-dem.c` under five style flags. See `_parser.py` for the port and
 for what is measured against the reference's own vectors.
 
 Detection is the hard part, and the reason this scheme is offered last. A GNU v2 symbol

@@ -18,9 +18,8 @@ not*: the `_ada_` prefix, an `O`-operator, a `TK` task suffix, a `P`/`N` protect
 subprogram, a stream `S[RWIO]`, a controlled `D[FA]`, an `X` body-nested marker, a
 `___elabb`-style special name, a `_B`/`_E` entry body, or an overload number -- *and* the
 whole name has to be accounted for, because several of the reference's suffixes stop
-reading and abandon the rest. Measured under that rule: **0** claims over the 81,457
-names in every other corpus here, and **0** over 339,117 symbols from this machine's
-libraries.
+reading and abandon the rest. Measured under that rule: **0** claims over every other
+checked-in corpus, and **0** over 339,117 symbols from this machine's libraries.
 
 The cost is that a name with no such marker -- `yz__qrs`, and four of the 34
 reference vectors -- is not auto-detected (`x_E` is not counted: the reference itself
