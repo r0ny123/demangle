@@ -89,12 +89,12 @@ the reference demanglers, and a **Performance** section.
   threading. A name no scheme is offered is not stored, so a table's plain C names leave
   its room to the mangled ones: a first pass over them is faster, a repeat pass slower
   (about a microsecond each), and each counts as a miss in `cache_stats()`.
-- **Faster on the common paths.** Names that are not mangled are rejected about 2x faster by
-  `demangle()` and 3x by `detect()`: a scheme with no fixed first character declares
-  what a name must contain before it could claim it, and is not asked about names
-  without it. Warm `demangle()` calls are about 1.5x faster. Cold Itanium demangling
-  of real symbol tables is about 10% faster, with a fifth to a third fewer Python
-  calls per name depending on the corpus, and byte-identical output.
+- **Faster on the common paths.** Names that are not mangled are rejected about 2x
+  faster by `demangle()` and 3x by `detect()`: a scheme with no fixed first character
+  declares what a name must contain before it could claim it, and is not asked about
+  names without it. Warm `demangle()` calls are about 1.5x faster. Cold Itanium
+  demangling of real symbol tables is about 10% faster, with a fifth to a third fewer
+  Python calls per name depending on the corpus, and byte-identical output.
 
 ## [0.3.0] - 2026-09-29
 
