@@ -86,9 +86,10 @@ the reference demanglers, and a **Performance** section.
   emptied when full), so a second pass over a large library's symbol table hits and a
   name still in use survives turnover. It is bounded in bytes as well as entries, so
   long hostile names cannot grow it past about 100 MB, and the bound holds under free
-  threading. A name no scheme is offered is answered without it, as cheaply as a lookup
-  would be, so a table's plain C names leave its room to the mangled ones.
-- **Faster on every path.** Names that are not mangled are rejected about 2x faster by
+  threading. A name no scheme is offered is not stored, so a table's plain C names leave
+  its room to the mangled ones: a first pass over them is faster, a repeat pass slower
+  (about a microsecond each), and each counts as a miss in `cache_stats()`.
+- **Faster on the common paths.** Names that are not mangled are rejected about 2x faster by
   `demangle()` and 3x by `detect()`: a scheme with no fixed first character declares
   what a name must contain before it could claim it, and is not asked about names
   without it. Warm `demangle()` calls are about 1.5x faster. Cold Itanium demangling
