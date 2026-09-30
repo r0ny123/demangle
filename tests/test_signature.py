@@ -3,7 +3,7 @@
 The property that makes the three name fields safe to recombine -- `namespace`, the
 scheme's separator, and `base_name` spell `qualified_name` exactly -- is checked here
 against every corpus rather than against a handful of examples. It is the one thing a
-caller can rely on across ten schemes, and the ways to break it (a `::` inside a
+caller can rely on across every scheme, and the ways to break it (a `::` inside a
 template argument, a `.` inside a Nim operator, a Rust closure whose own name starts
 with the separator) are all things a corpus holds and a hand-written case does not.
 """

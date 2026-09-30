@@ -115,7 +115,7 @@ def main():
     parser.add_argument("--compiler", action="append", help="repeatable; default is clang++ and g++")
     parser.add_argument("--prefix", action="append", help="mangled-name prefixes to keep")
     parser.add_argument("--defects", type=Path, default=REFERENCE_DEFECTS, help="names the reference reads wrongly")
-    parser.add_argument("--standard", action="append", help="repeatable; default is c++11 through c++20")
+    parser.add_argument("--standard", action="append", help="repeatable; default is c++11 through c++23")
     arguments = parser.parse_args()
 
     standards = tuple(arguments.standard) if arguments.standard else STANDARDS

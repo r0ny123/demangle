@@ -222,8 +222,9 @@ class TestASpellingThatCannotBeADeclaration:
         assert demangle.demangle("foo__Fie", language="codewarrior") == "foo(int, ...)"
 
     def test_a_qualified_name_in_the_names_own_seat_is_read_or_refused_not_echoed(self):
-        """`Q23foo3bar__Fv` is `foo::bar()`, not a function called `Q23foo3bar`. A count with too few names behind it is refused, and so is the
-        `Q2_` spelling, which this compiler never wrote."""
+        """`Q23foo3bar__Fv` is `foo::bar()`, not a function called `Q23foo3bar`. A count
+        with too few names behind it is refused, and so is the `Q2_` spelling, which this
+        compiler never wrote."""
         assert demangle.demangle("Q23foo3bar__Fv", language="codewarrior") == "foo::bar()"
         for name in ("Q23foo__Fv", "Q2_3foo3bar__Fv"):
             assert demangle.demangle(name, language="codewarrior") == name

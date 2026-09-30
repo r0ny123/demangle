@@ -460,7 +460,8 @@ them a name read wrongly, and `tests/test_conformance.py` names each one:
   corpus. It has no declaration; the reference prints `operator B<><>`, and this refuses
   it, as `c++filt` 2.42 does.
 - One, `_ZNK1xMUlTyT_E_clIiEEDaS_`, is numbered by GCC 12's closure-prefix rule and the
-  vector reads it by the ABI's; see note [8](#8-how-apple-clang-numbers-a-substitution-table).
+  vector reads it by the ABI's; see
+  note [8](#8-how-apple-clang-numbers-a-substitution-table).
 
 ### 22. libiberty's own D vectors
 

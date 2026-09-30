@@ -147,7 +147,7 @@ def time_it(function, repeats=5):
 
 
 def benchmarks():
-    # Compiled at four standards by two compilers: the widest range of node shapes per name.
+    # Compiled at five standards by two compilers: the widest range of node shapes per name.
     itanium = corpus_names("itanium-real-world.txt")
 
     # ~14,000 names, so the working set does not fit in L2 as a small sample would.

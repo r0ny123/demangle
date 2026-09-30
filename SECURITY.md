@@ -47,10 +47,8 @@ Out of scope:
   been built.
 - Hitting a bound ends the reading. It is not a "this name is not mine": the scheme
   claimed the name and then ran out of the budget the caller set, so the name is offered
-  to no other scheme. Passing it on meant a laxer one read the mangling itself — an
-  Itanium name over a tightened substitution budget came back as
-  `_ZN11Expressions2f2ILi1EEEvPApsT(int)`, a declaration built out of the encoding by
-  the pre-Itanium scheme. A caller who lowers a limit is defending against hostile input,
+  to no other scheme, where a laxer one would read the mangling itself and build a
+  declaration out of the encoding. A caller who lowers a limit is defending against hostile input,
   which is the last place to start guessing.
 - The result cache `demangle()` keeps is bounded in bytes as well as entries, so
   a stream of long hostile names cannot grow it past about 100 MB.
@@ -82,13 +80,12 @@ O(N²) characters without any single one crossing `max_output`. The characters t
 records are capped at sixteen times the output bound, a hundred times what the largest
 of the 217,730 Itanium symbols in a stock Ubuntu 24.04 records.
 
-The fuzzing that found it — roughly 550,000 corpus mutations across every scheme,
-380,000 grammar-generated Itanium names, 120,000 grammar-generated Swift names and
-45,000 MSVC mutations — checks on each name that nothing but a `DemanglingError`
-escapes, that the tree renders exactly what the text path spelled in both styles, and
-that no substitution-table sentinel reaches a builder. The mutation runs are under an
-address-space cap, so a runaway allocation reports the name that caused it rather than
-being killed.
+The fuzzers ([Fuzzing and the reference
+demanglers](https://r0ny123.github.io/demangle/testing/)) check on each name that
+nothing but a `DemanglingError` escapes, that the tree renders exactly what the text
+path spelled in both styles, and that no substitution-table sentinel reaches a builder.
+The mutation runs are under an address-space cap, so a runaway allocation reports the
+name that caused it rather than being killed.
 
 ## Supported versions
 

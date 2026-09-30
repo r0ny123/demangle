@@ -1245,8 +1245,9 @@ class TestTemplateParameterLevels:
     def test_a_level_that_is_not_in_scope_is_refused(self, mangled):
         """Nothing is eight templates deep, so there is no parameter for this to be.
 
-        `llvm-cxxfilt` refuses both of these. Naming one anyway -- printing the numbering as `T1`, say -- is a type that appears nowhere in the symbol, which is the
-        one thing worse than declining.
+        `llvm-cxxfilt` refuses both of these. Naming one anyway -- printing the numbering
+        as `T1`, say -- is a type that appears nowhere in the symbol, which is the one
+        thing worse than declining.
         """
         assert demangle.demangle(mangled) == mangled
         with pytest.raises(DemanglingError):
@@ -1457,7 +1458,8 @@ class TestTheNameAConstructorRepeats:
         node as a conversion operator, and that node has no base name to repeat. GNU
         `c++filt` 2.42 drops the `operator` and writes `operator foo::foo()`. Repeating
         the name in full would be a third reading of a name that has no declaration;
-        this follows `llvm-cxxfilt`, as the conversion operator does -- see `TestAConversionOperatorHasNoNameToRepeat`."""
+        this follows `llvm-cxxfilt`, as the conversion operator does -- see
+        `TestAConversionOperatorHasNoNameToRepeat`."""
         assert demangle.demangle_strict(mangled, language="itanium") == expected
 
 
