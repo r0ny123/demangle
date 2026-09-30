@@ -234,8 +234,10 @@ def demangle(
         key = (mangled, language, DEFAULT_STYLE if style is None else style, limits_key)
     else:
         key = None
-        _check_limits(limits)
-        # The same refusal a cached call gives, so caching never decides what is accepted.
+        # The same checks, in the same order, as a cached call, so caching never decides
+        # what is accepted or which argument the refusal names.
+        if limits is not DEFAULT_LIMITS and not isinstance(limits, Limits):
+            _refuse_limits(limits)
         try:
             hash((language, limits))
         except TypeError:

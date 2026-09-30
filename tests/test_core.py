@@ -9,6 +9,7 @@ import pathlib
 import string
 import subprocess
 import sys
+import threading
 
 import pytest
 
@@ -216,6 +217,21 @@ class TestEveryDeclaratorDistributesOverAPack:
 
 
 class TestBoundedCache:
+    def test_a_put_made_from_inside_a_put_on_the_same_thread_does_not_deadlock(self):
+        """A signal handler or finalizer can run `demangle()` while its thread is in `put`."""
+        cache = BoundedCache(max_size=8, max_weight=1000, weigh=lambda key, value: 1)
+
+        class Key:
+            def __hash__(self):
+                cache.put("inner", "value")
+                return 1
+
+        done = threading.Event()
+        worker = threading.Thread(target=lambda: (cache.put(Key(), "outer"), done.set()), daemon=True)
+        worker.start()
+        assert done.wait(10)
+        assert cache.get("inner") == "value"
+
     def test_reports_a_miss_distinctly_from_a_stored_none(self):
         cache = BoundedCache()
         cache.put("key", None)

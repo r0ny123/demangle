@@ -30,6 +30,9 @@ class BoundedCache:
     Adding an entry -- a miss, or a promotion from the old generation -- takes a lock,
     so under free threading the turnover and the weight are exact and the bound holds.
     A hit in the young generation takes none, being the path this exists to make cheap.
+    The lock is re-entrant: a signal handler or finalizer that runs `demangle()` while
+    this thread is inside `put` proceeds rather than deadlocks, at worst leaving the
+    weight one entry off.
 
     `epoch` counts `clear()` calls. A caller that computes a value from state whose
     change clears the cache reads it before computing and passes it to `put`, which then
@@ -68,7 +71,7 @@ class BoundedCache:
         self._young = {}
         self._old = {}
         self._young_weight = 0
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self.epoch = 0
         self.hits = 0
         self.misses = 0
@@ -89,6 +92,8 @@ class BoundedCache:
     def put(self, key, value, epoch=None):
         """Store `value` and return it; not stored if `epoch` is given and out of date."""
         # `acquire` and `release`: `with` costs twice as much, and this runs on every miss.
+        # Weighed before the lock is taken, so as little Python as possible runs under it.
+        weight = 0 if self._weigh is None else self._weigh(key, value)
         lock = self._lock
         lock.acquire()
         try:
@@ -100,8 +105,7 @@ class BoundedCache:
                 self._young = young = {}
                 self._young_weight = 0
             young[key] = value
-            if self._weigh is not None:
-                self._young_weight += self._weigh(key, value)
+            self._young_weight += weight
         finally:
             lock.release()
         return value
