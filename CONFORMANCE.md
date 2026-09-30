@@ -230,9 +230,7 @@ its detection reads the whole name rather than a prefix: of the names in every o
 scheme's checked-in corpus it claims none, which `tests/test_gnuv2.py` checks on every
 run, and over 339,117 symbols from this machine's own shared libraries it claims none:
 `drm_intel_gem_bo_map__wc`, where `wc` is a valid argument list, is left alone, though
-`language="gnuv2"` reads it as libiberty does. (The changelog's 101,625 is a different,
-smaller set: the non-`_Z` symbols of a stock Ubuntu library directory.) That reference
-is built by `tools/cplus-dem-reference/`, whose
+`language="gnuv2"` reads it as libiberty does. That reference is built by `tools/cplus-dem-reference/`, whose
 [README](https://github.com/r0ny123/demangle/blob/main/tools/cplus-dem-reference/README.md)
 has the build. It reproduces the corpus 1,324 of 1,324, and over 420,000 mutants of it
 this library never reads a name libiberty refuses; where the two part, libiberty is
@@ -421,6 +419,7 @@ stand; six are local statics carrying a `.0`-style suffix, which the reference r
 stopping where the name ends and saying nothing about the rest — it reads `?x@@3HAjunk`
 as `int x` — and this refuses rather than drop; and one is a `?filt$0` exception-filter
 name both hand back.
+
 Of the 471,881 from ITK, OpenCV, Qt 5, libzmq, leveldb and restbed, 467,844 read exactly
 and none differently; 151 carry the deduced return type the release refuses; 3,662 are a
 debug build's run-time-check data, `$rtcFrameData`, `$rtcName$N` and `$rtcVarDesc` after
@@ -428,8 +427,9 @@ a function's whole decorated name, which the reference reads as the function and
 refuses rather than drop, as with `.0`; 155 are `$initializer$` variables the reference
 misreads — `??ALL$initializer$@DataSpace@H5@@...` comes back as
 `H5::DataSpace::LL$initializer$::operator[]`, the identifier's first letter taken for an
-operator code — and this refuses; and 67 are MD5-hashed names. That accounts for 471,879;
-the sweep's record does not break out the last two.
+operator code — and this refuses; and 67 are MD5-hashed names. The record accounts for 471,879 of
+the 471,881.
+
 Of Boost's 122,162, 116,870 read exactly as `llvm-undname` reads them and none reads
 differently; 722 carry a deduced return type, `?A_P` for `auto` and `?A_T` for
 `decltype(auto)`, which the release refuses and LLVM's main branch reads as this does;

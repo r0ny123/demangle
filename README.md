@@ -41,11 +41,11 @@ native code, no compiler required.
   the template arguments and the parameter types are fields rather than a regular
   expression against C++ declaration syntax, which nests and so cannot be parsed that
   way.
-- **Measured, not asserted.** Every scheme is scored against a reference; see
-  Correctness, below.
-- **Safe on untrusted input.** `demangle()` never raises over a name it cannot read; it
-  hands the name back. Recursion depth, output size, substitution count and input length
-  are all bounded, and every bound is configurable per call.
+- **Measured, not asserted.** Every scheme is scored against a reference or, where none
+  exists, a property the mangling must satisfy; see Correctness, below.
+- **Safe on untrusted input.** Recursion depth, output size, substitution count and
+  input length are all bounded, and every bound is configurable per call; see Safety,
+  below.
 
 ## Install
 
@@ -63,14 +63,14 @@ The documentation, API reference included, is published at
 ### The string you probably want
 
 ```python
-demangle.demangle(name)  # never raises; returns `name` unchanged if unreadable
+demangle.demangle(name)  # the spelling, or `name` itself
 demangle.demangle_strict(name)  # raises DemanglingError instead
 ```
 
 `demangle()` is built for the case where you are labelling every symbol in a binary and
-most of them are not mangled at all. A name it cannot read comes back exactly as it went
-in, because a wrong expansion is worse than a mangled one — it matches neither the
-symbol nor the declaration.
+most of them are not mangled at all. It never raises: a name it cannot read comes back
+exactly as it went in, because a wrong expansion is worse than a mangled one -- it
+matches neither the symbol nor the declaration.
 
 ### The structure, when you need it
 
@@ -301,10 +301,10 @@ Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
 
 | Workload | Throughput |
 |---|---|
-| Cold — every name distinct | ~28,000 names/sec |
-| Warm — names repeat, as in a real symbol table | ~2,300,000 names/sec |
-| Non-mangled names rejected | ~670,000 names/sec |
-| Full AST construction | ~19,000 names/sec |
+| Cold — every name distinct | ~24,000 names/sec |
+| Warm — names repeat, as in a real symbol table | ~2,700,000 names/sec |
+| Non-mangled names rejected | ~830,000 names/sec |
+| Full AST construction | ~18,000 names/sec |
 
 Treat these as ratios rather than absolutes. The gap between cold and warm is the point:
 symbol tables repeat themselves relentlessly, and results are cached.
@@ -319,9 +319,8 @@ The short version: **parsers never build their own output** — each reports the
 productions it recognises to a builder, so one parser serves both `demangle()` and
 `parse()`.
 
-Schemes are plugins. `core` never imports one, they never import each other, and a
-separate distribution can add a language through the `demangle.languages`
-entry-point group without patching this package. Both rules are enforced by tests.
+Schemes are plugins: a separate distribution can add a language through the
+`demangle.languages` entry-point group without patching this package.
 
 See [ARCHITECTURE.md](https://r0ny123.github.io/demangle/ARCHITECTURE/) for the full
 picture and [Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/) to

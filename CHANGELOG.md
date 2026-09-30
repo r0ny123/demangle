@@ -33,6 +33,8 @@ the reference demanglers, and a **Performance** section.
 - **Rust v0 nesting follows `Limits.max_depth`** rather than a fixed 256, with the
   same `LimitExceeded("recursion depth")` report past it or past the interpreter's
   stack.
+### Performance
+
 - **Schemes load on first use.** A built-in scheme, and each style's options for it,
   are imported only when a name reaches them, and installed packages are searched in
   full only when one might declare `demangle.languages`. A first call on `main` imports
@@ -41,12 +43,12 @@ the reference demanglers, and a **Performance** section.
   emptied when full), so a second pass over a large library's symbol table hits and a
   name still in use survives turnover. It is bounded in characters as well as entries,
   so long hostile names cannot grow it past about 100 MB.
-- **Names that are not mangled are rejected about 2x faster** by `demangle()` and 3x
-  by `detect()`: a scheme with no fixed first character declares what a name must
-  contain before it could claim it, and is not asked about names without it.
-- **Warm `demangle()` calls are about 1.5x faster.**
-- **Cold Itanium demangling is about 1.25x faster** on real symbol tables (a third fewer
-  instructions per name), with byte-identical output.
+- **Faster on every path.** Names that are not mangled are rejected about 2x faster by
+  `demangle()` and 3x by `detect()`: a scheme with no fixed first character declares
+  what a name must contain before it could claim it, and is not asked about names
+  without it. Warm `demangle()` calls are about 1.5x faster. Cold Itanium demangling
+  of real symbol tables is about 10% faster, with a fifth to a third fewer Python
+  calls per name depending on the corpus, and byte-identical output.
 
 ### Fixed
 
@@ -120,6 +122,7 @@ the reference demanglers, and a **Performance** section.
   puts its ellipsis on the type (`typename... $T0`), a template template parameter is
   `template<typename, int> class $TT0`, and the numbering is one sequence across kinds,
   so `Ty Ty Tn i` is `$T0, $T1, $N2`. The llvm style is unchanged.
+
 ### Fixed
 
 - **Itanium: an inheriting constructor is read under both compilers' numberings.**
@@ -3743,7 +3746,7 @@ a scheme-agnostic core.
 ### Conformance
 
 Every checked-in corpus is exact against its reference, and so are whole symbol tables
-read from shipped binaries — about 112,000 real symbols:
+read from shipped binaries -- about 112,000 real symbols:
 
 | Source | Reference | Exact |
 |---|---|---|

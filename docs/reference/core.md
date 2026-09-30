@@ -1,7 +1,7 @@
 # Core
 
-The scheme-agnostic half. Nothing here imports a scheme at import time, and a new
-mangling scheme is written against these and nothing else.
+The scheme-agnostic half. A new mangling scheme is written against these and nothing
+else; [Architecture](../ARCHITECTURE.md) has the layering rules.
 
 ## The builder protocol
 

@@ -14,10 +14,10 @@ nav:
       - Schemes: reference/schemes.md
   - Conformance: CONFORMANCE.md
   - Architecture: ARCHITECTURE.md
-  - Security: SECURITY.md
-  - Adding a scheme: adding-a-scheme.md
+  - Security policy: SECURITY.md
+  - Adding a mangling scheme: adding-a-scheme.md
   - Contributing: CONTRIBUTING.md
-  - Fuzzing and the references: testing.md
+  - Fuzzing and the reference demanglers: testing.md
   - Changelog: CHANGELOG.md
 
 # Promoted from INFO so `--strict` fails on them.
@@ -51,7 +51,7 @@ theme:
 markdown_extensions:
   - admonition
   - toc: { permalink: true }
-  - pymdownx.highlight: { anchor_linenums: true }
+  - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.inlinehilite
   # Pages include the root-level Markdown via snippets rather than copying it.

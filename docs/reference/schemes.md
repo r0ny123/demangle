@@ -1,8 +1,8 @@
 # Schemes
 
-Each mangling scheme is a plugin. `core` never imports one and they never import each
-other, so any of them can be developed, replaced or shipped separately -- see
-[Adding a scheme](../adding-a-scheme.md).
+Each mangling scheme is a plugin, so any of them can be developed, replaced or shipped
+separately -- see [Adding a scheme](../adding-a-scheme.md) and
+[Architecture](../ARCHITECTURE.md).
 
 Each section renders what the scheme's package exports, then the modules behind it: its
 options, its node kinds and, where it is worth reading, its parser. Each object appears
