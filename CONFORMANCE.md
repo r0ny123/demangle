@@ -546,8 +546,8 @@ batch's 6,134 are those, the closure-prefix rule and the same rebinding
 <sup>[8](#8-how-apple-clang-numbers-a-substitution-table)</sup>.
 
 The purpose-built corpus scores 100% on its own, and libstdc++ stays the harder test:
-one symbol in 5,913 carries an ELF version suffix, a shape no hand-written test thinks
-to include. Real shipped binaries surface defects a purpose-built corpus does not.
+all but one of its 5,913 symbols carry an ELF version suffix, a shape no hand-written
+test thinks to include. Real shipped binaries surface defects a purpose-built corpus does not.
 
 The libstdc++ row is against GNU rather than LLVM because `llvm-cxxfilt` 18 reads 78 of
 those 5,990 names as unreadable and echoes them back: the transaction-safe clone prefix

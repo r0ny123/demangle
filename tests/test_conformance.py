@@ -396,8 +396,8 @@ def test_the_tree_spells_what_the_fast_path_spells(corpus, style):
 
         f(std::launch, std::function<void ()>&&, )
 
-    One name, in one corpus of 44,556, has it. That is the size of corpus the property
-    needs; running it costs a few seconds.
+    One name in the checked-in corpora has it, which is why the property runs over all
+    of them.
 
     Under every style, not just the default: the tree builder must flatten a
     conversion operator's type with the style the tree is being built under, not the

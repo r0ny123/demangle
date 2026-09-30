@@ -31,8 +31,8 @@ deadline = settings(max_examples=400, deadline=None, suppress_health_check=[Heal
 def corpus_sample(step):
     """Every `step`-th name from every conformance corpus, all schemes together.
 
-    Sampled rather than exhaustive because the whole set is 81,000 names and the tests
-    that use this run a pass per *prefix* of each one.
+    Sampled rather than exhaustive because the whole set is about 100,000 names and the
+    tests that use this run a pass per *prefix* of each one.
     """
     sampled = []
     for corpus in corpus_files():

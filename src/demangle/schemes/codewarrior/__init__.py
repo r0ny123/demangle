@@ -43,7 +43,7 @@ __all__ = [
     "parse",
 ]
 
-#: Longest name `detect` will parse; the reference's longest vector is 1,300 characters.
+#: Longest name `detect` will parse; the reference's longest vector is 1,546 characters.
 _DETECT_MAX = 4096
 
 #: `<>,` for literal template arguments, `$`/`@` for local statics (`v$localstatic1$f`,

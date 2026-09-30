@@ -254,6 +254,7 @@ class TestTheMaskBitsLlvmUndnameHasNoFlagFor:
         the second without it, which is the one place in the scheme where "spelled with
         nothing" and "not spelled at all" come out differently.
         """
+        assert demangle.demangle("?f@@YAXP6ZHXZ@Z") == "void __cdecl f(int ( *)(void))"
         name = "?foo_p6ahxz@@YAXP6AHXZ@Z"
         assert demangle.demangle(name) == "void __cdecl foo_p6ahxz(int (__cdecl *)(void))"
         without = demangle.style("llvm", msvc={"ms_keywords": False})

@@ -370,8 +370,8 @@ class TestALimitRefusesRatherThanTruncates:
     than a tightened budget allows would come back as a declaration built by the
     pre-Itanium scheme out of the mangling itself.
 
-    Nine corpus names would do this: tighten each bound in turn over all 77,749 of them
-    and ask which come back *different* rather than refused. A caller who lowers
+    Nine corpus names would do this: tighten each bound in turn over the libstdc++ and
+    libiberty pre-Itanium corpora and ask which come back *different* rather than refused. A caller who lowers
     a limit is defending against hostile input, which is the last place to start guessing.
     """
 
@@ -417,7 +417,7 @@ class TestALimitRefusesRatherThanTruncates:
 
     @pytest.mark.sweep
     def test_no_corpus_name_answers_differently_under_a_tighter_bound(self, subtests):
-        """The property that finds them, over a sample of every corpus."""
+        """The property that finds them, over the libstdc++ and pre-Itanium corpora."""
         names = [
             mangled for corpus in ("itanium-libstdcxx.txt", "gnuv2-libiberty.txt") for mangled, _ in load_corpus(corpus)
         ]

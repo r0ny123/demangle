@@ -48,8 +48,8 @@ Out of scope:
 - Hitting a bound ends the reading. It is not a "this name is not mine": the scheme
   claimed the name and then ran out of the budget the caller set, so the name is offered
   to no other scheme, where a laxer one would read the mangling itself and build a
-  declaration out of the encoding. A caller who lowers a limit is defending against hostile input,
-  which is the last place to start guessing.
+  declaration out of the encoding. A caller who lowers a limit is defending against
+  hostile input, which is the last place to start guessing.
 - The result cache `demangle()` keeps is bounded in bytes as well as entries, so
   a stream of long hostile names cannot grow it past about 100 MB.
 - `KeyboardInterrupt`, `SystemExit` and `MemoryError` are never swallowed by the

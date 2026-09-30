@@ -677,8 +677,8 @@ class TestAgainstLibibertysOwnCorpus:
 
     All 366 vectors pass. The hardest rules to reach are ones that could only be
     *derived* from the reference rather than read out of the D ABI: the five characters
-    it names inside a string (`\a` and `\b` are not among them, and neither `"` nor a backslash is escaped at all), the different rule for a
-    character *literal*, hex float values written with the point after the first digit,
+    it names inside a string (`\a` and `\b` are not among them, and neither `"` nor a
+    backslash is escaped at all), the different rule for a character *literal*, hex float values written with the point after the first digit,
     associative-array values written as pairs where the type says so -- through a back
     reference, if that is how the type was written -- struct and function-literal values,
     `extern(Pascal)`, the anonymous and `__S<n>` path components it leaves out, and the
