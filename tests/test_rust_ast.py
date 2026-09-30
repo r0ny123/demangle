@@ -51,7 +51,7 @@ class TestRendersWhatItSpells:
                 assert tree.spell() == expected
 
     def test_no_corpus_name_comes_back_as_a_bare_leaf(self):
-        """The defect this whole tree exists to fix: `walk()` seeing nothing below the root."""
+        """`walk()` reaches the nodes below the root; the tree is not a single leaf."""
         leaves = []
         for name in NAMES:
             try:

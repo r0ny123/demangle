@@ -11,9 +11,8 @@ represented -- with the compiler's own cases added whole, since those are what e
 the parts a shipped binary does not: SIL function types, function-signature
 specialisations, key-path thunks, autodiff, macro expansions.
 
-What each test below pins is a rule that had to be *measured*. The reference is 8,000
-lines of C++ whose behaviour is not all obvious from reading it, and each of these was
-wrong on a first pass.
+What each test below pins is a rule that has to be *measured*: the reference is 8,000
+lines of C++ whose behaviour is not all obvious from reading it.
 """
 
 import contextlib
@@ -61,12 +60,12 @@ class TestConformance:
                 assert spell(mangled) == expected
 
 
-class TestWhatSwiftAddedAfterThisWasWritten:
-    """The last eight vectors, each transcribed from the reference rather than guessed.
+class TestVectorsTranscribedFromTheReference:
+    """Eight vectors, each transcribed from the reference rather than guessed.
 
-    A grammar fitted to eight examples is how a demangler with no wrong spellings starts
-    having them, so every rule here comes from swiftlang/swift's own `Demangler.cpp` and
-    `NodePrinter.cpp`: what the mangling means, and what the reference prints for it.
+    A grammar fitted to a few examples starts having wrong spellings, so every rule
+    here comes from swiftlang/swift's own `Demangler.cpp` and `NodePrinter.cpp`: what
+    the mangling means, and what the reference prints for it.
     """
 
     @pytest.mark.parametrize(
@@ -145,15 +144,16 @@ class TestWhatSwiftAddedAfterThisWasWritten:
         expected = "use.x : use.OfP<lib.G<<<opaque return type of use.f() -> some>>.0>>"
         assert demangle.demangle(name, language="swift") == expected
 
-    def test_the_attribute_the_reference_no_longer_writes_is_still_read(self):
-        """`m` was dropped upstream, and the shipped runtime still holds symbols with it."""
+    def test_the_retired_m_attribute_is_read(self):
+        """`m` is not in the current grammar, and the shipped runtime still holds symbols
+        with it."""
         name = "$sSUss17FixedWidthIntegerRzrlEyxqd__cSzRd__lufCSu_SiTgm5"
         assert demangle.demangle(name, language="swift").startswith("generic specialization <Swift.UInt, Swift.Int>")
 
     def test_a_subset_parameters_thunk_with_nothing_to_thunk_is_refused(self):
         """The four trailing children are the kind and three index subsets; at least one
         ahead of them names the thing being thunked. Without it the walk back through the
-        children runs off the front and the "from" clause comes out empty -- a thunk for
+        children would run off the front and leave the "from" clause empty -- a thunk for
         nothing, which is a reading no name has. The reference guards the same count, and
         5.10.1, which did not, takes its printer down with `std::bad_alloc` on this."""
         assert demangle.demangle("$sTJSdSSSpSrSUSP", language="swift") == "$sTJSdSSSpSrSUSP"
@@ -187,8 +187,8 @@ class TestWhatSwiftAddedAfterThisWasWritten:
 
     def test_the_identity_thunk(self):
         """`TT` is the namespace for thunks that come from a thunk instruction, and `TTI`
-        is so far its only member. `T` is in none of the other tables, so without this it
-        fell through to a refusal."""
+        is so far its only member. `T` is in none of the other tables, so it needs a
+        table of its own."""
         assert spell("$s4main1fyyFTTI") == "identity thunk of main.f() -> ()"
         assert demangle.demangle("$s4main1fyyFTTX", language="swift") == "$s4main1fyyFTTX"
 
@@ -241,8 +241,8 @@ class TestWhatSwiftAddedAfterThisWasWritten:
         The reference reads the parameter *and* its type out of the marker's first child,
         which is the `Type` wrapping the parameter alone, so the type is a child that is
         not there and it prints `let A` with nothing after it. Reading past the end is
-        null there and an IndexError here; this refused the whole name until the two were
-        made to say the same thing."""
+        null there and an IndexError here, so the walk answers null as well rather than
+        refusing the whole name."""
         assert spell("$s4main1fyyxRVzlF") == "main.f<let A>() -> ()"
         assert spell("$s4main1fyySixRVzlF") == "main.f<let A>(Swift.Int) -> ()"
         # The pack marker beside it, which shares the walk.
@@ -250,16 +250,16 @@ class TestWhatSwiftAddedAfterThisWasWritten:
 
     def test_a_type_that_needs_no_brackets_under_a_suffix(self):
         """`isSimpleType`. An integer, a `Builtin.FixedArray` and a `Builtin.Borrow` each
-        spell themselves with nothing a `?` could bind to, so `$_Sg` is `0?`, not `(0)?`.
-        Missing them put brackets round every one under sugar."""
+        spell themselves with nothing a `?` could bind to, so `$_Sg` is `0?`, not `(0)?`;
+        every one is bracketed under sugar otherwise."""
         assert spell("$sSi$3_SgD").endswith("4?")
         assert spell("$s$n3_SSBVSgD") == "Builtin.FixedArray<-4, Swift.String>?"
         assert spell("$sSiBWSgD") == "Builtin.Borrow<Swift.Int>?"
 
     def test_the_task_executor_protocol(self):
         """`Sch`, added to `StandardTypesMangling.def` with Swift 6.0's task executors.
-        Nothing the 5.10 runtime shipped carried it; the 6.1.2 runtime's
-        `globalConcurrentExecutor` does, and the table here was one letter short."""
+        Nothing the 5.10 runtime shipped carries it; the 6.1.2 runtime's
+        `globalConcurrentExecutor` does, so the table needs the letter."""
         assert spell("$sSchD") == "Swift.TaskExecutor"
         assert (
             demangle.demangle("$ss24globalConcurrentExecutorSch_pvg", language="swift")
@@ -269,9 +269,9 @@ class TestWhatSwiftAddedAfterThisWasWritten:
     def test_a_bare_underscore_names_the_twenty_seventh_substitution(self):
         """`A_` is `demangleMultiSubstitutions` with its repeat count still `-1`: index
         `-1 + 27`, the first past the single letters, written with no digits at all.
-        Requiring the digits refused every name with twenty-seven substitutions in play,
-        which a closure three deep in a function with eight labelled parameters
-        reaches. Twenty-seven struct parameters get there too; the expected column is
+        The digits are therefore optional: requiring them would refuse every name with
+        twenty-seven substitutions in play, which a closure three deep in a function with
+        eight labelled parameters reaches. Twenty-seven struct parameters get there too; the expected column is
         the reference's."""
         prefix = "$s4main1fyyAA1AV_" + "".join(f"AA1{letter}V" for letter in "BCDEFGHIJKLMNOPQRSTUVWXYZa")
         listed = ", ".join(f"main.{letter}" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -359,8 +359,8 @@ class TestTheSwiftThreeMangling:
 
     def test_a_specialisation_payload_is_a_swift_3_name_too(self):
         """The payload of a function-signature specialisation is itself a mangled name.
-        Reading it with the current demangler leaves it as raw text, which is the one
-        thing that stopped this corpus coming out exactly."""
+        It is read with the current demangler; left as raw text, it is the one thing that
+        would keep this corpus from matching exactly."""
         assert spell("_TTSf1cl35_TFF7specgen6callerFSiT_U_FTSiSi_T_Si___TF7specgen12take_closureFFTSiSi_T_T_") == (
             "function signature specialization <Arg[0] = [Closure Propagated : closure #1 "
             "(Swift.Int, Swift.Int) -> () in specgen.caller(Swift.Int) -> (), Argument Types : "
@@ -374,7 +374,7 @@ class TestTheSwiftThreeMangling:
 
 
 class TestGrammarFacts:
-    """Rules the reference states only by doing; each cost a wrong answer to find."""
+    """Rules the reference states only by doing."""
 
     def test_the_swift_4_2_prefixes_are_not_old_function_type_mangling(self):
         """`isOldFunctionTypeMangling` is `_T`, not "any prefix that looks old".
@@ -416,9 +416,9 @@ class TestGrammarFacts:
         )
 
     def test_the_standard_type_table_is_the_compilers(self):
-        """A table written from memory had `SB` as `UnsafeRawBufferPointer` (it is
-        `BinaryFloatingPoint`) and `SJ` as `AnyKeyPath` (it is `Character`). Both
-        produced plausible, wrong output."""
+        """`SB` is `BinaryFloatingPoint`, not `UnsafeRawBufferPointer`, and `SJ` is
+        `Character`, not `AnyKeyPath`; a table written from memory gives plausible, wrong
+        output for both."""
         assert spell("$sSBD") == "Swift.BinaryFloatingPoint"
         assert spell("$sSJD") == "Swift.Character"
         assert spell("$sSWD") == "Swift.UnsafeRawBufferPointer"
@@ -533,21 +533,20 @@ class TestRefusesRatherThanGuesses:
         """The reference answers `Swift.String` for `$sS`, and it is a defect in the
         reference: `demangleStandardSubstitution` calls `nextChar`, which returns 0 at
         the end without moving, and then `pushBack`, which moves back regardless -- so
-        the `S` that opened the substitution is read a second time, as the type. Found by
-        `tools/mutate.py --refusals`; refused here, as `$sSS` is the string."""
+        the `S` that opened the substitution is read a second time, as the type. This is
+        refused, as `$sSS` is the string."""
         assert demangle.demangle(mangled, language="swift") == mangled
         assert demangle.demangle("$sSS", language="swift") == "Swift.String"
 
 
 class TestEveryContextNodeIsAContext:
-    """`CONTEXT_KINDS` is the reference's `CONTEXT_NODE` list, and was six short.
+    """`CONTEXT_KINDS` is the reference's `CONTEXT_NODE` list.
 
-    The four borrow and mutate accessors, the isolated deallocator and the
-    property-wrapped field init accessor are kinds this demangler produced but did not
-    count as contexts, so a descriptor or a thunk over one of them popped nothing and the
-    name was refused: `$s4main1xSivy` read as `main.x.yielding_borrow` while `...vyTq`,
-    its method descriptor, came back unread. Found by putting the names this library
-    refuses to the reference. Every expectation below is `swift-demangle`'s own.
+    It includes the four borrow and mutate accessors, the isolated deallocator and the
+    property-wrapped field init accessor: a descriptor or a thunk over one of them pops
+    its context, where omitting them would pop nothing and refuse the name.
+    `$s4main1xSivy` is `main.x.yielding_borrow` and `...vyTq`, its method descriptor,
+    reads too. Every expectation below is `swift-demangle`'s own.
     """
 
     def test_the_set_is_the_references_fifty_two(self):
@@ -591,9 +590,8 @@ class TestEveryContextNodeIsAContext:
     def test_the_init_accessor_declares_no_generic_parameters(self):
         """The reference's `nodeConsumesGenericArgs` lists it beside the backing
         initialiser and the init-from-projected-value: a bound generic declared inside
-        one hands its outer argument list on to the enclosing type. It was missing from
-        this library's copy of the list, so the accessor took the list itself and, being
-        nothing a bound generic can be made of, refused the name.
+        one hands its outer argument list on to the enclosing type. The accessor must
+        not take the list itself, being nothing a bound generic can be made of.
         """
         for letter in "FWP":
             mangled = f"$s4main1SV1xSivpf{letter}5InnerL_VySS_SiGD"
@@ -605,16 +603,15 @@ class TestEveryContextNodeIsAContext:
 class TestNumbersAsTheReferenceReadsThem:
     """A run of digits is read into the reference's own number type, and what does not
     fit it is what the reference does with it -- not `int()`'s 4,300-digit cap, which
-    raised a `ValueError` out of `demangle_strict`, nor `str()`'s, which raised one out
-    of the printer.
+    would raise a `ValueError` out of `demangle_strict`, nor `str()`'s, which would
+    raise one out of the printer.
     """
 
     def test_a_number_the_new_mangling_cannot_hold_refuses_the_name(self):
         """`demangleNatural` answers "no number" the moment the next digit would overflow
         an `int`, leaving that digit unread, and no production takes a digit. So eleven
-        ones is refused, and so is a run past `int()`'s own cap -- where the cap used
-        to read `$sS<4301 ones>i` as `Swift.Int`, the digits taken for an absent repeat
-        count.
+        ones is refused, and so is a run past `int()`'s own cap: `$sS<4301 ones>i` is
+        not `Swift.Int` with the digits taken for an absent repeat count.
         """
         from demangle.core.errors import ParseError
 
@@ -640,16 +637,16 @@ class TestNumbersAsTheReferenceReadsThem:
 class TestTheCursorNeverGoesBackwardsOverACharacterItDidNotRead:
     """`push_back` has to be the exact inverse of `next_char`, including at the end.
 
-    It was not. `next_char` returned `""` past the end *without* moving, so a caller
-    that reached the end, got nothing, and put it back moved the cursor onto the last
-    character of the name -- and read it again. In a loop that is a loop that never
-    advances: `demangle_func_spec_param` reads a run of propagated constants and puts
-    back the letter that ends the run, so a name ending in `p` grew one specialisation
-    parameter per iteration until the process ran out of memory.
+    `next_char` returns `""` past the end *without* moving, so `push_back` must not move
+    either: a caller that reached the end, got nothing, and put it back would land on
+    the last character of the name and read it again. In a loop that never advances:
+    `demangle_func_spec_param` reads a run of propagated constants and puts back the
+    letter that ends the run, so a name ending in `p` would grow one specialisation
+    parameter per iteration until the process runs out of memory.
 
-    Found by mutating the checked-in corpora. It is the failure mode this package is
-    least able to absorb -- `demangle()` is documented never to raise for a string, and
-    what it did instead was take the process with it.
+    That is the failure mode this package is least able to absorb -- `demangle()` is
+    documented never to raise for a string, and a runaway loop takes the process with
+    it.
     """
 
     def test_reading_past_the_end_and_putting_it_back_stays_at_the_end(self):
@@ -665,7 +662,7 @@ class TestTheCursorNeverGoesBackwardsOverACharacterItDidNotRead:
         assert reader.next_char() == "b"
 
     def test_a_specialisation_that_ends_where_a_constant_run_begins(self):
-        """The name that found it, and the shapes either side of it."""
+        """A name ending in a run of propagated constants, and the shapes either side."""
         for mangled in ("_T03foo4_123ABTf3psbp", "_T03foo4_123ABTf3psb", "_T03foo4_123ABTf3psbpi"):
             assert demangle.demangle(mangled) == mangled
 
@@ -731,8 +728,8 @@ class TestTheMachOUnderscore:
     """A Mach-O symbol table carries one more leading underscore than the compiler
     wrote. `swift-demangle` strips exactly one from a name that opens with two before
     reading it, so a Swift 4 `_T0` symbol comes off a macOS binary as `__T0...` and
-    still reads; this read only the forms whose extra underscore the prefix table
-    happened to list. Every expected value below is `swift-demangle`'s.
+    still reads, whichever prefix follows the extra underscore. Every expected value
+    below is `swift-demangle`'s.
     """
 
     @pytest.mark.parametrize(

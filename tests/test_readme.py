@@ -3,9 +3,8 @@
 A figure a human has to remember to update drifts from the pinned conformance numbers.
 These tests make that drift a test failure.
 
-The conformance tables moved to `CONFORMANCE.md` when the README was cut down to what a
-reader meets first, so the count checks read both files and the example checks read the
-README, which is where the examples are.
+The conformance tables live in `CONFORMANCE.md` and the examples in the README, so the
+count checks read both files and the example checks read the README.
 """
 
 import pathlib
@@ -67,7 +66,7 @@ def test_every_pinned_count_appears_in_the_prose(prose, exact, total):
 
 
 def test_the_prose_states_no_stale_conformance_numbers(prose):
-    """Any `N / M` in the table must be a pin, not a number left over from before."""
+    """Any `N / M` in the table must be a pin, not a stale number."""
     pinned = {
         (pins.LIBSTDCXX_EXACT, pins.LIBSTDCXX_TOTAL),
         (pins.RUST_EXACT, pins.RUST_TOTAL),

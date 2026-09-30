@@ -221,10 +221,9 @@ class TestOutOfScope:
 class TestPacks:
     """A pack expansion reads its pattern once per member, and the scope does not change.
 
-    That is the one place a memo keyed on the scope is wrong, and it is not theoretical:
-    it made `_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_` -- from libcxxabi's own corpus
-    -- hand every member of `Dp S4_` the first member's answer. The text and the tree
-    disagreed, which is what found it.
+    That is the one place a memo keyed on the scope is wrong: it would hand every member
+    of `Dp S4_` in `_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_` -- from libcxxabi's own
+    corpus -- the first member's answer, and the text and the tree would disagree.
     """
 
     def test_an_expansion_over_a_deferred_entry_ranges_over_its_members(self):
@@ -237,7 +236,7 @@ class TestPacks:
 
     @pytest.mark.parametrize("style", ["llvm", "gnu"])
     def test_the_tree_agrees_with_the_text(self, style):
-        """The disagreement the memo caused, as its own assertion."""
+        """The text and the tree spell the same thing."""
         name = "_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_"
         assert demangle.parse(name, style=style).spell(style=style) == demangle.demangle(name, style=style)
 
@@ -248,11 +247,11 @@ class TestPacks:
         Both references print the *first* member -- libcxxabi's `ParameterPack::printLeft`
         prints `Data[OB.CurrentPackIndex]`, and `initializePackExpansion` leaves that
         index at 0 -- so they answer `void f<float, double>(float)`. This prints the
-        members. Making element 0 the default is two lines and breaks eleven of
-        libcxxabi's own vectors: `sizeof...`, the four fold expressions and `sp` all
-        reach a pack through the same path and each wants every member of it. No
-        compiler writes `T_` for a pack -- only `Dp T_` -- so the shape is a mutation
-        finding, and following the references here would cost more than it is worth.
+        members, because making element 0 the default would break eleven of libcxxabi's
+        own vectors: `sizeof...`, the four fold expressions and `sp` all reach a pack
+        through the same path and each wants every member of it. No compiler writes
+        `T_` for a pack -- only `Dp T_` -- so following the references here would cost
+        more than it is worth.
         """
         assert demangle.demangle_strict("_Z1fIJfdEEvT_") == "void f<float, double>(float, double)"
 
@@ -265,7 +264,6 @@ class TestAReferenceOverAPackReturnCollapsesOnEveryMember:
     c++filt refuses. A declarator over a pack applies to every member, and `R`
     over `T&` is `T&`. No compiler writes a function that returns a pack. The
     corpus neighbour with `v` where `R` is still agrees with both references.
-    `tools/mutate.py --seed 19`.
     """
 
     @pytest.mark.parametrize(

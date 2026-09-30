@@ -61,11 +61,11 @@ class TestAgainstRustcDemanglesOwnVectors:
 class TestNonAsciiIsRefused:
     """The reference reads a symbol as *bytes* and refuses it if any has bit 7 set.
 
-    Written as a per-character `ord(c) & 0x80` test that is not the same rule: U+0100 is
-    one character whose value has bit 7 clear, so it passed and its identifier was
-    printed where the reference echoes the symbol back unread. Neither mangling ever
-    carries a non-ASCII character literally -- v0 spells one in punycode and the legacy
-    scheme writes `$u0100$` -- so anything that does is not a Rust symbol.
+    A per-character `ord(c) & 0x80` test is not the same rule: U+0100 is one character
+    whose value has bit 7 clear, but the reference sees its bytes and echoes the symbol
+    back unread. Neither mangling ever carries a non-ASCII character literally -- v0
+    spells one in punycode and the legacy scheme writes `$u0100$` -- so anything that
+    does is not a Rust symbol.
     """
 
     def test_v0_refuses_a_literal_non_ascii_identifier(self):
@@ -87,17 +87,14 @@ class TestAnIdentifierLengthHasToBeADigit:
     """`<identifier>` opens with a decimal length, and the reference requires one.
 
     rustc-demangle reads it as `self.digit_10()?`, so anything that is not a digit ends
-    the parse. This read a non-digit as a length of *zero* and left the character where
-    it was -- and the `_` that separates a length from its text then swallowed it, so
-    nothing was left over for the residual check to refuse.
+    the parse. A non-digit is not a length of *zero*: reading it as one would leave the
+    character in place for the `_` that separates a length from its text to swallow,
+    and nothing would be left over for the residual check to refuse.
 
-    The result was a name with an empty component in it, spelled as though the component
-    were there and blank. `_RNvC_1f` is a function `f` in a crate with no name, which
-    came back as `::f`; `_RNvC1CC_` has an instantiating crate that is not a path at
-    all, and came back as `C`. `llvm-cxxfilt` 18.1 hands back every one of these.
-
-    Found by enumerating every `_R` name up to eight characters over a grammar-shaped
-    alphabet and asking `llvm-cxxfilt` about each one this reads.
+    The result would be a name with an empty component, spelled as though the component
+    were there and blank. `_RNvC_1f` is a function `f` in a crate with no name, and
+    `_RNvC1CC_` has an instantiating crate that is not a path at all; both are refused.
+    `llvm-cxxfilt` 18.1 hands back every name in `REFUSED` unchanged.
     """
 
     REFUSED = ("_RC1CC_", "_RNvC_1f", "_RNvC1C_", "_RNvC1CC_", "_RNvNtC_1a1b", "_RCa", "_RC_")
@@ -121,19 +118,18 @@ class TestAnIdentifierLengthHasToBeADigit:
         assert demangle.demangle_strict(mangled, language="rust") == expected
 
 
-class TestWhatMutatingRealSymbolsFound:
-    """Two the mutation fuzzer reached, both measured against `rustc-demangle` 0.1.28."""
+class TestBoundaryRulesOfTheReference:
+    """Two rules, both measured against `rustc-demangle` 0.1.28."""
 
     def test_a_bound_lifetime_runs_to_z_before_it_starts_counting(self):
         """`'a` through `'z`, then `'_26` and up.
 
         `print_lifetime_from_index` takes `depth = bound_lifetime_depth - lt` -- a
         `checked_sub`, so an index past the depth is the invalid name -- and writes
-        `'a' + depth` while `depth < 26`. This carried a `depth` one larger and undid it
-        at the letter, which is the same answer for the first twenty-five and not for the
-        rest: the twenty-sixth came out `'_26` where the reference writes `'z`, and every
-        one after it was numbered one too high. It takes a `for<>` binding twenty-six
-        lifetimes to reach.
+        `'a' + depth` while `depth < 26`. The twenty-sixth lifetime is therefore `'z`
+        and the numbering resumes after it, so an implementation whose `depth` is one
+        larger and undone at the letter agrees for the first twenty-five and differs
+        for the rest. It takes a `for<>` binding twenty-six lifetimes to reach.
         """
         # `G<n>_` binds n+1 lifetimes; `Z_` is 61, so this binds sixty-three of them.
         spelled = demangle.demangle_strict("_RMC0FGZ_Eu", language="rust")
@@ -166,8 +162,7 @@ class TestABaseSixtyTwoNumberIsSixtyFourBitsWide:
     Python has no ceiling of its own to hit, so this one is imposed on purpose: the
     scheme is a port of rustc-demangle, and refusing where it refuses is the contract.
     rustc writes a disambiguator that is a truncated 64-bit hash, so nothing a compiler
-    emits comes near the edge -- and this was found by mutating symbols that a compiler
-    did emit, which is how a twelfth digit gets into one.
+    emits comes near the edge; a mutated symbol can reach it by gaining a twelfth digit.
 
     The boundary is the reference's exactly, checked against
     `tools/rustc-demangle-reference/`: the digits of a crate disambiguator spell `x`,
@@ -309,11 +304,11 @@ class TestWhatOpensAVZeroName:
     """`_R` is not on its own enough to claim a name.
 
     `<symbol-name> ::= _R <path> [<instantiating-crate>]`, and every `<path>` production
-    opens with one of seven letters. Without that second character the plugin claimed
+    opens with one of seven letters. Without that second character the plugin would claim
     CodeWarrior's `__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>`, which is in this
-    package's own corpus: the parse failed and `demangle` fell through to the scheme that
-    owns it, so the spelling was right and `detect` -- a public answer of its own, and the
-    only one a caller labelling a symbol table gets -- named the wrong scheme.
+    package's own corpus: `demangle` would still fall through to the scheme that owns it,
+    but `detect` -- a public answer of its own, and the only one a caller labelling a
+    symbol table gets -- would name the wrong scheme.
     """
 
     @pytest.mark.parametrize(
@@ -334,7 +329,7 @@ class TestWhatOpensAVZeroName:
 
 
 class TestSevenEdgesSettledAgainstTheReference:
-    """Each of these disagreed with rustc-demangle by one rule, read line by line.
+    """Each of these pins one rule of rustc-demangle, read line by line.
 
     Every expectation is the reference's own answer, from
     `tools/rustc-demangle-reference`. Asked with `language="rust"` throughout: several
@@ -375,8 +370,8 @@ class TestSevenEdgesSettledAgainstTheReference:
         assert demangle.demangle("_ZN4test1hE", language="rust", style=TestKeepingTheHash.KEEP) == "test::h"
 
     def test_an_uppercase_hash_is_claimed_as_the_parser_reads_it(self):
-        """`detect` tested lowercase hex where the parser took either case, so the one
-        route read the name as Rust and the other handed it to Itanium."""
+        """`detect` and the parser accept either case of hex, so both routes read the
+        name as Rust."""
         assert demangle.detect("_ZN4test17h0123456789ABCDEFE") == "rust"
         assert demangle.demangle("_ZN4test17h0123456789ABCDEFE") == "test"
 
@@ -450,8 +445,8 @@ def _on_a_deep_stack(work):
 class TestV0NestingFollowsMaxDepth:
     """v0 reads as deep as `max_depth` says, as Itanium does.
 
-    It held a private ceiling of 256 whatever the caller passed, so `RELAXED_LIMITS`
-    stopped where `DEFAULT_LIMITS` did and the refusal was a parse error, not the bound.
+    It takes its ceiling from the caller's limits, so `RELAXED_LIMITS` reaches deeper
+    than `DEFAULT_LIMITS` and the refusal is the bound, not a parse error.
     rustc-demangle's own ceiling is a fixed 500.
     """
 

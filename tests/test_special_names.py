@@ -83,8 +83,7 @@ def test_the_two_styles_differ_exactly_where_the_references_do():
 class TestATemplateParameterInASpecialNameIsRefused:
     """Both references refuse a special name whose operand names a template parameter,
     even one bound by that operand's own argument list. `_ZTVN1AIcT_EE` would be
-    `vtable for A<char, char>`; a compiler writes `_ZTVN1AIccEE`. Found by
-    `tools/mutate.py --seed 12`.
+    `vtable for A<char, char>`; a compiler writes `_ZTVN1AIccEE`.
     """
 
     @pytest.mark.parametrize(
@@ -155,8 +154,8 @@ def test_a_special_name_over_an_encoding_is_still_bounded():
 
 class TestAModuleInitializerNamesItsModule:
     """`GI <module-name>`: the name is not optional. `parseModuleNameOpt` reads none
-    and `llvm-cxxfilt` refuses `_ZGI`, where this spelled `initializer for module `
-    with nothing after it. `tools/mutate.py --seed 4`."""
+    and `llvm-cxxfilt` refuses `_ZGI`, so `initializer for module ` with nothing after
+    it is never spelled."""
 
     def test_the_spelling(self):
         assert demangle.demangle("_ZGIW1a") == "initializer for module a"
@@ -169,9 +168,8 @@ class TestAModuleInitializerNamesItsModule:
 class TestAConstructorInAModuleRepeatsTheBareName:
     """`CtorDtorName` prints the scope's `getBaseName()`, and a `ModuleEntity`'s base
     name is the name inside it: `_ZNW4llvm6ModuleC1Ev` is `Module@llvm::Module()` to
-    both references, where this wrote `Module@llvm::Module@llvm()`. The destructor the
-    same, and the tags a constructor carries of its own stay. `tools/mutate.py
-    --count 200000`."""
+    both references, not `Module@llvm::Module@llvm()`. The destructor is the same, and
+    the tags a constructor carries of its own stay."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -195,9 +193,9 @@ class TestAConstructorInAModuleRepeatsTheBareName:
     def test_a_module_on_the_structor_itself_is_refused(self, mangled):
         """The grammar puts `[<module-name>]` on an operator, a source name or an
         unnamed type, not on `<ctor-dtor-name>`: a structor's module is the one on the
-        class's own name. `parseUnqualifiedName` refuses a `C` or `D` after a module;
-        this read `std::std()` with the module dropped, and c++filt makes the module the
-        class, `std::rGPRClass@rGPRClass()`. `tools/mutate.py --seed 20`."""
+        class's own name. `parseUnqualifiedName` refuses a `C` or `D` after a module,
+        and c++filt makes the module the class, `std::rGPRClass@rGPRClass()`; reading
+        `std::std()` with the module dropped agrees with neither."""
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled)
         assert demangle.demangle(mangled) == mangled
@@ -207,10 +205,9 @@ class TestAClosurePrefixIsSpelledWhereItStands:
     """The prefix before a closure's or a data member's `M` is a <member source-name>
     or a <template-prefix> <template-args>, spelled there, never a back-reference or
     `St`: `parseNestedName` reads either and goes round again without looking for the
-    `M`, so `llvm-cxxfilt` refuses `_ZNStM1xE`. `c++filt` reads it as `std::x`, and so
-    did this -- and read a mutant of libstdc++'s `codecvt` destructor as
-    `std::operator~::operator*::operator unsigned short<...>::~()` where both references
-    refuse. `tools/mutate.py --seed 2 --count 200000`."""
+    `M`, so `llvm-cxxfilt` refuses `_ZNStM1xE`. `c++filt` reads it as `std::x`; a mutant
+    of libstdc++'s `codecvt` destructor is refused by both references, not read as
+    `std::operator~::operator*::operator unsigned short<...>::~()`."""
 
     @pytest.mark.parametrize(
         "mangled", ["_ZNStM1xE", "_ZN1AS_M1xE", "_ZNStMcodecvtIDiDu11__mbstate_tED2Ev@@GLIBCXX_3.4.26"]
@@ -226,9 +223,9 @@ class TestAClosurePrefixIsSpelledWhereItStands:
 
 
 class TestAStructuredBindingNamesSomething:
-    """`DC <source-name>+ E`: one name at least. Both references refuse `DCE`, and
-    spelling `[]` from the empty list read `_ZN12_GLOBAL__N_41ADCED0Ev` as the
-    destructor of a binding of nothing. `tools/mutate.py --seed 8`."""
+    """`DC <source-name>+ E`: one name at least. Both references refuse `DCE`, and an
+    empty list must not spell `[]`: `_ZN12_GLOBAL__N_41ADCED0Ev` is not the destructor
+    of a binding of nothing."""
 
     def test_refused(self):
         for mangled in ("_ZDCE", "_ZN12_GLOBAL__N_41ADCED0Ev"):
@@ -242,9 +239,8 @@ class TestAStructuredBindingNamesSomething:
 class TestAnObjectNameIsNotAnEncoding:
     """`GV`, `TH`, `TW` and `GR` take an <object name>: data, with no function type after
     a local entity. `parseSpecialName` reads the name and returns, and both references
-    refuse what is left over; read through the same path as a function's own local
-    name, `_ZGVZ1fvE1gv` came back `guard variable for f()::g()`, a guard for a function.
-    `tools/mutate.py --seed 9` and `--seed 10`."""
+    refuse what is left over. `_ZGVZ1fvE1gv` must not be read, as a function's own
+    local name would be, as `guard variable for f()::g()` -- a guard for a function."""
 
     @pytest.mark.parametrize(
         "mangled",
@@ -271,12 +267,12 @@ class TestAnObjectNameIsNotAnEncoding:
 class TestAnObjectNamesEnclosingFunctionIsAWholeEncoding:
     """`_ZGVZZN1A1fEvENKUlvE_clEvE1y`: a guard variable for a static inside a lambda's
     call operator, itself inside `A::f()`. `_in_special_name` says the special name's
-    object takes no signature, and it was left set while the object's *enclosing
-    function* was read -- a whole encoding, and here one holding a local name of its
-    own. That inner local name then took no signature either, and the encoding around
-    it read the signature back with no qualifiers to put on it: the `const` of
-    `operator()` went missing. Every archive on an Ubuntu 24.04 box carries the
-    shape; `llvm-cxxfilt` 18 and `c++filt` 2.42 agree on every spelling here."""
+    object takes no signature, and it must be clear while the object's *enclosing
+    function* is read -- a whole encoding, and here one holding a local name of its
+    own. That inner local name takes a signature, and the encoding around it reads the
+    signature back with the qualifiers to put on it: the `const` of `operator()` stays.
+    Every archive on an Ubuntu 24.04 box carries the shape; `llvm-cxxfilt` 18 and
+    `c++filt` 2.42 agree on every spelling here."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),

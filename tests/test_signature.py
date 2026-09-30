@@ -333,9 +333,9 @@ class TestTheSchemeIsResolvedBeforeItIsUsed:
     """A caller writes whatever name they like; the fields must not depend on which.
 
     Every alias in `languages()` is documented, so `language="objective-c"` has to read
-    the same as `language="objc"`. Keyed by the alias, `_SEPARATORS` found nothing, the
-    scheme-specific extraction never ran, and the whole spelling came back as the base
-    name with `is_function` False.
+    the same as `language="objc"`. `_SEPARATORS` is keyed by the canonical name; an
+    alias that missed it would skip the scheme-specific extraction and return the whole
+    spelling as the base name with `is_function` False.
     """
 
     @pytest.mark.parametrize(
@@ -358,7 +358,7 @@ class TestTheSchemeIsResolvedBeforeItIsUsed:
 class TestEverySchemeHasASeparator:
     """A scheme whose spelling joins components with something other than `::`.
 
-    `jni` was absent and fell back to `::`, so `com.example.Foo.bar` came back whole as
+    `jni` joins with `.`: a `::` fallback would return `com.example.Foo.bar` whole as
     the base name with an empty namespace -- the structured fields saying nothing for a
     scheme whose whole shape is a path.
     """

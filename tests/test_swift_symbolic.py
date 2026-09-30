@@ -107,8 +107,8 @@ class TestFindingWhereANameEnds:
         assert end_of_name(b"ab\x01\x17") == 4
 
     def test_a_start_outside_the_blob_is_refused_as_read_refuses_it(self):
-        """A negative start indexed from the end, or raised `IndexError`; the end itself
-        is a fine place to start and finds nothing."""
+        """A start before the blob or past its end is a `ValueError`, as in `read`; the
+        end itself is a fine place to start and finds nothing."""
         for start in (-1, -5, 4):
             with pytest.raises(ValueError):
                 end_of_name(b"abc", start=start)

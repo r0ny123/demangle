@@ -1,8 +1,8 @@
 """Objective-C symbol names.
 
 The corpus in `test_conformance.py` pins the spellings. What is pinned here is each rule
-that had to be *found* -- in clang's own sources, or by compiling Objective-C and reading
-what came out -- rather than assumed, plus the two places the mangling loses information.
+taken from clang's own sources or from compiled Objective-C, plus the two places the
+mangling loses information.
 """
 
 import pathlib
@@ -213,8 +213,8 @@ class TestRegisteredAsALanguage:
         assert demangle.demangle("_i_NSString__length", language="objective-c") == "-[NSString length]"
 
     def test_the_block_labels_are_claimed_unasked(self):
-        """`parse` read these; the detector's screen never mentioned them, so
-        auto-detection handed back unchanged what `language="objc"` read."""
+        """`parse` reads these and the detector's screen admits them, so auto-detection
+        answers what `language="objc"` answers."""
         assert demangle.demangle("__block_literal_global") == "global block literal"
         assert demangle.demangle("__block_descriptor_32_e5_v8?0l8") == "block descriptor"
 

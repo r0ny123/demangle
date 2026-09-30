@@ -170,11 +170,11 @@ class TestStructuralConsts(unittest.TestCase):
 
 
 class TestSkipReferenceWithLifetime(unittest.TestCase):
-    """Regression: the skip pass must consume a reference's referent, lifetime or not.
+    """The skip pass must consume a reference's referent, lifetime or not.
 
     `<const>` is not the only thing the skipper walks. Impl paths are reached through it,
-    so a `R`/`Q` type that stopped after its optional lifetime desynchronised everything
-    after it and turned a valid name into a parse failure. Spellings are `rustfilt`'s.
+    so a `R`/`Q` type must consume its referent after the optional lifetime, or everything
+    after it is misread and a valid name fails to parse. Spellings are `rustfilt`'s.
     """
 
     def test_reference_self_types_survive_the_skip_pass(self):

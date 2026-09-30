@@ -164,8 +164,8 @@ class TestTheResultIsWritable:
     `demangle()` is documented never to raise, and a caller reads that as a promise it
     can print, log, or serialise the answer. A `str` holding a lone surrogate breaks that
     promise one step later: `UnicodeEncodeError` on `.encode()`, on `json.dump`, on
-    writing to a file. The Go scheme could produce one -- its escapes decode to bytes,
-    and `%89` is not text -- so this is the invariant rather than a note in that module.
+    writing to a file. The Go scheme can reach one -- its escapes decode to bytes, and
+    `%89` is not text -- so this is held as an invariant here rather than in that module.
     """
 
     @staticmethod
@@ -280,18 +280,17 @@ class TestDeterminism:
 class TestTheCursorNeverPassesTheEndOfInput:
     """`eof` is `pos >= length`, so an overshoot *satisfies* the all-input-consumed check.
 
-    That is what made the block-invoke window bug silent rather than loud. The window
-    shortens `reader.length` so a nested encoding stops before the literal that bounds
-    it; `expect`, `eat`, `startswith`, `peek2` and `remaining` indexed the string instead
-    of asking `length`, so a truncated encoding consumed a character past the end and
-    then passed `if not reader.eof` because it had gone *further* than the end rather
-    than not far enough.
+    An overshoot is therefore silent rather than loud. The block-invoke window shortens
+    `reader.length` so a nested encoding stops before the literal that bounds it;
+    `expect`, `eat`, `startswith`, `peek2` and `remaining` must ask `length`, not index
+    the string, or a truncated encoding consumes a character past the end and passes
+    `if not reader.eof` because it went *further* than the end rather than not far
+    enough.
 
-    The invariant is stronger than that one bug and is checked as such: whatever the
-    input, `pos` never exceeds `length`. It is asserted by watching every write to `pos`,
-    which is the only way an overshoot can happen, so a new production cannot reintroduce
-    one anywhere. It holds over the corpus and the same names truncated inside a
-    window.
+    Whatever the input, `pos` never exceeds `length`. It is asserted by watching every
+    write to `pos`, which is the only way an overshoot can happen, so a new production
+    cannot introduce one anywhere. It holds over the corpus and the same names truncated
+    inside a window.
     """
 
     @staticmethod
@@ -387,7 +386,7 @@ class TestResourceBounds:
         """Every `<prefix>` is a substitution candidate, so N components record N
         entries -- and each entry is the whole prefix, so their sizes sum to O(N^2).
 
-        No single entry exceeds `max_output`, which is why that bound never fired.
+        No single entry exceeds `max_output`, so that bound does not catch it.
         `_ZN` followed by thousands of components of `1a` is refused, and the ceiling
         on what the table records does not move as the input grows.
 
@@ -410,10 +409,9 @@ class TestResourceBounds:
 
         Sampled rather than exhaustive -- one name in every 150 across all the
         conformance corpora, which is a few hundred names and some tens of thousands of
-        prefixes. A truncated name is the shape that found the one non-advancing loop
-        this package has had (`Demangler.next_char`, see `tests/test_swift.py`): it ends
-        in the middle of a production, which is exactly where a parser is most likely to
-        put a character back that it never took.
+        prefixes. A truncated name ends in the middle of a production, which is exactly
+        where a parser is most likely to put a character back that it never took (see
+        `Demangler.next_char` and `tests/test_swift.py`).
         """
         sampled = corpus_sample(150)
         assert len(sampled) > 200, "corpora did not load; this test would prove nothing"
@@ -469,8 +467,7 @@ class TestResourceBounds:
 
         Asserted on `rendered` directly rather than by building a tree deep enough to
         overflow, because *how* deep that is is a property of the interpreter and the
-        platform rather than of this package -- which is exactly what the first version
-        of this test got wrong, passing on CPython 3.11 and failing on everything else.
+        platform rather than of this package.
         """
 
         def overflows():

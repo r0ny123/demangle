@@ -297,7 +297,7 @@ class TestForeignSymbolsAreDeclined:
     OCaml's is the collision that matters: `caml<Module>__<name>_<id>` splits at the
     last `__` into a name, an all-lower-case module and a numeric id, and *re-mangles to
     exactly the symbol it came from* -- so the round-trip property this scheme relies on
-    says yes. `camlStdlib__Int__compare_296` read as `compare.camlStdlib__Int`.
+    cannot rule it out. `camlStdlib__Int__compare_296` is the pinned case.
 
     Every symbol the OCaml compiler emits carries the prefix and no Nim symbol does, so
     declining it costs nothing a caller wanted.
