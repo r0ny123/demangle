@@ -17,11 +17,11 @@ profiles and only the first is what a naive benchmark reports:
 `--calls` is a second instrument for the same corpora, and it exists because the clock
 here cannot resolve everything worth doing. This machine's spread between runs of the
 same code is 15-25% (see `PIVOT` below), so a change that removes a tenth of the work is
-invisible to `--check`. The number of Python-level
-calls a corpus costs is exactly reproducible on a given interpreter, and fewer calls for
-the same output is strictly less work, so it reports what the clock cannot. It is a
-report and not a gate: the count moves with the interpreter version as well as with this
-package, and a gate that fails on someone else's Python would be worse than none.
+invisible to `--check`. The number of Python-level calls a corpus costs is exactly
+reproducible on a given interpreter, and fewer calls for the same output is strictly
+less work, so it reports what the clock cannot. It is a report and not a gate: the count
+moves with the interpreter version as well as with this package, and a gate that fails
+on someone else's Python would be worse than none.
 """
 
 import argparse
@@ -45,7 +45,8 @@ CONFORMANCE = ROOT / "tests" / "conformance"
 TOLERANCE = 1.25
 
 #: The phase every other phase is measured against. The calibration loop's own spread
-#: (28% over six idle runs) made calibration-normalised figures noisier than raw seconds:
+#: (28% over six idle runs) makes calibration-normalised figures noisier than raw
+#: seconds:
 #:
 #:     phase        /calibration   /warm    raw seconds
 #:     cold             26.6%       7.1%       23.1%
@@ -96,11 +97,11 @@ def calibrate():
     tolerance is not tightened further. A real regression reproduces; noise mostly does
     not.
 
-    One further caveat: `negative` runs briefly enough that
-    best-of-N finds a clean scheduling slot even on a loaded machine, so it
-    under-inflates and reads as much *faster* under load. That direction never fails the
-    gate, and a real regression would show in `cold` and `structured` as well, so it is a
-    loss of sensitivity rather than a false alarm.
+    One further caveat: `negative` runs briefly enough that best-of-N finds a clean
+    scheduling slot even on a loaded machine, so it under-inflates and reads as much
+    *faster* under load. That direction never fails the gate, and a real regression
+    would show in `cold` and `structured` as well, so it is a loss of sensitivity rather
+    than a false alarm.
     """
 
     def workload():

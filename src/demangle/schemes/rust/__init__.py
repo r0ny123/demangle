@@ -47,10 +47,10 @@ def detect(name):
 
     v0 needs its prefix *and* the letter that opens a `<path>`, which is one of seven.
     `_R` on its own is not enough: CodeWarrior writes `__RTTI__40TObjOwnerDerivedFromIObj
-    <12CStringTable>` and this claimed it, so `detect` named the wrong scheme for a
-    symbol in this package's own corpus. The parse then failed and `demangle` fell
-    through to the scheme that owns it, which is why the spelling was right and the
-    label was not -- but `detect` is a public answer in its own right, and a caller
+    <12CStringTable>`, and claiming it would make `detect` name the wrong scheme for a
+    symbol in this package's own corpus. The parse would fail and `demangle` fall
+    through to the scheme that owns it, so the spelling would be right and the label
+    would not -- but `detect` is a public answer in its own right, and a caller
     labelling a symbol table gets that answer and no second chance. Nothing is lost by
     the narrower test: a v0 name that does not open a `<path>` is one the parser refuses
     on its next step.
@@ -64,11 +64,11 @@ def detect(name):
     - the hash component, `17h` and sixteen hex digits, that rustc appends as the last
       element of the path. It is looked for by its marker rather than at a fixed offset
       from the end, because real symbols carry things after it: a `.0` for a promoted
-      constant, a `.llvm.<hash>` from LLVM's internaliser. Anchoring to the end missed
-      every one of those, and the C++ demangler then claimed them and produced a
+      constant, a `.llvm.<hash>` from LLVM's internaliser. Anchoring to the end would
+      miss every one of those, and the C++ demangler would then claim them and produce a
       plausible-looking but quite wrong spelling.
     - a `$...$` escape, which legacy Rust uses for characters the Itanium alphabet has
-      no room for. `_ZN8$RF$testE` is `&test`; read as C++ it spelled `$RF$test`, which
+      no room for. `_ZN8$RF$testE` is `&test`; read as C++ it spells `$RF$test`, which
       is not a name anything has.
 
     The leading underscore is optional -- some symbol tables have already had it
@@ -151,7 +151,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise LimitExceeded(mangled, "input length", limits.max_input)
     # rustc-demangle drops a `.llvm.<hash>` before anything else, and its hash alphabet
     # includes `@`: `_RC3foo.llvm.9D1C9369@@16` is `foo`. Splitting the ELF version off
-    # first, as `core` does for other schemes, stranded the `@@16` after the name.
+    # first, as `core` does for other schemes, would strand the `@@16` after the name.
     name = mangled
     version = name.find("@")
     if version > 0 and name.find(_LLVM_MARKER, 0, version) >= 0:
@@ -176,9 +176,9 @@ def _refuse_empty(mangled, length):
 
     `demangle()` promises the readable spelling or the name unchanged, and there is no
     third outcome -- least of all the empty string, which names no symbol and would have
-    a tool label a function with a blank. `_RCCC` reached here: the grammar accepted it
-    and printed nothing, and `demangle()` handed back `""`. The reference echoes the
-    input, which is what refusing here produces.
+    a tool label a function with a blank. The grammar accepts `_RCCC` and
+    prints nothing. The reference echoes the input, which is what refusing here
+    produces.
 
     Takes a length rather than the text, so the tree path can answer from `tree.size` --
     which is carried, not computed -- instead of rendering a tree to find out whether it

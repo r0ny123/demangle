@@ -783,8 +783,8 @@ class _Parser:
             self.buf += " (" + ", ".join(self.vtbl_flags) + ")"
 
         # No rewriting of the finished text: the unmangler itself prints duplicated
-        # qualifiers (`SetFlat(const const bool)`), and collapsing them moved hundreds of
-        # real exports away from the reference.
+        # qualifiers (`SetFlat(const const bool)`), and collapsing them would move
+        # hundreds of real exports away from the reference.
         text = self.buf
         if self.pos != self.length:
             raise DemangleFailure("unconsumed input")
@@ -850,8 +850,8 @@ def detect(name):
     yields a name that is neither the symbol nor a declaration, the one answer this
     package treats as worse than leaving a name alone.
 
-    `_SYMBOL_CHARACTERS` is what the 11,363 readable recorded exports are made of and nothing
-    else. See the module docstring for why that is the whole alphabet: a name is
+    `_SYMBOL_CHARACTERS` is what the 11,363 readable recorded exports are made of and
+    nothing else. See the module docstring for why that is the whole alphabet: a name is
     `@`-delimited qualifiers -- Pascal identifiers -- with `$`, `%`, `&` and `#` as the
     encoding's own markers. A `.` is not among them, which is what turns `@feat.00`
     away.

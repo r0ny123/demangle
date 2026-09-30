@@ -377,11 +377,11 @@ def candidates(mangled):
 
     The cache is read without taking the lock, because this runs once for every symbol a
     caller offers the library, and the locked path would take two acquisitions -- one
-    here and one inside `available` -- to reach a single dictionary lookup. It is safe to read unlocked because the
-    values are finished tuples that are never edited afterwards, keys are only ever
-    added, and `register` discards the whole dictionary rather than changing it. A
-    reader therefore sees a complete answer or none at all, and none at all falls
-    through to the locked path.
+    here and one inside `available` -- to reach a single dictionary lookup. It is safe
+    to read unlocked because the values are finished tuples that are never edited
+    afterwards, keys are only ever added, and `register` discards the whole dictionary
+    rather than changing it. A reader therefore sees a complete answer or none at all,
+    and none at all falls through to the locked path.
 
     A reader can still return a tuple built before a concurrent `register` -- it read the
     dictionary before that call replaced it -- which is a valid answer for a call that

@@ -529,15 +529,17 @@ def _parse_handle(mangled, builder, language, style, limits):
 def _depth_exceeded(mangled, limits):
     """A `RecursionError` from a parser, reported as the bound it is.
 
-    Two bounds govern how deep a name may nest, and `max_depth` is only one of them. The
-    other is the interpreter's own stack, and it is the *lower* of the two in practice:
-    a production costs several Python frames, so at the default recursion limit of 1000
-    an Itanium name gives out around 141 levels of nested template, 164 of `decltype`,
-    197 of function type and 493 of pointer -- all of them under the default
-    `max_depth` of 256, let alone `RELAXED_LIMITS`' 2048.
+    Two bounds govern how deep a name may nest, and `max_depth` is only one of them. At
+    the defaults it is the one that binds, first for every shape measured: pointer
+    nesting stops at 255 levels, template and function-pointer nesting at 127. The other
+    is the interpreter's own stack. A production costs several Python frames, so at the
+    default recursion limit of 1000 the stack binds first only when `max_depth` has been
+    raised -- around 140 levels of nested template, 164 of function type and 494 of
+    pointer -- or when the caller's own stack is already deep. Under `RELAXED_LIMITS`,
+    whose `max_depth` is 2048, the stack binds first.
 
-    Which of the two binds first therefore depends on the shape of the name and on how
-    deep the caller's own stack already was. Both are the same fact -- this name nests
+    Which of the two binds first depends on `max_depth`, the shape of the name and how
+    deep the caller's own stack already is. Both are the same fact -- this name nests
     further than this process will follow -- so both are reported the same way. Wrapped
     as `ParseError: itanium parser failed: RecursionError(...)`, it would read as a
     defect in the parser rather than a bound doing its job, and leak an implementation

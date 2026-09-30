@@ -1,10 +1,10 @@
 """The Swift symbol tree a caller walks.
 
 Swift's own demangling tree has 329 node kinds, most of which say something about the
-lowered representation rather than about the declaration -- `ImplParameterResult\
-Differentiability` is not what a tool wants to match on. So this exposes a small tree in
-the vocabulary the other schemes here use: `name`, `module`, `type`, `template`,
-`function`, `parameters`.
+lowered representation rather than about the declaration --
+`ImplParameterResultDifferentiability` is not what a tool wants to match on. So this
+exposes a small tree in the vocabulary the other schemes here use: `name`, `module`,
+`type`, `template`, `function`, `parameters`.
 
 The tree is built **during printing**, not from the demangling tree. That is the point:
 the printer's spelling of a node depends on where it sits -- a class is

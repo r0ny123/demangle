@@ -594,8 +594,8 @@ class Printer:
             The reference reads *both* the parameter and its type out of the marker's
             first child, which is the `Type` wrapping the parameter alone -- so the type
             is a child that is not there, and it prints `let A` with no `: Int` after it.
-            Reading past the end is null there and an IndexError here, which refused the
-            whole name; the two are the same answer and this says so.
+            Reading past the end is null there and would be an IndexError here, which
+            would refuse the whole name; the two are the same answer and this says so.
             """
             for value_at in range(parameters, first_requirement):
                 child = node.child(value_at)

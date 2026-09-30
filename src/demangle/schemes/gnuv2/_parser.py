@@ -2164,11 +2164,10 @@ def _refuse_special(reason):
     `gnu_special` advances the cursor as it reads, and the reference goes on from
     wherever a failed attempt stopped, so `demangle_prefix` then reads the *tail* of the
     name as a function: `_vt$t8BDDHookV1__pt__2_cFv` is `_c::_pt(void)` to libiberty,
-    and `_vt$t3Foo1Z_bar__Fi` was `_bar(int)` here. A function named after the end of a
+    and `_vt$t3Foo1Z_bar__Fi` is `_bar(int)`. A function named after the end of a
     virtual table's symbol is not a reading of that symbol. A `_vt`, `__vt_`, `__thunk_`,
     `__ti` or `__tf` prefix says what the name is, so a body that does not read as that
-    is refused rather than read as something else. Found by `tools/mutate.py --scheme
-    gnuv2` against the libiberty reference; no vector in the corpus is touched.
+    is refused rather than read as something else. No vector in the corpus is touched.
     """
     raise DemangleFailure(reason)
 

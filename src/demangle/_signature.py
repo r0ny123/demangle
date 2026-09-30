@@ -377,11 +377,11 @@ def _from_parts(reading, found, node):
     """Read a node that is its own fragments, in output order.
 
     Most schemes build their trees this way -- every one but Itanium, MSVC, Rust and
-    Objective-C, whose shapes are read above: `parts`
-    interleaves the literal text a printer emitted with the subtrees it emitted between
-    them. That interleaving is the structure -- a `.` in `parts` separates two
-    components and a `.` inside a name does not -- so reading it gives the same answer
-    the printer gave, which splitting its output could not.
+    Objective-C, whose shapes are read above: `parts` interleaves the literal text a
+    printer emitted with the subtrees it emitted between them. That interleaving is the
+    structure -- a `.` in `parts` separates two components and a `.` inside a name does
+    not -- so reading it gives the same answer the printer gave, which splitting its
+    output could not.
     """
     parts = getattr(node, "parts", None)
     if not parts:

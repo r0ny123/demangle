@@ -65,7 +65,7 @@ def symbols(binary):
 
     The name is everything after the type letter, spaces included -- a generic
     instantiation over a struct shape is written `go.shape.struct { X int }`, and taking
-    the last whitespace-separated field of that line kept `}`.
+    the last whitespace-separated field of that line would keep `}`.
     """
     result = subprocess.run(["nm", binary], capture_output=True, text=True)
     if result.returncode != 0:

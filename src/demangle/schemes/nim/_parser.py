@@ -410,11 +410,12 @@ def detect(name):
     Both halves of that screen are necessary, so the order between them is free to be
     chosen on cost -- and it matters more than it looks. `"__" in name` is one C-level
     scan; `_ROUTINE_TAIL.search` is a regular expression whose `$` anchor does not stop
-    `search` trying every position first. Testing the regex first would spend it on every name
-    that has no `__` at all, which is most of them: 61% of the shipped libstdc++, and
-    every ordinary C identifier. With the membership test first, those stop there; only
-    the 39% carrying a `__` reach the regex. This scheme declares no first character, so
-    it is offered *every* symbol in a binary and this is the bulk of its detection cost.
+    `search` trying every position first. Testing the regex first would spend it on
+    every name that has no `__` at all, which is most of them: 61% of the shipped
+    libstdc++, and every ordinary C identifier. With the membership test first, those
+    stop there; only the 39% carrying a `__` reach the regex. This scheme declares no
+    first character, so it is offered *every* symbol in a binary and this is the bulk of
+    its detection cost.
 
     `_FOREIGN_PREFIXES` is the other half, and it is a refusal rather than a screen: the
     shape this scheme reads is one another compiler also produces, and where a name

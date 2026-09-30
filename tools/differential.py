@@ -21,7 +21,7 @@ Agreeing with one build of one reference is not the same as being right, and the
 difference is not hypothetical. llvm-cxxfilt 16 drops a constructor's name after an ABI
 tag -- `failure[abi:cxx11]::(...)` -- which 18 fixed. Between 18 and 20, LLVM changed
 its substitution numbering for a template template parameter application; on that name
-18 was wrong, and a corpus recorded against 18 had baked the wrong answer in.
+18 was wrong, and a corpus recorded against 18 would bake the wrong answer in.
 
 So --cross reports reference-versus-reference disagreement as the finding it is. Where
 the versions differ, being on one side is not evidence of anything, and the question has

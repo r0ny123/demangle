@@ -162,10 +162,6 @@ class ItaniumOptions:
     False gives llvm-cxxfilt's spelling. True gives GNU c++filt's, which writes the
     expression the type is defined as rather than the library typedef for it. Both name
     the same type.
-
-    Found by `tools/differential.py --cross`, comparing GNU against several LLVM builds:
-    no name in the gnu-style corpus carried a `Dn` at all, so nothing here had ever been
-    asked the question.
     """
 
     gnu_angle_spacing: bool = False

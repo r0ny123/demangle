@@ -1,8 +1,8 @@
 """Pre-Itanium C++: GNU g++ before 3.0, cfront/ARM, Lucid, HP aCC and EDG.
 
 Five manglings, one demangler, because that is how libiberty implements them: one
-`cplus-dem.c` under five style flags. See `_parser.py` for the port and
-for what is measured against the reference's own vectors.
+`cplus-dem.c` under five style flags. See `_parser.py` for the port and for what is
+measured against the reference's own vectors.
 
 Detection is the hard part, and the reason this scheme is offered last. A GNU v2 symbol
 is an ordinary C identifier with a `__` somewhere in it -- `AtEnd__13ivRubberGroup` is a
@@ -92,8 +92,8 @@ def _screen(name):
     Order matters here rather than only reading well. This runs on *every* symbol a
     caller offers -- the great majority of which are not mangled at all -- and the
     substring tests are one C-level scan each, while the character test walks the string
-    a character at a time. Doing the character test first cost 1.4x on a symbol table of
-    ordinary C names, none of which it could have rejected any earlier.
+    a character at a time. Doing the character test first would cost 1.4x on a symbol
+    table of ordinary C names, none of which it could have rejected any earlier.
     """
     if "__" not in name and not (name[0] == "_" and ("$" in name or "." in name)):
         return False

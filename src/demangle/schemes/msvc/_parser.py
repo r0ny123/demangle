@@ -679,7 +679,7 @@ class _Demangler:
         reading it recorded it, and for a template name records what a symbol's own
         template name is otherwise the one exception to: `?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A`
         is `struct Foo<&int x<int>, &int x<int>> Zoo`, its `?1` the `x<int>` the first
-        argument read. This refused it.
+        argument read.
         """
         self.simple = False
         symbol = self.nestedSymbol()
@@ -696,7 +696,7 @@ class _Demangler:
         S::g(void), 4}`, `{4, 0}` -- and clang writes the first for every
         `filtered_decl_iterator<ObjCMethodDecl, &isClassMethod>` and
         `LazyOffsetPtr<Decl, unsigned int, &ExternalASTSource::GetExternalDecl>` in its
-        own Windows build: 186 symbols there were refused for it. The symbol's
+        own Windows build, where 186 symbols carry it. The symbol's
         unqualified name is memorised as `addressArgument` memorises it.
         """
         kind = self.take()
@@ -759,8 +759,8 @@ class _Demangler:
         `demangleInitFiniStub` reads the variable, then the `@` terminators the form
         requires -- two where the leading `?` was written, one where it was not -- and
         then the function encoding. There is nowhere for another component to go, and
-        reading one made `??__E?i@C@@0HA@e@@QEAAHXZ` into a dynamic initializer inside a
-        namespace `e`: `public: int __cdecl e::`dynamic initializer for ...''(void)`,
+        reading one would make `??__E?i@C@@0HA@e@@QEAAHXZ` a dynamic initializer inside
+        a namespace `e`: `public: int __cdecl e::`dynamic initializer for ...''(void)`,
         with an access specifier and a return type that the form does not have either.
         """
         if self.peek() != "@":
@@ -819,7 +819,7 @@ class _Demangler:
                 if which == "1":
                     written = [self.templateInteger() for _ in range(4)]
                     # `mdisp, pdisp, vdisp, attributes`: only pdisp may be negative (-1 is no
-                    # virtual base), as `llvm-undname` enforces. `tools/mutate.py --seed 60`.
+                    # virtual base), as `llvm-undname` enforces.
                     if written[0].startswith("-") or any(value.startswith("-") for value in written[2:]):
                         raise _Bail
                     at = ", ".join(str(int(value)) for value in written)
@@ -921,7 +921,7 @@ class _Demangler:
         A digit is a back-reference standing for a whole argument type, so it is only a type
         where a whole argument is one. A qualifier in front of it, or a pointer or reference
         around it - "?h@@YAXPAHPA0@Z" - is a name the mangler cannot have produced, and
-        reading one invented a spelling for it.
+        reading one would invent a spelling for it.
         """
         char = self.take()
         if char in _BASIC_TYPES:
@@ -1269,9 +1269,10 @@ class _Demangler:
         """What ends a signature: `Z`, or `_E` for a `noexcept` one.
 
         `demangleThrowSpecification` takes one or the other and refuses anything else.
-        Expecting the `Z` alone refused every `noexcept` function type -- which clang
-        emits for `int (*)(int) noexcept`, an ordinary parameter -- and there is no other
-        place the marker can go, since the parameter list has already been read.
+        Expecting the `Z` alone would refuse every `noexcept` function type -- which
+        clang emits for `int (*)(int) noexcept`, an ordinary parameter -- and there is
+        no other place the marker can go, since the parameter list has already been
+        read.
         """
         if self.eat("_"):
             if not self.eat("E"):
@@ -1401,7 +1402,6 @@ class _Demangler:
             extern_c = 'extern "C" '
             char = self.peek()
             # llvm-undname refuses a data-storage letter after `$$J0` (`?overloaded_fn@@$$J04HA`).
-            # `tools/mutate.py --seed 23`.
             if char in _DATA_ACCESS:
                 raise _Bail
         if char == "9":
@@ -1653,9 +1653,8 @@ class _Demangler:
             access, is_static, is_virtual = _ADJUSTOR_ACCESS[access_char]
             # The reference prints the displacement as a 32-bit unsigned value, so a
             # negative one -- which no compiler writes -- is its two's complement:
-            # `W?B@` is `adjustor{4294967295}` and `W?A@`, negative zero, `adjustor{0}`,
-            # where this wrote `-1` and `-0`. Found by mutating real symbols; LLVM's
-            # main branch spells both the same way.
+            # `W?B@` is `adjustor{4294967295}` and `W?A@`, negative zero, `adjustor{0}`;
+            # LLVM's main branch spells both the same way.
             thunk = f"`adjustor{{{int(self.templateInteger()) & 0xFFFFFFFF}}}'"
             self.member_cv = self.memberQualifiers()
         else:
@@ -1699,11 +1698,10 @@ class _Demangler:
         signature = FunctionType(convention, params, returns)
         # A free or static function carries no member qualifiers, but a `noexcept` is
         # not one of those: `?f@@YAXX_E` is `void __cdecl f(void) noexcept` to the
-        # reference, and this dropped the specification with the qualifiers. No
-        # compiler writes `_E` on a function's own symbol -- clang writes it only inside
-        # a function *type*, which is where the corpora carry it -- so this is the
-        # reference's reading of a name none writes, spelled as it spells it. Found by
-        # `tools/enumerate.py --length 6`: 120 of the 1,031 names it read under `?f@@`.
+        # reference, so the specification is kept with the qualifiers. No compiler
+        # writes `_E` on a function's own symbol -- clang writes it only inside a
+        # function *type*, which is where the corpora carry it -- so this is the
+        # reference's reading of a name none writes, spelled as it spells it.
         trailing = self.member_cv if access and not is_static else specification
         if returns is not None:
             # as in thunkBody: completing the spelling is what refuses one past the bound

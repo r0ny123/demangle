@@ -223,9 +223,8 @@ class SpellingBuilder(Builder):
         repeat collapses. `_Complex` and `_Imaginary` go through here too and are not
         cv-qualifiers: `[basic.type.qualifier]` folds a duplicate `const`, and nothing
         folds a duplicate `_Imaginary`. `c++filt` 2.42 writes `signed char _Imaginary
-        _Imaginary` for `_Z1fGGa` and this collapsed it to one, which is a word of the
-        name lost -- and the two styles disagreed with each other about it, since only
-        the gnu one collapses at all.
+        _Imaginary` for `_Z1fGGa`; collapsing it to one would lose a word of the name,
+        and only the gnu style collapses at all.
         """
         if not qualifiers:
             return inner
@@ -328,7 +327,6 @@ class SpellingBuilder(Builder):
             # A function-type return's `()` is in the right half, so this function's
             # suffix goes after it: `f name()() requires C`; an array return or a grouped
             # declarator keeps it before: `int () const []`, `int (*f() const)()`.
-            # `tools/mutate.py --seed 21`.
             function_return = wraps and returns.right.lstrip().startswith("(")
             if function_return:
                 result = Spelling(left + joiner, params + returns.right + suffix, is_function=True)
@@ -344,8 +342,9 @@ class SpellingBuilder(Builder):
         The reference's `ParameterPackExpansion` prints its child -- both halves -- and
         appends the ellipsis, so a declarator type keeps its shape and the dots follow
         it: `void ()...`, `void (*)()...`, `int [3]...`. Putting them in the left half
-        alone set them where a declarator's name goes, `void (*...)()` and `int... [3]`,
-        which is not what any reference prints. A type with no right half is unchanged.
+        alone would put them where a declarator's name goes, `void (*...)()` and
+        `int... [3]`, which is not what any reference prints. A type with no right half
+        is unchanged.
         """
         return Spelling(inner.left + inner.right + "...")
 
@@ -356,8 +355,8 @@ class SpellingBuilder(Builder):
         out `void () block_pointer` -- not `void block_pointer()`, which is what putting
         the word in the left half alone gives for anything that has a right half.
 
-        Distributes over a pack like every other declarator, which it did not: an empty
-        pack came out as a bare ` enable_if`, a qualifier on nothing.
+        Distributes over a pack like every other declarator: an empty pack gives nothing
+        rather than a bare ` enable_if`, a qualifier on nothing.
         """
         if inner.members is not None:
             return pack_of(self.vendor_qualify(member, qualifier) for member in inner.members)

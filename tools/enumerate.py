@@ -196,7 +196,7 @@ ACCEPTED = {
                 # `llvm-undname` keeps only the member's. No compiler writes them apart.
                 or _undname_keeps_one_member_pointer_qualifier(name, ours, first)
                 # Or MS extension qualifiers on a member pointer's pointee, which `llvm-undname`
-                # drops (msvc-reference-defects.txt). `tools/mutate.py --seed 42`.
+                # drops (msvc-reference-defects.txt).
                 or _undname_drops_a_member_pointees_extension_qualifiers(name, ours, first)
                 # Or a vftable/vbtable/RTTI locator base path of several elements, which
                 # `llvm-undname` truncates to the first; see msvc-llvm-corpus.txt's header.
@@ -205,7 +205,6 @@ ACCEPTED = {
                 or _PLACEMENT_CLOSURE.sub("", ours) == first
                 # Or a qualifier on a deduced return type (`?B?<auto>@@`), which LLVM's
                 # `CustomTypeNode::outputPre` never prints; see `_QUALIFIED_CUSTOM_TYPE`.
-                # `tools/mutate.py --seed 15`.
                 or (
                     _QUALIFIED_CUSTOM_TYPE.search(name) is not None
                     and _CUSTOM_TYPE_QUALIFIERS.sub(r"\1", ours) == first
@@ -225,7 +224,7 @@ ACCEPTED = {
         or (first is None and _DEDUCED_TYPE.search(name) is not None and _DEDUCED_WORD.search(ours) is not None)
         # Or a dynamic initialiser over a nested symbol that spells a function, which
         # `llvm-undname` 18 refuses (it reads only a variable there); reachable only by
-        # mutation. `tools/mutate.py --seed 65`.
+        # mutation.
         or (first is None and _NESTED_FUNCTION_INITIALISER.search(ours) is not None)
     ),
     # `c++filt --format=dlang` writes the separator before a component that spells
@@ -238,10 +237,10 @@ ACCEPTED = {
         or (first is None and _ANONYMOUS_MEMBER.search(name) is not None)
         # Or a `return scope` parameter written `NkM` (DMD 2.104+), which libiberty refuses,
         # or backtracks over inside a function-local symbol's qualifier; see
-        # `_libiberty_dropped_a_return_scope_qualifier`. `tools/mutate.py --seed 30`.
+        # `_libiberty_dropped_a_return_scope_qualifier`.
         or ("NkM" in name and (first is None or _libiberty_dropped_a_return_scope_qualifier(ours, first)))
         # Or a symbol template argument opening on a template instance, `S__T`, which the
-        # grammar allows and `dlang_template_args` refuses. `tools/mutate.py --seed 9`.
+        # grammar allows and `dlang_template_args` refuses.
         or (first is None and _SYMBOL_ARG_OPENS_ON_A_TEMPLATE.search(name) is not None)
         # Or a back reference whose target lands strictly inside an identifier's
         # characters: c++filt resolves it, and no compiler writes one.
@@ -273,7 +272,7 @@ ACCEPTED = {
         # accepted where `c++filt` refuses too, or where the pack is nested in a `J` pack
         # or stands outside an expansion -- shapes no compiler writes, where c++filt's
         # reading has no authority (`_Z1fIJIivEEEvDpPT_`, `_Z1fIJiIEcEEvDpT_`). See
-        # `_uses_a_legacy_argument_pack`. `tools/mutate.py --seed 18`, `--seed 30`, `--seed 37`.
+        # `_uses_a_legacy_argument_pack`.
         or (
             first is None
             and (second[0] is None or _nests_a_legacy_argument_pack(name) or _uses_a_pack_outside_an_expansion(name))
@@ -281,34 +280,31 @@ ACCEPTED = {
         )
         # Or a bare-`Z` entity (`L Z <encoding> E`) in an expression: LLVM accepts it only
         # in `parseTemplateArg`, `c++filt` everywhere. Asked of the parser, since `LZ` in
-        # the text can span two productions. `tools/mutate.py --seed 35`.
+        # the text can span two productions.
         or (first is None and _names_an_entity_with_a_bare_z(name))
         # Or a `Dk`/`DK` placeholder recorded as a substitution candidate (5.1.10), which
         # `llvm-cxxfilt` 18 does not record, shifting every later back-reference
-        # (`_Z1fDKN1A1BE`). `tools/mutate.py --seed 40`.
+        # (`_Z1fDKN1A1BE`).
         or _records_a_constrained_placeholder(name)
         # Or a back-reference to the entry a pack-bound `<template-param>` contributed,
         # resolved here to the whole pack (CONFORMANCE.md note 17); the references each
         # pick a different member. See `_back_reference_names_a_pack_bound_parameter`.
-        # `tools/mutate.py --seed 39` (also 42, 43, 48).
         or _back_reference_names_a_pack_bound_parameter(name)
         # Or a back-reference shifted by a `<template-template-param>`'s entry, which
         # `llvm-cxxfilt` 18 does not record; see `_shifted_by_a_template_template_param`.
         # Only where `c++filt` is silent too, else the both-agree arm took it.
-        # `tools/mutate.py --seed 43`.
         or (second[0] is None and _shifted_by_a_template_template_param(name))
         # Or a lambda declaring a template parameter after a pack; see
         # `_declares_a_parameter_after_a_pack`.
         or _declares_a_parameter_after_a_pack(name)
         # Or a `<source-name>` length with a leading zero, whichever way the references
-        # fall; see `_reads_a_length_written_with_a_leading_zero`. `tools/mutate.py --seed 66`.
+        # fall; see `_reads_a_length_written_with_a_leading_zero`.
         or _reads_a_length_written_with_a_leading_zero(name)
         # Or a qualified function type returning a function type, the qualifier placed
         # differently. See `_QUALIFIED_FUNCTION_RETURNING_A_FUNCTION`.
         or (first is not None and _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION.search(first) is not None)
         # Or a function returning a reference to a pack expansion, where llvm-cxxfilt
         # stacks `&&` on the last member instead of collapsing and c++filt refuses.
-        # `tools/mutate.py --seed 19`.
         or (
             first is not None
             and second[0] is None
@@ -352,10 +348,10 @@ ACCEPTED = {
         # string it is. See `_spelled_as_a_string`.
         or _spelled_as_a_string(ours, first)
         # Or a non-UTF-8 byte, escaped here and raw from llvm-cxxfilt 21; see
-        # `_llvm_wrote_a_raw_high_byte`. `tools/mutate.py --seed 9` and 17.
+        # `_llvm_wrote_a_raw_high_byte`.
         or _llvm_wrote_a_raw_high_byte(ours, first)
         # Or a cast to a function type, whose parameter list llvm-cxxfilt drops; see
-        # `_llvm_dropped_a_cast_function_type`. `tools/mutate.py --seed 14`.
+        # `_llvm_dropped_a_cast_function_type`.
         or _llvm_dropped_a_cast_function_type(ours, first)
         # Or the same reading but for spaces, e.g. llvm-cxxfilt running an array return
         # type into the name (`_Z1fIEA_aa`).
@@ -480,8 +476,7 @@ def _collapse_doubled_qualifier(text):
     `$$CBQAH` is const over `int *const`, which it prints `int *const const`.
     `$$CBSAH` is const over `int *const volatile`, which it prints
     `int *const volatile const` -- the extra word after the pair, not next to
-    the first `const`. Both are the same type spelled once. `tools/mutate.py
-    --seed 23`.
+    the first `const`. Both are the same type spelled once.
     """
     text = _DOUBLED_QUALIFIER.sub(r"\1", text)
     text = text.replace("const volatile const volatile", "const volatile")
@@ -501,7 +496,7 @@ def _qualifier_words_on_a_pointer_reordered(ours, first):
     is `char *const __restrict x` to both.
 
     Sorting the words in each run keeps the multiset, so a word one side dropped or
-    added still differs and is still reported. `tools/mutate.py --seed 42`.
+    added still differs and is still reported.
     """
 
     def sorted_runs(text):
@@ -512,7 +507,7 @@ def _qualifier_words_on_a_pointer_reordered(ours, first):
 
 #: A gap where libiberty spelled an unreadable component as nothing. `()` counts only
 #: outside `operator()`, since the grammar writes an empty list `v`. Matches no
-#: recorded corpus spelling. `(,` is `tools/mutate.py --seed 9`.
+#: recorded corpus spelling.
 _GNUV2_GAP = re.compile(
     r"^\s|^::|\(\s|\(,|(?<!operator)\(\)|,\s\s|,\s*[,)>]|<>|<\s|::::|::\s|operator \(|operator\s\s|\s\s|,\.\.\.\)\("
 )
@@ -561,8 +556,8 @@ def _without_template_arguments(spelled):
 
     An unbalanced `<` -- a mutant's class name, `Spec<ow__F7compl`, which the reference
     reads as any other run of characters -- is not a group, and taking everything after
-    it out hid a second argument list from `_gnuv2_second_list`. The text is returned
-    as it stands when a `<` is never closed.
+    it out would hide a second argument list from `_gnuv2_second_list`. The text is
+    returned as it stands when a `<` is never closed.
     """
     kept = []
     depth = 0
@@ -1145,11 +1140,11 @@ def reference_answers(tool, names, timeout=None, memory=None):
     then the reading if there is one -- and sends refusals to stderr. So a record of one
     line is a refusal and a record of two is an answer.
 
-    Splitting on the blank line rather than pairing lines up matters. Pairing, and asking
-    whether the line after an echo is another name in the batch, reads an *answer* that
-    happens to be one of the enumerated names as a refusal: `??@$@0` is read `??@$@`,
-    which is itself a name in the sweep, and that reported 512 disagreements where the
-    two agree exactly.
+    Splitting on the blank line rather than pairing lines up matters. Pairing, and
+    asking whether the line after an echo is another name in the batch, reads an
+    *answer* that happens to be one of the enumerated names as a refusal: `??@$@0` is
+    read `??@$@`, which is itself a name in the sweep, and that would report 512
+    disagreements where the two agree exactly.
 
     `c++filt` and `llvm-cxxfilt` answer one line per line and echo the input back when
     they cannot read it, which is the same thing said differently.

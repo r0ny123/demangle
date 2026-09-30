@@ -18,9 +18,9 @@ regular expression -- and C++ declaration syntax is not a language you can pull 
 with regular expressions.
 
 **Shape two: parse to an abstract syntax tree.** Structured and inspectable, but it
-allocates an object per grammar node. In Python that cost is not theoretical: on a
-binary with 400,000 symbols it is the difference between seconds and minutes, and most
-callers only ever wanted the string.
+allocates an object per grammar node. In Python that cost is measurable: building the
+tree takes about a fifth longer than building the string, and most callers only ever
+wanted the string.
 
 ## The resolution: parsers write to a builder
 
@@ -36,9 +36,9 @@ Two builders ship:
 | `SpellingBuilder` | `Spelling` pairs, immediately concatenable | `demangle()` -- the hot path |
 | `AstBuilder` | `Node` trees | `parse()` -- structured access |
 
-The parser is written once and stays honest about the grammar; the cost model is chosen by
-the caller. Adding a third backend -- emitting JSON, or a token stream for a syntax
-highlighter -- means writing one class and touching no parser.
+The parser is written once and stays honest about the grammar; the cost model is
+chosen by the caller. Adding a third backend -- emitting JSON, or a token stream for a
+syntax highlighter -- means writing one class and touching no parser.
 
 This is the single most important thing to understand about the codebase. A change that
 makes a parser build strings directly, however locally convenient, breaks it. A test
@@ -49,9 +49,9 @@ hands the result to `builder.name()` imports nothing, and only review catches th
 ### Expressions
 
 An expression inside a type goes through `Builder.expression(form, parts)`, so it
-reaches the tree as structure rather than one opaque node. `parts`
-interleaves the production's fixed text with its operands' handles and `form` names the
-shape -- `binary`, `conditional`, `call`, `sizeof`.
+reaches the tree as structure rather than one opaque node. `parts` interleaves the
+production's fixed text with its operands' handles and `form` names the shape --
+`binary`, `conditional`, `call`, `sizeof`.
 
 One method rather than one per operator. Fifteen methods would be fifteen things every
 future builder must implement, and would still not cover the next operator someone

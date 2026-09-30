@@ -6,12 +6,13 @@ styles were removed from the default, `gnat` stayed. Narrow but concentrated -- 
 rail, defence -- and the reference is `ada_demangle` in `libiberty/cplus-dem.c`, with
 GCC's own `exp_dbug.ads` documenting the encoding normatively.
 
-**Detection is the whole difficulty, and it was measured rather than argued.** An Ada
-symbol carries no types and no marker: `yz__qrs` is a package and a subprogram, and it is
-also exactly what a C program writes. Parsing the name and claiming whatever parses --
-what a demangler for a scheme *with* a marker can afford -- reads 797 names from the other
-schemes' corpora and **6,764 real symbols** from this machine's own libraries as Ada. That
-is not detection, it is a coin toss with a confident voice.
+**Detection is the whole difficulty, and it is settled by measurement rather than
+argument.** An Ada symbol carries no types and no marker: `yz__qrs` is a package and a
+subprogram, and it is also exactly what a C program writes. Parsing the name and
+claiming whatever parses -- what a demangler for a scheme *with* a marker can afford --
+reads 797 names from the other schemes' corpora and **6,764 real symbols** from this
+machine's own libraries as Ada. That is not detection, it is a coin toss with a
+confident voice.
 
 So a name is claimed only when it carries something GNAT wrote *and a C compiler would
 not*: the `_ada_` prefix, an `O`-operator, a `TK` task suffix, a `P`/`N` protected
@@ -23,11 +24,11 @@ checked-in corpus, and **0** over 339,117 symbols from this machine's libraries.
 
 The cost is that a name with no such marker -- `yz__qrs`, and four of the 34
 reference vectors -- is not auto-detected (`x_E` is not counted: the reference itself
-declines it). It demangles when a caller says `language="ada"`, which
-is the same bargain the Go scheme makes and for the same reason: failing to claim a name
-returns it unchanged, which is what an unreadable name does anyway, while claiming
-someone else's rewrites it into a plausible lie. `tests/test_ada.py` pins both numbers,
-so neither can drift quietly.
+declines it). It demangles when a caller says `language="ada"`, which is the same
+bargain the Go scheme makes and for the same reason: failing to claim a name returns it
+unchanged, which is what an unreadable name does anyway, while claiming someone else's
+rewrites it into a plausible lie. `tests/test_ada.py` pins both numbers, so neither
+can drift quietly.
 """
 
 import re
@@ -47,7 +48,8 @@ _DETECT_MAX = 4096
 
 #: A necessary condition for any of the evidence `detect` requires: `_ada_`, an
 #: upper-case suffix marker, `___`, an overload number or a nested subprogram. Screening
-#: on the character set instead let every lower-case C symbol through to a full parse.
+#: on the character set instead would let every lower-case C symbol through to a full
+#: parse.
 _MAY_CARRY_EVIDENCE = re.compile(r"_ada_|___|[A-Z]|__[0-9]|\.[0-9]")
 
 #: What may follow a suffix that ends the parse: only an overload number (`__`, digits,

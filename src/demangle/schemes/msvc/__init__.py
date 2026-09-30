@@ -1,16 +1,16 @@
 """Microsoft's decorated name scheme.
 
 The format `UnDecorateSymbolName` reverses, emitted by MSVC and by clang-cl. Microsoft
-publishes no complete grammar for it, so this implementation was derived by probing
-`llvm-undname` and validated against LLVM's own demangler corpus; the reference output
-is recorded next to every name in tests/conformance.
+publishes no complete grammar for it, so this implementation follows `llvm-undname`
+and is validated against LLVM's own demangler corpus; the reference output is recorded
+next to every name in tests/conformance.
 
 Structured output
 -----------------
-This parser builds its own nodes rather than writing to a builder. It cannot: MSVC spells a declaration
-differently enough that the shared spelling builder has nowhere to put a calling
-convention, and the alternative to a scheme-specific renderer would be a scheme-specific
-branch in `core`.
+This parser builds its own nodes rather than writing to a builder. It cannot: MSVC
+spells a declaration differently enough that the shared spelling builder has nowhere to
+put a calling convention, and the alternative to a scheme-specific renderer would be a
+scheme-specific branch in `core`.
 
 What it does instead is build its own tree, of nodes that are `core.ast.Node`s, and
 spell that (see `nodes.py`). So `parse()` hands back a real tree to walk and `demangle()`

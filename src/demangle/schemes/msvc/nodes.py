@@ -291,10 +291,10 @@ def prefixed(text, node):
     so `--no-member-type` drops all three together.
 
     After them and not before, which is where the reference writes it: `?fn@@$$J0EAAHH@Z`
-    is `private: virtual extern "C" int __cdecl fn(int)`, and this had
-    `extern "C" virtual`. Only a name carrying both shows it, and every `$$J` in the
-    corpora is on a free function or an ordinary member, where `member_type` is empty and
-    the two orders are the same string.
+    is `private: virtual extern "C" int __cdecl fn(int)`, not `extern "C" virtual`.
+    Only a name carrying both shows the difference, and every `$$J` in the corpora is on
+    a free function or an ordinary member, where `member_type` is empty and the two
+    orders are the same string.
     """
     if not text:
         return node
@@ -337,9 +337,9 @@ def apply_qualifiers(node, quals):
     Only ever reached with a named type: an indirection merges its qualifiers as it is
     built, and a back-reference declines rather than accept one.
 
-    In `_QUALIFIER_ORDER` and not in the order they arrived. Appending meant a type
-    qualified twice -- a pointee qualifier and then the variable's own, which
-    `?s4@PR13182@@3PCDD` is -- came out `char volatile const *` where the reference
+    In `_QUALIFIER_ORDER` and not in the order they arrived. Appending would make a
+    type qualified twice -- a pointee qualifier and then the variable's own, which
+    `?s4@PR13182@@3PCDD` is -- come out `char volatile const *` where the reference
     writes `char const volatile *`. So any already at the end of the text are taken back
     off and the whole set is written in one order.
     """

@@ -34,8 +34,8 @@ def detect(name):
     claiming an ordinary C identifier that happens to begin `_D`.
 
     `_Dmain` is the one exception, and it has to be named: it is D's entry point, it has
-    no path and no type, and the digit rule turned it away -- so the one symbol every D
-    programme has was the one this scheme did not claim.
+    no path and no type, so the digit rule would reject it -- and it is the one symbol
+    every D program has.
     """
     name = _without_the_mach_o_underscore(name)
     if not name or not name.startswith("_D"):

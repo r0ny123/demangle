@@ -36,9 +36,9 @@ class Reader:
     scheme does this for `___Z<encoding>_block_invoke`, where a regex says where the
     encoding stops and the parser must not read the literal that follows. *Every* method
     here answers against `length` rather than against the string, because a bound only
-    half the class honours is worse than none: `peek` reported the end of input while
-    `expect` stepped past it, so a truncated `S` borrowed the `_` of `_block_invoke` for
-    its terminator and 4,931 truncated encodings read as though they were whole.
+    half the class honours is worse than none: if `peek` reported the end of input
+    while `expect` stepped past it, a truncated `S` would borrow the `_` of
+    `_block_invoke` for its terminator and read as though it were whole.
     """
 
     __slots__ = ("length", "padded_length", "pos", "text")
@@ -99,8 +99,8 @@ class Reader:
 
         For the lookaheads that decide a branch without consuming anything -- whether an
         abbreviation is followed by a constructor, whether `gs` introduces an allocation.
-        They reached into `text` directly before, which is the end of input's one blind
-        spot: a bound only half the class honours is worse than none.
+        Reaching into `text` directly is the end of input's one blind spot: a bound only
+        half the class honours is worse than none.
         """
         start = self.pos + offset
         end = start + 2

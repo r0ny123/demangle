@@ -80,7 +80,8 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
     # No second detection test: `detect` claimed the name or the caller named the
-    # language. Re-asking refused Go symbols that need no decoding (`bytes.Compare`).
+    # language. Re-asking would refuse Go symbols that need no decoding
+    # (`bytes.Compare`).
     symbol = parse_go_symbol(mangled)
     spelled = symbol.text
     if len(spelled) > limits.max_output:

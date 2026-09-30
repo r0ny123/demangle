@@ -14,8 +14,8 @@ class OutputTooLong(Exception):
     between a bound and a report. `_RMC0FGZZZZ_Eu` is fourteen characters and asks for
     fourteen million bound lifetimes: checking the length of the finished string would mean
     building all of it first, and one more character multiplies that work sixty-two-fold.
-    The count comes out of a base-62 field, so the
-    input grows by one character while the work grows sixty-two-fold.
+    The count comes out of a base-62 field, so the input grows by one character while
+    the work grows sixty-two-fold.
     """
 
 
@@ -59,11 +59,10 @@ _LLVM_MARKER = ".llvm."
 def _strip_llvm_suffix(text):
     """Drop a `.llvm.<hash>` internalisation suffix, which names no part of the symbol.
 
-    The leading `.` is part of the marker, and dropping it from the search deleted text
-    that belongs to the symbol: `_RNvCs1_1a1fllvm.123` has no suffix at all -- the
+    The leading `.` is part of the marker: dropping it from the search would delete text
+    that belongs to the symbol. `_RNvCs1_1a1fllvm.123` has no suffix at all -- the
     reference refuses it, because `llvm.123` is left over and a leftover has to open
-    with a `.` -- and this read it as `a::f`, throwing eight characters away to get
-    there.
+    with a `.` -- and reading it as `a::f` would throw eight characters away.
 
     `find` rather than `rfind`, which is `rustc_demangle::demangle`'s own choice: the
     leftmost `.llvm.` whose tail is a hash is the one that goes, along with everything
@@ -612,9 +611,10 @@ class Parser:
         each of those helpers is an interpreter frame around a bounds test.
 
         `build` is False on the skip pass, which validates the production and throws the
-        `Ident` away: half of those 78,000 objects, each with a list of its own, were
-        allocated to be discarded. What is read, and what is refused, is the same either
-        way -- there is one implementation of the production and this is it.
+        `Ident` away: building it there would allocate half of those 78,000 objects,
+        each with a list of its own, to discard them. What is read, and what is refused,
+        is the same either way -- there is one implementation of the production and this
+        is it.
         """
         inn, end = self.inn, self.end
         at = self.next_val
@@ -1079,12 +1079,11 @@ class Printer:
 
         `print_lifetime_from_index` takes `depth = bound_lifetime_depth - lt` -- a
         `checked_sub`, so `lt` past the depth is the invalid name -- and writes
-        `'a' + depth` while `depth < 26`. This carried a `depth` one larger and undid it
-        at the letter, which is the same for the first twenty-five and not for the rest:
-        the twenty-sixth bound lifetime came out `'_26` where the reference writes `'z`,
-        and every one after it was numbered one too high. It takes a `for<>` binding
-        twenty-six lifetimes to reach, which no compiler writes and a mutated symbol
-        does.
+        `'a' + depth` while `depth < 26`. Carrying a `depth` one larger and undoing it
+        at the letter is the same for the first twenty-five and not for the rest: the
+        twenty-sixth bound lifetime would come out `'_26` where the reference writes
+        `'z`, and every one after it would be numbered one too high. It takes a `for<>`
+        binding twenty-six lifetimes to reach, which no compiler writes.
         """
         self.emit("'")
         if lt == 0:

@@ -485,8 +485,8 @@ class ContextResolver:
         further NUL-terminated components, ended by an empty one, each tagged by its
         first character; `N` gives the *ABI* name, which is the one the runtime mangles,
         and `S` gives the symbol namespace, whose value `t` means the descriptor came
-        from a C `typedef`. Without this, `__C.CFArrayRef` reads as `__C.CFArray` -- the
-        user-facing name, which the compiler does not use in a symbol.
+        from a C `typedef`. Without this, `__C.CFArrayRef` would read as `__C.CFArray`
+        -- the user-facing name, which the compiler does not use in a symbol.
         """
         (offset,) = _I32.unpack_from(raw, 0)
         if offset == 0:

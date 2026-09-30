@@ -268,8 +268,8 @@ class TemplateArgumentTable:
         []<typename $T, template<typename $T0, $T $N> typename $TT>(...)
 
     Here `$T` is level 0 index 0 and `$T0` is level 1 index 0, and the `$N` declaration
-    reaches both. Held flat, the two levels overwrote each other and the parameter came
-    out spelled `T`, which names nothing.
+    reaches both. Held flat, the two levels would overwrite each other and the parameter
+    would be spelled `T`, which names nothing.
 
     A level with nothing in it is still a level: a generic lambda that declared no
     parameters occupies one, because its `auto` parameters are numbered against it and a

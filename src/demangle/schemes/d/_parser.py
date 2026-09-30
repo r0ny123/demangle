@@ -150,9 +150,9 @@ def _escaped(code, digits):
 
     An unprintable byte is written `\\x` and *the two digits the name carried*:
     `dlang_parse_string` copies them out of the input rather than formatting the value,
-    so `B2` stays upper-case and `b2` stays lower. Formatting instead lower-cased every
-    one of them, which no compiler makes visible -- dmd writes its hex in lower case --
-    but which is a different string from the one the name spells.
+    so `B2` stays upper-case and `b2` stays lower. Formatting the value instead would
+    lower-case every one of them, which no compiler makes visible -- dmd writes its hex
+    in lower case -- but which is a different string from the one the name spells.
     """
     if _printable(code):
         return chr(code)
@@ -185,8 +185,8 @@ class _Exhausted(Exception):
 
     This parser backtracks: `qualified_name` and `scope_type` both try a production and
     catch `DemangleFailure` to mean "that was not it, put the cursor back". A budget that
-    reported exhaustion as a `DemangleFailure` was therefore caught by the very handlers
-    it was meant to stop -- the parse backtracked, tried again, and made no progress
+    reported exhaustion as a `DemangleFailure` would be caught by the very handlers it
+    is meant to stop -- the parse would backtrack, try again, and make no progress
     towards finishing. Raising something those handlers do not catch is what makes the
     budget a bound rather than a suggestion.
     """
@@ -238,7 +238,7 @@ class _Reader:
         `bounded` caps the digit count, which is right for a *length prefix* -- one longer
         than the name itself is malformed, not enormous -- and wrong for a *value*: a
         `ulong` template argument such as `Vmi3988292384` is ten digits and perfectly
-        ordinary. Capping both refused every symbol carrying a large constant.
+        ordinary. Capping both would refuse every symbol carrying a large constant.
         """
         start = self.pos
         while self.pos < self.end and self.text[self.pos] in DIGITS:
@@ -450,7 +450,7 @@ class _Parser:
                 raise DemangleFailure("malformed template instance")
             return spelled
         if any(char.isascii() and not (char.isalnum() or char == "_") for char in text):
-            # `_D1aE3foo6En961*` is refused. `tools/mutate.py --seed 17`.
+            # `_D1aE3foo6En961*` is refused.
             raise DemangleFailure("identifier is not a D name")
         reader.pos = start + length
         self._remember_lname(lname_start, reader.pos)
@@ -694,7 +694,7 @@ class _Parser:
                     reader.pos += 1
                 else:
                     self.trailing_type()
-            # Unprefixed: a qualified name and nothing more. `tools/mutate.py --seed 15`.
+            # Unprefixed: a qualified name and nothing more.
             return reader.pos == end
         except (DemangleFailure, _Exhausted):
             return False
@@ -719,8 +719,8 @@ class _Parser:
 
         The test is "read one and see", which means a full speculative parse whose result
         is then thrown away. `scope_type` runs it for every component of the path, and
-        the region it reads contains scopes that run it again -- so without memoising, the same
-        position is read over and over, and a long symbol such as one from
+        the region it reads contains scopes that run it again -- so without memoising,
+        the same position is read over and over, and a long symbol such as one from
         `std.format.formattedWrite` takes seconds rather than milliseconds.
 
         Whether a symbol name starts at a position is a property of the position, so
@@ -915,8 +915,8 @@ class _Parser:
         and `x` (const) and `y` (immutable) `return`, so at most one of the last two
         appears and it comes last. `MOx` reads as `shared const`; `MxO`, `Mxx`, `Myy` and
         `Mxy` are refused, with the unread character left over. Reading the run the way a
-        type reads it spelled `foo.bar() const const` for a symbol the reference will not
-        read at all.
+        type reads it would spell `foo.bar() const const` for a symbol the reference
+        will not read at all.
         """
         found = []
         reader = self.reader
@@ -1199,7 +1199,7 @@ class _Parser:
         if self._follows < 0:
             raise _Exhausted
         # Keyed on this `Q`'s position: the bound it installs changes the reading, so two
-        # references to one target cannot share. `tools/mutate.py --seed 69`.
+        # references to one target cannot share.
         key = (target, "type", self._in_symbol_argument, at)
         found = self._resolved.get(key)
         if found is not None:

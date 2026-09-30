@@ -14,9 +14,10 @@ Four families are read:
     _OBJC_CLASS_$_NSString            Apple's non-fragile ABI
     .objc_class_name_NSString         Apple's fragile ABI, and the GNU runtimes' own
 
-Clang's block invocation functions (`___<len><method>_block_invoke`, `__block_literal_global`,
-`__block_descriptor`) are also read. The length prefix before a method is verified against the
-method's text; a mismatched count is refused rather than guessed at.
+Clang's block invocation functions (`___<len><method>_block_invoke`,
+`__block_literal_global`, `__block_descriptor`) are also read. The length prefix before
+a method is verified against the method's text; a mismatched count is refused rather
+than guessed at.
 
 Correctness rests on re-assembly, as it does for Go, Nim and Free Pascal, and on
 agreement with what the compiler emitted for declarations this package wrote: 445 of 445

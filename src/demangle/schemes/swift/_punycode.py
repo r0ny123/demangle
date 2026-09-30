@@ -8,7 +8,7 @@ and both are in the compiler's `Punycode.cpp`:
   because a mangled name may only use characters an assembler accepts;
 * scalars in `0xD800`-`0xD87F` -- the surrogate range, which real text cannot contain --
   are used to carry ASCII punctuation, and are decoded by subtracting `0xD800`. Without
-  that, an operator like `+` comes back as an unassigned code point.
+  that, an operator like `+` would decode as an unassigned code point.
 """
 
 __all__ = ["decode"]

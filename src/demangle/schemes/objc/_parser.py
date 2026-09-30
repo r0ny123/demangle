@@ -160,8 +160,8 @@ def _apple_method(name):
 
 
 #: The pair search is quadratic in underscores over attacker-controlled input, so it is
-#: bounded (`_i_` + `a_` * 800 is enough to make an unbounded search crawl). Real GNU-runtime method symbols
-#: carry at most six.
+#: bounded (`_i_` + `a_` * 800 is enough to make an unbounded search crawl). Real
+#: GNU-runtime method symbols carry at most six.
 _MAX_SEPARATORS = 64
 
 
@@ -207,7 +207,7 @@ def gnu_method_readings(name, limit=None):
         return []
 
     # The selector for a tail is read once per position, not once per (class, category)
-    # pair; recomputing it there made the search cubic.
+    # pair; recomputing it there would make the search cubic.
     marks = [index for index, char in enumerate(body) if char == "_"][:_MAX_SEPARATORS]
     tails = {}
 
@@ -726,10 +726,11 @@ def detect(name):
     The markers are tested one by one rather than through `any(...)` over
     `_SCREEN_MARKERS`. This plugin declares `_` among its first characters, so it is
     offered every underscore-prefixed symbol in a binary -- 85% of the benchmark corpus
-    -- and the generator cost six interpreter frames per name to run five membership
-    tests that are each a single C-level scan. Written out it is the same five scans in
-    the same short-circuiting order, and no frames at all: 71,778 calls off the cold
-    corpus. `_SCREEN_MARKERS` stays as the documentation of what the screen is.
+    -- and the generator would cost six interpreter frames per name to run five
+    membership tests that are each a single C-level scan. Written out it is the same
+    five scans in the same short-circuiting order, and no frames at all: 71,778 calls
+    fewer over the cold corpus. `_SCREEN_MARKERS` stays as the documentation of what the
+    screen is.
     """
     if not name:
         return False

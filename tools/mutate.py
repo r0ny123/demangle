@@ -37,10 +37,11 @@ Growing a seed corpus changes which mutants are drawn.
 
 A divergence is either fixed in the library or covered by an `ACCEPTED` rule in
 `tools/enumerate.py`, which names the reason the reference's answer is not evidence.
-Two rules originate here: a cv-qualified function type reached through a substitution,
-where each reference contradicts its own answer for the same type written out, and a D
-symbol whose length prefix ends inside an identifier (`_D1a0MFZv`), which libiberty
-refuses although it reads both neighbours, `_D1a0i` and `_D1a0FZv`.
+Two rules cover shapes only mutation reaches: a cv-qualified function type reached
+through a substitution, where each reference contradicts its own answer for the same
+type written out, and a D symbol whose length prefix ends inside an identifier
+(`_D1a0MFZv`), which libiberty refuses although it reads both neighbours, `_D1a0i` and
+`_D1a0FZv`.
 
 A draw with no divergence does not show that none exist. Two are open and pinned by
 nothing but this note:
@@ -208,15 +209,13 @@ def ask_tolerantly(tool, names, batch, casualties=None):
     comes back short is split and asked again, down to the one name that did it. That
     name is recorded as `None` and, where `casualties` is given, named in it.
 
-    Both halves of the gate need this. The refused mutants were the known case -- Swift's
-    own demangler aborts on some of them -- but a name this library *reads* can kill a
-    reference too, which the gate path had assumed could not happen. `c++filt
-    --format=gnat` from binutils 2.42 aborts on `aSO__bDF` with a detected buffer
-    overflow: an `'Output` attribute, a `__` separator and a `.Finalize` suffix in one
-    name, none of which does it alone. This library reads that mutant as
-    `a'Output.b.Finalize`, so it went to the reference through the gate and took the
-    whole Ada run down with it -- `tools/mutate.py --seed 37` died with 6,933 answers
-    for 20,000 names and checked no Ada at all.
+    Both halves of the gate need this. A refused mutant can kill a reference -- Swift's
+    own demangler aborts on some of them -- and so can a name this library *reads*.
+    `c++filt --format=gnat` from binutils 2.42 aborts on `aSO__bDF` with a detected
+    buffer overflow: an `'Output` attribute, a `__` separator and a `.Finalize` suffix
+    in one name, none of which does it alone. This library reads that mutant as
+    `a'Output.b.Finalize`, so it goes to the reference through the gate and, unbatched,
+    would take the whole Ada run down with it.
 
     Binutils' D demangler is the other failure mode: a mutant whose back references
     chain takes it into gigabytes of expansion and never returns, while this library
@@ -309,8 +308,8 @@ def run(scheme, count, seed, quiet, show, batch):
             if substitute and theirs.get(name) != ours[name]:
                 # Where both read `$$h` as part of an identifier (`?foo$$hbar@@YAXXZ`) the
                 # original answers stand; a refused substitute must not overwrite one
-                # where our spelling still carries `$$h` (`--seed 20`). Otherwise the
-                # reference's answer about the marked name is not evidence (`--seed 31`).
+                # where our spelling still carries `$$h`. Otherwise the reference's
+                # answer about the marked name is not evidence.
                 stand = stand_in.get(substitute)
                 if stand is not None or "$$h" not in ours[name]:
                     theirs[name] = stand

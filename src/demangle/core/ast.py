@@ -144,19 +144,16 @@ class Node:
         """The text of this subtree, under the default spelling policy.
 
         `spell()` is the method to reach for -- it takes the `style` the tree was parsed
-        under, which this cannot. This exists because most of the node classes in the
-        package already had it: a scheme whose spelling rules do not fit C++ declarator
-        syntax carries its fragments as text and renders by concatenating them, so
-        `render()` is what its own nodes and its own tests use, and `spell()` delegates
-        to it. What they did *not* have was a shared definition, so a tree was a mixture:
-        every Rust node answered `render()` and the `Decorated` wrapper a version suffix
-        puts around one did not, and neither did any Itanium node. Walking a tree and
-        asking each node for its text -- which is the obvious thing to do with `walk()`
-        -- raised `AttributeError` partway through.
+        under, which this cannot. A scheme whose spelling rules do not fit C++
+        declarator syntax carries its fragments as text and renders by concatenating
+        them, so `render()` is what its own nodes and its own tests use, and `spell()`
+        delegates to it.
 
-        Defined here so that it does not. For a node that carries pre-rendered text this
-        is what it always was; for one spelled from structure it is `spell()` with no
-        declarator, which is the same string.
+        It is defined on the base class so every node answers it: walking a tree and
+        asking each node for its text -- the obvious thing to do with `walk()` -- must
+        not fail partway through on a `Decorated` wrapper or an Itanium node. For a node
+        that carries pre-rendered text this is that text; for one spelled from structure
+        it is `spell()` with no declarator, which is the same string.
         """
         return self.spell()
 
@@ -182,7 +179,7 @@ class Node:
 
         `self.__slots__` alone gives only the most-derived class's, which is empty for
         `Pointer`, `Reference` and every other node whose state lives on a shared base --
-        so comparing on it made all of them equal to each other regardless of content.
+        so comparing on it would make all of them equal regardless of content.
         """
         names = []
         for klass in reversed((self if isinstance(self, type) else type(self)).__mro__):
@@ -648,15 +645,14 @@ def _distributes_to_nothing(inner):
 
     A declarator applied to a pack applies to every member -- `Dp O T_` over three
     arguments is three rvalue references -- so over *no* members it is no references,
-    and the result renders to nothing. `SpellingBuilder` has always done this, because
-    its `_wrap` distributes through `pack_of` and `pack_of(())` is empty.
+    and the result renders to nothing. `SpellingBuilder` does this, because its
+    `_wrap` distributes through `pack_of` and `pack_of(())` is empty.
 
-    This builder did not, and the difference was visible. It reported a size for a
-    parameter that rendered to nothing, and `size` is documented as an over-estimate --
-    so the parser, asking "did this parameter drop out entirely" the cheap way, was told
-    no and left a separator behind: `f(std::launch, std::function<void ()>&&, )`.
-    Mirroring the distribution here makes `size == 0` an exact answer to that question
-    for the one shape where it was not.
+    This builder mirrors it. `size` is documented as an over-estimate, so a size for a
+    parameter that renders to nothing would tell a parser asking "did this parameter
+    drop out entirely" the cheap way that it had not, and a separator would be left
+    behind: `f(std::launch, std::function<void ()>&&, )`. Mirroring the distribution
+    makes `size == 0` an exact answer to that question.
     """
     return type(inner) is ParameterPack and not inner.members
 
@@ -845,9 +841,9 @@ def builder_for(style):
     holding the object. Keyed by name it would be wrong in both directions: a composed
     style like `demangle.style("llvm", msvc={...})` keeps the name `"llvm"` and would
     silently be served the registered style's builder, and a style whose name is not
-    registered at all made `parse()` raise `unknown style` from inside the parser --
-    while `demangle()` accepted the very same object. Building one per call matches the
-    bargain `demangle()` already makes for a style object: it is not cached either.
+    registered at all would make `parse()` raise `unknown style` from inside the parser
+    while `demangle()` accepts the very same object. Building one per call matches the
+    bargain `demangle()` makes for a style object: it is not cached either.
 
     `setdefault` rather than a lock: two threads arriving together each build one and
     the loser's is discarded, which costs an allocation and cannot produce two builders

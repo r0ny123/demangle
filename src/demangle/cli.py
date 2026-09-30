@@ -15,7 +15,7 @@ With no arguments this is a *filter*, not a line reader: every symbol-shaped wor
 input is a candidate and everything around it is copied through untouched. That is what
 `c++filt`, `demumble` and `rustfilt` all do, and it is the only behaviour under which
 the first example above works. `nm` writes an address and a type letter before the name,
-so treating the whole line as one symbol demangled nothing at all:
+so treating the whole line as one symbol would demangle nothing at all:
 
     $ printf '0000000000001139 T _ZN3foo3barEv\\n' | demangle
     0000000000001139 T _ZN3foo3barEv        # every line, unchanged
@@ -25,7 +25,7 @@ Encoding
 A symbol table holds bytes, and they are not reliably UTF-8. Both streams are read and
 written with `surrogateescape`, so a name this package cannot read comes back byte for
 byte -- and so a non-UTF-8 symbol does not end the run with a `UnicodeDecodeError`
-traceback, which is what happened wherever the interpreter's error handler was `strict`.
+traceback, which is what the `strict` error handler does.
 """
 
 import argparse
@@ -368,11 +368,11 @@ def _without_return_type(name, arguments, limits, parts):
 
     Cutting it off the front of the spelling is right only where it *is* a prefix. A
     return type that wraps the declarator has none to cut -- `int (*g<int>(int))(int)`,
-    a function returning a pointer to a function -- and the cut then left the return type
-    in place and reported success, which is the silently ignored flag this file warns
-    about a few lines up. MSVC met the same shape first and answers it with a scheme
-    option; an Itanium `function` node answers it directly, by spelling the same node
-    with nothing where the return type was. `libiberty`'s own `DMGL_RET_DROP` agrees.
+    a function returning a pointer to a function -- and a cut there would leave the
+    return type in place and report success, which is the silently ignored flag this
+    file warns about a few lines up. MSVC answers it with a scheme option; an Itanium
+    `function` node answers it directly, by spelling the same node with nothing where
+    the return type was. `libiberty`'s own `DMGL_RET_DROP` agrees.
     """
     if parts.return_type:
         try:

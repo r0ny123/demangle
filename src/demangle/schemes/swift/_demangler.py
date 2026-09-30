@@ -342,7 +342,7 @@ class Demangler:
     def natural(self):
         """A run of digits, or `None` where the reference returns its -1000 sentinel.
 
-        Scanned here rather than through `peek` and `_is_digit`, which between them were
+        Scanned here rather than through `peek` and `_is_digit`, which between them are
         the two most-called things in the Swift demangler: 122,000 calls to `_is_digit`
         from this method alone over the Swift corpus, and one `peek` beside each, for a
         comparison apiece. Reading past the end still stops the run, because the bound is
@@ -656,7 +656,7 @@ class Demangler:
 
         The tests `_is_word_start` and `_is_word_end` name are written out here rather
         than called. This runs once per character of every identifier in every Swift
-        name -- 322,000 calls to `_is_word_end` alone over the Swift corpus, which was
+        name -- 322,000 calls to `_is_word_end` alone over the Swift corpus, which is
         the largest single item in its profile -- and each of them is an interpreter
         frame around one comparison. The conditions are the same ones, in the same
         order; the two functions stay for the other callers and for the definition.
@@ -1989,7 +1989,7 @@ class Demangler:
     def demangle_spec_attributes(self, kind):
         """The flags between a specialisation's letter and its pass number.
 
-        `m` is not in the reference any more; it is kept because the shipped runtime
+        `m` is not in the reference; it is kept because the shipped runtime
         still holds symbols carrying it -- `...Tgm5` -- and dropping it would misread
         them rather than refuse them.
         """
@@ -2229,7 +2229,7 @@ class Demangler:
         """What an associated conformance is *about*: a parameter, or a path to one.
 
         `mini.Seq.A` is the bare parameter `x`, not an associated type path, and reading
-        it as a path refused the name.
+        it as a path would refuse the name.
         """
         found = self.pop("Type")
         if found is not None:

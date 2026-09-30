@@ -26,9 +26,7 @@ substitutions from, which is the alphabet its scheme actually writes.
 
 Exit status is non-zero when any invariant fails.
 
-The draw is seeded, so a finding reproduces exactly. `--seed 1 --count 20000 --corpus
-itanium-libcxxabi` reproduces the three defects this guards against, all of the first
-invariant, on a parser that still has them; on the parser as it is, it reports nothing.
+The draw is seeded, so a finding reproduces exactly.
 
 Usage
 -----

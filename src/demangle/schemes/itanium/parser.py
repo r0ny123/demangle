@@ -142,10 +142,11 @@ def _c_hex_float(kind, value):
     zero digits. A quad with them zero is a denormal below 2^-16414, a value no template
     argument has ever held, while every long double g++ mangles on x86-64 has them; so
     the x87 reading wins, and the one quad it costs is documented in the tests. Reading
-    the padded form as a quad printed `0x0.000000003fffcp-16382L` for `1.5L` -- a wrong
-    number, where `llvm-cxxfilt` on x86-64 refuses the name for not being the twenty
-    digits it expects and `c++filt` brackets the digits without reading them. g++ on
-    i386 pads to twelve bytes the same way, twenty-four digits with four zeros in front.
+    the padded form as a quad would print `0x0.000000003fffcp-16382L` for `1.5L` -- a
+    wrong number, where `llvm-cxxfilt` on x86-64 refuses the name for not being the
+    twenty digits it expects and `c++filt` brackets the digits without reading them.
+    g++ on i386 pads to twelve bytes the same way, twenty-four digits with four zeros in
+    front.
     """
     if kind == "long double" and len(value) == 32 and value.startswith("000000000000"):
         value = value[12:]
@@ -259,16 +260,15 @@ def _string_literal(values):
     which g++ mangles as the bytes `Lc195ELc169E` and clang as `Lcn61ELcn87E`, the same
     two bytes under `char`'s two signednesses. Where they do not form UTF-8, each such
     byte is escaped on its own, `\xC8`: the byte is what the name says, and the Latin-1
-    character it once decoded to here is not.
+    character it would decode to is not.
 
     The one subtlety is `"\xF""ello"`. A hex escape has no length limit in C, so `\xF`
     followed by `e` would read as `\xFe`; the reference closes the string and opens
     another rather than emit something that means a different thing. An octal escape
     `\0`..`\6` is the same shape: `\27` is one character, and llvm-cxxfilt also
     splits before a hex letter that would not continue the octal, so `"\2e"` comes
-    back `"\2""e"`. `tools/mutate.py --seed 8` found the split missing, which made
-    `_Z1fIXtl5HellotlA6_cLc2ELc101E...` print `"\2e\xElo"` where the reference
-    prints `"\2""e\xElo"`.
+    back `"\2""e"`. Without that split `_Z1fIXtl5HellotlA6_cLc2ELc101E...` would print
+    `"\2e\xElo"` where the reference prints `"\2""e\xElo"`.
     """
     raw = bytes(value & 0xFF for value in values)
     # A byte that is not part of a UTF-8 sequence comes through as a lone surrogate,
@@ -308,9 +308,9 @@ def detect(name):
     Runs on every symbol a caller passes, including the overwhelming majority that are
     not mangled at all, so it does no work beyond a prefix comparison.
 
-    `_GLOBAL__` is deliberately not one of the prefixes: `parse` has never read those
+    `_GLOBAL__` is deliberately not one of the prefixes: `parse` does not read those
     names -- GNU's "global constructors keyed to ..." extension -- and claiming them
-    here only meant handing them back unchanged one step later.
+    here would only hand them back unchanged one step later.
     """
     return (
         name.startswith("_Z")
@@ -1188,8 +1188,8 @@ class ItaniumParser:
         self._ctor_dtor = False
         outer_has_args = self._prefix_has_args
         self._prefix_has_args = False
-        # A nested name in a template argument keeps its own prefix state, or `A<B::C>::A` comes
-        # back as `A<B::C>::C`; likewise the no-base-name flag (`NSbIw...IEC2E`).
+        # A nested name in a template argument keeps its own prefix state, or `A<B::C>::A`
+        # would come back as `A<B::C>::C`; likewise the no-base-name flag (`NSbIw...IEC2E`).
         outer_bare = self._prefix_bare
         outer_bare_has_no_base_name = self._prefix_bare_has_no_base_name
         self._prefix_bare = None
@@ -1315,7 +1315,7 @@ class ItaniumParser:
         Only two of those seven take a `<prefix>` on the left. The other five are bases:
         a `<substitution>`, a `<template-param>` and a `<decltype>` can *open* a prefix
         and cannot follow one, and the same is true of `<template-prefix>`. Reading them
-        anywhere spelled a scope inside a scope that cannot contain it --
+        anywhere would spell a scope inside a scope that cannot contain it --
         `_ZN1aSt1bEv` as `a::std::b()`, `_ZN1aSa1bEv` as `a::std::allocator::b()`,
         `_ZN1a1bS_1cEv` as `a::b::a::c()`, `_ZN1aDtfp_E1bEv` as
         `a::decltype(fp)::b()` -- each of them a declaration a person would believe and
@@ -1419,7 +1419,7 @@ class ItaniumParser:
                 # follow before the `E` -- see `nested_name`.
                 if self._prefix_bare is None:
                     # The prefix before `M` must be a spelled name: llvm-cxxfilt refuses `_ZNStM1xE`, which
-                    # c++filt reads as `std::x`. `tools/mutate.py --seed 2`.
+                    # c++filt reads as `std::x`.
                     raise ParseError(self._mangled, reader.pos, "a data member or closure prefix over no spelled name")
                 reader.take()
                 self._prefix_ended_on = "a data member or closure prefix"
@@ -1515,7 +1515,7 @@ class ItaniumParser:
         self._no_return_type = False
         self._explicit_object = False
         # `_in_special_name` is about the entity after the `E`, not the enclosing function; left
-        # set, `_ZGVZZN1A1fEvENKUlvE_clEvE1y` lost its `const`.
+        # set, `_ZGVZZN1A1fEvENKUlvE_clEvE1y` would lose its `const`.
         outer_special = self._in_special_name
         self._in_special_name = False
         try:
@@ -1596,9 +1596,8 @@ class ItaniumParser:
         name, which is what keeps it from being confused with a length-prefixed anything.
 
         Without this, `_ZZN12_GLOBAL__N_115ARMDAGToDAGISel6SelectEPN4llvm6SDNodeEE7Opcodes8`
-        read its trailing `8` as the start of a signature and the whole name was refused.
-        65 of the names in libcxxabi's own corpus are this shape -- the largest single
-        group of refusals in it.
+        would read its trailing `8` as the start of a signature and the whole name would
+        be refused. 65 of the names in libcxxabi's own corpus are this shape.
         """
         reader = self.reader
         at = reader.pos
@@ -1662,7 +1661,7 @@ class ItaniumParser:
             ):
                 # `<unqualified-name> ::= [<module-name>] <operator-name> | <ctor-dtor-name> | ...`: a
                 # structor's module is on the class name (`_ZNW4llvm6ModuleC1Ev`), so llvm-cxxfilt refuses
-                # `_ZNStW9rGPRClassC2Ev`. `tools/mutate.py --seed 20`.
+                # `_ZNStW9rGPRClassC2Ev`.
                 raise ParseError(self._mangled, reader.pos, "a module name on a constructor or destructor")
         # `F` marks a friend declared inside the class it is a friend of. The scope is
         # already in `parts`, which `qualified` joins with `::`, so the marker decorates
@@ -1747,7 +1746,6 @@ class ItaniumParser:
         spelled = self._in_module(self.operator_name(), module) + self.abi_tags()
         # Assigned after the operator is read: its type may be a class name, whose reading clears
         # the flag (`_ZN1Scv1AC2Ev` is `S::operator A::()` to llvm-cxxfilt).
-        # `tools/mutate.py --seed 55`.
         self._component_has_no_base_name = has_no_base_name
         operator = builder.name(self._befriended(spelled) if friend else spelled)
         if reader.peek() != "I":
@@ -1782,9 +1780,8 @@ class ItaniumParser:
 
         The class's bare name, with no module attached: `_ZNW4llvm6ModuleC1Ev` is
         `Module@llvm::Module()` to both references -- `CtorDtorName` prints the scope's
-        `getBaseName()`, and a `ModuleEntity`'s base name is the name inside it -- where
-        this wrote `Module@llvm::Module@llvm()`. The destructor the same. Found by
-        mutating real symbols.
+        `getBaseName()`, and a `ModuleEntity`'s base name is the name inside it -- not
+        `Module@llvm::Module@llvm()`. The destructor the same.
         """
         reader = self.reader
         reader.expect("C")
@@ -1850,7 +1847,7 @@ class ItaniumParser:
         module = spelled.find("@")
         spelled = spelled[:module] if module > 0 else spelled
         # Both references drop the friend marker from the repeated name: `_ZN1AF3fooC1Ev` is
-        # `A::friend foo::foo()`. `tools/mutate.py --seed 15`.
+        # `A::friend foo::foo()`.
         if self.options.gnu_friend_spelling:
             if spelled.endswith("[friend]"):
                 spelled = spelled[: -len("[friend]")]
@@ -1906,7 +1903,7 @@ class ItaniumParser:
 
         `source_name` reads any tags that follow the identifier, which is right
         everywhere but here: inside a tag, a following `B` opens the *next* tag of the
-        run rather than one nested in this one. Reading it as nested spelled
+        run rather than one nested in this one. Reading it as nested would spell
         `f[abi:foo[abi:bar]]()` for what is two tags on one name.
         """
         reader = self.reader
@@ -1962,7 +1959,7 @@ class ItaniumParser:
         Callers on a hot path ask `reader.peek() == "B"` before calling: the answer is no
         for all but a handful of names in a symbol table, and asking it here costs a whole
         interpreter frame to return the empty string -- five times per name over the
-        Itanium corpus, which was 9% of every `peek` the parser makes. The test is
+        Itanium corpus, which is 9% of every `peek` the parser makes. The test is
         repeated below so that a caller who does not ask is still right.
         """
         reader = self.reader
@@ -2147,7 +2144,7 @@ class ItaniumParser:
         following = reader.ahead2(2)
         if following[:1] == "L":
             # An `L` between scope and structor: llvm-cxxfilt reads `_ZNSiLD1Ev` like `_ZNSiD1Ev`;
-            # c++filt refuses it. `tools/enumerate.py --length 6`.
+            # c++filt refuses it.
             following = reader.ahead2(3)
         if len(following) != 2:
             return False
@@ -2236,11 +2233,11 @@ class ItaniumParser:
 
         `_Z1fIJEPT_E` writes `P` over `T_`, and `T_` is the empty pack `J E`. There is
         nothing to point to: `c++filt` refuses the name; `llvm-cxxfilt` prints `f<*>`,
-        the modifier alone; this printed `f<>`, the argument dropped as an empty pack is
-        dropped, which reads as a name with one argument fewer than it has. The same
-        for a reference, a qualifier, an array, a member pointer, a complex. An
+        the modifier alone. Printing `f<>` instead, the argument dropped as an empty
+        pack is dropped, would read as a name with one argument fewer than it has. The
+        same for a reference, a qualifier, an array, a member pointer, a complex. An
         expansion over an empty pack is a different thing -- `DpT_` spells nothing on
-        purpose -- and is left alone. Found by `tools/enumerate.py --length 6`.
+        purpose -- and is left alone.
         """
         if self._reading_pattern:
             return inner
@@ -2334,7 +2331,7 @@ class ItaniumParser:
             else:
                 reference = ParameterReference(index, level, symbolic)
             # Put back either way, so a production inside a clause is not deferred; a deferred one
-            # re-read under the signature's scope spelled `typename 1234`.
+            # re-read under the signature's scope would spell `typename 1234`.
             self._parameter_uses = uses
             return bound, reference
         return self.bind_template_param(index, level), ParameterReference(index, level)
@@ -2344,7 +2341,6 @@ class ItaniumParser:
         reader = self.reader
         if self._in_special_name:
             # Both references refuse `_ZTVN1AIcT_EE`; compilers write `_ZTVN1AIccEE`.
-            # `tools/mutate.py --seed 12`.
             raise ParseError(self._mangled, reader.pos, "a template parameter in a special name")
         self._parameter_uses += 1
         bound = self.targs.lookup(index, level)
@@ -2370,7 +2366,7 @@ class ItaniumParser:
 
         if level and level >= self.targs.depth():
             # A level not in scope at all (`TL8_1_`): the reference refuses it. Inside a
-            # requires-clause it took the symbolic branch above.
+            # requires-clause it takes the symbolic branch above.
             raise ParseError(self._mangled, reader.pos, f"no template parameter level {level} in scope")
 
         if not (self._reading_closure_signature or self._reading_conversion_type):
@@ -2818,7 +2814,7 @@ class ItaniumParser:
         reader.expect("_")
         if reader.eat("p"):
             # Both references refuse `_Z1hDv0_p`, a zero-length AltiVec pixel vector. `Dv0_i` is
-            # still read, as c++filt prints `__vector(0)`. `tools/mutate.py --seed 10`.
+            # still read, as c++filt prints `__vector(0)`.
             if size.isdigit() and int(size) == 0:
                 raise ParseError(self._mangled, reader.pos, "a pixel vector of dimension 0")
             spelled = "pixel"
@@ -3420,7 +3416,7 @@ class ItaniumParser:
             # Clang writes substitutions inside it that index the enclosing table. The bare `Z` is
             # g++'s compatibility form (libcxxabi's `_ZN5test52f2ENS_2t2ILZ4mainEEE`); llvm-cxxfilt
             # accepts it only as a template argument, c++filt anywhere, as here. See
-            # `_bare_entity_prefix_used`; `tools/mutate.py --seed 35`.
+            # `_bare_entity_prefix_used`.
             if reader.peek() == "Z":
                 self._bare_entity_prefix_used = True
             reader.eat("_")
@@ -3721,9 +3717,9 @@ class ItaniumParser:
         The arguments sit *outside* the production and outside the substitution entry:
         the reference records the bare parameter or decltype and then wraps the
         arguments round it, so an `S_` written after one names the head alone. Reading
-        them inside `unresolved_type` recorded the templated form instead, and left the
-        `srN` form unable to read them at all -- `srN S6_ I S3_ E E 5value E` was
-        refused for wanting a qualifier level where the arguments were.
+        them inside `unresolved_type` would record the templated form instead, and leave
+        the `srN` form unable to read them at all -- `srN S6_ I S3_ E E 5value E` would
+        be refused for wanting a qualifier level where the arguments are.
         """
         text = self.unresolved_type()
         if self.reader.peek() == "I":
@@ -3898,7 +3894,7 @@ class ItaniumParser:
         outer_naming = self._naming
         self._in_constraint = True
         # A clause names no entity, so a template-id in it must not install its arguments as the
-        # `T_` scope (a nested requirement's `1234` became the next one's `T`).
+        # `T_` scope (a nested requirement's `1234` would become the next one's `T`).
         self._naming = False
         try:
             return self.expression()
@@ -3920,7 +3916,7 @@ class ItaniumParser:
 
         The qualifiers are read and dropped, as `parseFunctionParam` drops them -- both
         references spell `fpK_` as `fp`. The `_` is not optional: `fp` alone is not a
-        parameter, and reading it as one spelled `decltype(fp == nullptr)` for
+        parameter, and reading it as one would spell `decltype(fp == nullptr)` for
         `DTeqfpLDnEE`, which both references refuse.
         """
         reader = self.reader
@@ -4020,14 +4016,13 @@ class ItaniumParser:
         Under the rule `Dp` reads a type pattern by. A pattern that names a pack -- a
         `T_` bound to one -- is read again once per member, and what comes back is the
         members: `sp sc T_ fp_` over `{int, char}` is `static_cast<int>(fp),
-        static_cast<char>(fp)` to both references. Spelling the one reading put the
-        whole pack where each member belongs, `static_cast<int, char>(fp)`, a cast of a
-        kind C++ has not. A pattern that names an empty pack is nothing. A pattern that
-        names no pack is handed back as read, for the caller to write the dots after:
-        they are the expansion of something the name does not carry, a function
+        static_cast<char>(fp)` to both references. Spelling the one reading would put
+        the whole pack where each member belongs, `static_cast<int, char>(fp)`, a cast
+        of a kind C++ has not. A pattern that names an empty pack is nothing. A pattern
+        that names no pack is handed back as read, for the caller to write the dots
+        after: they are the expansion of something the name does not carry, a function
         parameter pack most often, `g(fp...)` -- whatever the scope holds. Testing the
-        scope for a pack, as this once did, dropped the dots from every
-        `decltype(g(t...))`.
+        scope for a pack would drop the dots from every `decltype(g(t...))`.
 
         Returns the handle and which of the three it is: `"members"`, `"empty"` or
         `"pattern"`.
@@ -4195,8 +4190,8 @@ class ItaniumParser:
 
         `(std::declval<int>)()` and `(::foo)()` and `(operator+)(...)`, but `foo(int)`,
         `std::foo(int)`, `{parm#1}(int)` and `{1}(2)` -- all four confirmed against
-        c++filt. Bracketing every callee that was not a plain identifier path was eight
-        of the differences from it over libLLVM.
+        c++filt. Bracketing every callee that is not a plain identifier path disagrees
+        with it.
         """
         reader = self.reader
         if self.options.gnu_entity_operand_spelling and (reader.startswith("L_Z") or reader.startswith("LZ")):
