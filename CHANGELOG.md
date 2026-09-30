@@ -54,7 +54,7 @@ the reference demanglers, and a **Performance** section.
   its own reader refused, so neither pre-Itanium reader claims them.
 - **Pre-Itanium C++: evidence from a failed guess at the `__` split** no longer counts
   toward the guess that parses. Eight HP-style names the default style was spelling
-  wrongly are now returned unchanged; `GnuV2Options(style="hp")` reads them.
+  wrongly are now returned unchanged; `language="gnuv2"` with the `hp` style reads them.
 - **Rust: a `.llvm.<hash>` suffix that runs into an ELF version**
   (`_RC3foo.llvm.9D1C9369@@16`) is dropped whole, as rustc-demangle does, instead of
   leaving `foo@@16`.

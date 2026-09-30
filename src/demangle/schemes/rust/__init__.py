@@ -107,7 +107,8 @@ def detect(name):
             return True
     if _LEGACY_ESCAPE.search(name) is not None:
         return True
-    return name[0] == "Z" and name[2:3].isdigit() and _reads_as_legacy(name)
+    # A bare `ZN` has no marker, so reading it is the only test; bounded like a parse.
+    return name[0] == "Z" and name[2:3].isdigit() and len(name) <= DEFAULT_LIMITS.max_input and _reads_as_legacy(name)
 
 
 def _reads_as_legacy(name):

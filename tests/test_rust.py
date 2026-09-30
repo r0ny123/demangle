@@ -10,6 +10,7 @@ symbol and so answers a different question.
 
 import sys
 import threading
+import time
 from dataclasses import replace
 from typing import ClassVar
 
@@ -277,6 +278,14 @@ class TestABareZnIsReadWhenItParses:
     digit, and a path the legacy reader consumes to its `E`. None of the 652,000 symbols
     in this box's libraries and binaries starts `ZN`.
     """
+
+    def test_a_name_past_the_input_bound_is_not_read_to_decide(self):
+        """Detection reads the whole name here, so it is held to the parse's input bound."""
+        name = "ZN" + "1a" * 200_000 + "E"
+        started = time.perf_counter()
+        assert demangle.detect(name) is None
+        assert demangle.demangle(name) == name
+        assert time.perf_counter() - started < 1
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
