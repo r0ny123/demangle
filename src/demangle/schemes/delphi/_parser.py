@@ -835,25 +835,20 @@ def detect(name):
     A `?` is refused for the same reason and a stronger one: no Borland production
     writes one -- there is none in any of the 11,363 recorded exports -- and it is *the*
     MSVC marker, so a name carrying one that reaches this scheme is a piece of somebody
-    else's. This copies characters through rather than checking an alphabet, so it read
-    them: `demangle_text` over a listing tokenises `??R<lambda_1>@?0??define_lambda@@YAHXZ@QBE@XZ`
-    at the angle brackets it cannot hold, and the `@?0??define_lambda@@YAHXZ@QBE@XZ` left
-    over came back as `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ` -- a Delphi
-    declaration built out of half an MSVC symbol. Asked for by language it is still read;
-    what this decides is whether to claim a name nobody said was Delphi's.
+    else's. This scheme copies characters through rather than checking an alphabet, so
+    it would read the `@?0??define_lambda@@YAHXZ@QBE@XZ` left over when `demangle_text`
+    tokenises an MSVC lambda name at its angle brackets as a Delphi declaration built
+    out of half an MSVC symbol. Asked for by language it is still read; what this
+    decides is whether to claim a name nobody said was Delphi's.
 
-    The same copying-through is why the alphabet is checked as a whole rather than one
-    forbidden character at a time. This scheme declares `@` as its first character and
-    is offered every symbol that starts with one, and it claimed a great deal that no
-    Borland tool wrote: `@ hello world` came back as ` hello world`, and so did every
-    demangled Swift type -- `@convention(block) (Swift.Int) -> Swift.UInt` reads as
-    `convention(block) (Swift.Int) -> Swift.UInt` and
-    `@escaping @differentiable @callee_guaranteed (@unowned Swift.Float)` turns its
-    inner markers into `::`, because `@` is this grammar's qualifier separator. That is
-    reachable from a symbol table and not only from re-reading output: `@feat.00` and
-    `@comp.id` are in every COFF object MSVC and clang-cl emit, and both came back with
-    the `@` taken off -- a name that is neither the symbol nor a declaration, which is
-    the one answer this package treats as worse than leaving a name alone.
+    For the same reason the alphabet is checked as a whole rather than one forbidden
+    character at a time. This scheme declares `@` as its first character and is offered
+    every symbol that starts with one, so it must not claim what no Borland tool wrote:
+    a demangled Swift type such as `@convention(block) (Swift.Int) -> Swift.UInt`, whose
+    `@` markers would read as this grammar's qualifier separator, or `@feat.00` and
+    `@comp.id`, which every COFF object from MSVC and clang-cl carries. Reading either
+    yields a name that is neither the symbol nor a declaration, the one answer this
+    package treats as worse than leaving a name alone.
 
     `_SYMBOL_CHARACTERS` is what the 11,484 recorded exports are made of and nothing
     else. See the module docstring for why that is the whole alphabet: a name is

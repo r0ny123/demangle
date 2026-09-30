@@ -975,14 +975,9 @@ class _Parser:
     def parameter(self):
         """`[M] [Nk] [I[K] | J | K | L] <Type>` -- a fixed sequence, not a set.
 
-        `dlang_function_args` reads each of these once and in this order, and then reads
-        the type. Written as a loop here, it accepted any order and any number of them:
-        `FMMfZv` came back as `(scope scope float)` and `FIJfZv` as `(in out float)`,
-        neither of which is a parameter anything can declare, and `FNkMfZv` reordered
-        `return scope` out of the order the encoding puts it in. The reference hands all
-        three back.
-
-        `I` is the one that takes a second: `in ref`, written `IK`. Nothing else does.
+        `dlang_function_args` reads each of these once, in this order, then the type; `I`
+        alone takes a second, `IK`. Repeats and reorderings such as `FMMfZv`, `FIJfZv`
+        and `FNkMfZv` are refused, as the reference refuses them.
         """
         reader = self.reader
         storage = []
@@ -1046,11 +1041,7 @@ class _Parser:
         mangled as integers, so the type has to be consulted rather than the value. Every
         other kind is written with the digits the name carried -- see `_Reader.digits`.
 
-        The `N` that marks a negative value is written whatever the kind is, and it used
-        to be dropped for the two kinds that do not spell their digits: `VaN17` came back
-        `'\x11'` and `VbN1` came back `true`, each the *positive* literal. The reference
-        writes `-'\x11'` and `-true`, which is a value D source cannot spell either --
-        but losing the sign spells a different value rather than an unspellable one.
+        The `N` sign is written for every kind; the reference writes `-'\x11'`, `-true`.
         """
         sign = "-" if negative else ""
         if kind == "bool":

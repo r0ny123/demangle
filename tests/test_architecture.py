@@ -348,15 +348,11 @@ class TestReadingAnAnswerAgainChangesNothing:
     library's promise is that a name it cannot read comes back unchanged, and a
     demangled answer is such a name.
 
-    It failed for 49 of the corpora's names, all of them Swift and all for one reason.
     A Swift type is spelled with `@` markers -- `@convention(block) (Swift.Int) ->
     Swift.UInt`, `@escaping @differentiable @callee_guaranteed (@unowned Swift.Float)` --
-    and `@` is the Delphi scheme's first character and its qualifier separator, so that
-    scheme claimed the answer and read the markers as scope: `escaping
-    ::differentiable ::callee_guaranteed (::unowned Swift.Float)`. The claim was never
-    about re-reading output alone -- `@feat.00` and `@comp.id` are in every COFF object
-    MSVC and clang-cl emit, and came back with the `@` taken off. Fixed by screening
-    `delphi.detect` on the alphabet Borland exports are actually made of; see there.
+    and `@` is the Delphi scheme's first character and its qualifier separator, so
+    `delphi.detect` screens on the alphabet Borland exports are made of. `@feat.00` and
+    `@comp.id`, in every COFF object MSVC and clang-cl emit, are left alone the same way.
     """
 
     @pytest.mark.sweep

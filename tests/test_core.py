@@ -159,23 +159,16 @@ class TestTheTwoBuildersAgreeAboutPacks:
 
 class TestEveryDeclaratorDistributesOverAPack:
     """`Builder.parameter_pack` says a declarator applied to a pack applies to each
-    member. `_wrap` -- pointers, references, cv-qualifiers -- had always done it; the
-    three constructors that do not go through `_wrap` had not.
+    member: `_wrap` (pointers, references, cv-qualifiers) and the three constructors
+    that do not go through it distribute over the members.
 
-    The visible failure was the empty pack. `A3_ T_` with `T_` bound to `J E` printed
-    ` [3]`, an array of a parameter that is not there, where the tree builder short-
-    circuits the same shape to nothing -- so the two builders spelled the same name two
-    ways. A grammar fuzzer found all three (`_Z1fIJEEvViT_A3_T_`,
-    `_ZN1fIJET_EEvU9enable_ifIyET_`, `_Z1fIJEEvMT_T_DTfp0_EDi`).
-
-    None of it changes a name any compiler emits: a pack reaches a declarator through
-    `Dp`, and the parser has always ranged that over the members itself. What this fixes
-    is the encoding that names a pack *without* expanding it, which is ill-formed -- and
-    which llvm-cxxfilt prints as its first member and GNU c++filt refuses outright.
-
-    Over an *empty* pack the two builders now agree by refusing: a declarator over no
-    members spelled nothing, and a name that says `(int, int [3])` over `J E` came back
-    `(int)`, one parameter fewer than it has. See `_over_a_pack`.
+    An unexpanded pack -- the encoding that names a pack without expanding it, which is
+    ill-formed -- is refused. Over an *empty* pack both builders refuse: `A3_ T_` with
+    `T_` bound to `J E` would spell an array of a parameter that is not there, and
+    `(int, int [3])` over `J E` would drop one parameter. No compiler emits either: a
+    pack reaches a declarator through `Dp`, which the parser ranges over the members.
+    Cases: `_Z1fIJEEvViT_A3_T_`, `_ZN1fIJET_EEvU9enable_ifIyET_`, `_Z1fIJEEvMT_T_DTfp0_EDi`;
+    see `_over_a_pack`.
     """
 
     @pytest.mark.parametrize(

@@ -266,15 +266,9 @@ class Demangler:
     def next_char(self):
         """Consume and return one character, or `""` at the end of input.
 
-        The cursor advances even when there was nothing to return, so that `push_back`
-        is the exact inverse of this call wherever it appears. It used not to, and the
-        two together then *un*-consumed a character that had really been read: a caller
-        that reached the end, got `""`, and put it back moved the cursor onto the last
-        character of the name and read it again. In a loop that is a loop that never
-        advances -- `_T03foo4_123ABTf3psbp` grew a specialisation parameter per
-        iteration until the process ran out of memory, which `demangle()` is documented
-        never to do. Reading past the end still yields nothing, because every test here
-        is `pos < end`.
+        The cursor advances even when there was nothing to return, so `push_back` is the
+        exact inverse of this call wherever it appears, including at the end. Reading
+        past the end yields nothing because every test here is `pos < end`.
         """
         pos = self.pos
         self.pos = pos + 1

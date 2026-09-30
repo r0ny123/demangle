@@ -1489,10 +1489,9 @@ class ItaniumParser:
     def _object_name(self):
         """A special name's <object name>: a <name>, with nothing of a function about it.
 
-        `GV`, `TH`, `TW` and `GR` name data. Read through `name()` alone, a local entity
-        there took a function type after it -- `_ZGVZ1fvE1gv` came back `guard variable
-        for f()::g()`, a guard for a function -- where `parseSpecialName` reads the
-        name and returns, and both references refuse the leftover.
+        `GV`, `TH`, `TW` and `GR` name data. `parseSpecialName` reads the name and
+        returns; both references refuse the leftover, so the name is read with no
+        function type after it.
         """
         return self._as_special_operand(lambda: self.name()[0])
 

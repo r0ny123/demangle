@@ -170,7 +170,7 @@ def _apply_dynamic_relocations(data, segments, dynamic):
     An *indirect* symbolic reference points at a pointer to its descriptor, and in a
     shared object that pointer is not in the file: the slot holds zero and an entry in
     `.rela.dyn` says what the loader writes there. Read off the disk, every such
-    reference came back unresolved -- 3,526 of the Swift 6.1.2 runtime's typerefs, a
+    reference is unresolved -- 3,526 of the Swift 6.1.2 runtime's typerefs, a
     third of those holding a reference at all. This walks `DT_RELA` and does what the
     loader does for the three kinds that need no other image: a `RELATIVE` slot takes
     its addend, and a slot relocated by a symbol the file defines takes that symbol's

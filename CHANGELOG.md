@@ -34,24 +34,12 @@ the reference demanglers, and a **Performance** section.
   same `LimitExceeded("recursion depth")` report past it or past the interpreter's
   stack.
 
-### Performance
+### Removed
 
-- **Schemes load on first use.** A built-in scheme, and each style's options for it,
-  are imported only when a name reaches them, and installed packages are searched in
-  full only when one might declare `demangle.languages`. A first call on `main` imports
-  no scheme and takes under a millisecond; one on an MSVC name imports only MSVC's.
-- **The result cache keeps two generations of 65,536 names** (was one of 16,384,
-  emptied when full), so a second pass over a large library's symbol table hits and a
-  name still in use survives turnover. It is bounded in bytes as well as entries, so
-  long hostile names cannot grow it past about 100 MB, and the bound holds under free
-  threading. A name no scheme is offered is answered without it, as cheaply as a lookup
-  would be, so a table's plain C names leave its room to the mangled ones.
-- **Faster on every path.** Names that are not mangled are rejected about 2x faster by
-  `demangle()` and 3x by `detect()`: a scheme with no fixed first character declares
-  what a name must contain before it could claim it, and is not asked about names
-  without it. Warm `demangle()` calls are about 1.5x faster. Cold Itanium demangling
-  of real symbol tables is about 10% faster, with a fifth to a third fewer Python
-  calls per name depending on the corpus, and byte-identical output.
+- **`ROADMAP.md`.** Its one open item -- the measured shortfall against the upstream
+  corpora -- and the schemes deliberately not covered moved to `CONFORMANCE.md`, and the
+  worst-case cost of hostile input to `SECURITY.md`. The rest was history, which this
+  file and the git log already carry.
 
 ### Fixed
 
@@ -88,12 +76,24 @@ the reference demanglers, and a **Performance** section.
   its answer after the registration emptied the cache, where the stale reading would
   have been served from then on.
 
-### Removed
+### Performance
 
-- **`ROADMAP.md`.** Its one open item -- the measured shortfall against the upstream
-  corpora -- and the schemes deliberately not covered moved to `CONFORMANCE.md`, and the
-  worst-case cost of hostile input to `SECURITY.md`. The rest was history, which this
-  file and the git log already carry.
+- **Schemes load on first use.** A built-in scheme, and each style's options for it,
+  are imported only when a name reaches them, and installed packages are searched in
+  full only when one might declare `demangle.languages`. A first call on `main` imports
+  no scheme and takes under a millisecond; one on an MSVC name imports only MSVC's.
+- **The result cache keeps two generations of 65,536 names** (was one of 16,384,
+  emptied when full), so a second pass over a large library's symbol table hits and a
+  name still in use survives turnover. It is bounded in bytes as well as entries, so
+  long hostile names cannot grow it past about 100 MB, and the bound holds under free
+  threading. A name no scheme is offered is answered without it, as cheaply as a lookup
+  would be, so a table's plain C names leave its room to the mangled ones.
+- **Faster on every path.** Names that are not mangled are rejected about 2x faster by
+  `demangle()` and 3x by `detect()`: a scheme with no fixed first character declares
+  what a name must contain before it could claim it, and is not asked about names
+  without it. Warm `demangle()` calls are about 1.5x faster. Cold Itanium demangling
+  of real symbol tables is about 10% faster, with a fifth to a third fewer Python
+  calls per name depending on the corpus, and byte-identical output.
 
 ## [0.3.0] - 2026-09-29
 

@@ -1,20 +1,15 @@
 """The documentation's claims about the code, checked mechanically.
 
 `tests/test_readme.py` covers the README: its counts, its version, and the output of
-every example it prints. This covers the rest of `docs/`, which had no guard at all.
-
-Every rule here was written because the thing it checks had already drifted: every
-public export is supposed to be reachable in the API reference, and `Decorated` and
-`register_language` were not -- exported, and documented nowhere; every registered
-scheme is supposed to have a section, and Ada and JNI had none; and a page is supposed
-to render the members it asks for, where the pre-Itanium parser's section asked for a
-`detect` that module does not have.
+every example it prints. This covers the rest of `docs/`: every public export is
+reachable in the API reference, every registered scheme has a section, and every page
+renders the members it asks for.
 
 Links are deliberately *not* checked here. Doing it by hand needs a Markdown parser --
 these pages carry MSVC names with a literal backtick in them, so code spans cannot be
-found by counting delimiters -- and mkdocs already does it properly. What it did not do
-was fail: `validation:` in `mkdocs.yml` now promotes an unresolved link, an unlisted
-page and a bad anchor from INFO to a warning, which `--strict` turns into a red build.
+found by counting delimiters -- and mkdocs already does it properly. `validation:` in
+`mkdocs.yml` promotes an unresolved link, an unlisted page and a bad anchor to a
+warning, which `--strict` fails on.
 """
 
 import doctest
