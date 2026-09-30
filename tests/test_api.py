@@ -4,6 +4,7 @@ These are the promises callers build on, so they are tested as promises rather t
 through whatever happens to exercise them.
 """
 
+import io
 import pathlib
 import subprocess
 import sys
@@ -113,7 +114,7 @@ class TestStyles:
             demangle.demangle("_Z1fv", language=unhashable)
         with pytest.raises(ValueError, match="unknown style"):
             demangle.demangle("_Z1fv", style=unhashable)
-        with pytest.raises(ValueError, match="unhashable limits"):
+        with pytest.raises(ValueError, match="Limits instance"):
             demangle.demangle("_Z1fv", limits=unhashable)
 
     def test_a_style_subclass_with_the_same_name_is_not_served_from_the_cache(self):
@@ -341,7 +342,7 @@ class TestCacheStatistics:
 
     @pytest.mark.parametrize("name", ["_Z1fv", "_ZN" + "3foo" * 400 + "Ev"])
     def test_a_bad_argument_is_refused_whether_or_not_the_call_is_cached(self, name):
-        with pytest.raises(ValueError, match="unhashable limits"):
+        with pytest.raises(ValueError, match="Limits instance"):
             demangle.demangle(name, limits={"max_depth": 1})  # ty: ignore[invalid-argument-type]
         with pytest.raises(ValueError, match="unknown language"):
             demangle.demangle(name, language=["itanium"])  # ty: ignore[invalid-argument-type]
@@ -368,6 +369,42 @@ class TestCacheStatistics:
         assert demangle.demangle(name, limits=DEFAULT_LIMITS) == demangle.demangle(name, limits=Limits())
         assert demangle.demangle(name, limits=DEFAULT_LIMITS) == "foo::bar()"
         assert demangle.cache_stats()["hits"] == 1
+
+    def test_limits_none_does_not_share_the_default_limits_cache_slot(self):
+        """The default used to be keyed as `None`, so `limits=None` -- which no parser
+        can read -- cached the name unread for every later call with the default."""
+        demangle.cache_clear()
+        with pytest.raises(ValueError, match="Limits instance"):
+            demangle.demangle("_Z1gv", limits=None)  # ty: ignore[invalid-argument-type]
+        assert demangle.demangle("_Z1gv") == "g()"
+
+    @pytest.mark.parametrize("limits", [None, "bogus", {"max_depth": 1}, 256])
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda limits: demangle.demangle("_Z1gv", limits=limits),
+            lambda limits: demangle.demangle("_Z1gv", style=demangle.style(), limits=limits),
+            lambda limits: demangle.demangle("not mangled", limits=limits),
+            lambda limits: demangle.demangle_strict("_Z1gv", limits=limits),
+            lambda limits: demangle.parse("_Z1gv", limits=limits),
+            lambda limits: demangle.demangle_type("i", language="itanium", limits=limits),
+            lambda limits: demangle.parse_type("i", language="itanium", limits=limits),
+            lambda limits: demangle.demangleb(b"_Z1gv", limits=limits),
+            lambda limits: demangle.demangleb_strict(b"_Z1gv", limits=limits),
+            lambda limits: demangle.parseb(b"_Z1gv", limits=limits),
+            lambda limits: demangle.demangleb_type(b"i", language="itanium", limits=limits),
+            lambda limits: demangle.parseb_type(b"i", language="itanium", limits=limits),
+            lambda limits: demangle.signature("_Z1gv", limits=limits),
+            lambda limits: demangle.signatureb(b"_Z1gv", limits=limits),
+            lambda limits: demangle.demangle_all([], limits=limits),
+            lambda limits: demangle.demangle_text("no symbols here", limits=limits),
+            lambda limits: demangle.find_symbols("no symbols here", limits=limits),
+            lambda limits: demangle.demangle_stream([], io.StringIO(), limits=limits),
+        ],
+    )
+    def test_every_entry_point_refuses_limits_that_are_not_a_limits(self, call, limits):
+        with pytest.raises(ValueError, match="Limits instance"):
+            call(limits)
 
     def test_the_very_first_call_in_a_process_counts_as_a_miss(self):
         """Loading the registry clears the cache, statistics included. The first call

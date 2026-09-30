@@ -86,6 +86,11 @@ _CACHE = BoundedCache(max_size=131072, max_weight=96 << 20, weigh=lambda key, va
 _style_module.notify_on_change(_CACHE.clear)
 _registry.notify_on_change(_CACHE.clear)
 
+#: The default limits' slot in a cache key. Private, so nothing a caller passes can
+#: share it: `None` did, and one call with `limits=None` cached the name unread for
+#: every later call with the default.
+_DEFAULT_LIMITS_KEY = object()
+
 
 def _refuse_non_string(mangled):
     """Report a non-`str` argument as the caller's mistake it is.
@@ -131,6 +136,19 @@ def _parse_with(plugin, mangled, builder, limits, style):
         handle = plugin.parse(mangled, builder, limits, options)
 
     return builder.decorated(handle, decoration) if decoration else handle
+
+
+def _refuse_limits(limits) -> NoReturn:
+    raise ValueError(f"limits must be a Limits instance, got {limits!r}")
+
+
+def _check_limits(limits):
+    """Refuse a `limits` that is not a `Limits`, before it can reach a parser or a key.
+
+    The default is tested by identity first, so the common call pays for nothing else.
+    """
+    if limits is not DEFAULT_LIMITS and not isinstance(limits, Limits):
+        _refuse_limits(limits)
 
 
 def _refuse_unhashable(language, limits) -> NoReturn:
@@ -196,16 +214,18 @@ def demangle(
     # and a style does not hash by value. A name is looked up before it is resolved, so a
     # hit costs no style lookup; one that is not registered misses, and is refused below.
     if style.__class__ is str or style is None:
-        # The default limits keyed as None: a `Limits` hashes through a Python-level
+        # The default limits keyed by a sentinel: a `Limits` hashes through a Python-level
         # `__hash__`, twice on every miss, and nearly every call passes the default.
-        key = (
-            mangled,
-            language,
-            DEFAULT_STYLE if style is None else style,
-            None if limits is DEFAULT_LIMITS else limits,
-        )
+        if limits is DEFAULT_LIMITS:
+            limits_key = _DEFAULT_LIMITS_KEY
+        elif isinstance(limits, Limits):
+            limits_key = limits
+        else:
+            _refuse_limits(limits)
+        key = (mangled, language, DEFAULT_STYLE if style is None else style, limits_key)
     else:
         key = None
+        _check_limits(limits)
         # The same refusal a cached call gives, so caching never decides what is accepted.
         try:
             hash((language, limits))
@@ -279,7 +299,8 @@ def demangle_strict(
         ParseError: the name has a known prefix but does not follow the grammar.
         LimitExceeded: a resource bound was hit.
         TypeError: `mangled` is not a `str`. Use `demangleb_strict()` for bytes.
-        ValueError: `language` or `style` is not a registered name.
+        ValueError: `language` or `style` is not a registered name, or `limits` is not
+            a `Limits`.
     """
     resolved_style = get_style(style)
     builder = resolved_style.spelling_builder
@@ -339,8 +360,8 @@ def demangle_type(
         limits: resource bounds for the parse.
 
     Raises:
-        ValueError: `language` is unknown, or names a scheme with no type grammar, or
-            `style` is not a registered name.
+        ValueError: `language` is unknown, or names a scheme with no type grammar,
+            `style` is not a registered name, or `limits` is not a `Limits`.
         TypeError: `mangled` is not a `str`. Use `demangleb_type()` for bytes.
         NotMangledError: the encoding is empty.
         ParseError: the encoding does not follow the scheme's type grammar.
@@ -370,6 +391,7 @@ def parse_type(
 def _parse_type_handle(mangled, builder, language, style, limits):
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
+    _check_limits(limits)
     plugin = _resolve(language)
     if plugin is None:
         raise ValueError("demangle_type needs a language; a type encoding carries no marker to detect on")
@@ -452,6 +474,7 @@ def _type_languages():
 def _parse_handle(mangled, builder, language, style, limits):
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
+    _check_limits(limits)
     if not mangled:
         raise NotMangledError(mangled, "empty name")
     plugin = _resolve(language)
@@ -699,11 +722,12 @@ def demangle_all(
     than one result at a time beyond what it keeps itself. Shares the module cache,
     which is where the real gain is: symbol tables repeat names heavily.
 
-    Arguments are validated before the generator is created, so a bad `language` or
-    `style` is reported at the call rather than at the first `next()`.
+    Arguments are validated before the generator is created, so a bad `language`,
+    `style` or `limits` is reported at the call rather than at the first `next()`.
     """
     _resolve(language)
     get_style(style)
+    _check_limits(limits)
 
     def _stream():
         for name in names_:

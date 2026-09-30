@@ -71,7 +71,12 @@ the reference demanglers, and a **Performance** section.
   detected and read when the whole name parses as a legacy Rust path. rustc-demangle's
   own vectors: 47 / 51 to 49 / 51.
 - **A plugin registered in place of a built-in scheme** is no longer undone when that
-  scheme's module is imported later.
+  scheme's module is imported later, including by a style loading its options during a
+  parse, whether it was registered before or after the first call; it also answers to
+  the built-in's aliases. Registering the built-in's own `PLUGIN` again puts it back.
+- **A `limits` that is not a `Limits`**, `None` included, raises `ValueError` from every
+  entry point that takes one. `demangle(name, limits=None)` shared the default limits'
+  cache entry, so one such call made later default calls return that name unread.
 
 ### Removed
 

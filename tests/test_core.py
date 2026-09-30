@@ -550,6 +550,61 @@ class TestLazyBuiltIns:
         )
         assert replaced == ["True", "True"]
 
+    @pytest.mark.parametrize("loaded_first", [False, True], ids=["before-load", "after-load"])
+    @pytest.mark.parametrize("name", ["itanium", "msvc", "swift", "gnuv2", "codewarrior", "rust"])
+    def test_a_replacement_survives_the_style_importing_the_built_in(self, name, loaded_first):
+        """Registered before the first call there was no stand-in yet, so the built-in's
+        own `register`, run when the style imported its options mid-parse, took the name
+        back. One scheme per process: importing one can import another."""
+        results = _fresh(
+            "import demangle\n"
+            "from demangle.core import registry\n"
+            "from demangle.core.plugin import LanguagePlugin\n"
+            + ("demangle.demangle('x')\n" if loaded_first else "")
+            + f"mine = LanguagePlugin(name={name!r}, detect=lambda s: True,\n"
+            "                      parse=lambda m, b, limits, options=None: b.name('CUSTOM'))\n"
+            "registry.register(mine)\n"
+            f"print(demangle.demangle('a', language={name!r}), demangle.demangle('b', language={name!r}))\n"
+            f"import demangle.schemes.{name}\n"
+            f"print(registry.get({name!r}) is mine)\n"
+        )
+        assert results == ["CUSTOM", "CUSTOM", "True"]
+
+    def test_a_replacement_registered_before_loading_answers_to_the_built_ins_aliases(self):
+        results = _fresh(
+            "from demangle.core import registry\n"
+            "from demangle.core.plugin import LanguagePlugin\n"
+            "mine = registry.register(LanguagePlugin(name='itanium', detect=bool, parse=print))\n"
+            "print(registry.get('gnu') is mine, registry.get('c++') is mine)\n"
+        )
+        assert results == ["True", "True"]
+
+    @pytest.mark.parametrize("loaded_first", [False, True], ids=["before-load", "after-load"])
+    def test_the_built_in_can_be_registered_back_over_a_replacement(self, loaded_first):
+        results = _fresh(
+            "import dataclasses, demangle\n"
+            "from demangle.core import registry\n"
+            + ("demangle.demangle('x')\n" if loaded_first else "")
+            + "import demangle.schemes.itanium as itanium\n"
+            "mine = dataclasses.replace(itanium.PLUGIN, description='mine')\n"
+            "registry.register(mine)\n"
+            "print(demangle.demangle('_Z1fv') == 'f()', registry.get('gnu') is mine)\n"
+            "registry.register(itanium.PLUGIN)\n"
+            "print(registry.get('itanium') is itanium.PLUGIN, demangle.demangle('_Z1gv'))\n"
+        )
+        assert results == ["True", "True", "True", "g()"]
+
+    @pytest.mark.parametrize("loaded_first", [False, True], ids=["before-load", "after-load"])
+    def test_importing_a_built_in_with_no_replacement_registers_it(self, loaded_first):
+        results = _fresh(
+            "import demangle\n"
+            "from demangle.core import registry\n"
+            + ("demangle.languages()\n" if loaded_first else "")
+            + "import demangle.schemes.msvc as msvc\n"
+            "print(registry.get('msvc') is msvc.PLUGIN, demangle.demangle('?f@@YAXH@Z') == 'void __cdecl f(int)')\n"
+        )
+        assert results == ["True", "True"]
+
 
 class TestPluginDiscoveryScreen:
     """`importlib.metadata` is consulted only when a distribution might name the group."""

@@ -23,6 +23,7 @@ import re
 from collections.abc import Iterator
 from typing import NamedTuple
 
+from .api import _check_limits
 from .api import _resolve as _resolve_language
 from .api import demangle as _demangle
 from .core.limits import DEFAULT_LIMITS, Limits
@@ -94,6 +95,7 @@ def find_symbols(
     # Validated here: a text with no symbols would never reach `demangle`.
     _resolve_language(language)
     get_style(style)
+    _check_limits(limits)
     return _find_symbols(text, language=language, style=style, limits=limits)
 
 
@@ -127,10 +129,12 @@ def demangle_text(
 
     Never raises over the text, for the reason `demangle()` does not: this is run over
     whole files, and one unreadable word must not end the run. Like `demangle()`, it
-    raises `ValueError` when `language` or `style` is not a registered name.
+    raises `ValueError` when `language` or `style` is not a registered name, or `limits`
+    is not a `Limits`.
     """
     _resolve_language(language)
     get_style(style)
+    _check_limits(limits)
     return _demangle_text(text, language=language, style=style, limits=limits)
 
 
@@ -174,5 +178,6 @@ def demangle_stream(
     """
     _resolve_language(language)
     get_style(style)
+    _check_limits(limits)
     for line in fin:
         fout.write(_demangle_text(line, language=language, style=style, limits=limits))

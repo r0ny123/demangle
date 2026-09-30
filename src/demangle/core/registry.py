@@ -108,15 +108,19 @@ def register(plugin):
     if not isinstance(plugin, LanguagePlugin):
         raise TypeError(f"expected a LanguagePlugin, got {type(plugin).__name__}")
     with _lock:
-        stand_in = _stand_ins.get(plugin.name)
-        if stand_in is not None and _registers_itself(plugin):
-            # A lazy built-in arriving: the languages on offer are unchanged, so no
-            # callback. It never displaces a plugin a caller put in its place.
-            if _plugins.get(plugin.name) is stand_in:
-                _plugins[plugin.name] = plugin
-                _ordered = None
-                _by_first = None
-            return plugin
+        if _registers_itself(plugin):
+            # A built-in's module registering its own `PLUGIN` as it is imported, which
+            # can happen at any time -- a style's options import it mid-parse -- so it
+            # never displaces a plugin a caller registered under its name, whether that
+            # came before or after the registry loaded.
+            current = _plugins.get(plugin.name)
+            if current is not None:
+                if current is _stand_ins.get(plugin.name):
+                    # The languages on offer are unchanged, so no callback.
+                    _plugins[plugin.name] = plugin
+                    _ordered = None
+                    _by_first = None
+                return plugin
         # Check every alias before recording any, so a rejected plugin leaves no trace.
         for alias in plugin.aliases:
             if alias in _plugins and alias != plugin.name:
@@ -134,7 +138,11 @@ def register(plugin):
 
 
 def _registers_itself(plugin):
-    """Whether this is a lazy built-in's module registering its own `PLUGIN`, once."""
+    """Whether this is a built-in's module registering its own `PLUGIN`, once.
+
+    Only the first such call is the module's own; a later one is a caller putting the
+    built-in back, and replaces like any registration.
+    """
     if plugin.name in _self_registered:
         return False
     for entry in _BUILTIN_MODULES:
@@ -205,6 +213,12 @@ def _load():
                 elif entry[0] not in _plugins:
                     _install_stand_in(_stand_in(*entry[:6]))
                     installed = True
+                else:
+                    # A caller's plugin already holds the name: it answers to the
+                    # built-in's aliases too, as it would had it been registered later.
+                    for alias in entry[5]:
+                        if alias not in _plugins:
+                            _aliases.setdefault(alias, entry[0])
             _load_entry_points()
             _loaded = True
         finally:
