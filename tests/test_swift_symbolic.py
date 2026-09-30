@@ -7,7 +7,8 @@ of real typerefs recorded from the Swift 5.10.1 runtime -- the bytes, the fragme
 reference resolved to, and the spelling.
 
 Every fragment in that corpus was checked against the symbol the *linker* put at the same
-address, with `swift-demangle` reading both sides: 4,528 of 4,528. Neither side of that
+address, with `swift-demangle` reading both sides: 4,528 of 4,528 in the wider set
+measured, of which the corpus committed here holds 268 names. Neither side of that
 check is this library's opinion.
 """
 

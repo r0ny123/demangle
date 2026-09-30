@@ -573,8 +573,9 @@ class TestAGreaterThanIsBracketedWhereverItStands:
     """libiberty's `d_print_comp` wraps "an expression which uses the greater-than
     operator in an extra layer of parens so that it does not get confused with the '>'
     which ends the template parameters" -- wherever it stands, not only inside an
-    argument list, and on top of whatever brackets its position earns. `>>` gets no
-    such layer, so at the top of a template argument it stands bare. Every spelling here is `c++filt` 2.42's."""
+    argument list, and on top of whatever brackets its position earns. `>>` gets no such
+    layer, so at the top of a template argument it stands bare. Every spelling here is
+    `c++filt` 2.42's."""
 
     @pytest.mark.parametrize(
         "mangled, gnu, llvm",

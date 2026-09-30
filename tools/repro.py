@@ -57,7 +57,8 @@ def ours(name, scheme):
 
 
 def theirs(command, name):
-    """The reference's reading, `None` where it hands the name back, or why it could not run."""
+    """The reference's reading, `None` where it hands the name back, or why it could not
+    run."""
     try:
         return reference_answers(command, [name], timeout=60).get(name)
     except (OSError, subprocess.SubprocessError, SystemExit) as error:

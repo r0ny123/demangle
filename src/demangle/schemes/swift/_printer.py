@@ -179,7 +179,8 @@ def _demangle_either(text):
 
 
 def _spell_payload(text):
-    """`demangleSymbolAsString(text)`, falling back to the text itself as the reference does."""
+    """`demangleSymbolAsString(text)`, falling back to the text itself as the reference
+    does."""
     return print_root(_demangle_either(text), _PAYLOAD_OPTIONS) or text
 
 
@@ -830,7 +831,8 @@ class Printer:
         literal = _JUST_TEXT.get(kind)
         if literal is not None:
             if kind in _THUNK_LEADS and not self.options.shorten_thunk:
-                # The short form of a wrapper is nothing: what it leads is the symbol it wraps.
+                # The short form of a wrapper is nothing: what it leads is the symbol it
+                # wraps.
                 return None
             self.write(literal)
             return None

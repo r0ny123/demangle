@@ -34,7 +34,8 @@ OPTIMISATIONS = ("0", "2")
 #: More than one codegen unit makes the compiler give internalised symbols an
 #: `.llvm.<hash>` suffix.
 CODEGEN_UNITS = ("1", "16")
-#: The executable additionally holds the standard library's symbols, where the long names live.
+#: The executable additionally holds the standard library's symbols, where the long
+#: names live.
 ARTEFACTS = ("obj", "bin")
 
 #: `-C symbol-mangling-version=legacy` is gated behind `-Z unstable-options`.

@@ -174,8 +174,8 @@ def _c_hex_float(kind, value):
     if exponent == 0 and mantissa == 0:
         return f"{sign}0x0p+0L"
     if exponent and not mantissa >> 63:
-        # An "unnormal" (set exponent, integer bit clear), which the hardware treats as invalid.
-        # glibc prints it as a NaN.
+        # An "unnormal" (set exponent, integer bit clear), which the hardware treats as
+        # invalid. glibc prints it as a NaN.
         return f"{sign}nanL"
     fraction = f"{mantissa & ((1 << 60) - 1):015x}".rstrip("0")
     return f"{sign}0x{mantissa >> 60:x}{'.' + fraction if fraction else ''}p{max(exponent, 1) - 16386:+d}L"
@@ -197,7 +197,8 @@ def _c_hex_binary(bits, exponent_bits, fraction_bits):
     return f"{sign}0x{leading}{'.' + fraction if fraction else ''}p{max(exponent, 1) - bias:+d}"
 
 
-#: How the two references spell C99's complex and imaginary qualifiers, by `gnu_complex_spelling`.
+#: How the two references spell C99's complex and imaginary qualifiers, by
+#: `gnu_complex_spelling`.
 _COMPLEX_WORDS = (
     {"C": "complex", "G": "imaginary"},
     {"C": "_Complex", "G": "_Imaginary"},
@@ -434,15 +435,16 @@ class ItaniumParser:
         auto_rule = options.undeduced_auto_substitution
         self._auto_substitutes = mangled.startswith("__Z") if auto_rule is None else auto_rule
         #: Whether the prefix before a closure's `M` enters the table; see
-        #: `ItaniumOptions.closure_prefix_substitution`. Open means: Mach-O underscore is Apple's
-        #: clang, which leaves it out; else the ABI's rule, and `parse` retries the other.
+        #: `ItaniumOptions.closure_prefix_substitution`. Open means: Mach-O underscore
+        #: is Apple's clang, which leaves it out; else the ABI's rule, and `parse`
+        #: retries the other.
         closure_rule = options.closure_prefix_substitution
         self._closure_prefix_substitutes = not mangled.startswith("__Z") if closure_rule is None else closure_rule
         #: Whether a closure prefix was read at all, which is what makes the retry worth
         #: making: the other rule changes nothing else.
         self._closure_prefix_seen = False
-        #: Table indices of the entries a `<type>` may not name: closure prefixes, and template
-        #: names whose arguments must follow.
+        #: Table indices of the entries a `<type>` may not name: closure prefixes, and
+        #: template names whose arguments must follow.
         self._closure_prefix_entries = set()
         self._template_name_entries = set()
         #: The lowest table index a `<template-template-param>` took, and whether an `S<n>_`
@@ -453,19 +455,20 @@ class ItaniumParser:
         self._template_template_shifted = False
         #: The index the last `S<n>_` named, or None after an abbreviation.
         self._last_entry_index = None
-        #: Whether an `S<n>_` named a pack-bound `<template-param>`'s entry and got the pack
-        #: (CONFORMANCE.md note 17); llvm-cxxfilt records the first member there, c++filt the last.
-        #: Read by tools/enumerate.py. See `_note_pack_binding`.
+        #: Whether an `S<n>_` named a pack-bound `<template-param>`'s entry and got the
+        #: pack (CONFORMANCE.md note 17); llvm-cxxfilt records the first member there,
+        #: c++filt the last. Read by tools/enumerate.py. See `_note_pack_binding`.
         self._pack_named_through_a_back_reference = False
         #: How many `Dp` patterns are being read for their arity: a modifier over an
         #: empty pack is the pattern's business there, not a refusal's.
         self._reading_pattern = 0
-        #: Whether a pack with members stood as a type outside any expansion (no compiler writes
-        #: it); llvm-cxxfilt reads the first member, c++filt refuses. Read by tools/enumerate.py.
+        #: Whether a pack with members stood as a type outside any expansion (no
+        #: compiler writes it); llvm-cxxfilt reads the first member, c++filt refuses.
+        #: Read by tools/enumerate.py.
         self._bare_pack_used = False
-        #: Whether the next `<type>` stands directly as a template argument, where a template's
-        #: bare name is allowed (`ScalarMemoTable<int, HashTable>`). Set by `template_arg`,
-        #: cleared by the first `<type>` that looks.
+        #: Whether the next `<type>` stands directly as a template argument, where a
+        #: template's bare name is allowed (`ScalarMemoTable<int, HashTable>`). Set by
+        #: `template_arg`, cleared by the first `<type>` that looks.
         self._template_name_argument = False
         expanded = STD_ABBREVIATIONS_EXPANDED_GNU if options.expand_std_abbreviations else STD_ABBREVIATIONS_EXPANDED
         self._entity_shape = None
@@ -487,8 +490,9 @@ class ItaniumParser:
         # Template-parameter resolutions so far. A production that advanced this depended on
         # its scope, so its entry is kept as its input span -- see `DeferredProduction`.
         self._parameter_uses = 0
-        # Re-read spans, keyed by (entry index, scope generation). Without it a chain `T_`,
-        # `P S0_`, `P S1_`, ... is quadratic; tests/test_substitution_parameters.py pins that.
+        # Re-read spans, keyed by (entry index, scope generation). Without it a chain
+        # `T_`, `P S0_`, `P S1_`, ... is quadratic;
+        # tests/test_substitution_parameters.py pins that.
         self._deferred = {}
         self._depth = 0
         # Precedence of the expression just parsed, read by a containing operator to decide
@@ -502,8 +506,9 @@ class ItaniumParser:
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
         self._ctor_dtor = False
-        #: Whether an inheriting constructor's `<base class type>` was read, and whether it was
-        #: entered in the table; see `ItaniumOptions.inherited_constructor_substitution`.
+        #: Whether an inheriting constructor's `<base class type>` was read, and whether
+        #: it was entered in the table; see
+        #: `ItaniumOptions.inherited_constructor_substitution`.
         self._inherited_base_seen = False
         self._inherited_base_substitutes = options.inherited_constructor_substitution is True
         # True while a special name's operand is read: a local entity there takes no function
@@ -529,24 +534,26 @@ class ItaniumParser:
         # The handles the `Dp` production recorded as expansions, as distinct from the
         # packs they range over; see `_pack_aware`.
         self._expansion_handles = {}
-        # True while reading the declared entity's name. Only its own template arguments become
-        # the `T_` scope, not those of a type in the parameter list.
+        # True while reading the declared entity's name. Only its own template arguments
+        # become the `T_` scope, not those of a type in the parameter list.
         self._naming = True
         # Module names by handle identity, plus strong references. A module name is a
-        # substitution candidate that decorates the following name rather than being a component.
+        # substitution candidate that decorates the following name rather than being a
+        # component.
         self._modules = []
         self._module_names = {}
-        # Protocol-qualified `objc_object` handles, which one pointer collapses into `id<...>`;
-        # tracked by identity like packs and module names.
+        # Protocol-qualified `objc_object` handles, which one pointer collapses into
+        # `id<...>`; tracked by identity like packs and module names.
         self._objc_ids = []
         self._objc_protocols = {}
-        # Types read so far, and how many this parse may re-read. Conversion-operator types and
-        # pack patterns are re-read, and nested expansions multiply, so the actual re-reading
-        # work is charged as it is spent, generously against `max_output`.
+        # Types read so far, and how many this parse may re-read. Conversion-operator
+        # types and pack patterns are re-read, and nested expansions multiply, so the
+        # actual re-reading work is charged as it is spent, generously against
+        # `max_output`.
         self._productions = 0
         self._rework = 2 * limits.max_output + 4096
-        # Set only by `parse_type`: a bare `<type>` has no enclosing template, so an unbound `T_`
-        # is refused rather than spelled `auto` (see `template_param`).
+        # Set only by `parse_type`: a bare `<type>` has no enclosing template, so an
+        # unbound `T_` is refused rather than spelled `auto` (see `template_param`).
         self._reject_unbound_parameters = False
         # Set for the function enclosing a local name, whose return type GNU c++filt omits:
         # parsed, then discarded.
@@ -562,8 +569,9 @@ class ItaniumParser:
         # entries there were before it: `(position, mark)`, or None. See
         # `_reread_conversion`.
         self._pending_conversion = None
-        #: The requires-clause in the entity's own template arguments, `I ... Q <constraint> E`,
-        #: spelled under the gnu style, which prints it after the parameters; None otherwise.
+        #: The requires-clause in the entity's own template arguments,
+        #: `I ... Q <constraint> E`, spelled under the gnu style, which prints it after
+        #: the parameters; None otherwise.
         self._argument_constraint = None
         #: Whether the conversion operator's type just read resolved a template
         #: parameter with nothing in scope -- a spelling that stands only until the
@@ -590,11 +598,13 @@ class ItaniumParser:
         #: Whether such a pack stood as a direct member of another pack, `J ... I ... E
         #: ... E`, a shape no compiler writes. Read by tools/enumerate.py as well.
         self._legacy_pack_nested = False
-        #: Whether an `<expr-primary>` used the g++ bare `Z` rather than `_Z`, which llvm-cxxfilt
-        #: refuses inside an expression. Read by tools/enumerate.py. See `expr_primary`.
+        #: Whether an `<expr-primary>` used the g++ bare `Z` rather than `_Z`, which
+        #: llvm-cxxfilt refuses inside an expression. Read by tools/enumerate.py. See
+        #: `expr_primary`.
         self._bare_entity_prefix_used = False
-        #: Whether a `Dk`/`DK` placeholder was recorded as a candidate (it is a `<type>`, 5.1.10);
-        #: llvm-cxxfilt 18 records nothing for it. Read by tools/enumerate.py. See `type_`.
+        #: Whether a `Dk`/`DK` placeholder was recorded as a candidate (it is a
+        #: `<type>`, 5.1.10); llvm-cxxfilt 18 records nothing for it. Read by
+        #: tools/enumerate.py. See `type_`.
         self._constrained_placeholder_recorded = False
         #: Whether a lambda declared a template parameter after a pack, which no
         #: compiler writes -- a pack must be last -- and where `c++filt` 2.42 stops the
@@ -606,8 +616,9 @@ class ItaniumParser:
         # The last <prefix> component before its template arguments, or None where it was not
         # an <unqualified-name>: what a constructor repeats. See `enclosing_class_name`.
         self._prefix_bare = None
-        # Whether a head `<template-param>` may take template arguments. False in a conversion
-        # operator's type, where a following `I` opens the operator's own list (`cvT_I4MerpE`).
+        # Whether a head `<template-param>` may take template arguments. False in a
+        # conversion operator's type, where a following `I` opens the operator's own
+        # list (`cvT_I4MerpE`).
         self._try_template_args = True
         # Whether the arguments in scope include a pack. If so a `Dp` expansion is spelled as
         # the members and already has its ellipsis; if not, the ellipsis is printed.
@@ -623,17 +634,17 @@ class ItaniumParser:
         # Whether the type just read mentioned a pack-bound parameter, so is already expanded
         # and takes no ellipsis.
         self._saw_pack = False
-        # The arity of the pack a pattern mentions, and the member being spelled: `Dp unary<T_>`
-        # becomes `unary<int>, unary<float>`, not `unary<int, float>`.
+        # The arity of the pack a pattern mentions, and the member being spelled:
+        # `Dp unary<T_>` becomes `unary<int>, unary<float>`, not `unary<int, float>`.
         self._pack_arity = None
         self._pack_index = None
-        # Whether the list just read ended in an empty pack, which is dropped: GNU c++filt then
-        # writes `A<B<int>>` rather than `A<B<int> >`.
+        # Whether the list just read ended in an empty pack, which is dropped: GNU
+        # c++filt then writes `A<B<int>>` rather than `A<B<int> >`.
         self._trailing_empty_pack = False
 
-    # The depth guard is inlined at each of its seven sites: this is the hottest path, and a
-    # call is two frames. The restore is absolute, `self._depth = depth - 1`, because when the
-    # guard itself raises no `finally` has undone its increment.
+    # The depth guard is inlined at each of its seven sites: this is the hottest path,
+    # and a call is two frames. The restore is absolute, `self._depth = depth - 1`,
+    # because when the guard itself raises no `finally` has undone its increment.
 
     def parse(self):
         """<mangled-name> ::= _Z <encoding> [. <vendor-specific suffix>]"""
@@ -641,8 +652,8 @@ class ItaniumParser:
         mangled = reader.text
         if mangled.startswith(("___Z", "____Z")):
             return self.block_invocation()
-        # See `_ALLOC_TOKEN`. `__alloc_token_malloc` is not one: what follows must be a mangled
-        # name itself.
+        # See `_ALLOC_TOKEN`. `__alloc_token_malloc` is not one: what follows must be a
+        # mangled name itself.
         alloc_token = ""
         if mangled.startswith(_ALLOC_TOKEN):
             after = reader.pos + len(_ALLOC_TOKEN)
@@ -654,8 +665,8 @@ class ItaniumParser:
             if reader.text.startswith(("_Z", "__Z"), after):
                 reader.pos = after
                 alloc_token = " (.alloc_token)"
-        # A Mach-O symbol carries the linker's extra underscore. Strip it only before a second
-        # one, or `_Z1fv` loses the underscore the grammar needs.
+        # A Mach-O symbol carries the linker's extra underscore. Strip it only before a
+        # second one, or `_Z1fv` loses the underscore the grammar needs.
         if reader.startswith("__Z"):
             reader.take()
         if not reader.eat("_Z"):
@@ -665,8 +676,9 @@ class ItaniumParser:
 
         if not reader.eof:
             suffix = reader.remaining
-            # A clone suffix (`.cold`, `.part.0`, `.llvm.<hash>`) is only identifiable as what the
-            # grammar did not consume: `.` also occurs inside Clang's coroutine frame identifiers.
+            # A clone suffix (`.cold`, `.part.0`, `.llvm.<hash>`) is only identifiable
+            # as what the grammar did not consume: `.` also occurs inside Clang's
+            # coroutine frame identifiers.
             if suffix.startswith("."):
                 result = self.builder.decorated(result, suffix)
             else:
@@ -776,7 +788,8 @@ class ItaniumParser:
         self._naming = False
         try:
             if self._no_return_type:
-                # A conversion operator encodes no return type: `_ZN1ScviEiv` is `S::operator int(int, void)`.
+                # A conversion operator encodes no return type: `_ZN1ScviEiv` is
+                # `S::operator int(int, void)`.
                 self._no_return_type = False
                 returns = None
             else:
@@ -788,8 +801,8 @@ class ItaniumParser:
 
             parameters = []
             read = 0
-            # Noted before reading: a `T_` bound to `void` also spells `void`, and does not mean
-            # an empty list.
+            # Noted before reading: a `T_` bound to `void` also spells `void`, and does
+            # not mean an empty list.
             wrote_void = False
             keep_empty = self.options.gnu_empty_pack_spelling
             text = reader.text
@@ -806,8 +819,9 @@ class ItaniumParser:
                 parameter = self.type_()
                 read += 1
                 if not size(parameter):
-                    # An expansion over an empty pack is not the explicit object parameter. c++filt still
-                    # prints it as an empty entry, `f(, int)`, unless it ends the list.
+                    # An expansion over an empty pack is not the explicit object
+                    # parameter. c++filt still prints it as an empty entry, `f(, int)`,
+                    # unless it ends the list.
                     if keep_empty:
                         parameters.append(parameter)
                     continue
@@ -818,17 +832,18 @@ class ItaniumParser:
             if keep_empty:
                 self._drop_trailing_empties(parameters)
             if not read:
-                # `<signature type>+`: a specialisation spends its first type on the return, so
-                # `_Z1fIiEi` has no parameters, and both references refuse it. Counted, because `v` and
-                # empty expansions legitimately leave `parameters` empty.
+                # `<signature type>+`: a specialisation spends its first type on the
+                # return, so `_Z1fIiEi` has no parameters, and both references refuse
+                # it. Counted, because `v` and empty expansions legitimately leave
+                # `parameters` empty.
                 raise ParseError(self._mangled, reader.pos, "a function signature has no parameter types")
         finally:
             self._naming = was_naming
 
         if read == 1 and wrote_void:
-            # `f(void)` is `f()` only when the one signature type was written `v`, as both
-            # references read it: `_Z1fIvEvT_` is `f<void>(void)`, and `_Z1fvv` is `f(void, void)` to
-            # c++filt (llvm-cxxfilt refuses it).
+            # `f(void)` is `f()` only when the one signature type was written `v`, as
+            # both references read it: `_Z1fIvEvT_` is `f<void>(void)`, and `_Z1fvv` is
+            # `f(void, void)` to c++filt (llvm-cxxfilt refuses it).
             parameters = []
 
         suffix = ""
@@ -843,8 +858,9 @@ class ItaniumParser:
             # The requires-clause closes the declaration, after the qualifiers.
             suffix += " requires " + builder.spell(self.constraint_expression())
         if self._argument_constraint is not None:
-            # c++filt then writes the argument list's clause: `requires D<int> requires C<int>` for
-            # `IiQ1CIT_EE ... Q1DIT_E`. Only for the function's own list; c++filt refuses the other.
+            # c++filt then writes the argument list's clause:
+            # `requires D<int> requires C<int>` for `IiQ1CIT_EE ... Q1DIT_E`. Only for
+            # the function's own list; c++filt refuses the other.
             if is_template:
                 suffix += " requires " + self._argument_constraint
             self._argument_constraint = None
@@ -912,8 +928,8 @@ class ItaniumParser:
 
         if code in SPECIAL_ENCODING_NAMES:
             reader.pos += 2
-            # GA (GNU) takes any <encoding>, even another special name (`_ZGATW1x`); GV, TH and
-            # TW take only an <object name>.
+            # GA (GNU) takes any <encoding>, even another special name (`_ZGATW1x`); GV,
+            # TH and TW take only an <object name>.
             inner = self.encoding() if code == "GA" else self._object_name()
             return self.builder.special(self._encoding_special_label(code), inner)
 
@@ -926,8 +942,9 @@ class ItaniumParser:
         if code == "TC":
             # <special-name> ::= TC <type> <offset number> _ <base type>
             #
-            # Spelled `<base>-in-<derived>`; the offset is not printed. Both types are ordinary
-            # candidates: `_ZTCSt9strstream16_Si` uses `Si` because `St` was recorded.
+            # Spelled `<base>-in-<derived>`; the offset is not printed. Both types are
+            # ordinary candidates: `_ZTCSt9strstream16_Si` uses `Si` because `St` was
+            # recorded.
             reader.pos += 2
             derived = self._special_operand_type()
             reader.number()
@@ -1011,9 +1028,10 @@ class ItaniumParser:
                     base = self.unqualified_name(module=named)
                     candidate = True
             if reader.peek() == "I":
-                # An <unscoped-template-name> is a candidate (5.1.10), recorded before its arguments:
-                # in `_ZSt4sortIPiEvT_S_`, `S_` is `std::sort`. A <substitution> is not recorded again
-                # (llvm-cxxfilt refuses `_ZSbIwEvS_`).
+                # An <unscoped-template-name> is a candidate (5.1.10), recorded before
+                # its arguments: in `_ZSt4sortIPiEvT_S_`, `S_` is `std::sort`. A
+                # <substitution> is not recorded again (llvm-cxxfilt refuses
+                # `_ZSbIwEvS_`).
                 if candidate:
                     self.subs.remember(base, "unscoped-template-name")
                     self._note_entry(self._template_name_entries)
@@ -1021,8 +1039,9 @@ class ItaniumParser:
                 self._specialised_handles[id(specialised)] = specialised
                 return specialised, (), "", True
             if not candidate:
-                # A back-reference is a <name> only as an <unscoped-template-name>, so needs
-                # <template-args>. llvm-cxxfilt refuses `_ZZ1fPiES_`; c++filt's `d_name` does not check.
+                # A back-reference is a <name> only as an <unscoped-template-name>, so
+                # needs <template-args>. llvm-cxxfilt refuses `_ZZ1fPiES_`; c++filt's
+                # `d_name` does not check.
                 raise ParseError(self._mangled, reader.pos, "a substitution as a name must carry template arguments")
             return base, (), "", False
 
@@ -1207,8 +1226,9 @@ class ItaniumParser:
                     reader.pos = pos + 1
                     break
                 if char in DIGITS:
-                    # `prefix_component` for its commonest case, a bare <source-name>, inlined. It
-                    # neither recurses nor carries a module name on, and nothing here raises the depth.
+                    # `prefix_component` for its commonest case, a bare <source-name>,
+                    # inlined. It neither recurses nor carries a module name on, and
+                    # nothing here raises the depth.
                     if self._depth >= max_depth:
                         raise LimitExceeded(self._mangled, "recursion depth", max_depth)
                     self._prefix_ended_on = ""
@@ -1282,13 +1302,14 @@ class ItaniumParser:
             if not parts:
                 raise ParseError(self._mangled, reader.pos, "empty nested name")
             if self._prefix_ended_on:
-                # `<nested-name> ::= N ... <prefix> <unqualified-name> E`: the last component cannot be
-                # a <substitution> (`_ZNSaEv`) or an `M` closing a data-member or closure prefix
-                # (`_Z1fN1aME`). c++filt refuses both; llvm-cxxfilt accepts only `_Z1fN1aME`. As interior
-                # components (`_ZNSaC1Ev`) they are fine.
+                # `<nested-name> ::= N ... <prefix> <unqualified-name> E`: the last
+                # component cannot be a <substitution> (`_ZNSaEv`) or an `M` closing a
+                # data-member or closure prefix (`_Z1fN1aME`). c++filt refuses both;
+                # llvm-cxxfilt accepts only `_Z1fN1aME`. As interior components
+                # (`_ZNSaC1Ev`) they are fine.
                 raise ParseError(self._mangled, reader.pos, f"a nested name ending in {self._prefix_ended_on}")
-            # A template constructor has no return type to encode, so the signature's leading type
-            # is a parameter.
+            # A template constructor has no return type to encode, so the signature's
+            # leading type is a parameter.
             if self._ctor_dtor:
                 is_template = False
         finally:
@@ -1374,7 +1395,8 @@ class ItaniumParser:
                 if not parts:
                     raise ParseError(self._mangled, reader.pos, "template arguments with no name")
                 if self._prefix_has_args:
-                    # A specialisation takes no further arguments: llvm-cxxfilt refuses `_Z1fN1AIiEIcEE`.
+                    # A specialisation takes no further arguments: llvm-cxxfilt refuses
+                    # `_Z1fN1AIiEIcEE`.
                     raise ParseError(self._mangled, reader.pos, "template arguments on a specialisation")
                 pending = self._conversion_pending()
                 # Captured before the arguments are read: an argument may be a nested
@@ -1392,8 +1414,9 @@ class ItaniumParser:
                 self._prefix_has_args = True
                 self._specialised_handles[id(parts[-1])] = parts[-1]
                 self._specialised_handles[id(combined)] = combined
-                # Only an interior <template-prefix> <template-args> is a separate candidate. Before the
-                # closing `E` the enclosing <type> records it, and recording twice shifts every index.
+                # Only an interior <template-prefix> <template-args> is a separate
+                # candidate. Before the closing `E` the enclosing <type> records it, and
+                # recording twice shifts every index.
                 if reader.peek() != "E":
                     self.subs.remember(self._spend_prefix(combined), "prefix")
                 return True, module
@@ -1418,16 +1441,17 @@ class ItaniumParser:
                 # of its own. It ends a <prefix>, so an <unqualified-name> still has to
                 # follow before the `E` -- see `nested_name`.
                 if self._prefix_bare is None:
-                    # The prefix before `M` must be a spelled name: llvm-cxxfilt refuses `_ZNStM1xE`, which
-                    # c++filt reads as `std::x`.
+                    # The prefix before `M` must be a spelled name: llvm-cxxfilt refuses
+                    # `_ZNStM1xE`, which c++filt reads as `std::x`.
                     raise ParseError(self._mangled, reader.pos, "a data member or closure prefix over no spelled name")
                 reader.take()
                 self._prefix_ended_on = "a data member or closure prefix"
                 self._prefix_bare = None
                 return False, module
 
-            # A <nested-name> has no requires-clause: `Q` falls through to `unqualified_name`, which
-            # refuses it, as both references refuse `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE`.
+            # A <nested-name> has no requires-clause: `Q` falls through to
+            # `unqualified_name`, which refuses it, as both references refuse
+            # `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE`.
 
         component = self.unqualified_name(scope=parts, module=module)
         parts.append(component)
@@ -1438,8 +1462,9 @@ class ItaniumParser:
         following = text[pos] if pos < reader.length else ""
         if following != "E":
             if following == "M":
-                # The prefix of a closure or data member: a candidate under the ABI, clang and GCC 13,
-                # not under GCC 12 and earlier. See `ItaniumOptions.closure_prefix_substitution`.
+                # The prefix of a closure or data member: a candidate under the ABI,
+                # clang and GCC 13, not under GCC 12 and earlier. See
+                # `ItaniumOptions.closure_prefix_substitution`.
                 self._closure_prefix_seen = True
                 if not self._closure_prefix_substitutes:
                     return False, ""
@@ -1503,8 +1528,9 @@ class ItaniumParser:
         reader = self.reader
         builder = self.builder
         reader.expect("Z")
-        # `Z <encoding> E` has template parameters of its own: without a fresh naming context its
-        # `T_` would resolve against an enclosing template's (a lambda passed between templates).
+        # `Z <encoding> E` has template parameters of its own: without a fresh naming
+        # context its `T_` would resolve against an enclosing template's (a lambda
+        # passed between templates).
         outer_naming = self._naming
         outer_scope = self.targs.snapshot()
         self._naming = True
@@ -1514,8 +1540,8 @@ class ItaniumParser:
         self._drop_return = not self.options.local_name_return_type
         self._no_return_type = False
         self._explicit_object = False
-        # `_in_special_name` is about the entity after the `E`, not the enclosing function; left
-        # set, `_ZGVZZN1A1fEvENKUlvE_clEvE1y` would lose its `const`.
+        # `_in_special_name` is about the entity after the `E`, not the enclosing
+        # function; left set, `_ZGVZZN1A1fEvENKUlvE_clEvE1y` would lose its `const`.
         outer_special = self._in_special_name
         self._in_special_name = False
         try:
@@ -1659,9 +1685,9 @@ class ItaniumParser:
             if (char == "C" and reader.ahead(1) in CONSTRUCTOR_KINDS) or (
                 char == "D" and reader.ahead(1) in DESTRUCTOR_KINDS
             ):
-                # `<unqualified-name> ::= [<module-name>] <operator-name> | <ctor-dtor-name> | ...`: a
-                # structor's module is on the class name (`_ZNW4llvm6ModuleC1Ev`), so llvm-cxxfilt refuses
-                # `_ZNStW9rGPRClassC2Ev`.
+                # `<unqualified-name> ::= [<module-name>] <operator-name> | <ctor-dtor-name>
+                # | ...`: a structor's module is on the class name (`_ZNW4llvm6ModuleC1Ev`),
+                # so llvm-cxxfilt refuses `_ZNStW9rGPRClassC2Ev`.
                 raise ParseError(self._mangled, reader.pos, "a module name on a constructor or destructor")
         # `F` marks a friend declared inside the class it is a friend of. The scope is
         # already in `parts`, which `qualified` joins with `::`, so the marker decorates
@@ -1684,8 +1710,9 @@ class ItaniumParser:
             return builder.name(self._befriended(name + tags) if friend else name + tags)
 
         if char == "L":
-            # At most one `L`: `<unqualified-name> ::= [<module-name>] [L] <name body> [<abi-tags>]`,
-            # and both references refuse `_Z1fLL1A`.
+            # At most one `L`:
+            # `<unqualified-name> ::= [<module-name>] [L] <name body> [<abi-tags>]`, and
+            # both references refuse `_Z1fLL1A`.
             if internal:
                 raise ParseError(self._mangled, reader.pos, "a second internal-linkage marker")
             reader.take()
@@ -1711,7 +1738,8 @@ class ItaniumParser:
                 self._ctor_dtor = True
                 # The bare class name, with no module attached; see `constructor_name`.
                 spelled = "~" + self.enclosing_class_name(scope)
-                # `<ctor-dtor-name> [<abi-tags>]`: libc++ 18 tags destructors, `D2B8ne180100`.
+                # `<ctor-dtor-name> [<abi-tags>]`: libc++ 18 tags destructors,
+                # `D2B8ne180100`.
                 if reader.peek() == "B":
                     spelled += self.abi_tags()
                 self._component_has_no_base_name = True
@@ -1744,13 +1772,14 @@ class ItaniumParser:
         code = reader.peek2()
         has_no_base_name = code in ("cv", "li") or (code[:1] == "v" and code[1:2].isdigit())
         spelled = self._in_module(self.operator_name(), module) + self.abi_tags()
-        # Assigned after the operator is read: its type may be a class name, whose reading clears
-        # the flag (`_ZN1Scv1AC2Ev` is `S::operator A::()` to llvm-cxxfilt).
+        # Assigned after the operator is read: its type may be a class name, whose
+        # reading clears the flag (`_ZN1Scv1AC2Ev` is `S::operator A::()` to
+        # llvm-cxxfilt).
         self._component_has_no_base_name = has_no_base_name
         operator = builder.name(self._befriended(spelled) if friend else spelled)
         if reader.peek() != "I":
-            # Nothing will bind a conversion operator's template parameters here; cleared because the
-            # next argument list in the name is somebody else's.
+            # Nothing will bind a conversion operator's template parameters here;
+            # cleared because the next argument list in the name is somebody else's.
             self._pending_conversion = None
             if self._conversion_unbound:
                 # Both references refuse `_Zcv1BIRT_E`, whose parameter nothing binds. See
@@ -1787,16 +1816,17 @@ class ItaniumParser:
         reader.expect("C")
         self._ctor_dtor = True
         if reader.eat("I"):
-            # `CI1` to `CI5` only, the variants an ordinary constructor has: `_ZN1BCIT1AEi` is
-            # refused.
+            # `CI1` to `CI5` only, the variants an ordinary constructor has:
+            # `_ZN1BCIT1AEi` is refused.
             marker = reader.take()
             if marker not in CONSTRUCTOR_KINDS:
                 raise ParseError(self._mangled, reader.pos, f"unknown constructor variant {marker!r}")
             # Read off the scope before the base type, a <type> whose own nested name would
             # otherwise stand where the class should.
             spelled = self.enclosing_class_name(scope)
-            # The base type is a 5.1.10 candidate that g++ 13.3 enters (`_ZN1DCI21CENS0_4KindES1_`)
-            # and clang++ 18.1.3 does not. Clang's rule first, g++'s on retry; see
+            # The base type is a 5.1.10 candidate that g++ 13.3 enters
+            # (`_ZN1DCI21CENS0_4KindES1_`) and clang++ 18.1.3 does not. Clang's rule
+            # first, g++'s on retry; see
             # `ItaniumOptions.inherited_constructor_substitution`.
             self._inherited_base_seen = True
             mark = self.subs.mark()
@@ -1823,23 +1853,25 @@ class ItaniumParser:
             raise ParseError(self._mangled, self.reader.pos, "constructor outside any class scope")
         bare = self._prefix_bare
         if bare is not None and self._prefix_bare_has_no_base_name:
-            # No base name (conversion, vendor or literal operator, structor, closure, unnamed type,
-            # structured binding): llvm-cxxfilt's `CtorDtorName` prints nothing, `A::operator int::~()`
-            # for `_ZN1AcviD0Ev`; libiberty uses the last <source-name> read.
+            # No base name (conversion, vendor or literal operator, structor, closure,
+            # unnamed type, structured binding): llvm-cxxfilt's `CtorDtorName` prints
+            # nothing, `A::operator int::~()` for `_ZN1AcviD0Ev`; libiberty uses the
+            # last <source-name> read.
             return self._last_source_name if self.options.gnu_closure_spelling else ""
         if bare is not None:
             # The component before its template arguments; cutting the spelling at `<` breaks
             # operator-named classes (`_ZNssC1Ev`).
             spelled = _ABI_TAGS_AT_END.sub("", self.builder.spell(bare))
         else:
-            # A scope not from an <unqualified-name> (substitution, `<template-param>`, `<decltype>`):
-            # the arguments and tags come off the spelling, which has no `<` or `[` of its own.
+            # A scope not from an <unqualified-name> (substitution, `<template-param>`,
+            # `<decltype>`): the arguments and tags come off the spelling, which has no
+            # `<` or `[` of its own.
             spelled = self.builder.spell(scope[-1])
             cut = min((index for index in (spelled.find("<"), spelled.find("[")) if index > 0), default=-1)
             if cut > 0:
                 spelled = spelled[:cut]
-        # An abbreviation is one part (`Sa` is `std::allocator`), so only its tail is the class
-        # name.
+        # An abbreviation is one part (`Sa` is `std::allocator`), so only its tail is
+        # the class name.
         separator = spelled.rfind("::")
         spelled = spelled[separator + 2 :] if separator >= 0 else spelled
         # The module comes off too: `_ZNW4llvm6ModuleC1Ev` is `Module@llvm::Module()` to both
@@ -1996,16 +2028,18 @@ class ItaniumParser:
         if reader.eat("l"):
             # <lambda-sig> ::= <template-param-decl>* [Q <constraint>] <parameter type>+
             #
-            # A generic lambda's declared parameters replace the enclosing `T_` scope: by ABI 5.1.8 an
-            # undeclared `T_` in its signature is an `auto`, not the enclosing template's argument.
+            # A generic lambda's declared parameters replace the enclosing `T_` scope:
+            # by ABI 5.1.8 an undeclared `T_` in its signature is an `auto`, not the
+            # enclosing template's argument.
             declarations = []
             saved_counts = self._parameter_counts
             saved_scope = self.targs.snapshot()
             self._parameter_counts = {}
             if self._naming:
-                # A lambda that is the named entity starts from nothing. One inside a type or expression
-                # keeps the levels around it with its own on top, so `TL0__` reaches the lambda while `T_`
-                # reaches the enclosing function's arguments.
+                # A lambda that is the named entity starts from nothing. One inside a
+                # type or expression keeps the levels around it with its own on top, so
+                # `TL0__` reaches the lambda while `T_` reaches the enclosing function's
+                # arguments.
                 self.targs.clear()
             declared = []
             # The level the lambda's own parameters occupy, and the only one a reference
@@ -2019,8 +2053,9 @@ class ItaniumParser:
             self._reading_closure_signature = True
             try:
                 while reader.peek2() in _PARAMETER_DECLARATIONS:
-                    # A pack must be last; `c++filt` 2.42 stops the list at `Tp Ty Ty` rather than refuse.
-                    # Kept here, so a `TL0_<n>_` can still name it. See `_declaration_after_a_pack`.
+                    # A pack must be last; `c++filt` 2.42 stops the list at `Tp Ty Ty`
+                    # rather than refuse. Kept here, so a `TL0_<n>_` can still name it.
+                    # See `_declaration_after_a_pack`.
                     if reader.peek2() == "Tp":
                         saw_pack = True
                     elif saw_pack:
@@ -2044,8 +2079,8 @@ class ItaniumParser:
                         )
                     parameters.append(self.builder.spell(self.type_()))
                 if not parameters:
-                    # `<parameter type>+`: a lambda taking nothing is written `v`; both references refuse
-                    # `UlE_`.
+                    # `<parameter type>+`: a lambda taking nothing is written `v`; both
+                    # references refuse `UlE_`.
                     raise ParseError(self._mangled, reader.pos, "a lambda signature with no parameter types")
             finally:
                 self._reading_closure_signature = was_reading_closure
@@ -2073,7 +2108,8 @@ class ItaniumParser:
         reader.expect("_")
         signature = f"{template_header}{constraint}({', '.join(parameters)}){trailing}"
         if lambda_expression:
-            # The lambda expression, not the closure; the discriminator has no spelling in it.
+            # The lambda expression, not the closure; the discriminator has no spelling
+            # in it.
             return self.builder.raw(f"[]{signature}{{...}}")
         if self.options.gnu_closure_spelling:
             number = int(index) + 2 if index else 1
@@ -2086,16 +2122,18 @@ class ItaniumParser:
         code = reader.peek2()
 
         if code == "cv":
-            # The type may use the operator's own template parameters, written after it; position
-            # and table mark are kept for `_reread_conversion`. No return type is encoded.
+            # The type may use the operator's own template parameters, written after it;
+            # position and table mark are kept for `_reread_conversion`. No return type
+            # is encoded.
             reader.pos += 2
             start = reader.pos
             mark = self.subs.mark()
             was_trying = self._try_template_args
             was_reading = self._reading_conversion_type
             self._try_template_args = False
-            # The one reading that may resolve a template parameter with nothing in scope;
-            # `_reread_conversion` redoes it once the arguments are. See `bind_template_param`.
+            # The one reading that may resolve a template parameter with nothing in
+            # scope; `_reread_conversion` redoes it once the arguments are. See
+            # `bind_template_param`.
             self._reading_conversion_type = True
             self._conversion_unbound = False
             try:
@@ -2104,8 +2142,8 @@ class ItaniumParser:
                 self._reading_conversion_type = was_reading
                 self._try_template_args = was_trying
             self._pending_conversion = (start, mark)
-            # Only the entity's own name suppresses a return type, not a conversion operator inside
-            # an expression (`&A::operator int` as a template argument).
+            # Only the entity's own name suppresses a return type, not a conversion
+            # operator inside an expression (`&A::operator int` as a template argument).
             if self._naming:
                 self._no_return_type = True
             return spelled
@@ -2143,8 +2181,8 @@ class ItaniumParser:
             return False
         following = reader.ahead2(2)
         if following[:1] == "L":
-            # An `L` between scope and structor: llvm-cxxfilt reads `_ZNSiLD1Ev` like `_ZNSiD1Ev`;
-            # c++filt refuses it.
+            # An `L` between scope and structor: llvm-cxxfilt reads `_ZNSiLD1Ev` like
+            # `_ZNSiD1Ev`; c++filt refuses it.
             following = reader.ahead2(3)
         if len(following) != 2:
             return False
@@ -2177,8 +2215,8 @@ class ItaniumParser:
             reader.pos = pos + 1
             tags = self.abi_tags() if pos + 1 < end and text[pos + 1] == "B" else ""
             if tags:
-                # 5.1.2: an abbreviation carrying ABI tags is substitutable as the tagged whole; the bare
-                # abbreviation is not.
+                # 5.1.2: an abbreviation carrying ABI tags is substitutable as the
+                # tagged whole; the bare abbreviation is not.
                 return self.subs.remember(self.builder.raw(table[code] + tags), "type")
             return self.builder.raw(table[code])
         index = reader.seq_id()
@@ -2189,9 +2227,10 @@ class ItaniumParser:
         kind = type(entry)
         try:
             if kind is ParameterReference:
-                # The entry is the parameter, not its binding where recorded: the back-reference may be
-                # read under a different scope. `bind_template_param` does the pack handling, so
-                # `_pack_aware` is not applied twice. See `ParameterReference`.
+                # The entry is the parameter, not its binding where recorded: the
+                # back-reference may be read under a different scope.
+                # `bind_template_param` does the pack handling, so `_pack_aware` is not
+                # applied twice. See `ParameterReference`.
                 try:
                     return self._note_pack_binding(self.bind_template_param(entry.index, entry.level))
                 except ParseError:
@@ -2207,8 +2246,9 @@ class ItaniumParser:
                 return entry
             return self._pack_aware(entry)
         finally:
-            # Set on the way out: re-reading a deferred production resolves back-references through
-            # this method too, and the caller asks about its own.
+            # Set on the way out: re-reading a deferred production resolves
+            # back-references through this method too, and the caller asks about its
+            # own.
             self._last_entry_index = index
 
     def _note_pack_binding(self, bound):
@@ -2301,10 +2341,10 @@ class ItaniumParser:
         begin = reader.pos
         reader.expect("T")
 
-        # `TL <level-1> _` names the level; a bare `T` is level 0, the innermost <template-args>.
-        # Higher levels are what generic lambdas and template template parameters declare.
-        # Only `L` may follow here: `Tp` and `Ts` are other productions, and both references
-        # refuse `_Z1fIiEvTp_`.
+        # `TL <level-1> _` names the level; a bare `T` is level 0, the innermost
+        # <template-args>. Higher levels are what generic lambdas and template template
+        # parameters declare. Only `L` may follow here: `Tp` and `Ts` are other
+        # productions, and both references refuse `_Z1fIiEvTp_`.
         level = 0
         if reader.eat("L"):
             level = int(reader.digits()) + 1
@@ -2313,15 +2353,16 @@ class ItaniumParser:
         reader.expect("_")
 
         if self._in_constraint:
-            # Inside a requires-clause a parameter is spelled by its own mangled name (`T_` is `T`,
-            # `TL0__` is `TL0_`) rather than by its binding.
+            # Inside a requires-clause a parameter is spelled by its own mangled name
+            # (`T_` is `T`, `TL0__` is `TL0_`) rather than by its binding.
             symbolic = reader.text[begin : reader.pos - 1]
             if self.options.symbolic_constraint_parameters:
                 return self.builder.raw(symbolic), None
-            # GNU substitutes the binding, but a clause may name an enclosing template's parameter
-            # with nothing bound (`TL0__` in `Q` on a member of `A<int>`). The style must not decide
-            # whether a name parses, so that falls back to the symbolic spelling, and the recorded
-            # reference carries it for a later `S_`. See `substitution`.
+            # GNU substitutes the binding, but a clause may name an enclosing template's
+            # parameter with nothing bound (`TL0__` in `Q` on a member of `A<int>`). The
+            # style must not decide whether a name parses, so that falls back to the
+            # symbolic spelling, and the recorded reference carries it for a later `S_`.
+            # See `substitution`.
             uses = self._parameter_uses
             try:
                 bound = self.bind_template_param(index, level)
@@ -2330,8 +2371,9 @@ class ItaniumParser:
                 reference = None
             else:
                 reference = ParameterReference(index, level, symbolic)
-            # Put back either way, so a production inside a clause is not deferred; a deferred one
-            # re-read under the signature's scope would spell `typename 1234`.
+            # Put back either way, so a production inside a clause is not deferred; a
+            # deferred one re-read under the signature's scope would spell
+            # `typename 1234`.
             self._parameter_uses = uses
             return bound, reference
         return self.bind_template_param(index, level), ParameterReference(index, level)
@@ -2360,8 +2402,8 @@ class ItaniumParser:
             return bound
 
         if self._reject_unbound_parameters:
-            # A bare `<type>` can never bind this parameter; `c++filt -t` and `__cxa_demangle`
-            # refuse it.
+            # A bare `<type>` can never bind this parameter; `c++filt -t` and
+            # `__cxa_demangle` refuse it.
             raise ParseError(self._mangled, reader.pos, "template parameter with nothing to bind it")
 
         if level and level >= self.targs.depth():
@@ -2370,23 +2412,23 @@ class ItaniumParser:
             raise ParseError(self._mangled, reader.pos, f"no template parameter level {level} in scope")
 
         if not (self._reading_closure_signature or self._reading_conversion_type):
-            # No <template-args> in scope, and none will come: both references refuse `_Z1f1AT_`.
-            # The two readings that legitimately find nothing bound (a generic lambda's level, a
-            # conversion operator's type) are excluded above.
+            # No <template-args> in scope, and none will come: both references refuse
+            # `_Z1f1AT_`. The two readings that legitimately find nothing bound (a
+            # generic lambda's level, a conversion operator's type) are excluded above.
             raise ParseError(self._mangled, reader.pos, "template parameter with no arguments in scope")
         if self._reading_conversion_type and not self._reading_closure_signature:
             # Provisional: `operator_name` refuses the name if no arguments follow.
             self._conversion_unbound = True
         elif level != self._closure_level:
-            # A lambda's `auto` is a parameter of its own level (ABI 5.1.8): llvm-cxxfilt refuses
-            # `_Z1fIEvDTLUlT_E_EE` and `_Z1fIiEvDTLUlT0_E_EE`.
+            # A lambda's `auto` is a parameter of its own level (ABI 5.1.8):
+            # llvm-cxxfilt refuses `_Z1fIEvDTLUlT_E_EE` and `_Z1fIiEvDTLUlT0_E_EE`.
             raise ParseError(
                 self._mangled, reader.pos, "template parameter with no argument at a level that is not the lambda's"
             )
 
-        # A generic lambda's `auto` (ABI 5.1.8), or a conversion operator's type read before its
-        # arguments. llvm-cxxfilt spells `auto`; GNU numbers by parameter index, so
-        # `Ul T0_ T_ E` is `(auto:2, auto:1)`.
+        # A generic lambda's `auto` (ABI 5.1.8), or a conversion operator's type read
+        # before its arguments. llvm-cxxfilt spells `auto`; GNU numbers by parameter
+        # index, so `Ul T0_ T_ E` is `(auto:2, auto:1)`.
         if self.options.gnu_closure_spelling:
             return self.builder.raw(f"auto:{index + 1}")
         return self.builder.raw("auto")
@@ -2445,7 +2487,8 @@ class ItaniumParser:
         if char:
             builtin = BUILTIN_TYPES.get(char)
             if builtin is not None and self._depth < self._max_depth:
-                # `_type`'s first arm, without the frame: a builtin records nothing and binds nothing.
+                # `_type`'s first arm, without the frame: a builtin records nothing and
+                # binds nothing.
                 reader.pos = pos + 1
                 # A builtin renders as its spelling, so its size is that spelling's length.
                 if len(builtin) > self._max_output:
@@ -2472,9 +2515,9 @@ class ItaniumParser:
             # gigabytes. `size()` is O(1).
             if self._size(result) > self._max_output:
                 raise LimitExceeded(self._mangled, "output length", self._max_output)
-            # A template parameter was resolved here, so this production's entry (the last one) must
-            # be re-read under a later back-reference's scope; see `DeferredProduction`. The tests
-            # are ordered by how often each is false.
+            # A template parameter was resolved here, so this production's entry (the
+            # last one) must be re-read under a later back-reference's scope; see
+            # `DeferredProduction`. The tests are ordered by how often each is false.
             if (
                 self._parameter_uses != uses
                 and subs.recording
@@ -2494,8 +2537,8 @@ class ItaniumParser:
         resolved. `_naming` is off for the same reason it is off inside any type -- a
         nested argument list must not replace the enclosing entity's `T_` scope.
         """
-        # Not memoised inside a pack expansion: `Dp` re-reads per member under the same scope,
-        # which would get the first member's answer each time.
+        # Not memoised inside a pack expansion: `Dp` re-reads per member under the same
+        # scope, which would get the first member's answer each time.
         key = None if self._pack_index is not None else (index, self.targs.generation)
         if key is not None:
             found = self._deferred.get(key)
@@ -2522,8 +2565,9 @@ class ItaniumParser:
         builder = self.builder
         subs = self.subs
 
-        # A <builtin-type> and a <nested-name> never reach here: `type_` reads them. Arms ordered
-        # by how often each is taken over the Itanium symbols of Ubuntu 24.04.
+        # A <builtin-type> and a <nested-name> never reach here: `type_` reads them.
+        # Arms ordered by how often each is taken over the Itanium symbols of Ubuntu
+        # 24.04.
         if char in _CLASS_ENUM_START:
             return subs.remember(self.class_enum_type(), "type")
 
@@ -2540,16 +2584,17 @@ class ItaniumParser:
                 index in self._closure_prefix_entries
                 or (index in self._template_name_entries and reader.peek() != "I" and not as_template_argument)
             ):
-                # A <substitution> is a <type> only through <class-enum-type>, so a closure prefix or
-                # a bare template (outside `template_arg`) cannot stand here. Reaching one means GCC 12's
-                # numbering, which `parse` retries, or not a name.
+                # A <substitution> is a <type> only through <class-enum-type>, so a
+                # closure prefix or a bare template (outside `template_arg`) cannot
+                # stand here. Reaching one means GCC 12's numbering, which `parse`
+                # retries, or not a name.
                 raise SubstitutionMisuse(
                     self._mangled, reader.pos, f"substitution S{index}_ names nothing a type can be"
                 )
             named = self._module_names.get(id(component)) if self._module_names else None
             if named is not None:
-                # `S1_ 1A` is `A@FOO.BAR`: the pair is a <type> candidate; the module entry alone is
-                # not one a later `S<n>_` can mean.
+                # `S1_ 1A` is `A@FOO.BAR`: the pair is a <type> candidate; the module
+                # entry alone is not one a later `S<n>_` can mean.
                 component = subs.remember(self.unqualified_name(module=named), "type")
             if reader.peek() == "I":
                 arguments = self.template_arguments()
@@ -2564,15 +2609,16 @@ class ItaniumParser:
             inner = self._over_a_pack(self.type_())
             protocol = self._objc_protocols.get(id(inner)) if self._objc_protocols else None
             if protocol is not None:
-                # A pointer to protocol-qualified `objc_object` is `id<A>`; a second pointer is
-                # ordinary.
+                # A pointer to protocol-qualified `objc_object` is `id<A>`; a second
+                # pointer is ordinary.
                 return subs.remember(builder.raw(f"id<{protocol}>"), "type")
             return subs.remember(builder.pointer(inner), "type")
         if char in QUALIFIER_LETTERS:
             if self._at_function_type():
                 # 5.1.5.3: <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx]
-                # F [Y] <bare-function-type> [<ref-qualifier>] E. `KFbvE` is one component; recording
-                # the unqualified type too would shift every later index.
+                # F [Y] <bare-function-type> [<ref-qualifier>] E. `KFbvE` is one
+                # component; recording the unqualified type too would shift every later
+                # index.
                 return self.function_type_production()
             qualifiers = self.cv_qualifiers()
             inner = self.type_()
@@ -2583,8 +2629,8 @@ class ItaniumParser:
             if following in _ELABORATED_KEYWORDS:
                 # <class-enum-type> ::= Ts <name> | Tu <name> | Te <name>
                 #
-                # A dependent type spelled out: `PTsNT_5InnerE` is `struct T::Inner*`, `Ts3Foo` is
-                # `struct Foo`.
+                # A dependent type spelled out: `PTsNT_5InnerE` is `struct T::Inner*`,
+                # `Ts3Foo` is `struct Foo`.
                 keyword = _ELABORATED_KEYWORDS[following]
                 reader.pos += 2
                 return subs.remember(builder.raw(f"{keyword} {builder.spell(self.class_enum_type())}"), "type")
@@ -2592,9 +2638,9 @@ class ItaniumParser:
             component, reference = self.template_param_binding()
             recorded = reference if reference is not None else component
             if reader.peek() == "I" and self._try_template_args:
-                # <template-template-param> <template-args>: the parameter and the application are
-                # both 5.1.10 candidates. g++ 13.3 and clang++ 18.1.3 both emit `...T_IT0_Li3EES5_`,
-                # whose `S5_` needs both.
+                # <template-template-param> <template-args>: the parameter and the
+                # application are both 5.1.10 candidates. g++ 13.3 and clang++ 18.1.3
+                # both emit `...T_IT0_Li3EES5_`, whose `S5_` needs both.
                 subs.remember(recorded, "template-template-param")
                 self._note_template_template_param()
                 arguments = self.template_arguments()
@@ -2631,15 +2677,16 @@ class ItaniumParser:
             reader.pos += 1
             spelled = self.source_name()
             if reader.eat("I"):
-                # Compilers emit a transformation over one type, `u <source-name> I <type> E`, which
-                # llvm-cxxfilt reads (refusing `u7__decayIllE`); c++filt 2.42 refuses the form.
+                # Compilers emit a transformation over one type,
+                # `u <source-name> I <type> E`, which llvm-cxxfilt reads (refusing
+                # `u7__decayIllE`); c++filt 2.42 refuses the form.
                 spelled = f"{spelled}({builder.spell(self.type_())})"
                 reader.expect("E")
             return subs.remember(builder.raw(spelled), "type")
 
         if char == "C" or char == "G":
-            # C99 `_Complex`/`_Imaginary`, applied from the right as both references do (`PCd` is a
-            # pointer to complex double); the style picks the word.
+            # C99 `_Complex`/`_Imaginary`, applied from the right as both references do
+            # (`PCd` is a pointer to complex double); the style picks the word.
             reader.pos += 1
             qualifier = _COMPLEX_WORDS[self.options.gnu_complex_spelling][char]
             # Not a cv-qualifier, so a repeat does not collapse: `c++filt` writes
@@ -2659,8 +2706,8 @@ class ItaniumParser:
             if pair in ("DB", "DU"):
                 # _BitInt(N): DB <number> _ | DB <expression> _
                 #
-                # A candidate, unlike other builtins, since it carries a width: `_Z6myfuncRDB8_S0_` is
-                # `myfunc(_BitInt(8)&, _BitInt(8)&)`.
+                # A candidate, unlike other builtins, since it carries a width:
+                # `_Z6myfuncRDB8_S0_` is `myfunc(_BitInt(8)&, _BitInt(8)&)`.
                 width = reader.digits() if reader.peek() in DIGITS else self.expression_text()
                 reader.expect("_")
                 return self.subs.remember(builder.raw(f"{EXTENDED_BUILTIN_TYPES[pair]}({width})"), "type")
@@ -2674,8 +2721,8 @@ class ItaniumParser:
             return builder.builtin(EXTENDED_BUILTIN_TYPES[pair])
 
         if pair == "DF":
-            # `DF <n> _` is `_FloatN`, `DF <n> x` is `_FloatNx` (no `_` after the `x`), and `DF16b`
-            # is `std::bfloat16_t`.
+            # `DF <n> _` is `_FloatN`, `DF <n> x` is `_FloatNx` (no `_` after the `x`),
+            # and `DF16b` is `std::bfloat16_t`.
             reader.pos += 2
             width = reader.digits()
             if reader.eat("b"):
@@ -2710,28 +2757,31 @@ class ItaniumParser:
             finally:
                 self._reading_pattern -= 1
                 self._saw_empty_pack = outer_empty
-                # An expansion consumes its pack (`ParameterPackExpansion::printLeft`), so an outer
-                # pattern reaching a pack only through it takes the dots: `DpPFvDpT_E` is
-                # `void (*)(int, char)...`.
+                # An expansion consumes its pack (`ParameterPackExpansion::printLeft`),
+                # so an outer pattern reaching a pack only through it takes the dots:
+                # `DpPFvDpT_E` is `void (*)(int, char)...`.
                 self._saw_pack = outer_pack
                 self._pack_arity = outer_arity
             if over_empty:
-                # Over an empty pack the pattern expands to nothing, as both references print (libstdc++'s
-                # `std::async`); it is still a <type> and enters the table.
+                # Over an empty pack the pattern expands to nothing, as both references
+                # print (libstdc++'s `std::async`); it is still a <type> and enters the
+                # table.
                 return self.subs.remember(self._expansion(builder.parameter_pack([])), "type")
             if over_pack and arity and len(builder.members(inner) or ()) != arity:
                 # A pattern more than a declarator round the parameter is re-read per member:
                 # `Dp unary<T_>` over `{int, float}` is `unary<int>, unary<float>`.
                 return self.subs.remember(self._expansion(self._expand_pattern(start, mark, arity)), "type")
             if id(inner) in self._pack_ids or over_pack:
-                # The expansion is a <type> recorded separately from its pattern (`Dp R T1_` gives two
-                # entries), as both references do. `inner`'s members are already spelled, so no ellipsis;
-                # and it gets a fresh handle, as an expansion differs from the pack a `T_` entry is.
+                # The expansion is a <type> recorded separately from its pattern
+                # (`Dp R T1_` gives two entries), as both references do. `inner`'s
+                # members are already spelled, so no ellipsis; and it gets a fresh
+                # handle, as an expansion differs from the pack a `T_` entry is.
                 return self.subs.remember(self._expansion(builder.parameter_pack(builder.members(inner))), "type")
             # No pack in the pattern: an unexpanded expansion, printed with `...` as
-            # `ParameterPackExpansion::printLeft` does (`_Z1fIJifcEEvDpC1E` is `E complex...`). GNU
-            # brackets anything but a name, so `Dp i` is `(int)...`; builtins and template parameters
-            # are excluded by opening character, as they spell as one identifier too.
+            # `ParameterPackExpansion::printLeft` does (`_Z1fIJifcEEvDpC1E` is
+            # `E complex...`). GNU brackets anything but a name, so `Dp i` is
+            # `(int)...`; builtins and template parameters are excluded by opening
+            # character, as they spell as one identifier too.
             if self.options.gnu_expression_spelling and not (
                 first not in BUILTIN_TYPES
                 and first != "D"
@@ -2763,8 +2813,9 @@ class ItaniumParser:
         if pair == "Dv":
             return self.subs.remember(self.vector_type(), "type")
 
-        # <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx] F ... E: the spec opens a
-        # function type, so it spells `void (*)() noexcept`, not `void () noexcept*`.
+        # <function-type> ::= [<CV-qualifiers>] [<exception-spec>] [Dx] F ... E: the
+        # spec opens a function type, so it spells `void (*)() noexcept`, not
+        # `void () noexcept*`.
         if pair in ("Do", "DO", "Dw", "Dx"):
             return self.function_type_production()
 
@@ -2813,8 +2864,8 @@ class ItaniumParser:
             size = self.expression_text()
         reader.expect("_")
         if reader.eat("p"):
-            # Both references refuse `_Z1hDv0_p`, a zero-length AltiVec pixel vector. `Dv0_i` is
-            # still read, as c++filt prints `__vector(0)`.
+            # Both references refuse `_Z1hDv0_p`, a zero-length AltiVec pixel vector.
+            # `Dv0_i` is still read, as c++filt prints `__vector(0)`.
             if size.isdigit() and int(size) == 0:
                 raise ParseError(self._mangled, reader.pos, "a pixel vector of dimension 0")
             spelled = "pixel"
@@ -2822,7 +2873,8 @@ class ItaniumParser:
             inner = self.type_()
             spelled = self.builder.spell(inner)
         if self.options.gnu_vector_spelling:
-            # c++filt's `d_vector_type` prints the dimension's value: `Dv07_b` is `__vector(7)`.
+            # c++filt's `d_vector_type` prints the dimension's value: `Dv07_b` is
+            # `__vector(7)`.
             return self.builder.raw(f"{spelled} __vector({int(size) if size.isdigit() else size})")
         return self.builder.raw(f"{spelled} vector[{size}]")
 
@@ -2877,10 +2929,11 @@ class ItaniumParser:
                 qualifier += self._angled(", ".join([builder.spell(argument) for argument in arguments]))
             inner = self.qualified_type()
             if qualifier.startswith(_OBJC_PROTOCOL) and not self.options.gnu_objc_protocol_spelling:
-                # `U <n>objcproto<protocol> <type>`: llvm-cxxfilt writes `NSArray<A>`, c++filt
-                # `NSArray objcproto1A` (see `gnu_objc_protocol_spelling`); a qualified `objc_object`
-                # becomes `id<A>` in the `P` branch. The protocol is length-prefixed within the
-                # qualifier, and `parseQualifiedType` refuses a short one, `objcproto15`.
+                # `U <n>objcproto<protocol> <type>`: llvm-cxxfilt writes `NSArray<A>`,
+                # c++filt `NSArray objcproto1A` (see `gnu_objc_protocol_spelling`); a
+                # qualified `objc_object` becomes `id<A>` in the `P` branch. The
+                # protocol is length-prefixed within the qualifier, and
+                # `parseQualifiedType` refuses a short one, `objcproto15`.
                 protocol = qualifier[len(_OBJC_PROTOCOL) :]
                 digits = 0
                 while digits < len(protocol) and protocol[digits] in DIGITS:
@@ -2892,8 +2945,8 @@ class ItaniumParser:
                 spelled = builder.spell(inner)
                 handle = builder.raw(f"{spelled}<{protocol}>")
                 if spelled == _OBJC_OBJECT:
-                    # `objc_object<A>` alone; the first pointer makes it `id<A>`, and further ones are
-                    # ordinary: `id<A>*`.
+                    # `objc_object<A>` alone; the first pointer makes it `id<A>`, and
+                    # further ones are ordinary: `id<A>*`.
                     self._objc_ids.append(handle)
                     self._objc_protocols[id(handle)] = protocol
                 return handle
@@ -3000,9 +3053,9 @@ class ItaniumParser:
                 written_void.pop()
 
         if parameters and all(written_void):
-            # llvm-cxxfilt drops every literal `void` parameter and c++filt keeps them; they agree
-            # when all are literal. A `T_` bound to `void` is not one: `_Z1fIvEvPFvT_E` is
-            # `void f<void>(void (*)(void))` to both.
+            # llvm-cxxfilt drops every literal `void` parameter and c++filt keeps them;
+            # they agree when all are literal. A `T_` bound to `void` is not one:
+            # `_Z1fIvEvPFvT_E` is `void f<void>(void (*)(void))` to both.
             parameters = []
         written = "".join([f" {qualifier}" for qualifier in cv_qualifiers])
         if self.options.gnu_exception_spec_first:
@@ -3232,8 +3285,8 @@ class ItaniumParser:
         last_source_name = self._last_source_name
         trailing_empty_pack = False
         seen = False
-        # A clause here is the entity's only when this list is the entity's own; c++filt refuses
-        # one in a parameter's type.
+        # A clause here is the entity's only when this list is the entity's own; c++filt
+        # refuses one in a parameter's type.
         outer_constraint = self._argument_constraint
         self._argument_constraint = None
         text = reader.text
@@ -3322,8 +3375,9 @@ class ItaniumParser:
             return None, False
 
         if char == "Q":
-            # A requires-clause closing an argument list: llvm-cxxfilt does not print it; c++filt
-            # prints it after the function's parameters (kept under the gnu style).
+            # A requires-clause closing an argument list: llvm-cxxfilt does not print
+            # it; c++filt prints it after the function's parameters (kept under the gnu
+            # style).
             reader.take()
             outer_constraint = self._in_constraint
             outer_naming = self._naming
@@ -3340,15 +3394,17 @@ class ItaniumParser:
 
         if char == "X":
             reader.take()
-            # `>`, `>>` and `,` are bracketed inside an argument list, or they read as its end or
-            # separator; the opening two characters say which.
+            # `>`, `>>` and `,` are bracketed inside an argument list, or they read as
+            # its end or separator; the opening two characters say which.
             angled = reader.peek2() in ("gt", "rs", "cm")
             if self.options.gnu_expression_spelling:
-                # c++filt brackets each operand instead (`enable_if<(4u),(4), void>`) and leaves `>>`
-                # bare, `f<(1)>>(2)>`; a `>` is bracketed by its own spelling.
+                # c++filt brackets each operand instead (`enable_if<(4u),(4), void>`)
+                # and leaves `>>` bare, `f<(1)>>(2)>`; a `>` is bracketed by its own
+                # spelling.
                 angled = False
-            # llvm-cxxfilt brackets a `>` or `>>` anywhere in an argument list until some bracket
-            # opens round it (`(1 > 0) && true`); this wrap is such a bracket.
+            # llvm-cxxfilt brackets a `>` or `>>` anywhere in an argument list until
+            # some bracket opens round it (`(1 > 0) && true`); this wrap is such a
+            # bracket.
             outer_bare = self._bare_angle
             self._bare_angle = not angled and not self.options.gnu_expression_spelling
             try:
@@ -3386,8 +3442,9 @@ class ItaniumParser:
             handle = builder.parameter_pack(members)
             self._packs.append(handle)
             self._pack_ids.add(id(handle))
-            # An empty pack takes a `T_` slot but spells nothing (`AnalysisManager<Module, JE>`).
-            # The builder decides, as it flattened any nested empty packs.
+            # An empty pack takes a `T_` slot but spells nothing
+            # (`AnalysisManager<Module, JE>`). The builder decides, as it flattened any
+            # nested empty packs.
             return handle, not builder.spell(handle)
 
         # A template template argument is the template's bare name, and a back-reference
@@ -3412,17 +3469,18 @@ class ItaniumParser:
         reader.expect("L")
 
         if reader.startswith("_Z") or reader.startswith("Z"):
-            # A reference to a declared entity (5.1.6.2), parsed with this parser's state because
-            # Clang writes substitutions inside it that index the enclosing table. The bare `Z` is
-            # g++'s compatibility form (libcxxabi's `_ZN5test52f2ENS_2t2ILZ4mainEEE`); llvm-cxxfilt
-            # accepts it only as a template argument, c++filt anywhere, as here. See
+            # A reference to a declared entity (5.1.6.2), parsed with this parser's
+            # state because Clang writes substitutions inside it that index the
+            # enclosing table. The bare `Z` is g++'s compatibility form (libcxxabi's
+            # `_ZN5test52f2ENS_2t2ILZ4mainEEE`); llvm-cxxfilt accepts it only as a
+            # template argument, c++filt anywhere, as here. See
             # `_bare_entity_prefix_used`.
             if reader.peek() == "Z":
                 self._bare_entity_prefix_used = True
             reader.eat("_")
             reader.expect("Z")
-            # `Z <encoding> E <entity>`, a local name, detected here because a nested encoding
-            # reaches `name()` first.
+            # `Z <encoding> E <entity>`, a local name, detected here because a nested
+            # encoding reaches `name()` first.
             local = reader.peek() == "Z"
             was_naming = self._naming
             outer_scope = self.targs.snapshot()
@@ -3438,7 +3496,8 @@ class ItaniumParser:
             try:
                 handle = self.encoding()
             finally:
-                # The table is shared, but the embedded entity's own `T_` scope must not outlive it.
+                # The table is shared, but the embedded entity's own `T_` scope must not
+                # outlive it.
                 self._naming = was_naming
                 self.targs.restore(outer_scope)
                 self._drop_return = outer_drop_return
@@ -3449,14 +3508,14 @@ class ItaniumParser:
             return builder.spell(handle)
 
         if reader.peek2() == "Ul":
-            # `L <closure-type-name> E`: a closure object as a value. The reference spells the
-            # lambda expression and accepts only `Ul` here.
+            # `L <closure-type-name> E`: a closure object as a value. The reference
+            # spells the lambda expression and accepts only `Ul` here.
             handle = self.unnamed_type_name(lambda_expression=True)
             reader.expect("E")
             return builder.spell(handle)
 
-        # `L <array-type> E` is a string literal whose contents are not mangled; the reference
-        # prints the type in angle brackets inside the quotes.
+        # `L <array-type> E` is a string literal whose contents are not mangled; the
+        # reference prints the type in angle brackets inside the quotes.
         was_array = reader.peek() == "A"
         # Decided by the characters written: both references refuse `LSt9nullptr_tE`.
         wrote_nullptr = reader.peek2() == "Dn"
@@ -3481,7 +3540,8 @@ class ItaniumParser:
                     raise ParseError(self._mangled, reader.pos, "unterminated literal")
                 reader.take()
             return self.spell_float_literal(spelling, reader.text[start : reader.pos - 1])
-        # `<value number>`: digits after an optional `n`; llvm-cxxfilt refuses `Li4JE` and `LinE`.
+        # `<value number>`: digits after an optional `n`; llvm-cxxfilt refuses `Li4JE`
+        # and `LinE`.
         reader.eat("n")
         if reader.peek() not in DIGITS:
             raise ParseError(self._mangled, reader.pos, "a literal whose value is not a number")
@@ -3516,8 +3576,8 @@ class ItaniumParser:
         if len(value) not in widths or not _HEX.fullmatch(value):
             raise ParseError(self._mangled, self.reader.pos, "a floating-point literal of the wrong width")
         if len(value) == 24 and not value.startswith("0000"):
-            # Twenty-four digits are g++'s i386 form, which opens with two zero bytes. Refused
-            # under both styles: a style never decides whether a name reads.
+            # Twenty-four digits are g++'s i386 form, which opens with two zero bytes.
+            # Refused under both styles: a style never decides whether a name reads.
             raise ParseError(self._mangled, self.reader.pos, "a long double of twenty-four digits without its padding")
         if self.options.gnu_expression_spelling:
             return f"({kind})[{value}]"
@@ -3650,14 +3710,15 @@ class ItaniumParser:
         if reader.peek() == "N" and (
             reader.ahead(1) in DIGITS or reader.startswith("NSt") or self.options.gnu_unresolved_scope_substitution
         ):
-            # `sr N <prefix>+ E <name>`: the old form's nested-name shape, which g++ 13 writes for a
-            # non-dependent class scope with a dependent member (`srN1A1B1CIT_EE1w`), recorded as one
-            # type. GNU c++filt reads every `srN` this way; the option says when to follow it.
+            # `sr N <prefix>+ E <name>`: the old form's nested-name shape, which g++ 13
+            # writes for a non-dependent class scope with a dependent member
+            # (`srN1A1B1CIT_EE1w`), recorded as one type. GNU c++filt reads every `srN`
+            # this way; the option says when to follow it.
             levels.append(self.builder.spell(self.type_()))
         elif reader.eat("N"):
             levels.append(self._unresolved_head())
-            # `*`, not the ABI's `+`: Clang emits `srN <type> <template-args> E` with no levels, and
-            # the reference accepts it.
+            # `*`, not the ABI's `+`: Clang emits `srN <type> <template-args> E` with no
+            # levels, and the reference accepts it.
             while not reader.eat("E"):
                 if reader.eof:
                     raise ParseError(self._mangled, reader.pos, "unterminated qualifier levels")
@@ -3665,10 +3726,11 @@ class ItaniumParser:
         elif reader.peek() in DIGITS:
             self._qualifier_levels(levels)
         elif reader.startswith("St") and reader.ahead(2) in DIGITS:
-            # The pre-<unresolved-name> form g++ still writes, `sr <type> <unqualified-name>` with a
-            # complete type, as libiberty's `d_expression_1` reads it. libstdc++ ships it
-            # (`srSt23__is_random_access_iterIT0_...E7__valueE`); llvm-cxxfilt refuses it, but `St`
-            # plus a name has no reading under the modern grammar.
+            # The pre-<unresolved-name> form g++ still writes,
+            # `sr <type> <unqualified-name>` with a complete type, as libiberty's
+            # `d_expression_1` reads it. libstdc++ ships it
+            # (`srSt23__is_random_access_iterIT0_...E7__valueE`); llvm-cxxfilt refuses
+            # it, but `St` plus a name has no reading under the modern grammar.
             levels.append(self.builder.spell(self.type_()))
         else:
             levels.append(self._unresolved_head())
@@ -3786,9 +3848,9 @@ class ItaniumParser:
         if reader.peek() in DIGITS:
             return self.simple_id()
         if reader.eat("dn"):
-            # `_simple_name`: whether the whole name is a plain identifier path, which GNU c++filt
-            # leaves unbracketed as an operand. Decided by the last component, since arguments on a
-            # qualifier do not count.
+            # `_simple_name`: whether the whole name is a plain identifier path, which
+            # GNU c++filt leaves unbracketed as an operand. Decided by the last
+            # component, since arguments on a qualifier do not count.
             text = "~" + self.destructor_name()
             self._simple_name = False
             return text
@@ -3796,8 +3858,9 @@ class ItaniumParser:
         # so, and the reference reads the operator code either way.
         reader.eat("on")
         text = self.operator_name()
-        # c++filt brackets an operator name on its own, `&(operator&)`; under an `sr` scope it is
-        # a qualified name, `&A::operator&`, unless arguments follow: `&(A::operator&<int>)`.
+        # c++filt brackets an operator name on its own, `&(operator&)`; under an `sr`
+        # scope it is a qualified name, `&A::operator&`, unless arguments follow:
+        # `&(A::operator&<int>)`.
         simple = qualified and reader.peek() != "I"
         if reader.peek() == "I":
             text += self.spelled_template_arguments()
@@ -3832,9 +3895,9 @@ class ItaniumParser:
                 rendered = ", ".join([builder.spell(argument) for argument in arguments])
                 return text + self._angled(rendered)
             return text
-        # `on <operator-name>` and `dn <destructor-name>`: a callee named by the operator it is,
-        # as in an unresolved `a + b` in `decltype` (`_Z1fI1AEDTclonplfp_fp_EET_`); not the
-        # builtin codes `o` and `n`.
+        # `on <operator-name>` and `dn <destructor-name>`: a callee named by the
+        # operator it is, as in an unresolved `a + b` in `decltype`
+        # (`_Z1fI1AEDTclonplfp_fp_EET_`); not the builtin codes `o` and `n`.
         if reader.peek2() in ("on", "dn"):
             return self.base_unresolved_name()
         return builder.spell(self.type_())
@@ -3848,12 +3911,13 @@ class ItaniumParser:
         """
         reader = self.reader
         if reader.peek2() == "il":
-            # `new T{...}`: both compilers write `il <expression>* E` straight after the type, with
-            # no `E` of its own. libiberty reads it; llvm-cxxfilt 18 and 20 refuse it.
+            # `new T{...}`: both compilers write `il <expression>* E` straight after the
+            # type, with no `E` of its own. libiberty reads it; llvm-cxxfilt 18 and 20
+            # refuse it.
             return self.expression()
         if not reader.eat("pi"):
-            # Only `pi`, `il` or the closing `E`, as `d_expression` and `parseNewExpr` read it:
-            # both refuse `nw_icvi_E`.
+            # Only `pi`, `il` or the closing `E`, as `d_expression` and `parseNewExpr`
+            # read it: both refuse `nw_icvi_E`.
             raise ParseError(self._mangled, reader.pos, "a new-expression's initialiser must be `pi` or `il`")
         arguments = []
         while not reader.eat("E"):
@@ -3893,8 +3957,9 @@ class ItaniumParser:
         outer = self._in_constraint
         outer_naming = self._naming
         self._in_constraint = True
-        # A clause names no entity, so a template-id in it must not install its arguments as the
-        # `T_` scope (a nested requirement's `1234` would become the next one's `T`).
+        # A clause names no entity, so a template-id in it must not install its
+        # arguments as the `T_` scope (a nested requirement's `1234` would become the
+        # next one's `T`).
         self._naming = False
         try:
             return self.expression()
@@ -4062,8 +4127,9 @@ class ItaniumParser:
         """
         builder = self.builder
         if self.options.gnu_expression_spelling:
-            # c++filt prints a fold's pack operand through `d_print_subexpr`, with no ellipsis and no
-            # per-member reading (`sizeof (int, char)` for `st T_`); llvm-cxxfilt writes `(int...)`.
+            # c++filt prints a fold's pack operand through `d_print_subexpr`, with no
+            # ellipsis and no per-member reading (`sizeof (int, char)` for `st T_`);
+            # llvm-cxxfilt writes `(int...)`.
             expanded = self.expression()
             if builder.members(expanded) is not None or self._precedence < SIMPLE_PRECEDENCE:
                 return builder.expression("paren", ["(", expanded, ")"])
@@ -4092,8 +4158,9 @@ class ItaniumParser:
             items = list(items)
             self._drop_trailing_empties(items)
         for item in items:
-            # `size` is O(1) and `spell` is not, on a hot path. Size zero settles an empty pack; only
-            # a pack holding an empty pack can be non-zero and spell nothing.
+            # `size` is O(1) and `spell` is not, on a hot path. Size zero settles an
+            # empty pack; only a pack holding an empty pack can be non-zero and spell
+            # nothing.
             if not keep_empty:
                 if builder.size(item) == 0:
                     continue
@@ -4134,8 +4201,9 @@ class ItaniumParser:
         other callers of this are list elements, which it prints without asking.
         """
         if self._bare_angle:
-            # Whether this operand is bracketed is known from its opening operator, and that bracket
-            # counts for llvm-cxxfilt: a `>` inside `!(1 > 0 && 2)` is not wrapped again.
+            # Whether this operand is bracketed is known from its opening operator, and
+            # that bracket counts for llvm-cxxfilt: a `>` inside `!(1 > 0 && 2)` is not
+            # wrapped again.
             nominal = _NOMINAL_PRECEDENCE.get(self.reader.peek2())
             if nominal is not None and nominal < binding:
                 self._bare_angle = False
@@ -4165,8 +4233,9 @@ class ItaniumParser:
                 arguments.append(self._element())
             return builder.expression("cast", ["(", kind, ")(", *self._commas(arguments), ")"])
         if self.options.gnu_expression_spelling:
-            # c++filt brackets the operand by kind: `(int)x`, `(int){parm#1}` and `(A){1, 2}` bare,
-            # `(int)(1)` otherwise. Both compilers write `T(t)` as `cvT_fp_`.
+            # c++filt brackets the operand by kind: `(int)x`, `(int){parm#1}` and
+            # `(A){1, 2}` bare, `(int)(1)` otherwise. Both compilers write `T(t)` as
+            # `cvT_fp_`.
             return builder.expression("cast", ["(", kind, ")", self._operand(UNARY_PRECEDENCE, subexpression=True)])
         return builder.expression("cast", ["(", kind, ")(", self._element(), ")"])
 
@@ -4217,8 +4286,8 @@ class ItaniumParser:
         reader = self.reader
         builder = self.builder
 
-        # Leaves are returned unwrapped: an `Expression` layer would carry nothing, on the most
-        # common productions.
+        # Leaves are returned unwrapped: an `Expression` layer would carry nothing, on
+        # the most common productions.
         if reader.peek() == "L":
             # A literal is not a name and GNU brackets it as an operand; a `L _Z... E`
             # naming a data symbol is one, and it does not. A local or special name is
@@ -4239,7 +4308,8 @@ class ItaniumParser:
         if pair == "fp":
             # A function parameter reference (5.1.5.9).
             if reader.startswith("fpT"):
-                # `fpT`, the implicit object parameter, has no index; the reference spells it `this`.
+                # `fpT`, the implicit object parameter, has no index; the reference
+                # spells it `this`.
                 reader.pos += 3
                 self._precedence = SIMPLE_PRECEDENCE
                 return builder.raw("this")
@@ -4257,14 +4327,14 @@ class ItaniumParser:
             text = self.unresolved_name()
             return self._named_operand(text, self._simple_name)
         if pair in ("on", "dn"):
-            # `<expression> ::= <unresolved-name>`, which may be `on <operator-name>` -- not the
-            # builtin codes `o` and `n` (`_Z1fI1AEDTclonplfp_fp_EET_`).
+            # `<expression> ::= <unresolved-name>`, which may be `on <operator-name>` --
+            # not the builtin codes `o` and `n` (`_Z1fI1AEDTclonplfp_fp_EET_`).
             text = self.unresolved_name()
             return self._named_operand(text, self._simple_name)
         if pair == "sZ":
             reader.pos += 2
-            # `sZ` takes a <template-param> or a <function-param>; only `fp` and `fL <digit>` are the
-            # latter, so a fold falls through and is refused.
+            # `sZ` takes a <template-param> or a <function-param>; only `fp` and
+            # `fL <digit>` are the latter, so a fold falls through and is refused.
             is_function_param = reader.peek() == "f" and (
                 reader.ahead(1) == "p" or (reader.ahead(1) == "L" and reader.ahead(2) in DIGITS)
             )
@@ -4283,8 +4353,8 @@ class ItaniumParser:
                 self._saw_pack = outer_pack or self._saw_pack
                 self._pack_arity = outer_arity
             if self.options.gnu_expression_spelling:
-                # c++filt prints `d_pack_length` for `sZ`: a pack's member count, else 0 (`X<2>` for
-                # `sZT_` under `<int, char>`, `decltype (0)` for `sZfp_`).
+                # c++filt prints `d_pack_length` for `sZ`: a pack's member count, else 0
+                # (`X<2>` for `sZT_` under `<int, char>`, `decltype (0)` for `sZfp_`).
                 self._precedence = PRIMARY_PRECEDENCE
                 return builder.expression("sizeof_pack", [str(arity)])
             if is_function_param:
@@ -4292,9 +4362,10 @@ class ItaniumParser:
                 # ellipsis: `sizeof... (fp)`, which is how llvm-cxxfilt spells it.
                 self._precedence = PRIMARY_PRECEDENCE
                 return builder.expression("sizeof_pack", ["sizeof... (", inner, ")"])
-            # `sizeof...` prints through a pack expansion, which adds `...` when it finds no pack:
-            # `sizeof...(int...)` for a `T_` bound to `int`, and `sizeof...(T...)` in a
-            # requires-clause, which Clang emits for any constrained variadic template.
+            # `sizeof...` prints through a pack expansion, which adds `...` when it
+            # finds no pack: `sizeof...(int...)` for a `T_` bound to `int`, and
+            # `sizeof...(T...)` in a requires-clause, which Clang emits for any
+            # constrained variadic template.
             ellipsis = [] if over_pack else ["..."]
             self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("sizeof_pack", ["sizeof...(", inner, *ellipsis, ")"])
@@ -4321,8 +4392,8 @@ class ItaniumParser:
             # space. Both references agree, and it is the only thing separating them.
             return builder.expression("sizeof_pack", ["sizeof... (", *self._commas(members), ")"])
         if pair in ("st", "sz", "at", "az", "ti", "te", "nx"):
-            # `sizeof (int)`, `alignof (x)`, `typeid (T)`, `noexcept (x)`: never re-bracketed,
-            # except as a GNU operand, since none is a name.
+            # `sizeof (int)`, `alignof (x)`, `typeid (T)`, `noexcept (x)`: never
+            # re-bracketed, except as a GNU operand, since none is a name.
             reader.pos += 2
             form, keyword = _MEASURING_OPERATORS[pair]
             gnu = self.options.gnu_expression_spelling
@@ -4351,8 +4422,8 @@ class ItaniumParser:
             self._precedence = PRIMARY_PRECEDENCE
             return builder.expression("throw", ["throw"])
         if pair == "tw":
-            # `tw <expression>`: LLVM writes the operand bare after a space; GNU brackets it unless
-            # it is a name (`throw {parm#1}`).
+            # `tw <expression>`: LLVM writes the operand bare after a space; GNU
+            # brackets it unless it is a name (`throw {parm#1}`).
             reader.pos += 2
             if self.options.gnu_expression_spelling:
                 operand = self._operand(PRIMARY_PRECEDENCE, subexpression=True)
@@ -4389,8 +4460,8 @@ class ItaniumParser:
                 cast = self._conversion(kind)
             finally:
                 self._bare_angle = outer_bare
-            # A cast binds looser than postfix: `((A*)(0))->member`, as the reference prints (and
-            # thirteen libcxxabi corpus entries need).
+            # A cast binds looser than postfix: `((A*)(0))->member`, as the reference
+            # prints (and thirteen libcxxabi corpus entries need).
             self._precedence = UNARY_PRECEDENCE
             return cast
 
@@ -4399,8 +4470,8 @@ class ItaniumParser:
             kind = self.type_()
             spelled = builder.spell(kind)
             if spelled.startswith("char [") or spelled == "char []":
-                # A `char` array in a braced initialiser is a string only if every member is a
-                # character literal, so it is tried and backed out of.
+                # A `char` array in a braced initialiser is a string only if every
+                # member is a character literal, so it is tried and backed out of.
                 saved = reader.pos
                 literal = self._string_members()
                 if literal is not None:
@@ -4483,12 +4554,12 @@ class ItaniumParser:
             reader.pos += 2
             expanded, kind = self._expansion_pattern()
             if kind != "pattern":
-                # Its members, or nothing: `f(xs...)` over an empty `xs` is `f()`, comma included, as
-                # `Dp` does in a type list.
+                # Its members, or nothing: `f(xs...)` over an empty `xs` is `f()`, comma
+                # included, as `Dp` does in a type list.
                 self._precedence = PRIMARY_PRECEDENCE
                 return expanded
-            # A pattern naming no pack is `x...` whatever the scope (`g(fp...)`). GNU brackets it
-            # unless it is a name: `(1)...` but `{parm#1}...`.
+            # A pattern naming no pack is `x...` whatever the scope (`g(fp...)`). GNU
+            # brackets it unless it is a name: `(1)...` but `{parm#1}...`.
             if self.options.gnu_expression_spelling and self._precedence < SIMPLE_PRECEDENCE:
                 expanded = builder.expression("paren", ["(", expanded, ")"])
             self._precedence = PRIMARY_PRECEDENCE
@@ -4581,8 +4652,8 @@ class ItaniumParser:
             # Both halves stand inside the fold's own brackets.
             outer_bare = self._bare_angle
             self._bare_angle = False
-            # GNU brackets the initialiser by kind: `fL pl Li9E T_` is `((9)+...+(1, 2))` there and
-            # `(9 + ... + (1, 2))` here.
+            # GNU brackets the initialiser by kind: `fL pl Li9E T_` is
+            # `((9)+...+(1, 2))` there and `(9 + ... + (1, 2))` here.
             try:
                 if marker == "L":
                     # First for a left fold, second for a right one.
@@ -4634,13 +4705,14 @@ class ItaniumParser:
                 return builder.expression("comma", [left, separator, right])
             self._precedence = binding
             if pair == "gt" and self.options.gnu_expression_spelling:
-                # libiberty's `d_print_comp` wraps any `>` expression in an extra layer of parens,
-                # wherever it stands: `decltype (({parm#1}>{parm#1}))`.
+                # libiberty's `d_print_comp` wraps any `>` expression in an extra layer
+                # of parens, wherever it stands: `decltype (({parm#1}>{parm#1}))`.
                 return builder.expression("binary", ["(", left, spelling, right, ")"])
             gap = "" if pair in TIGHT_INFIX or self.options.gnu_expression_spelling else " "
             if self._bare_angle and pair in ("gt", "rs"):
-                # `BinaryExpr::printLeft`'s `ParenAll`: in an argument list with no bracket open, the
-                # comparison or shift is wrapped, and so becomes primary.
+                # `BinaryExpr::printLeft`'s `ParenAll`: in an argument list with no
+                # bracket open, the comparison or shift is wrapped, and so becomes
+                # primary.
                 self._precedence = PRIMARY_PRECEDENCE
                 return builder.expression("binary", ["(", left, gap, spelling, gap, right, ")"])
             return builder.expression("binary", [left, gap, spelling, gap, right])
@@ -4666,8 +4738,8 @@ class ItaniumParser:
                 designator = ["[", self.expression(), " ... ", self.expression(), "]"]
             nested = reader.peek2() in ("di", "dx", "dX")
             if self.options.gnu_expression_spelling:
-                # `.n=(42)`, `.n=x`: no spaces round the `=`, and only the innermost value is an operand,
-                # bracketed by kind.
+                # `.n=(42)`, `.n=x`: no spaces round the `=`, and only the innermost
+                # value is an operand, bracketed by kind.
                 value = self.expression() if nested else self._operand(PRIMARY_PRECEDENCE, subexpression=True)
                 self._precedence = PRIMARY_PRECEDENCE
                 return builder.expression("designator", [*designator, *([] if nested else ["="]), value])
@@ -4736,8 +4808,9 @@ class ItaniumParser:
             name = self.source_name()
             arguments = []
             if name == "__uuidof" and reader.peek() in ("t", "z"):
-                # The legacy `__uuidof` mangling puts a `t` or `z` where a <template-arg> goes, with one
-                # operand and no `E`; neither can be confused with a <type>.
+                # The legacy `__uuidof` mangling puts a `t` or `z` where a
+                # <template-arg> goes, with one operand and no `E`; neither can be
+                # confused with a <type>.
                 marker = reader.take()
                 arguments.append(self.type_() if marker == "t" else self.expression())
             else:
@@ -4797,8 +4870,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     except ParseError as error:
         if isinstance(error, LimitExceeded):
             raise
-        # Numbering rules a second reading may apply, in order: each is one a compiler is known
-        # to apply, tried only where the caller left it open and the name can carry it.
+        # Numbering rules a second reading may apply, in order: each is one a compiler
+        # is known to apply, tried only where the caller left it open and the name can
+        # carry it.
         rules = []
         if isinstance(error, (SubstitutionOverrun, SubstitutionMisuse)):
             if options.closure_prefix_substitution is None and parser._closure_prefix_seen:
@@ -4807,17 +4881,18 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
                 # See `ItaniumOptions.closure_prefix_substitution`.
                 rules.append({"_closure_prefix_substitutes": not parser._closure_prefix_substitutes})
             if options.undeduced_auto_substitution is None and any(pair in mangled for pair in _UNDEDUCED_AUTO):
-                # The other rule for an undeduced `auto`; see `ItaniumOptions.undeduced_auto_substitution`.
-                # Reached by a misuse too: one entry short lands in range more often than past the end.
+                # The other rule for an undeduced `auto`; see
+                # `ItaniumOptions.undeduced_auto_substitution`. Reached by a misuse too:
+                # one entry short lands in range more often than past the end.
                 rules.append({"_auto_substitutes": not parser._auto_substitutes})
             if len(rules) == 2:
                 # Both at once: upstream clang targeting Darwin counts the closure
                 # prefix and not the `auto`, the opposite of Apple's fork on both.
                 rules.append({**rules[0], **rules[1]})
             if options.inherited_constructor_substitution is None and parser._inherited_base_seen:
-                # g++'s rule for an inheriting constructor's base type, which clang's first reading omits;
-                # a g++ name then runs past the table. Not combined with the rules above: no corpus holds
-                # both shapes.
+                # g++'s rule for an inheriting constructor's base type, which clang's
+                # first reading omits; a g++ name then runs past the table. Not combined
+                # with the rules above: no corpus holds both shapes.
                 rules.append({"_inherited_base_substitutes": True})
         for overrides in rules:
             retry = ItaniumParser(mangled, builder, limits, options)

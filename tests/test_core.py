@@ -211,7 +211,8 @@ class TestEveryDeclaratorDistributesOverAPack:
 
 class TestBoundedCache:
     def test_a_put_made_from_inside_a_put_on_the_same_thread_does_not_deadlock(self):
-        """A signal handler or finalizer can run `demangle()` while its thread is in `put`."""
+        """A signal handler or finalizer can run `demangle()` while its thread is in
+        `put`."""
         cache = BoundedCache(max_size=8, max_weight=1000, weigh=lambda key, value: 1)
 
         class Key:

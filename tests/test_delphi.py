@@ -144,7 +144,8 @@ class TestClaimsNothingItShouldNot:
             "@foo$q$",
             # A calling-convention letter this does not know.
             "@foo$qqzv",
-            # `void` beside another parameter, or under a reference; alone it is the empty list.
+            # `void` beside another parameter, or under a reference; alone it is the
+            # empty list.
             "@foo$qqrgv",
             "@foo$qqrvi",
             "@foo$qqriv",

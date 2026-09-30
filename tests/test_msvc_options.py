@@ -221,7 +221,8 @@ class TestTheMaskBitsLlvmUndnameHasNoFlagFor:
         )
 
     def test_a_scope_loses_the_four_and_keeps_the_five(self):
-        """Each flag reaches into an enclosing symbol exactly as far as its own reference does.
+        """Each flag reaches into an enclosing symbol exactly as far as its own
+        reference does.
 
         `?NS@?1??SN@?$NS@H@0@QEAAHXZ@4HA` is a static local of a member function, so its
         spelling holds a whole second symbol. `llvm-undname` leaves that one alone under
@@ -420,12 +421,12 @@ class TestTheBitsWithNoFieldOfTheirOwn:
 class TestTheOptionsReachABareType:
     """`demangle_type(..., language="msvc")` spells a type under the style it was given.
 
-    It is the entry point `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY` corresponds to, and
-    it must honour an options object: a flag silently inert there would leave every
-    composition of the style without effect. The declaration-level five have nothing to say about
-    most bare types -- a function reached as a pointer's pointee keeps its convention, and
-    that is what a bare `P6AHXZ` is -- but the lexical four apply to a type exactly as they
-    apply inside a declaration.
+    It is the entry point `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY` corresponds to,
+    and it must honour an options object: a flag silently inert there would leave every
+    composition of the style without effect. The declaration-level five have nothing to
+    say about most bare types -- a function reached as a pointer's pointee keeps its
+    convention, and that is what a bare `P6AHXZ` is -- but the lexical four apply to a
+    type exactly as they apply inside a declaration.
     """
 
     def test_a_tag_kind_is_dropped_from_a_bare_type(self):

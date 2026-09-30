@@ -220,7 +220,8 @@ class TestDecorations:
         assert demangle.demangle(name).startswith("<core::iter::adapters::skip::Skip<I>")
 
     def test_a_rust_symbol_with_a_trailing_suffix_is_still_rust(self):
-        """A hash anchored to the end of the name would hand every one of these to the C++ parser."""
+        """A hash anchored to the end of the name would hand every one of these to the
+        C++ parser."""
         name = "_ZN3std2io5stdio19OUTPUT_CAPTURE_USED17hb12710559afcc79aE.0"
         assert demangle.detect(name) == "rust"
         assert demangle.demangle(name) == "std::io::stdio::OUTPUT_CAPTURE_USED.0"

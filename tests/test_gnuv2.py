@@ -574,7 +574,8 @@ class TestATemplateValueArgumentWithNoTypeInFrontOfIt:
     where no C name can reach: the whole shape sits inside a `t <count> <name> <count>`
     production. Left unread, what follows would be resynchronised as a class name and
     `__opi__t2TA2Z5__pt__1_i` would read as `_::operator int(int)`, naming a class
-    called `_` -- an answer this package treats as worse than none. `tools/mutate.py --seed 54`.
+    called `_` -- an answer this package treats as worse than none.
+    `tools/mutate.py --seed 54`.
     """
 
     @pytest.mark.parametrize(

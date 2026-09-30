@@ -175,7 +175,8 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
         assert demangle.demangle(self.NAME, style=llvm_ish) != demangle.demangle(self.NAME, style=gnu_ish)
 
     def test_registering_a_style_invalidates_what_was_cached_under_it(self):
-        """Replacing `llvm` must not leave every name demangled beforehand answering the old way."""
+        """Replacing `llvm` must not leave every name demangled beforehand answering the
+        old way."""
         before = demangle.demangle(self.NAME)
         replacement = Style(
             name="cache-probe",
@@ -371,8 +372,9 @@ class TestALimitRefusesRatherThanTruncates:
     pre-Itanium scheme out of the mangling itself.
 
     Nine corpus names would do this: tighten each bound in turn over the libstdc++ and
-    libiberty pre-Itanium corpora and ask which come back *different* rather than refused. A caller who lowers
-    a limit is defending against hostile input, which is the last place to start guessing.
+    libiberty pre-Itanium corpora and ask which come back *different* rather than
+    refused. A caller who lowers a limit is defending against hostile input, which is
+    the last place to start guessing.
     """
 
     #: An Itanium name whose trailing `__i` the pre-Itanium schemes will read as a

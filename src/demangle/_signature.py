@@ -287,7 +287,8 @@ def _blank(reading, tree):
 
 
 def _parts_of(reading, tree):
-    """Read what the tree says, by the shape it has rather than by the scheme that built it."""
+    """Read what the tree says, by the shape it has rather than by the scheme that built
+    it."""
     found = _blank(reading, tree)
     kind = tree.kind
 

@@ -215,7 +215,7 @@ class TestAGeneratedSymbolIsTheLinkerText:
     It is a type string, or two of them, or the name of an object the linker made.
     Read as a declaration, the first `.` after the last `/` would be the package
     separator, so `type:.eq.[2]string` -- no slash, and a leading dot -- would lose its
-    dot and read `type:eq.[2]string`, thirteen corpus rows pinning the loss; and with
+    dot and read `type:eq.[2]string`, 24 corpus rows pinning the loss; and with
     a slash the "package" would be whatever stands before the last one,
     `go:itab.*os.File,io` and the like, which the tree would report as the symbol's
     package. Every symbol here is go1.24.7 output.
@@ -311,7 +311,8 @@ class TestEscapesOutsideTheLeadingPath:
 class TestThePackageEndsBeforeAnyTypeString:
     """`example.com/x.F[go.shape.[]internal/sync.node]` is in `example.com/x`: the last
     `/` of the *package* is not the last `/` of the symbol once a receiver or an
-    instantiation carries a path of its own. The package is not `example.com/x.F[go.shape.[]internal/sync`.
+    instantiation carries a path of its own. The package is not
+    `example.com/x.F[go.shape.[]internal/sync`.
     """
 
     @pytest.mark.parametrize(

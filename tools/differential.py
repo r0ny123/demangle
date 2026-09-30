@@ -83,7 +83,7 @@ NOT_REPLAYED = frozenset(
         "swift-refusals.txt",
         # Hex names with symbolic references; tests/test_swift_symbolic.py.
         "swift-symbolic.txt",
-        # 14 known mismatches, grouped and named in tests/test_conformance.py.
+        # 15 known mismatches, grouped and named in tests/test_conformance.py.
         "itanium-libcxxabi.txt",
         "itanium-libcxxabi.txt.gz",
         # tests/test_swift.py.

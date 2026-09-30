@@ -7,8 +7,8 @@ one of them, and a PE symbol dump full of them says nothing. This one reads them
 
 The marker goes where a *declarator* goes rather than after the type, which for anything
 that wraps its name is a different place: `int (*`RTTI Type Descriptor Name')[2]`, not
-`int (*)[2] `RTTI Type Descriptor Name''. The descriptor *object*, `??_R0<type>@8`, follows the
-same rule.
+`int (*)[2] `RTTI Type Descriptor Name''. The descriptor *object*, `??_R0<type>@8`,
+follows the same rule.
 
 Claiming a leading `.` in a symbol table full of `.text`, `.rodata`, `.L1234` and
 `.constprop.0` is the risk here, and it is answered by measurement rather than by

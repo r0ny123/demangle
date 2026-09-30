@@ -111,12 +111,13 @@ def test_the_shape_as_it_appears_in_a_shipped_library():
     )
 
 
-def test_the_option_is_what_selects_it_and_llvm_style_is_unaffected():
+def test_the_option_selects_it_under_either_style():
     """Turning it off leaves the operand to the general rule, which brackets it.
 
     That is `gnu_expression_spelling`, which stays on in the style: with neither, the
-    spelling is llvm-cxxfilt's. The two options answer different questions -- "may the parameter
-    list be dropped" and "does this operand need brackets" -- and this is what shows it.
+    spelling is llvm-cxxfilt's. The two options answer different questions -- "may the
+    parameter list be dropped" and "does this operand need brackets" -- and this is what
+    shows it.
     """
     mangled = "_Z1gI1AIXadL_ZN1A1fEvEEEEvv"
     gnu_off = demangle.style("gnu", itanium={"gnu_entity_operand_spelling": False})

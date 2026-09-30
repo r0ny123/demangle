@@ -21,7 +21,8 @@ from ...core.errors import LimitExceeded, ParseError
 class SubstitutionOverrun(ParseError):
     """A `S<n>_` past the end of the table: the name was numbered by a rule this reading
     did not apply, or it is not a name. `parse` retries the one rule that is known to
-    differ between compilers before giving up; see `ItaniumOptions.undeduced_auto_substitution`."""
+    differ between compilers before giving up; see
+    `ItaniumOptions.undeduced_auto_substitution`."""
 
 
 class SubstitutionMisuse(ParseError):

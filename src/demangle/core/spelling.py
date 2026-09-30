@@ -194,7 +194,8 @@ class SpellingBuilder(Builder):
         self.collapse_duplicate_qualifiers = collapse_duplicate_qualifiers
 
     # The class itself rather than a method calling it: a class attribute does not bind,
-    # so `builder.name(text)` is `Spelling(text)`, and these are the builder's commonest calls.
+    # so `builder.name(text)` is `Spelling(text)`, and these are the builder's commonest
+    # calls.
     builtin = Spelling
     name = Spelling
     raw = Spelling

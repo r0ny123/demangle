@@ -111,9 +111,11 @@ class TestDuplicateQualifiers:
     style follows it.
 
     The order the survivors print in is decided by the outer qualifier winning, which is
-    why `K V K i` and `K K V i` both come out `volatile const`. Checked here against the
-    references over every sequence of one to three qualifiers, and against the boundary
-    cases: an array passes them through, every other declarator stops them.
+    why `K V K i` and `K K V i` both come out `volatile const`. Pinned here: a
+    set of hand-picked sequences of one to three qualifiers, and the boundary cases --
+    an array passes them through, every other declarator stops them. The exhaustive
+    check is `tools/enumerate.py`, which offers every short name the grammar admits to
+    the references.
     """
 
     @pytest.mark.parametrize(
@@ -875,8 +877,8 @@ class TestAConstrainedPlaceholderIsASubstitutionCandidate:
 
 
 class TestABackReferenceToAPackBoundParameter:
-    """The entry a `<template-param>` contributes is the parameter, and a parameter bound
-    to a pack is the pack.
+    """The entry a `<template-param>` contributes is the parameter, and a parameter
+    bound to a pack is the pack.
 
     That is the same rule note 17 of CONFORMANCE.md establishes against the compilers'
     output for the unpacked case -- the entry is the parameter, not the argument bound to

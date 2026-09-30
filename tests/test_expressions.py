@@ -99,12 +99,14 @@ class TestBuilderContract:
         assert [str(operand) for operand in node.operands] == ["a", "b"]
 
     def test_size_is_carried_rather_than_walked(self):
-        """The output bound is checked in constant time; an expression must not break that."""
+        """The output bound is checked in constant time; an expression must not break
+        that."""
         node = AST_BUILDER.expression("binary", [AST_BUILDER.name("a"), " + ", AST_BUILDER.name("b")])
         assert node.size == len("a + b")
 
     def test_a_tree_can_be_rebuilt_into_another_builder(self):
-        """`build()` round-trips, which is what lets a tree be re-spelled in another style."""
+        """`build()` round-trips, which is what lets a tree be re-spelled in another
+        style."""
         tree = demangle.parse("_Z1fIiEvDTplT_T_E")
         assert tree.spell() == demangle.demangle("_Z1fIiEvDTplT_T_E")
 
@@ -339,8 +341,8 @@ class TestRefusesWhatItShould:
 
         The marker carries no spelling of its own, so the rest of the name must not be
         read recursively -- that would accept a run of them, and `_Z1fLL1A` and
-        `_Z1fLLL1A` would both read as `f(A)`, the spelling the well-formed `_Z1fL1A` has. Both references
-        refuse the second one.
+        `_Z1fLLL1A` would both read as `f(A)`, the spelling the well-formed `_Z1fL1A`
+        has. Both references refuse the second one.
         """
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(mangled, language="itanium")
@@ -683,7 +685,8 @@ class TestAFloatingPointLiteral:
         """The ABI says lowercase, and LLVM's main branch refuses anything else. 18.1
         tests with `isxdigit` and then subtracts `'a'` regardless, so `3F800000` comes
         out `0x1p-64f` there -- and reading it as `0x1p+0f` would give a value no
-        compiler wrote under a name none writes. `c++filt` brackets the digits as they stand."""
+        compiler wrote under a name none writes. `c++filt` brackets the digits as they
+        stand."""
         assert demangle.demangle(mangled) == mangled
         assert demangle.demangle(mangled, style="gnu") == mangled
 
@@ -1022,7 +1025,8 @@ class TestAFunctionParameterEndsInAnUnderscore:
     """`fp <top-level CV-qualifiers> [<number>] _`, and `fL <level> p` the same. The
     qualifiers are read and dropped as `parseFunctionParam` drops them, so `fpK_` is
     `fp`, and the `_` is not optional: reading `fp` alone as a parameter would spell
-    `decltype(fp == nullptr)` for `DTeqfpLDnEE`, which both references refuse. `tools/mutate.py --seed 10`."""
+    `decltype(fp == nullptr)` for `DTeqfpLDnEE`, which both references refuse.
+    `tools/mutate.py --seed 10`."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -1134,7 +1138,8 @@ class TestProductionsTakenFromLibcxxabi:
         assert demangle.demangle(mangled) == mangled
 
     def test_an_objective_c_block_is_still_objective_cs(self):
-        """Only `__` and an *Itanium* encoding is claimed here; `__foo_block_invoke` is not."""
+        """Only `__` and an *Itanium* encoding is claimed here; `__foo_block_invoke` is
+        not."""
         assert demangle.demangle("___cfunc_block_invoke") == "block #1 in cfunc"
 
     @pytest.mark.parametrize(
@@ -1209,8 +1214,9 @@ class TestTemplateParameterLevels:
 
     The table behind `T_` is a stack: level 0 is the innermost `<template-args>`, and
     each generic lambda and each template template parameter declaration opens a level
-    of its own. Held flat, the levels would overwrite each other and a `TL` reference would come
-    out as the numbering it carries -- `T`, `T1` -- which names nothing at all.
+    of its own. Held flat, the levels would overwrite each other and a `TL` reference
+    would come out as the numbering it carries -- `T`, `T1` -- which names nothing at
+    all.
 
     All three vectors are libcxxabi's, and the expectations are `llvm-cxxfilt`'s.
     """
@@ -1396,10 +1402,10 @@ class TestTheNameAConstructorRepeats:
     `Foo<int>::Foo` is right -- a constructor drops the template arguments and the ABI
     tags the class name carries -- but the cut must not be made by searching the
     *spelling* for the first `<` or `[`. Every class whose name is an operator has one
-    of those inside it, so `_ZNssC1Ev` would come out as `operator<=>::operator()`: a constructor of a class
-    the encoding does not mention. Expectations are `llvm-cxxfilt` 18.1.3's; GNU
-    `c++filt` 2.42 refuses most of these and reads `_ZN1XixC1Ev` as `X::operator[]::X()`,
-    naming a class that is not the one in scope.
+    of those inside it, so `_ZNssC1Ev` would come out as `operator<=>::operator()`: a
+    constructor of a class the encoding does not mention. Expectations are
+    `llvm-cxxfilt` 18.1.3's; GNU `c++filt` 2.42 refuses most of these and reads
+    `_ZN1XixC1Ev` as `X::operator[]::X()`, naming a class that is not the one in scope.
     """
 
     @pytest.mark.parametrize(
@@ -1467,8 +1473,9 @@ class TestAVendorExpressionsArgumentIsACallsArgument:
     """`<expression> ::= u <source-name> <template-arg>* E`, spelled as a call. An
     `X <expression> E` argument must not be spelled as it is inside `<...>`, where a
     `>>` or a `>` is bracketed so it cannot close the list: `__uuidof((HasMember >>
-    member))` would come out for Clang's own `_Z15test_uuidofExprI9HasMemberEvDTu8__uuidofXrsT_6memberEEE`.
-    A call's argument needs no such bracket and `llvm-cxxfilt` writes none. Seed 11."""
+    member))` would come out for Clang's own
+    `_Z15test_uuidofExprI9HasMemberEvDTu8__uuidofXrsT_6memberEEE`. A call's argument
+    needs no such bracket and `llvm-cxxfilt` writes none. Seed 11."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -1615,7 +1622,8 @@ class TestAFriendDeclaredInsideItsClass:
     @pytest.mark.parametrize(
         ("mangled", "llvm", "gnu"),
         [
-            # The constructor repeats the class, not the friend marker, as both references do.
+            # The constructor repeats the class, not the friend marker, as both
+            # references do.
             ("_ZN1AF3fooC1Ev", "A::friend foo::foo()", "A::foo[friend]::foo()"),
             ("_ZN1AF3fooD1Ev", "A::friend foo::~foo()", "A::foo[friend]::~foo()"),
             ("_ZN1AF3fooIiEC1Ev", "A::friend foo<int>::foo()", "A::foo[friend]<int>::foo()"),
@@ -1675,8 +1683,8 @@ class TestADeclarationInsideAnArgumentListQualifiesAnArgument:
     """`<template-arg> ::= <template-param-decl> <template-arg>`: `parseTemplateArg`
     reads the declaration and then an argument as one `TemplateParamQualifiedArg`. A
     list ending on the declaration, `ITyE`, is refused by `llvm-cxxfilt` 18 and 20 where
-    reading it would give `unary<>` -- and `Str<>` for a `cv` inside a decltype. `tools/mutate.py
-    --seed 20`."""
+    reading it would give `unary<>` -- and `Str<>` for a `cv` inside a decltype.
+    `tools/mutate.py --seed 20`."""
 
     @pytest.mark.parametrize(
         "mangled", ["_Z1fIJifcEEvDp5unaryITyE", "_Z1fIcEvDTcv3StrITyELA6_KcEE", "_Z1f5unaryITk4TrueE"]
@@ -2047,9 +2055,9 @@ class TestAGreaterThanInsideATemplateArgumentList:
 class TestSizeofNoexceptAndDeleteAreUnaryOperands:
     """`sizeof`, `alignof`, `noexcept`, `new` and `delete` are unary to llvm-cxxfilt's
     printer, and an operand position as tight brackets them: `!(sizeof (int))` and
-    `(sizeof (int)).m`, where `typeid` is postfix and stands bare. Leaving them
-    primary would print `!sizeof (int)`. `_Z3t18IiEv1IIXntstT_EE` was compiled with Clang 18 from
-    `I<!sizeof(T)>`."""
+    `(sizeof (int)).m`, where `typeid` is postfix and stands bare. Leaving them primary
+    would print `!sizeof (int)`. `_Z3t18IiEv1IIXntstT_EE` was compiled with Clang 18
+    from `I<!sizeof(T)>`."""
 
     @pytest.mark.parametrize(
         "mangled, expected",

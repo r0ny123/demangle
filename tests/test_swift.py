@@ -268,11 +268,11 @@ class TestVectorsTranscribedFromTheReference:
 
     def test_a_bare_underscore_names_the_twenty_seventh_substitution(self):
         """`A_` is `demangleMultiSubstitutions` with its repeat count still `-1`: index
-        `-1 + 27`, the first past the single letters, written with no digits at all.
-        The digits are therefore optional: requiring them would refuse every name with
-        twenty-seven substitutions in play, which a closure three deep in a function with
-        eight labelled parameters reaches. Twenty-seven struct parameters get there too; the expected column is
-        the reference's."""
+        `-1 + 27`, the first past the single letters, written with no digits at all. The
+        digits are therefore optional: requiring them would refuse every name with
+        twenty-seven substitutions in play, which a closure three deep in a function
+        with eight labelled parameters reaches. Twenty-seven struct parameters get there
+        too; the expected column is the reference's."""
         prefix = "$s4main1fyyAA1AV_" + "".join(f"AA1{letter}V" for letter in "BCDEFGHIJKLMNOPQRSTUVWXYZa")
         listed = ", ".join(f"main.{letter}" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
         assert demangle.demangle(prefix + "A_tF", language="swift") == f"main.f({listed}, M: main.a) -> ()"

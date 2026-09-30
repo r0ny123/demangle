@@ -532,7 +532,8 @@ class _Demangler:
                     self.take()
                     operator, _ = self.operatorName()
                     if isinstance(operator, _Structor):
-                        # a templated constructor's arguments follow the class name it borrows
+                        # a templated constructor's arguments follow the class name it
+                        # borrows
                         arguments = self._conventionsResolved(self.templateInstantiation(operator=""))
                         return _Structor(operator.is_destructor, arguments), "func"
                     if isinstance(operator, _Conversion):
@@ -674,11 +675,12 @@ class _Demangler:
         """`$1` and a decorated name: the address of a symbol as a template argument.
 
         The symbol is read in this template's back-reference scope, and the reference
-        then memorises its unqualified name -- `memorizeIdentifier(S->Name->
-        getUnqualifiedIdentifier())` -- which for a plain name changes nothing, since
-        reading it recorded it, and for a template name records what a symbol's own
-        template name is otherwise the one exception to: `?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A`
-        is `struct Foo<&int x<int>, &int x<int>> Zoo`, its `?1` the `x<int>` the first
+        then memorises its unqualified name --
+        `memorizeIdentifier(S->Name-> getUnqualifiedIdentifier())` -- which for a plain
+        name changes nothing, since reading it recorded it, and for a template name
+        records what a symbol's own template name is otherwise the one exception to:
+        `?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A` is
+        `struct Foo<&int x<int>, &int x<int>> Zoo`, its `?1` the `x<int>` the first
         argument read.
         """
         self.simple = False
@@ -713,13 +715,13 @@ class _Demangler:
     def md5Name(self):
         """`??@<hash>@`: a decorated name too long for the linker, replaced by its MD5.
 
-        Nothing of the original is in the symbol, so the spelling is the name itself,
-        up to the `@` that closes the hash -- and `??_R4@` after it, the one thing the
+        Nothing of the original is in the symbol, so the spelling is the name itself, up
+        to the `@` that closes the hash -- and `??_R4@` after it, the one thing the
         reference keeps: a complete object locator's tag, which for a hashed name is
         written after the hash rather than before it. Read here rather than only at the
-        top of a name because a hashed function is still a scope: `?catch$0@?0???@<hash>@@4HA`
-        is a catch block's variable inside one, `` `??@<hash>@'::`1'::catch$0 ``, which
-        409 of Boost 1.84's symbols are.
+        top of a name because a hashed function is still a scope:
+        `?catch$0@?0???@<hash>@@4HA` is a catch block's variable inside one, ``
+        `??@<hash>@'::`1'::catch$0 ``, which 409 of Boost 1.84's symbols are.
         """
         end = self.text.find("@", self.pos + 2)
         if end < 0:
@@ -748,7 +750,8 @@ class _Demangler:
         end = self.text.find("@", self.pos)
         if end < 0:
             raise _Bail
-        # a later back-reference resolves to the discriminator: "?f@?A0x1@@YAXV1@@Z" -> "class 0x1"
+        # a later back-reference resolves to the discriminator: "?f@?A0x1@@YAXV1@@Z" ->
+        # "class 0x1"
         self.rememberName(self.text[self.pos : end])
         self.pos = end + 1
         return "`anonymous namespace'"
@@ -778,7 +781,8 @@ class _Demangler:
                     self.take()
                     self.requires_signature = True
                     if self.peek() == "?":
-                        # a whole symbol: "??__E?i@C@@0HA@@YAXXZ" runs for "private: static int C::i"
+                        # a whole symbol: "??__E?i@C@@0HA@@YAXXZ" runs for "private:
+                        # static int C::i"
                         target = self.nestedSymbol()
                         self.expect("@")
                         self.endsTheInitialisedName()
@@ -788,13 +792,15 @@ class _Demangler:
                         whole = self.nestedSymbol(leading_question=False)
                         self.endsTheInitialisedName()
                         return f"`{_DYNAMIC_INITIALISERS[code]} `{whole}''", "func"
-                    # recorded, unlike a literal operator's suffix: "??__EFoo@@YAXU0@@Z" -> Foo
+                    # recorded, unlike a literal operator's suffix: "??__EFoo@@YAXU0@@Z"
+                    # -> Foo
                     if self.peek().isdigit():
                         raise _Bail
                     target = self.identifier()
                     self.rememberName(target)
                     # Qualified, all inside the quotes (`demangleInitFiniStub`):
-                    # `??__Eg@inner@outer@@YAXXZ` is `` `dynamic initializer for 'outer::inner::g'' ``.
+                    # `??__Eg@inner@outer@@YAXXZ` is
+                    # `` `dynamic initializer for 'outer::inner::g'' ``.
                     scopes = [target]
                     while self.peek() != "@":
                         if self.eof():
@@ -814,7 +820,8 @@ class _Demangler:
             if code == "C":
                 return self.stringLiteral(), "descriptor"
             if code == "R" and self.peek() in "1234":
-                # RTTI names a class; "8" storage for these three, vftable form for the locator
+                # RTTI names a class; "8" storage for these three, vftable form for the
+                # locator
                 which = self.take()
                 if which == "1":
                     written = [self.templateInteger() for _ in range(4)]
@@ -834,7 +841,8 @@ class _Demangler:
                 if not self.nested and not self.eof():
                     raise _Bail
                 if not self.options.variable_type:
-                    # The type is all a descriptor says; vtable and vbtable names keep theirs.
+                    # The type is all a descriptor says; vtable and vbtable names keep
+                    # theirs.
                     return "`RTTI Type Descriptor'", "descriptor"
                 # Where a declarator goes: `int (*`RTTI Type Descriptor')[2]`.
                 return self.rendered(described, "`RTTI Type Descriptor'"), "descriptor"
@@ -950,16 +958,19 @@ class _Demangler:
         if char == "A":
             if quals:
                 raise _Bail
-            # only "A" introduces a reference; "B" (volatile reference) is not C++: "?f2@@YAXBDPAD@Z"
+            # only "A" introduces a reference; "B" (volatile reference) is not C++:
+            # "?f2@@YAXBDPAD@Z"
             return self.indirection((), "&")
         if char == "$":
             return self.dollarType(quals, at_argument)
         if char in string.digits:
-            # an argument back-reference stands only where a whole argument does; see parameters()
+            # an argument back-reference stands only where a whole argument does; see
+            # parameters()
             raise _Bail
         if char == "?" and (self.peek() == "<" or self.peek() in string.digits):
-            # A named placeholder type, `?A?<decltype-auto>@@`. Through `nameFragment` so it is
-            # remembered: a nested lambda's deduced return is the back-reference `?A?4@`.
+            # A named placeholder type, `?A?<decltype-auto>@@`. Through `nameFragment`
+            # so it is remembered: a nested lambda's deduced return is the
+            # back-reference `?A?4@`.
             placeholder = self.nameFragment(False)[0]
             self.expect("@")
             return apply_qualifiers(Raw(placeholder), quals)
@@ -1041,9 +1052,10 @@ class _Demangler:
             self.simple = False
             return Raw(self.templateInteger())
         if self.peek() == "M":
-            # `$M <type> <nttp>`: an `auto` non-type argument. The reference spells only the
-            # value (`A<42>`), then any argument form without its `$`. LLVM main reads these;
-            # llvm-undname 18 refuses them, so none is in the corpus. An argument, not a type.
+            # `$M <type> <nttp>`: an `auto` non-type argument. The reference spells only
+            # the value (`A<42>`), then any argument form without its `$`. LLVM main
+            # reads these; llvm-undname 18 refuses them, so none is in the corpus. An
+            # argument, not a type.
             if not at_argument:
                 raise _Bail
             self.take()
@@ -1059,7 +1071,8 @@ class _Demangler:
         if not self.eat("$"):
             raise _Bail
         if self.eat("B"):
-            # the undecayed type, only where a parameter stands: "?f@@YAX$$BY01H@Z" is not a name
+            # the undecayed type, only where a parameter stands: "?f@@YAX$$BY01H@Z" is
+            # not a name
             if self.peek() in "$6" or not at_argument:
                 raise _Bail
             return self.type(quals)
@@ -1241,7 +1254,8 @@ class _Demangler:
         return "".join(out)
 
     def functionTypeArgument(self):
-        """A function type written as a template argument: "$$A6", or "$$A8" with a qualifier.
+        """A function type written as a template argument: "$$A6", or "$$A8" with a
+        qualifier.
 
         The "8" form is the one a member function's type takes, but it names no class - the
         reference refuses "$$A8S@@AEHXZ" - so it reads as an ordinary function type carrying
@@ -1401,7 +1415,8 @@ class _Demangler:
             self.pos += 4
             extern_c = 'extern "C" '
             char = self.peek()
-            # llvm-undname refuses a data-storage letter after `$$J0` (`?overloaded_fn@@$$J04HA`).
+            # llvm-undname refuses a data-storage letter after `$$J0`
+            # (`?overloaded_fn@@$$J04HA`).
             if char in _DATA_ACCESS:
                 raise _Bail
         if char == "9":
@@ -1464,7 +1479,8 @@ class _Demangler:
                 # `?h3@@3QEIAHFA` is `int __unaligned *const __restrict h3`.
                 declared = qualify_declared(declared, unaligned)
             if restrict and restrict[0] not in declared.qualifiers:
-                # qualifies the pointer, written once: "?h3@@3QIAHIA" is "int *const __restrict"
+                # qualifies the pointer, written once: "?h3@@3QIAHIA" is "int *const
+                # __restrict"
                 declared = Indirection(declared.sigil, declared.qualifiers + restrict, declared.inner)
             if member_quals and is_member_function_pointer(declared):
                 # a member function's qualifier follows its parameters, in the group
@@ -1617,7 +1633,8 @@ class _Demangler:
         return self.thunkBody(name, access, "vtordisp", [first, second])
 
     def thunkBody(self, name, access, kind, displacements):
-        """The signature a vtordisp or vtordispex thunk carries, once its numbers are read."""
+        """The signature a vtordisp or vtordispex thunk carries, once its numbers are
+        read."""
         self.member_cv = self.memberQualifiers()
         convention = self.callingConvention()
         returns = None if self.peek() == "@" and self.take() else self.returnType()
@@ -1628,7 +1645,8 @@ class _Demangler:
         written = ", ".join(str(value) for value in displacements)
         if "\0conversion\0" in name:
             # A conversion operator's name is its return type:
-            # `??BEDerived@@$4PPPPPPPM@A@EAAPEAXI@Z` is `EDerived::operator void *`vtordisp{-4, 0}'`.
+            # `??BEDerived@@$4PPPPPPPM@A@EAAPEAXI@Z` is
+            # `EDerived::operator void *`vtordisp{-4, 0}'`.
             if returns is None:
                 raise _Bail
             name = name.replace("\0conversion\0", f"operator{self.conversion_arguments} {self.rendered(returns)}")

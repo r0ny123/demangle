@@ -44,7 +44,8 @@ class TestConformance:
 
 
 class TestGrammar:
-    """Constructs settled against the reference or the ABI, each with the name that proved it."""
+    """Constructs settled against the reference or the ABI, each with the name that
+    proved it."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -221,7 +222,8 @@ class TestSafety:
             # `M` with a function after it, which is the shape it exists for.
             ("_D4test3fooMFiZv", "test.foo(int)"),
             ("_D4test3fooMxFiZv", "test.foo(int) const"),
-            # A zero-length component is anonymous and spells nothing; the reference reads it.
+            # A zero-length component is anonymous and spells nothing; the reference
+            # reads it.
             ("_D3fooC0", "foo"),
             ("_D3fooC3bar", "foo"),
             ("_D3fooFC3barZv", "foo(bar)"),
@@ -579,8 +581,9 @@ class TestArtificialSymbolAndModifierRuns:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_parse_qualified` skips a literal `0` with a `continue`, bypassing the
-            # argument parse, so the type belongs to the omitted component and is not spelled.
+            # `dlang_parse_qualified` skips a literal `0` with a `continue`, bypassing
+            # the argument parse, so the type belongs to the omitted component and is
+            # not spelled.
             ("_D3foo3bar0FZv", "foo.bar"),
             ("_D3foo3bar0FiZv", "foo.bar"),
             ("_D4core4sync5mutex5Mutex6unlock0FNeZv", "core.sync.mutex.Mutex.unlock"),
@@ -678,11 +681,12 @@ class TestAgainstLibibertysOwnCorpus:
     All 366 vectors pass. The hardest rules to reach are ones that could only be
     *derived* from the reference rather than read out of the D ABI: the five characters
     it names inside a string (`\a` and `\b` are not among them, and neither `"` nor a
-    backslash is escaped at all), the different rule for a character *literal*, hex float values written with the point after the first digit,
-    associative-array values written as pairs where the type says so -- through a back
-    reference, if that is how the type was written -- struct and function-literal values,
-    `extern(Pascal)`, the anonymous and `__S<n>` path components it leaves out, and the
-    malformed template instances it refuses outright rather than printing back.
+    backslash is escaped at all), the different rule for a character *literal*, hex
+    float values written with the point after the first digit, associative-array values
+    written as pairs where the type says so -- through a back reference, if that is how
+    the type was written -- struct and function-literal values, `extern(Pascal)`, the
+    anonymous and `__S<n>` path components it leaves out, and the malformed template
+    instances it refuses outright rather than printing back.
 
     Pinned exactly, in both directions.
     """
@@ -892,9 +896,9 @@ class TestScopeModifiersAndBackReferenceTargets:
 
     def test_a_digit_after_a_path_is_the_next_component_and_nothing_else(self):
         """`dlang_symbol_name_p` says a digit opens a component, and a component that
-        does not parse fails the name. Backing out and reading the digits as an old-style
-        bare integer value would spell `test!(42)` for a name the reference refuses; the value
-        a compiler writes carries its type, `i42`."""
+        does not parse fails the name. Backing out and reading the digits as an
+        old-style bare integer value would spell `test!(42)` for a name the reference
+        refuses; the value a compiler writes carries its type, `i42`."""
         assert (
             demangle.demangle("_D8demangle__T4testVE3foo3bar42Zv", language="d") == "_D8demangle__T4testVE3foo3bar42Zv"
         )
@@ -928,9 +932,9 @@ class TestScopeModifiersAndBackReferenceTargets:
         assert demangle.demangle("_D8demangle__T4testS116symbol3fooZv", language="d") == "demangle.test!(symbol.foo)"
 
     def test_a_star_in_an_identifier_is_refused(self):
-        """`6En961*` is six characters including a `*`, which is not a D name.
-        The type still parses, so `_D3std6stream9BOMEndianyG5E3std6system6En961*`
-        would read as `std.stream.BOMEndian`. libiberty refuses. `tools/mutate.py --seed 17`."""
+        """`6En961*` is six characters including a `*`, which is not a D name. The type
+        still parses, so `_D3std6stream9BOMEndianyG5E3std6system6En961*` would read as
+        `std.stream.BOMEndian`. libiberty refuses. `tools/mutate.py --seed 17`."""
         assert demangle.demangle("_D1aE3foo6En961*", language="d") == "_D1aE3foo6En961*"
         assert demangle.demangle("_D1aE3foo6En961i", language="d") == "a"
         assert (

@@ -195,13 +195,14 @@ ACCEPTED = {
                 # Or a member pointer whose member and pointer qualifier letters disagree;
                 # `llvm-undname` keeps only the member's. No compiler writes them apart.
                 or _undname_keeps_one_member_pointer_qualifier(name, ours, first)
-                # Or MS extension qualifiers on a member pointer's pointee, which `llvm-undname`
-                # drops (msvc-reference-defects.txt).
+                # Or MS extension qualifiers on a member pointer's pointee, which
+                # `llvm-undname` drops (msvc-reference-defects.txt).
                 or _undname_drops_a_member_pointees_extension_qualifiers(name, ours, first)
                 # Or a vftable/vbtable/RTTI locator base path of several elements, which
                 # `llvm-undname` truncates to the first; see msvc-llvm-corpus.txt's header.
                 or ("'s `" in ours and "'{for `" in ours)
-                # Or a placement delete closure, which `llvm-undname` spells with no name at all.
+                # Or a placement delete closure, which `llvm-undname` spells with no
+                # name at all.
                 or _PLACEMENT_CLOSURE.sub("", ours) == first
                 # Or a qualifier on a deduced return type (`?B?<auto>@@`), which LLVM's
                 # `CustomTypeNode::outputPre` never prints; see `_QUALIFIED_CUSTOM_TYPE`.
@@ -209,15 +210,16 @@ ACCEPTED = {
                     _QUALIFIED_CUSTOM_TYPE.search(name) is not None
                     and _CUSTOM_TYPE_QUALIFIERS.sub(r"\1", ours) == first
                 )
-                # Or a `$$C` over a pointer already carrying that qualifier, which the reference
-                # prints twice; see `_collapse_doubled_qualifier`.
+                # Or a `$$C` over a pointer already carrying that qualifier, which the
+                # reference prints twice; see `_collapse_doubled_qualifier`.
                 or (first is not None and first != ours and _collapse_doubled_qualifier(first) == ours)
                 # Or qualifier words on a pointer in the other order; see
                 # `_qualifier_words_on_a_pointer_reordered`.
                 or _qualifier_words_on_a_pointer_reordered(ours, first)
             )
         )
-        # Or `__int128` (`_L`/`_M`), which clang-cl emits and `llvm-undname` 18.1 cannot read.
+        # Or `__int128` (`_L`/`_M`), which clang-cl emits and `llvm-undname` 18.1 cannot
+        # read.
         or (first is None and ("__int128" in ours))
         # Or a deduced type (`_P` auto, `_T` decltype(auto)), which MSVC 14.3 writes and
         # `llvm-undname` 18 cannot read; LLVM main reads both as this does.

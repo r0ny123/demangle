@@ -279,7 +279,8 @@ def _spaced_off_the_sigil(node, declarator, declarator_is_function, options):
 
 
 def spelled_after(convention, text):
-    """Join a calling convention to what follows it, skipping the ones spelled with nothing."""
+    """Join a calling convention to what follows it, skipping the ones spelled with
+    nothing."""
     return f"{convention} {text}" if convention else text
 
 

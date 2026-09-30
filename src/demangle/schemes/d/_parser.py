@@ -330,7 +330,8 @@ class _Parser:
         # A type back reference may only point before this, as `last_backref` in
         # `dlang_type_backref`: it keeps a chain of them finite.
         self._last_backref = len(self.reader.text)
-        # LName spans; a back reference strictly inside one is refused (no compiler writes one).
+        # LName spans; a back reference strictly inside one is refused (no compiler
+        # writes one).
         self._lname_spans = []
         #: How many spans cover each position strictly inside one, so `_is_inside_lname`
         #: need not scan them. A count because the spans overlap.
@@ -416,7 +417,8 @@ class _Parser:
                 continue
             # `enclosing(params).inner`
             spelled = self._spelled_component(component) + self.scope_type()
-            # A back reference to an anonymous component keeps its slot: `_D1a0Qb1ci` is `a..c`.
+            # A back reference to an anonymous component keeps its slot: `_D1a0Qb1ci` is
+            # `a..c`.
             self._last_component_anonymous = False
             parts.append(spelled)
         return parts
@@ -687,7 +689,8 @@ class _Parser:
                 return False
             self.qualified_name()
             if prefixed:
-                # `dlang_parse_mangle` needs a type: `_D6symbol3foo3bar2Zv` is spelled as it stands.
+                # `dlang_parse_mangle` needs a type: `_D6symbol3foo3bar2Zv` is spelled
+                # as it stands.
                 if reader.pos >= end:
                     return False
                 if reader.peek() == "Z":
@@ -865,7 +868,8 @@ class _Parser:
             modifiers = []
             if reader.peek() == "M":
                 reader.pos += 1
-                # `dlang_parse_qualified` calls `dlang_type_modifiers` here too: `MxxF` is refused.
+                # `dlang_parse_qualified` calls `dlang_type_modifiers` here too: `MxxF`
+                # is refused.
                 modifiers = self.this_modifiers()
             if reader.peek() not in CALLING_CONVENTIONS:
                 raise DemangleFailure("not a scope")
@@ -1129,7 +1133,8 @@ class _Parser:
             reader.pos += 1
             modifiers = self.this_modifiers()
             if reader.peek() == "Q":
-                # `dlang_type_backref` with `is_function`: the target must be a function type.
+                # `dlang_type_backref` with `is_function`: the target must be a function
+                # type.
                 target = self._back_reference_target(reader.pos)
                 if target is None or reader.text[target] not in CALLING_CONVENTIONS:
                     raise DemangleFailure("a delegate's back reference does not point at a function type")

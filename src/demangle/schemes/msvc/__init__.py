@@ -142,7 +142,8 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
             tree = parse_msvc_type(mangled, limits, options)
             if tree is None:
                 raise ParseError(mangled, None, "not a type descriptor name this demangler can read")
-            # The marker goes where a declarator goes: `int (*`RTTI Type Descriptor Name')[2]`.
+            # The marker goes where a declarator goes:
+            # `int (*`RTTI Type Descriptor Name')[2]`.
             spelled = _render(tree, _TYPE_DESCRIPTOR_SUFFIX, options=options)
         except _LimitHit as hit:
             raise LimitExceeded(mangled, hit.what, hit.limit) from hit
@@ -173,7 +174,8 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
             _check_length(mangled, len(expanded), limits)
             return builder.raw(expanded)
         except _LimitHit as hit:
-            # `hit.limit`, not the caller's: this scheme narrows both bounds (see `_LimitHit`).
+            # `hit.limit`, not the caller's: this scheme narrows both bounds (see
+            # `_LimitHit`).
             raise LimitExceeded(mangled, hit.what, hit.limit) from hit
     except ParseError as exc:
         plain_error = exc

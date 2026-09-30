@@ -2052,8 +2052,9 @@ def gnu_special(work, cur, declp):
                 n = None
                 if _isdigit(code):
                     n = consume_count(cur)
-                    # Too large: a `.<digits>` static local marker. The reference's `break`
-                    # leaves only the `switch`, so the loop goes on: `_vt.6i` is `i virtual table`.
+                    # Too large: a `.<digits>` static local marker. The reference's
+                    # `break` leaves only the `switch`, so the loop goes on: `_vt.6i` is
+                    # `i virtual table`.
                     if n > len(cur.rest()):
                         success = 1
                         n = None

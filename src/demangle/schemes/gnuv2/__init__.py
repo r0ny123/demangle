@@ -151,7 +151,8 @@ def _plausible(symbol):
             body = body[: -len(symbol.suffix)]
         return bool(body.strip())
     if "::)" in symbol.text:
-        # `int (CGuiWidget::)(...)`: CodeWarrior's `M<class>F` member pointer, not a declaration.
+        # `int (CGuiWidget::)(...)`: CodeWarrior's `M<class>F` member pointer, not a
+        # declaration.
         return False
     parameters = symbol.parameters or ()
     if any("int0_t" in parameter for parameter in parameters):
@@ -167,7 +168,8 @@ def _plausible(symbol):
         # (`PyInit__sre`, `drm_intel_gem_bo_map__wc`).
         return False
     if symbol.qualifiers and not (symbol.evidence & _NAMED_SOMETHING):
-        # Member qualifiers without a class: an `S` or `C` in a foreign encoding (`_TtU__FQD__Si`).
+        # Member qualifiers without a class: an `S` or `C` in a foreign encoding
+        # (`_TtU__FQD__Si`).
         return False
     for component in _components(symbol.qualified_name):
         at = component.find("<")

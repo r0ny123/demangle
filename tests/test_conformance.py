@@ -84,7 +84,7 @@ PASCAL_TOTAL, PASCAL_EXACT = 3899, 3899
 NIM_TOTAL, NIM_EXACT = 2115, 2115
 SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 
-#: Not scored here: 70 rows are reference refusals, which `_misses` counts as misses.
+#: Not scored here: 71 rows are reference refusals, which `_misses` counts as misses.
 #: tests/test_swift.py scores it; it lives here for tests/test_readme.py.
 SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 514, 514
 SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT = 5, 5
@@ -108,7 +108,8 @@ CODEWARRIOR_TOTAL, CODEWARRIOR_EXACT = 47, 47
 #: GNAT-specific encoding. Replayed by tests/test_ada.py.
 ADA_TOTAL, ADA_EXACT = 34, 34
 
-#: The 4 unclaimed vectors are indistinguishable from ordinary C names; see tests/test_ada.py.
+#: The 4 unclaimed vectors are indistinguishable from ordinary C names; see
+#: tests/test_ada.py.
 ADA_AUTODETECTED = 29
 ADA_REAL_WORLD_TOTAL, ADA_REAL_WORLD_EXACT = 1438, 1438
 
@@ -149,7 +150,8 @@ GNU_DIVERGENCES = []
 
 
 def _misses(corpus, style, language=None):
-    """The corpus's size, and `(name, want, got)` for every row that does not read as recorded."""
+    """The corpus's size, and `(name, want, got)` for every row that does not read as
+    recorded."""
     pairs = load_corpus(corpus)
     missed = []
     for mangled, expected in pairs:

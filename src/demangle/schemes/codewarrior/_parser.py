@@ -291,7 +291,8 @@ def _demangle_arg(text, options):
     if is_member or text.startswith("F"):
         text = text[1:]
         if is_member:
-            # The member function pointer's hidden parameters; which is written encodes `const`.
+            # The member function pointer's hidden parameters; which is written encodes
+            # `const`.
             if text.startswith("PCvPCv"):
                 const_member = True
                 text = text[6:]

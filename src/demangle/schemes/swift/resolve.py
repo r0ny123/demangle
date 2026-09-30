@@ -5,11 +5,11 @@ binary, so reading one means reading the binary. That is why it is here rather t
 the demangler: `demangle()` is given a name and nothing else, and no amount of cleverness
 recovers what the name deliberately does not carry.
 
-What a resolver has to produce is a *mangled fragment* in Swift's own grammar -- `4demo5PointV`
-for `demo.Point` -- which the demangler then reads in place. Handing back a fragment
-rather than a finished spelling is what keeps the rest of the mangling working: the
-reference may be the base of a bound generic type, or a member the next operator
-qualifies, and only a real node can be used that way.
+What a resolver has to produce is a *mangled fragment* in Swift's own grammar --
+`4demo5PointV` for `demo.Point` -- which the demangler then reads in place. Handing back
+a fragment rather than a finished spelling is what keeps the rest of the mangling
+working: the reference may be the base of a bound generic type, or a member the next
+operator qualifies, and only a real node can be used that way.
 
 The descriptor layout is Swift's `TargetContextDescriptor` and the two that extend it:
 

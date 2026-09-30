@@ -115,10 +115,7 @@ _ZSt9__find_ifIPKPN4llvm5ValueEN9__gnu_cxx5__ops12_Iter_negateIZNS0_13slpvectori
 # `outer::inner::Holder<int, 3>`; llvm-cxxfilt 20.1.2 and GNU c++filt 2.42 both agree
 # with the declaration, and with this.
 #
-# It is here because a regeneration would otherwise re-record 18's answer. The corpus
-# carried the corrected spelling and the exclusion list did not carry the name, so the
-# protection this file exists to give was not actually covering it -- which the first
-# regeneration in a while turned up.
+# The name is excluded from regeneration so that it cannot re-record 18's answer.
 _Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(int)
 #
 # tools/corpus_sources/reference_defects/value_init_new.cpp, g++ 13.3.0 and clang++
@@ -177,12 +174,11 @@ _ZNSt8__format14__formatter_fpIcE23_S_resize_and_overwriteIcZNKS1_6formatIdNS_10
 # because the second template argument -- libc++'s `__func<_Fp, _Alloc, _Rp(_ArgTypes...)>`
 # takes `allocator<_Fp>`, the closure -- is written `SK_`, which is the closure's entry
 # only under Apple's `auto` rule (`ItaniumOptions.undeduced_auto_substitution`), the
-# rule a `__Z` name is read by. Transcribed without the underscore it was read by the
-# common rule, under which `SK_` is the entry before, `std::__1::allocator` itself, and
-# the row once recorded `allocator<std::__1::allocator>` from that reading. Nothing in
-# the grammar calls that shape wrong -- a bare template is what the argument for a
-# template template parameter looks like -- so no retry can catch it; the underscore
-# is what says which rule, and the row now carries it and says what libc++ declares.
+# rule a `__Z` name is read by. Without the underscore the common rule applies, under
+# which `SK_` is the entry before, `std::__1::allocator` itself. Nothing in the grammar
+# calls that shape wrong -- a bare template is what the argument for a template
+# template parameter looks like -- so no retry can catch it; the underscore is what
+# selects the rule, and the row spells what libc++ declares.
 __ZNKSt3__110__function6__funcIZZN5ceres8internal14ParallelInvokeIZNKS3_21PartitionedMatrixViewILi2ELi2ELi2EE27RightMultiplyAndAccumulateEEPKdPdEUliE_EEvPNS3_11ContextImplEiiiOT_iENKUlRSD_E_clIKSG_EEDaSF_EUlvE_NS_9allocatorISK_EEFvvEE11target_typeEv	std::__1::__function::__func<auto void ceres::internal::ParallelInvoke<ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)>(ceres::internal::ContextImpl*, int, int, int, ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)&&, int)::'lambda'(auto&)::operator()<'lambda'(auto&) const>('lambda'(auto&) const&) const::'lambda'(), std::__1::allocator<auto void ceres::internal::ParallelInvoke<ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)>(ceres::internal::ContextImpl*, int, int, int, ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)&&, int)::'lambda'(auto&)::operator()<'lambda'(auto&) const>('lambda'(auto&) const&) const::'lambda'()>, void ()>::target_type() const
 #
 # folly's Benchmark.h, from the same bottle: `template <typename Lambda> typename

@@ -281,7 +281,8 @@ class MsvcQuestionNameTestSuite(unittest.TestCase):
 
 
 class MsvcTypeOnlyTestSuite(unittest.TestCase):
-    """A bare type encoding has no symbol in it, so it makes none of a symbol's allowances."""
+    """A bare type encoding has no symbol in it, so it makes none of a symbol's
+    allowances."""
 
     def test_a_template_standing_as_the_type_is_recorded_for_back_references(self):
         # the one name a symbol does not record is its own, and there is no symbol here
@@ -523,7 +524,8 @@ COMPLETING_FORMS = [
     ("??_R2Base@@8", "Base::`RTTI Base Class Array'"),
     ("??_R3Base@@8", "Base::`RTTI Class Hierarchy Descriptor'"),
     ("??_R4Base@@6B@", "const Base::`RTTI Complete Object Locator'"),
-    # a conversion operator is named by the type it converts to, which it writes as its return
+    # a conversion operator is named by the type it converts to, which it writes as its
+    # return
     ("??BBase@@QEAAHXZ", "public: int __cdecl Base::operator int(void)"),
     ("??BFoo@@QBEPAHXZ", "public: int * __thiscall Foo::operator int *(void) const"),
     # converting to a *member* pointer: the name ends in `Bar::*` but is not a pointee,
@@ -959,7 +961,8 @@ MUTATION_DECLINED = [
     "?overloaded_fn@@$$JYAXXZ",
     # only a pointer points into a class: C++ has no reference to member
     "?l@@3A8foo@@AEHH@ZA",
-    # `demangleVcallThunkNode` consumes `$B` only; a `??_9` with a vtordisp slot is two thunks
+    # `demangleVcallThunkNode` consumes `$B` only; a `??_9` with a vtordisp slot is two
+    # thunks
     "??_9Derived@@$4PPPPPPPM@A@EAAPEAXI@Z",
     # `$$Y` names an alias template only where a template argument stands
     "?f@@YAX$$YURetVal@@@Z",
@@ -1350,8 +1353,9 @@ class TestAPointerToAMemberOfArrayType(unittest.TestCase):
     declarator an array brackets is the member pointer's: `int (A::*)[4]`. The array's
     renderer brackets a declarator it can see opens with `*` or `&`, and `A::*` opens
     with the owner's name, so a renderer that tested only that would write `int A::*[4]`
-    -- an array of pointers to member, a different type. Every spelling here is `llvm-undname` 18's; the first was
-    compiled by Clang 18 for the MSVC target from `int (A::*)[sizeof(T)]`."""
+    -- an array of pointers to member, a different type. Every spelling here is
+    `llvm-undname` 18's; the first was compiled by Clang 18 for the MSVC target from
+    `int (A::*)[sizeof(T)]`."""
 
     CASES = (
         ("??$a8@H@@YAXPEQA@@Y03H@Z", "void __cdecl a8<int>(int (A::*)[4])"),
@@ -1681,7 +1685,8 @@ class MsvcLlvmMainTestSuite(unittest.TestCase):
         behind `$1` is read: for a plain name it changes nothing, since reading the name
         recorded it, and for a template name it records what a symbol's own template
         name is otherwise the one exception to. `ms-cxx14.test`'s `Zoo`, which is
-        refused without it. The record is the reference's, deduplicated: `?2` is still nothing.
+        refused without it. The record is the reference's, deduplicated: `?2` is still
+        nothing.
         """
         self.assertEqual(
             demangle_msvc_symbol("?Zoo@@3U?$Foo@$1??$x@H@@3HA$1?1@3HA@@A"), "struct Foo<&int x<int>, &int x<int>> Zoo"
@@ -1693,9 +1698,9 @@ class MsvcLlvmMainTestSuite(unittest.TestCase):
 
 
 class TestAQualifierOnABackReferencedDeducedReturn(unittest.TestCase):
-    """`?C?4@` is volatile in front of a back reference to `<auto>`. llvm-undname
-    drops the qualifier, as it does for `?B?<auto>@@`. The encoding is kept. `tools/mutate.py --seed 15`
-    reaches it.
+    """`?C?4@` is volatile in front of a back reference to `<auto>`. llvm-undname drops
+    the qualifier, as it does for `?B?<auto>@@`. The encoding is kept.
+    `tools/mutate.py --seed 15` reaches it.
     """
 
     def test_the_volatile_is_kept(self):

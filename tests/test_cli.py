@@ -257,8 +257,8 @@ class TestPartFlags:
         [
             (VECTOR, VECTOR_SPELLED),
             ("_ZSt4sortIPiEvT_S1_", "std::sort<int*>(int*, int*)"),
-            # MSVC uses the scheme's own option (`llvm-undname --no-return-type`): `private: `
-            # comes before the return type, so there is no prefix to strip.
+            # MSVC uses the scheme's own option (`llvm-undname --no-return-type`):
+            # `private: ` comes before the return type, so there is no prefix to strip.
             ("?f@Foo@@AEBAXH@Z", "private: __cdecl Foo::f(int) const"),
         ],
     )
@@ -458,7 +458,8 @@ class TestTheReturnTypeFlags:
             # A plain template function: the return type is a prefix.
             ("_Z1fIiET_S0_", "f<int>(int)", "f<int>(int)int"),
             ("_Z1fIiEvT_", "f<int>(int)", "f<int>(int)void"),
-            # One that *wraps* the declarator: `int (*g<int>(int))(int)` has no prefix to strip.
+            # One that *wraps* the declarator: `int (*g<int>(int))(int)` has no prefix
+            # to strip.
             ("_Z1gIiEPFT_S0_ES0_", "g<int>(int)", "g<int>(int)int (*)(int)"),
             # A name whose mangling carries no return type at all is untouched by both.
             ("_Z1fi", "f(int)", "f(int)"),
@@ -529,9 +530,8 @@ class TestKeepHash:
     """`--keep-hash`: rustc-demangle's `{}` rather than its `{:#}`.
 
     One flag with two manifestations, because that is how the reference has it -- the
-    same `alternate` bit suppresses all of this. Scored at 5,751 of the 5,753 corpus
-    names the reference reads; the two that differ do so in both modes and for reasons
-    that have nothing to do with the hash.
+    same `alternate` bit suppresses all of this. The score against the reference is
+    stated in tests/test_rust.py.
     """
 
     @pytest.mark.parametrize(

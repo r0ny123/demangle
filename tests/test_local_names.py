@@ -140,8 +140,9 @@ def test_a_clone_suffix_may_follow_the_entity_directly():
     entity's name and the dot. The dot is where `parse` picks the suffix up, and the
     local name must not take a character that is not `E`, `_` or the end for the start
     of the entity's signature: reading `.0` as one would refuse the name. With a
-    discriminator ahead of it -- `_ZZ1fvE1x_0.0` -- that never arises. llvm-cxxfilt reads both; c++filt refuses both,
-    so the gnu column is this library's own clone spelling."""
+    discriminator ahead of it -- `_ZZ1fvE1x_0.0` -- that never arises. llvm-cxxfilt
+    reads both; c++filt refuses both, so the gnu column is this library's own clone
+    spelling."""
     assert demangle.demangle_strict("_ZZ1fvE1x.0", style="llvm") == "f()::x (.0)"
     assert demangle.demangle_strict("_ZZ1fvE1x.0", style="gnu") == "f()::x [clone .0]"
     assert demangle.demangle_strict("_ZZ1fvE1x_0.0", style="llvm") == "f()::x (.0)"
@@ -154,11 +155,12 @@ def test_a_clone_suffix_may_follow_the_entity_directly():
 
 def test_an_embedded_encoding_keeps_its_own_return_type_under_gnu():
     """`L_Z <encoding> E` inside the enclosing function's template arguments is a whole
-    name of its own, and c++filt spells it as one: `f<int h<int>()>()` drops `f`'s return
-    type, as it does for every function a local name is scoped by, and keeps `h`'s.
-    The decision `local_name` makes for `f` must not be spent on `h` instead, which
-    would leave `h` without its type and `f` with one. `_Iter_comp_iter<...reversePathSortedFilenames<...>...>`
-    in the Swift 6.1.2 toolchain's `swift-frontend` is eight names of this shape."""
+    name of its own, and c++filt spells it as one: `f<int h<int>()>()` drops `f`'s
+    return type, as it does for every function a local name is scoped by, and keeps
+    `h`'s. The decision `local_name` makes for `f` must not be spent on `h` instead,
+    which would leave `h` without its type and `f` with one.
+    `_Iter_comp_iter<...reversePathSortedFilenames<...>...>` in the Swift 6.1.2
+    toolchain's `swift-frontend` is eight names of this shape."""
     mangled = "_Z1gIZL1fIL_Z1hIiEivEEivEUlvE_EvT_"
     assert demangle.demangle_strict(mangled, style="gnu") == (
         "void g<f<int h<int>()>()::{lambda()#1}>(f<int h<int>()>()::{lambda()#1})"

@@ -577,7 +577,8 @@ class OldDemangler:
             if name is None:
                 # Unreachable; guarded because the reference dereferences it unguarded.
                 return None
-            # The old mangling spells a subscript's accessor `subscript`; that name is dropped.
+            # The old mangling spells a subscript's accessor `subscript`; that name is
+            # dropped.
             is_subscript = False
             if name.kind == "Identifier" and name.text == "subscript":
                 is_subscript = True
