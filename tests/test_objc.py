@@ -10,6 +10,7 @@ import pathlib
 import pytest
 
 import demangle
+from demangle.core import registry
 from demangle.schemes.objc import gnu_method_readings, mangle_gnu_method, parse_objc_symbol
 from demangle.schemes.objc._parser import DemangleFailure, decode_type_encoding
 from demangle.schemes.objc.nodes import Symbol
@@ -302,5 +303,5 @@ class TestTheMethodShapeScreen:
             if _method_prefixed(name):
                 assert name.startswith(openings), name
         assert demangle.detect("-[NSString length]") == "objc"
-        assert demangle.core.registry.candidates("_memcpy") == demangle.core.registry.candidates("_ZN1f")
-        assert "objc" not in [plugin.name for plugin in demangle.core.registry.candidates("_memcpy")]
+        assert registry.candidates("_memcpy") == registry.candidates("_ZN1f")
+        assert "objc" not in [plugin.name for plugin in registry.candidates("_memcpy")]
