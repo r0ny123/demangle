@@ -185,8 +185,8 @@ class TestPluginContract:
             assert callable(plugin.parse)
             assert plugin.description, f"{plugin.name} has no description"
 
-    def test_detection_is_cheap_and_total(self):
-        """`detect` runs on every symbol a caller offers, mangled or not."""
+    def test_detection_is_total(self):
+        """`detect` runs on every symbol a caller offers, mangled or not, and never raises."""
         for plugin in available():
             for value in ["", "memcpy", "_Z1fv", "?f@@YAXH@Z", "\x00\xff"]:
                 assert isinstance(plugin.detect(value), bool)

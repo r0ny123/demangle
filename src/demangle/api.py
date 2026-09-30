@@ -534,8 +534,8 @@ def _depth_exceeded(mangled, limits):
     nesting stops at 255 levels, template and function-pointer nesting at 127. The other
     is the interpreter's own stack. A production costs several Python frames, so at the
     default recursion limit of 1000 the stack binds first only when `max_depth` has been
-    raised -- around 140 levels of nested template, 164 of function type and 494 of
-    pointer -- or when the caller's own stack is already deep. Under `RELAXED_LIMITS`,
+    raised (`Limits.max_depth` gives the depths) or when the caller's own stack is
+    already deep. Under `RELAXED_LIMITS`,
     whose `max_depth` is 2048, the stack binds first.
 
     Which of the two binds first depends on `max_depth`, the shape of the name and how
@@ -595,7 +595,9 @@ def _claims(plugin, mangled, base):
 def detect(mangled: str) -> str | None:
     """Name the scheme `mangled` appears to use, or None.
 
-    A prefix test only -- it reports what the name looks like, not that it will parse.
+    Most schemes are recognised by a prefix, so this reports what the name looks like,
+    not that it will parse. The schemes whose names carry no marker -- `gnuv2`,
+    `codewarrior` and `ada` -- parse the whole name to claim it.
     Never raises: like `demangle()`, it is called on every symbol in a table.
     """
     if not isinstance(mangled, str):

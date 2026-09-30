@@ -328,6 +328,15 @@ class TestTheObject:
         assert parts.namespace == "std::vector<int, std::allocator<int> >"
         assert parts.demangled.startswith(parts.namespace)
 
+        for style, closing, other in (("gnu", "> >", ">>"), ("llvm", ">>", "> >")):
+            parts = signature("_ZN1A1fISt6vectorIiSaIiEEEES3_T_", style=style)
+            assert parts.return_type is not None
+            assert parts.parameters is not None
+            spelled = [parts.demangled, parts.qualified_name, parts.return_type, *parts.parameters]
+            for text in spelled:
+                assert closing in text, (style, text)
+                assert other not in text, (style, text)
+
 
 class TestTheSchemeIsResolvedBeforeItIsUsed:
     """A caller writes whatever name they like; the fields must not depend on which.

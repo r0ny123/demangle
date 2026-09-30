@@ -134,7 +134,9 @@ has the build and the measurements behind that choice of revision. The one row w
 following it would be the defect — `NodePrinter` reads an extended existential shape one
 child too high and spells the type as `<null node pointer>`, a path its own test corpus
 never exercises — is pinned in `tests/conformance/swift-reference-defects.txt` against
-what the tree says instead.
+what the tree says instead. The 8494 in the summary is the whole real-world corpus; the
+`main` build reads 8493 of them, because it refuses the `Tgm5` specialisation, whose row
+carries the spelling Swift 5.10.1 gives it.
 
 ### 7. Swift symbolic references
 
@@ -225,13 +227,13 @@ cases that tree's own `demangle-expected` marks `--format=gnu`, `--format=lucid`
 what makes it 1,324. Nothing in one of these names says which of the five compilers
 wrote it, so the style is an option and the default is `gnu`; a caller who knows the
 binary passes `demangle.style("llvm", gnuv2={"style": "arm"})`. Because a name in this
-family is an ordinary C identifier with a `__` in it, this scheme is offered *last* and
-its detection reads the whole name rather than a prefix: of the names in every other
-scheme's checked-in corpus it claims none, which `tests/test_gnuv2.py` checks on every
-run, and over 339,117 symbols from this machine's own shared libraries it claims none:
-`drm_intel_gem_bo_map__wc`, where `wc` is a valid argument list, is left alone, though
-`language="gnuv2"` reads it as libiberty does. That reference is built by
-`tools/cplus-dem-reference/`, whose
+family is an ordinary C identifier with a `__` in it, this scheme is offered after every
+other except CodeWarrior, and its detection reads the whole name rather than a prefix:
+of the names in every other scheme's checked-in corpus it claims none, which
+`tests/test_gnuv2.py` checks on every run, and over 339,117 symbols from this machine's
+own shared libraries it claims none: `drm_intel_gem_bo_map__wc`, where `wc` is a valid
+argument list, is left alone, though `language="gnuv2"` reads it as libiberty does. That
+reference is built by `tools/cplus-dem-reference/`, whose
 [README](https://github.com/r0ny123/demangle/blob/main/tools/cplus-dem-reference/README.md)
 has the build. It reproduces the corpus 1,324 of 1,324, and over 420,000 mutants of it
 this library never reads a name libiberty refuses; where the two part, libiberty is
@@ -247,8 +249,8 @@ test module. Detection is held to the same bar as the pre-Itanium family above: 
 claims over the other schemes' corpora and **0** over 339,117 real symbols.
 
 Where the two pre-Itanium schemes overlap — and they do, the encodings being that close —
-GNU v2 is offered first, because a name valid under both should go to the commoner
-mangling. `AtEnd__13ivRubberGroup` parses either way and they differ only in spelling.
+GNU v2 is offered first (priority 290 to CodeWarrior's 300), because a name valid under
+both should go to the commoner mangling. `AtEnd__13ivRubberGroup` parses either way and they differ only in spelling.
 What is unambiguously CodeWarrior — a template argument list written literally into the
 symbol, `@LOCAL@`, `$localstatic`, a `__dt` the `gnu` style does not know — GNU v2 refuses
 and it falls through. `language="codewarrior"` gets the whole scheme regardless.
@@ -547,7 +549,8 @@ batch's 6,134 are those, the closure-prefix rule and the same rebinding
 
 The purpose-built corpus scores 100% on its own, and libstdc++ stays the harder test:
 all but one of its 5,913 symbols carry an ELF version suffix, a shape no hand-written
-test thinks to include. Real shipped binaries surface defects a purpose-built corpus does not.
+test thinks to include. Real shipped binaries surface defects a purpose-built corpus
+does not.
 
 The libstdc++ row is against GNU rather than LLVM because `llvm-cxxfilt` 18 reads 78 of
 those 5,990 names as unreadable and echoes them back: the transaction-safe clone prefix

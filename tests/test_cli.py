@@ -367,7 +367,7 @@ class TestSimplifiedFlag:
         _, out, _ = run(capsys, ["--simplified", "_TtFSiSu"])
         assert out == "(_:)\n"
 
-    def test_it_leaves_every_other_scheme_alone(self, capsys):
+    def test_it_leaves_other_schemes_alone(self, capsys):
         _, out, _ = run(capsys, ["--simplified", VECTOR, "?f@@YAXH@Z"])
         assert out.splitlines() == [VECTOR_SPELLED, "void __cdecl f(int)"]
 

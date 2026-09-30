@@ -107,7 +107,7 @@ demangle/
     registry.py       scheme discovery, including third-party plugins
   schemes/
     itanium/          the Itanium C++ ABI (GCC, Clang, and everything that follows them)
-    msvc/             Microsoft's scheme, as UnDecorateSymbolName reverses it
+    msvc/             Microsoft's scheme, spelled as `llvm-undname` spells it
     rust/             Rust legacy (_ZN) and v0 (_R)
     swift/            Swift, both the current mangling and Swift 3's
     d/                D, as GNU binutils reverses it
@@ -123,7 +123,8 @@ demangle/
 ```
 
 `core` never imports from `schemes`; `schemes/*` never import from each other. Both are
-enforced by a test, which is itself tested against a constructed violation.
+enforced by a test; the cross-scheme rule's test is itself tested against a constructed
+violation.
 
 `core/style.py` imports no scheme: it names each scheme's option module by dotted path
 and imports it on first use, so `core` stays free of `schemes` at import time.
@@ -183,7 +184,10 @@ Design rules, in the order they matter:
    so a long-running process cannot grow without limit.
 4. **`__slots__` on every hot class.** Node and Spelling instances are created in the
    millions.
-5. **No regular expressions in a parse loop.** The parsers are character dispatch.
+5. **No regular expressions in the hot parse loops.** The Itanium, MSVC, Rust and Swift
+   parsers advance by character dispatch; a regular expression appears there only to
+   test a whole token or a suffix. The smaller schemes (JNI, Objective-C, Pascal,
+   Delphi, CodeWarrior, Ada) use them over short names.
 
 `benchmarks/` measures all of this against real symbol corpora, and
 `benchmarks/bench.py --check` runs in CI on every pull request, so a regression fails

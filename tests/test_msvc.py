@@ -1149,7 +1149,7 @@ class MsvcDemanglerTestSuite(unittest.TestCase):
         self.assertIsNone(parse_msvc_symbol(deep, demangle.RELAXED_LIMITS))
 
     def test_a_result_that_would_balloon_is_refused(self):
-        # each layer re-uses every earlier argument back-reference, so the rendered result
+        # each layer reuses every earlier argument back-reference, so the rendered result
         # grows multiplicatively while the name itself stays short
         name = "?f@@YAXPAD" + "".join("P6AX" + str(index) * 9 + "@Z" for index in range(8)) + "@Z"
 
