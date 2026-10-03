@@ -2,37 +2,127 @@
 
 All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
-[semantic versioning](https://semver.org/spec/v2.0.0.html).
+[semantic versioning](https://semver.org/spec/v2.0.0.html). Besides Keep a Changelog's
+categories, a release may have a **Conformance** section, for what was measured against
+the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-10-03
+
+### Added
+
+- **`tools/repro.py`.** Given a mangled name, prints this library's reading in each
+  style, every installed reference demangler's, a body for the conformance bug form,
+  and the corpus line for the fix.
+- **Reported corpora, `tests/conformance/reported/<scheme>.txt`**, with no count to
+  update: every row must read as recorded. The Itanium regression corpus moved there.
+- **A failing conformance pin names what missed**: the first ten names (want, got)
+  and the `tools/differential.py` command that lists them all.
+- **`hatch run quick`** skips the whole-corpus property checks (marked `sweep`) while
+  iterating; CI still runs everything.
+- **`CODE_OF_CONDUCT.md`, `CITATION.cff` and `.github/CODEOWNERS`**; CONTRIBUTING
+  says how changes get merged, and the bug form asks for the scheme and exact call.
+
+### Changed
+
+- **MSVC nesting follows `Limits.max_depth`**, as Itanium's does, instead of a fixed
+  cap of 64: `RELAXED_LIMITS` reads deeper names, a refusal names the caller's own
+  bound, and a name nested deeper than the interpreter's stack raises `LimitExceeded`
+  from `demangle_strict()`, `parse()` and `demangle_type()` rather than a `ParseError`
+  claiming the name is unreadable. `demangle()` still returns the input. Every MSVC
+  corpus reads the same under the default limits.
+- **Rust v0 nesting follows `Limits.max_depth`** rather than a fixed 256, with the
+  same `LimitExceeded("recursion depth")` report past it or past the interpreter's
+  stack.
+
+### Removed
+
+- **`ROADMAP.md`.** Its one open item -- the measured shortfall against the upstream
+  corpora -- and the schemes deliberately not covered moved to `CONFORMANCE.md`, and the
+  worst-case cost of hostile input to `SECURITY.md`. The rest was history, which this
+  file and the git log already carry.
+
+### Fixed
+
+- **Auto-detect no longer reads C names as pre-Itanium C++.** A name whose `__` is
+  followed directly by type letters, with neither g++ 2.x's `F` nor a class
+  (`PyInit__lldb`, `drm_intel_gem_bo_map__wc`), is left alone; `language="gnuv2"`
+  still reads it as the reference does. Over 101,625 non-`_Z` symbols from a stock
+  Ubuntu library directory, false claims fall from 3 to 0.
+- **A malformed Rust v0 name** (`_R` or `__R` and a capital) is no longer read as
+  pre-Itanium C++ once the Rust reader refuses it, as `_Z` names already were not.
+  CodeWarrior's auto-detect likewise leaves alone a `_Z` or `_R`-and-capital name that
+  its own reader refused, so neither pre-Itanium reader claims them.
+- **Pre-Itanium C++: evidence from a failed guess at the `__` split** no longer counts
+  toward the guess that parses. Eight HP-style names the default style was spelling
+  wrongly are now returned unchanged; `language="gnuv2"` with the `hp` style reads them.
+- **Rust: a `.llvm.<hash>` suffix that runs into an ELF version**
+  (`_RC3foo.llvm.9D1C9369@@16`) is dropped whole, as rustc-demangle does, instead of
+  leaving `foo@@16`.
+- **Rust: a legacy name with its leading underscore stripped** (`ZN4testE`) is
+  detected and read when the whole name parses as a legacy Rust path. rustc-demangle's
+  own vectors: 47 / 51 to 49 / 51.
+- **A plugin registered in place of a built-in scheme** is no longer undone when that
+  scheme's module is imported later, including by a style loading its options during a
+  parse, whether it was registered before or after the first call; it also answers to
+  the built-in's aliases. A plugin's own aliases win over a built-in's in either order,
+  and an alias naming a built-in scheme is refused before the first call as after it.
+  Registering the built-in's own `PLUGIN` again puts it back.
+- **A `limits` that is not a `Limits`**, `None` included, raises `ValueError` from every
+  entry point that takes one. `demangle(name, limits=None)` shared the default limits'
+  cache entry, so one such call made later default calls return that name unread. A
+  `Limits` subclass that cannot be hashed is refused at the call too, not at the first
+  `next()` of `demangle_all()` or `find_symbols()`.
+- **A `demangle()` parsing while a language or style was registered** no longer stores
+  its answer after the registration emptied the cache, where the stale reading would
+  have been served from then on.
+
+### Performance
+
+- **Schemes load on first use.** A built-in scheme, and each style's options for it,
+  are imported only when a name reaches them, and installed packages are searched in
+  full only when one might declare `demangle.languages`. A first call on `main` imports
+  no scheme and takes under a millisecond; one on an MSVC name imports only MSVC's.
+- **The result cache keeps two generations of 65,536 names** (was one of 16,384,
+  emptied when full), so a second pass over a large library's symbol table hits and a
+  name still in use survives turnover. It is bounded in bytes as well as entries, so
+  long hostile names cannot grow it past about 100 MB, and the bound holds under free
+  threading. A name no scheme is offered is not stored, so a table's plain C names leave
+  its room to the mangled ones: a first pass over them is faster, a repeat pass slower
+  (about a microsecond each), and each counts as a miss in `cache_stats()`.
+- **Faster on the common paths.** Names that are not mangled are rejected about 2x
+  faster by `demangle()` and 3x by `detect()`: a scheme with no fixed first character
+  declares what a name must contain before it could claim it, and is not asked about
+  names without it. Warm `demangle()` calls are about 1.5x faster. Cold Itanium
+  demangling of real symbol tables is about 10% faster, with a fifth to a third fewer
+  Python calls per name depending on the corpus, and byte-identical output.
 
 ## [0.3.0] - 2026-09-29
 
 ### Added
 
 - **Ada: real-world corpus and generator from the GNAT runtime.**
-  `tools/generate_ada_corpus.py` extracts Ada mangled symbols from `libgnat`
-  and `libgnarl`, verifies them against GNU binutils' `c++filt --format=gnat`,
-  and samples `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact
-  match under auto-detection).
-- **Broader conformance and documentation checks.** The MSVC type grammar has a
-  dedicated enumeration sweep, documentation examples are checked, and the API
-  reference now covers the parse-tree node classes.
+  `tools/generate_ada_corpus.py` extracts Ada mangled symbols from `libgnat` and
+  `libgnarl`, verifies them against GNU binutils' `c++filt --format=gnat`, and samples
+  `tests/conformance/ada-real-world.txt` (1,438 symbols, 100% exact match under
+  auto-detection).
+- **Broader conformance and documentation checks.** The MSVC type grammar has a dedicated
+  enumeration sweep, and documentation examples are checked.
 
 ### Changed
 
-- **Faster symbol reading.** Detection uses fewer interpreter frames, Rust v0
-  back references are spelled once per symbol, and D back references avoid a
-  repeated scan of identifier spans. The benchmark baseline was updated.
-- **Development tools.** Ruff and ty were updated after local lint and type
-  checks; tests no longer depend on pytest's internal `pytestmark` layout.
+- **Faster symbol reading.** Detection uses fewer interpreter frames, Rust v0 back
+  references are spelled once per symbol, and D back references avoid a repeated scan
+  of identifier spans. The benchmark baseline was updated.
+- **Development tools.** Ruff and ty were updated after local lint and type checks;
+  tests no longer depend on pytest's internal `pytestmark` layout.
 - **The README is a front page again, and the conformance evidence has a page of
   its own.** It had grown to 876 lines, 55% of them the two corpus tables and the
   twenty notes behind them. Those move to `CONFORMANCE.md`, which the site and the
-  sdist both carry; the README keeps the quick tour, the examples and a summary,
-  and is 357 lines. `tests/test_readme.py` checks the pinned counts across both
-  files, so which page holds a row is editorial rather than something a test
-  decides.
+  sdist both carry; the README keeps the quick tour, the examples and a summary.
+  `tests/test_readme.py` checks the pinned counts across both files, so which
+  page holds a row is editorial rather than something a test decides.
 - **The notes behind the conformance numbers are numbered and titled.** They hung
   off the tables on glyphs -- a dagger, a pilcrow, four different asterisks -- with
   no way to jump to one, and two different notes shared a glyph, so an Ada row's
@@ -41,15 +131,30 @@ All notable changes to this project are recorded here. The format follows
 - **`ROADMAP.md` states what is done with task-list checkboxes** rather than
   strikethrough on a title, which renders as deleted rather than done, with an
   index of the six headings and their counts at the top.
+- **Itanium: a non-type template parameter's declarator is spaced as the references
+  space it.** In a `<template-param-decl>`, `Tn Pi` was `int*$N` and is `int* $N`, and
+  `Tn A3_i` was `int $N [3]` and is `int$N [3]`: a space before the name unless the type
+  has a part to put after it, as `llvm-cxxfilt` 18 and `c++filt` 2.42 both print.
+- **Itanium, gnu style: a generic lambda's declared template parameters are spelled as
+  `c++filt` spells them.** The name goes after the type (`int (*) [3] $N0`), a pack
+  puts its ellipsis on the type (`typename... $T0`), a template template parameter is
+  `template<typename, int> class $TT0`, and the numbering is one sequence across kinds,
+  so `Ty Ty Tn i` is `$T0, $T1, $N2`. The llvm style is unchanged.
 
 ### Fixed
 
-- **More precise parsing across Itanium, MSVC, D, Rust, Delphi, and pre-Itanium
-  C++.** This includes template substitutions and inheritance in Itanium, MSVC
-  pointer qualifiers and base-class descriptors, D back-reference bounds,
-  Rust v0 integer decoding, and Delphi detection of ordinary `@` text.
-- **Release checks.** A published release must use a tag matching the package
-  version, and the test suite passes type checking with the pinned toolchain.
+- **Itanium: an inheriting constructor is read under both compilers' numberings.**
+  clang does not enter the base class type of `CI1`/`CI2` in the substitution table and
+  g++ does; only g++'s was read, so a clang name such as `_ZN1DCI21CEN1C4KindES1_` came
+  back with `C` where the source says `C::Kind`. A name is read by clang's rule and
+  again by g++'s when a back reference runs past the table, and
+  `ItaniumOptions.inherited_constructor_substitution` forces either.
+- **More precise parsing across Itanium, MSVC, D, Rust, Delphi, and pre-Itanium C++.**
+  This includes template substitutions in Itanium, MSVC pointer qualifiers and
+  base-class descriptors, D back-reference bounds, Rust v0 integer decoding, and Delphi
+  detection of ordinary `@` text.
+- **Release checks.** A published release must use a tag matching the package version,
+  and the test suite passes type checking with the pinned toolchain.
 - **The published documentation site's links to two of its own pages.** The home
   page is a snippet include of the README, so a link written `docs/adding-a-scheme.md`
   resolved from `docs/` and looked for `docs/docs/adding-a-scheme.md`; the worked
@@ -57,7 +162,7 @@ All notable changes to this project are recorded here. The format follows
   them, and `mkdocs build --strict` had been failing on it.
 - **The node classes a parse tree is made of are documented.** The README teaches
   `from demangle.core.ast import Builtin, Pointer` and matches on them, and the API
-  reference rendered three of the module's twenty-four names. All nineteen node
+  reference rendered three of the module's twenty-three names. All nineteen node
   classes are rendered now, and `tests/test_docs.py` checks that every member a page
   asks for exists -- which found `demangle.schemes.gnuv2._parser.detect`, a name that
   module does not have.
@@ -67,7 +172,7 @@ All notable changes to this project are recorded here. The format follows
   and both this library and libiberty resolve them; no compiler writes
   one. The span of every length-prefixed identifier is now recorded and a
   back reference target strictly inside a span is refused.
-  `tools/mutate.py --seed 30`.
+  Found by `tools/mutate.py --seed 30`.
 
 ## [0.2.0] - 2026-09-08
 
@@ -1032,107 +1137,106 @@ All notable changes to this project are recorded here. The format follows
   added six more: a pack expansion whose pattern names no pack -- or reaches one only
   through an inner expansion, which consumes it -- dropped its dots when the enclosing
   template had a pack, where `ParameterPackExpansion::printLeft` prints the child and
-  then the `...` whatever is in scope, so `DpPFvDpT_E` is `void (*)(int, char)...`; a constructor or destructor scoped by
-  a constructor, destructor, closure, unnamed type, structured binding or literal
-  operator repeated a name `CtorDtorName` has none of, so `_ZN1AD1IiED0Ev` is
-  `A::~A<int>::~()`; a structured binding with no names, `DCE`, spelled `[]`; template
-  arguments after a name that already carries them, `_Z1fN1AIiEIcEE` and through a
-  back reference `_Z1fN1AIiEENS0_IcEE`, spelled `A<int><char>` where `<template-prefix>`
-  names a template and `llvm-cxxfilt` refuses both; an abbreviation with template
-  arguments as a function's own name, `_ZSbIwEvS_`, was entered in the substitution
-  table as an `<unscoped-template-name>`, which `Sb` is not, shifting every later back
-  reference; and in D, the parameters a
-  component carries inside a *type's* name are its scope whenever they parse, with the
-  `this` modifiers left out as `dlang_parse_qualified`'s `suffix_modifiers` leaves
-  them, where asking for a component to follow handed a `std.utf` struct's parameters
-  to the enclosing function's list. Three accept rules record the references' side:
-  Clang 18 makes `_BitInt` a substitution candidate and every shipped reference
-  refuses the result; `llvm-cxxfilt` 20 reads `cp` calls and a template parameter
-  inside a constrained parameter declaration exactly as this does where 18 refuses;
-  and `llvm-undname` drops the qualifier from an array element in a variable's type
-  that it prints in a parameter's. Draws nine and ten added six: a special name's local
-  entity -- `GV`, `TH`, `TW`, `GR` -- took a function type after it, so `_ZGVZ1fvE1gv`
-  was a guard variable for a function, where `parseSpecialName` reads an <object name>
-  and returns; a requires-clause with no template arguments before it spelled `j<>`;
-  `fp` with no `_` read as a parameter, and `fpK_`, a qualified one, was refused; the
-  explicit object marker `H` in a nested name read as a type put `this` on the
-  parameters of the function the type belonged to; and MSVC's `$$C` twice in a row on
-  an array element was folded into one where `llvm-undname` refuses it. One more accept
-  rule: both references resolving a substitution-table entry made under one local
-  function's template scope to that scope's argument where a mutant reads it under
-  another's, the `insort` defect the reference-defects corpus records. Draws eleven to
-  fourteen added four: a `bool` literal whose value was neither `0` nor `1`, `Lb6E`, was
-  spelled `true` where `llvm-cxxfilt` refuses it; an expression argument to a vendor
-  extended expression was bracketed as it is inside `<...>`, so Clang's own `__uuidof`
-  test symbol came out `__uuidof((HasMember >> member))` where a call's argument takes
-  no bracket; under the GNU style a functional cast of a braced list, `cv1AilLi1ELi2EE`,
-  was `(A)({1, 2})` where `d_print_comp` writes `(A){1, 2}`; and a D `__postblitMFZ`
-  anywhere but last in a name was left as `__postblit()`, where `dlang_lname` matches
-  the thirteen characters as one thing wherever they stand. The same draws reached the
-  recorded-parameter defect from its other side -- `llvm-cxxfilt` spelling a closure's
-  own `auto` as the enclosing template's argument, `'lambda'(int)` for `[](auto x)`
-  inside `S::g<int>` -- and following it turned two shipped lambdas into the wrong
-  declaration before the reduced source, compiled by both g++ 13.3.0 and clang++
-  18.1.3, settled it the way ROADMAP heading 0 already had: four shapes of it are now
-  in `tests/conformance/itanium-reference-defects.txt`, from
+  then the `...` whatever is in scope, so `DpPFvDpT_E` is `void (*)(int, char)...`; a
+  constructor or destructor scoped by a constructor, destructor, closure, unnamed type,
+  structured binding or literal operator repeated a name `CtorDtorName` has none of, so
+  `_ZN1AD1IiED0Ev` is `A::~A<int>::~()`; a structured binding with no names, `DCE`,
+  spelled `[]`; template arguments after a name that already carries them,
+  `_Z1fN1AIiEIcEE` and through a back reference `_Z1fN1AIiEENS0_IcEE`, spelled
+  `A<int><char>` where `<template-prefix>` names a template and `llvm-cxxfilt` refuses
+  both; an abbreviation with template arguments as a function's own name, `_ZSbIwEvS_`,
+  was entered in the substitution table as an `<unscoped-template-name>`, which `Sb` is
+  not, shifting every later back reference; and in D, the parameters a component carries
+  inside a *type's* name are its scope whenever they parse, with the `this` modifiers
+  left out as `dlang_parse_qualified`'s `suffix_modifiers` leaves them, where asking for
+  a component to follow handed a `std.utf` struct's parameters to the enclosing
+  function's list. Three accept rules record the references' side: Clang 18 makes
+  `_BitInt` a substitution candidate and every shipped reference refuses the result;
+  `llvm-cxxfilt` 20 reads `cp` calls and a template parameter inside a constrained
+  parameter declaration exactly as this does where 18 refuses; and `llvm-undname` drops
+  the qualifier from an array element in a variable's type that it prints in a
+  parameter's. Draws nine and ten added six: a special name's local entity -- `GV`,
+  `TH`, `TW`, `GR` -- took a function type after it, so `_ZGVZ1fvE1gv` was a guard
+  variable for a function, where `parseSpecialName` reads an <object name> and returns;
+  a requires-clause with no template arguments before it spelled `j<>`; `fp` with no `_`
+  read as a parameter, and `fpK_`, a qualified one, was refused; the explicit object
+  marker `H` in a nested name read as a type put `this` on the parameters of the
+  function the type belonged to; and MSVC's `$$C` twice in a row on an array element was
+  folded into one where `llvm-undname` refuses it. One more accept rule: both references
+  resolving a substitution-table entry made under one local function's template scope to
+  that scope's argument where a mutant reads it under another's, the `insort` defect the
+  reference-defects corpus records. Draws eleven to fourteen added four: a `bool`
+  literal whose value was neither `0` nor `1`, `Lb6E`, was spelled `true` where
+  `llvm-cxxfilt` refuses it; an expression argument to a vendor extended expression was
+  bracketed as it is inside `<...>`, so Clang's own `__uuidof` test symbol came out
+  `__uuidof((HasMember >> member))` where a call's argument takes no bracket; under the
+  GNU style a functional cast of a braced list, `cv1AilLi1ELi2EE`, was `(A)({1, 2})`
+  where `d_print_comp` writes `(A){1, 2}`; and a D `__postblitMFZ` anywhere but last in
+  a name was left as `__postblit()`, where `dlang_lname` matches the thirteen characters
+  as one thing wherever they stand. The same draws reached the recorded-parameter defect
+  from its other side -- `llvm-cxxfilt` spelling a closure's own `auto` as the enclosing
+  template's argument, `'lambda'(int)` for `[](auto x)` inside `S::g<int>` -- and
+  following it turned two shipped lambdas into the wrong declaration before the reduced
+  source, compiled by both g++ 13.3.0 and clang++ 18.1.3, settled it the way ROADMAP
+  heading 0 already had: four shapes of it are now in
+  `tests/conformance/itanium-reference-defects.txt`, from
   `tools/corpus_sources/reference_defects/member_template_lambda.cpp`, and the accept
   rule for a back reference read across two local scopes already covered the shape. Two
-  more accept rules record the references' side: both
-  reference tools split their input on a space, a bracket, a `+` or a `-` before
-  demangling anything, so a name carrying one reaches neither demangler whole; and a
-  `char` array in a braced initialiser, `char [6]{(char)72, (char)101, ...}` to both,
-  is the string it spells here. Draws fifteen to eighteen, at 60,000 mutants each,
-  added three: the friend marker `F` goes before the internal-linkage `L`, not after,
-  as `parseUnqualifiedName` consumes them, so `_ZN1ALF3fooEv` is refused where it read
-  `A::friend foo()`; a conversion operator whose type ran ahead of arguments that never
-  came, `_Zcv1BIRT_E`, kept the provisional `operator B<auto&>` where both references
-  refuse it; and a D back reference into a digit run stopped at the first `0` and read
-  an anonymous component, where `dlang_symbol_backref` reads the whole run as the
-  length and refuses the overrun. Four more accept rules: `sy`, the C++26 pack-index
-  expression Clang writes and neither shipped `llvm-cxxfilt` reads; the `LZ` external
-  name that only `c++filt` reads, on a name it refuses for another reason; a back
-  reference after a `_BitInt`, which the two sides count differently; and an MSVC member
-  pointer whose two qualifier letters a mutant set apart, where `llvm-undname` keeps
-  one and this keeps both -- clang-cl writes them alike. Draws nineteen to twenty-two
-  added three: a template parameter declaration inside an argument list qualifies the
-  argument after it, and a list ending on one, `ITyE`, is refused as `llvm-cxxfilt`
-  refuses it, where this read `unary<>`; a requires-clause has no place inside a
-  nested name, and `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE` is refused where this
-  read the clause between two components and threw it away; and a D back reference
-  reads a plain identifier at its target, as `dlang_symbol_backref` does, so a target
-  whose body is a template instance is spelled as it stands rather than read as the
-  template. Draws twenty-three to twenty-six added four: an Objective-C protocol is a
-  source name inside its `objcproto` qualifier, read as `parseBareSourceName` reads
-  it, so `objcproto15` -- a length with nothing after it -- is refused where this
-  spelled `id<15>`; a D compiler scope `__S<n>` is followed by an identifier with a
-  length, and a `0` there is refused as `dlang_identifier` refuses it rather than
-  skipped as the anonymous component; a D symbol argument in the `_D` form needs its
-  type or its `Z`, as `dlang_parse_mangle` does, so a length-bounded region that is a
-  qualified name and nothing more is spelled as it stands; and the `_D` form needs a
-  symbol name after the prefix at all, so `S_DaZv` is refused where it spelled an empty
-  argument. One accept rule: qualifiers before a function type out of the ABI's order
-  or repeated, `KV` and `VKK`, which no compiler writes and the three implementations
-  spell three ways. Draws twenty-seven to thirty added one, found with an instrumented
-  build of libiberty's own source: a length-prefixed D template body is read against
-  the whole of what remains and its length checked afterwards, as `dlang_parse_template`
-  does, where this bounded the body first -- on a mutant of `demangle.fn!(sym,
-  val("null"))` the reference reads `sym` greedily as a nested function whose parameter
-  list runs fifty-six characters past the body, then refuses the name at the `v` that
-  follows, and the bound had let the greedy reading fail, be put back, and the name
-  read. One accept rule: `parseFunctionType` steps over a `v` wherever it stands among
-  a function type's parameters, `int (*)(int)` for `PFiivE`, where `c++filt` and this
-  spell the `void` that is written. Draws thirty-three to thirty-eight added two: a
-  pre-Itanium virtual table whose class count is larger than what remains, `_vt.6i`,
-  is `i virtual table` -- `gnu_special`'s `break` on a too-large count leaves only the
-  `switch`, and what follows is the next piece of the name -- where leaving the whole
-  loop here handed the `i` to the caller as a parameter list, ` virtual table(int)`;
-  and a D symbol argument whose last component is anonymous takes its type as the
-  symbol's own and spells nothing for it, as a whole symbol already did, where
-  `mangled_symbol` spelled `reserveNoSync(ulong)` for a `core.internal.gc` mutant the
-  reference spells `reserveNoSync`. A gnuv2 draw of 200,000 found the accept rule for
-  the reference's second argument list after an ellipsis blind to a class name with an
-  unbalanced `<` in it, which the rule's template-argument stripper took for a group
-  and removed to the end. The remaining
+  more accept rules record the references' side: both reference tools split their input
+  on a space, a bracket, a `+` or a `-` before demangling anything, so a name carrying
+  one reaches neither demangler whole; and a `char` array in a braced initialiser, `char
+  [6]{(char)72, (char)101, ...}` to both, is the string it spells here. Draws fifteen to
+  eighteen, at 60,000 mutants each, added three: the friend marker `F` goes before the
+  internal-linkage `L`, not after, as `parseUnqualifiedName` consumes them, so
+  `_ZN1ALF3fooEv` is refused where it read `A::friend foo()`; a conversion operator
+  whose type ran ahead of arguments that never came, `_Zcv1BIRT_E`, kept the provisional
+  `operator B<auto&>` where both references refuse it; and a D back reference into a
+  digit run stopped at the first `0` and read an anonymous component, where
+  `dlang_symbol_backref` reads the whole run as the length and refuses the overrun. Four
+  more accept rules: `sy`, the C++26 pack-index expression Clang writes and neither
+  shipped `llvm-cxxfilt` reads; the `LZ` external name that only `c++filt` reads, on a
+  name it refuses for another reason; a back reference after a `_BitInt`, which the two
+  sides count differently; and an MSVC member pointer whose two qualifier letters a
+  mutant set apart, where `llvm-undname` keeps one and this keeps both -- clang-cl
+  writes them alike. Draws nineteen to twenty-two added three: a template parameter
+  declaration inside an argument list qualifies the argument after it, and a list ending
+  on one, `ITyE`, is refused as `llvm-cxxfilt` refuses it, where this read `unary<>`; a
+  requires-clause has no place inside a nested name, and
+  `_ZN4llvm12_GLOBAL__N_1L1UQ13_SuperRegsSetE` is refused where this read the clause
+  between two components and threw it away; and a D back reference reads a plain
+  identifier at its target, as `dlang_symbol_backref` does, so a target whose body is a
+  template instance is spelled as it stands rather than read as the template. Draws
+  twenty-three to twenty-six added four: an Objective-C protocol is a source name inside
+  its `objcproto` qualifier, read as `parseBareSourceName` reads it, so `objcproto15` --
+  a length with nothing after it -- is refused where this spelled `id<15>`; a D compiler
+  scope `__S<n>` is followed by an identifier with a length, and a `0` there is refused
+  as `dlang_identifier` refuses it rather than skipped as the anonymous component; a D
+  symbol argument in the `_D` form needs its type or its `Z`, as `dlang_parse_mangle`
+  does, so a length-bounded region that is a qualified name and nothing more is spelled
+  as it stands; and the `_D` form needs a symbol name after the prefix at all, so
+  `S_DaZv` is refused where it spelled an empty argument. One accept rule: qualifiers
+  before a function type out of the ABI's order or repeated, `KV` and `VKK`, which no
+  compiler writes and the three implementations spell three ways. Draws twenty-seven to
+  thirty added one, found with an instrumented build of libiberty's own source: a
+  length-prefixed D template body is read against the whole of what remains and its
+  length checked afterwards, as `dlang_parse_template` does, where this bounded the body
+  first -- on a mutant of `demangle.fn!(sym, val("null"))` the reference reads `sym`
+  greedily as a nested function whose parameter list runs fifty-six characters past the
+  body, then refuses the name at the `v` that follows, and the bound had let the greedy
+  reading fail, be put back, and the name read. One accept rule: `parseFunctionType`
+  steps over a `v` wherever it stands among a function type's parameters, `int (*)(int)`
+  for `PFiivE`, where `c++filt` and this spell the `void` that is written. Draws
+  thirty-three to thirty-eight added two: a pre-Itanium virtual table whose class count
+  is larger than what remains, `_vt.6i`, is `i virtual table` -- `gnu_special`'s `break`
+  on a too-large count leaves only the `switch`, and what follows is the next piece of
+  the name -- where leaving the whole loop here handed the `i` to the caller as a
+  parameter list, ` virtual table(int)`; and a D symbol argument whose last component is
+  anonymous takes its type as the symbol's own and spells nothing for it, as a whole
+  symbol already did, where `mangled_symbol` spelled `reserveNoSync(ulong)` for a
+  `core.internal.gc` mutant the reference spells `reserveNoSync`. A gnuv2 draw of
+  200,000 found the accept rule for the reference's second argument list after an
+  ellipsis blind to a class name with an unbalanced `<` in it, which the rule's
+  template-argument stripper took for a group and removed to the end. The remaining
   divergences are the references': `llvm-cxxfilt` resolving a generic lambda's
   substituted parameter to `auto` where the specialisation says `int`, recorded already
   in `tests/conformance/itanium-reference-defects.txt` and now an accept rule in
@@ -1869,9 +1973,10 @@ All notable changes to this project are recorded here. The format follows
   `std::istream` read as Itanium and `Swift.Int` read as Swift, and no evidence in the
   string decides between them. Detection is not merely unimplemented here, it is
   impossible, which is why every reference puts this behind a flag of its own --
-  `c++filt -t`, libiberty's `DMGL_TYPES`, `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`. On the command line `--types` reads one encoding per argument or per
-  line rather than filtering symbols out of mixed text, because a type encoding is an
-  ordinary word and `I like Pi` must not become `I like int*`.
+  `c++filt -t`, libiberty's `DMGL_TYPES`, `UnDecorateSymbolName`'s `UNDNAME_TYPE_ONLY`.
+  On the command line `--types` reads one encoding per argument or per line rather than
+  filtering symbols out of mixed text, because a type encoding is an ordinary word and
+  `I like Pi` must not become `I like int*`.
 
   `demangleb_type()` and `parseb_type()` go with them, because a type encoding is read
   out of a binary as often as a symbol is -- an Itanium `typeinfo` name sits in
@@ -3653,13 +3758,13 @@ a scheme-agnostic core.
   renderer because its declarator spelling genuinely differs from the C-family one.
 - **Rust** legacy (`_ZN`) and v0 (`_R`) demangling, including punycode identifiers and
   v0 structural const arguments.
-- **Symbol-table decorations** — ELF version suffixes and compiler clone suffixes —
+- **Symbol-table decorations** -- ELF version suffixes and compiler clone suffixes --
   handled as structure rather than as each grammar's problem.
 
 ### Conformance
 
 Every checked-in corpus is exact against its reference, and so are whole symbol tables
-read from shipped binaries — about 112,000 real symbols:
+read from shipped binaries -- about 112,000 real symbols:
 
 | Source | Reference | Exact |
 |---|---|---|
@@ -3685,7 +3790,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/r0ny123/demangle/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/r0ny123/demangle/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/r0ny123/demangle/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/r0ny123/demangle/releases/tag/v0.1.0

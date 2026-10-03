@@ -4,9 +4,8 @@
 # Source: https://raw.githubusercontent.com/gcc-mirror/gcc/master/libiberty/testsuite/d-demangle-expected
 # Expected output is what `c++filt --format=dlang` prints, verified against binutils 2.42.
 #
-# This is the reference's corpus, not this project's. The ROADMAP claimed 100% against
-# `c++filt --format=dlang`, which was true of `d-real-world.txt` and not of this: 149 of
-# these 366 do not match. tests/test_d.py pins the count so it can only go down.
+# This is the reference's corpus, not this project's. When it was adopted, 149 of these
+# 366 did not match; all of them do now, and tests/test_d.py pins that.
 #
 # The last entry is the one worth knowing about even if the rest are never fixed. It is
 # `std.format.formattedWrite` out of a real D binary -- 2,695 characters carrying 441

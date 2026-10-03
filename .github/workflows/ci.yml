@@ -3,23 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+  # Never `pull_request_target`: it would run fork code with our secrets.
   pull_request:
   workflow_dispatch:
 
-# Every action is pinned to a full commit SHA, its release tag in the trailing comment.
-# A version tag -- even `v7.0.1` -- is a mutable pointer: whoever controls the action can
-# move it after review, and every workflow referencing it silently runs something else.
-# Dependabot rewrites the SHA and the comment together, so the pins stay current.
-#
-# Least privilege by default. `pull_request` from a fork already receives a read-only
-# token, but stating it here means a job that later needs more has to ask for it
-# explicitly and visibly, rather than inheriting write access it never needed.
 permissions:
   contents: read
 
-# Deliberately `pull_request`, never `pull_request_target`: the latter runs with a
-# writable token in the context of the base repository while checking out the fork's
-# code, which turns any pull request into arbitrary code execution with our secrets.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -33,49 +23,28 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
-      # Everything the classifiers in `pyproject.toml` promise is tested here: a support
-      # claim nobody runs quietly stops being true. Both supported versions on Linux,
-      # and one row each on the other two operating systems rather than the full cross
-      # product -- the floor on one and the ceiling on the other, so neither end of the
-      # range is only ever exercised on Linux. Three OSes by four versions was twelve
-      # rows of a pure-Python library whose platform-dependent surface is `pathlib`,
-      # `subprocess` and the console encoding; the rows that ever caught anything caught
-      # it in the test harness, not in the demangler, and one row per OS catches those
-      # just as well.
-      #
-      # No PyPy row: `requires-python` is `>=3.13` and PyPy's newest is 3.11, so there
-      # is no PyPy this package installs on. It was here to catch a dependence on
-      # CPython internals; the free-threaded row below is now the only interpreter
-      # variation left, and `tests/test_architecture.py` is what keeps the source
-      # portable in the meantime.
+      # Must cover every version the classifiers in `pyproject.toml` claim. No PyPy row:
+      # PyPy does not reach `requires-python`.
       matrix:
         os: [ubuntu-latest]
         python: ["3.13", "3.14"]
         include:
+          # The ceiling, so the top of the range is not only ever run on Linux.
           - os: macos-latest
             python: "3.14"
+          # The floor, for the same reason.
           - os: windows-latest
             python: "3.13"
-          # A free-threaded build, where the GIL is not there to make a shared mutable
-          # parser look safe. The Rust scheme held one at module scope and returned
-          # another symbol's name under threads; on a GIL build that took eight threads
-          # and three rounds to show up, and here it is ordinary. tests/test_concurrency
-          # is the reason this row exists.
-          #
-          # 3.14t rather than 3.13t, and that is forced rather than chosen: `hypothesis`
-          # ships a Rust extension built with PyO3, PyO3 refuses free-threaded CPython
-          # below 3.14, and there is no cp313t wheel on PyPI for it to fall back to --
-          # only cp314t and cp315 abi3t. So the test group cannot be installed on 3.13t
-          # at all, and no change here makes it. The coverage this row exists for is the
-          # same on either.
+          # Free-threaded, for tests/test_concurrency. Not 3.13t: coverage and hypothesis
+          # ship compiled wheels, and neither publishes a cp313t one (cp314t onwards),
+          # so the test group has no prebuilt install there.
           - os: ubuntu-latest
             python: "3.14t"
     steps:
       - name: Check out
+        # Actions are pinned to full commit SHAs (tags are mutable); Dependabot bumps them.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Nothing here pushes, so the token has no business staying in .git/config
-          # where any later step -- or any dependency's build hook -- could read it.
           persist-credentials: false
       - name: Set up Python
         id: python
@@ -85,33 +54,19 @@ jobs:
       - name: Install uv
         run: python -m pip install --upgrade pip uv
       - name: Install
-        # Named rather than discovered. `uv pip install --system` picks an interpreter by
-        # searching, and on the free-threaded rows it found the runner's own
-        # `/usr/bin/python3.12` instead of the `3.13t` this job had just installed --
-        # which then refused the install as externally managed, and would have been worse
-        # if it had succeeded: the suite would have run on an interpreter the package was
-        # never installed into. `python-path` is the absolute path setup-python reports,
-        # so the package goes where the test steps below will look for it.
+        # UV_PYTHON pins uv to the free-threaded interpreter set up above; otherwise it
+        # picks the runner's system python.
         run: uv pip install --system -e . --group test
         env:
           UV_PYTHON: ${{ steps.python.outputs.python-path }}
       - name: The tests run on the interpreter the package was installed into
-        # The invariant the step above exists to hold, checked rather than assumed. An
-        # import is the check that means it: comparing interpreter paths would go red on
-        # a symlink or a drive-letter case difference, while this fails exactly when uv
-        # has installed somewhere `python` cannot see. Printing the version puts
-        # "free-threaded build" in the log, where a row claiming to be one should say so.
         run: python -c "import sys, demangle; print(sys.version); print(demangle.__file__)"
-      # The conformance corpora carry their expected output, so these run everywhere:
-      # no compiler and no reference demangler required.
       - name: Test
         run: python -m pytest -q
-      - name: Test again, with the tests in a different order
-        # The result cache and the registry are process-global, so a suite that only
-        # ever runs in one order can pass while depending on it. `-p no:randomly` is not
-        # available here; reversing the collection is the cheap version of the same
-        # check.
-        run: python -m pytest -q --last-failed-no-failures=all -x tests/test_concurrency.py tests/test_limits.py
+      - name: Concurrency and limits in isolation
+        # Fresh process: the cache and registry are global, so the full run could mask
+        # a test that relies on state an earlier test left behind.
+        run: python -m pytest -q -x tests/test_concurrency.py tests/test_limits.py
       - name: Command line works
         run: |
           demangle _ZNSt6vectorIiSaIiEE9push_backERKi
@@ -160,17 +115,12 @@ jobs:
       - run: uv pip install --system -e . --group test
       - name: Replay the committed corpora
         run: python tools/differential.py
-      # Rebuild the corpus from freshly compiled sources and compare live. This is what
-      # catches a reference demangler changing its own output between versions, which a
-      # replay of committed expectations cannot see.
+      # Catches a reference changing its output, which a replay of the committed
+      # corpus cannot.
       - name: Regenerate and compare live
         run: |
           python tools/generate_corpus.py --out /tmp/fresh
           python tools/differential.py --corpus /tmp/fresh/itanium-real-world.txt
-      # The same for the MS ABI, which clang can target from here. `msvc-llvm-corpus.txt`
-      # is LLVM's own *test* file -- vectors somebody chose -- so this is the only MSVC
-      # corpus a compiler wrote, and the two defects it found on its first run were both
-      # in shapes those vectors do not carry.
       - name: Regenerate the MSVC corpus and compare live
         run: |
           python tools/generate_corpus.py --out /tmp/fresh --sources tools/corpus_sources/msvc \
@@ -178,49 +128,18 @@ jobs:
             --tool llvm-undname --name msvc-clang.txt \
             --defects tests/conformance/msvc-reference-defects.txt
           python tools/differential.py --corpus /tmp/fresh/msvc-clang.txt --language msvc
-      # `rustc-demangle` is the implementation the Rust scheme is a port of, and neither
-      # of the demanglers installed above is it: LLVM's Rust reader is a port of an older
-      # version and binutils' is independent of both. Built before the two steps below so
-      # they ask the right one about Rust. `cargo` is preinstalled on the runner.
+      # The reference builds must precede the enumerate/mutate steps, which query them.
       - name: Build the rustc-demangle reference
         run: cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
-      # Swift's own demangler, likewise: nothing installed above reads a `$s` name at
-      # all, so without this the two steps below have no Swift job to run and say so.
-      # It builds swiftlang/swift's lib/Demangling at a pinned revision against the LLVM
-      # headers already on the runner -- no Swift toolchain, no CMake, no LLVM libraries.
       - name: Build the Swift reference
         run: tools/swift-demangle-reference/build.sh
-      # libiberty's own pre-Itanium C++ demangler, likewise: binutils 2.42 no longer
-      # ships the `--format=gnu` family and GCC 9 removed the demangler, so the build is
-      # GCC 8.3.0's `cplus-dem.c` -- the tree the corpus's own expectations came from --
-      # behind a line-per-name front end. One fetch from github.com, pinned by tag and
-      # by checksum. See tools/cplus-dem-reference/README.md.
       - name: Build the pre-Itanium C++ reference
         run: tools/cplus-dem-reference/build.sh
-      # The corpora cover the shapes compilers emit. This covers the shapes the grammars
-      # permit -- every string up to four characters over a per-scheme alphabet, offered
-      # to the library and then to the reference. Four is what fits in the time here;
-      # deeper runs are a thing to do by hand against a parser change.
+      # Length 4 is what fits the time budget; go deeper by hand for parser changes.
       - name: Enumerate the shape space against the references
         run: python tools/enumerate.py --length 4 --quiet
-      # Enumeration reaches the shapes a grammar permits at four characters. This reaches
-      # the ones that need a name a compiler actually emitted -- a deep substitution, a
-      # nested argument list -- by damaging real symbols. The seed is fixed, so a failure
-      # here reproduces with the same `--seed` and `--count` locally.
       - name: Mutate real symbols and compare against the references
-        # Pinned in both directions, like the conformance corpora: a new divergence
-        # fails, and so does a stale pin after one is fixed. The pin is zero -- every
-        # divergence this draw reports is a defect that was fixed or an accept rule
-        # naming its reason -- so `--expect` is left at its default.
         run: python tools/mutate.py --count 20000 --quiet
-      # Mutants put to the library instead of to a reference. Nothing here needs one --
-      # it lives in this job because it shares the mutation machinery, not because it
-      # shares the dependency -- so it seeds from every corpus rather than from the five
-      # schemes a reference can be asked about, Swift, Nim, Free Pascal, Delphi, Go,
-      # Objective-C and JNI included. What it checks: that a *style* cannot decide
-      # whether a name parses, that the tree spells what the text spells, and that no
-      # public entry point raises anything but a DemanglingError on a name `demangle`
-      # read. The first was broken for twelve corpus names when this was written.
       - name: Check the invariants no reference can be asked about
         run: python tools/invariants.py --count 4000 --quiet
 
@@ -237,41 +156,21 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
-      # Several LLVM versions on purpose. Agreeing with one build of one reference is not
-      # the same as being right: llvm-cxxfilt 16 drops a constructor's name after an ABI
-      # tag, and between 18 and 20 LLVM changed its substitution numbering for a template
-      # template parameter application -- on that name 18 was wrong, and this project had
-      # the wrong answer recorded because it was recorded against 18.
       - name: Install several reference versions
         run: |
           sudo apt-get update
-          # `llvm` as well as the versioned packages: the last step in this job
-          # regenerates the corpus, and tools/generate_corpus.py calls the unversioned
-          # `llvm-cxxfilt`, which the versioned packages do not provide.
-          sudo apt-get install --no-install-recommends -y llvm llvm-16 llvm-18 llvm-20 binutils
+          sudo apt-get install --no-install-recommends -y llvm-16 llvm-18 llvm-20 binutils
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group test
-      # Exit status is non-zero only when every reference agrees and we do not. A split
-      # between the references is reported, not failed: it means the question is open,
-      # and it has to be settled against the ABI or against what a compiler emits.
-      # GNU is in the set on purpose, not just several builds of LLVM. Two versions of
-      # one implementation share its bugs: llvm-cxxfilt 16 and 18 agree with each other
-      # about a template template parameter's substitution index and are both wrong, and
-      # a cross-check over only those two would report us as the outlier. A second
-      # implementation is what makes the disagreement visible as a disagreement.
+      # Keep c++filt in the set: LLVM versions share bugs, so an all-LLVM set can
+      # outvote a correct answer. llvm-20 is installed for the MSVC step below;
+      # llvm-cxxfilt-20 is not yet vetted for this cross-check, so it is left out.
       - name: Itanium across llvm-cxxfilt versions and GNU
         run: python tools/differential.py --cross llvm-cxxfilt-16 llvm-cxxfilt-18 c++filt
       - name: MSVC across llvm-undname versions
         run: |
           python tools/differential.py --cross llvm-undname-16 llvm-undname-18 llvm-undname-20 \
             --corpus tests/conformance/msvc-llvm-corpus.txt --language msvc
-      # What a demangler is actually accountable to is the mangler. This compiles a
-      # source, reads the symbols the compiler emitted, and demangles those.
-      - name: Against what the compilers emit
-        run: |
-          sudo apt-get install --no-install-recommends -y g++ clang
-          python tools/generate_corpus.py --out /tmp/fresh
-          python tools/differential.py --corpus /tmp/fresh/itanium-real-world.txt
 
   docs:
     name: documentation
@@ -288,7 +187,6 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group docs
-      # Strict: a warning is a broken cross-reference or an undocumented parameter.
       - run: mkdocs build --strict
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -326,7 +224,6 @@ jobs:
         with:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip build twine
-      # `build` is the standard frontend and backend-agnostic; hatchling does the work.
       - run: python -m build
       - run: python -m twine check --strict dist/*
       - name: Install the built wheel in a clean environment

@@ -29,8 +29,7 @@ from .test_conformance import TYPES_GNU_EXACT, TYPES_LLVM_EXACT, TYPES_TOTAL
 
 
 class TestTheItaniumTypeGrammar:
-    #: Raised as gaps close, never lowered silently. Both styles now read every row of
-    #: their reference's corpus exactly; `gnu` used to fall three short, on `KK`.
+    #: Never lowered silently.
     EXPECTED_EXACT: ClassVar = {"gnu": TYPES_GNU_EXACT, "llvm": TYPES_LLVM_EXACT}
 
     CORPUS: ClassVar = {"gnu": "itanium-types.txt", "llvm": "itanium-types-llvm.txt"}
@@ -56,16 +55,14 @@ class TestTheItaniumTypeGrammar:
             enc for enc, _ in load_corpus("itanium-types-llvm.txt")
         ]
 
-    def test_there_is_no_shortfall_left_in_either_style(self):
-        """`KKDv4_i` and its two neighbours were the last three, and they are read now.
+    def test_there_is_no_shortfall_in_either_style(self):
+        """Every encoding reads exactly, `KKDv4_i` and its two neighbours included.
 
-        They were left as a recorded divergence on the reasoning that no compiler emits
-        `KK`, which was true of `KK` written outright and false of what it means: the
-        same doubling arrives through an already-qualified template argument, `K T_`
-        with `T_` bound to `K i`, and the shipped libLLVM has three of those. Closing it
-        for the argument closed it for the literal spelling too. See
-        `collapse_duplicate_qualifiers`, and `TestDuplicateQualifiers` below for the
-        rule and its boundaries.
+        No compiler emits `KK` written outright, but the same doubling arrives through
+        an already-qualified template argument, `K T_` with `T_` bound to `K i`, and the
+        shipped libLLVM has three of those. The collapse for the argument applies to the
+        literal spelling too. See `collapse_duplicate_qualifiers`, and
+        `TestDuplicateQualifiers` below for the rule and its boundaries.
         """
         assert [
             enc for enc, expected in load_corpus("itanium-types.txt") if _spelled(enc, "itanium", "gnu") != expected
@@ -114,9 +111,11 @@ class TestDuplicateQualifiers:
     style follows it.
 
     The order the survivors print in is decided by the outer qualifier winning, which is
-    why `K V K i` and `K K V i` both come out `volatile const`. Checked here against the
-    references over every sequence of one to three qualifiers, and against the boundary
-    cases: an array passes them through, every other declarator stops them.
+    why `K V K i` and `K K V i` both come out `volatile const`. Pinned here: a
+    set of hand-picked sequences of one to three qualifiers, and the boundary cases --
+    an array passes them through, every other declarator stops them. The exhaustive
+    check is `tools/enumerate.py`, which offers every short name the grammar admits to
+    the references.
     """
 
     @pytest.mark.parametrize(
@@ -166,9 +165,9 @@ class TestComplexAndImaginaryAreNotCvQualifiers:
 
     `[basic.type.qualifier]` folds a duplicate `const`, which is why the `gnu` style
     collapses one; nothing folds a duplicate `_Imaginary`. `c++filt` 2.42 writes
-    `signed char _Imaginary _Imaginary` for `_Z1fGGa` and this wrote one of them, losing
-    a word of the name -- and the two styles disagreed with each other about it, since
-    only the gnu one collapses at all.
+    `signed char _Imaginary _Imaginary` for `_Z1fGGa`, and both styles do the same:
+    dropping one would lose a word of the name, and only the gnu style collapses
+    anything at all.
     """
 
     @pytest.mark.parametrize(
@@ -186,8 +185,7 @@ class TestComplexAndImaginaryAreNotCvQualifiers:
     @pytest.mark.parametrize(
         ("mangled", "llvm", "gnu"),
         [
-            # The collapse the gnu style does do, and still does: a real duplicate
-            # cv-qualifier, where the outer one wins.
+            # The collapse the gnu style does do: a real duplicate cv-qualifier.
             ("_Z1fKKi", "f(int const const)", "f(int const)"),
             ("_Z1fKVi", "f(int volatile const)", "f(int volatile const)"),
         ],
@@ -215,10 +213,8 @@ class TestObjectiveCProtocolQualifiedTypes:
 
     A protocol-qualified `objc_object` is `objc_object<A>`, and a pointer to it is
     `id<A>` -- `id` *is* the pointer, so it is not written again. Only the first one:
-    every level above it is an ordinary `*`. This collapsed the unpointed form to
-    `id<A>` as well and then handed the same handle back out of every `P`, so
-    `PPU11objcproto1A11objc_object` and `PPPU...` came back `id<A>` too, with the
-    pointers gone.
+    every level above it is an ordinary `*`, so `PPU11objcproto1A11objc_object` is
+    `id<A>*` and `PPPU...` is `id<A>**`, with the pointers kept.
     """
 
     @pytest.mark.parametrize(
@@ -241,8 +237,8 @@ class TestAnInheritingConstructorCarriesAVariant:
     """`CI1` through `CI5`, the same five an ordinary constructor carries.
 
     `parseCtorDtorName` requires the digit and `llvm-cxxfilt` refuses `CI0`, `CI6` and
-    `CIT` alike. Taking whatever character stood there read `_ZN1BCIT1AEi` as
-    `B::B(int)`, a constructor of a class the encoding does not say is one.
+    `CIT` alike, so `_ZN1BCIT1AEi` is refused rather than read as `B::B(int)`, a
+    constructor of a class the encoding does not say is one.
     """
 
     @pytest.mark.parametrize("mangled", ["_ZN1BCIT1AEi", "_ZN1BCI01AEi", "_ZN1BCI61AEi", "_ZN1BCI_1AEi"])
@@ -274,8 +270,8 @@ class TestAStructorMayCarryAbiTags:
     """`<ctor-dtor-name> [<abi-tags>]`.
 
     libc++ 18 tags its destructors -- the `[abi:ne180100]` every `_LIBCPP_HIDE_FROM_ABI`
-    member carries -- and the constructor's branch read the tags where the destructor's
-    did not, so nine destructors in `libc++.a` were refused. Both references read all of
+    member carries -- so the destructor's branch reads the tags as the constructor's
+    does; nine destructors in `libc++.a` depend on it. Both references read all of
     these and spell them alike.
     """
 
@@ -467,8 +463,8 @@ class TestACvQualifiedFunctionTypeReachedThroughASubstitution:
     `void () const`. Reached through a `<substitution>` they each contradict that:
     `llvm-cxxfilt` 18.1.3 answers `void  const()`, moving the qualifier into the
     declarator and doubling a space, and GNU `c++filt` 2.42 answers `void ( const)()`,
-    putting it inside the brackets. Found by mutating a real libstdc++ symbol, whose
-    `RKS4_` refers back to a function type in the template arguments.
+    putting it inside the brackets. A libstdc++ symbol whose `RKS4_` refers back to a
+    function type in the template arguments reaches it.
     """
 
     @pytest.mark.parametrize(
@@ -488,9 +484,9 @@ class TestACvQualifiedFunctionTypeReachedThroughASubstitution:
 class TestAProtocolIsASourceNameInsideItsQualifier:
     """`parseQualifiedType` reads the protocol out of `objcproto...` with
     `parseBareSourceName`: a length and that many characters. `objcproto15` is a length
-    with nothing after it, refused by `llvm-cxxfilt`, where this took the digits for
-    the protocol and spelled `id<15>`; and `objcproto1ABC` is `A`, the rest of the
-    qualifier unread. `tools/mutate.py --seed 23`."""
+    with nothing after it, refused by `llvm-cxxfilt` rather than spelled `id<15>` with
+    the digits taken for the protocol; and `objcproto1ABC` is `A`, the rest of the
+    qualifier unread."""
 
     @pytest.mark.parametrize("mangled", ["_Z1fPU11objcproto1511objc_object", "_Z1fPU10objcproto011objc_object"])
     def test_a_length_with_too_little_after_it_is_refused(self, mangled):
@@ -513,8 +509,7 @@ class TestAVectorDimensionIsANumberToCxxfilt:
     """`d_vector_type` reads the dimension with `d_number` and prints the value, so
     `Dv07_b` is `__vector(7)` under the gnu style. An array bound is printed as written
     by both references, `[07]`, and stays so. `llvm-cxxfilt` refuses a vector dimension
-    that does not open on 1-9; the llvm style prints the digits it read. Found by the
-    `types` job of `tools/mutate.py`."""
+    that does not open on 1-9; the llvm style prints the digits it read."""
 
     @pytest.mark.parametrize(
         ("mangled", "llvm", "gnu"),
@@ -537,11 +532,10 @@ class TestAVectorsSizeAndElementAsTheCompilersWriteThem:
     -- and emits `_Z1gILi2EEvDvmlT_Li4E_i` for `template <int N> void g(int
     __attribute__((vector_size(N * 4))))`; `llvm-cxxfilt` reads that and `c++filt`
     refuses it, while the ABI's own `Dv _ <expression> _ <type>` is what `c++filt`
-    reads and `llvm-cxxfilt` refuses. This read only the second, and refused a symbol
-    clang++ 18.1.3 emits. And AltiVec's `__vector pixel` is `Dv <number> _ p`, a `p`
+    reads and `llvm-cxxfilt` refuses. Both forms are read, since clang++ 18.1.3 emits
+    the first. And AltiVec's `__vector pixel` is `Dv <number> _ p`, a `p`
     where the element type would be: clang++ 18.1.3 writes `_Z1hDv8_p` for
-    `void h(__vector pixel)`, which `llvm-cxxfilt` spells `pixel vector[8]`. Found by
-    the `types` job of `tools/mutate.py --refusals`."""
+    `void h(__vector pixel)`, which `llvm-cxxfilt` spells `pixel vector[8]`."""
 
     @pytest.mark.parametrize(
         ("mangled", "llvm", "gnu"),
@@ -582,9 +576,8 @@ class TestAGroupAfterAStarIsTightUnderTheGnuStyle:
     """`d_print_function_type` writes the space before a declarator group's `(` unless
     the last character printed is `(` or `*`, so a pointer to a function returning a
     pointer to a function is `void (*(*)())()` to `c++filt` and `void (* (*)())()` to
-    `llvm-cxxfilt`; a `&` keeps its space either way. This printed llvm-cxxfilt's
-    spacing under both styles, which a sweep of every Itanium symbol on the machine in
-    the gnu style turned up on Skia's `VulkanWindowContext` constructor."""
+    `llvm-cxxfilt`; a `&` keeps its space either way. Each style follows its own
+    reference, Skia's `VulkanWindowContext` constructor being a real case."""
 
     @pytest.mark.parametrize(
         ("mangled", "llvm", "gnu"),
@@ -624,8 +617,8 @@ class TestAGroupAfterAStarIsTightUnderTheGnuStyle:
 class TestAPointerToAMemberOfArrayType:
     """`PointerToMemberType::printLeft` writes its `(` straight after the member type
     where `PointerType::printLeft` writes a space first, so llvm-cxxfilt spells
-    `int(A::*) [3]` beside `int (*) [3]`; GNU c++filt spaces both. This spaced both
-    under both styles."""
+    `int(A::*) [3]` beside `int (*) [3]`; GNU c++filt spaces both. Each style follows
+    its own reference."""
 
     @pytest.mark.parametrize(
         "mangled, llvm, gnu",
@@ -710,8 +703,8 @@ class TestAConstructorOfAnUnnamedType:
     last source name it read, template arguments aside, so c++filt prints
     `A::{unnamed type#1}::~A()` and `std::vector<X>::{unnamed type#1}::~vector()`, and
     ICU ships `MicroProps::{unnamed type#1}::~MicroProps()`. A parameter type inside
-    the closure's signature is a name of its own, and reading it used to clear the
-    flag that says the scope has none: `_ZN1AUlN1XEE_D1Ev` came back
+    the closure's signature is a name of its own, and reading it must not clear the
+    flag that says the scope has none, or `_ZN1AUlN1XEE_D1Ev` would come back as
     `A::'lambda'(X)::~'lambda'(X)()`."""
 
     @pytest.mark.parametrize(
@@ -790,8 +783,8 @@ class TestADependentElaboratedTypeSpecifier:
     `c++filt` 2.42 refuses all three; `llvm-cxxfilt` reads them and spells them as here.
 
     The whole of `<name>` stands after the keyword. A `<source-name>` opens with its
-    length, which a guard here used to read as the index of a `Ts <index> _` marker on a
-    `<template-param>` -- so `Ts3Foo` was refused. That marker is not a production; see
+    length, which must not be read as the index of a `Ts <index> _` marker on a
+    `<template-param>`, or `Ts3Foo` would be refused. That marker is not a production; see
     `test_a_parameter_carries_no_pack_marker`.
     """
 
@@ -822,11 +815,11 @@ class TestADependentElaboratedTypeSpecifier:
         """`<template-param>` is `T_`, `T <index> _` or the `TL` level form, and nothing
         else.
 
-        A `p` and an `s` were consumed here as markers on the parameter. Neither is a
-        production: `Tp` introduces a `<template-param-decl>`, which
-        `_PARAMETER_DECLARATIONS` already records as unconfusable with a
-        `<template-param>` and which `template_param_decl` reads, and `Ts` opens the
-        elaborated specifier above. Reading them made each of these a second mangling of
+        A `p` and an `s` are not markers on the parameter. Neither is a production:
+        `Tp` introduces a `<template-param-decl>`, which `_PARAMETER_DECLARATIONS`
+        records as unconfusable with a `<template-param>` and which
+        `template_param_decl` reads, and `Ts` opens the elaborated specifier above.
+        Reading them as markers would make each of these a second mangling of
         `_Z1fIiEvT_`, `void f<int>(int)`, which is the one answer worse than none. Both
         references refuse every one, no compiler writes them, and there is no
         `T[ps]<index>_` among the checked-in symbols.
@@ -852,9 +845,9 @@ class TestAConstrainedPlaceholderIsASubstitutionCandidate:
 
     The omission is these two codes and not a rule that reference holds about compound
     types: it records the composite for `Dv2_i` and for `Dpi`, both probed the same way.
-    It is the omission its `DB` had too -- `_Z6myfuncRDB8_S0_` is `myfunc(_BitInt(8)&,
+    Its `DB` shows the same omission -- `_Z6myfuncRDB8_S0_` is `myfunc(_BitInt(8)&,
     _BitInt(8)&)` in libcxxabi's own corpus, and the shipped `llvm-cxxfilt` 18 refuses
-    that vector, so the entry was added upstream after the production was. Neither `Dk`
+    that vector. Neither `Dk`
     nor `DK` is emitted by g++ 13.3 or clang++ 18.1.3 -- both write `Tk` in the
     `<template-param-decl>` instead -- so no compiler output settles it and the ABI's
     own grammar is the whole of the evidence.
@@ -884,10 +877,10 @@ class TestAConstrainedPlaceholderIsASubstitutionCandidate:
 
 
 class TestABackReferenceToAPackBoundParameter:
-    """The entry a `<template-param>` contributes is the parameter, and a parameter bound
-    to a pack is the pack.
+    """The entry a `<template-param>` contributes is the parameter, and a parameter
+    bound to a pack is the pack.
 
-    That is the same rule the ROADMAP's heading 0 establishes against four compilers'
+    That is the same rule note 17 of CONFORMANCE.md establishes against the compilers'
     output for the unpacked case -- the entry is the parameter, not the argument bound to
     it where the entry was made -- and a pack parameter is not a different kind of
     parameter. `_Z1fIiJbcdEEvT_DpT0_` makes the three readings visible side by side:
@@ -900,7 +893,7 @@ class TestABackReferenceToAPackBoundParameter:
     Two references that disagree with each other about which member to record are not a
     second opinion about whether to record one; no compiler writes a back-reference to
     such an entry, and `tools/enumerate.py` accepts the disagreement on the shape rather
-    than on either answer. `tools/mutate.py --seed 39`, and 42, 43 and 48 reach it too.
+    than on either answer.
     """
 
     NAME = "_Z1fIiJbcdEEvT_DpT0_"
@@ -971,11 +964,7 @@ class TestASourceNameLengthWrittenWithALeadingZero:
     libiberty's `d_number` consumes digits and calls `atoi`; `llvm-cxxfilt` 18 refuses
     the name outright. This reads it as `c++filt` does, which is the side it takes on the
     legacy `I ... E` argument pack and on the old `sr` form as well, and no compiler
-    writes one, so there is nothing to settle the split against. `tools/mutate.py
-    --seed 66` is what reached it, through a damaged `modern::constrained` whose `Tk`
-    `c++filt` cannot read either -- so both references refused that name, for two
-    different reasons.
-
+    writes one, so there is nothing to settle the split against.
     An array *bound* is a different production and is printed as it is written: `A01_i`
     is `int [01]` to all three.
     """
@@ -1020,7 +1009,7 @@ class TestAnInheritingConstructorsBaseType:
     then names the constructor after the *base*, `D::C`, which is neither compiler's
     declaration. `tools/corpus_sources/reference_defects/inheriting_constructor.cpp` is
     the source and `tests/conformance/itanium-reference-defects.txt` pins all six
-    against it. `tools/mutate.py --seed 69`.
+    against it.
     """
 
     @pytest.mark.parametrize(

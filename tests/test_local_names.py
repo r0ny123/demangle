@@ -71,8 +71,8 @@ def test_the_other_two_forms_are_unchanged():
 class TestALambdaSignatureIsNotEmpty:
     """`<lambda-sig> ::= <template-param-decl>* [Q <constraint>] <parameter type>+`: a
     lambda taking nothing is written with `v`, and `UlE_` is not a closure. Both
-    references refuse it; spelling `()` from the empty list read a closure into names
-    neither reads. Found by `tools/mutate.py --seed 2` and `--seed 3`."""
+    references refuse it; spelling `()` from the empty list would read a closure into names
+    neither reads. `tools/mutate.py --seed 2` and `--seed 3` reach it."""
 
     @pytest.mark.parametrize(
         "mangled",
@@ -93,10 +93,10 @@ class TestAClosuresOwnParameterWrittenAsTheEnclosingTemplatesEntry:
     template type parameter by level and index. Read under the closure, the entry is the
     closure's `auto`, and `operator()<int>` takes `int`. `llvm-cxxfilt` 18 spells the
     closure `'lambda'(int)` -- what the entry was bound to where it was made -- and
-    `tools/mutate.py --seed 12` reached that reading through a mutant. It was briefly
-    followed here, which turned the two shipped instances (`sortBindings`'s
+    `tools/mutate.py --seed 12` reaches that reading through a mutant. Following it
+    would turn the two shipped instances (`sortBindings`'s
     `[](const auto&, const auto&)` in lld, `runDataflowAnalysis`'s `[](auto&)` in
-    clang) into the wrong declaration, and compiling the reduced source settled it: the
+    clang) into the wrong declaration, and compiling the reduced source settles it: the
     sources are `tools/corpus_sources/reference_defects/member_template_lambda.cpp`, and
     `tests/conformance/itanium-reference-defects.txt` pins all four shapes."""
 
@@ -137,11 +137,12 @@ class TestAClosuresOwnParameterWrittenAsTheEnclosingTemplatesEntry:
 
 def test_a_clone_suffix_may_follow_the_entity_directly():
     """`_ZZ1fvE1x.0`: a local static the optimiser copied, with nothing between the
-    entity's name and the dot. The dot is where `parse` picks the suffix up, but the
-    local name saw a character that was not `E`, `_` or the end and read `.0` as the
-    entity's signature, so the name was refused. With a discriminator ahead of it --
-    `_ZZ1fvE1x_0.0` -- it never was. llvm-cxxfilt reads both; c++filt refuses both,
-    so the gnu column is this library's own clone spelling."""
+    entity's name and the dot. The dot is where `parse` picks the suffix up, and the
+    local name must not take a character that is not `E`, `_` or the end for the start
+    of the entity's signature: reading `.0` as one would refuse the name. With a
+    discriminator ahead of it -- `_ZZ1fvE1x_0.0` -- that never arises. llvm-cxxfilt
+    reads both; c++filt refuses both, so the gnu column is this library's own clone
+    spelling."""
     assert demangle.demangle_strict("_ZZ1fvE1x.0", style="llvm") == "f()::x (.0)"
     assert demangle.demangle_strict("_ZZ1fvE1x.0", style="gnu") == "f()::x [clone .0]"
     assert demangle.demangle_strict("_ZZ1fvE1x_0.0", style="llvm") == "f()::x (.0)"
@@ -154,11 +155,12 @@ def test_a_clone_suffix_may_follow_the_entity_directly():
 
 def test_an_embedded_encoding_keeps_its_own_return_type_under_gnu():
     """`L_Z <encoding> E` inside the enclosing function's template arguments is a whole
-    name of its own, and c++filt spells it as one: `f<int h<int>()>()` drops `f`'s return
-    type, as it does for every function a local name is scoped by, and keeps `h`'s.
-    The decision `local_name` made for `f` was being spent on `h` instead -- `h` lost
-    its type and `f` kept one. `_Iter_comp_iter<...reversePathSortedFilenames<...>...>`
-    in the Swift 6.1.2 toolchain's `swift-frontend` is eight names of this shape."""
+    name of its own, and c++filt spells it as one: `f<int h<int>()>()` drops `f`'s
+    return type, as it does for every function a local name is scoped by, and keeps
+    `h`'s. The decision `local_name` makes for `f` must not be spent on `h` instead,
+    which would leave `h` without its type and `f` with one.
+    `_Iter_comp_iter<...reversePathSortedFilenames<...>...>` in the Swift 6.1.2
+    toolchain's `swift-frontend` is eight names of this shape."""
     mangled = "_Z1gIZL1fIL_Z1hIiEivEEivEUlvE_EvT_"
     assert demangle.demangle_strict(mangled, style="gnu") == (
         "void g<f<int h<int>()>()::{lambda()#1}>(f<int h<int>()>()::{lambda()#1})"

@@ -29,14 +29,9 @@ CONFORMANCE = Path(__file__).parent / "conformance"
 
 LANGUAGES = sorted(demangle.languages())
 
-#: Shapes that have caught something before: nothing, one character, a plain word, a NUL,
-#: a non-character, a run of punctuation, and the two prefixes that announce a scheme
-#: without saying anything after it.
 UNREADABLE = ["", "x", "not_a_symbol_at_all", "\x00", "￾￿", "?" * 40, "_Z", "$s", "@@@"]
 
-#: One readable name per scheme, from its own conformance corpus. Used to check that
-#: every style is accepted on a name the scheme actually reads rather than on one it
-#: hands back untouched.
+#: One name per scheme that it actually reads, so a rejected style cannot go unnoticed.
 STYLE_SAMPLES = {
     "ada": "yz__qrs",
     "codewarrior": "__dt__6CActorFv",
@@ -54,20 +49,15 @@ STYLE_SAMPLES = {
     "swift": "$S18resilient_protocol21ResilientBaseProtocolTL",
 }
 
-#: The one intentional divergence, and the reason it is one.
-#:
-#: For every other scheme, "the answer equals the input" means the name was refused. Ada
-#: is the exception: a GNAT symbol is a lower-case dotted path with no marker, so a bare
-#: identifier is a *valid* Ada unit name that spells itself, and libiberty's
-#: `ada_demangle` returns it unchanged for the same reason. `detect()` still declines it
-#: -- it demands something GNAT wrote that a C compiler would not -- so autodetection
-#: never claims one; only a caller who has said `language="ada"` sees this.
+#: Elsewhere "answer equals input" means refused; for Ada a bare identifier is a valid
+#: unit name that spells itself (as libiberty's `ada_demangle` agrees). `detect()` still
+#: declines it, so only an explicit `language="ada"` sees this.
 IDENTITY_IS_A_READING = {"ada": {"x", "not_a_symbol_at_all"}}
 
 
 def corpus_names():
     names, seen = [], set()
-    for path in sorted(CONFORMANCE.iterdir()):
+    for path in sorted([*CONFORMANCE.iterdir(), *(CONFORMANCE / "reported").glob("*.txt")]):
         if path.suffix == ".gz":
             text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
         elif path.suffix == ".txt":
@@ -126,15 +116,13 @@ class TestEverySchemeKeepsTheSameContract:
                 assert demangle.demangleb(payload, language=language) == payload
 
     def test_every_style_is_accepted(self, language, subtests):
-        # One name per scheme that the scheme actually reads. Demangling `_Z1fv`
-        # under every language only exercises Itanium: the rest hand it back
-        # untouched, so a style the scheme rejects would never be noticed.
         sample = STYLE_SAMPLES[language]
         for style in demangle.styles():
             with subtests.test(style=style):
                 assert demangle.demangle(sample, language=language, style=style) != sample
 
 
+@pytest.mark.sweep
 def test_the_bytes_path_answers_what_the_text_path_answers():
     """Over every name in every corpus, whichever scheme claims it.
 

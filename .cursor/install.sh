@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Bootstrap Hatch and uv without touching Ubuntu's PEP 668-managed system Python.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -11,8 +10,8 @@ if ! command -v uv >/dev/null 2>&1; then
     export PATH="${HOME}/.local/bin:${PATH}"
 fi
 
-uv tool install hatch
+uv python install 3.13
+# Hatch builds environments on its own interpreter, so it must run on 3.13.
+uv tool install --python 3.13 hatch
 
-# Warm the Hatch environment so lint, test, and check are ready to run.
-hatch env create default 2>/dev/null || true
 hatch run lint

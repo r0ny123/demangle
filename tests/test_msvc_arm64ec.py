@@ -53,17 +53,13 @@ class TestTheHybridMarker:
         """A name that already reads is never rewritten, whatever characters it holds."""
         for mangled, expected in load_corpus("msvc-llvm-corpus.txt"):
             assert demangle.demangle(mangled) == expected, mangled
-        # The same rule on names no corpus holds: a `$$h` that is part of an identifier,
-        # which `llvm-undname` reads as three more characters of it, and one inside an
-        # MD5 hash, which the reference keeps as part of the hash. Stripping first read
-        # `foobar` and `??@YAXP6AXQEAH@` -- names of something else.
+        # A `$$h` inside an identifier or an MD5 hash is not the marker; `llvm-undname`
+        # reads both as part of the name.
         assert demangle.demangle("?foo$$hbar@@YAXXZ") == "void __cdecl foo$$hbar(void)"
         assert demangle.demangle("?foo$$hbar@@3HA") == "int foo$$hbar"
         assert demangle.demangle("??@$$hYAXP6AXQEAH@Z1@Z") == "??@$$hYAXP6AXQEAH@"
-        # A `$$h` in the middle of a local type's name, not a hybrid marker.
-        # llvm-undname reads it as identifier characters too, and glues `?` to
-        # `FTypeWithQuals`; this keeps the space. Stripping the marker leaves a
-        # name neither reads. `tools/mutate.py --seed 20`.
+        # A `$$h` in the middle of a local type's name; llvm-undname glues `?` to
+        # `FTypeWithQuals`, this keeps the space.
         assert (
             demangle.demangle("?b@FTypeWithQuals@@3U?@YAHXZ@$$h4U<unnamed-type-v>@?1??1@YAHXZ@A")
             == "struct `int __cdecl FTypeWithQuals(void)'::`2'::$$h4U<unnamed-type-v>::YAHXZ::? FTypeWithQuals::b"
@@ -74,8 +70,8 @@ class TestTheHybridMarker:
 
         So a name carrying two is not one it can produce, and
         `getArm64ECDemangledFunctionName` -- which removes the *first* and no more --
-        leaves a name that still does not read. This stripped them one at a time until
-        none was left, so `?f@@$$h$$hYAXXZ` came back `void __cdecl f(void)`.
+        leaves a name that still does not read. Stripping them one at a time until
+        none is left would turn `?f@@$$h$$hYAXXZ` into `void __cdecl f(void)`.
         """
         for name in ("?f@@$$h$$hYAXXZ", "?priv_stat_foo@S@@$$h$$hYA?CHXZ", "?f@@$$hYAX$$hXZ"):
             assert demangle.demangle(name) == name, name

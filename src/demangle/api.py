@@ -12,8 +12,12 @@ one of them is stable ground that later versions can build on without breaking:
     demangle_type(enc, language=...)  a bare type encoding, spelled       -- raises
     parse_type(enc, language=...)     a bare type encoding, as a tree     -- raises
 
-Each of those has a `...b` form taking and returning bytes, because a symbol table holds
-bytes rather than text.
+"Raises" means over an unreadable name. Apart from `detect`, which answers None to
+anything, each also raises `TypeError` or `ValueError` for an argument that is wrong
+rather than unreadable -- an unknown `language`, say.
+
+Each single-name entry point has a `...b` form taking and returning bytes, because a
+symbol table holds bytes rather than text.
 
 The split between `demangle` and `demangle_strict` is the important one. A tool
 labelling every symbol in a binary meets far more non-mangled names than mangled ones,
@@ -64,40 +68,38 @@ __all__ = [
     "styles",
 ]
 
-#: Symbol tables repeat names relentlessly -- one binary can name `std::allocator<char>`
-#: thousands of times -- so memoisation is worth more here than any micro-optimisation.
+#: Keyed by everything that changes the answer, `limits` included: otherwise one caller's
+#: tight limits would poison the entry for every other caller of that name.
 #:
-#: Keyed by everything that changes the answer, `limits` included. Leaving the limits
-#: out is not merely a missed bound: one caller passing tight limits would poison the
-#: entry for every other caller of that name in the process, and `demangle()` cannot
-#: report it because it never raises. `Limits` is a frozen slots dataclass, so it
-#: hashes by value and two equal limit sets share a cache entry.
-_CACHE = BoundedCache(max_size=16384)
+#: Sized so one generation holds a large library's whole symbol table (libLLVM exports 56k
+#: names), which a second pass then finds in full. Measured at about 440 bytes per C++
+#: entry, so full it holds under 60 MB.
+#:
+#: Also weighed in bytes, name plus result, because `Limits` lets 64K characters through in
+#: each direction and a count alone would not bound hostile input: 48 MB in a generation
+#: holds libLLVM's table several times over and caps the whole near 100 MB. A non-ASCII
+#: `str` is counted at four bytes a character, its most; `isascii` answers without a scan.
+_CACHE = BoundedCache(
+    max_size=131072,
+    max_weight=96 << 20,
+    weigh=lambda key, value: (len(key[0]) + len(value)) << (0 if key[0].isascii() and value.isascii() else 2),
+)
 
 
-#: Emptied whenever a style or a language is registered. Replacing `llvm`, or replacing
-#: a whole scheme, used to leave every name demangled beforehand still answering from
-#: cache with the older spelling.
-#:
-#: Done by notification rather than by folding a generation counter into the key,
-#: because the key is built once per `demangle()` call and that is the hottest path in
-#: the package. Asking two modules "have you changed" there measured 58% slower on the
-#: warm path than clearing a cache on the rare occasion one has.
+#: Emptied whenever a style or language is registered. By notification rather than a
+#: generation counter in the key, which would slow the hottest path; a miss reads the
+#: cache's `epoch` before it parses, so an answer from before the change is not stored.
 _style_module.notify_on_change(_CACHE.clear)
 _registry.notify_on_change(_CACHE.clear)
 
+#: The default limits' slot in a cache key. Private, so nothing a caller passes can
+#: share it.
+_DEFAULT_LIMITS_KEY = object()
+
 
 def _refuse_non_string(mangled):
-    """Report a non-`str` argument as the caller's mistake it is.
-
-    Bytes used to be handed straight back, unchanged and unremarked, so a tool reading
-    an ELF string table -- where names *are* bytes -- saw every symbol come back exactly
-    as it went in and concluded the library did not work. The strict entry points were
-    worse: they reached the registry's first-character screen and raised
-    `TypeError: 'in <string>' requires string as left operand, not int`, which names
-    neither the problem nor the fix, and which the documented "raises only
-    `DemanglingError`" contract said could not happen.
-    """
+    """Report a non-`str` argument as the caller's mistake it is; bytes are pointed
+    at `demangleb()`, since a symbol table holds bytes."""
     if isinstance(mangled, _BYTES_LIKE):
         raise TypeError(f"expected str, got {type(mangled).__name__}; symbol tables hold bytes, so use demangleb()")
     raise TypeError(f"expected str, got {type(mangled).__name__}")
@@ -133,6 +135,29 @@ def _parse_with(plugin, mangled, builder, limits, style):
     return builder.decorated(handle, decoration) if decoration else handle
 
 
+def _refuse_limits(limits) -> NoReturn:
+    raise ValueError(f"limits must be a Limits instance, got {limits!r}")
+
+
+def _refuse_unhashable_limits(limits) -> NoReturn:
+    raise ValueError(f"limits must be hashable, got an unhashable {type(limits).__name__}") from None
+
+
+def _check_limits(limits):
+    """Refuse a `limits` that is not a hashable `Limits`, before it can reach a parser
+    or a key.
+
+    The default is tested by identity first, so the common call pays for nothing else.
+    """
+    if limits is not DEFAULT_LIMITS:
+        if not isinstance(limits, Limits):
+            _refuse_limits(limits)
+        try:
+            hash(limits)
+        except TypeError:
+            _refuse_unhashable_limits(limits)
+
+
 def _refuse_unhashable(language, limits) -> NoReturn:
     """Name the argument that could not go into the cache key, as a `ValueError`.
 
@@ -143,10 +168,12 @@ def _refuse_unhashable(language, limits) -> NoReturn:
         hash(language)
     except TypeError:
         raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
+    if not isinstance(limits, Limits):
+        _refuse_limits(limits)
     try:
         hash(limits)
     except TypeError:
-        raise ValueError(f"unhashable limits {limits!r}; pass a Limits instance") from None
+        _refuse_unhashable_limits(limits)
     raise TypeError("arguments to demangle() must be hashable")
 
 
@@ -159,17 +186,20 @@ def demangle(
 ) -> str:
     """Return the readable spelling of `mangled`, or `mangled` unchanged.
 
-    Never raises for any *string*: a name this library cannot read comes back exactly as
-    it went in, because a wrong expansion is worse than a mangled name -- it matches
-    neither the original symbol nor the real declaration, so it corrupts every
-    downstream lookup that trusted it. That promise is about the name, not about the
-    argument's type: passing something that is not a `str` is a mistake in the calling
-    code and is reported as one.
+    Never raises over the *name*: whatever string it is given, a name this library
+    cannot read comes back exactly as it went in, because a wrong expansion is worse
+    than a mangled name -- it matches neither the original symbol nor the real
+    declaration, so it corrupts every downstream lookup that trusted it. That promise is
+    about the name, not about the other arguments: a `mangled` that is not a `str`, or a
+    `language`, `style` or `limits` that names nothing, is a mistake in the calling code
+    and is reported as one.
 
     Args:
         mangled: the symbol name. Any string; need not be mangled.
         language: force a scheme by name, or None to detect.
-        style: output spelling policy -- `"llvm"` (default) or `"gnu"`.
+        style: output spelling policy -- a style name (`"llvm"`, the default, or
+            `"gnu"`), a `Style` object such as `style()` returns, or None for the
+            default.
         limits: resource bounds for the parse.
 
     Returns:
@@ -177,96 +207,90 @@ def demangle(
 
     Raises:
         TypeError: `mangled` is not a `str`. Use `demangleb()` for bytes.
+        ValueError: `language` or `style` is not a registered name, or `limits` is not
+            a `Limits`.
     """
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
     if not mangled:
         return mangled
-    resolved_style = get_style(style)
-    # A caller may hand in a `Style` object rather than a name, and two different objects
-    # can carry the same name -- so keying on the name alone served one of them the
-    # other's spelling. A style holds a builder and a mapping of per-language options,
-    # neither of which hashes by value, so it cannot go into the key itself; a call that
-    # passes one is simply not cached. That is the rare path. The common one is a name,
-    # and it stays a four-element tuple. The test is for the name -- `None` or a `str` --
-    # rather than for a `Style`, so a subclass of one carrying a different builder under
-    # the same name takes the rare path too, instead of being served whatever was cached
-    # under that name first. `__class__ is str` rather than `isinstance`, and the
-    # registry's flag rather than its `_load()`, because this is the hottest line in the
-    # package: the two calls together cost the warm path a sixth of its time.
-    #
-    # Warmed before the cache is touched: the first `candidates()`/`get()` loads the
-    # registry, and loading registers plugins, which clears the cache -- wiping the miss
-    # just recorded if the `get` runs first.
+    # Loaded before the cache is touched: loading registers plugins, which clears it.
+    # The registry flag rather than `_load()`, and `__class__ is str` rather than
+    # `isinstance`, because this is the hottest path in the package.
     if not _registry._loaded:
         _registry._load()
-    if style is not None and style.__class__ is not str:
-        key = None
+    # A `Style` object (or a `str` subclass) is not cached: two objects can share a name,
+    # and a style does not hash by value. A name is looked up before it is resolved, so a
+    # hit costs no style lookup; one that is not registered misses, and is refused below.
+    if style.__class__ is str or style is None:
+        # The default limits keyed by a sentinel: a `Limits` hashes through a Python-level
+        # `__hash__`, twice on every miss, and nearly every call passes the default.
+        if limits is DEFAULT_LIMITS:
+            limits_key = _DEFAULT_LIMITS_KEY
+        elif isinstance(limits, Limits):
+            limits_key = limits
+        else:
+            _refuse_limits(limits)
+        key = (mangled, language, DEFAULT_STYLE if style is None else style, limits_key)
     else:
-        key = (mangled, language, resolved_style.name, limits)
-        # The lookup hashes the key once. An argument that cannot be hashed -- a list
-        # for `limits`, say -- surfaces there as a `TypeError`, and is reported as the
-        # bad argument it is. Reported from the failure rather than checked for in
-        # advance, because `Limits` is a frozen dataclass whose hash is computed from
-        # its fields every time: checking it first would hash it twice on every warm
-        # call, which is the call the cache exists to make cheap.
+        key = None
+        # The same checks, in the same order, as a cached call, so caching never decides
+        # what is accepted or which argument the refusal names.
+        if limits is not DEFAULT_LIMITS and not isinstance(limits, Limits):
+            _refuse_limits(limits)
+        try:
+            hash((language, limits))
+        except TypeError:
+            _refuse_unhashable(language, limits)
+    if key is not None:
+        # An unhashable argument surfaces here as a `TypeError`; not checked in advance,
+        # which would hash `limits` twice on every warm call.
         try:
             cached = _CACHE.get(key)
         except TypeError:
             _refuse_unhashable(language, limits)
         if cached is not MISSING:
             return cached
+        epoch = _CACHE.epoch
 
+    # `get_style`'s lookup, inline where the key already holds a registered name.
+    styles = _style_module._STYLES
+    resolved_style = None if key is None or styles is None else styles.get(key[2])
+    if resolved_style is None:
+        resolved_style = get_style(style)
     builder = resolved_style.spelling_builder
-    plugin = None if language is None else _resolve(language)
-    if plugin is not None:
-        tried, base = (plugin,), None
+    if language is not None:
+        tried = (_resolve(language),)
+        base = None
     else:
-        tried, base = candidates(mangled), _undecorated(mangled)
+        tried = candidates(mangled)
+        if not tried:
+            return mangled
+        base = _undecorated(mangled)
 
     for candidate in tried:
         try:
-            # `_claims` written out. It is the same two tests in the same order, and its
-            # `try` is redundant *here*: a `detect` that throws is caught by this loop's
-            # own handler, which calls the same `reraise_if_operational` and then tries
-            # the next scheme, exactly as returning False would have. What the call cost
-            # was an interpreter frame for every candidate a name is offered to -- around
-            # seven per name on the benchmark corpus, six of them on a symbol that is not
-            # mangled at all, which is most of a real symbol table. `detect()` keeps the
-            # helper: it is not the hot path and one implementation of the rule should be
-            # readable somewhere.
+            # `_claims` inlined for the hot path; a `detect` that throws is caught by this
+            # loop's own handler with the same effect.
             if (
-                plugin is None
+                language is None
                 and not candidate.detect(mangled)
                 and (base is None or not candidate.symbol_table_decorations or not candidate.detect(base))
             ):
                 continue
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
         except LimitExceeded:
-            # A limit is not a "this name is not mine". The scheme claimed it and then
-            # ran out of the budget the caller set, which says the name is expensive --
-            # not that some other scheme should be handed the same text. Offering it on
-            # is how `_ZN11Expressions2f2ILi1EEEvPApsT__i`, an Itanium name that spends
-            # more substitutions than a tightened budget allows, came back as
-            # `_ZN11Expressions2f2ILi1EEEvPApsT(int)`: the pre-Itanium scheme reading the
-            # mangling itself as an identifier and the trailing `i` as a parameter. A
-            # declaration that names nothing is the one answer this library treats as
-            # worse than no answer, and a caller who *lowers* a limit is defending
-            # against hostile input, which is the last place to start guessing.
+            # A limit is not "this name is not mine": offering it to the next scheme would
+            # read `_ZN11Expressions2f2ILi1EEEvPApsT__i` as a pre-Itanium name.
             break
         except Exception as exc:
             reraise_if_operational(exc)
-            # Try the next scheme. Detection is a cheap prefix test and is allowed to be
-            # wrong, and a third-party plugin is allowed to be buggy -- the registry
-            # already takes care not to let a broken plugin bring the library down, and
-            # keeping the `detect` call inside this `try` is what stops it doing so here.
+            # Detection may be wrong and a plugin may be buggy; either way try the next.
             continue
-        # Recorded here rather than through a helper: `demangle` is the hot entry
-        # point, and this is a conditional and a call either way.
         result = builder.spell(handle)
-        return result if key is None else _CACHE.put(key, result)
+        return result if key is None else _CACHE.put(key, result, epoch)
 
-    return mangled if key is None else _CACHE.put(key, mangled)
+    return mangled if key is None else _CACHE.put(key, mangled, epoch)
 
 
 def demangle_strict(
@@ -278,10 +302,17 @@ def demangle_strict(
 ) -> str:
     """Return the readable spelling of `mangled`, raising when it cannot be read.
 
+    Takes the same arguments as `demangle()`. Every failure to read the name is a
+    `DemanglingError`; a plugin that fails some other way is wrapped in a `ParseError`,
+    with the original chained.
+
     Raises:
         NotMangledError: the name matches no known scheme.
         ParseError: the name has a known prefix but does not follow the grammar.
         LimitExceeded: a resource bound was hit.
+        TypeError: `mangled` is not a `str`. Use `demangleb_strict()` for bytes.
+        ValueError: `language` or `style` is not a registered name, or `limits` is not
+            a `Limits`.
     """
     resolved_style = get_style(style)
     builder = resolved_style.spelling_builder
@@ -301,14 +332,8 @@ def parse(
     parameter types -- rather than the spelling. The result is a `core.ast.Node`
     supporting `.walk()`, `.find(kind)` and `.spell()`.
 
-    Raises the same errors as `demangle_strict`.
-
-    Note:
-        Every scheme returns a tree, but the kinds differ with what each language has to
-        say. C++ trees carry declarator shape -- pointers, references, parameter lists --
-        because C++ types wrap the name they declare. Rust has no declarator syntax, so
-        its trees carry path structure instead: `symbol`, `path`, `impl`, `namespace`.
-        `name`, `template` and `literal` mean the same thing in all three.
+    Raises the same errors as `demangle_strict`. Which kinds of node a tree can hold
+    differs from scheme to scheme; see `node_kinds()`.
     """
     resolved = get_style(style)
     return _parse_handle(mangled, builder_for(resolved), language, resolved, limits)
@@ -341,11 +366,15 @@ def demangle_type(
     Args:
         mangled: the type encoding.
         language: which scheme to read it as -- required. See `languages()`.
-        style: output spelling policy -- `"llvm"` (default) or `"gnu"`.
+        style: output spelling policy -- a style name (`"llvm"`, the default, or
+            `"gnu"`), a `Style` object such as `style()` returns, or None for the
+            default.
         limits: resource bounds for the parse.
 
     Raises:
-        ValueError: `language` is unknown, or names a scheme with no type grammar.
+        ValueError: `language` is unknown, or names a scheme with no type grammar,
+            `style` is not a registered name, or `limits` is not a `Limits`.
+        TypeError: `mangled` is not a `str`. Use `demangleb_type()` for bytes.
         NotMangledError: the encoding is empty.
         ParseError: the encoding does not follow the scheme's type grammar.
         LimitExceeded: a resource bound was hit.
@@ -374,6 +403,7 @@ def parse_type(
 def _parse_type_handle(mangled, builder, language, style, limits):
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
+    _check_limits(limits)
     plugin = _resolve(language)
     if plugin is None:
         raise ValueError("demangle_type needs a language; a type encoding carries no marker to detect on")
@@ -390,9 +420,7 @@ def _parse_type_handle(mangled, builder, language, style, limits):
         raise
     except Exception as exc:
         reraise_if_operational(exc)
-        # Same contract as `_parse_handle`: these entry points raise `DemanglingError`
-        # and nothing else, so a defect in a plugin is wrapped rather than let out as an
-        # `AttributeError` no caller can reasonably catch. The original is chained.
+        # These entry points raise only `DemanglingError`; a plugin defect is wrapped.
         raise ParseError(mangled, None, f"{plugin.name} type parser failed: {exc!r}") from exc
 
 
@@ -458,6 +486,7 @@ def _type_languages():
 def _parse_handle(mangled, builder, language, style, limits):
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
+    _check_limits(limits)
     if not mangled:
         raise NotMangledError(mangled, "empty name")
     plugin = _resolve(language)
@@ -479,22 +508,16 @@ def _parse_handle(mangled, builder, language, style, limits):
                 first_error = _depth_exceeded(mangled, limits)
                 first_error.__cause__ = exc
         except LimitExceeded as exc:
-            # Raised, not remembered: see the note in `demangle`. The next candidate
-            # would be reading a name this one has already claimed, and the answer it
-            # gives is a reading of the mangling rather than of the name.
+            # Raised, not remembered: see the `LimitExceeded` note in `demangle`.
             raise exc
         except DemanglingError as exc:
-            # Keep the first failure: it came from the highest-priority plugin that
-            # claimed the name, so it is the most likely to be the useful diagnostic.
+            # The first failure comes from the highest-priority plugin, so it is kept.
             if first_error is None:
                 first_error = exc
         except Exception as exc:
             reraise_if_operational(exc)
-            # A plugin raised something that is not a demangling failure -- a defect in
-            # it, or in this package. The documented contract is that these entry points
-            # raise `DemanglingError` and nothing else, so it is wrapped rather than
-            # allowed to escape as an `AttributeError` a caller cannot reasonably catch.
-            # The original is chained, so the bug is still diagnosable.
+            # A plugin defect: wrapped, since these entry points raise only
+            # `DemanglingError`; the original is chained.
             if first_error is None:
                 first_error = ParseError(mangled, None, f"{candidate.name} parser failed: {exc!r}")
                 first_error.__cause__ = exc
@@ -506,24 +529,20 @@ def _parse_handle(mangled, builder, language, style, limits):
 def _depth_exceeded(mangled, limits):
     """A `RecursionError` from a parser, reported as the bound it is.
 
-    Two bounds govern how deep a name may nest, and `max_depth` is only one of them. The
-    other is the interpreter's own stack, and it is the *lower* of the two in practice:
-    a production costs several Python frames, so at the default recursion limit of 1000
-    an Itanium name gives out around 141 levels of nested template, 164 of `decltype`,
-    197 of function type and 493 of pointer -- all of them under the default
-    `max_depth` of 256, let alone `RELAXED_LIMITS`' 2048.
-
-    Which of the two binds first therefore depends on the shape of the name and on how
-    deep the caller's own stack already was. Both are the same fact -- this name nests
-    further than this process will follow -- so both are reported the same way. Before
-    this, one arrived as `LimitExceeded` and the other as
-    `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
-    the parser rather than a bound doing its job, and leaks an implementation detail
-    into a message a caller was meant to be able to act on.
+    Two bounds govern how deep a name may nest, and `max_depth` is only one of them. At
+    the defaults it is the one that binds, first for every shape measured; see
+    `Limits.max_depth` for the depths. The other is the interpreter's own stack. A
+    production costs several Python frames, so at the default recursion limit of 1000
+    the stack binds first only when `max_depth` has been raised or when the caller's own
+    stack is already deep. Both are the same fact -- this name nests
+    further than this process will follow -- so both are reported the same way. Wrapped
+    as `ParseError: itanium parser failed: RecursionError(...)`, it would read as a
+    defect in the parser rather than a bound doing its job, and leak an implementation
+    detail into a message a caller was meant to be able to act on.
 
     A caller who needs the deeper limits to be reachable can raise
     `sys.setrecursionlimit()`; on the versions this package supports, a Python-to-Python
-    call does not consume the C stack, so that is safer than it once was.
+    call does not consume the C stack.
     """
     return LimitExceeded(mangled, "recursion depth", limits.max_depth)
 
@@ -571,40 +590,38 @@ def _claims(plugin, mangled, base):
 def detect(mangled: str) -> str | None:
     """Name the scheme `mangled` appears to use, or None.
 
-    A prefix test only -- it reports what the name looks like, not that it will parse.
+    Most schemes are recognised by a prefix, so this reports what the name looks like,
+    not that it will parse. The schemes whose names carry no marker -- `gnuv2`,
+    `codewarrior` and `ada` -- parse the whole name to claim it, and so does a legacy
+    Rust name written without its underscore (a bare `ZN...`), which is read up to
+    `max_input` to decide.
     Never raises: like `demangle()`, it is called on every symbol in a table.
     """
     if not isinstance(mangled, str):
-        # `detect` is offered every symbol in a table and answers None for anything it
-        # does not recognise, so a wrong type is answered the same way rather than
-        # raised: a caller looping over a table wants a verdict, not an exception.
+        # `detect` answers a verdict for anything in a symbol table, never an exception.
         return None
     if not mangled:
         return None
+    tried = candidates(mangled)
+    if not tried:
+        return None
     base = _undecorated(mangled)
-    for plugin in candidates(mangled):
-        if _claims(plugin, mangled, base):
-            return plugin.name
+    for plugin in tried:
+        # `_claims` inlined, as in `demangle`.
+        try:
+            if plugin.detect(mangled) or (base is not None and plugin.symbol_table_decorations and plugin.detect(base)):
+                return plugin.name
+        except Exception as exc:
+            reraise_if_operational(exc)
     return None
 
 
-#: How a symbol table's bytes become a `str` and back again.
-#:
-#: A mangled name is read out of an object file, where it is a run of bytes ending at a
-#: NUL and nothing else -- not text in any declared encoding. Almost all of them are
-#: ASCII, but not all: a raw identifier can carry anything the assembler accepted, and a
-#: truncated symbol table can cut a name mid-character.
-#:
-#: `surrogateescape` is what makes the round trip total. Every byte that is not valid
-#: UTF-8 is parked in a lone surrogate, and encoding back with the same handler restores
-#: exactly the byte that went in. So a name this package cannot read comes back out of
-#: `demangleb` byte for byte, which is the same promise `demangle` makes for a `str`.
+#: Symbol-table bytes are not text in any declared encoding; `surrogateescape` parks each
+#: invalid byte in a lone surrogate, so `demangleb` returns an unread name byte for byte.
 _BYTES_ENCODING = "utf-8"
 _BYTES_ERRORS = "surrogateescape"
 
-#: The types `demangleb` accepts. `memoryview` is included because that is what a caller
-#: slicing a mapped object file has in hand, and copying it to ask a question would be a
-#: strange thing to make them do.
+#: `memoryview` because that is what a caller slicing a mapped object file has.
 _BYTES_LIKE = (bytes, bytearray, memoryview)
 
 
@@ -630,8 +647,9 @@ def demangleb(
 
     Like `demangle()`, never raises for a name it cannot read -- it hands the bytes back
     exactly as they arrived, including any that are not valid UTF-8. Raises `TypeError`
-    if given something that is not bytes-like, which is a mistake in the calling code
-    rather than a property of the symbol.
+    if given something that is not bytes-like, and `ValueError` for the arguments
+    `demangle()` refuses, which are mistakes in the calling code rather than properties
+    of the symbol.
 
         >>> import demangle
         >>> demangle.demangleb(b"_ZN3foo3barEv")
@@ -716,11 +734,12 @@ def demangle_all(
     than one result at a time beyond what it keeps itself. Shares the module cache,
     which is where the real gain is: symbol tables repeat names heavily.
 
-    Arguments are validated before the generator is created, so a bad `language` or
-    `style` is reported at the call rather than at the first `next()`.
+    Arguments are validated before the generator is created, so a bad `language`,
+    `style` or `limits` is reported at the call rather than at the first `next()`.
     """
     _resolve(language)
     get_style(style)
+    _check_limits(limits)
 
     def _stream():
         for name in names_:
@@ -745,5 +764,9 @@ def cache_clear() -> None:
 
 
 def cache_stats() -> dict[str, Any]:
-    """Hit rate and occupancy of the result cache."""
+    """Hit rate and occupancy of the result cache.
+
+    A name no scheme is offered is looked up but never stored, so it counts as a miss on
+    every call.
+    """
     return _CACHE.stats

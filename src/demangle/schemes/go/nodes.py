@@ -36,8 +36,8 @@ class _Go(Node):
         return "".join(render(part) for part in self.parts)
 
     def spell(self, declarator="", style=None):
-        # Accepted to match `Node.spell` and ignored: Go has no declarator position, and
-        # the output styles exist only where the two C++ references disagree.
+        # Go has no declarator position and styles only differ for C++; accepted to
+        # match `Node.spell`.
         return rendered(self.render)
 
     def build(self, builder):

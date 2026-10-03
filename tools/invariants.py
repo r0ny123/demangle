@@ -4,12 +4,11 @@
 `tools/mutate.py` asks a reference demangler what a mutant means. Some properties have
 no reference to ask, because they are about this package rather than about the scheme:
 
-  * A style is a spelling policy. Whether a name parses at all must not depend on it --
-    and it did, for twelve names in the corpora, because the GNU style resolves a
-    `<template-param>` inside a requires-clause where the llvm style spells it
-    symbolically, and refused the name where nothing was bound. `std::pair`'s
-    constrained constructor, which is what GCC 13 emits for the real `std::pair`, read
-    under `--style llvm` and came back mangled under `--style gnu`.
+  * A style is a spelling policy. Whether a name parses at all must not depend on it.
+    The GNU style resolves a `<template-param>` inside a requires-clause where the llvm
+    style spells it symbolically, so it can refuse a name where nothing is bound;
+    `std::pair`'s constrained constructor, which GCC 13 emits, is the case that
+    exposes it.
   * The tree and the text are one stream. `parse(name).spell()` is what `demangle(name)`
     returns, in every style; `tests/test_conformance.py` checks that over the corpora and
     this checks it over names no compiler wrote.
@@ -19,18 +18,15 @@ no reference to ask, because they are about this package rather than about the s
     table gets a verdict, not a traceback.
 
 The mutation operators are `tools/mutate.py`'s. The seeds are not: that tool can only
-damage names it has a reference to ask about, which is five schemes of the fourteen, and
-none of these invariants needs one. So this seeds from *every* conformance corpus --
-Swift, Nim, Free Pascal, Delphi, Go, Objective-C and JNI included, none of which had ever
-been fuzzed -- and takes each corpus's own characters as the alphabet to draw
+damage names it has a reference to ask about, which is seven schemes of the fourteen,
+and none of these invariants needs one. So this seeds from *every* conformance corpus --
+Nim, Free Pascal, Delphi, Go, Objective-C, JNI and CodeWarrior included, which nothing
+else fuzzes -- and takes each corpus's own characters as the alphabet to draw
 substitutions from, which is the alphabet its scheme actually writes.
 
 Exit status is non-zero when any invariant fails.
 
-The draw is seeded, so a finding reproduces exactly. The three defects this was written
-for were all the first invariant, and `--seed 1 --count 20000 --corpus itanium-libcxxabi`
-reports them on the parser as it stood before the fix and nothing on the parser as it is:
-that is what says the instrument works, rather than that it is quiet.
+The draw is seeded, so a finding reproduces exactly.
 
 Usage
 -----
@@ -55,10 +51,7 @@ from demangle.core.errors import DemanglingError
 
 CONFORMANCE = Path(__file__).resolve().parent.parent / "tests" / "conformance"
 
-#: How many seeds contribute to the alphabet. Every corpus here is homogeneous -- one
-#: scheme, one mangler -- so the characters of the first few thousand names are the
-#: characters of all of them, and reading every one of 35,000 to build a set of forty
-#: is work for nothing.
+#: Each corpus is homogeneous, so the first few thousand names already cover its alphabet.
 _ALPHABET_SAMPLE = 2000
 
 #: What a mutant is offered, beyond `demangle` itself. Each is a call and the name it is
@@ -113,7 +106,7 @@ def problems_with(name):
 def corpora(pattern=None):
     """Every conformance corpus as `(name, seeds, alphabet)`, longest names first."""
     found = []
-    for path in sorted(CONFORMANCE.iterdir()):
+    for path in sorted([*CONFORMANCE.iterdir(), *(CONFORMANCE / "reported").glob("*.txt")]):
         if path.suffix == ".gz":
             text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
         elif path.suffix == ".txt":

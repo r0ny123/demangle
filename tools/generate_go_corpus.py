@@ -28,8 +28,6 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from demangle.schemes.go._parser import escape_path, parse_go_symbol  # noqa: E402
 
-#: Binaries to read. The Go toolchain ships several, and between them they cover the
-#: standard library, the compiler's own generics, and the linker's generated symbols.
 DEFAULT_BINARIES = [
     "/usr/local/go/bin/go",
     "/usr/local/go/pkg/tool/linux_amd64/compile",
@@ -37,12 +35,8 @@ DEFAULT_BINARIES = [
 ]
 
 
-#: A module built for the corpus, checked in under tools/corpus_sources/go. The shipped
-#: toolchain contains no escaped symbol at all -- every package path in it is clean ASCII
-#: with no dot after the last slash -- so a corpus read only from it would exercise
-#: everything except the part that is actually encoded. This module has a package
-#: directory called `v2.5` and another called `weird.pkg.name`, and identifiers with
-#: non-ASCII in them.
+#: The shipped toolchain contains no escaped symbol at all, so this module supplies them:
+#: package directories `v2.5` and `weird.pkg.name`, and non-ASCII identifiers.
 CORPUS_SOURCE = ROOT / "tools" / "corpus_sources" / "go"
 
 
@@ -71,7 +65,7 @@ def symbols(binary):
 
     The name is everything after the type letter, spaces included -- a generic
     instantiation over a struct shape is written `go.shape.struct { X int }`, and taking
-    the last whitespace-separated field of that line kept `}`.
+    the last whitespace-separated field of that line would keep `}`.
     """
     result = subprocess.run(["nm", binary], capture_output=True, text=True)
     if result.returncode != 0:

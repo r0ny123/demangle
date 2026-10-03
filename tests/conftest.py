@@ -12,9 +12,8 @@ CONFORMANCE = Path(__file__).parent / "conformance"
 def load_corpus(name):
     """Read (mangled, expected) pairs from a conformance file.
 
-    A corpus may be stored gzipped. libcxxabi's is 5MB of text and 580KB compressed, and
-    a source repository is a bad place to keep four and a half megabytes that gzip would
-    have removed; nothing else about it changes.
+    A corpus may be stored gzipped: libcxxabi's is 5MB of text and 580KB compressed, so
+    it is kept compressed. The format inside is the same.
     """
     path = CONFORMANCE / name
     if path.exists():
@@ -32,6 +31,13 @@ def load_corpus(name):
         mangled, expected = line.split("\t", 1)
         pairs.append((mangled, expected))
     return pairs
+
+
+def corpus_files():
+    """Every corpus, named as `load_corpus` takes it: the checked-in ones and `reported/`."""
+    names = {path.name.removesuffix(".gz") for path in CONFORMANCE.glob("*.txt*")}
+    names.update(f"reported/{path.name}" for path in (CONFORMANCE / "reported").glob("*.txt"))
+    return sorted(names)
 
 
 def reference_available(tool):

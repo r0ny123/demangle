@@ -1,12 +1,8 @@
-//! One symbol per line in, one spelling per line out; a name it cannot read comes back
-//! unchanged. That is the shape `llvm-cxxfilt` and `c++filt` answer in, so the
-//! differential tools can ask this the same way they ask those.
+//! One symbol per line in, one spelling per line out (unreadable names unchanged).
 //!
-//! `{:#}` is rustc-demangle's own "no hash" formatting -- `foo` rather than
-//! `foo::h05af221e174051e9` -- which is what `rustfilt` prints and what this library
-//! spells by default. `--keep-hash` asks for `{}` instead, which is the other half of
-//! the same choice and what `demangle --keep-hash` is scored against: the legacy
-//! scheme's trailing `17h<16 hex>` component, spelled rather than dropped.
+//! `{:#}` is rustc-demangle's "no hash" formatting, as `rustfilt` prints and this library
+//! spells by default; `--keep-hash` asks for `{}`, which `demangle --keep-hash` is scored
+//! against.
 
 use std::io::{self, BufRead, Write};
 

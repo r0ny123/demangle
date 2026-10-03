@@ -32,8 +32,7 @@ class _Objc(Node):
         return "".join(part if isinstance(part, str) else part.render() for part in self.parts)
 
     def spell(self, declarator="", style=None):
-        # Accepted to match `Node.spell` and ignored: the declarator position is a C++
-        # notion and Objective-C has none.
+        # `declarator` is a C++ notion; accepted to match `Node.spell`.
         return rendered(self.render)
 
     def build(self, builder):

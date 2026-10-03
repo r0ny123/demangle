@@ -7,7 +7,8 @@ of real typerefs recorded from the Swift 5.10.1 runtime -- the bytes, the fragme
 reference resolved to, and the spelling.
 
 Every fragment in that corpus was checked against the symbol the *linker* put at the same
-address, with `swift-demangle` reading both sides: 4,528 of 4,528. Neither side of that
+address, with `swift-demangle` reading both sides: 4,528 of 4,528 in the wider set
+measured, of which the corpus committed here holds 268 names. Neither side of that
 check is this library's opinion.
 """
 
@@ -107,8 +108,8 @@ class TestFindingWhereANameEnds:
         assert end_of_name(b"ab\x01\x17") == 4
 
     def test_a_start_outside_the_blob_is_refused_as_read_refuses_it(self):
-        """A negative start indexed from the end, or raised `IndexError`; the end itself
-        is a fine place to start and finds nothing."""
+        """A start before the blob or past its end is a `ValueError`, as in `read`; the
+        end itself is a fine place to start and finds nothing."""
         for start in (-1, -5, 4):
             with pytest.raises(ValueError):
                 end_of_name(b"abc", start=start)
@@ -117,8 +118,8 @@ class TestFindingWhereANameEnds:
 
 class TestAResolverThatAnswersItself:
     """A fragment a resolver hands back may hold references of its own, and each is
-    resolved in turn; one that names another without end used to recurse until the
-    interpreter gave up, and `demangle_symbolic` let the `RecursionError` out."""
+    resolved in turn; one that names another without end must not recurse until the
+    interpreter gives up and `demangle_symbolic` lets the `RecursionError` out."""
 
     REFERENCE = b"\x01\x00\x00\x00\x00"
 

@@ -86,43 +86,30 @@ class ObjcSymbol:
         #: `(index, parent)` for a block invocation function, else None.
         self.block = block
         #: Whether another reading of a GNU-family method name re-mangles to the same
-        #: symbol. Never true for the Apple form, which is unambiguous.
+        #: symbol. Never true for the Apple form.
         self.ambiguous = ambiguous
 
     def __repr__(self):  # pragma: no cover - debugging aid
         return f"ObjcSymbol({self.raw!r}, {self.text!r}, {self.kind!r})"
 
 
-#: An Objective-C class, category, protocol or selector-slot identifier.
-#:
-#: `$` is deliberately not in it, although clang accepts one in an identifier as an
-#: extension. It is the separator these very symbols are built from -- `OBJC_CLASS_$_` --
-#: so allowing it in a name means `_OBJC_CLASS_$_` with no class at all reads as a class
-#: called `$_`, by matching the shorter `OBJC_CLASS_` prefix that the fragile ABI uses.
+#: `$` is deliberately excluded although clang accepts it: it is the separator these
+#: symbols are built from, and allowing it reads `_OBJC_CLASS_$_` as a class `$_`.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-#: A selector: identifier slots, each followed by `:` when the selector takes arguments,
-#: or a single identifier when it takes none.
 _SELECTOR = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*)?(?::(?:[A-Za-z_][A-Za-z0-9_]*)?)*$")
 
-#: Selectors clang writes for the C++ special members it synthesises on an Objective-C
-#: class that has C++ instance variables. They are the only selectors that open on a
-#: `.`, and they take no arguments.
+#: Selectors clang synthesises for C++ ivars; the only ones that open on a `.`.
 _CXX_SPECIAL_SELECTORS = frozenset({".cxx_construct", ".cxx_destruct"})
 
-#: `[-+][ClassName(CategoryName) selector]` -- clang's `mangleObjCMethodName` for the
-#: Apple runtimes, which is also what every crash log and debugger shows.
+#: clang's `mangleObjCMethodName` for the Apple runtimes.
 _APPLE_METHOD = re.compile(r"^([-+])\[([A-Za-z_][A-Za-z0-9_]*)(?:\(([A-Za-z_][A-Za-z0-9_]*)\))? ([^]]*)\]$")
 
-#: `__<outer>_block_invoke` or `__<outer>_block_invoke_<n>`, from `mangleFunctionBlock`.
-#: `<outer>` is the enclosing function's name, and for an Objective-C method it is
-#: written by `mangleObjCMethodNameAsSourceName` as its own length followed by its text
-#: -- which is what makes the two tellable apart, since no C identifier begins with a
-#: digit.
+#: `mangleFunctionBlock`. For a method, `<outer>` is length-prefixed
+#: (`mangleObjCMethodNameAsSourceName`), which no C identifier can be.
 _BLOCK = re.compile(r"^__(.+)_block_invoke(?:_([0-9]+))?$")
 
-#: What a block written in a C++ function starts with: the block's own underscore, and
-#: the enclosing function's `_Z` -- or `__Z`, where the symbol table added one as well.
+#: A block in a C++ function: the block's `_`, then `_Z` (or `__Z` from the symbol table).
 _CXX_BLOCK = ("___Z", "____Z")
 
 
@@ -149,8 +136,7 @@ def mangle_gnu_method(is_class_method, class_name, category, selector):
     accepted when re-mangling it reproduces the symbol.
     """
     slots = selector.split(":")
-    # A selector with arguments: every slot is followed by the `_` that stands in for its
-    # `:`. `split` leaves a trailing empty piece, which is that last colon.
+    # Each slot's `:` becomes `_`; `split` leaves a trailing empty piece for the last one.
     body = "".join(f"{slot}_" for slot in slots[:-1]) if slots[-1] == "" else selector
     return f"{'_c_' if is_class_method else '_i_'}{class_name}_{category}_{body}"
 
@@ -173,20 +159,9 @@ def _apple_method(name):
     )
 
 
-#: Candidate splits `gnu_method_readings` will weigh before it stops looking.
-#:
-#: The search is over pairs of underscore positions, so it is quadratic in how many
-#: underscores the body holds, and an unbounded quadratic over attacker-controlled input
-#: is a denial of service rather than a slow path. It was one: `_i_` followed by `a_`
-#: eight hundred times took 28 seconds, and the same shape at the default `max_input`
-#: would have run for days -- long enough that a single crafted symbol hangs any tool
-#: that walks a symbol table.
-#:
-#: The bound costs nothing real. A GNU-runtime method symbol is `_i_<class>_<category>_
-#: <selector>`, and the underscores in it are separators and colons; the most any symbol
-#: in the shipped Objective-C runtime carries is six. A body with more than this many is
-#: not a method whose reading anyone could trust -- it has more readings than a reader
-#: could distinguish -- so declining to enumerate them loses nothing a caller wanted.
+#: The pair search is quadratic in underscores over attacker-controlled input, so it is
+#: bounded (`_i_` + `a_` * 800 is enough to make an unbounded search crawl). Real
+#: GNU-runtime method symbols carry at most six.
 _MAX_SEPARATORS = 64
 
 
@@ -231,11 +206,8 @@ def gnu_method_readings(name, limit=None):
     if not body:
         return []
 
-    # Separator positions, once. Both passes below walk these rather than every
-    # character, and -- the part that matters -- the selector for a given tail is read
-    # once per position instead of once per (class, category) pair. It never depended on
-    # where the class ended; recomputing it there is what made this cubic rather than
-    # quadratic, since each recomputation slices and re-scans the whole tail.
+    # The selector for a tail is read once per position, not once per (class, category)
+    # pair; recomputing it there would make the search cubic.
     marks = [index for index, char in enumerate(body) if char == "_"][:_MAX_SEPARATORS]
     tails = {}
 
@@ -253,8 +225,7 @@ def gnu_method_readings(name, limit=None):
             found = tails[mark] = (selector,)
         return found[0]
 
-    # Longest class prefix worth trying. Once a prefix is not an identifier no longer
-    # prefix is either, so the scan stops there rather than at the end of the body.
+    # Once a prefix is not an identifier, no longer prefix is either.
     stop = len(body)
     for mark in marks:
         if mark and not _IDENTIFIER.match(body[:mark]):
@@ -267,9 +238,7 @@ def gnu_method_readings(name, limit=None):
         readings.append((class_name, category or None, selector))
         return limit is not None and len(readings) >= limit
 
-    # Pass one: readings with no category, which are preferred and are also the cheap
-    # ones -- an empty category field means the two separators around it fell together,
-    # so the category's end is the class's end plus one and there is no pair to search.
+    # Pass one: no category, preferred and cheap (no pair to search).
     for mark in marks:
         if mark == 0 or mark >= stop:
             continue
@@ -279,8 +248,7 @@ def gnu_method_readings(name, limit=None):
         if selector is not None and take(body[:mark], "", selector):
             return readings
 
-    # Pass two: readings that need a category. Only now is the pair search worth paying
-    # for, and `marks` has already been cut to a length that keeps it affordable.
+    # Pass two: readings that need a category, over the already-bounded `marks`.
     for class_end in marks:
         if class_end == 0 or class_end >= stop:
             continue
@@ -304,9 +272,7 @@ def spell_method(is_class_method, class_name, category, selector):
 
 
 def _gnu_method(name):
-    # Two readings, not every reading: the spelling comes from the best one and
-    # `ambiguous` only asks whether a second exists. Enumerating the rest is the
-    # quadratic half of the search, done for an answer nobody reads.
+    # `ambiguous` only asks whether a second reading exists.
     readings = gnu_method_readings(name, limit=2)
     if not readings:
         return None
@@ -351,9 +317,7 @@ def _block(name):
     while digits < len(outer) and outer[digits].isdigit():
         digits += 1
     if digits:
-        # `mangleObjCMethodNameAsSourceName` writes the method's length and then the
-        # method, so the count has to match exactly -- that is what stops a C function
-        # called `12foo` (which C cannot name anyway) being read as a method.
+        # The count must match exactly, or a C function called `12foo` reads as a method.
         length = int(outer[:digits])
         if length != len(outer) - digits:
             return None
@@ -374,10 +338,8 @@ def _block(name):
     )
 
 
-#: Apple runtime data symbols that name one class, protocol or category, longest prefix
-#: first so that `OBJC_CLASS_RO_$_` is not read as a class called `RO_$_...`. The value
-#: is how the symbol is spelled and what it names: `class`, `category` or `plain`.
-#: Transcribed from `CGObjCMac.cpp`.
+#: Apple runtime data symbols, from `CGObjCMac.cpp`, longest prefix first so that
+#: `OBJC_CLASS_RO_$_` is not read as a class `RO_$_...`.
 _APPLE_PREFIXES = (
     ("OBJC_CLASSLIST_REFERENCES_$_", "Objective-C class reference", "plain"),
     ("OBJC_CLASSLIST_SUP_REFS_$_", "Objective-C superclass reference", "plain"),
@@ -432,8 +394,7 @@ _APPLE_PREFIXES = (
     ("OBJC_PROTOCOL_", "Objective-C protocol ", "class"),
     ("OBJC_METACLASS_", "Objective-C metaclass ", "class"),
     ("OBJC_CLASS_", "Objective-C class ", "class"),
-    # GCC's own Objective-C front end, whose names are mixed case where clang's are
-    # upper. Transcribed from the shipped `libobjc.a`, which is what it produced.
+    # GCC's own Objective-C front end (mixed case), from the shipped `libobjc.a`.
     ("_OBJC_ClassName_", "Objective-C class name ", "class"),
     ("_OBJC_ClassIvars_", "class variable list for ", "class"),
     ("_OBJC_ClassMethods_", "class method list for ", "class"),
@@ -448,8 +409,7 @@ _APPLE_PREFIXES = (
     ("OBJC_CLASS_NAME_", "Objective-C class name ", "counted"),
     ("OBJC_PROP_NAME_ATTR_", "property name or attribute ", "counted"),
     # GNUstep, from `CGObjCGNU.cpp`. `__objc_ivar_offset_` carries the ivar's type
-    # encoding after a second stop in the v2 ABI and nothing after the first in v1;
-    # `_value_` is the variable the offset itself lives in.
+    # encoding after a second stop in the v2 ABI.
     ("__objc_ivar_offset_value_", "instance variable offset value for ", "gnu-ivar"),
     ("__objc_ivar_offset_", "instance variable offset for ", "gnu-ivar"),
     ("__objc_class_name_", "Objective-C class ", "class"),
@@ -466,7 +426,7 @@ _APPLE_PREFIXES = (
     (".objc_protocol_name_", "Objective-C protocol ", "class"),
 )
 
-#: Whole symbols with nothing after them. These name a section rather than an entity.
+#: Whole symbols with nothing after them; they name a section, not an entity.
 _APPLE_LABELS = {
     "OBJC_LABEL_CLASS_$": "Objective-C class list",
     "OBJC_LABEL_CATEGORY_$": "Objective-C category list",
@@ -522,14 +482,11 @@ _APPLE_LABELS = {
     "__objc_constant_string": "Objective-C constant string",
 }
 
-#: The linker's bounds for a GNUstep runtime section. Not compiler output, but they
-#: appear in every such binary and say plainly which section they bound.
+#: The linker's GNUstep section bounds: not compiler output, but in every such binary.
 _SECTION_BOUNDS = re.compile(r"^__(start|stop)___objc_([a-z_]+)$")
 
-#: What `GetSymbolNameForTypeEncoding` in `CGObjCGNU.cpp` substitutes so that an ObjC
-#: type encoding can be spelled inside a symbol name: `@` marks a version in an ELF
-#: symbol and `=` breaks lld on Windows, so each is written as a control byte that no
-#: encoding can otherwise contain.
+#: `GetSymbolNameForTypeEncoding` in `CGObjCGNU.cpp`: `@` (ELF versions) and `=` (breaks
+#: lld on Windows) are written as control bytes.
 _ENCODING_SUBSTITUTIONS = {"\x01": "@", "\x02": "="}
 
 
@@ -540,8 +497,7 @@ def decode_type_encoding(text):
     return text
 
 
-#: A `.<n>` or `.<n>.<n>` the assembler appends to make repeated labels unique. It is
-#: not part of any name, and neither runtime means anything by it beyond "another one".
+#: The assembler's `.<n>` / `.<n>.<n>` uniquing suffix; not part of any name.
 _UNIQUING_SUFFIX = re.compile(r"\.[0-9]+$")
 
 
@@ -558,8 +514,7 @@ def _labelled(name):
         base, suffix = base[: found.start()], base[found.start() :]
     spelled = _APPLE_LABELS.get(base)
     if spelled is None and base.startswith("__block_descriptor_"):
-        # `__block_descriptor_<size>[_<flags>]_<signature>`: a layout key rather than a
-        # name, so it is reported as what it is and not taken apart.
+        # A layout key rather than a name, so it is not taken apart.
         spelled = "block descriptor"
         suffix = ""
     if spelled is None:
@@ -580,8 +535,7 @@ def _prefixed(name):
 
 def _from_prefix(name, rest, label, shape):
     if shape == "plain":
-        # `OBJC_SELECTOR_REFERENCES_` and friends name nothing; anything after them is
-        # the assembler's uniquing counter.
+        # These name nothing; anything after them is the assembler's uniquing counter.
         if rest and not rest.startswith("."):
             return None
         return ObjcSymbol(name, label + (f" #{rest[1:]}" if rest else ""), "reference")
@@ -592,8 +546,7 @@ def _from_prefix(name, rest, label, shape):
         return ObjcSymbol(name, label + rest, "selector", runtime="gnu", selector=rest)
 
     if shape == "counted":
-        # A string-table entry, numbered by the compiler rather than named. An empty
-        # tail is the first one, which GCC writes without a number.
+        # A numbered string-table entry; GCC writes the first without a number.
         if rest and not rest.isdigit():
             return None
         return ObjcSymbol(name, label + (f"#{rest}" if rest else "#0"), "label")
@@ -604,9 +557,8 @@ def _from_prefix(name, rest, label, shape):
         return ObjcSymbol(name, label + decode_type_encoding(rest), "encoding", runtime="gnu")
 
     if shape == "selector-and-types":
-        # `.objc_selector_<selector>_<type encoding>`. Split from the right, because the
-        # encoding holds no underscore unless it names a struct and the selector often
-        # does; the first split whose left half is a selector wins.
+        # Split from the right: the encoding holds no underscore unless it names a
+        # struct, and the selector often does.
         splits = [
             stop
             for stop in range(len(rest) - 1, 0, -1)
@@ -626,8 +578,7 @@ def _from_prefix(name, rest, label, shape):
         )
 
     if shape == "ivar":
-        # `OBJC_IVAR_$_<class>.<ivar>`: the class cannot hold a stop, so the first one
-        # is the separator.
+        # A class name cannot hold a stop, so the first one is the separator.
         stop = rest.find(".")
         if stop <= 0:
             return None
@@ -639,8 +590,7 @@ def _from_prefix(name, rest, label, shape):
         )
 
     if shape == "gnu-ivar":
-        # v1 writes `<class>.<ivar>`, v2 appends `.<type encoding>`. The encoding is not
-        # a name and is not spelled; it is kept out of the ivar rather than glued on.
+        # v2 appends `.<type encoding>`, which is kept out of the ivar.
         pieces = rest.split(".")
         if len(pieces) not in (2, 3):
             return None
@@ -650,11 +600,8 @@ def _from_prefix(name, rest, label, shape):
         return ObjcSymbol(name, f"{label}{class_name}.{ivar}", "ivar", runtime="gnu", class_name=class_name, ivar=ivar)
 
     if shape == "category":
-        # `<class>_$_<category>` on the non-fragile ABI, where the separator cannot occur
-        # inside either name, and a bare `<class>_<category>` on the fragile one, where
-        # it can. The first is unambiguous and is tried first; the second is split at its
-        # leftmost underscore, which is right for a class name that holds none, and
-        # `ambiguous` records when another split would have worked too.
+        # `_$_` (non-fragile ABI) cannot occur in either name and is tried first; the
+        # fragile `_` is split at its leftmost and `ambiguous` records alternatives.
         marker = rest.find("_$_")
         if marker > 0:
             class_name, category = rest[:marker], rest[marker + 3 :]
@@ -712,12 +659,8 @@ def parse_objc_symbol(name):
     if not name:
         raise DemangleFailure("empty name")
     if name.startswith(_CXX_BLOCK):
-        # `__` and a C++ function's Itanium encoding: a block written in that function.
-        # It is shaped like an Objective-C block, and reading it as one hands the
-        # encoding back unspelled -- `block #1 in Z3foov` where the C++ scheme, which
-        # has the production, reads `invocation function for block in foo()`. Refused
-        # here rather than un-preferred in the registry, because being able to parse a
-        # name is what claims it and this scheme cannot parse this one.
+        # A block in a C++ function: the C++ scheme has the production and spells it
+        # (`invocation function for block in foo()`); this one would not.
         raise DemangleFailure("a C++ block invocation function, not an Objective-C one")
     for candidate in _candidates(name):
         for reader in _READERS:
@@ -731,7 +674,8 @@ def parse_objc_symbol(name):
     raise DemangleFailure("not an Objective-C symbol")
 
 
-#: The two method manglings whose shape is an ordinary C identifier. See `detect`.
+#: The two method manglings shaped like an ordinary C identifier. Measured, not reasoned:
+#: over ~740,000 real symbols they claim five, all real methods in the shipped `libobjc.a`.
 _METHOD_PREFIXES = ("_i_", "_c_")
 
 
@@ -740,15 +684,12 @@ def _method_prefixed(name):
 
     The same question as `any(c.startswith(_METHOD_PREFIXES) for c in _candidates(name))`
     and the same answer, without building the list: `detect` is offered every symbol in
-    a binary and this was two thirds of what it cost -- 1.13us a name over the shipped
-    libstdc++, of which 0.57 was `_candidates` and most of the rest the generator over
-    it. Every strip that production makes is one or two characters off the front, so the
-    offsets are what it does, written out.
+    a binary, so the list is not worth allocating. Every strip that production makes is
+    one or two characters off the front, so the offsets are what it does, written out.
     """
     if name.startswith(_METHOD_PREFIXES):
         return True
     opening = name[:2]
-    # `.` and `_` each strip one character; `l_`, `L_` and `._` strip two.
     if (opening[:1] == "." or opening[:1] == "_") and name.startswith(_METHOD_PREFIXES, 1):
         return True
     return opening in ("l_", "L_", "._") and name.startswith(_METHOD_PREFIXES, 2)
@@ -760,10 +701,8 @@ def _candidates(name):
     if name[:2] in ("l_", "L_"):
         found.append(name[2:])
     if name.startswith("."):
-        # An ELF object built for the GNUstep runtime carries `._OBJC_CLASS_Foo`: the
-        # stop is the assembler's, not the compiler's. `.objc_class_name_Foo` really
-        # does begin with one, which is why the undotted form is tried first and the
-        # name itself second rather than instead.
+        # GNUstep ELF objects carry `._OBJC_CLASS_Foo`, but `.objc_class_name_Foo` really
+        # begins with a stop, so the name itself is tried second rather than dropped.
         found.append(name[1:])
         if name.startswith("._"):
             found.append(name[2:])
@@ -773,18 +712,6 @@ def _candidates(name):
     return [candidate for candidate in found if candidate]
 
 
-#: `_i_`/`_c_` is the form that had to be measured rather than reasoned about: it is
-#: shaped like an ordinary C identifier, and if plain C symbols matched it this scheme
-#: would rewrite names it has no business rewriting. Over 375,190 symbols from 400 shared
-#: libraries and archives on a Linux system, plus the 368,633 in this package's own
-#: corpora and the shipped libstdc++, libLLVM, libclang-cpp and Swift runtime, it claims
-#: exactly five -- `-[Object class]`, `-[Object isEqual:]`, `-[Protocol isEqual:]`,
-#: `-[NXConstantString cString]` and `-[NXConstantString length]` -- every one a real
-#: Objective-C method in the shipped `libobjc.a`. A reading must still re-mangle to the
-#: symbol, so being shaped right claims nothing on its own.
-#: What a name must say somewhere for the parse to be tried at all. The last two are the
-#: `__block_literal_global` and `__block_descriptor` forms the parse reads; without them
-#: on the screen, `detect` refused what `parse` accepted.
 _SCREEN_MARKERS = ("objc", "OBJC", "_block_invoke", "block_literal", "block_descriptor")
 
 
@@ -799,10 +726,11 @@ def detect(name):
     The markers are tested one by one rather than through `any(...)` over
     `_SCREEN_MARKERS`. This plugin declares `_` among its first characters, so it is
     offered every underscore-prefixed symbol in a binary -- 85% of the benchmark corpus
-    -- and the generator cost six interpreter frames per name to run five membership
-    tests that are each a single C-level scan. Written out it is the same five scans in
-    the same short-circuiting order, and no frames at all: 71,778 calls off the cold
-    corpus. `_SCREEN_MARKERS` stays as the documentation of what the screen is.
+    -- and the generator would cost six interpreter frames per name to run five
+    membership tests that are each a single C-level scan. Written out it is the same
+    five scans in the same short-circuiting order, and no frames at all: 71,778 calls
+    fewer over the cold corpus. `_SCREEN_MARKERS` stays as the documentation of what the
+    screen is.
     """
     if not name:
         return False

@@ -30,12 +30,7 @@ TMPLCODE = "%"
 
 DIGITS = frozenset(string.digits)
 
-#: Single-character code sets, every one a frozenset rather than a string. `peek` and
-#: `advance` answer `""` at end of input, and `"" in "xw"` is True for a *string* -- an
-#: empty substring is a substring of everything. Written that way, the qualifier loop in
-#: `copy_args` never terminated on a name whose argument list ended in `x` or `w`, and
-#: the indirection test read the end of the input as a pointer. `"" in frozenset("xw")`
-#: is False, which is the question these are actually asking.
+#: Frozensets, not strings: `peek` answers `""` at end of input, and `"" in "xw"` is True.
 _CV_CODES = frozenset("xw")
 _INDIRECTION_CODES = frozenset("Mrhp")
 _CLOSURE_CODES = frozenset("fn")
@@ -44,8 +39,7 @@ _TEMPLATE_VALUE_CODES = frozenset("jge")
 _THUNK_CODES = frozenset("vd")
 _STRUCTOR_CODES = frozenset("cd")
 _FUNCTION_CODES = frozenset("qxw")
-#: What `int(digit, 36)` accepts. A back-reference index is one base-36 digit, and any
-#: other byte there is a malformed name, not a `ValueError` out of the parser.
+#: A back-reference index is one base-36 digit; anything else is a malformed name.
 _BASE36 = frozenset(string.digits + string.ascii_letters)
 
 KIND_FUNCTION = "function"
@@ -59,8 +53,8 @@ KIND_VTABLE = "vtable"
 KIND_THUNK = "thunk"
 KIND_LINKPROC = "linkproc"
 
-#: Special names after `$b`, from `unmangle.c`. Class constructor/destructor are written
-#: the way IDA spells them, after stripping the `operator ` the unmangler first emits.
+#: Special names after `$b`, from `unmangle.c`. Class constructor/destructor are spelled
+#: as IDA does, without the unmangler's `operator ` prefix.
 OPERATORS = {
     "add": "+",
     "adr": "&",
@@ -123,14 +117,11 @@ DELPHI4_TEMPLATE = re.compile(r"^(Set|DynamicArray|SmallString|DelphiInterface)\
 
 #: `@name@12` is MSVC 32-bit fastcall, not a Delphi export.
 _MSVC_FASTCALL = re.compile(r"^@[^$]*@\d+$")
-#: `@@InitExe` is a linker procedure with no type encoding. `@@bug@@x` is not.
+#: `@@InitExe` is a linker procedure with no type encoding.
 _LINKPROC_BARE = re.compile(r"^@@[A-Za-z_][A-Za-z0-9_]*$")
 
-#: Every character a Borland export is made of, and nothing else: Pascal identifiers --
-#: letters, digits and `_` -- with the encoding's own markers, `@` between qualifiers,
-#: `$` opening a type, `%` a template, and `&` and `#` inside a generated name. Measured
-#: over the 11,484 recorded exports in `tests/conformance/delphi-*.txt`, which use these
-#: and no others. `detect` screens on it; see there for what was claimed without it.
+#: Pascal identifier characters plus the encoding's markers (`@`, `$`, `%`, `&`, `#`), as
+#: measured over `tests/conformance/delphi-*.txt`. `detect` screens on it.
 _SYMBOL_CHARACTERS = re.compile(r"[A-Za-z0-9_@$%&#]+")
 
 _TABLE_KIND = {
@@ -427,8 +418,7 @@ class _Parser:
             if hasret or callconv or regconv:
                 self.copy_return_type(start, callconv, regconv, hasret)
         elif char in (ARGLIST, TMPLCODE) or not char:
-            # `$` and `%` terminate an argument list; they are not types. Treating them
-            # as a no-op left the cursor unmoved, so `copy_args` called us forever.
+            # `$` and `%` terminate an argument list; a no-op here would loop `copy_args`.
             raise DemangleFailure("unknown type")
         else:
             raise DemangleFailure(f"unknown type {char!r}")
@@ -490,8 +480,7 @@ class _Parser:
                 if self.pos == before:
                     raise DemangleFailure("unknown type")
                 if char == "v" and (not is_first or self.peek() not in (end, "")):
-                    # `void` on its own is the empty list; beside other types it is
-                    # nothing at all, which the trailing comma would then betray.
+                    # `void` alone is the empty list; beside other types it is invalid.
                     raise DemangleFailure("void is not an argument type")
             table[-1][1] = len(self.buf) - table[-1][0]
             char = self.peek()
@@ -642,11 +631,8 @@ class _Parser:
             if char == QUALIFIER:
                 self.advance()
                 self.buf += "__linkproc__ "
-                # `System::__linkproc__ __fastcall AbstractError()` is what the
-                # unmangler prints: the convention is inserted at `namebase`, and the
-                # marker is part of the qualification in front of it, so the base moves
-                # past it. Left where `finish` set it, the convention landed in front of
-                # the whole name on all 163 `__linkproc__` exports in a TDUMP dump.
+                # The convention goes after `__linkproc__`, as the unmangler prints
+                # `System::__linkproc__ __fastcall AbstractError()`.
                 self.namebase = len(self.buf)
                 self.copy_name(False)
                 self.kind = KIND_LINKPROC
@@ -698,9 +684,7 @@ class _Parser:
                     self.set_qual = False
                     self.copy_type(len(self.buf), arglvl=False)
                     self.set_qual = saved
-                    # Leave the following `$` for `finish`, the same way a constructor
-                    # leaves `$qqrv`. Consuming it here made `qv` look like junk in the
-                    # name, so conversion operators from real BPLs never parsed.
+                    # Leave the `$` for `finish`, as a constructor leaves `$qqrv`.
                     if self.peek() != ARGLIST:
                         raise DemangleFailure("bad conversion operator")
                     self.kind = KIND_CONVERSION
@@ -798,13 +782,9 @@ class _Parser:
         elif self.vtbl_flags:
             self.buf += " (" + ", ".join(self.vtbl_flags) + ")"
 
-        # No rewriting of the finished text. `copy_return_type` already inserts the
-        # calling convention where the unmangler puts it, and a duplicated qualifier --
-        # `SetFlat(const const bool)` for `qqrxo` -- is what the unmangler prints, from
-        # `copy_args` emitting `const ` and the type spelling it again. Collapsing it
-        # here, and hoisting `__fastcall` to the front afterwards, moved 692 of 11,363
-        # real exports away from the reference; both also ran `str.replace` over the
-        # whole spelling, where an identifier holding the same text is not safe.
+        # No rewriting of the finished text: the unmangler itself prints duplicated
+        # qualifiers (`SetFlat(const const bool)`), and collapsing them would move
+        # hundreds of real exports away from the reference.
         text = self.buf
         if self.pos != self.length:
             raise DemangleFailure("unconsumed input")
@@ -812,7 +792,10 @@ class _Parser:
 
 
 def parse_delphi_symbol(name, limits=DEFAULT_LIMITS):
-    """Parse `name`, returning a `DelphiSymbol`, or raise `DemangleFailure`."""
+    """Parse `name`, returning a `DelphiSymbol`, or raise `DemangleFailure`.
+
+    A name that exceeds `limits` raises `LimitExceeded` instead.
+    """
     if not name or name[0] != "@":
         raise DemangleFailure("not a Delphi mangled name")
     if _MSVC_FASTCALL.match(name):
@@ -852,28 +835,23 @@ def detect(name):
     A `?` is refused for the same reason and a stronger one: no Borland production
     writes one -- there is none in any of the 11,363 recorded exports -- and it is *the*
     MSVC marker, so a name carrying one that reaches this scheme is a piece of somebody
-    else's. This copies characters through rather than checking an alphabet, so it read
-    them: `demangle_text` over a listing tokenises `??R<lambda_1>@?0??define_lambda@@YAHXZ@QBE@XZ`
-    at the angle brackets it cannot hold, and the `@?0??define_lambda@@YAHXZ@QBE@XZ` left
-    over came back as `?0??define_lambda::__linkproc__ YAHXZ::QBE::XZ` -- a Delphi
-    declaration built out of half an MSVC symbol. Asked for by language it is still read;
-    what this decides is whether to claim a name nobody said was Delphi's.
+    else's. This scheme copies characters through rather than checking an alphabet, so
+    it would read the `@?0??define_lambda@@YAHXZ@QBE@XZ` left over when `demangle_text`
+    tokenises an MSVC lambda name at its angle brackets as a Delphi declaration built
+    out of half an MSVC symbol. Asked for by language it is still read; what this
+    decides is whether to claim a name nobody said was Delphi's.
 
-    The same copying-through is why the alphabet is checked as a whole rather than one
-    forbidden character at a time. This scheme declares `@` as its first character and
-    is offered every symbol that starts with one, and it claimed a great deal that no
-    Borland tool wrote: `@ hello world` came back as ` hello world`, and so did every
-    demangled Swift type -- `@convention(block) (Swift.Int) -> Swift.UInt` reads as
-    `convention(block) (Swift.Int) -> Swift.UInt` and
-    `@escaping @differentiable @callee_guaranteed (@unowned Swift.Float)` turns its
-    inner markers into `::`, because `@` is this grammar's qualifier separator. That is
-    reachable from a symbol table and not only from re-reading output: `@feat.00` and
-    `@comp.id` are in every COFF object MSVC and clang-cl emit, and both came back with
-    the `@` taken off -- a name that is neither the symbol nor a declaration, which is
-    the one answer this package treats as worse than leaving a name alone.
+    For the same reason the alphabet is checked as a whole rather than one forbidden
+    character at a time. This scheme declares `@` as its first character and is offered
+    every symbol that starts with one, so it must not claim what no Borland tool wrote:
+    a demangled Swift type such as `@convention(block) (Swift.Int) -> Swift.UInt`, whose
+    `@` markers would read as this grammar's qualifier separator, or `@feat.00` and
+    `@comp.id`, which every COFF object from MSVC and clang-cl carries. Reading either
+    yields a name that is neither the symbol nor a declaration, the one answer this
+    package treats as worse than leaving a name alone.
 
-    `_SYMBOL_CHARACTERS` is what the 11,484 recorded exports are made of and nothing
-    else. See the module docstring for why that is the whole alphabet: a name is
+    `_SYMBOL_CHARACTERS` is what the 11,363 readable recorded exports are made of and
+    nothing else. See the module docstring for why that is the whole alphabet: a name is
     `@`-delimited qualifiers -- Pascal identifiers -- with `$`, `%`, `&` and `#` as the
     encoding's own markers. A `.` is not among them, which is what turns `@feat.00`
     away.

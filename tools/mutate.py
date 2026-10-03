@@ -8,8 +8,8 @@ built earlier, a template argument list nested three deep, a return type that is
 itself a function pointer. Those need a name a compiler actually emitted, and there
 is no alphabet short enough to reach them by counting.
 
-So this starts from the checked-in corpora -- 640,892 real symbols -- and damages
-them: truncate, delete, duplicate, transpose, substitute a character from the
+So this starts from the checked-in corpora and damages them:
+truncate, delete, duplicate, transpose, substitute a character from the
 scheme's own alphabet, or splice the head of one name onto the tail of another. A
 mutant keeps almost all of its parent's structure, so it lands *near* the emitted
 space rather than in the grammar's cheap corners, which is where a substitution
@@ -28,70 +28,40 @@ Usage
     tools/mutate.py --count 200000         more mutants per scheme (default 50000)
     tools/mutate.py --seed 7               a different draw; the default draw is fixed
 
-`--refusals` looks the other way. The comparison above only ever sees a name this library
-*reads*: a name it refuses and the reference reads never enters it, so a gap here is
-invisible to it by construction. This mode puts the refused mutants to the reference and
-prints what it says about them. It is a triage list and not a gate -- everything on it is
-either a gap here or the reference reading junk it should have refused, and telling the
-two apart is a person's job with the reference's source open. Its first run found a
-parameter list that is nothing but the ellipsis (`?f@@YAXZZ`, which clang emits) refused
-by the MSVC scheme, and six node kinds the Swift scheme produced but did not count as
-contexts, so that a descriptor over any of them refused the name; its second, two D
-shapes the grammar admits. What it reports and does not find is pinned in the schemes'
-tests as refusals, each with the reference's reason.
+`--expect` is the divergence count the run must produce, 0 by default. The exit status
+is non-zero unless the count is exactly that, so the gate holds in both directions, like
+the conformance corpora: a new divergence fails, and so does a stale pin after one is
+fixed. The count is a property of `--seed`, `--count` and the seed corpora together;
+the pin CI uses is for `--seed 0` with `--count 20000`, not for the default `--count`.
+Growing a seed corpus changes which mutants are drawn.
+
+A divergence is either fixed in the library or covered by an `ACCEPTED` rule in
+`tools/enumerate.py`, which names the reason the reference's answer is not evidence.
+Two rules cover shapes only mutation reaches: a cv-qualified function type reached
+through a substitution, where each reference contradicts its own answer for the same
+type written out, and a D symbol whose length prefix ends inside an identifier
+(`_D1a0MFZv`), which libiberty refuses although it reads both neighbours, `_D1a0i` and
+`_D1a0FZv`.
+
+A draw with no divergence does not show that none exist. Two are open and pinned by
+nothing but this note:
+
+- A `<template-param>` naming an argument pack outside a `Dp` expansion. `_Z1fIJfdEEvT_`
+  is `void f<float, double>(float)` to both references and `(float, double)` here;
+  defaulting the pack index to 0 breaks eleven of libcxxabi's own vectors.
+- A destructor whose class is named by a vendor extended operator, `v1 <source-name>`.
+  `llvm-cxxfilt` writes `~()`, `c++filt` writes the name without `operator`, and this
+  writes the name the encoding gives.
+
+`--refusals` looks the other way. The comparison above only sees a name this library
+*reads*: a name it refuses and the reference reads never enters it. This mode puts the
+refused mutants to the reference and prints what it says about them. It is a triage
+list and not a gate -- everything on it is either a gap here or the reference reading
+junk it should have refused, and telling the two apart is a person's job with the
+reference's source open. What it reports is pinned in the schemes' tests as refusals,
+each with the reference's reason.
 
     tools/mutate.py --refusals --scheme msvc --show 100
-
-Exit status is non-zero unless the divergence count is exactly `--expect`, which is 0 by
-default -- so this gates a commit in both directions, like the conformance corpora do: a
-new divergence fails, and so does a stale pin after one is fixed. The number is a
-property of `--seed` and `--count` together; the pin CI uses is for the defaults.
-
-What the pin currently stands at
---------------------------------
-Zero, at `--seed 0 --count 20000`. Every divergence this draw reports is either a defect
-that was fixed or an `ACCEPTED` rule in `tools/enumerate.py` naming the reason a
-reference's answer is not evidence. `--expect` defaults to 0, so the gate is now "no
-divergence at all", and a name this library reads differently from the reference for a
-reason nobody has written down fails it.
-
-That is not a claim that nothing is left: a divergence *not in this draw* is not a
-divergence that does not exist. Three such are named at the end of this docstring, and
-`--seed` and `--count` are there to go looking.
-
-What this draw has found and what became of it
-----------------------------------------------
-Five divergences this draw reported are gone because the defect was this library's and
-was fixed: a constructor whose class is named by an operator (`_ZNssC1Ev` read as
-`operator<=>::operator()`, the class name cut at the first `<`), the `F` friend marker
-read and then dropped from a constructor, and a fold expression printed with llvm's
-spacing and bracketing under the GNU style. Two more are now `ACCEPTED` rules in
-`tools/enumerate.py`, each with the reason a reference's answer is not evidence: a
-cv-qualified function type reached through a substitution, where each reference
-contradicts its own answer for the same type written out, and the D one below.
-
-The D divergence was carried here for several sittings as "a deep chain of `Q` back
-references round a `___dgliteral1`", which was wrong -- that was the shape of the
-*mutant*, not of the disagreement. Diffing the mutant against the seed it came from
-named the edit: one duplicated `_` inside `13__dgliteral10`, which leaves the length
-prefix covering `___dgliteral1` and hands the `0` after it to the grammar as the
-anonymous `<SymbolName>`. `_D1a0MFZv` is the whole of it in nine characters -- `a` here,
-refused by `c++filt --format=dlang` -- and libiberty reads both neighbours, `_D1a0i` and
-`_D1a0FZv`, so the refusal is an inconsistency inside the reference rather than a rule.
-Shrinking the mutant by deletion had found a *different* shape with the same symptom, an
-`S` template argument opening on a template instance; that one is real too and is pinned
-in `tests/test_d.py`, but it is not what this draw reaches. A reproducer that reproduces
-the symptom is not yet the cause.
-
-The draw is a property of the seed *and the corpora*, so growing a seed corpus changes
-which mutants are drawn. Two divergences earlier draws reported are simply not in this
-one and are still open, pinned by nothing but this note: a `<template-param>` naming an
-argument pack outside a `Dp` expansion -- `_Z1fIJfdEEvT_` is `void f<float,
-double>(float)` to both references and `(float, double)` here, and making the default
-pack index 0 breaks eleven of libcxxabi's own vectors -- and a destructor whose class is
-named by a vendor extended operator, `v1 <source-name>`, where `llvm-cxxfilt` writes
-`~()`, `c++filt` writes the name without `operator`, and this writes the name the
-encoding gives.
 """
 
 import argparse
@@ -110,9 +80,8 @@ from enumerate import ACCEPTED, JOBS, library_reading, reference_answers
 
 CONFORMANCE = Path(__file__).resolve().parent.parent / "tests" / "conformance"
 
-#: Where each scheme's seeds come from, and the prefix a mutant has to keep to stay in
-#: that scheme. Mutating the prefix would mostly produce names no scheme claims, which
-#: tests the detector rather than the parser -- and the detector has its own tests.
+#: Each scheme's seed corpora and the prefix a mutant keeps, so mutants test the parser
+#: rather than the detector.
 SEEDS = {
     "itanium": (
         [
@@ -121,7 +90,7 @@ SEEDS = {
             "itanium-real-world-gnu.txt",
             "itanium-types.txt",
             "itanium-types-llvm.txt",
-            "itanium-regressions.txt",
+            "reported/itanium.txt",
             "itanium-libcxxabi.txt.gz",
         ],
         "_Z",
@@ -131,56 +100,29 @@ SEEDS = {
     "d": (["d-real-world.txt", "d-libiberty.txt"], "_D"),
     "ada": (["ada-libiberty.txt", "ada-real-world.txt"], ""),
     "msvc": (["msvc-llvm-corpus.txt", "msvc-arm64ec.txt", "msvc-clang.txt"], "?"),
-    # Only the `$s` corpus rows: `swift-real-world.txt` carries both manglings and the
-    # prefix a mutant has to keep can only be one of them. `swift-symbolic.txt` is hex
-    # and `swift-simplified.txt` is scored under other options, so neither seeds this.
+    # `swift-symbolic.txt` is hex and `swift-simplified.txt` uses other options.
     "swift": (["swift-real-world.txt", "swift-upstream.txt", "swift-refusals.txt"], "$s"),
-    # No prefix to keep: a pre-Itanium name is an ordinary identifier with a `__` in it.
-    # All four styles' rows seed this, read under `gnu` on both sides, which is what the
-    # scheme's default does with them too.
+    # All four styles' rows, read under `gnu` on both sides as the scheme's default does.
     "gnuv2": (["gnuv2-libiberty.txt"], ""),
 }
 
-#: A second reading of the *same* name, for schemes where a divergence from the first
-#: reference is not evidence on its own. Each entry is `(tool, normalise)`: the tool is
-#: asked about every name the first reference and this library disagree on, and where
-#: its answer -- put through `normalise` -- is what this library said, the two
-#: implementations that read the name agree and the first is the odd one out.
+#: `(tool, normalise)` asked where the first reference and this library disagree; if its
+#: normalised answer matches ours, the first reference is the odd one out.
 #:
-#: `llvm-cxxfilt` caps a Rust `<base-62-number>` at 64 bits, so an eleven-digit crate
-#: disambiguator is refused: `_RNvCsAAAAAAAAAAA_1a1f` is `a::f` here and unreadable
-#: there. binutils reads it, wrapping instead, and spells the same path -- annotating
-#: each disambiguator as `[hex]`, which it does for every name and which `normalise`
-#: takes back off. rustc emits a disambiguator that is a truncated 64-bit hash, so no
-#: compiler reaches the split; the ceiling is the reference's integer type and not a
-#: rule of the scheme, and Python has no such type to impose.
+#: `llvm-cxxfilt` caps a Rust `<base-62-number>` at 64 bits and refuses e.g.
+#: `_RNvCsAAAAAAAAAAA_1a1f`; binutils wraps instead and annotates disambiguators `[hex]`.
 SECOND_OPINION = {
     "rust": ("c++filt", lambda answer: re.sub(r"\[[0-9a-f]+\]", "", answer)),
 }
 
-#: A name to ask the reference about *instead*, where the reference cannot read the one
-#: in hand for a reason that is known and is not about the reading. Where its answer for
-#: the substitute is what this library said for the original, the marker was read as the
-#: marker and everything else agrees.
-#:
-#: `llvm-undname` 18 does not know the ARM64EC marker `$$h`: where one stands in a
-#: function's encoding it refuses the name, and where one stands inside an identifier it
-#: reads it as three more characters of the identifier. The marker says "this is the
-#: hybrid entry for that function" and changes no part of the declaration, which is
-#: exactly how `tests/conformance/msvc-arm64ec.txt` was built -- so the substitute is
-#: the name without it. Checked rather than skipped: a mutation that put a `$$h`
-#: somewhere it does not belong still has to agree. The substitute stands in only where
-#: the reference's own answer is not already ours: the library reads a name as it stands
-#: before it takes the marker out, and a `$$h` that is part of an identifier is read as
-#: one by both sides.
+#: A name to ask the reference about instead, where it cannot read the original for a
+#: known reason unrelated to the reading. `llvm-undname` 18 does not know the ARM64EC
+#: marker `$$h`, which changes no part of the declaration, so the substitute drops it.
 RESCUE = {
     "msvc": lambda name: name.replace("$$h", "", 1) if "$$h" in name else None,
 }
 
-#: Characters a substitution or insertion draws from: the scheme's own markers, so a
-#: mutant is a name the grammar could nearly have spelled rather than line noise.
-#: Drawn from `JOBS`, plus the digits and letters every scheme's lengths and identifiers
-#: need.
+#: Added to the scheme's own markers from `JOBS` for substitutions and insertions.
 _EXTRA = "0123456789_abcxyzABCXYZ$."
 
 
@@ -267,15 +209,13 @@ def ask_tolerantly(tool, names, batch, casualties=None):
     comes back short is split and asked again, down to the one name that did it. That
     name is recorded as `None` and, where `casualties` is given, named in it.
 
-    Both halves of the gate need this. The refused mutants were the known case -- Swift's
-    own demangler aborts on some of them -- but a name this library *reads* can kill a
-    reference too, which the gate path had assumed could not happen. `c++filt
-    --format=gnat` from binutils 2.42 aborts on `aSO__bDF` with a detected buffer
-    overflow: an `'Output` attribute, a `__` separator and a `.Finalize` suffix in one
-    name, none of which does it alone. This library reads that mutant as
-    `a'Output.b.Finalize`, so it went to the reference through the gate and took the
-    whole Ada run down with it -- `tools/mutate.py --seed 37` died with 6,933 answers
-    for 20,000 names and checked no Ada at all.
+    Both halves of the gate need this. A refused mutant can kill a reference -- Swift's
+    own demangler aborts on some of them -- and so can a name this library *reads*.
+    `c++filt --format=gnat` from binutils 2.42 aborts on `aSO__bDF` with a detected
+    buffer overflow: an `'Output` attribute, a `__` separator and a `.Finalize` suffix
+    in one name, none of which does it alone. This library reads that mutant as
+    `a'Output.b.Finalize`, so it goes to the reference through the gate and, unbatched,
+    would take the whole Ada run down with it.
 
     Binutils' D demangler is the other failure mode: a mutant whose back references
     chain takes it into gigabytes of expansion and never returns, while this library
@@ -349,11 +289,7 @@ def run(scheme, count, seed, quiet, show, batch):
         return 0
     ours_gnu = readings(scheme, names, style="gnu") if second_tool else {}
 
-    # In batches: a reference is handed the names on stdin, and one process for half a
-    # million of them is a process that can die with nothing to show for it. Tolerantly,
-    # because a name this library reads can still kill a reference -- see
-    # `ask_tolerantly` -- and one that does must not take the rest of the scheme's run
-    # with it.
+    # Batched and tolerant: a name can kill a reference, which must not lose the whole run.
     casualties = set()
 
     def ask(what, wanted):
@@ -362,49 +298,23 @@ def run(scheme, count, seed, quiet, show, batch):
     theirs = ask(tool, names)
     second = ask(second_tool, names) if second_tool else {}
 
-    # Where the reference cannot read a name for a reason that is known and is not about
-    # the reading, ask it about the substitute instead and let that answer stand in. Done
-    # here rather than after the comparison so the substitute's answer goes through
-    # `ACCEPTED` as well: an ARM64EC name is *also* subject to every rule about the name
-    # underneath the marker.
+    # Before the comparison, so the substitute's answer also goes through `ACCEPTED`.
     rescue = RESCUE.get(scheme)
     if rescue is not None:
         substitutes = {name: rescue(name) for name in names}
-        # A substitute is often another name in the draw -- a mutant and the one it was
-        # mutated from -- and the reference has already answered about those.
         wanted = sorted({s for s in substitutes.values() if s and s not in theirs})
         stand_in = {**theirs, **ask(tool, wanted)}
         for name, substitute in substitutes.items():
             if substitute and theirs.get(name) != ours[name]:
-                # Over an answer the reference did give, unless it is the answer this
-                # library gave: the library reads the name as it stands first, and where
-                # the two agree on that reading the marker was part of an identifier --
-                # `?foo$$hbar@@YAXXZ` is `foo$$hbar` to both. Otherwise what the
-                # reference says about a name carrying the marker is not evidence either
-                # way, since it has no production for `$$h` at all: it read
-                # `?$oo_aad@@$$hYAXAEAD@Z` as `public: char && $oo_aad()`, taking the
-                # marker for part of a type.
-                #
-                # A substitute the reference also refuses is not a second opinion
-                # where this library too read `$$h` as three more characters of an
-                # identifier: the original answer -- a space `insertSpaceIfNeeded` did
-                # not print -- is the one to compare, and overwriting it with None made
-                # that a refusal. `tools/mutate.py --seed 20`. Where this library took
-                # the marker as the marker, its spelling carries no `$$h`, and the
-                # substitute is the name it read: the reference's refusal of *that* is
-                # the evidence, and goes through the rules about refusals as any other
-                # -- `?foo_pcrcd@@$$hYA_PCRCD@Z` returns `auto`, which `llvm-undname`
-                # 18 cannot read with or without the marker, and its answer about the
-                # marked name, `public: char volatile *volatile *& foo_pcrcd()`, is not
-                # a reading to be held against `auto`. `tools/mutate.py --seed 31`.
+                # Where both read `$$h` as part of an identifier (`?foo$$hbar@@YAXXZ`) the
+                # original answers stand; a refused substitute must not overwrite one
+                # where our spelling still carries `$$h`. Otherwise the reference's
+                # answer about the marked name is not evidence.
                 stand = stand_in.get(substitute)
                 if stand is not None or "$$h" not in ours[name]:
                     theirs[name] = stand
 
-    # A name that killed the reference is not a refusal and not a reading: there is no
-    # answer to compare, so it is left out of the comparison rather than counted as a
-    # disagreement. It is still worth naming -- a reference that aborts on a symbol is a
-    # finding about the reference, and the symbols in a binary are not always friendly.
+    # Neither a refusal nor a reading, so excluded from the comparison but still reported.
     if casualties:
         who = Path(tool.split()[0]).name
         print(f"{scheme:8} {len(casualties):>6} name(s) aborted {who}; not compared")

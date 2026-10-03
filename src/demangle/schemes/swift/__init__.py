@@ -7,20 +7,22 @@ symbol cannot be read a piece at a time, and how a piece is *spelled* depends on
 sits in the tree. `_demangler.py` and `_printer.py` are those two files; `nodes.py`
 records the structure of the printer's traversal.
 
-Conformance is exact against `swift-demangle` from the 5.10.1 toolchain:
+Conformance is exact against a reference built from Swift's own demangler at a pinned
+`main` commit (see `tools/swift-demangle-reference/README.md`):
 
 * every `$s` symbol in the shipped Swift runtime and Foundation -- 48,368 of them --
   spelled identically, with nothing refused;
-* all 376 cases in the compiler's own `test/Demangle/Inputs/manglings.txt`, which is a
-  much harder set: SIL function types, function-signature specialisations, key paths,
-  autodiff thunks, macro expansions, and the Swift 3 mangling.
+* every case in the compiler's own `test/Demangle/Inputs/manglings.txt` -- the 514 rows
+  of `tests/conformance/swift-upstream.txt` -- which is a much harder set: SIL function
+  types, function-signature specialisations, key paths, autodiff thunks, macro
+  expansions, and the Swift 3 mangling.
 
 The Swift 3 mangling -- `_T` followed by anything but `0` -- is a different grammar with
 its own demangler in the compiler, and `_old_demangler.py` is a port of that one. It
 still matters: the ObjC runtime holds a Swift class's name in that form, so it turns up
 in any Apple binary with interop in it. It builds the same tree, so the printer spells it
-with no idea which mangling it came from, and all 247 of the compiler's own Swift 3 test
-cases come out exactly.
+with no idea which mangling it came from, and the compiler's own Swift 3 test cases come
+out exactly.
 """
 
 from ...core.ast import Node
@@ -49,12 +51,10 @@ def detect(name):
     if not name:
         return False
     if name.startswith("__"):
-        # The Mach-O form: one underscore more than the compiler wrote, which
-        # `swift-demangle` takes off before reading. `__$s` is `_$s`, itself a prefix.
+        # Mach-O adds one underscore, which `swift-demangle` takes off.
         name = name[1:]
     if async_main_entry_point_length(name):
-        # `async_Main`, the one Swift symbol with no prefix: the entry point of an
-        # `async` `@main`, which the reference's `isSwiftSymbol` claims by name.
+        # The reference's `isSwiftSymbol` claims the `async` `@main` entry point by name.
         return True
     return name.startswith(MANGLING_PREFIXES) or name.startswith("_T")
 
@@ -76,11 +76,8 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
-    # A Mach-O symbol table carries one more leading underscore than the compiler
-    # wrote, so `__T04demo5PointVMn`, `__$s...` and `__TtC...` are `_T0...`, `_$s...`
-    # and `_TtC...` -- and `swift-demangle` strips exactly one underscore from a name
-    # that opens with two before reading it. `_$s` needs no such help: the compiler's
-    # own prefix for a Mach-O symbol is listed as a prefix in its own right.
+    # Mach-O adds one leading underscore, which `swift-demangle` strips from a name that
+    # opens with two. `_$s` is a prefix in its own right.
     name = mangled[1:] if mangled.startswith("__") else mangled
     try:
         root = demangle_symbol(name)
@@ -155,15 +152,12 @@ PLUGIN = LanguagePlugin(
     description="Swift symbol mangling",
     options_type=SwiftOptions,
     aliases=(),
-    # `priority` is ascending: *lower is offered first*. After D, before Rust. `$s` and
-    # `_T0` collide with nothing; `_$S` collides with Free Pascal, which is offered
-    # earlier and wins those.
-    # `$s`, `_$s`, `$S`, `_$S`, `_T0`, `_Tt` and `@__swiftmacro_` -- and `async_Main`,
-    # the entry point of an `async` `@main`, which is the one Swift symbol with no
-    # prefix at all.
+    # Lower is offered first: after D, before Rust. `_$S` collides with Free Pascal,
+    # which is offered earlier and wins.
     first_characters="$_@a",
     priority=45,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 
@@ -190,9 +184,7 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     """
     if isinstance(name, str):
         raise TypeError("demangle_symbolic reads bytes; a name holding a reference is not text")
-    # latin-1 maps every byte to the code point of the same value and back again, so the
-    # grammar can be read a character at a time without the bytes ever being interpreted
-    # as text. Swift spells a non-ASCII identifier in punycode, so nothing here is lost.
+    # latin-1 maps each byte to one code point; non-ASCII identifiers are punycode anyway.
     text = name.decode("latin-1")
     if whole_symbol is None:
         whole_symbol = detect(text)
@@ -203,10 +195,7 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     if root is None:
         return None
     if root.kind == "Suffix":
-        # `demangleType` hands back the whole input as a `Suffix` node when nothing at
-        # all parsed. That is the reference saying it could not read the name, and it
-        # comes back as None here rather than as the words `with unmangled suffix`
-        # wrapped around the bytes -- which is not a demangling of anything.
+        # A whole-input `Suffix` node is the reference saying it could not read the name.
         return None
     spelled = print_root(root)
     return spelled or None
@@ -215,7 +204,7 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
 def typerefs(blob):
     """Split a metadata blob of NUL-terminated mangled names into those names.
 
-    Not `blob.split(b"\0")`: a symbolic reference's offset is arbitrary bytes and very
+    Not `blob.split(b"\\0")`: a symbolic reference's offset is arbitrary bytes and very
     often holds a zero, so splitting cuts names in half. See `symbolic.end_of_name`.
     """
     from .symbolic import names

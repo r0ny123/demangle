@@ -23,11 +23,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SOURCES = HERE / "corpus_sources"
 
-#: Names on which the reference demangler is *wrong*, so recording its output here would
-#: bake in a defect. Their expected column is derived from the declaration instead and
-#: lives in this file, which is maintained by hand. Read rather than hard-coded, so
-#: adding an entry there is enough -- a name in two corpora with two answers is exactly
-#: the drift this excludes.
+#: Names on which the reference demangler is wrong; excluded here so they are recorded only
+#: in this hand-maintained file.
 REFERENCE_DEFECTS = ROOT / "tests" / "conformance" / "itanium-reference-defects.txt"
 
 COMPILERS = ("clang++", "g++")
@@ -118,7 +115,7 @@ def main():
     parser.add_argument("--compiler", action="append", help="repeatable; default is clang++ and g++")
     parser.add_argument("--prefix", action="append", help="mangled-name prefixes to keep")
     parser.add_argument("--defects", type=Path, default=REFERENCE_DEFECTS, help="names the reference reads wrongly")
-    parser.add_argument("--standard", action="append", help="repeatable; default is c++11 through c++20")
+    parser.add_argument("--standard", action="append", help="repeatable; default is c++11 through c++23")
     arguments = parser.parse_args()
 
     standards = tuple(arguments.standard) if arguments.standard else STANDARDS

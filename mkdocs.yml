@@ -1,39 +1,26 @@
 site_name: demangle
-site_description: Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Delphi and more -- in pure Python.
+site_description: Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI and pre-Itanium C++ (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior) -- in pure Python.
 site_url: https://r0ny123.github.io/demangle/
 repo_url: https://github.com/r0ny123/demangle
 repo_name: r0ny123/demangle
 edit_uri: edit/main/
 
-# The prose lives at the repository root, where GitHub renders it and where a reader who
-# never visits this site still finds it. The pages here pull those files in with the
-# snippets extension rather than copying them, so there is one copy of every sentence.
-docs_dir: docs
-
-# Page names match the repository-root filenames the README links to, so one link text
-# works both on GitHub and here.
 nav:
   - Home: index.md
   - Working with the tree: analysing-a-binary.md
-  - Conformance: CONFORMANCE.md
-  - Architecture: ARCHITECTURE.md
   - API reference:
       - Public API: reference/api.md
       - Core: reference/core.md
       - Schemes: reference/schemes.md
-  - Adding a scheme: adding-a-scheme.md
+  - Conformance: CONFORMANCE.md
+  - Architecture: ARCHITECTURE.md
+  - Security policy: SECURITY.md
+  - Adding a mangling scheme: adding-a-scheme.md
   - Contributing: CONTRIBUTING.md
-  - Fuzzing and the references: testing.md
-  - Security: SECURITY.md
-  - Roadmap: ROADMAP.md
+  - Fuzzing and the reference demanglers: testing.md
   - Changelog: CHANGELOG.md
 
-# Every one of these is reported by default, and every one of them was reported on a
-# build that passed: `--strict` fails on warnings, and these are emitted at INFO. Three
-# had been sitting in the log -- a page the nav never listed, a README link to the
-# NOTICE file (which is a repository file and not a page of this site), and a C++ lambda
-# `[](auto &x)` left in an indented block, which Markdown reads as a link to `auto &x`.
-# Promoting them is what makes the docs job notice the next one.
+# Promoted from INFO so `--strict` fails on them.
 validation:
   nav:
     omitted_files: warn
@@ -64,9 +51,10 @@ theme:
 markdown_extensions:
   - admonition
   - toc: { permalink: true }
-  - pymdownx.highlight: { anchor_linenums: true }
+  - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.inlinehilite
+  # Pages include the root-level Markdown via snippets rather than copying it.
   - pymdownx.snippets:
       base_path: ["."]
       check_paths: true
@@ -94,3 +82,6 @@ watch:
   - README.md
   - ARCHITECTURE.md
   - CONFORMANCE.md
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - CHANGELOG.md

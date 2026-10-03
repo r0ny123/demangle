@@ -147,14 +147,14 @@ class TestPipeline:
 class TestTheStreamFilter:
     """With no arguments the command is a filter, not a line reader.
 
-    It was a line reader, and that made the README's own first example a no-op:
+    A line reader would make the README's own first example a no-op:
 
         $ printf '0000000000001139 T _ZN3foo3barEv\n' | demangle
         0000000000001139 T _ZN3foo3barEv
 
     `nm` writes an address and a type letter before the name, so a whole line is never
     a symbol. `c++filt`, `demumble` and `rustfilt` all substitute symbol-shaped words
-    and copy the rest through, and now so does this.
+    and copy the rest through, and so does this.
     """
 
     @staticmethod
@@ -257,10 +257,8 @@ class TestPartFlags:
         [
             (VECTOR, VECTOR_SPELLED),
             ("_ZSt4sortIPiEvT_S1_", "std::sort<int*>(int*, int*)"),
-            # MSVC goes through the scheme's own option rather than the render-time cut:
-            # a return type there wraps *around* the declarator, and `private: ` comes
-            # before it, so there is no prefix to strip. This is `llvm-undname
-            # --no-return-type`.
+            # MSVC uses the scheme's own option (`llvm-undname --no-return-type`):
+            # `private: ` comes before the return type, so there is no prefix to strip.
             ("?f@Foo@@AEBAXH@Z", "private: __cdecl Foo::f(int) const"),
         ],
     )
@@ -369,7 +367,7 @@ class TestSimplifiedFlag:
         _, out, _ = run(capsys, ["--simplified", "_TtFSiSu"])
         assert out == "(_:)\n"
 
-    def test_it_leaves_every_other_scheme_alone(self, capsys):
+    def test_it_leaves_other_schemes_alone(self, capsys):
         _, out, _ = run(capsys, ["--simplified", VECTOR, "?f@@YAXH@Z"])
         assert out.splitlines() == [VECTOR_SPELLED, "void __cdecl f(int)"]
 
@@ -457,13 +455,11 @@ class TestTheReturnTypeFlags:
     @pytest.mark.parametrize(
         ("name", "dropped", "postfix"),
         [
-            # A plain template function: the return type is a prefix, so cutting the
-            # front of the spelling would have worked too.
+            # A plain template function: the return type is a prefix.
             ("_Z1fIiET_S0_", "f<int>(int)", "f<int>(int)int"),
             ("_Z1fIiEvT_", "f<int>(int)", "f<int>(int)void"),
-            # And one that *wraps* the declarator. `int (*g<int>(int))(int)` has no
-            # prefix to strip, so the cut left the return type in place and reported
-            # success -- the silently ignored flag this is here to keep fixed.
+            # One that *wraps* the declarator: `int (*g<int>(int))(int)` has no prefix
+            # to strip.
             ("_Z1gIiEPFT_S0_ES0_", "g<int>(int)", "g<int>(int)int (*)(int)"),
             # A name whose mangling carries no return type at all is untouched by both.
             ("_Z1fi", "f(int)", "f(int)"),
@@ -479,7 +475,7 @@ class TestTheReturnTypeFlags:
         """MSVC writes the return type around the declarator, so it is a scheme option.
 
         `int (__cdecl * __cdecl g(int))(int)` is the same shape as the Itanium case
-        above and was already right; this pins that both flags reach it.
+        above; this pins that both flags reach it.
         """
         _, out, _ = run(capsys, ["--no-return-type", "?g@@YAP6AHH@ZH@Z"])
         assert out.strip() == "__cdecl g(int)"
@@ -497,7 +493,7 @@ class TestStripUnderscore:
     Every expectation here was taken from both references, which agree on all of them.
 
     What the flag is *for* here is narrower than it looks, because the Itanium, Swift and
-    Rust readers already tolerate the extra underscore a Mach-O symbol carries -- `__Z1fv`
+    Rust readers tolerate the extra underscore a Mach-O symbol carries -- `__Z1fv`
     and `_$s...` read with or without it. The schemes that do not are the ones whose
     prefix is not itself an underscore: an MSVC name opens with `?`, and it does not read
     until the underscore is gone.
@@ -510,11 +506,8 @@ class TestStripUnderscore:
             ("__ZN3foo3barEv", "foo::bar()"),
             # The one that needs it.
             ("_?f@@YAXH@Z", "void __cdecl f(int)"),
-            # Stripping leaves something that does not read: both references print the
-            # name they were *given*, not the stripped form, so a table of `_foo` comes
-            # back untouched rather than a character short. `_Z1fv` is the sharp case --
-            # it reads perfectly well *unstripped*, and asking for the strip costs the
-            # reading, which is exactly what `c++filt --strip-underscore` does with it.
+            # When the stripped form does not read, both references print the name as given;
+            # `_Z1fv` loses its reading under `c++filt --strip-underscore` too.
             ("_Z1fv", "_Z1fv"),
             ("_foo", "_foo"),
             ("_", "_"),
@@ -537,9 +530,8 @@ class TestKeepHash:
     """`--keep-hash`: rustc-demangle's `{}` rather than its `{:#}`.
 
     One flag with two manifestations, because that is how the reference has it -- the
-    same `alternate` bit suppresses all of this. Scored at 5,751 of the 5,753 corpus
-    names the reference reads; the two that differ do so in both modes and for reasons
-    that have nothing to do with the hash.
+    same `alternate` bit suppresses all of this. The score against the reference is
+    stated in tests/test_rust.py.
     """
 
     @pytest.mark.parametrize(

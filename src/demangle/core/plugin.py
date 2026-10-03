@@ -1,8 +1,8 @@
 """The contract a mangling scheme implements.
 
-A language is a `LanguagePlugin`. Nothing in `core` imports a language module, and no
-language imports another, so a scheme can be developed, tested, replaced or shipped
-separately from everything else here.
+A language is a `LanguagePlugin`. Nothing in `core` imports a language module at import
+time, and no language imports another, so a scheme can be developed, tested, replaced or
+shipped separately from everything else here.
 
 Adding one means providing three things and registering them. It does not mean
 understanding the rest of the codebase, which is the point: the project should be
@@ -28,6 +28,12 @@ class LanguagePlugin:
     mangled at all, so it must not allocate or parse. A prefix comparison is the
     expected shape. False negatives lose symbols; false positives only cost a failed
     parse, so err towards accepting.
+
+    The exception is a scheme whose names carry no marker, `gnuv2`, `codewarrior` and
+    `ada` among them. Its `detect` screens with a substring test and then parses the
+    whole name, and it must not err towards accepting: it is ordered after the
+    marked schemes, and what justifies it is a measured false-positive count of zero over
+    the other schemes' corpora and over real symbol tables.
     """
 
     parse: Callable[..., Any]
@@ -56,7 +62,8 @@ class LanguagePlugin:
     caller building on it has to read the source to learn what to switch on -- which is
     what `swift-demangle`'s `kind=` dumps and libiberty's hundred `DEMANGLE_COMPONENT_*`
     enumerators exist to avoid. `demangle.node_kinds()` is the whole of it, and
-    `tests/test_core.py` checks it against every corpus so it cannot drift.
+    `tests/test_api_surface.py::TestThePublishedVocabulary`
+    checks it against every corpus so it cannot drift.
     """
 
     description: str = ""

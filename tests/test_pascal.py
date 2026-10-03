@@ -192,8 +192,7 @@ class TestClaimsNothingItShouldNot:
             "$",
             "_$",
             "A_$$_",
-            # An empty parameter type, an empty result type, and both: the separator with
-            # nothing behind it. `MYUNIT.ADD()` and `MYUNIT.ADD: ` were read from these.
+            # An empty parameter type, an empty result type, and both.
             "MYUNIT_$$_ADD$",
             "MYUNIT_$$_ADD$$",
             "MYUNIT_$$_ADD$LONGINT$$",
@@ -212,8 +211,8 @@ class TestClaimsNothingItShouldNot:
         assert demangle.demangle("MYUNIT_$$_ADD$LONGINT$$LONGINT") == "MYUNIT.ADD(LONGINT): LONGINT"
 
     def test_it_claims_nothing_in_the_other_schemes_corpora(self, subtests):
-        for path in sorted(CONFORMANCE.glob("*.txt")):
-            if path.name.startswith("pascal-"):
+        for path in sorted([*CONFORMANCE.glob("*.txt"), *(CONFORMANCE / "reported").glob("*.txt")]):
+            if path.stem.partition("-")[0] == "pascal":
                 continue
             with subtests.test(name=path.name):
                 claimed = [
@@ -325,10 +324,8 @@ class TestTree:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # A program's unit carries a `P$` that the spelling drops. The tree looked
-            # for the unit under its *raw* name to find everything the spelling puts in
-            # front of it, found nothing, and dropped the lead entirely: this rendered
-            # `XLIB.PX_OPEN_F`. Found by mutating the corpora.
+            # A program's unit carries a `P$` that the spelling drops; the tree must still
+            # find the unit under its raw name to keep the lead.
             ("U_$P$XLIB_$$_PX_OPEN_F", "program variable XLIB.PX_OPEN_F"),
             ("TC_$P$PROG_$$_C1", "program typed constant PROG.C1"),
             ("U_$XLIB_$$_PX_OPEN_F", "variable XLIB.PX_OPEN_F"),

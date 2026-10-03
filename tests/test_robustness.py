@@ -4,10 +4,8 @@ A mangled name is attacker-controlled in any tool that opens files it did not pr
 These tests assert the properties that make the library safe to point at a hostile
 binary.
 
-Every property here asserts the *real* invariant, not merely that a `str` came back. An
-earlier version of this file checked only `isinstance(result, str)`, and a demangler
-stubbed to return `""` for every input -- one that had silently lost every symbol it was
-given -- passed fourteen of its sixteen tests. `assert isinstance(x, str)` is not a test.
+Every property here asserts the *real* invariant, not merely that a `str` came back: a
+demangler stubbed to return `""` for every input must fail them.
 """
 
 import contextlib
@@ -19,7 +17,7 @@ from demangle.core.ast import rendered
 from demangle.core.errors import DemanglingError, LimitExceeded
 from demangle.core.limits import Limits
 
-from .conftest import CONFORMANCE, load_corpus
+from .conftest import corpus_files, load_corpus
 
 hypothesis = pytest.importorskip("hypothesis")
 from hypothesis import HealthCheck, given, settings  # noqa: E402
@@ -33,14 +31,12 @@ deadline = settings(max_examples=400, deadline=None, suppress_health_check=[Heal
 def corpus_sample(step):
     """Every `step`-th name from every conformance corpus, all schemes together.
 
-    Sampled rather than exhaustive because the whole set is 81,000 names and the tests
-    that use this run a pass per *prefix* of each one.
+    Sampled rather than exhaustive because the whole set is about 100,000 names and the
+    tests that use this run a pass per *prefix* of each one.
     """
     sampled = []
-    for path in sorted(CONFORMANCE.iterdir()):
-        if path.suffix not in (".txt", ".gz"):
-            continue
-        names = [name for name, _ in load_corpus(path.name.removesuffix(".gz"))]
+    for corpus in corpus_files():
+        names = [name for name, _ in load_corpus(corpus)]
         sampled.extend(names[::step])
     return sampled
 
@@ -62,19 +58,12 @@ def answered(value):
         return False
 
 
-# -- the strategies ----------------------------------------------------------------
-#
-# Random text almost never reaches a parser: measured over 20,000 samples from the
-# mangling alphabet, 1.5% got past the one-character prefix test in `detect` and *none*
-# parsed successfully. A defect living behind the grammar -- which is where they live --
-# would never be found that way. So the strategies below start from names that really do
-# parse and damage them.
+# Strategies damage real names: random text from the mangling alphabet almost never gets
+# past `detect` (1.5% of 20,000 samples, none parsed), so it never reaches the grammar.
 
 CORPUS = [name for name, _ in load_corpus("itanium-real-world.txt")][:400]
 CORPUS += [name for name, _ in load_corpus("msvc-llvm-corpus.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("rust-real-world.txt")][:200]
-# Every scheme, so a grammar added later is fuzzed as soon as it has a corpus. A
-# hostile binary is not obliged to hold only the schemes that existed first.
 CORPUS += [name for name, _ in load_corpus("swift-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("d-real-world.txt")][:200]
 CORPUS += [name for name, _ in load_corpus("go-real-world.txt")][:200]
@@ -131,15 +120,15 @@ class TestNeverRaises:
         assert answered(value)
 
     def test_non_string_input_is_reported_rather_than_ignored(self):
-        """A wrong argument type is the caller's mistake, and is now said out loud.
+        """A wrong argument type is the caller's mistake, and is said out loud.
 
-        This used to hand the argument straight back. That read as safe and was not: a
-        tool reading an ELF string table -- where names *are* bytes -- got every symbol
+        Handing the argument straight back would read as safe and not be: a tool
+        reading an ELF string table -- where names *are* bytes -- would get every symbol
         back exactly as it went in, with no error and no expansion, and nothing to tell
-        it why. The strict entry points were worse, reaching the registry's
-        first-character screen and raising `TypeError: 'in <string>' requires string as
-        left operand, not int`, which names neither the problem nor the fix, and which
-        the documented "raises only DemanglingError" contract said could not happen.
+        it why. The strict entry points raise the same `TypeError` rather than reaching
+        the registry's first-character screen, whose message names neither the problem
+        nor the fix and would break the documented "raises only DemanglingError"
+        contract.
 
         The "never raises" promise is about the *name* -- any string, mangled or not --
         not about the type of the argument.
@@ -175,8 +164,8 @@ class TestTheResultIsWritable:
     `demangle()` is documented never to raise, and a caller reads that as a promise it
     can print, log, or serialise the answer. A `str` holding a lone surrogate breaks that
     promise one step later: `UnicodeEncodeError` on `.encode()`, on `json.dump`, on
-    writing to a file. The Go scheme could produce one -- its escapes decode to bytes,
-    and `%89` is not text -- so this is the invariant rather than a note in that module.
+    writing to a file. The Go scheme can reach one -- its escapes decode to bytes, and
+    `%89` is not text -- so this is held as an invariant here rather than in that module.
     """
 
     @staticmethod
@@ -271,10 +260,8 @@ class TestErrorContract:
         finally:
             registry._plugins.pop("boom", None)
             registry._ordered = None
-            # `_by_first` too, or the per-first-character screen keeps handing out
-            # tuples that still hold this plugin after it has been unregistered --
-            # `candidates()` and `available()` then disagree, and whichever test runs
-            # next and asks both fails for a reason that has nothing to do with it.
+            # `_by_first` too, or the per-first-character screen still hands out this
+            # plugin and `candidates()` disagrees with `available()` in a later test.
             registry._by_first = None
             demangle.cache_clear()
 
@@ -293,18 +280,17 @@ class TestDeterminism:
 class TestTheCursorNeverPassesTheEndOfInput:
     """`eof` is `pos >= length`, so an overshoot *satisfies* the all-input-consumed check.
 
-    That is what made the block-invoke window bug silent rather than loud. The window
-    shortens `reader.length` so a nested encoding stops before the literal that bounds
-    it; `expect`, `eat`, `startswith`, `peek2` and `remaining` indexed the string instead
-    of asking `length`, so a truncated encoding consumed a character past the end and
-    then passed `if not reader.eof` because it had gone *further* than the end rather
-    than not far enough.
+    An overshoot is therefore silent rather than loud. The block-invoke window shortens
+    `reader.length` so a nested encoding stops before the literal that bounds it;
+    `expect`, `eat`, `startswith`, `peek2` and `remaining` must ask `length`, not index
+    the string, or a truncated encoding consumes a character past the end and passes
+    `if not reader.eof` because it went *further* than the end rather than not far
+    enough.
 
-    The invariant is stronger than that one bug and is checked as such: whatever the
-    input, `pos` never exceeds `length`. It is asserted by watching every write to `pos`,
-    which is the only way an overshoot can happen, so a new production cannot reintroduce
-    one anywhere. Over the corpus and the same names truncated inside a window, this
-    reported 633 violations before the fix and none after.
+    Whatever the input, `pos` never exceeds `length`. It is asserted by watching every
+    write to `pos`, which is the only way an overshoot can happen, so a new production
+    cannot introduce one anywhere. It holds over the corpus and the same names truncated
+    inside a window.
     """
 
     @staticmethod
@@ -329,8 +315,8 @@ class TestTheCursorNeverPassesTheEndOfInput:
 
         watched, violations = self._watching()
         names = corpus_sample(37)
-        # The shape that had the bug: a real encoding cut short inside the window that
-        # `___Z..._block_invoke` installs, so the literal sits where the rest would be.
+        # A real encoding cut short inside the window `___Z..._block_invoke` installs,
+        # so the literal sits where the rest would be.
         for name in list(names):
             if name.startswith("_Z"):
                 body = name[2:]
@@ -388,8 +374,8 @@ class TestResourceBounds:
     def test_substitution_blowup_is_bounded(self):
         """Each entry built from two copies of the last: output doubles every few bytes.
 
-        Enforcing the bound by measuring the finished string meant building it first;
-        ~180 bytes of input reached 1.86 GB. The bound is checked as the type is built.
+        The bound is checked as the type is built, not by measuring the finished string,
+        which would mean building it first.
         """
         name = "_Z1fPi" + "".join("MS_S_" if i == 0 else f"MS{i - 1}_S{i - 1}_" for i in range(40))
         assert demangle.demangle(name) == name
@@ -400,14 +386,12 @@ class TestResourceBounds:
         """Every `<prefix>` is a substitution candidate, so N components record N
         entries -- and each entry is the whole prefix, so their sizes sum to O(N^2).
 
-        No single entry exceeds `max_output`, which is why that bound never fired.
-        `_ZN` and 8,190 components of `1a` is 16KB of input that read in a second and
-        allocated 98MB. It is refused in twenty milliseconds and about a megabyte now,
-        and the ceiling does not move as the input grows.
+        No single entry exceeds `max_output`, so that bound does not catch it.
+        `_ZN` followed by thousands of components of `1a` is refused, and the ceiling
+        on what the table records does not move as the input grows.
 
-        Not a spelling change: all 217,730 distinct Itanium symbols in the shared
-        libraries of a stock Ubuntu 24.04 demangle to exactly what they did, and the
-        worst of them records 10,209 characters against a budget of 1,048,576.
+        The cap does not change any spelling: every distinct Itanium symbol in the shared
+        libraries of a stock Ubuntu 24.04 stays well inside the budget.
         """
         for components in (1000, 8190, 32000):
             name = "_ZN" + "1a" * components + "E"
@@ -419,15 +403,15 @@ class TestResourceBounds:
         relaxed = Limits(max_output=1 << 22)
         assert demangle.demangle_strict("_ZN" + "1a" * 1000 + "E", limits=relaxed) == "::".join(["a"] * 1000)
 
+    @pytest.mark.sweep
     def test_truncation_at_every_offset_of_every_corpus_is_answered(self, subtests):
         """Every scheme, on real names, cut short at every offset.
 
         Sampled rather than exhaustive -- one name in every 150 across all the
         conformance corpora, which is a few hundred names and some tens of thousands of
-        prefixes. A truncated name is the shape that found the one non-advancing loop
-        this package has had (`Demangler.next_char`, see `tests/test_swift.py`): it ends
-        in the middle of a production, which is exactly where a parser is most likely to
-        put a character back that it never took.
+        prefixes. A truncated name ends in the middle of a production, which is exactly
+        where a parser is most likely to put a character back that it never took (see
+        `Demangler.next_char` and `tests/test_swift.py`).
         """
         sampled = corpus_sample(150)
         assert len(sampled) > 200, "corpora did not load; this test would prove nothing"
@@ -483,8 +467,7 @@ class TestResourceBounds:
 
         Asserted on `rendered` directly rather than by building a tree deep enough to
         overflow, because *how* deep that is is a property of the interpreter and the
-        platform rather than of this package -- which is exactly what the first version
-        of this test got wrong, passing on CPython 3.11 and failing on everything else.
+        platform rather than of this package.
         """
 
         def overflows():

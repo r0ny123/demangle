@@ -32,7 +32,7 @@ class _Jni(Node):
         return "".join(part if isinstance(part, str) else part.render() for part in self.parts)
 
     def spell(self, declarator="", style=None):
-        # Accepted to match `Node.spell` and ignored: Java has no declarator position.
+        # Java has no declarator position; accepted to match `Node.spell`.
         return rendered(self.render)
 
     def build(self, builder):

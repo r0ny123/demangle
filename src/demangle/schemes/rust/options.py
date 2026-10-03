@@ -32,5 +32,5 @@ class RustOptions:
     """
 
 
-#: What the shipped styles use.
 DEFAULT_OPTIONS = RustOptions()
+"""What both shipped styles use: the hash left out, as `rustfilt` prints it."""

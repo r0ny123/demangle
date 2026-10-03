@@ -1,8 +1,8 @@
-"""The API shapes a Python caller expects to find, and used not to.
+"""The API shapes a Python caller expects to find.
 
-Three of them, and each had a working implementation already -- inside the command, or
-inside a private helper -- which is the difference between a library and a library with a
-CLI stapled on.
+Three of them, each a library call rather than something that exists only inside the
+command or a private helper, which is the difference between a library and a library
+with a CLI stapled on.
 
 * The word-scanning filter, so an objdump listing or a crash log can be demangled without
   shelling out to our own command. rustc-demangle ships `demangle_stream` as a crate
@@ -66,8 +66,8 @@ class TestTheStreamFilter:
         assert demangle.demangle_text(VECTOR, style="gnu").endswith("std::allocator<int> >::push_back(int const&)")
 
     def test_a_bad_language_or_style_is_refused_before_any_symbol_is_seen(self):
-        """Plain prose never reaches `demangle()`, so a typo'd argument used to pass
-        silently until the first line that happened to hold a symbol."""
+        """Plain prose never reaches `demangle()`, so a typo'd argument must be refused
+        up front, not pass silently until the first line that happens to hold a symbol."""
         bad: list[dict[str, Any]] = [{"language": "cobol"}, {"style": "nonexistent"}]
         for arguments in bad:
             with pytest.raises(ValueError):
@@ -121,17 +121,16 @@ class TestAReadingThatSaysOnlyWhatTheWordSays:
     `tdump -um` reads as `Name` -- and `@@Name` is a runtime linker procedure, read as
     `__linkproc__ Name`. 39 of them are in the Delphi corpora, so `demangle()` reads
     them: there the caller has said the word is a name. `find_symbols` is guessing, and
-    it is run over whole files. `@Override public void f()` came back
-    `Override public void f()`; a Swift signature this library had *just printed* came
-    back with its `@escaping` and `@autoclosure` shaved off; and
-    `typeinfo for X const*@@CXXABI_FLOAT128` came back with `__linkproc__ CXXABI_FLOAT128`
-    where the ELF version had been.
+    it is run over whole files. Reading them would turn `@Override public void f()`
+    into `Override public void f()`, shave the `@escaping` and `@autoclosure` off a Swift
+    signature this library has just printed, and replace the ELF version in
+    `typeinfo for X const*@@CXXABI_FLOAT128` with `__linkproc__ CXXABI_FLOAT128`.
 
     What those readings have in common is that the identifier survives them whole -- all
     they add is the marker's name, or nothing at all. The caller can see the identifier
     already and cannot see whether it was an annotation, so the filter declines them. A
     reading that says more is untouched, which is why the 475 `._OBJC_CLASS_*` names in
-    the corpus are still found.
+    the corpus are found.
     """
 
     @pytest.mark.parametrize(
@@ -160,7 +159,7 @@ class TestAReadingThatSaysOnlyWhatTheWordSays:
         [("@AddCustomAttrib", "AddCustomAttrib"), ("@@AsClass", "__linkproc__ AsClass")],
     )
     def test_demangle_still_reads_it_when_asked(self, mangled, expected):
-        """The caller has said it is a symbol; the filter had to decide for itself."""
+        """The caller has said it is a symbol; the filter has to decide for itself."""
         assert demangle.demangle(mangled) == expected
 
     def test_a_reading_that_says_more_is_still_found(self):
@@ -211,10 +210,11 @@ class TestTokenisingANameWithASpaceInIt:
     """An Objective-C method is one name, not two words.
 
     `+[Alpha copy_it:]` is a class and a selector with a space between them, and the
-    token pattern is otherwise a run of word characters -- so it was offered as `+[Alpha`
-    and `copy_it:]`, which is the wrong reading of one name rather than the right reading
-    of two. What a symbol *table* holds is the mangled form, which has no space and has
-    always been found; this is about a listing that already carries readable ones.
+    token pattern is otherwise a run of word characters -- so without a rule of its own
+    it would be offered as `+[Alpha` and `copy_it:]`, which is the wrong reading of one
+    name rather than the right reading of two. What a symbol *table* holds is the
+    mangled form, which has no space; this is about a listing that already carries
+    readable ones.
     """
 
     def test_a_method_name_is_one_token(self):
@@ -246,11 +246,11 @@ class TestTokenisingANameWithASpaceInIt:
 class TestAStyleComposedForOneCall:
     """`parse()` must accept the style objects `demangle()` accepts.
 
-    The tree builder was held by style *name*. A style composed with
-    `demangle.style(...)` keeps the name it was based on, so it was silently served the
-    registered style's builder; and a style whose name is not registered at all made
-    `parse()` raise `unknown style` from inside the parser, for an object `demangle()`
-    was perfectly happy with.
+    The tree builder follows the style object, not its *name*. A style composed with
+    `demangle.style(...)` keeps the name it was based on, so a lookup by name would
+    silently serve it the registered style's builder; and a style whose name is not
+    registered at all must not make `parse()` raise `unknown style` from inside the
+    parser, for an object `demangle()` accepts.
     """
 
     def test_a_style_whose_name_is_not_registered_still_parses(self):
@@ -309,8 +309,7 @@ class TestTheTreeAsData:
         The structure is a graph: Itanium's substitutions make one component reachable
         from several places, and a Rust node names its children twice over -- `parts`
         orders them, `base` and `arguments` say what they are. Written out in full at
-        every occurrence it doubles per level, and one real Rust toolchain symbol cost
-        4.7 seconds and 363MB before this.
+        every occurrence it doubles per level.
         """
         assert demangle.parse("_Z1fPiS_").to_dict() == {
             "kind": "function",
@@ -350,7 +349,7 @@ class TestTheTreeAsData:
             json.dumps(tree.to_dict())
 
     def test_structural_pattern_matching_over_the_nodes(self):
-        """`match Pointer(Builtin(name))` is what a walkable tree means in Python now."""
+        """`match Pointer(Builtin(name))` is what a walkable tree means in Python."""
         parameter = next(demangle.parse("_Z1fPi").find("pointer"))
         match parameter:
             case Pointer(Builtin(spelling)):
@@ -397,30 +396,29 @@ class TestTheTreeAsData:
         assert Literal.__match_args__ == ("type", "value")
 
 
+@pytest.mark.sweep
 class TestEveryNodeAnswersTheNodeProtocol:
     """`walk()` hands a caller nodes, and every one of them has to be usable.
 
     The methods a caller reaches for on a node are `spell()`, `render()` and
     `to_dict()`, and the trees come from fourteen schemes with their own node classes.
     Checked on every node of every corpus tree rather than on a sample of kinds, because
-    what goes wrong here is a class nobody thought to check -- and one did.
+    what goes wrong here is a class nobody thought to check.
 
-    `render()` used to be a method most node classes had and no class *declared*: the
+    `render()` is declared by `Node` and defined for every node class. The
     schemes whose spelling does not fit C++ declarator syntax carry their fragments as
-    text and render by concatenating them, so their own tests use it, and `core.ast`'s
-    nodes and four of MSVC's did not have it at all. A Rust tree answered `render()` on
-    every node until the symbol carried an ELF version suffix, which wraps it in a
-    `Decorated` that did not. Walking a tree and asking each node for its text raised
-    `AttributeError` partway through. `Node.render()` is defined for all of them now,
-    and this pins that it agrees with `spell()` everywhere -- which it did on all
-    1,851,583 nodes of the corpora, in both styles, when it was written.
+    text and render by concatenating them, so their own tests use it. A Rust tree with an
+    ELF version suffix wraps it in a `Decorated`, which must answer too, or walking a
+    tree and asking each node for its text raises `AttributeError` partway through.
+    This pins that `render()` agrees with `spell()` everywhere, in both styles, over all
+    the nodes of the corpora.
     """
 
     def _sampled(self, step):
         directory = pathlib.Path(__file__).parent / "conformance"
         names = []
-        for path in sorted(directory.glob("*.txt")):
-            names.extend(name for name, _ in load_corpus(path.name)[::step])
+        for path in sorted([*directory.glob("*.txt"), *directory.glob("reported/*.txt")]):
+            names.extend(name for name, _ in load_corpus(path.relative_to(directory).as_posix())[::step])
         return names
 
     @pytest.mark.parametrize("style", ["llvm", "gnu"])
@@ -444,11 +442,12 @@ class TestEveryNodeAnswersTheNodeProtocol:
 
 
 class TestThePublishedVocabulary:
+    @pytest.mark.sweep
     def test_every_kind_a_corpus_produces_is_published(self):
         """The list cannot rot: the corpora are what keep it honest."""
         directory = pathlib.Path(__file__).parent / "conformance"
-        for path in sorted(directory.glob("*.txt")):
-            for mangled, _ in load_corpus(path.name):
+        for path in sorted([*directory.glob("*.txt"), *directory.glob("reported/*.txt")]):
+            for mangled, _ in load_corpus(path.relative_to(directory).as_posix()):
                 language = demangle.detect(mangled)
                 if language is None:
                     continue

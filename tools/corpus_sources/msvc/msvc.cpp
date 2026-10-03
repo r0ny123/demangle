@@ -7,11 +7,6 @@
 // vbtables, thunks through multiple and virtual inheritance, guards and the dynamic
 // initialiser and atexit stubs, the anonymous namespace, local scopes, and the extended
 // integer types.
-//
-// Two defects came out of the first run of this file against `llvm-undname` 18.1: a
-// member function's qualifiers written past what its return type wraps, and a dynamic
-// initialiser for a *qualified* variable -- which is every namespace-scope object with a
-// non-trivial constructor -- refused outright.
 
 namespace ns {
 
@@ -46,14 +41,8 @@ const char arr[4] = {};
 extern int freefn(int);
 int freefn(int a) { return a; }
 
-// Return types that wrap the declarator, which is where a member qualifier goes.
-// The MS extension qualifiers on the pointee of a pointer to member. `__restrict` on a
-// pointer and `__unaligned` on what it points at are ordinary declarator syntax here,
-// and the mangling writes both in the pointee's own letters -- `PEQExt@@PEIFAH` for
-// `int __unaligned *__restrict Ext::*`. `llvm-undname` 18.1 prints neither when the
-// pointer is a member pointer's pointee, and both when it is not, so `extended_member`
-// and `extended_plain` below return the same spelling to it and two different
-// declarations to the compiler.
+// MS extension qualifiers on a member pointer's pointee (`PEQExt@@PEIFAH`), which
+// `llvm-undname` 18.1 drops there but prints on `extended_plain`.
 struct Ext {
   int __unaligned *__restrict m;
 };
@@ -64,6 +53,7 @@ int __unaligned *__restrict Ext::*extended_member() { return &Ext::m; }
 int __unaligned *__restrict extended_plain() { return nullptr; }
 void takes_extended_member(int __unaligned *__restrict Ext::*) {}
 
+// Return types that wrap the declarator, which is where a member qualifier goes.
 struct Q {
   const char (&r1() const)[4];
   const char (*r2() volatile)[4];

@@ -7,8 +7,8 @@ the shared libraries shipped on Ubuntu 24.04, all of them in LLVM's `sandboxir`.
 llvm-cxxfilt prints the whole declaration the mangling carries -- `&A::f(int)`. GNU
 c++filt prints what the source wrote, `&A::f`, and brackets the declaration for every
 shape where it cannot: `&(A::f() const)`, `&(void A::f<int>())`, `&(f())`. The rule is
-read off c++filt rather than guessed, which is what the vectors below are: each one was
-run through both references on this machine and the two columns are what they printed.
+read off c++filt rather than guessed, which is what the vectors below are: each one is
+run through both references on this machine and the two columns are what they print.
 
     llvm-cxxfilt   Ubuntu LLVM version 18.1.3
     c++filt        GNU Binutils for Ubuntu 2.42
@@ -18,8 +18,7 @@ import pytest
 
 import demangle
 
-#: (mangled, llvm-style, gnu-style). Every one of these is a template argument list
-#: holding one expression, so the difference is visible with nothing else around it.
+#: (mangled, llvm-style, gnu-style).
 VECTORS = [
     # The shape the rule exists for: a plain qualified function. GNU drops the parameter
     # list because `&A::f` is a pointer to member and the parameters are not part of it.
@@ -32,15 +31,10 @@ VECTORS = [
     ("_Z1gI1AIXadL_ZN1AC1EvEEEEvv", "void g<A<&A::A()>>()", "void g<A<&A::A> >()"),
     ("_Z1gI1AIXadL_ZN1AD1EvEEEEvv", "void g<A<&A::~A()>>()", "void g<A<&A::~A> >()"),
     # `S1_` inside the embedded encoding indexes the *enclosing* name's substitution
-    # table -- entry 0 is `g`, entry 1 is `A`, entry 2 the `A` the encoding's own
-    # nested name entered -- which is why both references print `A&` for it. The
-    # shared table is deliberate; see `expr_primary`. (Entry 0 is a function
-    # template's name, and `RS_` in its place is refused: no type is that. Both
-    # references print `g&` for it; see `test_a_template_name_is_not_a_type`.)
+    # table (g, A, then the encoding's own A); see `expr_primary`.
     ("_Z1gI1AIXadL_ZN1AplERS1_EEEEvv", "void g<A<&A::operator+(A&)>>()", "void g<A<&A::operator+> >()"),
     # Unqualified: there is no scope to print, so GNU brackets the declaration instead.
-    # `N 1f E` is a nested name with one component and counts as unqualified, the same as
-    # the bare `_Z1fv` -- both references were asked and both say so.
+    # `N 1f E` counts as unqualified too, per both references.
     ("_Z1gI1AIXadL_Z1fvEEEEvv", "void g<A<&f()>>()", "void g<A<&(f())> >()"),
     ("_Z1gI1AIXadL_ZN1fEvEEEEvv", "void g<A<&f()>>()", "void g<A<&(f())> >()"),
     # A cv- or ref-qualifier is part of the pointer's type and cannot be dropped, so the
@@ -94,7 +88,7 @@ def test_the_tree_renders_what_the_text_path_spells(mangled, style):
 def test_a_template_name_is_not_a_type():
     """`S_` in `_Z1gI1AIXadL_ZN1AplERS_EEEEvv` is entry 0 of the shared table, the
     function template `g`, and `RS_` would make `g&` a parameter type. llvm-cxxfilt
-    prints exactly that and c++filt drops the parameters; this used to print `g&` too.
+    prints exactly that and c++filt drops the parameters; this library prints neither.
     A template with no arguments after it is nothing a type can be, so the name is
     refused under both styles rather than read as a declaration nothing could have."""
     assert demangle.demangle("_Z1gI1AIXadL_ZN1AplERS_EEEEvv") == "_Z1gI1AIXadL_ZN1AplERS_EEEEvv"
@@ -117,12 +111,13 @@ def test_the_shape_as_it_appears_in_a_shipped_library():
     )
 
 
-def test_the_option_is_what_selects_it_and_llvm_style_is_unaffected():
+def test_the_option_selects_it_under_either_style():
     """Turning it off leaves the operand to the general rule, which brackets it.
 
-    That is `gnu_expression_spelling`, still on in the style: with neither, the spelling
-    is llvm-cxxfilt's. The two options answer different questions -- "may the parameter
-    list be dropped" and "does this operand need brackets" -- and this is what shows it.
+    That is `gnu_expression_spelling`, which stays on in the style: with neither, the
+    spelling is llvm-cxxfilt's. The two options answer different questions -- "may the
+    parameter list be dropped" and "does this operand need brackets" -- and this is what
+    shows it.
     """
     mangled = "_Z1gI1AIXadL_ZN1A1fEvEEEEvv"
     gnu_off = demangle.style("gnu", itanium={"gnu_entity_operand_spelling": False})

@@ -20,13 +20,14 @@ class Limits:
     max_depth: int = 256
     """Nesting depth of recursive productions. Real names rarely pass 20.
 
-    Not the only ceiling, and usually not the binding one. A production costs several
-    Python frames, so the interpreter's own recursion limit stops a parse first for
-    every shape measured: at the default limit of 1000, an Itanium name gives out around
-    141 levels of nested template, 164 of `decltype`, 197 of function type and 493 of
-    pointer. Whichever binds first is reported the same way, as `LimitExceeded` naming
-    this bound, because they are the same fact about the name. A caller who wants this
-    number to be the one that decides can raise `sys.setrecursionlimit()`.
+    At the defaults this is the bound that decides: an Itanium name nested past it stops
+    with `LimitExceeded` naming `max_depth`, whatever the shape. The interpreter's
+    recursion limit is a second, independent ceiling. A production costs several Python
+    frames, so at the default limit of 1000 it binds only when this number is raised,
+    at roughly 140 levels of nested template, 164 of function type and 494 of pointer,
+    or when the caller's stack is already deep. It is reported the same way, as
+    `LimitExceeded("recursion depth")` naming this bound, and it is then the caller's
+    bound in fact. `sys.setrecursionlimit()` moves it.
     """
 
     max_output: int = 1 << 16
@@ -40,11 +41,14 @@ class Limits:
 
 
 DEFAULT_LIMITS = Limits()
+"""The bounds every entry point uses unless it is passed others."""
 
-#: Bounds for callers that trust their input and want the ceiling out of the way.
-#: Still finite: "trusted" is a statement about intent, not about correctness.
-#:
-#: `max_depth` here is not reachable at the interpreter's default recursion limit -- see
-#: the note on the field. It is left high on purpose: it says what this package will
-#: allow, and a caller who raises `sys.setrecursionlimit()` gets it.
 RELAXED_LIMITS = Limits(max_depth=2048, max_output=1 << 22, max_substitutions=1 << 16, max_input=1 << 22)
+"""Bounds for callers that trust their input and want the ceiling out of the way.
+
+Still finite: "trusted" is a statement about intent, not about correctness.
+
+`max_depth` here is not reachable at the interpreter's default recursion limit -- see
+the note on `Limits.max_depth`. It is left high on purpose: it says what this package
+will allow, and a caller who raises `sys.setrecursionlimit()` gets it.
+"""

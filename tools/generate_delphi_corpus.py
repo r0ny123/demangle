@@ -19,9 +19,9 @@ reference spelling, so they are counted and never written.
 The dump is read here rather than with PyYAML, because this package has no dependencies
 and a tool sitting beside it should not need one either. That is only safe because the
 reader is strict: the emitter uses the explicit `? key` / `: value` form for a long key
-and folds long scalars across lines, and the reader that recognised neither silently
-dropped 87 of 11,373 entries. A line it does not recognise is an error, not something to
-skip past.
+and folds long scalars across lines, and a reader that recognised neither would
+silently drop 87 of the 11,373 entries. A line it does not recognise is an error, not
+something to skip past.
 """
 
 from __future__ import annotations
@@ -102,9 +102,7 @@ def load_reference_dump(text, source="<dump>"):
     * `? ! 'key'` then `: value` -- the explicit form, used when the key is long;
 
     and either can be folded onto further indented lines, which YAML reads back as a
-    single space. A line that is neither is an error rather than something to skip: the
-    reader this replaced recognised only the first shape and silently dropped 87 of the
-    dump's 11,373 entries, which is where a whole-table figure of 11,286 came from.
+    single space. A line that is neither is an error rather than something to skip.
 
     Checked scalar for scalar against PyYAML over the whole dump.
     """

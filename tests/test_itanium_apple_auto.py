@@ -1,10 +1,10 @@
 """Apple's clang counts an undeduced `auto` as a substitution candidate; nothing else does.
 
-Found by putting the Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB,
-ceres, ICU and glog -- 108,839 Mach-O symbols, all Apple clang's output -- to
-llvm-cxxfilt and c++filt. Of the 17,310 names carrying a `Da`, 2,300 were refused with a
-back-reference past the substitution table, by this and by both references, and 6,385
-more read as a plausible-looking wrong declaration under all three -- `std::__1::
+Take the Homebrew bottles of Boost, folly, Abseil, protobuf, Poco, fmt, TBB, ceres, ICU
+and glog -- 108,839 Mach-O symbols, all Apple clang's output. Of the 17,310 names
+carrying a `Da`, 2,300 are refused with a back-reference past the substitution table
+under the common rule, by this and by both references, and 6,385 more read as a
+plausible-looking wrong declaration under all three -- `std::__1::
 basic_string_view<char, std::__1::basic_string_view::char_traits<char>>`, a type libc++
 does not declare.
 
@@ -105,8 +105,7 @@ class TestWhatTheBottlesCarry:
             ),
             # Abseil's raw_hash_map: `template <class Allocator> static auto transfer(
             # Allocator* alloc, slot_type* new_slot, slot_type* old_slot)`. The last
-            # parameter's `SJ_` is one past what the common rule numbers, so every
-            # demangler refused the name.
+            # parameter's `SJ_` is one past what the common rule numbers.
             (
                 ABSEIL_BOTTLE,
                 "auto absl::lts_20260817::container_internal::map_slot_policy<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>::transfer<std::__1::allocator<std::__1::pair<std::__1::vector<int, std::__1::allocator<int>> const, std::__1::vector<int, std::__1::allocator<int>>>>>(std::__1::allocator<std::__1::pair<std::__1::vector<int, std::__1::allocator<int>> const, std::__1::vector<int, std::__1::allocator<int>>>>*, absl::lts_20260817::container_internal::map_slot_type<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>*, absl::lts_20260817::container_internal::map_slot_type<std::__1::vector<int, std::__1::allocator<int>>, std::__1::vector<int, std::__1::allocator<int>>>*)",

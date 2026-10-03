@@ -46,8 +46,7 @@ def detect(name):
         return False
 
 
-#: What each builder class answered to `_wants_structure`, asked once per class rather
-#: than once per name: the answer is a property of the builder's type.
+#: `_wants_structure`'s answer per builder class, asked once per class.
 _STRUCTURED = {}
 
 
@@ -85,12 +84,10 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="JNI native method names (Java_pkg_Class_method)",
     aliases=("java",),
-    # `J` is the only start these have, which keeps the parse off every other symbol in
-    # a binary. `priority` is ascending -- lower is offered first -- and this goes early
-    # because the prefix is unambiguous among the schemes here and the parse itself is
-    # the claim: nothing else starts `Java_` and decodes as one of these.
+    # Early priority: nothing else starts `Java_` and decodes as one of these.
     first_characters="J",
     priority=15,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)

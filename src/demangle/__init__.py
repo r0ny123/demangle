@@ -8,11 +8,11 @@
     >>> demangle.detect("_RNvC6_123foo3bar")
     'rust'
 
-No dependencies, no native code, no compiler required. Supports the Itanium C++ ABI
-(GCC and Clang), Microsoft's decorated names, both Rust schemes, Swift, Objective-C,
-Go, D, Nim, Free Pascal, Delphi/C++Builder, and JNI.
+No dependencies, no native code, no compiler required. Reads Itanium C++ (GCC/Clang),
+MSVC, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI, and the
+pre-Itanium C++ families (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior).
 
-`demangle()` never raises: a name it cannot read comes back unchanged. Use
+`demangle()` never raises over a name: one it cannot read comes back unchanged. Use
 `demangle_strict()` or `parse()` when you need to know the difference, and
 `signature()` when you want the parts rather than the spelling:
 
@@ -56,7 +56,7 @@ from .core.registry import register as register_language
 from .core.style import Style, register_style
 from .filter import Found, demangle_stream, demangle_text, find_symbols
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "DEFAULT_LIMITS",

@@ -152,4 +152,6 @@ class SwiftOptions:
 
 
 DEFAULT_OPTIONS = SwiftOptions()
+"""What both shipped styles use: the full spelling, as `swift-demangle` prints it."""
 SIMPLIFIED_OPTIONS = SwiftOptions.simplified()
+"""`SwiftOptions.simplified()`: what `swift-demangle --simplified` prints."""

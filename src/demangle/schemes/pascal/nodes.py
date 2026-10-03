@@ -31,8 +31,7 @@ class _Pascal(Node):
         return "".join(part if isinstance(part, str) else part.render() for part in self.parts)
 
     def spell(self, declarator="", style=None):
-        # Accepted to match `Node.spell` and ignored: the declarator position is a C++
-        # notion and Pascal has none.
+        # `declarator` is a C++ notion; accepted to match `Node.spell`.
         return rendered(self.render)
 
     def build(self, builder):
@@ -96,14 +95,9 @@ def build(symbol):
             parts.append(" (indirect reference)")
         return Symbol(parts, symbol.kind)
 
-    # Everything the spelling puts in front of the qualified name -- `vmt for `, the
-    # kind word, `program ` -- found by looking for that name *as the spelling writes
-    # it*. A program's unit carries a `P$` that the spelling drops, so searching for the
-    # raw unit found nothing and the whole lead was silently lost:
-    # `U_$P$XLIB_$$_PX_OPEN_F` rendered `XLIB.PX_OPEN_F` where the text path says
-    # `program variable XLIB.PX_OPEN_F`. Searched for with the scope attached rather
-    # than the unit alone, so a unit whose name is also a word in the lead cannot match
-    # the wrong place.
+    # The lead (`vmt for `, the kind word, `program `) is found by searching for the name
+    # as the spelling writes it (without a program's `P$`) and with the scope attached,
+    # so a unit name that is also a word in the lead cannot match the wrong place.
     spelled_unit = symbol.unit[2:] if symbol.unit.startswith("P$") else symbol.unit
     qualified = ".".join([spelled_unit, *symbol.scope])
     at = symbol.text.find(qualified) if qualified else -1

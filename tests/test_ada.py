@@ -47,9 +47,7 @@ class TestAgainstLibertysOwnVectors:
         assert exact == ADA_EXACT
 
     def test_the_one_name_the_reference_declines_is_declined_here(self):
-        # `c++filt --format=gnat` answers `<x_E>`; wrapping in angle brackets is how it
-        # says "not mine". This returns the name unchanged, which says the same thing in
-        # this library's vocabulary.
+        # `c++filt --format=gnat` answers `<x_E>`, its way of saying "not mine".
         assert demangle.demangle("x_E", language="ada") == "x_E"
         with pytest.raises(DemanglingError):
             demangle.demangle_strict("x_E", language="ada")
@@ -130,14 +128,16 @@ class TestDetectionDeclinesWhatItCannotTell:
 
         The type corpora are in scope rather than excused. `rDF16_` -- the Itanium
         encoding of `_Float16 restrict` -- really does parse as `r.Finalize` with `16_`
-        left over, and it is the name that made the "fully accounted for" half of
-        `detect` exist. It is reached only through `demangle_type()`, where the caller
+        left over, and it is the name that motivates the "fully accounted for" half of
+        `detect`. It is reached only through `demangle_type()`, where the caller
         has already said which scheme it belongs to, but a detection rule that would
         claim it if asked is a rule with a hole in it.
         """
         claimed = []
-        for path in sorted(CONFORMANCE.glob("*.txt")) + sorted(CONFORMANCE.glob("*.txt.gz")):
-            if path.name.startswith("ada-"):
+        for path in sorted(
+            [*CONFORMANCE.glob("*.txt"), *CONFORMANCE.glob("*.txt.gz"), *(CONFORMANCE / "reported").glob("*.txt")]
+        ):
+            if path.stem.partition("-")[0] == "ada":
                 continue
             text = (
                 gzip.decompress(path.read_bytes()).decode("utf-8")
@@ -152,6 +152,7 @@ class TestDetectionDeclinesWhatItCannotTell:
                     claimed.append(name)
         assert claimed == []
 
+    @pytest.mark.sweep
     def test_no_real_symbol_on_this_machine_is_read_as_ada(self):
         """The measurement the docstring quotes, run rather than remembered.
 
@@ -163,9 +164,9 @@ class TestDetectionDeclinesWhatItCannotTell:
         `bash` on a Windows runner is `C:\\Windows\\System32\\bash.exe` -- the WSL
         launcher -- which, with no distribution installed, writes its complaint to
         *stdout* in UTF-16. Decoded as text that is `'W\\x00i\\x00n\\x00...'`, which
-        passed the `if not listing` guard and reached `subprocess` as a filename with
+        would pass the `if not listing` guard and reach `subprocess` as a filename with
         NUL bytes in it. A directory that does not exist globs to nothing on every
-        platform, which is the answer this wanted in the first place.
+        platform, which is the answer wanted here.
         """
         listing = []
         for directory in (Path("/usr/lib/x86_64-linux-gnu"), Path("/lib/x86_64-linux-gnu")):
@@ -221,8 +222,7 @@ class TestSharingTheOverlapWithTheOtherPreItaniumSchemes:
         assert order.index("ada") < order.index("gnuv2") < order.index("codewarrior")
 
     def test_a_gnat_name_would_otherwise_be_read_as_cpp(self):
-        # What the ordering buys. GNU v2 reads this happily and gets a wrong name, not
-        # no name, which is the outcome this library treats as worse than silence.
+        # GNU v2 would read this and get a wrong name, which is worse than none.
         mangled = "p__taskobjTKB"
         assert demangle.demangle(mangled) == "p.taskobj"
         assert demangle.demangle(mangled, language="gnuv2") != "p.taskobj"
@@ -295,14 +295,13 @@ class TestTheNameThatAbortsTheReference:
     returns normally, so it is the two expansions in one name that do it. Only the GNAT
     format reaches it; `c++filt` left to detect the scheme does not.
 
-    `tools/mutate.py --seed 37` found it as a mutant of a GNAT runtime symbol, and it
-    took the whole Ada run down: the reference answered 6,933 of 20,000 names and the
-    tool could pair none of them. `ask_tolerantly` now splits a batch down to the name
-    that did it and leaves that one out of the comparison, which is why the seed
-    completes.
+    A mutation-fuzzing run over the Ada scheme reaches it as a mutant of a GNAT runtime
+    symbol, and the reference dying takes the whole batch with it, so no name in the
+    batch can be paired. `ask_tolerantly` splits a batch down to the name that does it
+    and leaves that one out of the comparison.
 
     This library reads all of these. The test is here so that stays true, and so the
-    shape is written down somewhere other than a fuzzer's output.
+    shape is written down.
     """
 
     @pytest.mark.parametrize(

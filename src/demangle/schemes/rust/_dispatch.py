@@ -1,10 +1,12 @@
 from enum import Enum
 
 from ._legacy import LegacyDemangler
-from ._v0 import V0Demangler
+from ._v0 import _DEFAULT_MAX_DEPTH, V0Demangler
 
 
 class ManglingType(Enum):
+    """Which of Rust's two manglings a name uses: legacy (`_ZN...E`) or v0 (`_R...`)."""
+
     LEGACY = 0
     V0 = 1
 
@@ -27,48 +29,48 @@ class RustDemangler:
     reading, its suffix and its path spans on `self`, so a single shared instance
     lets two threads overwrite each other's parse -- and the failure is silent. It
     does not raise; it returns another symbol's name, which is then memoised under
-    the first symbol's key. Measured before this changed: 160 wrong answers out of
-    5,710 symbols across eight threads.
+    the first symbol's key.
 
     A parser is two attribute stores to allocate, against a parse that is tens of
     microseconds, so per-name construction does not show up in the benchmark.
     """
 
-    def demangle(self, inpstr: str, limit: int, keep_hash: bool = False) -> str:
-        """Demangle the given string
+    def demangle(self, inpstr: str, limit: int, keep_hash: bool = False, max_depth: int = _DEFAULT_MAX_DEPTH) -> str:
+        """Spell `inpstr`, in whichever of the two manglings it uses.
 
         Args:
-            inpstr (str): String to be demangled
-            limit (int): most characters the printer may write
-            keep_hash (bool): spell the disambiguating hash rather than dropping it
+            inpstr: the mangled name.
+            limit: the most characters the printer may write.
+            keep_hash: spell the disambiguating hash rather than dropping it.
+            max_depth: the deepest v0 nesting to read, as `Limits.max_depth`.
         """
-        return self._for(inpstr, keep_hash).demangle(inpstr, limit)
+        return self._for(inpstr, keep_hash, max_depth).demangle(inpstr, limit)
 
-    def structure(self, inpstr: str, limit: int, keep_hash: bool = False):
+    def structure(self, inpstr: str, limit: int, keep_hash: bool = False, max_depth: int = _DEFAULT_MAX_DEPTH):
         """Demangle to a tree rather than to text.
 
         Same parser, same pass; only what it emits into differs. The tree renders to
         exactly what `demangle` returns for the same input -- `keep_hash` included, since
         both are one stream of fragments.
         """
-        return self._for(inpstr, keep_hash).structure(inpstr, limit)
+        return self._for(inpstr, keep_hash, max_depth).structure(inpstr, limit)
 
-    def _for(self, inpstr, keep_hash=False):
+    def _for(self, inpstr, keep_hash=False, max_depth=_DEFAULT_MAX_DEPTH):
         if self.determine_type(inpstr) == ManglingType.LEGACY:
             return LegacyDemangler(keep_hash)
-        return V0Demangler(keep_hash)
+        return V0Demangler(keep_hash, max_depth)
 
     def determine_type(self, inpstr: str) -> ManglingType:
-        """Determine the type of the given string
+        """Say which of the two manglings `inpstr` uses, by its prefix alone.
 
         Args:
-            inpstr (str): Input String
-
-        Raises:
-            TypeNotFoundError: If the string can't be determined
+            inpstr: the mangled name.
 
         Returns:
-            ManglingType: type of the string
+            `ManglingType.LEGACY` or `ManglingType.V0`.
+
+        Raises:
+            TypeNotFoundError: `inpstr` starts the way neither mangling does.
 
         Note:
             A bare `R` is accepted here, like the bare `ZN` below it: some symbol tables

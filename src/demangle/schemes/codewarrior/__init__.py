@@ -15,11 +15,12 @@ type spelling is the reference's own -- `const char*`, not `char const *`.
 
 Detection has the same problem `gnuv2` has and answers it the same way: a CodeWarrior
 symbol is an ordinary C identifier with a `__` in it, so `detect` parses the whole name
-rather than testing a prefix, and this scheme is offered second-to-last -- after
-everything with a marker, and *before* `gnuv2`, which would otherwise read `__dt__6CActorFv`
-as a function called `__dt` and be wrong about it. Measured over every corpus in
-`tests/conformance/` and over the system's own C libraries: see `tests/test_codewarrior.py`,
-which pins the count both ways.
+rather than testing a prefix, and this scheme is offered last -- after everything with
+a marker and after `gnuv2`, which goes first because a name valid under both should go
+to the commoner mangling. A `__dt` that the gnu style does not know falls through to
+this scheme, so `__dt__6CActorFv` is read here rather than as a function called `__dt`.
+Measured over every corpus in `tests/conformance/` and over the system's own C
+libraries: see `tests/test_codewarrior.py`, which pins the count both ways.
 """
 
 import re
@@ -43,22 +44,14 @@ __all__ = [
     "parse",
 ]
 
-#: Above this, a name is not offered to the parser at all. `detect` runs the whole parse;
-#: no CodeWarrior symbol measured here comes close, and the longest vector the reference
-#: carries -- a `red_black_tree` instantiation nested five deep -- is 1,300 characters, so
-#: the bound is set above that rather than at it.
+#: Longest name `detect` will parse; the reference's longest vector is 1,546 characters.
 _DETECT_MAX = 4096
 
-#: What a CodeWarrior symbol is made of. A pattern rather than a set of characters
-#: because this is on every symbol's path and `fullmatch` is one C-level scan. `<>,`
-#: because a template argument list is written literally; `$` and `@` because both spell
-#: a function-local static, `@LOCAL@f@v` on Wii and `v$localstatic1$f` on GameCube; `-`
-#: because a negative template argument literal is written with one.
+#: `<>,` for literal template arguments, `$`/`@` for local statics (`v$localstatic1$f`,
+#: `@LOCAL@f@v`), `-` for negative template literals.
 _SYMBOL_RE = re.compile(r"[A-Za-z0-9_<>,$@.-]+")
 
-#: What a component of a demangled C++ name may be made of, once template arguments have
-#: been taken off it. A `$` or an `@` left in the *output* means what came out was not a
-#: name -- both are markers the demangler is supposed to have consumed.
+#: A `$` or `@` left in the output is a marker the demangler failed to consume.
 _NAME_RE = re.compile(r"[A-Za-z0-9_~]+")
 
 
@@ -107,10 +100,7 @@ def _plausible(symbol):
     """
     parameters = symbol.parameters or ()
     if len(parameters) > 1 and any(parameter == "void" for parameter in parameters):
-        # `f(char, short, void)` cannot be a declaration: `void` is a parameter list only
-        # when it is the whole of it. The same rule `gnuv2` holds a reading to, for the
-        # same reason -- these two grammars read the same run of type letters out of the
-        # same C names, and `f__Fcsv` is one either of them will claim if allowed to.
+        # `void` is a parameter list only when it is the whole of it (as in `gnuv2`).
         return False
     name = symbol.qualified_name
     at = name.find("(")
@@ -127,6 +117,13 @@ def _plausible(symbol):
     return True
 
 
+#: What `detect` needs to see, for the registry to screen on without calling it: a `__`.
+#: See `core.registry._screened`.
+DETECT_SCREEN = (("__",), ())
+
+_OTHER_SCHEME = re.compile(r"__?(?:Z|R[A-Z])")
+
+
 def detect(name):
     """Whether `name` is a CodeWarrior symbol, decided by reading it.
 
@@ -134,12 +131,16 @@ def detect(name):
     whether it parsed. Screened first, so that the great majority of symbols cost a
     substring search and nothing else.
     """
-    # The cheapest possible reject, inline and first: see the note on `gnuv2.detect`.
-    # Every name the reference reads has a `__` in it, so a symbol table of ordinary C
-    # names costs one C-level substring search each and no call into `_screen`.
+    # Every name the reference reads has a `__` in it, and a special name (`__dt__...`)
+    # a second one after its own: `__libc_start_main` is neither.
     if "__" not in name:
         return False
+    if name[:2] == "__" and name.find("__", 2) < 0 and name[2:4] != "op":
+        return False
     if len(name) > _DETECT_MAX or not _screen(name):
+        return False
+    # Itanium and Rust v0 refusals fall through to here; `__RTTI__` is CodeWarrior's own.
+    if _OTHER_SCHEME.match(name) and not name.startswith("__RTTI__"):
         return False
     try:
         symbol = demangle_codewarrior(name)
@@ -201,15 +202,10 @@ PLUGIN = LanguagePlugin(
     options_type=CodeWarriorOptions,
     aliases=("cw", "metrowerks", "mwcc"),
     symbol_table_decorations=True,
-    # `priority` is ascending: *lower is offered first*. Last of all, behind `gnuv2`
-    # (290), because where the two overlap the commoner mangling should win: a symbol
-    # like `AtEnd__13ivRubberGroup` is valid under both and nothing in it says which
-    # compiler wrote it. What is unambiguously CodeWarrior -- a literal `<...>` argument
-    # list, `@LOCAL@`, `$localstatic`, a `__dt`/`__ct` special name, a `Q2` whose
-    # components carry template arguments -- `gnuv2` refuses, and falls through to here.
-    # A caller who knows the binary is CodeWarrior passes `language="codewarrior"` and
-    # gets the whole scheme regardless. tests/test_core.py pins the order.
+    # Behind `gnuv2` (290) so the commoner mangling wins where both read a name;
+    # tests/test_core.py pins the order.
     priority=300,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)

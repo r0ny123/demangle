@@ -14,9 +14,10 @@ Four families are read:
     _OBJC_CLASS_$_NSString            Apple's non-fragile ABI
     .objc_class_name_NSString         Apple's fragile ABI, and the GNU runtimes' own
 
-Clang's block invocation functions (`___<len><method>_block_invoke`, `__block_literal_global`,
-`__block_descriptor`) are also read. The length prefix before a method is verified against the
-method's text; a mismatched count is refused rather than guessed at.
+Clang's block invocation functions (`___<len><method>_block_invoke`,
+`__block_literal_global`, `__block_descriptor`) are also read. The length prefix before
+a method is verified against the method's text; a mismatched count is refused rather
+than guessed at.
 
 Correctness rests on re-assembly, as it does for Go, Nim and Free Pascal, and on
 agreement with what the compiler emitted for declarations this package wrote: 445 of 445
@@ -47,12 +48,22 @@ from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
 from ._parser import (
+    _METHOD_PREFIXES,
+    _SCREEN_MARKERS,
     DemangleFailure,
     ObjcSymbol,
     detect,
     gnu_method_readings,
     mangle_gnu_method,
     parse_objc_symbol,
+)
+
+#: What `detect` needs to see, for the registry to screen on without calling it: one of
+#: its markers, an Apple method's `-`/`+`, or a method prefix under the decorations
+#: `_method_prefixed` strips. See `core.registry._screened`.
+DETECT_SCREEN = (
+    _SCREEN_MARKERS,
+    ("-", "+", *(f"{strip}{prefix}" for strip in ("", ".", "_", "l_", "L_", "._") for prefix in _METHOD_PREFIXES)),
 )
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
@@ -94,16 +105,13 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Objective-C method, class and runtime symbol names",
     aliases=("objective-c", "objectivec"),
-    # `priority` is ascending: *lower is offered first*. After Nim and Free Pascal, and
-    # before every scheme with a prefix of its own: an Objective-C symbol names itself in
-    # the clear, so nothing else can want it, but the `_i_`/`_c_` method form is shaped
-    # like an ordinary C identifier and must not be offered a name another scheme would
-    # have recognised.
+    # Lower is offered first: after Nim and Free Pascal, before prefixed schemes, since
+    # the `_i_`/`_c_` form looks like a C identifier another scheme might recognise.
     priority=30,
-    # `-[`, `+[`, and the `_`, `.` and `l` that begin every runtime symbol and every
-    # block. Checked against every corpus by `tests/test_core.py`.
+    # Checked against every corpus by `tests/test_core.py`.
     first_characters="-+_.lL",
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

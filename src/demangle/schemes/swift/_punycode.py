@@ -8,7 +8,7 @@ and both are in the compiler's `Punycode.cpp`:
   because a mangled name may only use characters an assembler accepts;
 * scalars in `0xD800`-`0xD87F` -- the surrogate range, which real text cannot contain --
   are used to carry ASCII punctuation, and are decoded by subtracting `0xD800`. Without
-  that, an operator like `+` comes back as an unassigned code point.
+  that, an operator like `+` would decode as an unassigned code point.
 """
 
 __all__ = ["decode"]
@@ -41,9 +41,8 @@ def _adapt(delta, points, first):
     return k + ((_BASE - _TMIN + 1) * delta) // (delta + _SKEW)
 
 
-#: Largest code point a decoded scalar can be, and the ceiling the running value is
-#: tested against. `i` is an offset into a string of at most `len(out) + 1` positions,
-#: so anything past this cannot become a character however the rest of the input reads.
+#: Largest code point, and the ceiling the running value is tested against: past it
+#: nothing can become a character.
 _MAX_SCALAR = 0x10FFFF
 _MAX_INSERTION = _MAX_SCALAR * (_MAX_SCALAR + 1)
 
@@ -63,9 +62,7 @@ def _scalars(text):
             out.append(ord(char))
         text = text[last + 1 :]
 
-    # An index rather than `text = text[1:]`. Consuming a digit by re-slicing copies the
-    # whole remainder every time, which made decoding cost time quadratic in the length
-    # of the identifier -- and the length is the attacker's choice.
+    # An index: re-slicing per digit is quadratic in an attacker-chosen length.
     at = 0
     length = len(text)
     while at < length:
@@ -81,11 +78,8 @@ def _scalars(text):
                 raise PunycodeError("not a punycode digit")
             i += digit * weight
             if i > _MAX_INSERTION:
-                # RFC 3492's reference decoder tests for overflow against the machine's
-                # integer width. Python has none, so the same test is written against
-                # the largest value that could still become a code point. Without it a
-                # long digit run drives `weight` to 36**k and does arbitrary bignum
-                # arithmetic to reach a number whose only use is to fail a range check.
+                # RFC 3492 tests overflow against the machine word; Python has none, so
+                # the test is against the largest possible code point.
                 raise PunycodeError("punycode value out of range")
             threshold = _TMIN if k <= bias else _TMAX if k >= bias + _TMAX else k - bias
             if digit < threshold:
@@ -107,8 +101,8 @@ def decode(text):
     decoded = []
     for scalar in _scalars(text):
         if 0xD800 <= scalar < 0xD880:
-            # Not a surrogate: the mangler parks ASCII punctuation here so that a
-            # character an assembler would reject survives the round trip.
+            # Not a surrogate: the mangler parks ASCII punctuation here so an assembler
+            # accepts it.
             scalar -= 0xD800
         elif not (scalar < 0xD800 or 0xE000 <= scalar <= 0x10FFFF):
             raise PunycodeError("not a Unicode scalar")

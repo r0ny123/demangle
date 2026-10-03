@@ -15,7 +15,7 @@ With no arguments this is a *filter*, not a line reader: every symbol-shaped wor
 input is a candidate and everything around it is copied through untouched. That is what
 `c++filt`, `demumble` and `rustfilt` all do, and it is the only behaviour under which
 the first example above works. `nm` writes an address and a type letter before the name,
-so treating the whole line as one symbol demangled nothing at all:
+so treating the whole line as one symbol would demangle nothing at all:
 
     $ printf '0000000000001139 T _ZN3foo3barEv\\n' | demangle
     0000000000001139 T _ZN3foo3barEv        # every line, unchanged
@@ -25,7 +25,7 @@ Encoding
 A symbol table holds bytes, and they are not reliably UTF-8. Both streams are read and
 written with `surrogateescape`, so a name this package cannot read comes back byte for
 byte -- and so a non-UTF-8 symbol does not end the run with a `UnicodeDecodeError`
-traceback, which is what happened wherever the interpreter's error handler was `strict`.
+traceback, which is what the `strict` error handler does.
 """
 
 import argparse
@@ -42,9 +42,6 @@ from .core.errors import DemanglingError
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 from .filter import TOKEN, TOKEN_MUST_HOLD
 
-#: The token scan, shared with `demangle.filter` so there is one of it rather than
-#: two. That module is the library form of this command's default behaviour; see its
-#: docstring for what the two patterns are for and why the second one is needed.
 _TOKEN = TOKEN
 _TOKEN_MUST_HOLD = TOKEN_MUST_HOLD
 
@@ -82,8 +79,7 @@ def build_parser():
     parser.add_argument(
         "-m", "--only-demangled", action="store_true", help="print only what demangled, skipping the rest"
     )
-    # One name, one part: asking for two of these would print one of them and drop the
-    # other, and a flag that is silently ignored is worse than an error.
+    # One name, one part: a silently ignored flag is worse than an error.
     parts = parser.add_mutually_exclusive_group()
     parts.add_argument(
         "-p",
@@ -143,13 +139,9 @@ def build_parser():
     return parser
 
 
-#: `--flag` to the MSVC option it turns off. `--no-return-type` and `--ret-postfix` are
-#: shared with the selection flags -- both need the declaration without its return type,
-#: and differ only in whether the type is then written after it. For MSVC that has to be
-#: an option, because a return type there wraps *around* the declarator:
-#: `int (__cdecl * __cdecl fn(void))(int)` has no prefix to strip. Itanium has the same
-#: shape in `int (*g<int>(int))(int)` and answers it from the tree instead; see
-#: `_without_return_type`.
+#: `--flag` to the MSVC option it turns off. `--no-return-type` and `--ret-postfix` need
+#: an option for MSVC because its return type wraps *around* the declarator
+#: (`int (__cdecl * __cdecl fn(void))(int)`); Itanium uses the tree instead.
 _MSVC_SUPPRESSIONS = {
     "no_calling_convention": "calling_convention",
     "no_access_specifier": "access_specifier",
@@ -202,8 +194,7 @@ def _dump(node, indent=0):
     """Render a parse tree, one node per line."""
     pad = "  " * indent
     detail = ""
-    # Every slot in the hierarchy, not just the most-derived class's: a node whose text
-    # lives on a shared base declares none of its own and would print no detail at all.
+    # Every slot in the hierarchy: a node's text may live on a shared base.
     for slot in node._fields() if hasattr(node, "_fields") else getattr(node, "__slots__", ()):
         value = getattr(node, slot, None)
         if isinstance(value, str) and value:
@@ -235,9 +226,11 @@ def main(argv=None):
     if arguments.list_languages:
         from .core.registry import available
 
-        for plugin in available():
+        plugins = available()
+        width = max((len(plugin.name) for plugin in plugins), default=0)
+        for plugin in plugins:
             aliases = f" (aliases: {', '.join(plugin.aliases)})" if plugin.aliases else ""
-            print(f"{plugin.name:10} {plugin.description}{aliases}")
+            print(f"{plugin.name:{width}} {plugin.description}{aliases}")
         return 0
 
     if arguments.list_styles:
@@ -245,8 +238,7 @@ def main(argv=None):
             print(name)
         return 0
 
-    # Validated through the registry rather than against `languages()`, so the aliases
-    # that `--list-languages` advertises are actually accepted.
+    # Through the registry so the advertised aliases are accepted.
     if arguments.language:
         from .core.registry import aliases, get
 
@@ -260,8 +252,7 @@ def main(argv=None):
     if arguments.types:
         if not arguments.language:
             parser.error("--types needs --language: a type encoding carries no marker to detect on")
-        # Checked here rather than per name: a scheme with no type grammar fails on every
-        # line, and one message about the run beats one message per symbol.
+        # Checked once: a scheme with no type grammar fails on every line.
         from .core.registry import get as _get_plugin
 
         if _get_plugin(arguments.language).parse_type is None:
@@ -290,10 +281,8 @@ def main(argv=None):
             return _run_names(arguments.names, arguments)
         return _run_stream(sys.stdin, arguments)
     except BrokenPipeError:
-        # `demangle | head` closes the pipe on us. This has to be caught outside the
-        # loop: caught per name it prints one error for every remaining symbol, thousands
-        # of them. Point stdout at the null device so the interpreter's shutdown flush
-        # does not raise it again, and exit cleanly.
+        # `demangle | head` closes the pipe. Caught outside the loop (one error, not one per
+        # name); stdout goes to the null device so the shutdown flush does not raise again.
         _silence_stdout()
         return 0
 
@@ -309,9 +298,7 @@ def _silence_stdout():
     except (OSError, ValueError, AttributeError):  # pragma: no cover - not a real stream
         pass
     finally:
-        # `dup2` duplicated the descriptor, so this one has done its job either way.
-        # Left open it leaked -- which mattered not at all for one exit, and would have
-        # mattered for a library caller invoking `main()` in a loop.
+        # `dup2` duplicated the descriptor; this one would leak for a caller of `main()`.
         os.close(null)
 
 
@@ -366,16 +353,12 @@ def _part_of(name, arguments, limits):
     if arguments.base_name:
         return parts.base_name
     if arguments.no_params:
-        # What `c++filt -p` prints: the name with its scope, and neither the signature
-        # around it nor the qualifiers after it. A `vtable for` still says so.
+        # What `c++filt -p` prints: the scoped name without signature or qualifiers.
         lead = f"{parts.special} " if parts.special else ""
         return f"{lead}{parts.qualified_name}{parts.decoration}"
     without = _without_return_type(name, arguments, limits, parts)
     if arguments.ret_postfix and parts.return_type:
-        # libiberty writes the return type straight after the parameter list with no
-        # space between them -- `f<int>(int)int` -- because the space it puts between a
-        # return type and a signature belongs to the prefix form. Checked against
-        # `cplus_demangle_v3(name, DMGL_PARAMS | DMGL_RET_POSTFIX)` rather than assumed.
+        # No space, as `cplus_demangle_v3(name, DMGL_PARAMS | DMGL_RET_POSTFIX)` prints.
         return f"{without}{parts.return_type}"
     return without
 
@@ -385,11 +368,11 @@ def _without_return_type(name, arguments, limits, parts):
 
     Cutting it off the front of the spelling is right only where it *is* a prefix. A
     return type that wraps the declarator has none to cut -- `int (*g<int>(int))(int)`,
-    a function returning a pointer to a function -- and the cut then left the return type
-    in place and reported success, which is the silently ignored flag this file warns
-    about a few lines up. MSVC met the same shape first and answers it with a scheme
-    option; an Itanium `function` node answers it directly, by spelling the same node
-    with nothing where the return type was. `libiberty`'s own `DMGL_RET_DROP` agrees.
+    a function returning a pointer to a function -- and a cut there would leave the
+    return type in place and report success, which is the silently ignored flag this
+    file warns about a few lines up. MSVC answers it with a scheme option; an Itanium
+    `function` node answers it directly, by spelling the same node with nothing where
+    the return type was. `libiberty`'s own `DMGL_RET_DROP` agrees.
     """
     if parts.return_type:
         try:
@@ -399,8 +382,7 @@ def _without_return_type(name, arguments, limits, parts):
         if isinstance(tree, Function) and tree.returns is not None:
             bare = Function(returns=None, parameters=tree.parameters, suffix=tree.suffix, name=tree.name)
             return bare.spell(style=arguments.style)
-    # Cut by what the return type is rather than at the first space, so one with spaces
-    # in it goes whole.
+    # Cut by what the return type is, not at the first space.
     spelling = parts.demangled
     prefix = f"{parts.return_type} " if parts.return_type else ""
     return spelling[len(prefix) :] if prefix and spelling.startswith(prefix) else spelling
@@ -448,9 +430,7 @@ def _run_types(names, arguments):
     status = 0
     out = sys.stdout
     for raw in names:
-        # A line off stdin carries its newline, and an argument does not. No type
-        # encoding in any of these grammars holds a `\r` either, so a file with CRLF
-        # endings reads the same as one without.
+        # No grammar here holds a `\r`, so CRLF input reads the same.
         name = raw.rstrip("\r\n")
         if not name:
             out.write("\n")

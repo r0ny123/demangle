@@ -47,7 +47,7 @@ class TestRoundTrip:
         """Guards against a corpus that covers everything except the encoded part.
 
         The shipped Go toolchain contains no escaped symbol at all, so a corpus read only
-        from it would pass every test here while the decoder was broken.
+        from it would pass every test here while the decoder is broken.
         """
         assert sum(1 for mangled, _ in ROWS if "%" in mangled) >= 10
 
@@ -175,8 +175,9 @@ class TestDetection:
     def test_no_corpus_name_from_another_scheme_is_claimed(self):
         """Checked over every corpus rather than the handful above."""
         stolen = []
-        for path in sorted((pathlib.Path(__file__).parent / "conformance").glob("*.txt")):
-            if path.name.startswith("go-"):
+        conformance = pathlib.Path(__file__).parent / "conformance"
+        for path in sorted([*conformance.glob("*.txt"), *conformance.glob("reported/*.txt")]):
+            if path.stem.partition("-")[0] == "go":
                 continue
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line and not line.startswith("#") and "\t" in line:
@@ -201,7 +202,7 @@ class TestSafety:
 
     @pytest.mark.parametrize("value", [".", "go:", "type:", "a/b.", ".foo"])
     def test_an_empty_package_or_name_is_refused(self, value):
-        """`.` used to read as the empty string: a dot dropped, not a name read. Only a
+        """`.` is not the empty string: a dot dropped is not a name read. Only a
         generated symbol may go without a package, and it still needs a name."""
         with pytest.raises(DemanglingError):
             parse_go_symbol(value)
@@ -211,13 +212,13 @@ class TestSafety:
 class TestAGeneratedSymbolIsTheLinkerText:
     """What follows `go:` or `type:` is not a package-qualified declaration.
 
-    It is a type string, or two of them, or the name of an object the linker made. It
-    was read as a declaration: the first `.` after the last `/` was the package
-    separator, so `type:.eq.[2]string` -- no slash, and a leading dot -- lost its dot
-    and came back `type:eq.[2]string`, thirteen corpus rows pinning the loss; and with
-    a slash the "package" was whatever stood before the last one, `go:itab.*os.File,io`
-    and the like, which the tree reported as the symbol's package. Every symbol here is
-    go1.24.7 output.
+    It is a type string, or two of them, or the name of an object the linker made.
+    Read as a declaration, the first `.` after the last `/` would be the package
+    separator, so `type:.eq.[2]string` -- no slash, and a leading dot -- would lose its
+    dot and read `type:eq.[2]string`, 24 corpus rows pinning the loss; and with
+    a slash the "package" would be whatever stands before the last one,
+    `go:itab.*os.File,io` and the like, which the tree would report as the symbol's
+    package. Every symbol here is go1.24.7 output.
     """
 
     @pytest.mark.parametrize(
@@ -284,8 +285,7 @@ class TestEscapesOutsideTheLeadingPath:
     @pytest.mark.parametrize(
         "symbol",
         [
-            # `50%\"` is not an escape, and reading it as one refused the whole symbol;
-            # the `%2e` beside it is one.
+            # `50%\"` is not an escape; the `%2e` beside it is.
             'type:.eq.struct { S string "json:\\"50%\\""; K example.com/tag/v2%2e5.K }',
             'type:.hash.struct { S string "json:\\"a%2eb\\" x:\\"q\\\\\\"z\\""; I interface {} }',
             'main.Gen[go.shape.struct { S string "json:\\"a%2eb\\" x:\\"q\\\\\\"z\\""; I interface {} }]',
@@ -311,7 +311,8 @@ class TestEscapesOutsideTheLeadingPath:
 class TestThePackageEndsBeforeAnyTypeString:
     """`example.com/x.F[go.shape.[]internal/sync.node]` is in `example.com/x`: the last
     `/` of the *package* is not the last `/` of the symbol once a receiver or an
-    instantiation carries a path of its own. The tree said `example.com/x.F[go.shape.[]internal/sync`.
+    instantiation carries a path of its own. The package is not
+    `example.com/x.F[go.shape.[]internal/sync`.
     """
 
     @pytest.mark.parametrize(

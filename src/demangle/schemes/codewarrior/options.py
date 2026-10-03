@@ -29,5 +29,5 @@ class CodeWarriorOptions:
     """
 
 
-#: What `demangle()` uses when a caller names no options: the reference's own defaults.
 DEFAULT_OPTIONS = CodeWarriorOptions()
+"""What `demangle()` uses when a caller names no options: the reference's own defaults."""

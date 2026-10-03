@@ -19,6 +19,8 @@ import demangle
 from demangle.core.errors import DemanglingError
 from demangle.schemes.rust.nodes import Symbol
 
+from .test_parity import STYLE_SAMPLES
+
 CONFORMANCE = pathlib.Path(__file__).parent / "conformance"
 
 
@@ -39,6 +41,7 @@ class TestRendersWhatItSpells:
         # A silent zero here would make every check below vacuously true.
         assert len(NAMES) > 5000
 
+    @pytest.mark.sweep
     def test_every_corpus_name_spells_the_same_through_the_tree(self, subtests):
         for name in NAMES:
             expected = demangle.demangle(name)
@@ -50,7 +53,7 @@ class TestRendersWhatItSpells:
                 assert tree.spell() == expected
 
     def test_no_corpus_name_comes_back_as_a_bare_leaf(self):
-        """The defect this whole tree exists to fix: `walk()` seeing nothing below the root."""
+        """`walk()` reaches the nodes below the root; the tree is not a single leaf."""
         leaves = []
         for name in NAMES:
             try:
@@ -118,16 +121,11 @@ class TestSharedKinds:
     produced one to ask for its identifiers.
     """
 
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "_ZNSt6vectorIiSaIiEE9push_backERKi",
-            "?f@@YAXH@Z",
-            "_RNvCsdEttCVZFADF_8features10btree_work",
-        ],
-    )
-    def test_every_scheme_yields_named_components(self, name):
-        assert [node.text for node in demangle.parse(name).find("name")]
+    @pytest.mark.parametrize("language", sorted(STYLE_SAMPLES))
+    def test_every_scheme_yields_named_components(self, language):
+        """Ada spells its components `component`; every other scheme says `name`."""
+        tree = demangle.parse(STYLE_SAMPLES[language], language=language)
+        assert [node.text for node in tree.find("component" if language == "ada" else "name")]
 
 
 class TestUnchangedGuarantees:

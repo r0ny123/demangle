@@ -24,6 +24,10 @@ from ...core.registry import register
 from . import nodes
 from ._parser import GENERATED_PREFIXES, GoSymbol, escape_path, parse_go_symbol, unescape_path
 
+#: What `detect` needs to see, for the registry to screen on without calling it: a path's
+#: `/`, a receiver's `(*`, or a linker-generated opening. See `core.registry._screened`.
+DETECT_SCREEN = (("/", "(*"), GENERATED_PREFIXES)
+
 
 def detect(name):
     """Whether `name` is Go-shaped beyond reasonable doubt.
@@ -50,16 +54,13 @@ def detect(name):
     slash = name.rfind("/")
     if slash < 0:
         return False
-    # A path element after the last slash, then a `.`, then something to name. The last
-    # slash of the *symbol*, deliberately: a path inside a generic argument list,
-    # `main.F[internal/sync.node]`, is evidence of Go too, and `parse_go_symbol` finds
-    # the package's own boundary for itself.
+    # The last slash of the *symbol*: a path inside generic arguments
+    # (`main.F[internal/sync.node]`) is evidence of Go too.
     dot = name.find(".", slash + 1)
     return 0 < dot < len(name) - 1
 
 
-#: What each builder class answered to `_wants_structure`, asked once per class: the
-#: answer is a property of the builder's type and this is on every symbol's path.
+#: `_wants_structure`'s answer per builder class, asked once per class.
 _STRUCTURED = {}
 
 
@@ -78,11 +79,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
-    # No second detection test here. `parse` is reached either because `detect` claimed
-    # the name or because a caller named the language, and in both cases the question has
-    # been answered. Re-asking it refused every Go symbol that happens to need no
-    # decoding -- `bytes.Compare` and most of the standard library -- for a caller who
-    # had explicitly said the binary was Go.
+    # No second detection test: `detect` claimed the name or the caller named the
+    # language. Re-asking would refuse Go symbols that need no decoding
+    # (`bytes.Compare`).
     symbol = parse_go_symbol(mangled)
     spelled = symbol.text
     if len(spelled) > limits.max_output:
@@ -100,18 +99,13 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Go symbol names (package paths, receivers, generic instantiations)",
     aliases=("golang",),
-    # `priority` is ascending: *lower is offered first*. This scheme is offered first of
-    # all, and that is deliberate even though its detection is a shape test rather than
-    # a prefix test -- the shape it looks for (an import path with a `/`, a `(*T).method`
-    # receiver, a `go:`/`type:` prefix) is one no other scheme here produces, and a Go
-    # binary's symbols would otherwise be claimed by whichever prefix scheme they happen
-    # to resemble. `detect` is written to decline rather than guess; see its docstring.
-    #
-    # tests/test_core.py pins this order against every corpus, because reasoning about
-    # it from the numbers alone has gone wrong before: these comments used to say "last"
-    # and mean it, while the number said first.
+    # Lower is offered first, and Go goes first of all: its shapes (a `/` import path, a
+    # `(*T).method` receiver, `go:`/`type:`) no other scheme produces, and Go symbols
+    # would otherwise be claimed by whichever prefix scheme they resemble.
+    # tests/test_core.py pins the order.
     priority=10,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

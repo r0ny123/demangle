@@ -3,7 +3,7 @@
 The property that makes the three name fields safe to recombine -- `namespace`, the
 scheme's separator, and `base_name` spell `qualified_name` exactly -- is checked here
 against every corpus rather than against a handful of examples. It is the one thing a
-caller can rely on across ten schemes, and the ways to break it (a `::` inside a
+caller can rely on across every scheme, and the ways to break it (a `::` inside a
 template argument, a `.` inside a Nim operator, a Rust closure whose own name starts
 with the separator) are all things a corpus holds and a hand-written case does not.
 """
@@ -15,13 +15,14 @@ from demangle import Signature, signature, signatureb
 from demangle._signature import _SEPARATORS, _split_last
 from demangle.core.errors import DemanglingError
 
-from .conftest import CONFORMANCE, load_corpus, requires_gnu_cxxfilt
+from .conftest import corpus_files, load_corpus, requires_gnu_cxxfilt
 from .test_conformance import NO_PARAMS_AGREE, NO_PARAMS_TOTAL
 
 #: The refusal corpora hold names with no expected column, so they load as nothing.
-CORPORA = sorted(name for name in (p.name.removesuffix(".gz") for p in CONFORMANCE.iterdir()) if load_corpus(name))
+CORPORA = [name for name in corpus_files() if load_corpus(name)]
 
 
+@pytest.mark.sweep
 class TestTheNameFields:
     """`namespace` + separator + `base_name` == `qualified_name`, everywhere."""
 
@@ -327,14 +328,23 @@ class TestTheObject:
         assert parts.namespace == "std::vector<int, std::allocator<int> >"
         assert parts.demangled.startswith(parts.namespace)
 
+        for style, closing, other in (("gnu", "> >", ">>"), ("llvm", ">>", "> >")):
+            parts = signature("_ZN1A1fISt6vectorIiSaIiEEEES3_T_", style=style)
+            assert parts.return_type is not None
+            assert parts.parameters is not None
+            spelled = [parts.demangled, parts.qualified_name, parts.return_type, *parts.parameters]
+            for text in spelled:
+                assert closing in text, (style, text)
+                assert other not in text, (style, text)
+
 
 class TestTheSchemeIsResolvedBeforeItIsUsed:
     """A caller writes whatever name they like; the fields must not depend on which.
 
     Every alias in `languages()` is documented, so `language="objective-c"` has to read
-    the same as `language="objc"`. Keyed by the alias, `_SEPARATORS` found nothing, the
-    scheme-specific extraction never ran, and the whole spelling came back as the base
-    name with `is_function` False.
+    the same as `language="objc"`. `_SEPARATORS` is keyed by the canonical name; an
+    alias that missed it would skip the scheme-specific extraction and return the whole
+    spelling as the base name with `is_function` False.
     """
 
     @pytest.mark.parametrize(
@@ -357,7 +367,7 @@ class TestTheSchemeIsResolvedBeforeItIsUsed:
 class TestEverySchemeHasASeparator:
     """A scheme whose spelling joins components with something other than `::`.
 
-    `jni` was absent and fell back to `::`, so `com.example.Foo.bar` came back whole as
+    `jni` joins with `.`: a `::` fallback would return `com.example.Foo.bar` whole as
     the base name with an empty namespace -- the structured fields saying nothing for a
     scheme whose whole shape is a path.
     """
@@ -382,10 +392,9 @@ class TestAgainstCxxfiltMinusP:
 
     Skipped where GNU `c++filt` is not installed, which is every Windows runner and most
     macOS ones -- there LLVM's demangler is named `c++filt` and answers differently, so
-    the guard asks the banner rather than the name. The decorator belongs to *this* class
-    and has drifted off it once already, onto whichever class a later edit inserted above
-    it; without it these two shell out unconditionally and fail on the missing binary
-    rather than saying what is missing.
+    the guard asks the banner rather than the name. The decorator belongs to *this* class;
+    without it these two shell out unconditionally and fail on the missing binary rather
+    than saying what is missing.
 
     The differences are deliberate and are described in the README. `c++filt` strips the
     parameter list from the outermost declaration only, so a thunk keeps its target's;

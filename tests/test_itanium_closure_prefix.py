@@ -222,8 +222,8 @@ class TestApplesRule:
 
     def test_the_abi_rule_reads_the_same_names_as_lies(self):
         """What llvm-cxxfilt, LLVM's main branch and c++filt print for them, and what
-        this printed: a parameter dropped to `Endpoint const`, and an allocator of a
-        reference rather than of the closure."""
+        the ABI's rule gives here: a parameter dropped to `Endpoint const`, and an
+        allocator of a reference rather than of the closure."""
         spelled = read(
             "__ZNKSt3__110__function6__funcIN7rocksdb20RangeTreeLockManager13barrier_func_MUlRKNS2_8EndpointES6_E_ENS_9allocatorIS7_EEFbS6_S6_EE7__cloneEv",
             closure_prefix_substitution=True,

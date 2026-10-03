@@ -1,18 +1,15 @@
 FROM ubuntu:24.04
 
+# No apt Python: Ubuntu 24.04 ships 3.12, below `requires-python`; install.sh uses uv.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        python3 \
-        python3-pip \
-        python3-venv \
-        python3-full \
+        ca-certificates \
         git \
         curl \
         llvm \
         clang \
         g++ \
         binutils \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3 /usr/bin/python
+    && rm -rf /var/lib/apt/lists/*
 
 USER ubuntu

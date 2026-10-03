@@ -1,14 +1,14 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Seventeen of the entries
-# have a source in tools/corpus_sources/reference_defects/: it is compiled with the
-# compiler named on the entry, the symbol is read out of the object file with `nm`, and
-# the spelling is what that source says the symbol's type is. Two more come from the
-# general corpus sources named on them, and five are symbols out of shipped libraries,
-# where the declaration is the library's own header or its published signature and the
-# reading is spelled out in the entry's comment. That is the only ground truth a
-# demangler has, and it is what settles a split between references.
+# the expected column is derived from the *declaration* instead. Twenty-five of the 37
+# entries have a source in tools/corpus_sources/reference_defects/: it is compiled with
+# the compiler named on the entry, the symbol is read out of the object file with `nm`,
+# and the spelling is what that source says the symbol's type is. Two more come from the
+# general corpus sources named on them, and ten are symbols out of shipped libraries and
+# Homebrew bottles, where the declaration is the library's own header or its published
+# signature and the reading is spelled out in the entry's comment. That is the only
+# ground truth a demangler has, and it is what settles a split between references.
 #
 # Almost all of these are one defect. A <template-param> is a substitution candidate in
 # its own right (ABI 5.1.10), and the entry it contributes is *the parameter*, not the
@@ -23,19 +23,19 @@
 #
 # What each reference does, measured over the 217,730 distinct Itanium symbols in the
 # shared libraries shipped on Ubuntu 24.04 (libLLVM 17/18/20, libclang-cpp, liblldb,
-# libstdc++, libgphobos and the rest). Fixing this changed the output for 315 of them:
+# libstdc++, libgphobos and the rest):
 #
-#   llvm-cxxfilt 18.1.3  differs from the corrected answer on 312 of the 315.
-#   GNU c++filt 2.42     refuses 227 of the 315. Of the 88 it reads, it agrees with the
-#                        corrected answer on 84. Of the 4 left, 3 are the
+#   llvm-cxxfilt 18.1.3  differs from the corrected answer on 322.
+#   GNU c++filt 2.42     refuses 227 of the 322. Of the 95 it reads, it agrees with the
+#                        corrected answer on 91. Of the 4 left, 3 are the
 #                        `_Prepare_execution` constructor shape, where libstdc++'s own
 #                        header settles it against both references; 1 is a generic
-#                        lambda whose own parameter reaches it through a substitution,
-#                        where GNU is right and this is not -- see ROADMAP.md heading 0.
+#                        lambda's own parameter, which GNU numbers `auto:1` and the
+#                        llvm style spells `auto` -- see CONFORMANCE.md note 17.
 #
 # style: llvm
 #
-# pairs: 20
+# pairs: 37
 #
 # tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
 # `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,
@@ -115,10 +115,7 @@ _ZSt9__find_ifIPKPN4llvm5ValueEN9__gnu_cxx5__ops12_Iter_negateIZNS0_13slpvectori
 # `outer::inner::Holder<int, 3>`; llvm-cxxfilt 20.1.2 and GNU c++filt 2.42 both agree
 # with the declaration, and with this.
 #
-# It is here because a regeneration would otherwise re-record 18's answer. The corpus
-# carried the corrected spelling and the exclusion list did not carry the name, so the
-# protection this file exists to give was not actually covering it -- which the first
-# regeneration in a while turned up.
+# The name is excluded from regeneration so that it cannot re-record 18's answer.
 _Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES4_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(int)
 #
 # tools/corpus_sources/reference_defects/value_init_new.cpp, g++ 13.3.0 and clang++
@@ -177,12 +174,11 @@ _ZNSt8__format14__formatter_fpIcE23_S_resize_and_overwriteIcZNKS1_6formatIdNS_10
 # because the second template argument -- libc++'s `__func<_Fp, _Alloc, _Rp(_ArgTypes...)>`
 # takes `allocator<_Fp>`, the closure -- is written `SK_`, which is the closure's entry
 # only under Apple's `auto` rule (`ItaniumOptions.undeduced_auto_substitution`), the
-# rule a `__Z` name is read by. Transcribed without the underscore it was read by the
-# common rule, under which `SK_` is the entry before, `std::__1::allocator` itself, and
-# the row once recorded `allocator<std::__1::allocator>` from that reading. Nothing in
-# the grammar calls that shape wrong -- a bare template is what the argument for a
-# template template parameter looks like -- so no retry can catch it; the underscore
-# is what says which rule, and the row now carries it and says what libc++ declares.
+# rule a `__Z` name is read by. Without the underscore the common rule applies, under
+# which `SK_` is the entry before, `std::__1::allocator` itself. Nothing in the grammar
+# calls that shape wrong -- a bare template is what the argument for a template
+# template parameter looks like -- so no retry can catch it; the underscore is what
+# selects the rule, and the row spells what libc++ declares.
 __ZNKSt3__110__function6__funcIZZN5ceres8internal14ParallelInvokeIZNKS3_21PartitionedMatrixViewILi2ELi2ELi2EE27RightMultiplyAndAccumulateEEPKdPdEUliE_EEvPNS3_11ContextImplEiiiOT_iENKUlRSD_E_clIKSG_EEDaSF_EUlvE_NS_9allocatorISK_EEFvvEE11target_typeEv	std::__1::__function::__func<auto void ceres::internal::ParallelInvoke<ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)>(ceres::internal::ContextImpl*, int, int, int, ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)&&, int)::'lambda'(auto&)::operator()<'lambda'(auto&) const>('lambda'(auto&) const&) const::'lambda'(), std::__1::allocator<auto void ceres::internal::ParallelInvoke<ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)>(ceres::internal::ContextImpl*, int, int, int, ceres::internal::PartitionedMatrixView<2, 2, 2>::RightMultiplyAndAccumulateE(double const*, double*) const::'lambda'(int)&&, int)::'lambda'(auto&)::operator()<'lambda'(auto&) const>('lambda'(auto&) const&) const::'lambda'()>, void ()>::target_type() const
 #
 # folly's Benchmark.h, from the same bottle: `template <typename Lambda> typename

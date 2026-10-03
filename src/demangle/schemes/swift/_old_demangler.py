@@ -64,7 +64,6 @@ _VALUE_WITNESSES = {
     )
 }
 
-#: The prefixes a Swift 3 symbol may carry between `_T` and the global itself.
 _TOP_LEVEL_ATTRIBUTES = {
     "To": "ObjCAttribute",
     "TO": "NonObjCAttribute",
@@ -73,8 +72,7 @@ _TOP_LEVEL_ATTRIBUTES = {
     "TV": "VTableAttribute",
 }
 
-# Function-signature specialisation parameter kinds, the same values the current
-# mangling uses.
+# Function-signature specialisation parameter kinds, as in the current mangling.
 _PARAM_CONSTANT_PROP_FUNCTION = 0
 _PARAM_CONSTANT_PROP_GLOBAL = 1
 _PARAM_CONSTANT_PROP_INTEGER = 2
@@ -140,9 +138,7 @@ class _Reader:
         return self.text[self.pos :]
 
 
-#: `demangleSubstitutionIndex`: `S` and one letter, for the types the standard library
-#: uses everywhere. The set is smaller than the current mangling's and not the same one --
-#: `Sc` is `UnicodeScalar` here and `CheckedContinuation` there.
+#: `demangleSubstitutionIndex`. Not the current mangling's set: `Sc` is `UnicodeScalar`.
 _STANDARD_SUBSTITUTIONS = {
     "a": ("Structure", "Array"),
     "b": ("Structure", "Bool"),
@@ -164,8 +160,7 @@ _STANDARD_SUBSTITUTIONS = {
 
 MANGLING_MODULE_CLANG_IMPORTER = "__C_Synthesized"
 
-#: `a` through `z` map to the operator characters an identifier may encode, the same
-#: table the current mangling uses.
+#: As in the current mangling's `_OPERATOR_CHARS`.
 _OPERATOR_CHARS = "& @/= >    <*!|+?%-~   ^ ."
 
 _NOMINAL_TYPES = {"V": "Structure", "O": "Enum", "C": "Class", "P": "Protocol"}
@@ -177,7 +172,7 @@ _BOUND_GENERIC_KINDS = {
 }
 
 
-#: `Node::IndexType`, the reference's number type: unsigned, 64 bits, and allowed to wrap.
+#: `Node::IndexType`: unsigned 64 bits, allowed to wrap.
 _UINT64_MASK = (1 << 64) - 1
 
 
@@ -188,8 +183,6 @@ class OldDemangler:
         self.reader = _Reader(text)
         #: Everything nominal seen so far. `S_`, `S0_`, `S1_` index this list.
         self.substitutions = []
-
-    # -- helpers ---------------------------------------------------------------
 
     def _swift_type(self, kind, name):
         return Node(kind, children=[Node("Module", text=STDLIB_NAME), Node("Identifier", text=name)])
@@ -204,11 +197,8 @@ class OldDemangler:
             char = reader.peek()
             if not ("0" <= char <= "9"):
                 return number
-            # `Node::IndexType` is 64 bits unsigned and the reference lets it wrap -- and
-            # its own test suite pins that: `_Ttu4222222222222222222222222_rW_2T_2TJ_`
-            # reads as the generic signature its low 64 bits count out. A Python `int`
-            # would grow without bound instead, and `str()` of one past 4,300 digits
-            # raises, which is how this used to escape as a `ValueError`.
+            # The reference wraps at 64 bits and its tests pin it
+            # (`_Ttu4222222222222222222222222_rW_2T_2TJ_`).
             number = (10 * number + (ord(char) - ord("0"))) & _UINT64_MASK
             reader.next()
 
@@ -220,7 +210,6 @@ class OldDemangler:
         number = self._natural()
         if number is None or not reader.next_if("_"):
             return None
-        # `natural++`, in the same 64 bits.
         return (number + 1) & _UINT64_MASK
 
     def _index_as_node(self, kind="Number"):
@@ -232,8 +221,6 @@ class OldDemangler:
         if number is None or not self.reader.next_if("_"):
             return None
         return number
-
-    # -- top level -------------------------------------------------------------
 
     def demangle_top_level(self):
         reader = self.reader
@@ -267,8 +254,6 @@ class OldDemangler:
             top.add(Node("Suffix", text=reader.rest()))
         return top
 
-    # -- identifiers -----------------------------------------------------------
-
     def demangle_identifier(self, depth, kind=None):
         """`X` in front of the length marks a punycoded name; `o` marks an operator."""
         reader = self.reader
@@ -279,7 +264,6 @@ class OldDemangler:
         is_operator = False
         if reader.next_if("o"):
             is_operator = True
-            # An operator name cannot be the base of a more specific one.
             if kind is not None:
                 return None
             kind = {"p": "PrefixOperator", "P": "PostfixOperator", "i": "InfixOperator"}.get(reader.next())
@@ -338,8 +322,6 @@ class OldDemangler:
                 return None
             return Node("PrivateDeclName", children=[discriminator, name])
         return self.demangle_identifier(depth + 1)
-
-    # -- substitutions ---------------------------------------------------------
 
     def demangle_substitution_index(self, depth):
         reader = self.reader
@@ -461,8 +443,6 @@ class OldDemangler:
             return None
         return self.demangle_bound_generic_args(nominal, depth + 1)
 
-    # -- contexts and conformances ---------------------------------------------
-
     def demangle_context(self, depth):
         reader = self.reader
         if not reader:
@@ -517,8 +497,6 @@ class OldDemangler:
         if context is None:
             return None
         return Node("ProtocolConformance", children=[found, protocol, context])
-
-    # -- entities --------------------------------------------------------------
 
     def demangle_entity(self, depth):
         """`[Z] <kind> <context> <name> [<type>]`.
@@ -597,11 +575,10 @@ class OldDemangler:
         entity = Node(kind)
         if wrap:
             if name is None:
-                # Every production that wraps reads a name first, so this cannot happen;
-                # the check is here because the reference dereferences it unguarded.
+                # Unreachable; guarded because the reference dereferences it unguarded.
                 return None
-            # The old mangling spelled a subscript's accessor with the identifier
-            # `subscript`; the current one has no such name, so it is dropped here.
+            # The old mangling spells a subscript's accessor `subscript`; that name is
+            # dropped.
             is_subscript = False
             if name.kind == "Identifier" and name.text == "subscript":
                 is_subscript = True
@@ -635,8 +612,6 @@ class OldDemangler:
 
     def _dependent_generic_param_type(self, depth, index):
         return Node("DependentGenericParamType", children=[Node("Index", index=depth), Node("Index", index=index)])
-
-    # -- dependent types -------------------------------------------------------
 
     def demangle_generic_param_index(self, depth):
         reader = self.reader
@@ -770,7 +745,6 @@ class OldDemangler:
             return None
         char = reader.peek()
         if char == "C":
-            # A base-class constraint is written as a class type.
             constraint = self.demangle_type(depth + 1)
             if constraint is None:
                 return None
@@ -833,8 +807,6 @@ class OldDemangler:
                 requirement.add(Node("Number", index=alignment))
         return requirement
 
-    # -- types -----------------------------------------------------------------
-
     def demangle_archetype_type(self, depth):
         def associated(root):
             name = self.demangle_identifier(depth + 1)
@@ -874,7 +846,7 @@ class OldDemangler:
             element.add(found)
             tuple_.add(element)
         if variadic and element is not None:
-            # The marker goes first, and the reference gets there by reversing twice.
+            # The marker goes first; the reference gets there by reversing twice.
             element.children.insert(0, Node("VariadicMarker"))
         return tuple_
 
@@ -974,8 +946,7 @@ class OldDemangler:
             return self.demangle_associated_type_compound(depth + 1)
         if char in ("R", "k"):
             kind = "InOut" if char == "R" else "NoDerivative"
-            # Note the reference reads the *impl*: an `inout` wraps the bare type, not a
-            # `Type` node.
+            # The reference reads the *impl*: `inout` wraps the bare type, not a `Type`.
             found = self.demangle_type_impl(depth + 1)
             return None if found is None else Node(kind, children=[found])
         if char == "S":
@@ -1092,8 +1063,6 @@ class OldDemangler:
             box.add(arguments)
         return box
 
-    # -- SIL-level function types ----------------------------------------------
-
     def demangle_impl_function_type(self, depth):
         found = Node("ImplFunctionType")
         reader = self.reader
@@ -1154,8 +1123,6 @@ class OldDemangler:
             return None
         return Node(kind, children=[Node("ImplConvention", text=convention), found])
 
-    # -- specialisations -------------------------------------------------------
-
     def demangle_generic_specialization(self, specialization, depth):
         if depth > MAX_DEPTH:
             return None
@@ -1211,8 +1178,8 @@ class OldDemangler:
             if text is None or not reader.next_if("_"):
                 return False
             parent.add(_param_kind(_PARAM_CONSTANT_PROP_STRING))
-            # The encoding is what the mangling wrote inline; the string itself was read
-            # as an identifier and stays one, which is how the printer tells them apart.
+            # The string was read as an identifier; the printer tells it from this inline
+            # payload by node kind.
             parent.add(_param_payload("u8" if encoding == "0" else "u16"))
             parent.add(text)
             return True
@@ -1297,8 +1264,6 @@ class OldDemangler:
                 return False
             signature.add(found)
         return True
-
-    # -- globals ---------------------------------------------------------------
 
     def demangle_global(self, depth):
         if depth > MAX_DEPTH or not self.reader:
@@ -1506,8 +1471,7 @@ _IMPL_CONVENTION_NAMES = {
     "w": "witness_method",
 }
 
-#: One letter, three meanings: as the callee's convention, as a parameter's, as a
-#: result's. An empty string means the letter is not one in that position.
+#: By position: the callee's convention, a parameter's, a result's. "" means not valid there.
 _IMPL_CONVENTIONS = {
     "a": ("", "", "@autoreleased"),
     "d": ("@callee_unowned", "@unowned", "@unowned"),

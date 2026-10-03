@@ -63,9 +63,8 @@ class LimitExceeded(ParseError):
         super().__init__(mangled, None, f"exceeded {limit_name} limit of {limit_value}")
 
 
-# Failures that never mean "this name is malformed": the interpreter telling us the
-# process is in trouble. A best-effort `except Exception` must let these through, or a
-# Ctrl-C that happens to land inside a parser becomes a mysteriously unmangled name.
+# Never mean "malformed name": a best-effort `except Exception` must let these through,
+# or a Ctrl-C inside a parser becomes an unmangled name.
 OPERATIONAL_EXCEPTIONS = (KeyboardInterrupt, SystemExit, MemoryError, GeneratorExit)
 
 

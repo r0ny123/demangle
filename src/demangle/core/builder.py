@@ -32,8 +32,6 @@ Handle = Any
 class Builder(Protocol):
     """What a parser may ask for. Implementations choose what to produce."""
 
-    # -- leaves ----------------------------------------------------------------
-
     def builtin(self, spelling: str) -> Handle:
         """A primitive type: `int`, `void`, `char`."""
 
@@ -71,8 +69,6 @@ class Builder(Protocol):
         settled, as `"("` and `")"` around the operand it applies to.
         """
 
-    # -- composition -----------------------------------------------------------
-
     def qualified(self, parts: Sequence[Handle]) -> Handle:
         """A scoped name: the parts of `a::b::c`, outermost first."""
 
@@ -81,8 +77,6 @@ class Builder(Protocol):
 
     def qualify(self, inner: Handle, qualifiers: Sequence[str]) -> Handle:
         """Apply cv-qualifiers, in the canonical order the caller has already imposed."""
-
-    # -- declarators -----------------------------------------------------------
 
     def pointer(self, inner: Handle) -> Handle:
         """`inner*`."""
@@ -129,8 +123,6 @@ class Builder(Protocol):
     def vendor_qualify(self, inner: Handle, qualifier: str) -> Handle:
         """A vendor extended qualifier, spelled after the type it applies to."""
 
-    # -- whole symbols ---------------------------------------------------------
-
     def special(self, label: str, inner: Handle) -> Handle:
         """A symbol that is *about* an entity: `vtable for Foo`, `typeinfo for Bar`."""
 
@@ -140,8 +132,6 @@ class Builder(Protocol):
         Kept as structure rather than folded into text so a caller can ask which copy of
         a function a symbol names, or strip the version and compare.
         """
-
-    # -- inspection ------------------------------------------------------------
 
     def spell(self, handle: Handle, declarator: str = "") -> str:
         """Render a handle, placing `declarator` in the type's declarator position."""

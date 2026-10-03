@@ -1,10 +1,10 @@
 # The Swift reference
 
 `src/demangle/schemes/swift/` is a port of `lib/Demangling/` from swiftlang/swift, and
-until now it had no oracle: nothing on this box demangles Swift. `llvm-cxxfilt` and
-`c++filt` both decline a `$s` name outright, so every Swift claim in this repository
-rested on corpora somebody recorded once, with no way to re-derive them and no way to
-put a *new* name to the reference.
+without this it has no oracle: nothing a distribution ships demangles Swift.
+`llvm-cxxfilt` and `c++filt` both decline a `$s` name outright, so the corpora are the
+only evidence unless there is a way to re-derive them and to put a *new* name to the
+reference.
 
 This builds that reference out of Swift's own demangler -- the eleven files in
 `lib/Demangling/`, unmodified -- behind a line-per-name front end, so the differential
@@ -14,10 +14,12 @@ it cannot read handed back unchanged.
     tools/swift-demangle-reference/build.sh
     tools/swift-demangle-reference/build/swift-demangle-reference [--simplified] < names
 
-Needs a C++17 compiler, LLVM's headers, and one fetch from github.com. It is not built
-by default and is not a dependency of the test suite; the tools use it when it is there.
-`swift/` and `build/` are ignored, and the checkout is a blobless cone-mode sparse one
-over five directories -- about 16 MB, against a full clone of swiftlang/swift.
+Needs a C++17 compiler, LLVM's headers (`llvm-dev`) and one fetch from github.com -- no
+Swift toolchain, no CMake and no LLVM libraries. It is not built by default and is not a
+dependency of the test suite; `tools/enumerate.py` and `tools/mutate.py` run their Swift
+job when it is there and skip it when it is not. `swift/` and `build/` are ignored, and
+the checkout is a blobless cone-mode sparse one over six directories -- about 16 MB,
+against a full clone of swiftlang/swift.
 
 ## Why a commit and not a release tag
 
@@ -35,24 +37,24 @@ One of 5.10.1's misses is not a miss but an abort: `$sTJSdSSSpSrSUSP` takes its 
 down with `std::bad_alloc`, so scoring it needs one process per name. That name is a
 malformed autodiff subset-parameters thunk, and the fix upstream made for it -- a
 `getNumChildren() < 5` guard in `NodePrinter` -- is the reason the row exists in
-`manglings.txt` at all. This library had the same defect, in the milder form: it spelled
-the name as a thunk *for nothing*, with an empty "from" clause. Building this reference
-is what found it.
+`manglings.txt` at all. This library has the same defect in a milder form: it spells
+the name as a thunk *for nothing*, with an empty "from" clause.
 
-5.10.1's other 58 misses are not defects in it. They are names for constructs that did not
-exist yet -- `sending`, typed `throws`, `@isolated(any)`, `~Copyable`,
+5.10.1's other 58 misses are not defects in it. They are names for constructs that did
+not exist yet -- `sending`, typed `throws`, `@isolated(any)`, `~Copyable`,
 `Builtin.ImplicitActor`, `nonisolated(nonsending)`, `yielding_borrow`/`yielding_mutate`,
-`@called(once)` -- which upstream added to `manglings.txt` afterwards. Counting the
-rows in that file at each tag says the same thing: 446 at 5.10.1, 470 at 6.0.3, 481 at
-6.1.3, 495 at 6.2.4, 500 at 6.3.3, and 514 on `main`. The corpus needs all 514, so no
-tag reaches it.
+`@called(once)` -- which upstream added to `manglings.txt` afterwards. Counting the rows
+in that file at each tag says the same thing: 446 at 5.10.1, 470 at 6.0.3, 481 at 6.1.3,
+495 at 6.2.4, 500 at 6.3.3, and 514 on `main`. The corpus needs all 514, so no tag
+reaches it.
 
-Which also settles a claim this repository had been making. `README.md` credited the
-Swift corpora to "`swift-demangle` 5.10.1"; that is not what recorded them. 5.10.1
+The corpora were recorded with a `main` build, not with `swift-demangle` 5.10.1, which
 spells `$s4main3fooyySiFyyXEfU_TA.1` as
-`closure #1 () -> () in main.foo(Swift.Int) -> ()partial apply forwarder with unmangled
-suffix ".1"` -- its own `manglings.txt` at that tag expects exactly that -- and the
-corpus carries the later spelling, `partial apply forwarder for closure #1 ...`.
+
+    closure #1 () -> () in main.foo(Swift.Int) -> ()partial apply forwarder with unmangled suffix ".1"
+
+-- exactly what its own `manglings.txt` at that tag expects. The corpus carries the
+later spelling, `partial apply forwarder for closure #1 ...`.
 
 ## The one row this reference does not match
 
@@ -61,7 +63,7 @@ reads:
 
     $sSUss17FixedWidthIntegerRzrlEyxqd__cSzRd__lufCSu_SiTgm5
 
-That is a real symbol out of the 5.10.1 runtime. `Tg` is a generic specialization and
+That is a real symbol out of the 5.10.1 runtime. `Tg` is a generic specialisation and
 the `m` after it is `MetatypeParamsRemoved`, which 5.10.1's `demangleSpecAttributes`
 reads and current `main` does not -- upstream deleted the flag. Reading it is the right
 answer for a demangler pointed at binaries in the wild, which still hold names 5.10.1
@@ -91,8 +93,9 @@ The three `-D`s in `build.sh` are `swift_demangling_compile_flags` from
 - `LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1` -- without it the link wants
   `llvm::DisableABIBreakingChecks`, which lives in libLLVMSupport.
 - `SWIFT_SUPPORT_OLD_MANGLING=1` -- without it `OldDemangler.cpp` compiles to nothing
-  and every `_Tt`/`_T` name comes back unread. Roughly half of `swift-real-world.txt`
-  is in the old mangling.
+  and every `_Tt`/`_T` name comes back unread. 203 of the 8,494 names in
+  `swift-real-world.txt` are in the old mangling (`_T` followed by anything but `0`);
+  `_T0` is the Swift 4 mangling, which the current demangler reads.
 - `SWIFT_STDLIB_HAS_TYPE_PRINTING=1` -- without it `NodePrinter.cpp` compiles to
   nothing and there is no `nodeToString` to link against.
 

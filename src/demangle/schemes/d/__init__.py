@@ -22,8 +22,7 @@ from ._parser import DemangleFailure, DSymbol, _Exhausted, parse_d_symbol
 _STRUCTURED = {}
 
 
-#: D's entry point. The only symbol the compiler writes with no path and no type, and
-#: the reference spells it `D main`.
+#: D's entry point, which the reference spells `D main`.
 _MAIN = "_Dmain"
 
 
@@ -35,8 +34,8 @@ def detect(name):
     claiming an ordinary C identifier that happens to begin `_D`.
 
     `_Dmain` is the one exception, and it has to be named: it is D's entry point, it has
-    no path and no type, and the digit rule turned it away -- so the one symbol every D
-    programme has was the one this scheme did not claim.
+    no path and no type, so the digit rule would reject it -- and it is the one symbol
+    every D program has.
     """
     name = _without_the_mach_o_underscore(name)
     if not name or not name.startswith("_D"):
@@ -72,9 +71,6 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     if not mangled.startswith("_D"):
         raise NotMangledError(original, "not a D mangled name")
     if mangled == _MAIN:
-        # The one name with no path and no type: D's entry point, which the runtime calls
-        # and the compiler does not mangle like anything else. The reference spells it
-        # `D main`.
         return (
             builder.raw("D main")
             if not _wants_structure(builder)
@@ -107,11 +103,10 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="D symbol mangling (dlang)",
     aliases=("dlang",),
-    # `priority` is ascending: *lower is offered first*. After the shape-test schemes and
-    # before Swift and Rust. `_D` collides with nothing here.
     first_characters="_",
     priority=40,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

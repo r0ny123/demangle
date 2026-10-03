@@ -1,11 +1,6 @@
 // The second half of the MSVC corpus: what a newer standard adds to the mangling.
 //
-// Freestanding, like `msvc.cpp` beside it. Four defects came out of the first run of
-// this file against `llvm-undname` 18.1: `operator<=>` and `operator co_await`, both
-// written with the `??__` prefix and neither in the table here; the `_E` that ends a
-// `noexcept` signature where a `Z` ends every other one; and a deduced return type
-// written as a back reference to an earlier one, which is what a lambda nested inside
-// another lambda produces.
+// Freestanding, like `msvc.cpp` beside it.
 //
 // Two productions here are newer than the `llvm-undname` on this box. `$M <type>
 // <integer>` -- an `auto` non-type template argument -- is refused by 18.1 and read by
@@ -110,11 +105,8 @@ auto structured() {
   auto [x, y, z] = b;
   return x + y + z;
 }
-// The same deduced return type with a qualifier in front of it, which is what makes
-// `?A?<auto>@@` into `?B?<auto>@@`. `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp`
-// prints the identifier and nothing else, where every other type node prints its
-// qualifiers first, so `llvm-undname` 18.1 loses the `const` here. See
-// `tests/conformance/msvc-reference-defects.txt`.
+// A qualified deduced return type, `?B?<auto>@@`, whose `const` `llvm-undname` 18.1
+// loses; see `tests/conformance/msvc-reference-defects.txt`.
 const auto structured_const() {
   Big b{4, 5, 6};
   auto [x, y, z] = b;
@@ -142,10 +134,7 @@ int Sub::operator[](int a, int) const { return a; }
 int Sub::operator()(int a) { return a; }
 #endif
 
-// A parameter list that is nothing but the ellipsis. `void f(...)` is C++, and this
-// target writes it `?only_variadic@hard@@YAXZZ`: the `Z` that marks a variadic list with
-// no parameter in front of it. Refused here once, on the belief that the marker needs
-// one; the constructor and the method are the same shape in a member's encoding.
+// A parameter list that is nothing but the ellipsis: `?only_variadic@hard@@YAXZZ`.
 void only_variadic(...) {}
 int only_variadic_int(...) { return 0; }
 struct Variadic {

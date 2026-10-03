@@ -10,13 +10,16 @@ arguments and inside function types as well as between the parts a caller means.
 So the split is done on the tree the parser already built. Two shapes of tree, because
 the schemes come in two kinds:
 
-* C++, both manglings, build a declaration -- a function node with its name inside its
-  own type, or a declarator standing beside one. The fields are read off it directly.
-* Swift, D, Go, Nim, Free Pascal and Delphi build a node that *is* its own fragments, in
-  output order: `parts` interleaves the literal text the printer wrote with the subtrees
-  it wrote between them. That interleaving is the structure -- a `.` in `parts`
-  separates two components and a `.` inside a name does not -- so reading it gives the
-  same answer the printer gave, which splitting the printer's output could not.
+* Itanium and MSVC build a declaration -- a function node with its name inside its own
+  type, or a declarator standing beside one. The fields are read off it directly.
+* Swift, D, Go, Nim, Free Pascal, Delphi, Ada, JNI and the pre-Itanium C++ schemes
+  (`gnuv2`, `codewarrior`) build a node that *is* its own fragments, in output order:
+  `parts` interleaves the literal text the printer wrote with the subtrees it wrote
+  between them. That interleaving is the structure -- a `.` in `parts` separates two
+  components and a `.` inside a name does not -- so reading it gives the same answer
+  the printer gave, which splitting the printer's output could not.
+
+Rust's path and Objective-C's class and selector are read off their nodes as they stand.
 
 Text is the last resort, for the places where a tree has already flattened the answer,
 and even there with a reader that counts brackets and that declines a spelling which is
@@ -25,12 +28,15 @@ a phrase rather than a name.
 What each scheme can say still differs, and the difference is real rather than a gap to
 be filled in later:
 
-* C++ encodes parameter types, the return type where the ABI writes one, cv- and
-  ref-qualifiers, and for MSVC the calling convention and the declared access.
+* C++, in all four of its manglings here -- Itanium, MSVC, pre-Itanium g++ and its
+  relatives, CodeWarrior -- encodes parameter types, the return type where the mangling
+  writes one, cv- and ref-qualifiers, and for MSVC the calling convention and the
+  declared access.
 * Swift encodes the whole function type, so parameters, result and `throws` all come
   back. D, Free Pascal and Delphi encode their parameter types, and Free Pascal a
-  function's result.
-* Rust, Go, Nim and Objective-C encode a path, or a class and a selector, and no
+  function's result; JNI encodes them for an overloaded method, the one form that needs
+  them.
+* Rust, Go, Nim, Ada and Objective-C encode a path, or a class and a selector, and no
   signature at all. `parameters` is `None` for them, which is not the same as `()`: one
   says "the name does not carry this", the other says "it carries an empty list".
 
@@ -48,10 +54,8 @@ from .core.style import DEFAULT_STYLE, Style
 
 __all__ = ["Signature", "signature", "signatureb"]
 
-#: What separates the components of a qualified name, by scheme. Objective-C's is a
-#: space, because a method is a class and a selector; a category -- the `(Store247)` in
-#: `+[A_B209(Store247) andThen:do:]` -- says which chunk of source declared the method
-#: and is not part of its name, so it stays in `demangled` and out of `qualified_name`.
+#: Component separators by scheme. Objective-C's is a space (class, selector); a category
+#: is not part of a method's name, so it stays out of `qualified_name`.
 _SEPARATORS = {
     "itanium": "::",
     "msvc": "::",
@@ -64,16 +68,12 @@ _SEPARATORS = {
     "pascal": ".",
     "objc": " ",
     "jni": ".",
-    # `gnuv2` and `codewarrior` are absent on purpose rather than by oversight: both
-    # spell C++, so both take the `::` default above.
+    # `gnuv2` and `codewarrior` spell C++ and take the `::` default.
 }
 
-#: Words that trail a declaration and qualify it rather than being part of its type.
 _TRAILING_QUALIFIERS = frozenset({"const", "volatile", "restrict", "__restrict", "&", "&&", "noexcept"})
 
-#: What MSVC writes before a declaration: the access it was declared with, and whether it
-#: is static or virtual. Kept because a tool reading a binary wants to know, and nothing
-#: else in the structured view records it.
+#: MSVC's access and storage words, which nothing else in the structured view records.
 _LEADING_QUALIFIERS = frozenset({"private", "protected", "public", "static", "virtual"})
 
 
@@ -109,8 +109,10 @@ class Signature:
     parameters: tuple[str, ...] | None
     """The parameter types, spelled, or `None` where the name encodes no parameter list.
 
-    `()` and `None` mean different things: a C++ function taking no arguments has `()`,
-    and a Rust path has `None` because Rust does not put the signature in the symbol.
+    `()` and `None` mean different things: an Itanium function taking no arguments has
+    `()`, and a Rust path has `None` because Rust does not put the signature in the
+    symbol. MSVC and pre-Itanium g++ spell an empty list `(void)`, and it comes back as
+    they spell it: `('void',)`.
     """
 
     return_type: str | None
@@ -183,10 +185,7 @@ def signature(
     all empty.
     """
     tree = _parse(mangled, language=language, style=style, limits=limits)
-    # Through the registry, because `language` is whatever the caller wrote and the
-    # aliases are documented: `signature(..., language="objective-c")` must read the same
-    # as `language="objc"`, and keyed by the alias it found no separator and reported the
-    # whole spelling as the base name.
+    # Through the registry, so an alias (`objective-c`) finds its separator.
     scheme = _resolve(language).name if language is not None else (_detect(mangled) or "")
     return _extract(_Reading(scheme, _SEPARATORS.get(scheme, "::"), style), tree)
 
@@ -228,27 +227,20 @@ def _extract(reading, tree):
     decoration = ""
     special = None
 
-    # `whole` is the current tree's spelling, refreshed each time a wrapper comes off:
-    # the `symbol` test below compares a child against it, and rendering the tree twice
-    # to ask is rendering it twice per name.
+    # `whole` is refreshed as each wrapper comes off, so the tree is rendered once per step.
     while True:
         kind = tree.kind
         if kind == "decorated":
             decoration = tree.decoration + decoration
             tree = tree.inner
         elif kind == "special":
-            # `vtable for X` describes X, so the rest of the fields describe X. A chain
-            # of them -- `guard variable for reference temporary for x` -- keeps the
-            # outermost label, which is what the symbol *is*.
+            # `vtable for X` describes X. A chain keeps the outermost label.
             if special is None:
                 special = tree.label.strip()
             tree = tree.inner
         elif kind == "symbol" and len(tree.children()) == 1 and reading.spell(tree.children()[0]) == whole:
-            # Rust, D and Swift wrap the whole thing in a `symbol` node, which carries
-            # the spelling and nothing the parts need. Only where the child *is* the
-            # spelling: Go's `go:buildinfo` and D's `initializer for demangle.test` are
-            # one node inside a wrapper that adds text of its own, and unwrapping them
-            # would drop it.
+            # Rust, D and Swift wrap everything in a `symbol` node. Unwrapped only where
+            # the child *is* the spelling: some wrappers add text of their own.
             tree = tree.children()[0]
         else:
             break
@@ -295,12 +287,12 @@ def _blank(reading, tree):
 
 
 def _parts_of(reading, tree):
-    """Read what the tree says, by the shape it has rather than by the scheme that built it."""
+    """Read what the tree says, by the shape it has rather than by the scheme that built
+    it."""
     found = _blank(reading, tree)
     kind = tree.kind
 
     if kind == "function" and getattr(tree, "name", None) is not None:
-        # A C++ function declaration: the name sits inside its own type.
         _name_from(reading, found, tree.name)
         found["parameters"] = tuple(reading.spell(parameter) for parameter in tree.parameters)
         found["return_type"] = reading.spell(tree.returns) if tree.returns is not None else None
@@ -309,16 +301,11 @@ def _parts_of(reading, tree):
         return found
 
     if kind == "declaration":
-        # MSVC: the declarator is the name, and the type stands beside it.
         _name_from(reading, found, tree.declarator)
-        # `access` and `member_type` hold what `prefix` used to hold as one string, so
-        # that each can be suppressed on its own; the qualifiers a caller asks for are
-        # still all of them.
         lead = tree.prefix + getattr(tree, "access", "") + getattr(tree, "member_type", "")
         found["qualifiers"] = _leading(lead) + _trailing(tree.suffix)
         declared = tree.type
-        # A *pointer* to a function is data; only a declared function type is a
-        # function, so this looks through nothing.
+        # A *pointer* to a function is data, so this looks through nothing.
         if declared is not None and declared.kind == "function":
             found["parameters"] = tuple(reading.spell(parameter) for parameter in declared.parameters)
             found["return_type"] = reading.spell(declared.returns) if declared.returns is not None else None
@@ -332,17 +319,13 @@ def _parts_of(reading, tree):
         return found
 
     if kind == "symbol" and reading.scheme == "objc":
-        # A method is a class and a selector, and the selector's colons say how many
-        # arguments it takes without saying what any of them is.
         names = [reading.spell(child) for child in tree.children() if child.kind == "name"]
         if len(names) == 2:
             found["namespace"], found["base_name"] = names
             found["qualified_name"] = " ".join(names)
             found["is_function"] = True
         else:
-            # A module constructor or a class reference, not a method. There is no class
-            # and no selector to hand back, and the spelling is prose -- splitting
-            # `Objective-C module constructor` at its last space would invent both.
+            # A module constructor or class reference: prose, not a class and selector.
             found["namespace"], found["base_name"] = "", found["qualified_name"]
         return found
 
@@ -354,9 +337,7 @@ def _parts_of(reading, tree):
         return found
 
     if kind == "variable":
-        # For a tree that names its kinds but is not built out of fragments -- which a
-        # registered plugin's may not be. Every scheme shipped here reaches the reader
-        # above instead.
+        # A plugin tree that names its kinds but is not built from fragments.
         found["is_data"] = True
         found["is_function"] = False
     return found
@@ -384,26 +365,24 @@ def _name_from(reading, found, node):
     found["base_name"] = components[-1]
 
 
-#: What a printer writes between a declaration and its result. Swift spells a function's
-#: with `->` and a variable's with `:`; Free Pascal writes a routine's with `:`.
+#: Swift's `->` and `:`, Free Pascal's `:`.
 _RESULT_MARKERS = frozenset({"->", ":"})
 
-#: Words a printer writes after the parameter list that qualify the declaration.
 _DECLARATION_WORDS = frozenset({"async", "mutating", "nonmutating", "rethrows", "throws"})
 
-#: What Free Pascal writes where the parameter list would go when the compiler dropped
-#: it. A note is not a parameter, so a list that is only this one is no list at all.
+#: Free Pascal's note where a dropped parameter list would go; not a parameter.
 _ELIDED = "<parameters elided by the compiler>"
 
 
 def _from_parts(reading, found, node):
     """Read a node that is its own fragments, in output order.
 
-    Swift, D, Go, Nim, Free Pascal and Delphi all build their trees this way: `parts`
-    interleaves the literal text a printer emitted with the subtrees it emitted between
-    them. That interleaving is the structure -- a `.` in `parts` separates two
-    components and a `.` inside a name does not -- so reading it gives the same answer
-    the printer gave, which splitting its output could not.
+    Most schemes build their trees this way -- every one but Itanium, MSVC, Rust and
+    Objective-C, whose shapes are read above: `parts` interleaves the literal text a
+    printer emitted with the subtrees it emitted between them. That interleaving is the
+    structure -- a `.` in `parts` separates two components and a `.` inside a name does
+    not -- so reading it gives the same answer the printer gave, which splitting its
+    output could not.
     """
     parts = getattr(node, "parts", None)
     if not parts:
@@ -416,10 +395,8 @@ def _from_parts(reading, found, node):
     label = None
     at = 0
 
-    # A leading literal is what the printer said this symbol is *about*: `type info for`,
-    # `default associated conformance accessor for`. It labels the entity the rest of the
-    # parts describe, which is what `special` records. The trailing space is what makes it
-    # a label rather than a prefix of the name: Go's `go:buildinfo` is one word.
+    # A leading literal labels what the symbol is *about* (`type info for`); the trailing
+    # space tells a label from a name prefix (Go's `go:buildinfo`).
     if isinstance(parts[0], str) and parts[0].strip() and parts[0].endswith(" ") and _holds_a_node(parts[1:]):
         label = parts[0].strip()
         at = 1
@@ -437,12 +414,8 @@ def _from_parts(reading, found, node):
         if region == "name" and part == reading.separator:
             components.append("")
         elif region == "name" and components[-1] and part.startswith("("):
-            # A fragment that *opens* with `(` after a component that has started is the
-            # parameter list. A `(` anywhere else in a fragment is text: Swift writes a
-            # file-private routine as `Foundation.FileHandle.(_check in _2DF8)()`, where
-            # only the second bracket is a call, and an LLDB expression as
-            # `__lldb_expr_1.(unknown context at $10016c2d8)`, where neither is. D writes
-            # the whole list as one fragment, `(int)`, which does open with the bracket.
+            # Only a fragment that *opens* with `(` is the parameter list: Swift writes
+            # `Foundation.FileHandle.(_check in _2DF8)()`.
             parameters, at = _parameter_list(reading, parts, at, part[1:])
             region = "signed"
         elif region != "result" and part.strip() in _RESULT_MARKERS:
@@ -458,10 +431,7 @@ def _from_parts(reading, found, node):
     if len(components) > 1:
         found["namespace"] = reading.separator.join(components[:-1])
         found["base_name"] = components[-1]
-    # One component is not a split. `_TtBf32_` spells `Builtin.FPIEEE32` out of a single
-    # literal, and D writes `initializer for demangle.test` as a label and one node --
-    # in both the components are all the tree has, so the reader in `_extract` takes
-    # over, which at least counts brackets.
+    # One component is not a split (`_TtBf32_`); the reader in `_extract` takes over.
     found["parameters"] = None if parameters == (_ELIDED,) else parameters
     found["return_type"] = result or None
     found["qualifiers"] = tuple(qualifiers)
@@ -470,9 +440,8 @@ def _from_parts(reading, found, node):
         found["is_data"] = True
         found["is_function"] = False
     elif parameters is not None or node.kind == "function" or (result is not None and label is None):
-        # A labelled symbol is *about* an entity rather than being one, and the type
-        # after its `:` is what the label names -- an associated type, not a result --
-        # so it says nothing about whether anything here is callable.
+        # After a label, the `:` type is what the label names, not a result, so it does
+        # not make this a function.
         found["is_function"] = True
     return True
 
@@ -521,7 +490,6 @@ class _Parameters:
     def __init__(self):
         self.current = ""
         self.found = []
-        # One, for the `(` the caller has already read.
         self.depth = 1
 
     def text(self, fragment):
@@ -602,7 +570,6 @@ def _phrase(text):
     return False
 
 
-#: What Swift calls the two, where C++ repeats the class's own name.
 _SWIFT_STRUCTORS = frozenset({"__allocating_init", "__deallocating_deinit", "deinit", "init"})
 
 
@@ -615,8 +582,7 @@ def _is_structor(reading, namespace, base):
     if not namespace:
         return False
     _, enclosing = _split_last(namespace, reading.separator)
-    # `Foo<int>::Foo` is a constructor: the class carries its arguments and the
-    # constructor does not, so the comparison drops them.
+    # `Foo<int>::Foo`: the constructor lacks the class's arguments.
     cut = enclosing.find("<")
     if cut > 0:
         enclosing = enclosing[:cut]

@@ -36,8 +36,7 @@ import re
 
 __all__ = ["DemangleFailure", "NimSymbol", "detect", "mangle", "mangle_module", "parse_nim_symbol"]
 
-#: Characters `mangle` spells as words rather than escaping. From the compiler's own
-#: table; the order they are tried in matters, so the reverse map is built once.
+#: Characters `mangle` spells as words, from the compiler's own table.
 SPECIALS = {
     "dollar": "$",
     "percent": "%",
@@ -60,39 +59,32 @@ SPECIALS = {
     "bar": "|",
 }
 _BY_CHARACTER = {character: word for word, character in SPECIALS.items()}
-#: Longest first: `backslash` contains `slash`, and `amp` would swallow the front of one.
+#: Longest first: `backslash` contains `slash`.
 _BY_LENGTH = sorted(SPECIALS, key=len, reverse=True)
 
 _HEX = frozenset("0123456789ABCDEF")
 
-#: The characters a Nim operator name is made of. A name mixing these with letters is not
-#: one, which is what rules out reading `result` as `resu<`.
+#: A name mixing these with letters is not an operator (so `result` is not `resu<`).
 OPERATOR_CHARACTERS = frozenset("=+-*/<>@$~&%|!?^.:\\[]{}")
 
-#: A Nim identifier: a letter, then letters, digits and underscores. Backticks appear in
-#: the compiler's `x`gensym12` names, which are identifiers as far as this is concerned.
+#: Backticks appear in the compiler's `x`gensym12` names.
 _IDENTIFIER = re.compile(r"^[^\W\d_][\w`]*$", re.UNICODE)
 
-#: `<identifier> "__" <module> "_" ["u"] <id>`. The module part is lazy so that the split
-#: falls at the *last* `__`, which is where it belongs: an identifier may contain one.
+#: `<identifier> "__" <module> "_" ["u"] <id>`, split at the *last* `__`: an identifier
+#: may contain one.
 _SYMBOL = re.compile(r"^(.+)__([A-Za-z0-9]*?)_(u?)([0-9]+)$")
 
-#: `uniqueModuleName` emits only these. No underscore and no upper case but `Z` and `O`,
-#: which is what makes the shape narrow enough to detect on.
+#: `uniqueModuleName` emits only these, which makes the shape narrow enough to detect on.
 _MODULE_CHARACTERS = re.compile(r"^[a-z0-9ZO]+$")
 
-#: `ty<Kind>` optionally `_<name>`, then the signature hash. The hash is a digest and
-#: does not come back.
+#: `ty<Kind>` optionally `_<name>`, then the signature hash (a digest; not recovered).
 _TYPE_NAME = re.compile(r"^ty([A-Z][A-Za-z]*?)(?:_(.+?))?__([A-Za-z0-9_]+)$")
 _TYPE_INFO = re.compile(r"^NTI(v2)?(.*?)__([A-Za-z0-9_]+)_$")
 _MARKER = re.compile(r"^Marker_(.+)$")
 _MODULE_TEMPORARY = re.compile(r"^TM__?([A-Za-z0-9_]+)_([0-9]+(?:\.[0-9]+)?)$")
 
-#: Characters `uniqueModuleName` writes as a decimal code and a path plausibly contains.
-#: Under Nim 2 a digit run may equally be part of the path -- `pure/base64` is written
-#: `pureZbase64` -- so a two-digit run is only read as a code when the character it names
-#: is one that occurs in a module path. Measured: across both shipped standard libraries,
-#: the only character ever encoded under Nim 2 is `_`.
+#: Under Nim 2 a digit run may be the path's own (`pure/base64` is `pureZbase64`), so a
+#: two-digit run is a code only if it names one of these. In practice only `_` is.
 _PLAUSIBLE_IN_A_PATH = frozenset(range(65, 91)) | {ord(c) for c in "-_+.~#$"}
 
 
@@ -131,8 +123,7 @@ def mangle(name):
         if character.isascii() and character.isalnum():
             out.append(character)
         elif character == "_":
-            # Dropped before a digit: the compiler reserves `_<digit>` for its own
-            # disambiguation, so `len0_16` and `len016` become the same symbol.
+            # The compiler reserves `_<digit>`, so `len0_16` and `len016` collide.
             if not (0 < at < len(name) - 1 and name[at + 1].isdigit()):
                 out.append(character)
         elif character in _BY_CHARACTER:
@@ -223,8 +214,7 @@ def unmangle(text):
             if operator is not None:
                 candidates.append(operator)
             if had_hex:
-                # The escape that set the marker is accounted for; leave the words alone,
-                # or `result` comes back as `resu<`.
+                # The escape that set the marker is accounted for; leave the words alone.
                 candidates.append(decoded)
             if compiler_name is not None:
                 candidates.append(compiler_name)
@@ -282,17 +272,15 @@ def unmangle_module(text, nim2):
             at += 1
             continue
         if character.isdigit():
-            # Only `{`, `|`, `}` and `~` need three digits; every other encoded character
-            # is below 100, so two digits are the common case and a three-digit read is
-            # only correct in that narrow range.
+            # Only `{`, `|`, `}` and `~` (123-126) take three digits.
             if at + 3 <= len(text) and text[at : at + 3].isdigit() and 123 <= int(text[at : at + 3]) <= 126:
                 out.append(chr(int(text[at : at + 3])))
                 at += 3
                 continue
             if at + 2 <= len(text) and text[at : at + 2].isdigit():
                 value = int(text[at : at + 2])
-                # Under Nim 1 everything but a lower-case letter is a code, so any
-                # two-digit run is one. Under Nim 2 a digit may be the path's own.
+                # Under Nim 1 every two-digit run is a code; under Nim 2 see
+                # `_PLAUSIBLE_IN_A_PATH`.
                 in_range = 32 <= value <= 96 and not ("a" <= chr(value) <= "z")
                 if value in _PLAUSIBLE_IN_A_PATH if nim2 else in_range:
                     out.append(chr(value))
@@ -318,7 +306,6 @@ def _routine(name):
     nim2 = marker == "u"
     spelled = unmangle(identifier)
     if spelled is None:
-        # No reading re-mangles to what is there, so this is not a Nim symbol.
         return None
     path = unmangle_module(module, nim2)
     if mangle_module(path, nim2) != module:
@@ -391,32 +378,15 @@ def parse_nim_symbol(name):
     raise DemangleFailure("not a Nim symbol")
 
 
-#: What a name must begin with to be one of the compiler-generated forms. Everything
-#: else this reads is a `<name>__<module>_[u]<id>`.
 _COMPILER_PREFIXES = ("NTI", "Marker_", "TM_", "ty")
 
-#: Prefixes that belong to another language, and that this scheme must decline whatever
-#: else the name looks like.
-#:
-#: Nim has no marker of its own -- a Nim symbol is an ordinary C identifier -- so this
-#: scheme recognises names by shape, and `<name>__<module>_<id>` is a shape other
-#: compilers produce too. OCaml's is the one that collides: it writes
-#: `caml<Module>__<name>_<id>`, which splits at the last `__` into a name of
-#: `camlStdlib__Int`, a module of `compare` (all lower case, so it passes the module
-#: test) and an id of 296 -- and re-mangles to exactly the symbol it came from, so even
-#: the re-mangling property this scheme relies on says yes. It read
-#: `camlStdlib__Int__compare_296` as `compare.camlStdlib__Int`.
-#:
-#: Every symbol the OCaml compiler emits carries this prefix, and no Nim symbol does, so
-#: declining it costs nothing and settles the collision the shape cannot. A caller who
-#: knows the binary is Nim can still pass `language="nim"` and get the whole scheme.
+#: Other languages' prefixes, declined whatever the name looks like. OCaml's
+#: `camlStdlib__Int__compare_296` fits `<name>__<module>_<id>` and even re-mangles to
+#: itself; no Nim symbol starts with `caml`. `language="nim"` still reads it.
 _FOREIGN_PREFIXES = ("caml",)
 
-#: How every `<name>__<module>_[u]<id>` ends. A *necessary* condition of `_SYMBOL` -- the
-#: same `_ (u?) ([0-9]+) $` that pattern requires -- so screening on it turns away only
-#: names `_routine` would have refused anyway. It is worth testing separately because
-#: `_SYMBOL` opens with a greedy `(.+)__`, which walks back through every `__` in the
-#: name before it can fail; `std::__cxx11` puts one in a large share of a C++ binary.
+#: A necessary condition of `_SYMBOL`, screened first because `_SYMBOL`'s greedy `(.+)__`
+#: backtracks through every `__` (`std::__cxx11` is everywhere in C++ binaries).
 _ROUTINE_TAIL = re.compile(r"_u?[0-9]+$")
 
 
@@ -432,26 +402,20 @@ def detect(name):
     can only be `<name>__<module>_[u]<id>`, and `<id>` is a run of decimal digits at the
     very end. This plugin declares no first character -- a Nim symbol is an ordinary C
     identifier -- so it is offered every symbol in a binary, and running five anchored
-    regular expressions over each of them made it four times the cost of any other
-    scheme's detection. `__` alone does not screen -- `std::__cxx11` has one, and so does
+    regular expressions over each of them would cost several times any other scheme's
+    detection. `__` alone does not screen -- `std::__cxx11` has one, and so does
     a fifth of the shipped libstdc++ -- and neither does a trailing digit, which 95% of
     those symbols also have. The tail does: none of them survives it.
 
     Both halves of that screen are necessary, so the order between them is free to be
     chosen on cost -- and it matters more than it looks. `"__" in name` is one C-level
     scan; `_ROUTINE_TAIL.search` is a regular expression whose `$` anchor does not stop
-    `search` trying every position first. Testing the regex first spent it on every name
-    that has no `__` at all, which is most of them: 61% of the shipped libstdc++, and
-    every ordinary C identifier. Measured, with the verdict identical on every name of
-    both corpora:
-
-        synthetic non-symbols   0.484us -> 0.161us   (3.0x)
-        real libstdc++ symbols  0.501us -> 0.342us   (1.5x)
-
-    It wins on the real symbols too, despite 39% of them carrying a `__`, because the
-    other 61% now stop at the membership test. This scheme declares no first character,
-    so it is offered *every* symbol in a binary and was half the cost of detection across
-    all six schemes that see a lower-case name.
+    `search` trying every position first. Testing the regex first would spend it on
+    every name that has no `__` at all, which is most of them: 61% of the shipped
+    libstdc++, and every ordinary C identifier. With the membership test first, those
+    stop there; only the 39% carrying a `__` reach the regex. This scheme declares no
+    first character, so it is offered *every* symbol in a binary and this is the bulk of
+    its detection cost.
 
     `_FOREIGN_PREFIXES` is the other half, and it is a refusal rather than a screen: the
     shape this scheme reads is one another compiler also produces, and where a name

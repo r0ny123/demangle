@@ -2,8 +2,7 @@
 // g++ writes them as a back-reference to the `T_` entry contributed by `legalize`'s
 // signature, which is nested inside `insort`'s second template argument. Resolving that
 // entry where it was recorded gives `nn::BB*`; resolving it where it is read gives
-// `nn::Update<nn::BB*>*`, which is what the declaration says. llvm-cxxfilt 18 prints the
-// former, GNU c++filt 2.42 the latter.
+// `nn::Update<nn::BB*>*`, which is what the declaration says.
 namespace nn {
 struct BB;
 

@@ -21,7 +21,8 @@ from ...core.errors import LimitExceeded, ParseError
 class SubstitutionOverrun(ParseError):
     """A `S<n>_` past the end of the table: the name was numbered by a rule this reading
     did not apply, or it is not a name. `parse` retries the one rule that is known to
-    differ between compilers before giving up; see `ItaniumOptions.undeduced_auto_substitution`."""
+    differ between compilers before giving up; see
+    `ItaniumOptions.undeduced_auto_substitution`."""
 
 
 class SubstitutionMisuse(ParseError):
@@ -33,10 +34,8 @@ class SubstitutionMisuse(ParseError):
     `ItaniumOptions.closure_prefix_substitution`."""
 
 
-#: Section 5.1.10: "Each non-terminal in the grammar above for which <substitution>
-#: appears on the right-hand side is both a source of future substitutions and a
-#: candidate for being substituted." Enumerated here so the parser's `remember()` calls
-#: can be checked against the specification rather than against intuition.
+#: 5.1.10: every non-terminal with <substitution> on its right-hand side, the set the
+#: parser's `remember()` calls must match.
 CANDIDATE_PRODUCTIONS = frozenset(
     {
         "type",
@@ -49,9 +48,8 @@ CANDIDATE_PRODUCTIONS = frozenset(
     }
 )
 
-#: Section 5.1.10 names two exclusions that look like candidates in the grammar but are
-#: not: "<builtin-type> other than vendor extended types, and function and operator
-#: names other than extern "C" functions."
+#: 5.1.10's exclusions: "<builtin-type> other than vendor extended types, and function
+#: and operator names other than extern "C" functions."
 EXCLUDED_PRODUCTIONS = frozenset({"builtin-type", "function-name", "operator-name"})
 
 
@@ -77,8 +75,8 @@ class ParameterReference:
     `I` -- `nn::Update<nn::BB*>*` -- and GNU c++filt prints exactly that. Resolving the
     entry to what `T_` meant where it was recorded gives `nn::BB*` instead: a different
     type, spelled plausibly, which is the failure this package exists to avoid.
-    llvm-cxxfilt 18 has that bug on 312 of the 217,730 distinct Itanium symbols in the
-    shared libraries of a stock Ubuntu 24.04.
+    llvm-cxxfilt 18 has that bug, and differs from this on 322 of the 217,730 distinct
+    Itanium symbols in the shared libraries of a stock Ubuntu 24.04.
 
     The level is carried as well as the index, because `TL<k>_<n>_` names a parameter of
     an enclosing template and the entry stands for that parameter, not for level 0's.
@@ -92,11 +90,8 @@ class ParameterReference:
     def __init__(self, index, level=0, symbolic=None):
         self.index = index
         self.level = level
-        #: The parameter's own mangled text, where it was read inside a requires-clause
-        #: under a style that substitutes the bound argument. The clause's scope can be
-        #: gone by the time a later `S_` names the entry, and this is what stands in --
-        #: the spelling the other style uses throughout. None everywhere else, which is
-        #: every entry outside a clause.
+        #: Mangled text of a parameter read inside a requires-clause whose scope may be
+        #: gone when a later `S_` names it; None outside a clause.
         self.symbolic = symbolic
 
     def __repr__(self):  # pragma: no cover - debugging aid
@@ -171,9 +166,8 @@ class SubstitutionTable:
         self._entries = []
         self._limit = limit
         self._mangled = mangled
-        #: False while the parser is re-reading a `DeferredProduction`. Those bytes have
-        #: already contributed their entries; adding them again would renumber the table
-        #: under the very back-reference being resolved.
+        #: False while re-reading a `DeferredProduction`, whose entries already exist;
+        #: adding them again would renumber the table.
         self.recording = True
 
     def remember(self, handle, production="type"):
@@ -188,11 +182,11 @@ class SubstitutionTable:
                 f"{production!r} is not a substitution candidate under ABI 5.1.10; "
                 f"candidates are {sorted(CANDIDATE_PRODUCTIONS)}"
             )
-        if not self.recording:
-            return handle
-        if len(self._entries) >= self._limit:
-            raise LimitExceeded(self._mangled, "substitution", self._limit)
-        self._entries.append(handle)
+        if self.recording:
+            entries = self._entries
+            if len(entries) >= self._limit:
+                raise LimitExceeded(self._mangled, "substitution", self._limit)
+            entries.append(handle)
         return handle
 
     def defer_last(self, start, end):
@@ -275,8 +269,8 @@ class TemplateArgumentTable:
         []<typename $T, template<typename $T0, $T $N> typename $TT>(...)
 
     Here `$T` is level 0 index 0 and `$T0` is level 1 index 0, and the `$N` declaration
-    reaches both. Held flat, the two levels overwrote each other and the parameter came
-    out spelled `T`, which names nothing.
+    reaches both. Held flat, the two levels would overwrite each other and the parameter
+    would be spelled `T`, which names nothing.
 
     A level with nothing in it is still a level: a generic lambda that declared no
     parameters occupies one, because its `auto` parameters are numbered against it and a
@@ -293,10 +287,8 @@ class TemplateArgumentTable:
 
     def __init__(self):
         self._levels = []
-        #: Bumped on every change. Two different scopes never share a value, which is
-        #: what lets the parser memoise a `DeferredProduction` per scope rather than
-        #: re-reading its span once per back-reference -- a chain of entries each built
-        #: over the one before is otherwise quadratic in the length of the name.
+        #: Bumped on every change, so the parser can memoise a `DeferredProduction` per
+        #: scope; re-reading it per back-reference is quadratic.
         self.generation = 0
 
     # -- level 0: the innermost <template-args> --------------------------------------

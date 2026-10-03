@@ -2,12 +2,9 @@
 
 The checked-in corpora are real symbols, so they cover the shapes compilers *emit*.
 These tools cover the shapes a grammar *permits*, which is where the worst defects
-live, and they build the three references that have to be built here because no
-distribution ships one.
-
-Run them against any change to a parser's shape rules. Everything below is optional for
-a one-line fix and expected for a parser change; [CONTRIBUTING](https://github.com/r0ny123/demangle/blob/main/CONTRIBUTING.md) has the
-checklist that says which.
+live -- an encoding no compiler writes, read as something that looks like a
+declaration a person would believe -- and they build the three references that have to
+be built here because no distribution ships one.
 
 ## Enumeration
 
@@ -16,17 +13,11 @@ python tools/enumerate.py            # every scheme with a reference on this mac
 python tools/enumerate.py --length 6 # deeper, and much slower
 ```
 
-The corpora are real symbols, so they cover the shapes compilers *emit*. They do not
-cover the shapes a grammar *permits*, and that is where the worst defects live: an
-encoding no compiler writes, read as something that looks like a declaration a person
-would believe. `tools/enumerate.py` offers every string up to `--length` characters over
-a per-scheme alphabet to the library, puts the ones it reads to the reference demangler,
-and reports every disagreement -- including the direction that matters, where the
-reference hands the name back and this library answers.
-
-It is worth running against any change to a parser's shape rules. Seventeen defects came
-out of one sitting with it, in five schemes: `_Z1fIiEi` read as `int f<int>()`, `_RNvC_1f`
-as `::f`, `_D3fooC` as `foo`, `_D4testFMMfZv` as `test(scope scope float)`.
+`tools/enumerate.py` offers every string up to `--length` characters over a per-scheme
+alphabet to the library, puts the ones it reads to the reference demangler, and reports
+every disagreement -- including the direction that matters, where the reference hands
+the name back and this library answers. CI runs it at `--length 4`. It finds shapes such
+as `_Z1fIiEi` read as `int f<int>()`, `_RNvC_1f` as `::f` and `_D3fooC` as `foo`.
 
 A disagreement that is the reference's own goes in `ACCEPTED` with the reason, not in a
 list of names -- the shapes are families, and a list goes stale the moment an alphabet
@@ -36,7 +27,8 @@ because agreeing with one build of one reference is not the same as being right.
 ## Mutation
 
 ```console
-python tools/mutate.py                  # the pinned draw, which is what CI runs
+python tools/mutate.py --count 20000    # what CI runs, with --quiet
+python tools/mutate.py                  # the default draw: 50,000 mutants per scheme
 python tools/mutate.py --count 200000   # more mutants per scheme
 python tools/mutate.py --seed 7         # a different draw; the default draw is fixed
 python tools/mutate.py --scheme types   # bare <type> encodings, through demangle_type
@@ -50,9 +42,9 @@ No alphabet is small enough to reach those by counting.
 So `tools/mutate.py` starts from the checked-in corpora instead and damages them --
 truncate, delete, duplicate, transpose, substitute a character from the scheme's own
 alphabet, or splice the head of one symbol onto the tail of another. A mutant keeps
-almost all of its parent's structure, so it lands *near* the emitted space rather than in
-the grammar's cheap corners, which is where a substitution table gets corrupted rather
-than merely emptied. The draw is seeded, so a failure reproduces exactly.
+almost all of its parent's structure, so it lands *near* the emitted space rather than
+in the grammar's cheap corners, which is where a substitution table gets corrupted
+rather than merely emptied. The draw is seeded, so a failure reproduces exactly.
 
 ```console
 python tools/mutate.py --refusals              # what the reference reads that this refuses
@@ -73,36 +65,15 @@ batch that dies is split until the one name that did it is found and recorded as
 refusal. Triage what it prints against the reference's source: a reading the grammar
 does not admit is pinned as a refusal in the scheme's tests, and one it does is a fix.
 
-```console
-python tools/invariants.py                # the same mutants, put to the library itself
-python tools/invariants.py --corpus swift # one corpus
-```
-
-`tools/invariants.py` borrows those mutation operators and asks what no reference can be
-asked: that a *style* decides a spelling and never whether a name parses, that
-`parse(name).spell()` is what `demangle(name)` returns in every style, and that
-`signature`, `demangleb` and `parse().to_dict()` raise nothing but a `DemanglingError` on
-a name `demangle` read. The first of those was broken for twelve corpus names when the
-tool was written -- the GNU style refused `std::pair`'s constrained constructor that the
-llvm style read.
-
-Because none of that needs a reference, it seeds from *every* corpus rather than from the
-five schemes `tools/mutate.py` can ask about, and takes each corpus's own characters as
-its alphabet -- so Swift, Nim, Free Pascal, Delphi, Go, Objective-C and JNI are fuzzed
-here and nowhere else. A tool that is quiet proves nothing on its own:
-`--seed 1 --count 20000 --corpus itanium-libcxxabi` reports the defect it was written for
-on the parser as it stood, and nothing on the parser as it is.
-
 The count is pinned in both directions rather than driven to zero: `--expect` fails on a
 new divergence *and* on a stale pin after one is fixed, which is how the conformance
 corpora are pinned. It stands at zero: every divergence the default draw reports is
-either a defect that was fixed or an accept rule naming the reason a reference's answer
-is not evidence. An accept rule for a reason nobody has established is how a defect gets
-filed as a reference's -- the D divergence that stood here for several sittings became a
-rule only once diffing the mutant against its seed named the shape, and the description
-it had carried until then turned out to be wrong. Zero is not a claim that nothing is
-left, either: a divergence not in this draw is not one that does not exist, which is what
-`--seed` and `--count` are for.
+covered by an accept rule naming the reason a reference's answer is not evidence. An
+accept rule for a reason nobody has established is how a defect gets filed as a
+reference's, so a rule is written only once diffing the mutant against its
+seed has named the shape. Zero is not a claim that nothing is left, either: a divergence
+not in this draw is not one that does not exist, which is what `--seed` and `--count`
+are for.
 
 It shares `ACCEPTED` with `tools/enumerate.py` on purpose: those rules are statements
 about why a reference's answer is not evidence, and the reason does not change with how
@@ -113,17 +84,29 @@ the name was found. Two mechanisms are its own. `RESCUE` asks the reference abou
 `SECOND_OPINION` asks another reference about the same name, for schemes where a
 divergence from the first is not evidence on its own.
 
-Twenty-eight defects came out of the first three sittings with it, in four schemes. Two
-were structural. Five of the seven Itanium `<prefix>` productions are bases and take no
-prefix on the left, so `_ZN1aSa1bEv` is not a name -- it had read as
-`a::std::allocator::b()`. And a D `Q` back reference points at a length-prefixed
-identifier and nothing else, so a mutated index that lands on a template instance is not
-a name either -- it had read as one, with the instance named twice. The rest run from a
-D pointer to a function pointer spelled as the function pointer, through a D integer
-literal re-formatted rather than echoed and a D negative `char` that lost its sign, to a
-Rust `<base-62-number>` read wider than the reference reads one, an MSVC ARM64EC marker
-stripped until none was left, and MSVC qualifiers written in the order they were read
-rather than the order the reference writes them.
+It reaches structural defects the corpora cannot: five of the seven Itanium `<prefix>`
+productions are bases and take no prefix on the left, so `_ZN1aSa1bEv` is not a name,
+and a D `Q` back reference points at a length-prefixed identifier and nothing else.
+
+## Invariants
+
+```console
+python tools/invariants.py                # the default draw, which is what CI runs
+python tools/invariants.py --corpus swift # one corpus
+```
+
+`tools/invariants.py` borrows those mutation operators and asks what no reference can be
+asked: that a *style* decides a spelling and never whether a name parses, that
+`parse(name).spell()` is what `demangle(name)` returns in every style, and that
+`signature`, `demangleb` and `parse().to_dict()` raise nothing but a `DemanglingError`
+on a name `demangle` read.
+
+Because none of that needs a reference, it seeds from *every* corpus rather than from
+the seven schemes `tools/mutate.py` can ask about, and takes each corpus's own
+characters as its alphabet -- so Nim, Free Pascal, Delphi, Go, Objective-C, JNI and
+CodeWarrior are fuzzed here and nowhere else. A tool that is quiet proves nothing on its
+own: `--seed 1 --count 20000 --corpus itanium-libcxxabi` reports the defect it was
+written for on the parser as it stood, and nothing on the parser as it is.
 
 ## The MSVC corpus a compiler wrote
 
@@ -143,11 +126,10 @@ real MSVC-mangled symbols -- vftables, RTTI records, thunks, guards, the dynamic
 initialiser stubs, the anonymous namespace, local scopes. The source is freestanding
 because that target has no headers here.
 
-Two defects came out of the first run of it, and neither shape is in LLVM's vectors: a
-member function's qualifiers written past what its return type wraps -- `char const (&
-S::b7(void))[2] const`, a const array rather than a const member function -- and a
-dynamic initialiser for a *qualified* variable refused outright, which is every
-namespace-scope object with a non-trivial constructor.
+Its shapes are ones LLVM's vectors lack: a member function's qualifiers written past
+what its return type wraps -- `char const (& S::b7(void))[2] const`, a const array
+rather than a const member function -- and a dynamic initialiser for a *qualified*
+variable, which is every namespace-scope object with a non-trivial constructor.
 
 `tests/conformance/msvc-reference-defects.txt` holds the names from that run
 `llvm-undname` cannot read at all, with the declaration as the expected column. The
@@ -156,57 +138,33 @@ answer.
 
 ## The Rust reference
 
-`llvm-cxxfilt` and `c++filt` each carry their own Rust reader -- LLVM's is a port of an
-older `rustc-demangle`, binutils' is independent of both -- so on Rust neither of the
-demanglers already on the machine is the implementation `src/demangle/schemes/rust/` is a
-port of. Where the three disagree, neither of those two settles it.
-
-`tools/rustc-demangle-reference/` is a twenty-line front end over the crate itself,
-answering one spelling per line the way the C++ demanglers do:
+`llvm-cxxfilt` and `c++filt` each carry their own Rust reader, and neither is the
+`rustc-demangle` crate that `src/demangle/schemes/rust/` ports. The
+[README](https://github.com/r0ny123/demangle/blob/main/tools/rustc-demangle-reference/README.md)
+has why and what the build needs; without it the fuzzers use `llvm-cxxfilt`.
 
 ```console
 cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
 ```
 
-`tools/enumerate.py` and `tools/mutate.py` use it when it has been built and fall back to
-`llvm-cxxfilt` when it has not. It is not a dependency of the test suite; building it
-needs a Rust toolchain and one fetch from crates.io.
-
 ## The Swift reference
 
-Nothing a distribution ships reads a Swift name: `llvm-cxxfilt` and `c++filt` both
-decline a `$s` outright. So `tools/swift-demangle-reference/` builds swiftlang/swift's
-own `lib/Demangling` -- eleven files, unmodified, at a pinned revision -- behind the same
-line-per-name front end the Rust reference uses:
+Nothing a distribution ships reads a Swift name, so `tools/swift-demangle-reference/`
+builds swiftlang/swift's own demangler. Its
+[README](https://github.com/r0ny123/demangle/blob/main/tools/swift-demangle-reference/README.md)
+has what the build needs and why the revision is a commit rather than a release tag.
 
 ```console
 tools/swift-demangle-reference/build.sh
 ```
 
-It needs a C++17 compiler, LLVM's headers (`llvm-dev`) and one fetch from github.com.
-No Swift toolchain, no CMake, no LLVM libraries; the checkout is a blobless sparse one
-over five directories, about 16 MB. `tools/enumerate.py` and `tools/mutate.py` use it
-when it has been built and skip the Swift job when it has not, since there is nothing to
-fall back to.
-
-The revision is a commit on `main` rather than a release tag, and
-`tools/swift-demangle-reference/README.md` has the measurements that decide it, along
-with the one place the reference is wrong and this library does not follow it.
-
 ## The pre-Itanium C++ reference
 
-Nothing current reads a pre-Itanium name either: binutils 2.42's `c++filt` offers no
-`--format=gnu`, `lucid`, `arm` or `hp`, and GCC 9 removed the demangler from libiberty.
-So `tools/cplus-dem-reference/` builds it from GCC 8.3.0's tree -- `cplus-dem.c` and the
-five helpers it calls, unmodified, which is the tree `tests/conformance/gnuv2-libiberty.txt`
-was transcribed from -- behind the same line-per-name front end:
+Nothing current reads a pre-Itanium name, so `tools/cplus-dem-reference/` builds
+libiberty's demangler from GCC 8.3.0. Its
+[README](https://github.com/r0ny123/demangle/blob/main/tools/cplus-dem-reference/README.md)
+has what the build needs and what it reads that this library refuses.
 
 ```console
 tools/cplus-dem-reference/build.sh
 ```
-
-It needs a C compiler, `curl`, `sha256sum` and one fetch from github.com; every file is
-pinned by tag and by checksum. `tools/enumerate.py` and `tools/mutate.py` use it when it
-has been built and skip the `gnuv2` job when it has not. Its README records what the
-build reproduces (the corpus, 1,324 of 1,324) and the two families where libiberty reads
-what this library refuses.

@@ -39,13 +39,12 @@ PLUGIN = LanguagePlugin(
     description="Itanium C++ ABI (GCC, Clang, and compatible toolchains)",
     aliases=("gnu", "gcc", "clang", "cxx", "c++"),
     options_type=ItaniumOptions,
-    # After Rust: a legacy Rust symbol is a valid Itanium symbol, so Rust must be
-    # offered a name before this plugin claims it.
     symbol_table_decorations=True,
-    # `_Z` and `__Z` are the only starts `detect` accepts.
     first_characters="_",
+    # After Rust: a legacy Rust symbol is also a valid Itanium symbol.
     priority=200,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

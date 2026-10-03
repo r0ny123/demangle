@@ -48,9 +48,7 @@ class TestShape:
     def test_a_member_function_keeps_its_access_and_its_cv_apart_from_its_type(self):
         parsed = tree("?f@S@@QBEHH@Z")
         assert parsed.spell() == "public: int __thiscall S::f(int) const"
-        # access opens the spelling and the qualifier closes it; neither is part of the
-        # type, and a caller filtering by access should not have to find it in the text.
-        # Access and storage are separate fields because each can be suppressed alone.
+        # access and storage are separate fields because each can be suppressed alone
         assert parsed.access == "public: "
         assert parsed.member_type == ""
         assert parsed.prefix == ""

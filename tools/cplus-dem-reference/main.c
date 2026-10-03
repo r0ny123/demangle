@@ -1,17 +1,6 @@
-/* A line-per-name front end over libiberty's pre-Itanium demangler, so the differential
-   tools can ask it the way they ask `llvm-cxxfilt` and `c++filt`: one name in, one
-   spelling out, a name it cannot read handed back unchanged.
+/* A line-per-name front end over libiberty's pre-Itanium demangler; see README.md.
 
-   What `c++filt --format=<style>` did to one name before binutils dropped the styles:
-   `cplus_demangle_set_style` from the name given, then `cplus_demangle` under
-   `DMGL_PARAMS | DMGL_ANSI` -- the defaults c++filt applies, and the settings
-   tests/conformance/gnuv2-libiberty.txt records in its third column. `--no-params` is
-   the fourth column, and `--no-ansi` and `--verbose` are the two flags c++filt exposed
-   beside it.
-
-       cplus-dem-reference [gnu|lucid|arm|hp|edg|auto] [--no-params] [--no-ansi] [--verbose] < names
-
-   `gnu` is the default, as it is the default of the scheme this is the oracle for. */
+       cplus-dem-reference [gnu|lucid|arm|hp|edg|auto] [--no-params] [--no-ansi] [--verbose] < names */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

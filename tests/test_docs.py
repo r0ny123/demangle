@@ -1,20 +1,15 @@
 """The documentation's claims about the code, checked mechanically.
 
 `tests/test_readme.py` covers the README: its counts, its version, and the output of
-every example it prints. This covers the rest of `docs/`, which had no guard at all.
-
-Every rule here was written because the thing it checks had already drifted: every
-public export is supposed to be reachable in the API reference, and `Decorated` and
-`register_language` were not -- exported, and documented nowhere; every registered
-scheme is supposed to have a section, and Ada and JNI had none; and a page is supposed
-to render the members it asks for, where the pre-Itanium parser's section asked for a
-`detect` that module does not have.
+every example it prints. This covers the rest of `docs/`: every public export is
+reachable in the API reference, every registered scheme has a section, and every page
+renders the members it asks for.
 
 Links are deliberately *not* checked here. Doing it by hand needs a Markdown parser --
 these pages carry MSVC names with a literal backtick in them, so code spans cannot be
-found by counting delimiters -- and mkdocs already does it properly. What it did not do
-was fail: `validation:` in `mkdocs.yml` now promotes an unresolved link, an unlisted
-page and a bad anchor from INFO to a warning, which `--strict` turns into a red build.
+found by counting delimiters -- and mkdocs already does it properly. `validation:` in
+`mkdocs.yml` promotes an unresolved link, an unlisted page and a bad anchor to a
+warning, which `--strict` fails on.
 """
 
 import doctest
@@ -76,12 +71,11 @@ def rendered_members():
 
 
 class TestEveryDocumentedNameExists:
-    """The converse of the class below, and it had drifted the same way.
+    """The converse of the class below: a documented name must exist.
 
     `mkdocstrings` renders nothing for a `members:` entry naming something the module
     does not have, and does not fail the build over it, so the page quietly shows one
-    member fewer than it asks for. The pre-Itanium parser's section listed a `detect`
-    that the scheme's package defines and `_parser` does not.
+    member fewer than it asks for.
     """
 
     def test_every_rendered_target_is_a_module(self, subtests):
@@ -139,7 +133,7 @@ class TestEveryExampleInTheDocsIsWhatTheCodeDoes:
     """The README's examples are run by `tests/test_readme.py`; these are the others.
 
     `docs/reference/api.md` prints what a call returns, in the same `call` then
-    `# result` shape, and nothing checked those until now.
+    `# result` shape, and this checks those.
     """
 
     def test_every_documented_result_is_the_result(self, subtests):
@@ -158,9 +152,8 @@ class TestEveryExampleInTheDocsIsWhatTheCodeDoes:
 class TestTheArchitecturesLayoutIsTheLayout:
     """The tree in ARCHITECTURE.md, against the tree on disk.
 
-    It had drifted by four schemes and five core modules: `gnuv2`, `codewarrior`, `ada`
-    and `jni` all landed without being listed, so a reader taking the diagram for the map
-    would have concluded the package reads ten manglings rather than fourteen.
+    Every scheme and core module on disk appears in the diagram, so a reader taking it
+    for the map sees all fourteen manglings.
     """
 
     ARCHITECTURE = ROOT / "ARCHITECTURE.md"
@@ -241,3 +234,13 @@ class TestTheReferenceDefectSourcesAreDocumented:
                 assert (self.SOURCES / name).exists(), (
                     f"the reference-defects README has a row for {name}, which is gone"
                 )
+
+
+def test_the_citation_names_this_version():
+    """`CITATION.cff` is what GitHub's "Cite this repository" reads."""
+    citation = ROOT / "CITATION.cff"
+    if not citation.exists():  # pragma: no cover - only in a wheel-only checkout
+        pytest.skip("CITATION.cff is not part of this distribution")
+    version = re.search(r'^version:\s*"?([^"\s]+)"?\s*$', citation.read_text(encoding="utf-8"), re.M)
+    assert version is not None, "CITATION.cff has no version"
+    assert version.group(1) == demangle.__version__

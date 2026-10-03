@@ -1,12 +1,14 @@
 # Sources for `tests/conformance/itanium-reference-defects.txt`
 
 A corpus is normally the reference demangler's own output, recorded next to the name
-(`tools/generate_corpus.py`). These names cannot be recorded that way, because on each of
-them a reference is *wrong*: it resolves a `<template-param>` recorded in the
-substitution table to the argument bound to it where the entry was made, rather than to
-the argument bound to it where the back-reference is read. The two differ whenever the
-entry was made inside a local entity's enclosing signature, which is where the whole
-family comes from.
+(`tools/generate_corpus.py`). These names cannot be recorded that way, because on each
+of them the reference's answer is not the right one. Most are a reference resolving a
+`<template-param>` recorded in the substitution table to the argument bound to it where
+the entry was made, rather than where the back-reference is read; the two differ
+whenever the entry was made inside a local entity's enclosing signature. The rest are
+other reference defects -- a mis-printed expression, a miscounted substitution
+candidate -- and two places where the compilers themselves disagree with each other or
+with the ABI. The table says which each source is.
 
 So the expected column here is derived from the **declaration**, not from a demangler.
 Each source below is compiled with the compiler named in the corpus, the emitted symbol

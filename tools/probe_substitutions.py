@@ -45,9 +45,7 @@ if __name__ == "__main__":
     probe("_ZN1N1TIiiE2mfE")
     # A class template used as a type: how many entries does St4lessIiE contribute?
     probe("_Z1fSt4lessIiE")
-    # A plain class in std.
     probe("_Z1fSt3foo")
-    # Nested namespace prefixes.
     probe("_ZN1A1B1CE")
     for name in sys.argv[1:]:
         probe(name)

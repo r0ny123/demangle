@@ -211,8 +211,7 @@ class TestClaimsNothingItShouldNot:
             "a__b_u",
             "SYSTEM_$$_init",
             "_GLOBAL__sub_I_main.cpp",
-            # A lone surrogate, which is what a byte that is not UTF-8 arrives as. The
-            # re-mangling check used to let a `UnicodeEncodeError` out instead of saying no.
+            # A lone surrogate, which is what a byte that is not UTF-8 arrives as.
             "\ud800__b_1",
             "tyObject_\ud800__abc",
         ],
@@ -229,8 +228,8 @@ class TestClaimsNothingItShouldNot:
             demangle.demangleb_strict(b"\x80__b_1", language="nim")
 
     def test_it_claims_nothing_in_the_other_schemes_corpora(self, subtests):
-        for path in sorted(CONFORMANCE.glob("*.txt")):
-            if path.name.startswith("nim-"):
+        for path in sorted([*CONFORMANCE.glob("*.txt"), *(CONFORMANCE / "reported").glob("*.txt")]):
+            if path.stem.partition("-")[0] == "nim":
                 continue
             with subtests.test(name=path.name):
                 claimed = [
@@ -298,7 +297,7 @@ class TestForeignSymbolsAreDeclined:
     OCaml's is the collision that matters: `caml<Module>__<name>_<id>` splits at the
     last `__` into a name, an all-lower-case module and a numeric id, and *re-mangles to
     exactly the symbol it came from* -- so the round-trip property this scheme relies on
-    says yes. `camlStdlib__Int__compare_296` read as `compare.camlStdlib__Int`.
+    cannot rule it out. `camlStdlib__Int__compare_296` is the pinned case.
 
     Every symbol the OCaml compiler emits carries the prefix and no Nim symbol does, so
     declining it costs nothing a caller wanted.

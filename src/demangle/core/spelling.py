@@ -19,8 +19,7 @@ which matters, because that is exactly what the Itanium back-reference scheme do
 from .builder import Builder
 from .decorations import describe
 
-#: Characters after which a declarator name needs no separating space of its own,
-#: because what precedes it already ends in one or opens a group. See `Spelling.spell`.
+#: After these a declarator name needs no separating space of its own.
 _TIGHT_ENDINGS = (" ", "(")
 
 
@@ -29,11 +28,8 @@ class Spelling:
 
     __slots__ = ("is_array", "is_function", "left", "members", "ref_kind", "right")
 
-    #: The cv-qualifiers this spelling ends with, innermost first, and the text with
-    #: those words taken off. Only a qualified type carries them, and only `qualify`
-    #: writes them -- which is why they are class attributes here and slots on the
-    #: subclass below: the great majority of spellings are not qualified types, and
-    #: adding two more stores to every construction would be paid for by all of them.
+    #: Set only on `QualifiedSpelling`; class attributes here so the common unqualified
+    #: case pays no extra stores.
     cv = ()
     stem = ""
 
@@ -42,14 +38,11 @@ class Spelling:
         self.right = right
         self.is_function = is_function
         self.is_array = is_array
-        #: "", "&" or "&&". Tracked so reference collapsing can be applied.
+        #: "", "&" or "&&", for reference collapsing.
         self.ref_kind = ref_kind
-        #: For a parameter pack, its members; None for an ordinary type.
-        #:
-        #: A pack stays a sequence rather than becoming its joined text, because a
-        #: declarator applied to a pack applies to every member: `Dp O T_` over three
-        #: arguments is three rvalue references, not one wrapped around the joined
-        #: spelling. Every constructor below distributes over `members` when present.
+        #: For a parameter pack, its members; None otherwise. Kept as a sequence because
+        #: a declarator applies to every member: `Dp O T_` over three arguments is three
+        #: rvalue references.
         self.members = members
 
     def spell(self, declarator=""):
@@ -151,16 +144,12 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False, tight_before_group=
     function pointers. GNU c++filt spaces both.
     """
     if inner.members is not None:
-        # Applying a declarator to a pack applies it to each member.
         return pack_of(_wrap(member, token, tight_after_star=tight_after_star) for member in inner.members)
     if inner.is_function or inner.is_array:
         left = inner.left
-        # A function's left half already ends in the space after its return type; an
-        # array's ends in an identifier character and needs one added.
         tight = (" ", "(", "*") if tight_after_star and inner.is_function else (" ", "(")
         spacer = "" if tight_before_group or not left or left.endswith(tight) else " "
-        # The bound now follows the `)` this closes with, not the element type, so its
-        # spacing is decided against that: `int vector[4] (*) [3]`, not `(*)[3]`.
+        # The bound follows the `)`, so it is spaced against that: `int vector[4] (*) [3]`.
         right = ")" + _respace_bound(")", inner.right) if inner.is_array else ")" + inner.right
         return Spelling(left + spacer + "(" + token, right, ref_kind=ref_kind)
     return Spelling(inner.left + token, inner.right, ref_kind=ref_kind)
@@ -188,68 +177,34 @@ class SpellingBuilder(Builder):
         tight_after_star=False,
         tight_member_array=True,
     ):
-        #: Write `Foo<Bar<int> >` rather than `Foo<Bar<int>>`. Required before C++11,
-        #: when `>>` at the end of a template-id lexed as a right-shift operator. GNU
-        #: c++filt still prints it; llvm-cxxfilt does not. Neither is wrong.
-        #:
-        #: The same flag also puts a space *before* the argument list when the name ends
-        #: with `<`, so that `operator<<` instantiated at `int` reads
-        #: `operator<< <int>` rather than `operator<<<int>`. Same reason -- three angle
-        #: brackets in a row -- and the same two references differ on it the same way.
+        #: Write `Foo<Bar<int> >` (pre-C++11 `>>` lexing) and `operator<< <int>` rather
+        #: than `operator<<<int>`. GNU c++filt does; llvm-cxxfilt does not.
         self.legacy_angle_spacing = legacy_angle_spacing
-        #: Write a clone suffix as `[clone .cold]` rather than `(.cold)`. GNU c++filt
-        #: does the former, llvm-cxxfilt the latter.
+        #: Write a clone suffix as `[clone .cold]` (GNU c++filt) rather than `(.cold)`.
         self.gnu_clone_suffix = gnu_clone_suffix
-        #: Write `void (*(*)())()` rather than `void (* (*)())()`: no space before a
-        #: declarator group that follows a `*`, which is how GNU c++filt spaces it. See
-        #: `_wrap`.
+        #: Write `void (*(*)())()` rather than `void (* (*)())()`, as GNU c++filt does.
         self.tight_after_star = tight_after_star
-        #: Write `int(A::*) [3]` rather than `int (A::*) [3]`: no space before the group
-        #: of a pointer to a member whose type is an array, which is how llvm-cxxfilt
-        #: spaces it and GNU c++filt does not. See `_wrap`.
+        #: Write `int(A::*) [3]` rather than `int (A::*) [3]`, as llvm-cxxfilt does.
         self.tight_member_array = tight_member_array
-        #: Print `int const` where the mangling says `K K i`, rather than llvm-cxxfilt's
-        #: `int const const`.
-        #:
-        #: A cv-qualifier applied to a type that already carries it adds nothing --
-        #: [basic.type.qualifier] gives a type at most one of each -- so `const const`
-        #: is a spelling no declaration has. It reaches a mangled name two ways: written
-        #: outright, `K K i`, and through a template argument that is already qualified,
-        #: `K T_` with `T_` bound to `K i`, which is where all three of the shipped
-        #: libraries' instances come from.
-        #:
-        #: The outer one wins, which decides the order the survivors print in: c++filt
-        #: reads `K V K i` as `volatile const` and `K K V i` as `volatile const`.
-        #: Verified against it over all 39 sequences of one to three qualifiers.
-        #:
-        #: An array passes the qualifiers through -- cv on an array qualifies its
-        #: element type, so `K A3_ K i` is `int const [3]` -- and every other declarator
-        #: stops them: `K P K i` is `int const* const`, two different `const`s.
+        #: Print `int const` for `K K i`, rather than llvm-cxxfilt's `int const const`
+        #: ([basic.type.qualifier]: at most one of each). The outer one wins, so `K V K i`
+        #: and `K K V i` both read `volatile const`, as c++filt prints them (checked over
+        #: all 39 sequences of one to three). An array passes the qualifiers through to
+        #: its element; every other declarator stops them.
         self.collapse_duplicate_qualifiers = collapse_duplicate_qualifiers
 
-    # -- leaves ----------------------------------------------------------------
-
-    def builtin(self, spelling):
-        return Spelling(spelling)
-
-    def name(self, text):
-        return Spelling(text)
-
-    def raw(self, text):
-        return Spelling(text)
+    # The class itself rather than a method calling it: a class attribute does not bind,
+    # so `builder.name(text)` is `Spelling(text)`, and these are the builder's commonest
+    # calls.
+    builtin = Spelling
+    name = Spelling
+    raw = Spelling
 
     def literal(self, kind, value):
         return Spelling(value)
 
     def expression(self, form, parts):
         return Spelling("".join([part if isinstance(part, str) else self.spell(part) for part in parts]))
-
-    # -- composition -----------------------------------------------------------
-
-    # List comprehensions rather than generator expressions in the joins here and above.
-    # A generator is a frame that is resumed once per element -- 79,000 resumes over the
-    # Itanium corpus for 23,000 `qualified` calls -- where a comprehension is one frame
-    # for the whole list, and `join` has to build a sequence either way.
 
     def qualified(self, parts):
         return Spelling("::".join([part.left + part.right for part in parts]))
@@ -269,9 +224,8 @@ class SpellingBuilder(Builder):
         repeat collapses. `_Complex` and `_Imaginary` go through here too and are not
         cv-qualifiers: `[basic.type.qualifier]` folds a duplicate `const`, and nothing
         folds a duplicate `_Imaginary`. `c++filt` 2.42 writes `signed char _Imaginary
-        _Imaginary` for `_Z1fGGa` and this collapsed it to one, which is a word of the
-        name lost -- and the two styles disagreed with each other about it, since only
-        the gnu one collapses at all.
+        _Imaginary` for `_Z1fGGa`; collapsing it to one would lose a word of the name,
+        and only the gnu style collapses at all.
         """
         if not qualifiers:
             return inner
@@ -282,21 +236,16 @@ class SpellingBuilder(Builder):
             # trails the parameter list rather than the return type.
             return Spelling(inner.left, inner.right + " " + " ".join(qualifiers), is_function=True)
         if not (self.collapse_duplicate_qualifiers and cv):
-            # Both `int const` and `int* const` are "const applied to the thing on the
-            # left", and C++ spells both postfix. The reference demanglers agree.
+            # Both `int const` and `int* const` are postfix in C++, as the references agree.
             left = inner.left + " " + " ".join(qualifiers)
             right = _respace_bound(left, inner.right) if inner.is_array else inner.right
             return Spelling(left, right, is_array=inner.is_array)
-        # See `collapse_duplicate_qualifiers`. The ones already there that this does not
-        # repeat keep their places; the ones it does repeat move to the end, because the
-        # qualifier written outermost is the one c++filt prints last.
+        # Repeated qualifiers move to the end: the outermost is the one c++filt prints last.
         stem = inner.stem if inner.cv else inner.left
         combined = tuple(q for q in inner.cv if q not in qualifiers) + tuple(qualifiers)
         left = stem + " " + " ".join(combined)
         right = _respace_bound(left, inner.right) if inner.is_array else inner.right
         return QualifiedSpelling(left, right, is_array=inner.is_array, cv=combined, stem=stem)
-
-    # -- declarators -----------------------------------------------------------
 
     def pointer(self, inner):
         return _wrap(inner, "*", tight_after_star=self.tight_after_star)
@@ -305,10 +254,8 @@ class SpellingBuilder(Builder):
         return pack_of(members)
 
     def reference(self, inner):
-        # C++ reference collapsing ([dcl.ref]): applying `&` to any reference yields an
-        # lvalue reference. `T& &`, `T&& &` and `T& &&` are all `T&`. This shows up in
-        # every `std::forward` instantiation, where `O T_` is applied to a `T` already
-        # bound to `char const&` and must not print `char const&&&`.
+        # Reference collapsing ([dcl.ref]): `&` applied to any reference is `T&`; every
+        # `std::forward` instantiation reaches this.
         if inner.members is not None:
             return pack_of(self.reference(member) for member in inner.members)
         if inner.ref_kind == "&":
@@ -326,17 +273,10 @@ class SpellingBuilder(Builder):
         return _wrap(inner, "&&", ref_kind="&&", tight_after_star=self.tight_after_star)
 
     def member_pointer(self, owner, inner):
-        # `int Foo::*` needs the separating space that `int (Foo::*)()` does not: in the
-        # function and array cases `_wrap` supplies an opening parenthesis instead.
         if owner.members is not None:
-            # The owner is the one operand in this file that is not the type a
-            # declarator is being applied to, and it packs the same way: a pointer to a
-            # member of each of them.
+            # The owner packs too: a pointer to a member of each of them.
             return pack_of(self.member_pointer(one, inner) for one in owner.members)
         if inner.members is not None:
-            # Applying a declarator to a pack applies it to each member. `_wrap` has
-            # always done this; the branch below is the one that reaches a pack, and
-            # skipping it left ` ::*` printed for a pack with no members at all.
             return pack_of(self.member_pointer(owner, member) for member in inner.members)
         token = f"{owner}::*"
         if inner.is_function or inner.is_array:
@@ -346,20 +286,17 @@ class SpellingBuilder(Builder):
                 tight_after_star=self.tight_after_star,
                 tight_before_group=inner.is_array and self.tight_member_array,
             )
-        # Always spaced, unlike a bare `*`. `int* A::*` needs the gap even though `int*`
-        # does not, because `int*A::*` would read as one token; the references agree.
+        # Always spaced, unlike a bare `*`: `int*A::*` would read as one token.
         left = inner.left
         joiner = "" if not left or left.endswith((" ", "(")) else " "
         return Spelling(left + joiner + token, inner.right)
 
     def array(self, inner, dimension):
         if inner.members is not None:
-            # An array of a pack is one array per member, and of an empty pack is no
-            # arrays: ` [3]` for a parameter that is not there was what this printed.
+            # An empty pack gives no arrays at all.
             return pack_of(self.array(member, dimension) for member in inner.members)
         if inner.cv:
-            # An array carries its element type's qualifiers out with it: cv on an array
-            # is cv on the elements, so `K A3_ K i` has one `const` and not two.
+            # cv on an array is cv on its elements, so `K A3_ K i` has one `const`.
             bound = f"[{dimension}]" if dimension else "[]"
             right = inner.right.lstrip(" ") if inner.is_array else inner.right
             return QualifiedSpelling(
@@ -372,8 +309,7 @@ class SpellingBuilder(Builder):
         bound = f"[{dimension}]" if dimension else "[]"
         right = inner.right
         # Only the first bracket of a multi-dimensional array is spaced off the type:
-        # `Libcall const (&) [5][4]`, not `[5] [4]`. Dimensions are built inside out, so
-        # the space the inner one took is the one this takes over.
+        # `Libcall const (&) [5][4]`. Dimensions are built inside out.
         if inner.is_array:
             right = right.lstrip(" ")
         return Spelling(inner.left, _respace_bound(inner.left, bound + right), is_array=True)
@@ -384,23 +320,14 @@ class SpellingBuilder(Builder):
         if returns is None:
             result = Spelling("", params + suffix, is_function=True)
         else:
-            # A space after the return type, unless the return type is one that wraps
-            # *around* the name -- a pointer to a function or to an array. Those spell
-            # `int (*f())()`, with the name hard against the `*`, where an ordinary
-            # pointer return spells `int* f()` with the space. The two are told apart by
-            # whether the type has a right half to close: a plain `int*` has none.
-            #
-            # Written as an unconditional `+ " "`, this produced `int (* f<int>())()` and
-            # was the largest group of wrong spellings against libcxxabi's corpus.
+            # No space after a return type that wraps around the name (a pointer to a
+            # function or array: `int (*f())()`), told apart by having a right half.
             left = returns.left
             wraps = bool(returns.right)
             joiner = "" if wraps and left.endswith(("*", "&", "(", " ")) else " "
-            # A function-type return has its `()` in the right half, so the
-            # suffix of *this* function belongs after that: `f name()() requires
-            # C`, not `f name() requires C()`. An array return keeps the
-            # qualifier before the brackets, `int () const []`, and a grouped
-            # wrapping declarator keeps it next to the name, `int (*f() const)()`.
-            # `tools/mutate.py --seed 21`.
+            # A function-type return's `()` is in the right half, so this function's
+            # suffix goes after it: `f name()() requires C`; an array return or a grouped
+            # declarator keeps it before: `int () const []`, `int (*f() const)()`.
             function_return = wraps and returns.right.lstrip().startswith("(")
             if function_return:
                 result = Spelling(left + joiner, params + returns.right + suffix, is_function=True)
@@ -416,8 +343,9 @@ class SpellingBuilder(Builder):
         The reference's `ParameterPackExpansion` prints its child -- both halves -- and
         appends the ellipsis, so a declarator type keeps its shape and the dots follow
         it: `void ()...`, `void (*)()...`, `int [3]...`. Putting them in the left half
-        alone set them where a declarator's name goes, `void (*...)()` and `int... [3]`,
-        which is not what any reference prints. A type with no right half is unchanged.
+        alone would put them where a declarator's name goes, `void (*...)()` and
+        `int... [3]`, which is not what any reference prints. A type with no right half
+        is unchanged.
         """
         return Spelling(inner.left + inner.right + "...")
 
@@ -428,14 +356,12 @@ class SpellingBuilder(Builder):
         out `void () block_pointer` -- not `void block_pointer()`, which is what putting
         the word in the left half alone gives for anything that has a right half.
 
-        Distributes over a pack like every other declarator, which it did not: an empty
-        pack came out as a bare ` enable_if`, a qualifier on nothing.
+        Distributes over a pack like every other declarator: an empty pack gives nothing
+        rather than a bare ` enable_if`, a qualifier on nothing.
         """
         if inner.members is not None:
             return pack_of(self.vendor_qualify(member, qualifier) for member in inner.members)
         return Spelling(inner.spell() + " " + qualifier)
-
-    # -- whole symbols ---------------------------------------------------------
 
     def special(self, label, inner):
         return Spelling(label + str(inner))
@@ -443,13 +369,10 @@ class SpellingBuilder(Builder):
     def decorated(self, inner, decoration):
         return Spelling(inner.spell() + describe(decoration, self.gnu_clone_suffix))
 
-    # -- inspection ------------------------------------------------------------
-
     def spell(self, handle, declarator=""):
         return handle.spell(declarator)
 
     def size(self, handle):
-        # Both halves are already built, so their lengths are free.
         return len(handle.left) + len(handle.right)
 
     def members(self, handle):
@@ -457,9 +380,7 @@ class SpellingBuilder(Builder):
         return handle.members
 
 
-#: Shared instances. Both are immutable after construction, so one of each serves every
-#: call rather than being allocated per name. Parsers take a builder argument rather
-#: than reaching for these; the API layer selects one per requested style.
+#: Shared instances (immutable). Parsers take a builder argument; the API layer picks one.
 SPELLING_BUILDER = SpellingBuilder()
 LEGACY_SPELLING_BUILDER = SpellingBuilder(
     legacy_angle_spacing=True,

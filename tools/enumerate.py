@@ -12,8 +12,7 @@ to the reference demangler, and every disagreement is reported -- including the 
 where the reference hands the name back and this library answers, which is the
 direction that matters. A false reading is worse than no reading.
 
-Seventeen defects came out of this in one sitting, in five schemes. Each was a
-malformed name spelled as a plausible declaration:
+It finds malformed names spelled as plausible declarations:
 
     _Z1fIiEi                  ->  int f<int>()          a signature with no parameters
     _Z1f1AT_                  ->  f(A, auto)            a template parameter with no scope
@@ -56,15 +55,6 @@ from demangle.schemes.d._parser import _Parser as _DParser
 from demangle.schemes.itanium.parser import ItaniumParser
 
 
-#: Per scheme: the reference to ask, a second opinion where one exists, and the
-#: (prefix, alphabet) pairs to enumerate over. A prefix costs nothing and buys depth --
-#: `_Z1fI` spends five characters on "a template specialisation of `f`" and leaves the
-#: whole budget for the part under test.
-#:
-#: The second opinion is not decoration. Agreeing with one build of one reference is not
-#: the same as being right, and where the two disagree with each other, being on one side
-#: is not evidence of anything -- so a divergence from the first that the second shares
-#: with this library is reported as accepted rather than as a defect.
 def _rust_reference():
     """rustc-demangle itself where it has been built, and `llvm-cxxfilt` where it has not.
 
@@ -103,6 +93,8 @@ def _gnuv2_reference():
     return str(built / "cplus-dem-reference")
 
 
+#: Per scheme: the reference, a second opinion or None, and (prefix, alphabet) pairs.
+#: A prefix spends none of the length budget on what is not under test.
 JOBS = {
     "itanium": (
         "llvm-cxxfilt",
@@ -113,10 +105,7 @@ JOBS = {
             ("_ZN", "1aIiTLES_EKPRDv"),
         ],
     ),
-    # Bare `<type>` encodings, the `demangle_type` entry point, against each reference's
-    # own type mode. The alphabet is the type grammar's: pointers and references, the
-    # qualifiers, a function, `D` for the extended codes, a source name, a template
-    # parameter and a substitution.
+    # Bare `<type>` encodings via `demangle_type`, against each reference's type mode.
     "types": (
         "llvm-cxxfilt --types",
         "c++filt -t",
@@ -157,26 +146,18 @@ JOBS = {
             ("?f@@", "YAXPEAUHVW@Z$0_"),
             ("??", "0A@$?QEBH1_23456"),
             ("??_B@5", "?0123456789ABC"),
-            # The *type* grammar, in the one position that holds a bare one: a variable's
-            # own type, `?x@@3 <type> <cv>`. The other three jobs reach a type only
-            # through a signature, where the calling convention and the return type have
-            # to be read first and most of the alphabet is spent before the type starts.
+            # A variable's own type: the one position a bare type stands without a signature.
             ("?x@@3", "PAQBHXNDUJ@_$Y6C"),
         ],
     ),
     "gnuv2": (
-        # The style is `gnu`, the scheme's default: the corpus carries four styles and
-        # the reference reads one per run, and this is the one a caller who does not
-        # know the compiler gets.
+        # `gnu`, the scheme's default style.
         f"{_gnuv2_reference()} gnu",
         None,
         [
-            # A function's argument list, which is where the type grammar lives:
-            # builtins, the modifiers, a back-reference, a class name and the `e`
-            # that ends a list.
+            # A function's argument list, where the type grammar lives.
             ("foo__F", "icsvlxPCRUQ1_e3bTNAG"),
-            # The constructor and the other `__`-prefixed special forms, with the
-            # class name and signature that follow.
+            # The constructor and the other `__`-prefixed special forms.
             ("__ct__3Foo", "FivcPRCe_Q21ATA"),
             # A template function: `H<count>Z<arg>...`, then `_` and the signature.
             ("foo__H1Z", "iZ_X01ct2TAvl3"),
@@ -188,14 +169,10 @@ JOBS = {
         _swift_reference(),
         None,
         [
-            # `$s` is the current mangling: a module length, a name, and an entity
-            # marker. The alphabet is the operators that end a symbol -- `F` function,
-            # `V`/`C`/`O` nominal kinds, `D` type, `M` metadata -- plus what a type
-            # position needs.
+            # `$s`: a module, a name, and an entity marker (`F`, `V`/`C`/`O`, `D`, `M`).
             ("$s", "1a4mainVCOFDMSiySS_"),
             ("$s1a", "1bVCOFDMSiySSxq_G"),
-            # `_T` is Swift 3's, read by a separate demangler in the compiler and still
-            # what the ObjC runtime holds for a Swift class.
+            # `_T`: Swift 3's mangling, still what the ObjC runtime holds for a Swift class.
             ("_T", "tFCVOSiSS_1a3foo"),
         ],
     ),
@@ -205,334 +182,154 @@ JOBS = {
 #: over `(mangled, ours, theirs)` rather than a list of names, because the shapes are
 #: families and a list would go stale the moment the alphabet changes.
 ACCEPTED = {
-    # `llvm-undname`'s `insertSpaceIfNeeded` emits a space only after an alphanumeric
-    # character, so a tag name ending in `$` or `_` is glued to the variable it declares:
-    # `struct _x` for `struct _` and `x`, which is the declaration of something else.
-    # `struct _ {};` is ordinary C++, so this is reachable, and the space is kept.
+    # `llvm-undname`'s `insertSpaceIfNeeded` spaces only after an alphanumeric, so
+    # `struct _ x` comes out `struct _x`.
     "msvc": lambda name, ours, first, second: (
         (
             first is not None
             and (
                 ours.replace(" ", "") == first.replace(" ", "")
-                # Or a cv-qualified array element in a variable's type, `Y02$$CBN`,
-                # whose qualifier `llvm-undname` 18 and 20 print inside a parameter and
-                # a pointee -- `double const[3]`, `double const (*)[3]` -- and drop from
-                # the variable itself, `double outer::h[3]`. No compiler writes `$$C`
-                # there; the reading that keeps the qualifier is the consistent one.
+                # Or a cv-qualified array element in a variable's type (`Y02$$CBN`), whose
+                # qualifier `llvm-undname` drops from the variable. No compiler writes it.
                 or _undname_drops_array_element_qualifiers(name, ours, first)
-                # Or a pointer to a member whose two qualifier letters disagree. A
-                # member pointer states its member's qualifiers twice -- `PESB@@R6AHXZ`
-                # is `S`, a volatile member, and `R`, a volatile pointer, for
-                # `int (__cdecl *volatile B::*)(void)`, as clang-cl writes it -- and a
-                # mutant that changes one leaves two answers. `llvm-undname` keeps the
-                # member's and drops the pointer's; this keeps both. No compiler
-                # writes them apart.
+                # Or a member pointer whose member and pointer qualifier letters disagree;
+                # `llvm-undname` keeps only the member's. No compiler writes them apart.
                 or _undname_keeps_one_member_pointer_qualifier(name, ours, first)
-                # Or the MS extension qualifiers on the pointer a member pointer points
-                # at, which `llvm-undname` prints on that pointer everywhere else and
-                # drops here: `PEQExt@@PEIFAH` is `int __unaligned *__restrict Ext::*`
-                # to the compiler that wrote it and `int *Ext::*` to the reference,
-                # where `PEIFAH` alone is the two words to both. Compiler-emitted;
-                # `tests/conformance/msvc-reference-defects.txt` pins it against the
-                # source in `tools/corpus_sources/msvc/msvc.cpp`. `tools/mutate.py
-                # --seed 42` reached it wearing an ARM64EC marker.
+                # Or MS extension qualifiers on a member pointer's pointee, which
+                # `llvm-undname` drops (msvc-reference-defects.txt).
                 or _undname_drops_a_member_pointees_extension_qualifiers(name, ours, first)
-                # Or a vftable or vbtable base path with more than one element.
-                # `llvm-undname` reads the first element and drops the rest, so
-                # `??_7A@B@@6BC@D@@@`, `...E@F@@@` and `...E@F@@G@H@@@` -- three symbols
-                # naming three different vtables -- all come back from it as one spelling.
-                # Checked against llvm-undname 16, 18 and 20; the head of
-                # `tests/conformance/msvc-llvm-corpus.txt` carries the whole finding. The
-                # same for an RTTI Complete Object Locator, which carries the same path.
+                # Or a vftable/vbtable/RTTI locator base path of several elements, which
+                # `llvm-undname` truncates to the first; see msvc-llvm-corpus.txt's header.
                 or ("'s `" in ours and "'{for `" in ours)
-                # Or a placement delete closure, which `llvm-undname` spells with no name at
-                # all -- `void __cdecl (void *)`. Microsoft's own `undname` writes
-                # `` `placement delete closure' ``, and a declaration with no name in it is
-                # not a spelling to follow. Recognised by putting the name back.
+                # Or a placement delete closure, which `llvm-undname` spells with no
+                # name at all.
                 or _PLACEMENT_CLOSURE.sub("", ours) == first
-                # Or a qualifier in front of a deduced return type. That type is written
-                # `?` and a name -- `?A?<auto>@@` -- and takes a qualifier like any other,
-                # so `const auto f()` is `?B?<auto>@@`. A later one can be a back
-                # reference to the first, `?C?4@`, which is the same gap: the qualifier
-                # is on the node and the printer writes none of a custom type's.
-                # `CustomTypeNode::outputPre` in LLVM's `MSNodes.cpp` is
-                # `Identifier->output(OB, Flags);` and nothing
-                # else, where every other type node's writes its qualifiers first, so
-                # `?A`, `?B`, `?C` and `?D` in front of one all come back spelled the
-                # same. Compiler-emitted and pinned in
-                # `tests/conformance/msvc-reference-defects.txt`; recognised here by
-                # taking the qualifier words back out, so the two answers have to differ
-                # in nothing else. `tools/mutate.py --seed 15`.
+                # Or a qualifier on a deduced return type (`?B?<auto>@@`), which LLVM's
+                # `CustomTypeNode::outputPre` never prints; see `_QUALIFIED_CUSTOM_TYPE`.
                 or (
                     _QUALIFIED_CUSTOM_TYPE.search(name) is not None
                     and _CUSTOM_TYPE_QUALIFIERS.sub(r"\1", ours) == first
                 )
-                # Or a `$$C` qualifier over a pointer that already carries the same one,
-                # `$$CBQAH` -- const over `int *const` -- which no compiler writes: the
-                # reference spells the qualifier twice, `int *const const`, and this
-                # once. `$$CBSAH` is the same over `int *const volatile`, which it
-                # prints `int *const volatile const`. Accepted where collapsing the
-                # extra word gives this answer. `tools/mutate.py --seed 23`.
+                # Or a `$$C` over a pointer already carrying that qualifier, which the
+                # reference prints twice; see `_collapse_doubled_qualifier`.
                 or (first is not None and first != ours and _collapse_doubled_qualifier(first) == ours)
-                # Or the same qualifier words on a pointer in the other order, which
-                # C++ leaves free: `char *const __restrict` here and
-                # `char *__restrict const` to `llvm-undname` for
-                # `?r1@Q@ns@@QEBAAEAY03$$CBPIAD@Z`. They part only where an outer `$$C`
-                # is applied over a pointer that already carries `I`, and agree on every
-                # shape a compiler writes -- `?x@@3QIADA` is `char *const __restrict x`
-                # to both. `tools/mutate.py --seed 42`.
+                # Or qualifier words on a pointer in the other order; see
+                # `_qualifier_words_on_a_pointer_reordered`.
                 or _qualifier_words_on_a_pointer_reordered(ours, first)
             )
         )
-        # Or `__int128`, which `llvm-undname` 18.1 cannot read and its own compiler
-        # emits: `clang++ --target=x86_64-pc-windows-msvc` writes `_L` for `__int128`
-        # and `_M` for `unsigned __int128`, and `demanglePrimitiveType` has neither.
-        # Checked by compiling one rather than read off a table.
+        # Or `__int128` (`_L`/`_M`), which clang-cl emits and `llvm-undname` 18.1 cannot
+        # read.
         or (first is None and ("__int128" in ours))
-        # Or a deduced type, `_P` for `auto` and `_T` for `decltype(auto)`, which MSVC
-        # 14.3 writes for a function declared with one and not yet defined -- 606 of
-        # Boost 1.84's symbols -- and `llvm-undname` 18 cannot read. LLVM's main branch
-        # reads both, and this spells them as it does.
+        # Or a deduced type (`_P` auto, `_T` decltype(auto)), which MSVC 14.3 writes and
+        # `llvm-undname` 18 cannot read; LLVM main reads both as this does.
         or (first is None and _DEDUCED_TYPE.search(name) is not None and _DEDUCED_WORD.search(ours) is not None)
-        # Or a dynamic initialiser over a nested symbol name that spells a *function*.
-        # `??__E` takes a name, and a nested symbol `?<encoding>@` is one: MSVC writes
-        # `??__E?i@C@@0HA@@YAXXZ` for a static data member, which both read, and
-        # `tests/conformance/msvc-arm64ec.txt` carries that shape from a real binary.
-        # `llvm-undname` 18 reads the nested encoding only where it is a *variable* and
-        # refuses it where it is a function, which nothing initialises -- so the shape is
-        # reachable only by damaging one of the real ones, and this reads the text as it
-        # stands rather than deciding what a name may be initialised for.
-        # `tools/mutate.py --seed 65`.
+        # Or a dynamic initialiser over a nested symbol that spells a function, which
+        # `llvm-undname` 18 refuses (it reads only a variable there); reachable only by
+        # mutation.
         or (first is None and _NESTED_FUNCTION_INITIALISER.search(ours) is not None)
     ),
-    # `c++filt --format=dlang` writes a path separator for a component that spells
-    # nothing. An anonymous component and a `__S<n>` compiler scope are left out of the
-    # spelling by both -- that much is measured, and pinned by `tests/test_d.py` -- but
-    # the reference still writes the dot that would have gone before it, so a name comes
-    # back `TypeInfoArrayGeneric!(...)..compare(...)`, or `startsWith!(...).(...)`, or
-    # with a trailing `.` and nothing after it. Recognised by deleting a separator that
-    # has nothing between it and the next one, the parameter list, or the end.
+    # `c++filt --format=dlang` writes the separator before a component that spells
+    # nothing (an anonymous component, a `__S<n>` scope): `..`, `.(` or a trailing `.`.
     "d": lambda name, ours, first, second: (
         (first is not None and _EMPTY_COMPONENT.sub("", first) == ours)
-        # Or the anonymous `<SymbolName>` carrying a *member* function type.
-        # `SymbolFunctionName` is `SymbolName | SymbolName TypeFunctionNoReturn |
-        # SymbolName "M" TypeModifiers? TypeFunctionNoReturn`, and `SymbolName` is
-        # `LName | TemplateInstanceName | IdentifierBackRef | "0"` -- so `0 M F Z` is in
-        # the grammar. libiberty reads the two neighbouring shapes and refuses this one:
-        # `_D1a0i` and `_D1a0FZv` are both `a` to it, and `_D1a0MFZv` is unreadable,
-        # which makes the refusal an inconsistency inside the reference rather than a
-        # rule. No compiler writes it -- the two corpus names matching this shape carry
-        # the `0` inside an identifier, and both references agree on them -- so it is
-        # reachable only by mutation. See `tests/test_d.py`.
+        # Or the anonymous `<SymbolName>` `0` with a member function type, `0 M F Z`: in the
+        # grammar, yet libiberty reads `_D1a0i` and `_D1a0FZv` and refuses `_D1a0MFZv`.
+        # See `tests/test_d.py`.
         or (first is None and _ANONYMOUS_MEMBER.search(name) is not None)
-        # Or a `return scope` parameter written return first, `NkM`, which DMD 2.104
-        # began writing and libiberty -- `M` then `Nk` and nothing else -- refuses. Read
-        # here as D's own `core.demangle` reads it; see `tests/test_d.py`. Where the
-        # parameter sits in the function type that qualifies a function-local symbol,
-        # libiberty does not refuse but backtracks: `dlang_parse_qualified` puts the
-        # position back before the `F` it could not read and stops, and a type back
-        # reference resolved through `dlang_type_backref` keeps whatever was read
-        # before the stop. So a name it does read is this library's with that
-        # parameter list, and the rest of that qualified name, gone. See
-        # `_libiberty_dropped_a_return_scope_qualifier`. `tools/mutate.py --seed 30`.
+        # Or a `return scope` parameter written `NkM` (DMD 2.104+), which libiberty refuses,
+        # or backtracks over inside a function-local symbol's qualifier; see
+        # `_libiberty_dropped_a_return_scope_qualifier`.
         or ("NkM" in name and (first is None or _libiberty_dropped_a_return_scope_qualifier(ours, first)))
-        # Or a symbol template argument that opens on a template instance, `S__T`.
-        # `TemplateArgX` is `S Number_opt QualifiedName`, and a QualifiedName may be a
-        # TemplateInstanceName with no length in front of it. `dlang_template_args`
-        # has no arm for that -- `dlang_identifier` wants a number -- and refuses the
-        # name. Pinned in `tests/test_d.py`; `tools/mutate.py --seed 9` is what
-        # reached it, a mutant of the 44-character `testexpansion.s!(...)` instance
-        # with `S` where a length `8` was.
+        # Or a symbol template argument opening on a template instance, `S__T`, which the
+        # grammar allows and `dlang_template_args` refuses.
         or (first is None and _SYMBOL_ARG_OPENS_ON_A_TEMPLATE.search(name) is not None)
         # Or a back reference whose target lands strictly inside an identifier's
         # characters: c++filt resolves it, and no compiler writes one.
         or (first is not None and _d_back_reference_inside_identifier(name))
     ),
     "itanium": lambda name, ours, first, second: (
-        # `llvm-cxxfilt` resolving a generic lambda's substituted parameter to the
-        # `auto` (or `$T`) it was declared with where the specialisation binds a type --
-        # the defect `tests/conformance/itanium-reference-defects.txt` records, reached
-        # here whenever a mutant moves a substitution onto such an entry. Accepted only
-        # where the two spellings differ in nothing else.
+        # `llvm-cxxfilt` leaving a generic lambda's substituted parameter as `auto`
+        # (itanium-reference-defects.txt).
         _llvm_left_a_lambda_parameter_unresolved(ours, first)
-        # Or both references resolving a `<template-param>` in the substitution table to
-        # the argument bound where the entry was made rather than where the back
-        # reference is read -- the defect `tests/conformance/itanium-reference-defects.txt`
-        # records for `insort` and `prepare_execution` -- reached where a mutant reads
-        # under one local function's template scope an entry made under another's.
-        # Accepted only where both references read the name; they spell it under their
-        # own styles, so they are not asked to agree with each other.
+        # Or both references resolving a table `<template-param>` where the entry was made
+        # rather than where it is read (itanium-reference-defects.txt: `insort`,
+        # `prepare_execution`); their styles differ, so they need not agree.
         or (first is not None and second[0] is not None and _CROSS_SCOPE_BACK_REFERENCE.search(name) is not None)
         or
-        # `llvm-cxxfilt` refuses a parameter list whose first type is a literal `void`
-        # followed by anything -- its leading `void` means "empty list, and nothing may
-        # follow it". `c++filt` reads those, so following LLVM would mean refusing a
-        # name the other reference reads. Recognised from the answer rather than from
-        # the name, because that is where the condition actually is: a first parameter
-        # spelled `void` with another after it. Where `c++filt` refuses one of these
-        # too it is refusing the *second* type for its own reasons -- it reads no bare
-        # `F...E` parameter at all, `_Z1fFaE` included -- which is a limit of that
-        # reference and not a second opinion about the leading `void`.
+        # `llvm-cxxfilt` refuses a parameter list opening with a literal `void` followed
+        # by more; `c++filt` reads it, and where it refuses it is over the second type.
         "(void, " in ours
-        # Or the two references simply agree with this library, each under its own
-        # style: `imaginary` to LLVM and `_Imaginary` to GNU are the same reading.
+        # Or both references agree with this library, each under its own style.
         or (second[0] is not None and second[0] == second[1])
-        # Or a production newer than both references. The N1169 fixed-point types went
-        # into the ABI in 2023, and `Dk`/`DK` and `Dy` are newer still; binutils 2.42 and
-        # LLVM 18.1 know none of them, so both hand these back and this library is simply
-        # ahead. Anything else both refuse is a defect and is reported.
+        # Or a production newer than both references; see `_AHEAD_OF_THE_REFERENCES`.
         or (first is None and second[0] is None and _newer_than_the_references(name))
         # Or the old form of `sr` that g++ still writes and `llvm-cxxfilt` refuses,
         # which `c++filt` reads as this does. See `_OLD_SR_FORM`.
         or (first is None and _OLD_SR_FORM.search(name) is not None)
-        # Or a pack with members standing as a type outside any expansion, an encoding
-        # no compiler writes: this reads one type per member, `llvm-cxxfilt` the first
-        # member alone, `c++filt` nothing -- or, when both print the first member,
-        # `_Z2f3IJifEE3DpPKT_` is `DpP f3<int, float>(int const)` to them and
-        # `(int const, float const)` here. See `_uses_a_pack_outside_an_expansion`.
+        # Or a pack with members standing as a type outside any expansion; see
+        # `_uses_a_pack_outside_an_expansion`.
         or (first is not None and _uses_a_pack_outside_an_expansion(name) and (second[0] is None or first == second[0]))
-        # Or an argument pack in the `I <template-arg>* E` form g++ wrote before `J`,
-        # which `llvm-cxxfilt` refuses and `c++filt` reads -- accepted where `c++filt`
-        # refuses the name for a reason of its own, since with both references silent
-        # the pack is the only thing on this library's side of the disagreement that
-        # is known to be one; and where the pack is nested inside a `J` pack, a shape
-        # no compiler writes, over which c++filt applies a following declarator to
-        # the last member only -- `_Z1fIJIivEEEvDpPT_` is `(int, void*)` to it and
-        # `(int*, void*)` here -- and spells an empty one as an empty member --
-        # `_Z1fIJiIEcEEvDpT_` is `f<int, , char>(int, , char)` to it and
-        # `f<int, char>(int, char)` here, as an empty `J` pack in the same place is
-        # to both references -- and neither reading has any authority. The nested
-        # pack is asked of the parser rather than looked for as `JI`, which sees only
-        # a pack standing first. c++filt's reading of a non-nested pack is a second
-        # opinion and is kept as one -- unless that pack also stands where a single
-        # type goes, outside any expansion, which is the disagreement the rule above
-        # already describes: there c++filt prints one member where this library prints
-        # one type per member, and it is doing so only because `llvm-cxxfilt`, which
-        # refuses the `I ... E` form outright, is not there to be the reference that
-        # does it. `_ZSt16__insertion_sortIN9__gnu_cxx17__normal_iteratorIPSt4pairIjfE
-        # St6vectorIS3_SaIS3_EEEEI12_GLOBAL__N_113WeightCompareEEvT_SB_T0_` is a
-        # mutant of a libstdc++ symbol whose `T0_` names such a pack: `(anonymous
-        # namespace)` alone to c++filt, `(anonymous namespace), WeightCompare` here.
-        # Two encodings no compiler writes in one name, and neither reading has any
-        # authority. See `_uses_a_legacy_argument_pack`.
-        # `tools/mutate.py --seed 18`, `--seed 30` and `--seed 37`.
+        # Or a legacy `I <template-arg>* E` argument pack, which `llvm-cxxfilt` refuses:
+        # accepted where `c++filt` refuses too, or where the pack is nested in a `J` pack
+        # or stands outside an expansion -- shapes no compiler writes, where c++filt's
+        # reading has no authority (`_Z1fIJIivEEEvDpPT_`, `_Z1fIJiIEcEEvDpT_`). See
+        # `_uses_a_legacy_argument_pack`.
         or (
             first is None
             and (second[0] is None or _nests_a_legacy_argument_pack(name) or _uses_a_pack_outside_an_expansion(name))
             and _uses_a_legacy_argument_pack(name)
         )
-        # Or an entity named with a bare `Z` rather than `_Z` inside an *expression*.
-        # `L Z <encoding> E` is g++'s compatibility spelling, and both references read it
-        # where it stands as a template argument -- six of libcxxabi's own vectors are
-        # that shape. LLVM accepts it only there: it is in `parseTemplateArg` and not in
-        # `parseExprPrimary`, so `_Z1xILZ1yEEvv` reads and `_Z1xIXLZ1yEEEvv`, the same
-        # entity one level down, does not. `c++filt` reads both and so does this, which
-        # is what keeps the vectors. Asked of the parser rather than looked for as `LZ`
-        # in the text, since an `L` ending one production and a `Z` opening the next
-        # spell the same two characters. `tools/mutate.py --seed 35`, which found it
-        # wearing a pointer-to-member conversion that looked like the disagreement.
+        # Or a bare-`Z` entity (`L Z <encoding> E`) in an expression: LLVM accepts it only
+        # in `parseTemplateArg`, `c++filt` everywhere. Asked of the parser, since `LZ` in
+        # the text can span two productions.
         or (first is None and _names_an_entity_with_a_bare_z(name))
-        # Or a `Dk`/`DK` constrained placeholder recorded as a substitution candidate,
-        # which it is -- `Dk <type-constraint>` is a `<type>` and 5.1.10 makes every
-        # non-builtin one a candidate -- and which `llvm-cxxfilt` 18 does not record.
-        # `_Z1fDKN1A1BE` shows the whole disagreement: `S_` is `A` to both, and `S0_` is
-        # `A::B decltype(auto)` here and out of range there. One entry moves every later
-        # back-reference, which is why a mutant of `clang::driver::tools::openbsd::Link`
-        # comes back `llvm::SmallVector<llvm, 4u>` from the reference. That reference
-        # records the composite for `Dv` and for `Dp`, so the omission is these two codes
-        # and not a rule about placeholders; the same omission its `DB` had until
-        # libcxxabi's own corpus pinned `_Z6myfuncRDB8_S0_`, which the shipped binary
-        # still refuses. Asked of the parser, since `Dk` and `DK` spell two characters a
-        # <source-name> may hold. `tools/mutate.py --seed 40`.
+        # Or a `Dk`/`DK` placeholder recorded as a substitution candidate (5.1.10), which
+        # `llvm-cxxfilt` 18 does not record, shifting every later back-reference
+        # (`_Z1fDKN1A1BE`).
         or _records_a_constrained_placeholder(name)
-        # Or a back-reference naming the entry a `<template-param>` bound to a pack
-        # contributed. The entry is the parameter -- which is what heading 0 of the
-        # ROADMAP establishes against four compilers' output for the unpacked case, and
-        # a pack parameter is not a different kind of parameter -- so this resolves it
-        # to the pack, and a pack standing where one type goes is read one type per
-        # member, as the arm above describes. Both references instead record one
-        # *member* there, and not the same one: for `_Z1fIiJbcdEEvT_DpT0_S1_`,
-        # `llvm-cxxfilt` says `bool` and `c++filt` says `double`, while all three agree
-        # that the *next* entry, the `Dp` expansion's own, is the whole pack. Two
-        # references that disagree with each other about one entry are not a second
-        # opinion about this one, and no compiler writes the shape. Asked of the parser,
-        # which is the only thing that knows which entry an `S<n>_` landed on.
-        # `tools/mutate.py --seed 39`, and seeds 42, 43 and 48 reach it too.
+        # Or a back-reference to the entry a pack-bound `<template-param>` contributed,
+        # resolved here to the whole pack (CONFORMANCE.md note 17); the references each
+        # pick a different member. See `_back_reference_names_a_pack_bound_parameter`.
         or _back_reference_names_a_pack_bound_parameter(name)
-        # Or a back-reference numbered past the entry a `<template-template-param>` took,
-        # which `llvm-cxxfilt` 18 does not record: `T_ I ... E` is two components and
-        # 5.1.10 makes each a candidate, so `_Z1fI1AiEvT_IT0_ES3_S3_` -- what g++ 13.3
-        # and clang++ 18.1.3 both emit for `f(C<T>, C<T>, C<T>)` -- is readable only with
-        # both, and the reference refuses it. `tests/conformance/itanium-reference-defects.txt`
-        # pins that name and `_Z1gI1AcEvT_IT0_ES1_IiE`, where the shift lands one short
-        # and the reference answers `char<int>`, against the source in
-        # `tools/corpus_sources/reference_defects/template_template_param.cpp`. Asked
-        # only where `c++filt` is silent as well, since where it reads such a name it
-        # agrees with this library and the arm at the top has already accepted it.
-        # `tools/mutate.py --seed 43`.
+        # Or a back-reference shifted by a `<template-template-param>`'s entry, which
+        # `llvm-cxxfilt` 18 does not record; see `_shifted_by_a_template_template_param`.
+        # Only where `c++filt` is silent too, else the both-agree arm took it.
         or (second[0] is None and _shifted_by_a_template_template_param(name))
-        # Or a lambda that declares a template parameter after a pack, which is
-        # ill-formed -- a pack must be last -- and where `c++filt` stops the declaration
-        # list rather than refusing the name, so `Tp Ty Ty` is `typename... $T0` to it
-        # and `typename... $T0, typename $T1` here. Keeping the declaration is what keeps
-        # a `TL0_1_` elsewhere in the signature readable, and an option must not change
-        # which names read. See `_declares_a_parameter_after_a_pack`.
+        # Or a lambda declaring a template parameter after a pack; see
+        # `_declares_a_parameter_after_a_pack`.
         or _declares_a_parameter_after_a_pack(name)
-        # Or a `<source-name>` whose length was written with a leading zero. A number in
-        # these grammars has none, so `_Z1f01A` is not a well-formed name; `c++filt`
-        # reads it as `f(A)` and `llvm-cxxfilt` refuses it, and this reads it as
-        # `c++filt` does. Accepted whichever way the references fall, since where only
-        # `llvm-cxxfilt` refuses the arm for "both agree with this library" has already
-        # taken the name, and where both refuse they are refusing two different things:
-        # `_ZN6modern11constrainedITkNS_8IntegralEiEET_01_` is the zero to one of them
-        # and the `Tk` to the other. `tools/mutate.py --seed 66`.
+        # Or a `<source-name>` length with a leading zero, whichever way the references
+        # fall; see `_reads_a_length_written_with_a_leading_zero`.
         or _reads_a_length_written_with_a_leading_zero(name)
-        # Or a function type returning a function type, which C++ has not, with a cv-
-        # or ref-qualifier on the outer one: `llvm-cxxfilt` writes the qualifier after
-        # the inner one's `()` and this before it, the same placement the two give a
-        # function returning an array. See `_QUALIFIED_FUNCTION_RETURNING_A_FUNCTION`.
+        # Or a qualified function type returning a function type, the qualifier placed
+        # differently. See `_QUALIFIED_FUNCTION_RETURNING_A_FUNCTION`.
         or (first is not None and _QUALIFIED_FUNCTION_RETURNING_A_FUNCTION.search(first) is not None)
-        # Or a function type whose return is a reference to a pack expansion.
-        # llvm-cxxfilt prints the outer `R`/`O` only on the last member --
-        # `_Z1fIJicdEEPFvDpT_EFRDpRPS0_E` is `int*&, char*&, double*& ()` here
-        # and `int*&, char*&, double*&& ()` there -- stacking a second `&`
-        # instead of collapsing. c++filt refuses. A declarator over a pack
-        # applies to every member, and `R` over `T&` is `T&`. No compiler
-        # writes a function that returns a pack. `tools/mutate.py --seed 19`.
+        # Or a function returning a reference to a pack expansion, where llvm-cxxfilt
+        # stacks `&&` on the last member instead of collapsing and c++filt refuses.
         or (
             first is not None
             and second[0] is None
             and _FUNCTION_RETURNING_A_REFERENCED_EXPANSION.search(name) is not None
             and ours.replace("&", "") == first.replace("&", "")
         )
-        # Or a function type returning an array, which C++ has not. The types job
-        # already accepts the bare encodings `KFA_iE` / `FA_iRE`; length six under
-        # `_Z1f` reaches them as a parameter -- `_Z1fKFA_iE` is `f(int () const [])`
-        # here and `f(int () [] const)` to llvm-cxxfilt, `c++filt` refuses. See
+        # Or a qualified function type returning an array, reached as a parameter. See
         # `_QUALIFIED_FUNCTION_RETURNING_AN_ARRAY`.
         or (first is not None and _QUALIFIED_FUNCTION_RETURNING_AN_ARRAY.search(name) is not None)
-        # Or a name the references number by the ABI's closure-prefix rule and the
-        # common `auto` rule where this, by the name's form or by a retry, applied GCC
-        # 12's or Apple's -- and agrees with them under theirs. See
-        # `_differs_only_by_the_numbering_rule`.
+        # Or a name differing only by the closure-prefix or undeduced-`auto` numbering
+        # rule; see `_differs_only_by_the_numbering_rule`.
         or _differs_only_by_the_numbering_rule(name, first, second)
-        # Or a name both references refuse for a back-reference past the table that
-        # reads under Apple's rule, where an undeduced `auto` is a substitution
-        # candidate -- `_Z1fDaS_` is `f(auto, auto)` to Apple's clang, and to this on
-        # the retry `ItaniumOptions.undeduced_auto_substitution` describes. Neither
-        # reference knows the rule, so their refusal is not evidence about the name.
+        # Or a back-reference past the table that reads under Apple's undeduced-`auto`
+        # rule, which neither reference knows (`_Z1fDaS_`).
         or (first is None and second[0] is None and _UNDEDUCED_AUTO.search(name) is not None)
-        # Or an argument pack written `I <template-arg>* E`, g++'s form under
-        # `-fabi-version` 2 through 5, which `c++filt` reads and `llvm-cxxfilt` refuses.
-        # See `_OLD_PACK`.
+        # Or a legacy argument pack; see `_OLD_PACK`.
         or (first is None and _OLD_PACK.search(name) is not None)
-        # Or a braced initialiser after a new-expression's type, which both compilers
-        # write and `llvm-cxxfilt` refuses. See `_BRACED_NEW`.
+        # Or a braced new-initialiser; see `_BRACED_NEW`.
         or (first is None and _BRACED_NEW.search(name) is not None)
-        # Or an empty parenthesised initialiser after one, which `llvm-cxxfilt` reads
-        # and does not print. See `_VALUE_INIT_NEW`.
+        # Or `new T()`; see `_VALUE_INIT_NEW`.
         or (first is not None and _VALUE_INIT_NEW.search(name) is not None)
-        # Or a division, which `llvm-cxxfilt` brackets as an assignment. See `_DIVISION`.
+        # Or a division, which `llvm-cxxfilt` gives an assignment's precedence
+        # (itanium-reference-defects.txt). Tested on the text: `dv` occurs in identifiers.
         or (first is not None and "dv" in name and "/" in first and "/" in ours)
         # Or a name neither reads because `llvm-cxxfilt` refuses its `LZ` external name
         # and `c++filt` refuses something else in it. See `_LEGACY_EXTERNAL_NAME`.
@@ -543,10 +340,8 @@ ACCEPTED = {
         # Or qualifiers before a function type out of order or repeated, which every
         # implementation spells its own way. See `_MISORDERED_FUNCTION_QUALIFIERS`.
         or (first is not None and _MISORDERED_FUNCTION_QUALIFIERS.search(name) is not None)
-        # Or a `v` among a function *type*'s parameters, which `parseFunctionType`
-        # steps over wherever it stands -- `PFiivE` is `int (*)(int)` to it -- where
-        # `c++filt` and this spell the `void` that is written. No compiler writes one
-        # anywhere but alone.
+        # Or a `v` among a function type's parameters, which `parseFunctionType` skips
+        # (`PFiivE` is `int (*)(int)` to it).
         or _llvm_skips_a_void_parameter(ours, first)
         # Or a name neither tool read whole, because it splits its input on a space, a
         # bracket or a sign before demangling. See `_CLI_SPLITS`.
@@ -554,102 +349,42 @@ ACCEPTED = {
         # Or a `char` array in a braced initialiser, which this library spells as the
         # string it is. See `_spelled_as_a_string`.
         or _spelled_as_a_string(ours, first)
-        # Or a byte that is not UTF-8, which this escapes as `\xD0` and llvm-cxxfilt 21
-        # writes as the raw byte -- U+DC80..U+DCFF under surrogateescape. The byte is
-        # what the name says; emitting it unescaped is not a spelling of a declaration.
-        # `tools/mutate.py --seed 9`. A following hex digit is split the same way
-        # `_string_literal` splits it -- seed 17's `Lc155E` then `e` is `"\x9B""ello"`.
-        # See `_llvm_wrote_a_raw_high_byte`.
+        # Or a non-UTF-8 byte, escaped here and raw from llvm-cxxfilt 21; see
+        # `_llvm_wrote_a_raw_high_byte`.
         or _llvm_wrote_a_raw_high_byte(ours, first)
-        # Or a function type as the target of a cast, where llvm-cxxfilt drops the
-        # parameter list and the grouping parenthesis with it: `const_cast<void
-        # (*)()>(0)` becomes `const_cast<void (*>(0)`. c++filt prints the list on the
-        # short names and refuses the nested `decltype(fp())` one. An unbalanced
-        # spelling is not a declaration. `tools/mutate.py --seed 14`.
+        # Or a cast to a function type, whose parameter list llvm-cxxfilt drops; see
+        # `_llvm_dropped_a_cast_function_type`.
         or _llvm_dropped_a_cast_function_type(ours, first)
-        # Or the same reading with a space `llvm-cxxfilt` does not print. It runs the
-        # return type into the name when the return type is an array -- `signed
-        # charf<>(signed char) []` for `_Z1fIEA_aa`, a function returning an array,
-        # which is not a declaration C++ has and which no compiler emits. `c++filt`
-        # parenthesises instead. Compared without spaces so the difference has to be
-        # only that.
+        # Or the same reading but for spaces, e.g. llvm-cxxfilt running an array return
+        # type into the name (`_Z1fIEA_aa`).
         or (first is not None and ours.replace(" ", "") == first.replace(" ", ""))
-        # Or `_Complex`/`_Imaginary` applied to something with a declarator, where the
-        # two references lose it in different ways and neither answer is the
-        # declaration. `_Z1fGA_a` is an imaginary array of `signed char`: `llvm-cxxfilt`
-        # drops the `[]` and answers `signed char imaginary`, `c++filt` writes
-        # `signed char ( _Imaginary) []` with the brackets round the wrong thing and a
-        # space inside them, and `_Z1fGFaE` -- imaginary applied to a function type --
-        # loses the `()` to LLVM and is refused outright by GNU. This keeps the
-        # declarator.
-        #
-        # The condition is the *shape*: the `G` or `C` marker, any cv-qualifiers or
-        # pointer sigils, and then an array or a function. Three narrower attempts each
-        # missed a family of it -- `"GA" in name` missed `_Z1fGKA_a`, where a `K` sits
-        # between; `"[]" in ours or "()" in ours` missed `_Z1fGA1_a` and `_Z1fGFaaE`,
-        # where the declarator is not empty; and allowing only cv-qualifiers between the
-        # marker and the declarator missed the twelve `_Z1fGPFvE` shapes -- imaginary
-        # applied to a pointer or reference *to* a function -- where `llvm-cxxfilt`
-        # answers `f(void (* imaginary)`, opening two brackets and closing one. An
-        # unbalanced spelling is not a second opinion about anything.
-        #
-        # Length six under `_Z1f` found two more of the same: the declarator named by a
-        # substitution, `_Z1fFiEGS_` / `_Z1fA_iGS_`, which is `GFaE` / `GA_i` with the
-        # function or array written `S_` -- llvm-cxxfilt drops the `()` or `[]` the
-        # same way -- and a member pointer to a function, `_Z1fGMiFiE`, which is `M`
-        # then the class then `F`, so the `F` is not next to the marker.
-        # llvm-cxxfilt opens a parenthesis it does not close, `int (int::* imaginary)`.
+        # Or `_Complex`/`_Imaginary` over a declarator, which the two references each lose
+        # differently; this keeps it. Matched on the shape (`_IMAGINARY_DECLARATOR`):
+        # narrower tests missed `_Z1fGKA_a`, `_Z1fGA1_a`, `_Z1fGPFvE`, `_Z1fFiEGS_` and
+        # `_Z1fGMiFiE`.
         or (_IMAGINARY_DECLARATOR.search(name) is not None and ("imaginary" in ours or "complex" in ours))
-        # Or a `char` array in a braced initialiser, which the *installed*
-        # `llvm-cxxfilt` spells element by element -- `Hello{char [6]{(char)72, ...}}`
-        # -- and LLVM main spells as a string. The expected column of
-        # `tests/conformance/itanium-libcxxabi.txt.gz` is LLVM's own
-        # `DemangleTestCases.inc` from main, which says `Hello{"Hello"}`, so this follows
-        # the reference's own vectors rather than the older binary that ships beside
-        # them. `c++filt` reads these through libiberty's copy of the same code and is
-        # behind in the same way.
+        # Or a `char` array in a braced initialiser, spelled element-wise by the installed
+        # `llvm-cxxfilt` and as a string by LLVM main, whose vectors are
+        # itanium-libcxxabi.txt.gz's expected column.
         or ('{"' in ours and first is not None and "{(char)" in first)
-        # Or the CV- and ref-qualifiers of a `<nested-name>` standing where a *type*
-        # goes, which the two references treat differently: `llvm-cxxfilt` drops them and
-        # `c++filt` applies them, so `_Z1fPNK1a1bE` is `f(a::b*)` to one and
-        # `f(a::b const*)` to the other. The ABI gives those qualifiers to a member
-        # function's implicit object parameter and no compiler writes an `N K ... E`
-        # where a type belongs, so being on either side is a choice rather than a
-        # reading. This is on LLVM's, in both styles. Recognised by LLVM agreeing exactly
-        # or refusing the name outright -- it refuses most of these for reasons of its
-        # own, having no opinion to be on a side of -- the name carrying such a nested
-        # name, and GNU's answer differing from this one in nothing but qualifiers.
+        # Or the qualifiers of an `N K ... E` where a type goes, which `llvm-cxxfilt` drops
+        # and `c++filt` applies (`_Z1fPNK1a1bE`); no compiler writes it. This follows
+        # LLVM, so accepted where LLVM agrees or refuses and GNU differs only in qualifiers.
         or (
             (first is None or first == ours)
             and second[0] is not None
             and _QUALIFIED_NESTED_NAME.search(name) is not None
             and _without_qualifiers(second[0]) == _without_qualifiers(ours)
         )
-        # Or an Objective-C method name standing as a `<local-name>`'s function encoding
-        # -- `Z53-[DeploymentSetupController handleManualServerEntry:]E`. Clang emits
-        # these for a C++ template instantiated inside an Objective-C method, and both
-        # *shipped* references refuse the shape wholesale: llvm-cxxfilt 18.1 and 20.1 and
-        # GNU c++filt 2.42 hand back every one of them unread. libcxxabi's own vectors
-        # carry two, with the answer recorded, and this library matches both exactly --
-        # so the file the reference is tested against says the reading is right and the
-        # binaries built from it are behind it. Their refusal is not evidence about a
-        # mutant of that shape either.
+        # Or an Objective-C method as a `<local-name>`'s scope, which libcxxabi's own
+        # vectors read as this does and every shipped reference refuses.
         or (first is None and second[0] is None and _OBJC_METHOD_SCOPE.search(name) is not None)
-        # Or a cv-qualifier repeated on a function type, where all three disagree:
-        # `_Z1fKKFaE` is `f(signed char () const const)` here, `f(signed char  const()
-        # const)` to LLVM -- which puts one of them in the declarator and doubles a
-        # space -- and refused by GNU. `const const` on a function type is not a
-        # declaration either.
+        # Or a cv-qualifier repeated on a function type, where all three disagree
+        # (`_Z1fKKFaE`).
         or (name.count("K") + name.count("V") > 1 and "F" in name and second[0] is None)
-        # Or a cv-qualified function type reached through a <substitution> or a
-        # <template-param>, where each reference contradicts its own answer for the
-        # same type written out. `_Z1fKFvvE`
-        # is `f(void () const)` to both; `_Z1fFvvEKS_` is `f(void (), void  const())` to
-        # LLVM -- the qualifier moved into the declarator, with a doubled space -- and
-        # `f(void (), void ( const)())` to GNU. This spells the substituted type the way
-        # both references spell the written-out one. Recognised by a qualifier applied
-        # directly to a substitution and an answer that differs in nothing but where the
-        # qualifier words sit.
+        # Or a cv-qualified function type reached through a substitution or template
+        # parameter, which each reference spells unlike the written-out type. See
+        # `_QUALIFIED_SUBSTITUTION`.
         or (
             _QUALIFIED_SUBSTITUTION.search(name) is not None
             and first is not None
@@ -663,12 +398,8 @@ ACCEPTED = {
             and first != second[0]
             and _MEMBER_OF_A_FUNCTION_TYPE.search(name) is not None
         )
-        # Or a pack named outside any expansion -- `T_` for a pack with no `Dp`, which no
-        # declaration does. `llvm-cxxfilt` prints such a pack as its first member,
-        # `c++filt` as its last, and this as all of them, recorded in
-        # `tests/test_expressions.py` rather than followed; accepted only where the two
-        # references disagree with each other as well, which is the signature of a
-        # shape with no answer to be right about.
+        # Or a pack named outside any expansion, where the references pick different
+        # members (recorded in `tests/test_expressions.py`).
         or (
             first is not None
             and second[0] is not None
@@ -682,39 +413,9 @@ ACCEPTED = {
         # against `[7]` here -- with no declaration behind either count.
         or (first is None and _SIZEOF_PACKS.search(name) is not None)
     ),
-    # `Tg` is a generic specialization and the `m` after it is `MetatypeParamsRemoved`,
-    # a flag 5.10.1's `demangleSpecAttributes` reads and current `main` -- which is what
-    # this reference is built from, see tools/swift-demangle-reference/README.md -- does
-    # not, because upstream deleted it. The 5.10.1 runtime shipped names carrying it,
-    # `$sSUss17FixedWidthIntegerRzrlEyxqd__cSzRd__lufCSu_SiTgm5` among them, and those
-    # binaries are still on disk, so reading it is the answer a demangler pointed at the
-    # wild wants. The reference refusing a mangling it has dropped is not evidence about
-    # the reading; it is only evidence that it is newer.
-    # libiberty reads what it is given. A type code it does not know, a template argument
-    # list with nothing in it, a scope with no name, an `operator` with no symbol: each
-    # is spelled as the empty string and the surrounding punctuation is printed round the
-    # gap -- `T1__pt__2_::__ct(char,  (void))`, `char foo<>(void)`, `T1::::get(void)`,
-    # `foo::operator (void)`. None of those is a declaration, so none is evidence about
-    # what the name says, and this library either refuses the name or -- since the
-    # reference's own `iterate_demangle_function` is what it runs -- moves on to the next
-    # `__` and reads the name that split gives. Recognised by the gap.
-    #
-    # Or the reference read the name at an earlier `__` than this library did. Both run
-    # libiberty's `iterate_demangle_function`: guess the first `__`, demangle the whole
-    # signature, and on failure move to the next. Where they part is what counts as
-    # failure. libiberty skips what it cannot place between a template's arguments and
-    # the `_` that opens the return type, so `foo__H1Zit__3iosFP9streambuf` -- `t` where
-    # nothing goes -- is `ios foo<int>(streambuf *)` to it; this library refuses that
-    # guess and reads the split at `__3ios`, `ios::foo__H1Zit(streambuf *)`. Neither is
-    # a name a compiler wrote. Recognised by the function's own name: the reference's
-    # is a proper prefix of ours, up to a `__`.
-    #
-    # Or a function whose name is `__op` and nothing more. `__op<type>` is how g++ 2.x
-    # writes a conversion operator -- `__opi__3Foo` is `Foo::operator int()` -- and
-    # libiberty takes the marker before it looks for the type, so `__op__Fi`, a
-    # function called `__op`, is `operator (int)` to it: an operator converting to
-    # nothing. This library reads the identifier, `__op(int)`. Recognised by the
-    # reference's empty operator, which no real name spells.
+    # libiberty spells an unreadable component as a gap, prints a second argument
+    # list, reads at an earlier `__`, or takes `__op` for an empty conversion
+    # operator; none is a declaration. See tools/cplus-dem-reference/README.md.
     "gnuv2": lambda name, ours, first, second: (
         first is not None
         and (
@@ -734,13 +435,11 @@ ACCEPTED = {
         or (first is not None and _QUALIFIED_FUNCTION_RETURNING_AN_ARRAY.search(name) is not None)
     ),
     "swift": lambda name, ours, first, second: (
+        # `Tg...m` (`MetatypeParamsRemoved`), which 5.10.1 emitted and the pinned revision
+        # does not read; see tools/swift-demangle-reference/README.md.
         (first is None and _METATYPE_PARAMS_REMOVED.search(name) is not None)
-        # Or an extended existential shape, where `NodePrinter` reads the node one child
-        # too high and spells the type as `<null node pointer>` -- a diagnostic rather
-        # than a demangling, and the whole of what the name says. It survives upstream
-        # because `manglings.txt` has no `Xg`/`XG` vector at any revision, so its own
-        # corpus never asks. `tests/conformance/swift-reference-defects.txt` carries the
-        # finding and pins what these names must spell.
+        # Or an extended existential shape, which `NodePrinter` prints as
+        # `<null node pointer>`; see swift-reference-defects.txt.
         or (first is not None and "<null node pointer>" in first)
     ),
 }
@@ -762,13 +461,8 @@ _GNUV2_EMPTY_OPERATOR = re.compile(r"operator [(<]")
 #: An `N` opening a `<nested-name>` with a CV- or ref-qualifier on it. See `ACCEPTED`.
 _QUALIFIED_NESTED_NAME = re.compile(r"N[rVKRO]")
 
-#: A CV-qualifier code in front of an MSVC custom type -- `?B?<auto>@@`, where `?A` is
-#: the same shape with no qualifier and so no disagreement, or `PB?<decltype-auto>@@`,
-#: a pointer to one, or `?C?4@`, the same qualifier in front of a back reference to an
-#: earlier `<auto>`. `llvm-undname` reads the qualifier onto the node and its printer
-#: writes none of a custom type's qualifiers, so `<decltype-auto> const *` here is
-#: `<decltype-auto> *` there; other qualifiers in the name are not in question, which
-#: is why only those after the angle brackets are taken off. See `ACCEPTED`.
+#: A cv-qualifier code before an MSVC custom type (`?B?<auto>@@`, `?C?4@`), which
+#: `llvm-undname` reads and never prints. Only qualifiers after the `<...>` come off.
 _QUALIFIED_CUSTOM_TYPE = re.compile(r"[B-D]\?(?:<|[0-9])")
 _CUSTOM_TYPE_QUALIFIERS = re.compile(r"(<[^<>]*>)(?: (?:const|volatile))+")
 #: The same qualifier word written twice in a row by `llvm-undname`. See `ACCEPTED`.
@@ -784,8 +478,7 @@ def _collapse_doubled_qualifier(text):
     `$$CBQAH` is const over `int *const`, which it prints `int *const const`.
     `$$CBSAH` is const over `int *const volatile`, which it prints
     `int *const volatile const` -- the extra word after the pair, not next to
-    the first `const`. Both are the same type spelled once. `tools/mutate.py
-    --seed 23`.
+    the first `const`. Both are the same type spelled once.
     """
     text = _DOUBLED_QUALIFIER.sub(r"\1", text)
     text = text.replace("const volatile const volatile", "const volatile")
@@ -805,7 +498,7 @@ def _qualifier_words_on_a_pointer_reordered(ours, first):
     is `char *const __restrict x` to both.
 
     Sorting the words in each run keeps the multiset, so a word one side dropped or
-    added still differs and is still reported. `tools/mutate.py --seed 42`.
+    added still differs and is still reported.
     """
 
     def sorted_runs(text):
@@ -814,17 +507,9 @@ def _qualifier_words_on_a_pointer_reordered(ours, first):
     return ours != first and sorted_runs(ours) == sorted_runs(first)
 
 
-#: A gap where libiberty spelled a component it could not read as nothing: an empty
-#: type slot (`( const)`, `(,`, `,  (void)`, `( *)`), an empty template argument (`<>`,
-#: `< *>`, `<int, >`), an empty scope (`::::`, `:: `, a leading `::`), an `operator`
-#: with no symbol, an argument list printed in front of the whole declaration, or an
-#: argument list with nothing in it at all -- the grammar writes an empty one as `v`,
-#: so `()` is a list it could not read, except behind `operator`, where it is the call
-#: operator. Checked against every recorded spelling in the corpus, which none of this
-#: matches: `> >`, `(*)(char *)` and `operator()` are all real, and were all matched by
-#: an earlier draft of this. `(,` is `tools/mutate.py --seed 9`:
-#: `__dl__17T5__pt____3fooiRT0iT2iT2` comes back
-#: `T5__pt____3fooiRT::operator delete(, int, int, int, int)` there.
+#: A gap where libiberty spelled an unreadable component as nothing. `()` counts only
+#: outside `operator()`, since the grammar writes an empty list `v`. Matches no
+#: recorded corpus spelling.
 _GNUV2_GAP = re.compile(
     r"^\s|^::|\(\s|\(,|(?<!operator)\(\)|,\s\s|,\s*[,)>]|<>|<\s|::::|::\s|operator \(|operator\s\s|\s\s|,\.\.\.\)\("
 )
@@ -873,8 +558,8 @@ def _without_template_arguments(spelled):
 
     An unbalanced `<` -- a mutant's class name, `Spec<ow__F7compl`, which the reference
     reads as any other run of characters -- is not a group, and taking everything after
-    it out hid a second argument list from `_gnuv2_second_list`. The text is returned
-    as it stands when a `<` is never closed.
+    it out would hide a second argument list from `_gnuv2_second_list`. The text is
+    returned as it stands when a `<` is never closed.
     """
     kept = []
     depth = 0
@@ -888,7 +573,6 @@ def _without_template_arguments(spelled):
     return spelled if depth else "".join(kept)
 
 
-#: A CV-qualifier applied directly to a `<substitution>`. See `ACCEPTED`.
 #: A qualifier applied to a <substitution> or to a <template-param>: either may stand
 #: for a function type, which both references then qualify differently from the same
 #: type written out. `_Z1fIJFivEEEvDpRKT_` -- `const T&` over a pack holding a function
@@ -948,13 +632,9 @@ _MISORDERED_FUNCTION_QUALIFIERS = re.compile(r"(?:KV|VV|KK|rr|Vr|Kr)[rVK]*(?:Do|
 #: three-way shape as the imaginary declarator below, which no compiler writes.
 _VENDOR_QUALIFIED_FUNCTION = re.compile(r"U\d+[A-Za-z_][A-Za-z0-9_$.]*?[rVK]*(?:Do|DO.*?E|Dw.*?E|Dx)?F")
 
-#: A cv- or ref-qualified function type whose return type is an array -- `KFA_iE`,
-#: `FA_iRE`, and the same as a parameter of `_Z1f` -- which C++ has not. `c++filt`
-#: refuses it; `llvm-cxxfilt` writes the qualifier after the array's brackets,
-#: `int () [] const`, and this before them, `int () const []`, where each is the
-#: order its printer gives every function type. Found at length six by
-#: `tools/enumerate.py`; nothing at the gate's length reaches it. Unanchored so a
-#: symbol carrying the type matches the same way a bare encoding does.
+#: A cv- or ref-qualified function type returning an array (`KFA_iE`, `FA_iRE`), which
+#: C++ has not. `c++filt` refuses it; `llvm-cxxfilt` writes `int () [] const`, this
+#: `int () const []`. Unanchored so it also matches inside a symbol.
 _QUALIFIED_FUNCTION_RETURNING_AN_ARRAY = re.compile(r"(?:[rVK]+FA_[^E]*E)|(?:FA_[^E]*[RO]E)")
 
 #: `G` (imaginary) or `C` (complex), any cv-qualifiers, then a declarator: an array, a
@@ -1025,14 +705,6 @@ _BRACED_NEW = re.compile(r"n[wa]\w*?_\w*?il")
 #: the other expression. `c++filt` and this print the brackets the name carries. See
 #: `tests/conformance/itanium-reference-defects.txt`.
 _VALUE_INIT_NEW = re.compile(r"n[wa]\w*?_\w*?piE")
-
-#: `_DIVISION`: `dv`, which `llvm-cxxfilt` 18 and 20 carry in their operator table at
-#: the precedence of an assignment, so `(sizeof(T) + 1) / 2` prints as
-#: `sizeof (int) + 1 / 2` -- a different expression -- and `a / b - c` as `(a / b) - c`.
-#: `c++filt` and this bracket by the precedence `/` has. See
-#: `tests/conformance/itanium-reference-defects.txt`. Tested on the text rather than by
-#: a pattern: `dv` is two letters that occur in identifiers too, and a divergence this
-#: rule explains has a `/` on both sides.
 
 #: `L Z <encoding> E` -- an external name with the `_` missing, which G++ once emitted
 #: (libiberty's `d_expr_primary` carries the workaround as "bug 375") and `c++filt`
@@ -1470,22 +1142,18 @@ def reference_answers(tool, names, timeout=None, memory=None):
     then the reading if there is one -- and sends refusals to stderr. So a record of one
     line is a refusal and a record of two is an answer.
 
-    Splitting on the blank line rather than pairing lines up matters. Pairing, and asking
-    whether the line after an echo is another name in the batch, reads an *answer* that
-    happens to be one of the enumerated names as a refusal: `??@$@0` is read `??@$@`,
-    which is itself a name in the sweep, and that reported 512 disagreements where the
-    two agree exactly.
+    Splitting on the blank line rather than pairing lines up matters. Pairing, and
+    asking whether the line after an echo is another name in the batch, reads an
+    *answer* that happens to be one of the enumerated names as a refusal: `??@$@0` is
+    read `??@$@`, which is itself a name in the sweep, and that would report 512
+    disagreements where the two agree exactly.
 
     `c++filt` and `llvm-cxxfilt` answer one line per line and echo the input back when
     they cannot read it, which is the same thing said differently.
     """
     command = tool.split()
-    # Bytes rather than text mode, because text mode translates newlines: libiberty
-    # spells a template argument of type `char` as the raw byte, so `foo__H1c13_v` is
-    # `foo<'\r'>(void)` with a carriage return in it, and under `text=True` that came
-    # back as a line break and threw every answer after it out of step with its name.
-    # The reference and this library agree byte for byte on the raw form; a byte that is
-    # not UTF-8 is kept as a lone surrogate so the comparison sees it rather than a crash.
+    # Bytes, not text mode: libiberty can print a raw `\r` for a `char` template
+    # argument (`foo__H1c13_v`), which text mode would turn into a line break.
     proc = subprocess.run(
         command,
         input=("\n".join(names) + "\n").encode("utf-8", "surrogateescape"),
@@ -1529,11 +1197,8 @@ def run(scheme, length, quiet, show):
             continue
         theirs = reference_answers(tool, names)
         second = reference_answers(second_tool, names) if second_tool else {}
-        # `None` is "the reference did not read it", which for the echoing tools means
-        # the name came back unchanged. Where *this* library also answers with the name
-        # unchanged the two agree, whatever the reference meant by it -- `c++filt
-        # --format=gnat` echoes a bare Ada identifier because that is what it spells, and
-        # reading that as a refusal reported 7,928 disagreements where there are none.
+        # Where this library also answers with the name unchanged the two agree: `c++filt
+        # --format=gnat` echoes a bare Ada identifier because that is its spelling.
         differ = [
             (n, ours[n], theirs.get(n), (second.get(n), theirs_style.get(n)))
             for n in names

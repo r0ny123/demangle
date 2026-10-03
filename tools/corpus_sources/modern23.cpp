@@ -4,11 +4,6 @@
 // abbreviated function templates, `auto` and class-type non-type template parameters,
 // deducing `this`, the multi-argument subscript and the static call operator. The last
 // four are behind an `#if`, so this file still compiles at C++20.
-//
-// One defect came out of the first run of it: `sizeof...` over a parameter that is not
-// bound to a pack writes an ellipsis after the operand, and over one spelled by its own
-// mangled name inside a requires-clause -- which is what clang emits for any constrained
-// variadic template -- it writes `sizeof...(T...)`. This wrote neither.
 
 #include <coroutine>
 #include <compare>

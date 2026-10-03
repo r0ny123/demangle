@@ -5,8 +5,7 @@ legacy Rust symbol is also a valid Itanium symbol -- which is why this plugin is
 names first. The v0 scheme, specified in RFC 2603 and stabilised behind
 `-Csymbol-mangling-version=v0`, is a scheme of its own.
 
-Derived from Team bi0s' rust_demangler (MIT), with both grammars substantially reworked.
-See NOTICE.
+Derived from MIT-licensed code, with both grammars substantially reworked; see NOTICE.
 
 Structured output
 -----------------
@@ -18,36 +17,28 @@ the tree cannot spell a symbol differently from `demangle()`.
 import re
 
 from ...core.ast import Node
+from ...core.decorations import split_decorations
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from ._dispatch import ManglingType, RustDemangler, TypeNotFoundError
 from ._legacy import UnableToLegacyDemangle
-from ._v0 import _PATH_TAGS, OutputTooLong, UnableTov0Demangle
+from ._v0 import _LLVM_MARKER, _PATH_TAGS, OutputTooLong, RecursedTooDeep, UnableTov0Demangle, _strip_llvm_suffix
 
 _DEMANGLER = RustDemangler()
 
-#: Legacy Rust appends a hash component, `17h<16 hex digits>`, as the last element of the
-#: path. Looking for it is what stops this plugin claiming every C++ symbol in a binary,
-#: since the `_ZN` prefix alone does not distinguish the two.
+#: Legacy Rust's trailing `17h<16 hex digits>` hash component: the `_ZN` prefix alone does
+#: not tell it from C++.
 _LEGACY_HASH_MARKER = "17h"
 _LEGACY_HASH_DIGITS = 16
 
-#: The escapes legacy Rust writes for characters `_ZN` cannot carry: `$LT$` for `<`,
-#: `$RF$` for `&`, `$u20$` for a space. Each is a `$`, a short run of letters and digits,
-#: and a closing `$`, and Itanium mangling has no production that spells one -- so a name
-#: that holds one is Rust's whatever else it looks like.
-#:
-#: Deliberately anchored at both ends. Clang writes `$_0` for a lambda inside a local
-#: name and that is a `$` in a C++ symbol; it has no closing `$`, so requiring the pair
-#: is what keeps this from claiming those.
+#: Legacy Rust's escapes (`$LT$`, `$RF$`, `$u20$`), which Itanium never spells. Anchored at
+#: both ends so clang's `$_0` lambda names are not claimed.
 _LEGACY_ESCAPE = re.compile(r"\$[A-Za-z0-9]{1,8}\$")
 
-#: What a v0 name is `_R` and: `<symbol-name> ::= _R <path> [<instantiating-crate>]`, and
-#: every `<path>` production opens with one of these seven letters. `B` is the
-#: back-reference, which cannot be the first thing in a name but is one character to test
-#: for and is refused a line later by the parser rather than by the screen.
+#: What follows `_R`: every `<path>` opens with one of these. `B` cannot come first but is
+#: left for the parser to refuse.
 _V0_PATH_START = frozenset(_PATH_TAGS | {"B"})
 
 
@@ -56,10 +47,10 @@ def detect(name):
 
     v0 needs its prefix *and* the letter that opens a `<path>`, which is one of seven.
     `_R` on its own is not enough: CodeWarrior writes `__RTTI__40TObjOwnerDerivedFromIObj
-    <12CStringTable>` and this claimed it, so `detect` named the wrong scheme for a
-    symbol in this package's own corpus. The parse then failed and `demangle` fell
-    through to the scheme that owns it, which is why the spelling was right and the
-    label was not -- but `detect` is a public answer in its own right, and a caller
+    <12CStringTable>`, and claiming it would make `detect` name the wrong scheme for a
+    symbol in this package's own corpus. The parse would fail and `demangle` fall
+    through to the scheme that owns it, so the spelling would be right and the label
+    would not -- but `detect` is a public answer in its own right, and a caller
     labelling a symbol table gets that answer and no second chance. Nothing is lost by
     the narrower test: a v0 name that does not open a `<path>` is one the parser refuses
     on its next step.
@@ -73,16 +64,18 @@ def detect(name):
     - the hash component, `17h` and sixteen hex digits, that rustc appends as the last
       element of the path. It is looked for by its marker rather than at a fixed offset
       from the end, because real symbols carry things after it: a `.0` for a promoted
-      constant, a `.llvm.<hash>` from LLVM's internaliser. Anchoring to the end missed
-      every one of those, and the C++ demangler then claimed them and produced a
+      constant, a `.llvm.<hash>` from LLVM's internaliser. Anchoring to the end would
+      miss every one of those, and the C++ demangler would then claim them and produce a
       plausible-looking but quite wrong spelling.
     - a `$...$` escape, which legacy Rust uses for characters the Itanium alphabet has
-      no room for. `_ZN8$RF$testE` is `&test`; read as C++ it spelled `$RF$test`, which
+      no room for. `_ZN8$RF$testE` is `&test`; read as C++ it spells `$RF$test`, which
       is not a name anything has.
 
     The leading underscore is optional -- some symbol tables have already had it
-    stripped -- but only where there is evidence. A bare `ZN...E` with neither mark is
-    left alone, because `ZN` is a perfectly ordinary start to a C identifier.
+    stripped, and rustc-demangle reads `ZN4testE` as `test`. Without the underscore
+    nothing else claims the name, so the evidence asked for there is the grammar itself:
+    `ZN`, a digit, and a path the legacy reader consumes whole. None of the 652,000
+    symbols in this box's libraries and binaries starts `ZN` at all.
 
     Deliberately narrower than rustc-demangle, which accepts any `_ZN` name and treats
     the hash as optional. It can afford to: it is only ever handed names a caller has
@@ -99,6 +92,9 @@ def detect(name):
         return opening in _V0_PATH_START
     if not name.startswith(("_ZN", "__ZN", "ZN")):
         return False
+    version = name.find("@")
+    if version > 0:
+        name = name[:version]
     marker = name.rfind(_LEGACY_HASH_MARKER)
     if marker >= 0:
         start = marker + len(_LEGACY_HASH_MARKER)
@@ -109,21 +105,26 @@ def detect(name):
             and name[start + _LEGACY_HASH_DIGITS : start + _LEGACY_HASH_DIGITS + 1] == "E"
         ):
             return True
-    return _LEGACY_ESCAPE.search(name) is not None
+    if _LEGACY_ESCAPE.search(name) is not None:
+        return True
+    # A bare `ZN` has no marker, so reading it is the only test; bounded like a parse.
+    return name[0] == "Z" and name[2:3].isdigit() and len(name) <= DEFAULT_LIMITS.max_input and _reads_as_legacy(name)
+
+
+def _reads_as_legacy(name):
+    try:
+        return bool(_DEMANGLER.demangle(name, DEFAULT_LIMITS.max_output))
+    except (UnableToLegacyDemangle, TypeNotFoundError):
+        return False
 
 
 def _is_hex(text):
-    # `not text.strip(set)` is "every character is in set", in one C-level scan, where
-    # the generator this replaces was resumed once per character of every hash tested.
-    # Both cases: the parser's `is_rust_hash` takes them too (like the reference's
-    # `is_digit(16)`), and the two have to agree or one route reads the name and the
-    # other hands it to Itanium.
+    # Both cases, as the parser's `is_rust_hash` (like the reference's `is_digit(16)`):
+    # the two must agree, or one route reads the name and the other hands it to Itanium.
     return not text.strip("0123456789abcdefABCDEF")
 
 
-#: What each builder class answered to `_wants_structure`, asked once per class rather
-#: than once per name: the answer is a property of the builder's type, and this question
-#: is on the path every symbol takes.
+#: `_wants_structure`'s answer per builder class, asked once per class.
 _STRUCTURED = {}
 
 
@@ -146,24 +147,29 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     """Parse a Rust mangled name into `builder`."""
     if not mangled:
         raise NotMangledError(mangled, "empty name")
-    # The input bound, which this scheme did not enforce. Without it a caller's `Limits`
-    # said one thing and the parser did another: an 80,000-character name was read in
-    # full under `max_input=32`. It is checked before anything else looks at the string,
-    # which is the only place a bound on input size means what it says.
+    # Checked before anything else looks at the string.
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
-    # `keep_hash` is the one thing a style changes here; see `options.py` for what it
-    # reaches in each of the two manglings.
+    # rustc-demangle drops a `.llvm.<hash>` before anything else, and its hash alphabet
+    # includes `@`: `_RC3foo.llvm.9D1C9369@@16` is `foo`. Splitting the ELF version off
+    # first, as `core` does for other schemes, would strand the `@@16` after the name.
+    name = mangled
+    version = name.find("@")
+    if version > 0 and name.find(_LLVM_MARKER, 0, version) >= 0:
+        name = _strip_llvm_suffix(name)
+    name, decoration = split_decorations(name)
+    # `keep_hash` is the one thing a style changes here; see `options.py`.
     keep_hash = bool(getattr(options, "keep_hash", False))
     if _wants_structure(builder):
-        tree = _guard(mangled, limits, _DEMANGLER.structure, keep_hash)
-        _check_length(mangled, tree.size, limits)
-        _refuse_empty(mangled, tree.size)
-        return tree
-    expanded = _guard(mangled, limits, _DEMANGLER.demangle, keep_hash)
-    _check_length(mangled, len(expanded), limits)
-    _refuse_empty(mangled, len(expanded))
-    return builder.raw(expanded)
+        handle = _guard(name, limits, _DEMANGLER.structure, keep_hash)
+        _check_length(name, handle.size, limits)
+        _refuse_empty(name, handle.size)
+    else:
+        expanded = _guard(name, limits, _DEMANGLER.demangle, keep_hash)
+        _check_length(name, len(expanded), limits)
+        _refuse_empty(name, len(expanded))
+        handle = builder.raw(expanded)
+    return builder.decorated(handle, decoration) if decoration else handle
 
 
 def _refuse_empty(mangled, length):
@@ -171,9 +177,9 @@ def _refuse_empty(mangled, length):
 
     `demangle()` promises the readable spelling or the name unchanged, and there is no
     third outcome -- least of all the empty string, which names no symbol and would have
-    a tool label a function with a blank. `_RCCC` reached here: the grammar accepted it
-    and printed nothing, and `demangle()` handed back `""`. The reference echoes the
-    input, which is what refusing here produces.
+    a tool label a function with a blank. The grammar accepts `_RCCC` and
+    prints nothing. The reference echoes the input, which is what refusing here
+    produces.
 
     Takes a length rather than the text, so the tree path can answer from `tree.size` --
     which is carried, not computed -- instead of rendering a tree to find out whether it
@@ -192,11 +198,13 @@ def _guard(mangled, limits, demangle_with, keep_hash=False):
     so the translation lives here rather than twice.
     """
     try:
-        return demangle_with(mangled, limits.max_output, keep_hash)
+        return demangle_with(mangled, limits.max_output, keep_hash, limits.max_depth)
     except OutputTooLong as exc:
         raise LimitExceeded(mangled, "output length", limits.max_output) from exc
     except TypeNotFoundError as exc:
         raise NotMangledError(mangled, "not a Rust mangled name") from exc
+    except RecursedTooDeep as exc:
+        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from exc
     except (UnableTov0Demangle, UnableToLegacyDemangle) as exc:
         raise ParseError(mangled, None, str(exc)) from exc
     except RecursionError as exc:
@@ -225,19 +233,13 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Rust legacy (_ZN) and v0 (_R) symbol mangling",
     aliases=("rs",),
-    # Before Itanium: legacy Rust mangling *is* Itanium mangling, and only this plugin
-    # knows how to strip the trailing hash and read the path correctly.
-    # Safe now that core/decorations.py splits only the ELF version suffix. It must
-    # never be taught to split on `.` again: `.` is Rust grammar -- legacy mangling
-    # writes `..` for `::` and spells shims `{{vtable.shim}}` -- and rustc-demangle's
-    # own suffix rule differs from GCC's anyway (cut after the mangled name's final `E`,
-    # drop a `.llvm.<hash>`, append anything else verbatim). This scheme implements that
-    # itself.
-    symbol_table_decorations=True,
-    # `_R`, `__R`, `_ZN`, `__ZN` and a bare `ZN` are the only starts `detect` accepts.
+    # False because `parse` splits the ELF version itself, after rustc-demangle's
+    # `.llvm.` rule; `detect` looks through the version.
+    symbol_table_decorations=False,
     first_characters="_Z",
     priority=50,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

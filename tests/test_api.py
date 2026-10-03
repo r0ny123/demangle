@@ -4,6 +4,7 @@ These are the promises callers build on, so they are tested as promises rather t
 through whatever happens to exercise them.
 """
 
+import io
 import pathlib
 import subprocess
 import sys
@@ -73,9 +74,8 @@ class TestDetection:
             ("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E", "rust"),
             ("memcpy", None),
             ("", None),
-            # Itanium `parse` never read `_GLOBAL__` names -- GNU's "global
-            # constructors keyed to ..." extension -- so `detect` does not claim
-            # them either. It used to, and handed them back unchanged one step later.
+            # Itanium `parse` does not read GNU's `_GLOBAL__` names, so `detect` must not
+            # claim them.
             ("_GLOBAL__sub_I_main", None),
         ],
     )
@@ -107,19 +107,19 @@ class TestStyles:
             demangle.demangle("_Z1fv", language="cobol")
 
     def test_an_argument_that_cannot_be_hashed_is_reported_as_a_bad_argument(self):
-        """A list where a name belongs used to surface as `TypeError: unhashable type`
-        from inside the cache, which names the mechanism rather than the mistake."""
+        """A list where a name belongs is a `ValueError` about the argument, not a
+        `TypeError: unhashable type` from inside the cache, which names the mechanism."""
         unhashable: Any = ["a list"]
         with pytest.raises(ValueError, match="unknown language"):
             demangle.demangle("_Z1fv", language=unhashable)
         with pytest.raises(ValueError, match="unknown style"):
             demangle.demangle("_Z1fv", style=unhashable)
-        with pytest.raises(ValueError, match="unhashable limits"):
+        with pytest.raises(ValueError, match="Limits instance"):
             demangle.demangle("_Z1fv", limits=unhashable)
 
     def test_a_style_subclass_with_the_same_name_is_not_served_from_the_cache(self):
         """The cache is keyed on a style's *name*, so two objects sharing one must both
-        stay out of it -- a subclass included, which used to be keyed like a name."""
+        stay out of it -- a subclass included."""
         from demangle.core.spelling import SPELLING_BUILDER, SpellingBuilder
         from demangle.core.style import Style
 
@@ -184,8 +184,8 @@ class TestBatch:
 class TestDecorations:
     """Symbol-table decorations: what the linker and compiler append to a name.
 
-    Only covered incidentally through the libstdc++ corpus before, which meant the
-    splitting rules -- the part that has broken twice -- had no direct test.
+    The splitting rules are the part most easily broken, so they are tested directly
+    rather than incidentally through the libstdc++ corpus.
     """
 
     @pytest.mark.parametrize(
@@ -220,7 +220,8 @@ class TestDecorations:
         assert demangle.demangle(name).startswith("<core::iter::adapters::skip::Skip<I>")
 
     def test_a_rust_symbol_with_a_trailing_suffix_is_still_rust(self):
-        """Anchoring the hash to the end lost every one of these to the C++ parser."""
+        """A hash anchored to the end of the name would hand every one of these to the
+        C++ parser."""
         name = "_ZN3std2io5stdio19OUTPUT_CAPTURE_USED17hb12710559afcc79aE.0"
         assert demangle.detect(name) == "rust"
         assert demangle.demangle(name) == "std::io::stdio::OUTPUT_CAPTURE_USED.0"
@@ -235,7 +236,7 @@ class TestDecorations:
 
 
 class TestStyleRegistration:
-    """`Style` and `register_style` are public and were entirely untested."""
+    """`Style` and `register_style` are public, so each is tested directly."""
 
     def test_a_custom_style_can_be_registered_and_used(self):
         from demangle.core.spelling import SpellingBuilder
@@ -263,8 +264,8 @@ class TestStyleRegistration:
         assert get_style(get_style("gnu")) is get_style("gnu")
 
     def test_with_options_refuses_an_unknown_language_in_either_form(self):
-        """The mapping form always checked; the object form quietly added dead options
-        under a name nothing reads."""
+        """Both forms check the name: an object must not add dead options under a name
+        nothing reads, any more than a mapping may."""
         from demangle.core.style import get_style
         from demangle.schemes.msvc.options import DEFAULT_OPTIONS as MSVC_OPTIONS
 
@@ -310,6 +311,29 @@ class TestParseOptions:
         assert [node.text for node in tree.find("name")] == ["core", "fmt", "Formatter", "pad"]
 
 
+#: Every entry point that takes `limits`, as a call of one argument.
+_LIMITS_ENTRY_POINTS = [
+    lambda limits: demangle.demangle("_Z1gv", limits=limits),
+    lambda limits: demangle.demangle("_Z1gv", style=demangle.style(), limits=limits),
+    lambda limits: demangle.demangle("not mangled", limits=limits),
+    lambda limits: demangle.demangle_strict("_Z1gv", limits=limits),
+    lambda limits: demangle.parse("_Z1gv", limits=limits),
+    lambda limits: demangle.demangle_type("i", language="itanium", limits=limits),
+    lambda limits: demangle.parse_type("i", language="itanium", limits=limits),
+    lambda limits: demangle.demangleb(b"_Z1gv", limits=limits),
+    lambda limits: demangle.demangleb_strict(b"_Z1gv", limits=limits),
+    lambda limits: demangle.parseb(b"_Z1gv", limits=limits),
+    lambda limits: demangle.demangleb_type(b"i", language="itanium", limits=limits),
+    lambda limits: demangle.parseb_type(b"i", language="itanium", limits=limits),
+    lambda limits: demangle.signature("_Z1gv", limits=limits),
+    lambda limits: demangle.signatureb(b"_Z1gv", limits=limits),
+    lambda limits: demangle.demangle_all([], limits=limits),
+    lambda limits: demangle.demangle_text("no symbols here", limits=limits),
+    lambda limits: demangle.find_symbols("no symbols here", limits=limits),
+    lambda limits: demangle.demangle_stream([], io.StringIO(), limits=limits),
+]
+
+
 class TestCacheStatistics:
     def test_every_documented_key_is_present(self):
         demangle.cache_clear()
@@ -322,9 +346,108 @@ class TestCacheStatistics:
         assert stats["hit_rate"] == 0.5
         assert stats["size"] >= 1
 
+    def test_the_cache_holds_a_large_librarys_symbol_table(self):
+        """One generation, half of `max_size`, holds it whole, so a second pass over it
+        hits on every name; libLLVM exports 56k names."""
+        assert demangle.cache_stats()["max_size"] // 2 >= 65536
+
+    @pytest.mark.parametrize("letter", ["o", "\U0001f600"], ids=["ascii", "astral"])
+    def test_long_names_cannot_grow_the_cache_past_its_weight(self, monkeypatch, letter):
+        """Bounded in bytes as well as entries, whatever `Limits` lets through: a string
+        with a character outside the BMP takes four bytes for every character."""
+        from demangle import api
+        from demangle.core.cache import BoundedCache
+
+        def stored(text):
+            return len(text) * (1 if max(text) < "\u0100" else 2 if max(text) < "\U00010000" else 4)
+
+        cache = BoundedCache(max_size=1000, max_weight=20_000, weigh=api._CACHE._weigh)
+        monkeypatch.setattr(api, "_CACHE", cache)
+        for index in range(200):
+            demangle.demangle("_ZN" + f"3fo{letter}" * 100 + f"{len(str(index)) + 1}x{index}" + "Ev")
+        entries = [stored(key[0]) + stored(value) for part in (cache._young, cache._old) for key, value in part.items()]
+        assert sum(entries) <= 20_000 + 2 * max(entries)
+        assert len(cache) < 20
+
+    def test_an_answer_computed_across_a_clear_is_not_stored(self, monkeypatch):
+        """Registering a language or style clears the cache; a call that began parsing
+        before that must not store what it read with the plugins from before."""
+        from demangle.core import registry
+        from demangle.core.plugin import LanguagePlugin
+
+        parses = []
+
+        def parse(mangled, builder, *rest):
+            parses.append(mangled)
+            demangle.cache_clear()
+            return builder.name("read")
+
+        plugin = LanguagePlugin(name="clears", detect=lambda name: False, parse=parse)
+        monkeypatch.setattr(registry, "_plugins", {**registry._plugins, "clears": plugin})
+        assert demangle.demangle("x", language="clears") == "read"
+        assert demangle.demangle("x", language="clears") == "read"
+        assert parses == ["x", "x"]
+
+    @pytest.mark.parametrize("name", ["_Z1fv", "_ZN" + "3foo" * 400 + "Ev"])
+    def test_a_bad_argument_is_refused_whether_or_not_the_call_is_cached(self, name):
+        with pytest.raises(ValueError, match="Limits instance"):
+            demangle.demangle(name, limits={"max_depth": 1})  # ty: ignore[invalid-argument-type]
+        with pytest.raises(ValueError, match="unknown language"):
+            demangle.demangle(name, language=["itanium"])  # ty: ignore[invalid-argument-type]
+
+    def test_a_name_named_on_every_page_of_a_table_misses_once(self, monkeypatch):
+        """A name still in use survives each turnover of the cache's generations."""
+        from demangle import api
+        from demangle.core.cache import BoundedCache
+
+        monkeypatch.setattr(api, "_CACHE", BoundedCache(max_size=20))
+        hot = "_ZNSaIcED1Ev"
+        for index in range(200):
+            demangle.demangle(f"_Z1f{index}", language="itanium")
+            demangle.demangle(hot)
+        stats = demangle.cache_stats()
+        assert (stats["hits"], stats["misses"]) == (199, 201)
+
+    def test_the_default_limits_and_an_equal_object_answer_alike(self):
+        """The default is keyed apart from any other `Limits`, equal or not."""
+        from demangle.core.limits import DEFAULT_LIMITS, Limits
+
+        demangle.cache_clear()
+        name = "_ZN3foo3barEv"
+        assert demangle.demangle(name, limits=DEFAULT_LIMITS) == demangle.demangle(name, limits=Limits())
+        assert demangle.demangle(name, limits=DEFAULT_LIMITS) == "foo::bar()"
+        assert demangle.cache_stats()["hits"] == 1
+
+    def test_limits_none_does_not_share_the_default_limits_cache_slot(self):
+        """The default is not keyed as `None`, so `limits=None` -- which no parser can
+        read -- cannot cache the name unread for later calls with the default."""
+        demangle.cache_clear()
+        with pytest.raises(ValueError, match="Limits instance"):
+            demangle.demangle("_Z1gv", limits=None)  # ty: ignore[invalid-argument-type]
+        assert demangle.demangle("_Z1gv") == "g()"
+
+    @pytest.mark.parametrize("limits", [None, "bogus", {"max_depth": 1}, 256])
+    @pytest.mark.parametrize("call", _LIMITS_ENTRY_POINTS)
+    def test_every_entry_point_refuses_limits_that_are_not_a_limits(self, call, limits):
+        with pytest.raises(ValueError, match="Limits instance"):
+            call(limits)
+
+    @pytest.mark.parametrize("call", _LIMITS_ENTRY_POINTS)
+    def test_every_entry_point_refuses_an_unhashable_limits_at_the_call(self, call):
+        """A `Limits` subclass that cannot be hashed cannot key the cache; refused where
+        it is passed, not at the first `next()` of a generator or never, for a text
+        with no symbol in it."""
+        from demangle.core.limits import Limits
+
+        class Unhashable(Limits):
+            __hash__ = None
+
+        with pytest.raises(ValueError, match="limits must be hashable, got an unhashable Unhashable"):
+            call(Unhashable())
+
     def test_the_very_first_call_in_a_process_counts_as_a_miss(self):
         """Loading the registry clears the cache, statistics included. The first call
-        used to look the name up, *then* load, and lose the miss it had just recorded."""
+        loads before it looks the name up, so the miss it records is kept."""
         source = pathlib.Path(__file__).resolve().parent.parent / "src"
         script = (
             "import demangle\n"
@@ -337,6 +460,97 @@ class TestCacheStatistics:
             [sys.executable, "-c", script], capture_output=True, text=True, check=True, env={"PYTHONPATH": str(source)}
         )
         assert run.stdout.split() == ["1", "1"]
+
+
+def _schemes_imported_by(script):
+    """The scheme packages imported after `script` runs in a fresh interpreter."""
+    source = pathlib.Path(__file__).resolve().parent.parent / "src"
+    script += "\nprint(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
+    run = subprocess.run(
+        [sys.executable, "-c", "import sys, demangle\n" + script],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PYTHONPATH": str(source)},
+    )
+    return run.stdout.split()
+
+
+class TestStylesImportOnlyWhatIsUsed:
+    """A style's per-language options live in each scheme's package, and building the two
+    built-in styles imports only the schemes the name needs."""
+
+    def test_a_first_call_on_an_msvc_name_imports_no_swift(self):
+        assert _schemes_imported_by("assert demangle.demangle('?f@@YAXH@Z') == 'void __cdecl f(int)'") == ["msvc"]
+
+    def test_a_first_call_on_a_plain_c_name_imports_no_scheme(self):
+        assert _schemes_imported_by("assert demangle.demangle('main') == 'main'") == []
+
+    def test_a_first_call_on_an_itanium_name_imports_only_the_schemes_asked_before_it(self):
+        loaded = _schemes_imported_by("assert demangle.demangle('_ZN3foo3barEv', style='gnu') == 'foo::bar()'")
+        # D, Swift and Rust also open `_` and are asked first; nothing else is imported.
+        assert loaded == ["d", "itanium", "rust", "swift"]
+
+    def test_composing_a_style_imports_only_the_language_it_changes(self):
+        loaded = _schemes_imported_by(
+            "narrow = demangle.style('llvm', msvc={'calling_convention': False})\n"
+            "assert sorted(narrow.language_options) == sorted(demangle.core.style.get_style('gnu').language_options)"
+        )
+        assert loaded == ["msvc"]
+
+    def test_listing_a_style_s_languages_imports_none_of_them(self):
+        loaded = _schemes_imported_by(
+            "from demangle.core.style import get_style\n"
+            "assert list(get_style('llvm').language_options) == "
+            "['itanium', 'msvc', 'swift', 'gnuv2', 'codewarrior', 'rust']\n"
+            "assert 'swift' in get_style('gnu').language_options and len(get_style('gnu').language_options) == 6"
+        )
+        assert loaded == []
+
+    def test_each_language_resolves_to_its_scheme_s_own_object(self):
+        from demangle.core.style import get_style
+        from demangle.schemes.itanium.options import DEFAULT_OPTIONS, GNU_OPTIONS
+        from demangle.schemes.swift.options import DEFAULT_OPTIONS as SWIFT_OPTIONS
+
+        assert get_style("llvm").options_for("itanium") is DEFAULT_OPTIONS
+        assert get_style("gnu").options_for("itanium") is GNU_OPTIONS
+        assert get_style("gnu").options_for("swift") is SWIFT_OPTIONS
+        assert get_style("gnu").options_for("go") is None
+        assert get_style("gnu").language_options["swift"] is SWIFT_OPTIONS
+        with pytest.raises(KeyError):
+            get_style("gnu").language_options["go"]
+
+    def test_a_composed_style_keeps_the_rest_of_its_base(self):
+        from demangle.core.style import get_style
+
+        narrow = demangle.style("gnu", msvc={"calling_convention": False})
+        assert narrow.options_for("itanium") is get_style("gnu").options_for("itanium")
+        assert narrow.options_for("msvc").calling_convention is False
+        assert get_style("gnu").options_for("msvc").calling_convention is True
+        assert narrow != get_style("gnu")
+        assert demangle.style("gnu") == get_style("gnu")
+
+    def test_resolving_from_many_threads_at_once_gives_one_object(self):
+        import threading
+
+        from demangle.core.style import _LazyOptions, _options
+
+        for _ in range(20):
+            options = _LazyOptions({"rust": _options("rust"), "msvc": _options("msvc")})
+            seen = []
+            barrier = threading.Barrier(8)
+
+            def resolve(options=options, seen=seen, barrier=barrier):
+                barrier.wait()
+                seen.append((options["rust"], options.get("msvc")))
+
+            threads = [threading.Thread(target=resolve) for _ in range(8)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            assert len(set(map(id, (pair[0] for pair in seen)))) == 1
+            assert len(set(map(id, (pair[1] for pair in seen)))) == 1
 
 
 class TestIntrospection:

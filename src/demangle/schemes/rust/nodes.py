@@ -64,9 +64,8 @@ class _Rust(Node):
         return "".join(render(p) for p in self.parts)
 
     def spell(self, declarator="", style=None):
-        # `declarator` and `style` are accepted to match `Node.spell` and ignored. Rust
-        # has no declarator position to place one in, and the output styles exist only
-        # where llvm-cxxfilt and GNU c++filt disagree about C++.
+        # Rust has no declarator position and styles only differ for C++; accepted to
+        # match `Node.spell`.
         return rendered(self.render)
 
     def build(self, builder):

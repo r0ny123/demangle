@@ -42,16 +42,13 @@ from ...core.limits import DEFAULT_LIMITS
 
 __all__ = ["DSymbol", "parse_d_symbol"]
 
-#: A *set* of digits, not the string. `peek()` returns "" at the end of the name, and
-#: `"" in string.digits` is True -- `in` on a string is substring containment, so an
-#: empty character tests as a member of everything. Against a set it is not.
+#: A set, not a string: `"" in string.digits` is True, and `peek()` returns "" at the end.
 DIGITS = frozenset(string.digits)
 
 #: A compiler-generated anonymous scope, which the reference leaves out of the path.
 _ANONYMOUS = re.compile(r"__S\d+")
 
-#: A real literal's significand, which the mangling writes in upper case and the
-#: reference passes through as it stands.
+#: A real literal's significand, passed through in the upper case it is written in.
 HEX_DIGITS = frozenset(string.hexdigits)
 
 #: Basic types, from the ABI's Type production.
@@ -84,8 +81,7 @@ BASIC_TYPES = {
 #: Two-character basic types, all introduced by `z`.
 WIDE_BASIC_TYPES = {"zi": "cent", "zk": "ucent"}
 
-#: Function attributes. Emitted in this order by the compiler, which is why they are
-#: spelled in the order encountered rather than sorted.
+#: Spelled in the order encountered, which is the order the compiler emits.
 FUNCTION_ATTRIBUTES = {
     "Na": "pure",
     "Nb": "nothrow",
@@ -99,12 +95,10 @@ FUNCTION_ATTRIBUTES = {
     "Nm": "@live",
 }
 
-#: How a parameter is passed. `Nk` is two characters and must be tested before `N` is
-#: mistaken for anything else.
+#: `Nk` is two characters and must be tested before `N` is mistaken for anything else.
 PARAMETER_STORAGE = {"I": "in", "J": "out", "K": "ref", "L": "lazy", "M": "scope"}
 
-#: Calling conventions, and how the reference spells each. The D convention is the
-#: default and is spelled with nothing at all.
+#: The D convention is the default and is spelled with nothing.
 CALLING_CONVENTIONS = {
     "F": "",
     "U": "extern(C) ",
@@ -114,38 +108,22 @@ CALLING_CONVENTIONS = {
     "Y": "extern(Objective-C) ",
 }
 
-#: The three string-literal markers, and what the reference writes after the closing
-#: quote for each. A `char` string gets nothing; the wide ones name their width.
+#: What the reference writes after the closing quote.
 STRING_SUFFIX = {"a": "", "w": "w", "d": "d"}
 
-#: The suffix D writes on an integer literal of each type, as the reference spells it.
 INTEGER_SUFFIX = {"uint": "u", "long": "L", "ulong": "uL", "ubyte": "u", "ushort": "u"}
 
 #: Type modifiers, innermost first as the ABI writes them.
 TYPE_MODIFIERS = {"x": "const", "y": "immutable", "O": "shared", "Ng": "inout"}
 
-#: Compiler-generated last components, and what the reference calls the symbol. Each names
-#: a thing *about* the entity the rest of the path names, so the path is spelled and the
-#: component itself becomes the prefix -- `initializer for rt.util.utility._Complex`.
-#: Components the reference renames rather than prefixes. A constructor is spelled the
-#: way it is written in source.
+#: Renamed as written in source. `__xdtor` and `__xpostblit` are not renamed; for
+#: `__postblit` see `qualified_name`.
 RENAMED_COMPONENTS = {
     "__ctor": "this",
     "__dtor": "~this",
 }
-#: `__xdtor` and `__xpostblit` are *not* renamed -- checked against the reference rather
-#: than assumed from the pattern, and it leaves both alone.
-#:
-#: `__postblit` is a quirk worth recording. The reference renames it to `this(this)` only
-#: where the thirteen characters `__postblitMFZ` stand together -- `dlang_lname` matches
-#: them as one thing, wherever in the name they are, and writes no parameter list --
-#: so `_D3foo3Bar10__postblitMFZv` is `foo.Bar.this(this)`, and every one of `MFNaZv`,
-#: `MxFZv`, `MOFZv`, `MUZv`, `MFiZv`, `UZv` and `FZv` is left as `__postblit`, which is
-#: not a distinction the language makes. "No attributes" was the first reading of it and
-#: renamed six shapes the reference does not; "the last component" was the second, and
-#: left an interior one as `__postblit()`. See `qualified_name`. Every `__postblit` in
-#: the shipped libraries has attributes, so the real symbols are not renamed either way.
-
+#: Compiler-generated last components, spelled as a prefix to the path:
+#: `initializer for rt.util.utility._Complex`.
 SPECIAL_COMPONENTS = {
     "__init": "initializer for ",
     "__vtbl": "vtable for ",
@@ -155,13 +133,10 @@ SPECIAL_COMPONENTS = {
 }
 
 
-#: The five characters the reference names inside a string literal. Derived by running
-#: `c++filt --format=dlang` over every byte value rather than from the C escapes it looks
-#: like: `\a` and `\b` are *not* among them, and neither `"` nor `\\` is escaped at all.
+#: Measured with `c++filt --format=dlang` over every byte: not `\a`, `\b`, `"` or `\\`.
 _STRING_ESCAPES = {0x09: "\\t", 0x0A: "\\n", 0x0B: "\\v", 0x0C: "\\f", 0x0D: "\\r"}
 
-#: What the reference writes before a character it cannot print, and how many digits it
-#: pads the value to, by the width of the character type.
+#: Prefix and zero-padded width for a character the reference cannot print.
 _CHARACTER_ESCAPES = {"char": ("\\x", 2), "wchar": ("\\u", 4), "dchar": ("\\U", 8)}
 
 
@@ -175,9 +150,9 @@ def _escaped(code, digits):
 
     An unprintable byte is written `\\x` and *the two digits the name carried*:
     `dlang_parse_string` copies them out of the input rather than formatting the value,
-    so `B2` stays upper-case and `b2` stays lower. Formatting instead lower-cased every
-    one of them, which no compiler makes visible -- dmd writes its hex in lower case --
-    but which is a different string from the one the name spells.
+    so `B2` stays upper-case and `b2` stays lower. Formatting the value instead would
+    lower-case every one of them, which no compiler makes visible -- dmd writes its hex
+    in lower case -- but which is a different string from the one the name spells.
     """
     if _printable(code):
         return chr(code)
@@ -210,8 +185,8 @@ class _Exhausted(Exception):
 
     This parser backtracks: `qualified_name` and `scope_type` both try a production and
     catch `DemangleFailure` to mean "that was not it, put the cursor back". A budget that
-    reported exhaustion as a `DemangleFailure` was therefore caught by the very handlers
-    it was meant to stop -- the parse backtracked, tried again, and made no progress
+    reported exhaustion as a `DemangleFailure` would be caught by the very handlers it
+    is meant to stop -- the parse would backtrack, try again, and make no progress
     towards finishing. Raising something those handlers do not catch is what makes the
     budget a bound rather than a suggestion.
     """
@@ -228,9 +203,7 @@ class _Reader:
 
     MAX_DEPTH = 200
 
-    #: Digits allowed in a value. A `ulong` is twenty of them and the reference answers
-    #: one digit longer still, so this is fifty times any real constant -- it is a guard
-    #: against a name built to be long, not a limit on what D can write.
+    #: Fifty times any real constant: a guard against a name built to be long.
     MAX_VALUE_DIGITS = 1024
 
     def __init__(self, text):
@@ -265,7 +238,7 @@ class _Reader:
         `bounded` caps the digit count, which is right for a *length prefix* -- one longer
         than the name itself is malformed, not enormous -- and wrong for a *value*: a
         `ulong` template argument such as `Vmi3988292384` is ten digits and perfectly
-        ordinary. Capping both refused every symbol carrying a large constant.
+        ordinary. Capping both would refuse every symbol carrying a large constant.
         """
         start = self.pos
         while self.pos < self.end and self.text[self.pos] in DIGITS:
@@ -275,10 +248,7 @@ class _Reader:
         if bounded and self.pos - start > 9:
             raise DemangleFailure("implausible length prefix")
         if self.pos - start > self.MAX_VALUE_DIGITS:
-            # A value has no length to check it against, so it needs a bound of its own.
-            # Not for the arithmetic -- the interpreter refuses to convert a digit string
-            # this long at all, and that refusal would reach a caller as its own message
-            # rather than as this parser saying the name is malformed.
+            # Also keeps the interpreter's own int-conversion limit from reaching the caller.
             raise DemangleFailure("implausible numeric literal")
         return int(self.text[start : self.pos])
 
@@ -339,106 +309,36 @@ class _Parser:
         max_output=DEFAULT_LIMITS.max_output,
     ):
         self.reader = _Reader(text)
-        # A symbol used as a *template argument* is spelled without the qualifiers an
-        # enclosing scope would carry: `FilterResult!(bitsSet(), ...)` where the same
-        # function in the path reads `initializer() const`. Tracked rather than passed
-        # down because every production between the two is unaware of it.
+        # A symbol as a template argument omits its scopes' qualifiers:
+        # `FilterResult!(bitsSet(), ...)` where the path reads `initializer() const`.
         self._in_symbol_argument = False
         # Whether a type's qualified name, or a `_D`-prefixed symbol argument, is being read;
         # see `scope_type`.
         self._in_type_name = False
         self._suffix_modifiers = True
         self._trailing_had_attributes = True
-        # How many back references this name may still follow. A `Q` names an earlier
-        # position and is read by parsing that position again, so following one can
-        # follow more -- and the work is exponential in how deeply they nest rather than
-        # linear in the length of the name.
-        #
-        # Memoising the result (below) helps and is not enough: a back reference into
-        # the middle of a qualified name re-reads the *sequence* from there, and the
-        # `_in_symbol_argument` state that a template argument flips changes what a
-        # position means, so the same position is genuinely read more than once.
-        #
-        # So there is also a budget, proportional to the length of the name, and a name
-        # that exhausts it is refused. That is the right answer as well as the cheap one:
-        # `c++filt --format=dlang` refuses this name too, and libiberty ships it as a
-        # regression vector -- `std.format.formattedWrite` out of a real D binary, 2,695
-        # characters carrying 441 `Q`s. An 800-character prefix of it took over 25
-        # seconds here; the whole name never finished.
-        #
-        # The budget is `max_substitutions`, which is exactly what that bound is for and
-        # which this scheme was not consulting -- only Itanium and Delphi were. It does
-        # not scale with the length of the name on purpose: the work a follow does grows
-        # with the name too, so a length-proportional budget still grows super-linearly.
+        # Back references followed; each re-parses a position, so work is exponential in
+        # nesting. `c++filt` also refuses libiberty's 441-`Q` `formattedWrite` vector.
         self._follows = max_substitutions
-        # A budget on *productions entered*, which is the only thing that bounds this
-        # parser reliably.
-        #
-        # It backtracks in two places and reads speculatively in a third, so a bound on
-        # any one mechanism can be sidestepped by another: bounding back references left
-        # the speculative lookahead free to explode, and memoising the lookahead left the
-        # back references free. Counting the work itself is indifferent to which path is
-        # taken.
-        #
-        # Sixty-four times the length of the name: a well-formed symbol needs a number of
-        # productions linear in its length, so this is two orders of magnitude of
-        # headroom for anything a compiler emits, and still finite for a name whose
-        # back references feed on each other.
+        # Productions entered: the one bound backtracking, lookahead and back references
+        # cannot sidestep. Linear in a real symbol, so 64x is ample headroom.
         self._work = 64 * len(text) + 4096
-        # The output bound, consulted *while* building rather than on the finished
-        # string. This is what the profile actually said: on a real 2,695-character D
-        # symbol out of `std.format.formattedWrite`, 18 of 35 seconds were inside 4,047
-        # calls to `str.join` -- four milliseconds each, because the pieces being joined
-        # were enormous. Only three hundred thousand function calls in total, so the
-        # parser was not looping; it was assembling a string far larger than any caller
-        # would accept, and the check on `len(symbol.text)` at the end could not know
-        # that until it was too late to matter.
+        # Consulted while building: assembling an oversized string is where the time goes.
         self._max_output = max_output
-        # What a back reference at a given position resolved to, keyed by the position,
-        # the production read there and the one piece of parser state that can change
-        # the answer.
-        #
-        # Without this, following a back reference re-parsed the region it points at --
-        # and that region contains back references of its own, so the work was
-        # exponential in how deeply they nest. It is not a theoretical shape: this is
-        # `std.format.formattedWrite` out of a real D binary, 2,695 characters with 441
-        # `Q`s in it, which libiberty ships as a regression vector of its own. An
-        # 800-character *prefix* of it took over 25 seconds; the whole name did not
-        # finish. A back reference names a position, the grammar at a position is
-        # deterministic, so reading it twice can only ever produce the same answer.
+        # Back-reference results by position, production and the state that changes them.
         self._resolved = {}
-        # The position of the type back reference being resolved, or the end of the name
-        # when none is: a type back reference may only stand *before* it. `dlang_type_backref`
-        # keeps the same bound in `last_backref`, and it is what makes a chain of them
-        # finite -- each one resolved is read from an earlier position than the last, so
-        # the name is walked backwards and never round. Without it, a type whose spelling
-        # reaches the very `Q` that named it -- the enum at 27 in
-        # `_D3std4conv__T7enumRepTyAaTEQBa6socket12SocketOptionVQBaiX0ZQBuyQBo`, a scope's
-        # function type whose parameter is `QBa`, the reference back to 27 -- was read
-        # again from inside itself, two hundred levels deep, and each level's speculative
-        # scope type fell back to a plain name only where the depth ran out: two
-        # kilobytes of `SocketOption(SocketOption(SocketOption(...` for a mutant the
-        # reference spells in one level.
+        # A type back reference may only point before this, as `last_backref` in
+        # `dlang_type_backref`: it keeps a chain of them finite.
         self._last_backref = len(self.reader.text)
-        # The spans of every LName (start of Number to end of Name) in the symbol.
-        # A back reference targeting strictly inside an LName is refused: no compiler
-        # writes one, and libiberty resolving them turns characters inside an
-        # identifier into types or names.
+        # LName spans; a back reference strictly inside one is refused (no compiler
+        # writes one).
         self._lname_spans = []
-        #: How many of those spans cover each position strictly inside one. The spans
-        #: alone answer `_is_inside_lname` by being scanned, and they are neither sorted
-        #: nor disjoint -- backtracking re-reads a region and a template instance's
-        #: components nest -- so the scan cannot be cut short and grows with the name.
-        #: Over the D corpus that is 192,857 steps, 125,776 of them on the single
-        #: longest symbol, against 75,222 positions to mark and 1,601 on that same name.
-        #: A count rather than a flag because the spans overlap: a position leaves the
-        #: map when the last span covering it is dropped, not the first.
+        #: How many spans cover each position strictly inside one, so `_is_inside_lname`
+        #: need not scan them. A count because the spans overlap.
         self._lname_cover = {}
         self._backref_inside_lname = False
         # Whether a whole symbol name starts at a position -- see `_symbol_name_follows`.
         self._starts_symbol = {}
-
-    # -- entry -----------------------------------------------------------------
 
     def parse(self):
         reader = self.reader
@@ -450,36 +350,22 @@ class _Parser:
             raise DemangleFailure("no qualified name")
         prefix = ""
         if path and path[-1] in SPECIAL_COMPONENTS and reader.peek() == "Z":
-            # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type.
-            # The `Z` is what *makes* it one, and it is not optional. Eating it only if
-            # it was there read `_D10TypeInfo_c6__vtbl` -- a truncated symbol -- as the
-            # whole of `_D10TypeInfo_c6__vtblZ`, and refusing to fall through read
-            # `_D3foo6__vtblFZv` as nothing at all, where the reference spells it
-            # `foo.__vtbl()`: an ordinary function that happens to be called `__vtbl`.
+            # `dlang_parse_mangle`: an artificial symbol ends with a mandatory `Z`;
+            # `_D3foo6__vtblFZv` is the ordinary function `foo.__vtbl()`.
             prefix = SPECIAL_COMPONENTS[path.pop()]
             reader.pos += 1
             if reader.pos != reader.end:
                 raise DemangleFailure("unconsumed input after a generated symbol")
-            # `_D6__initZ` has nothing left to name once the marker is taken off, and the
-            # reference still writes the prefix -- `initializer for`, with no trailing
-            # space. Requiring a component before it read the marker as an ordinary name
-            # and answered `__init`.
+            # `_D6__initZ`: the reference writes `initializer for`, no trailing space.
             return prefix + ".".join(path) if path else prefix.rstrip()
         anonymous_last = self._last_component_anonymous
         self._trailing_had_attributes = True
         trailing = self.trailing_type()
         if anonymous_last:
-            # The type belongs to the anonymous component, and the reference does not
-            # spell a component it left out. `_D4core4sync5mutex5Mutex6unlock0FNeZv` is
-            # an anonymous symbol inside `unlock`, and writing its parameter list after
-            # the path said `unlock` was that function: `Mutex.unlock()` for a name whose
-            # `()` is somewhere else. `c++filt --format=dlang` writes `Mutex.unlock`.
-            # Consumed either way -- the check that the whole name was read depends on
-            # it -- and only the spelling is dropped.
+            # The type belongs to the anonymous component, which is not spelled:
+            # `c++filt` writes `Mutex.unlock` for `_D4core4sync5mutex5Mutex6unlock0FNeZv`.
             trailing = ""
         return prefix + ".".join(path) + trailing
-
-    # -- names -----------------------------------------------------------------
 
     def _opens_symbol_name(self):
         char = self.reader.peek()
@@ -495,73 +381,44 @@ class _Parser:
         self._last_component_anonymous = False
         while self._opens_symbol_name():
             saved, saved_depth = self.reader.pos, self.reader.depth
-            # A literal `0` is skipped by `dlang_parse_qualified` with a `continue`,
-            # which steps over the "consume the encoded arguments" that every other
-            # component goes through. A back reference that *resolves* to an anonymous
-            # component is not skipped -- it is a component that spells nothing, and its
-            # type is still spelled. See `parse`.
+            # A literal `0` skips the argument consumption (`dlang_parse_qualified`
+            # `continue`s); a back reference resolving to one does not. See `parse`.
             anonymous = self.reader.peek() == "0"
             try:
                 component = self.symbol_name()
             except DemangleFailure:
-                # `Q` opens both an identifier back reference and a *type* back
-                # reference, and only position tells them apart. One that does not
-                # point at a length-prefixed identifier is the symbol's own type
-                # starting, so the path ends here.
-                #
-                # Nothing else is put back. `dlang_symbol_name_p` says a digit or a
-                # `__T` *is* the next component, and `dlang_parse_qualified` has no
-                # second reading for one that does not parse -- the name fails. Backing
-                # out instead handed the digits to whatever came next: the `42` of
-                # `VE3foo3bar42Z` was read as an old-style bare integer value and the
-                # name spelled `test!(42)`, where the reference refuses it and a
-                # compiler writes `i42`.
+                # A `Q` not pointing at an identifier is a type back reference: the
+                # symbol's own type. Nothing else is put back: `dlang_parse_qualified`
+                # has no second reading, so `VE3foo3bar42Z` is refused.
                 if self.reader.text[saved] != "Q" or self._back_reference_targets_identifier(saved):
                     raise
                 self.reader.pos, self.reader.depth = saved, saved_depth
                 break
             if component == "__postblit" and self.reader.starts_with("MFZ"):
-                # `dlang_lname` matches the thirteen characters `__postblitMFZ` as one
-                # thing and writes `this(this)` -- no parameter list, and no rename
-                # for any other shape, `MFNaZ` and `FZ` included. Renaming the last
-                # component only left an interior one as `__postblit()`.
+                # `dlang_lname` matches `__postblitMFZ` as one token and writes `this(this)`;
+                # no other shape is renamed.
                 self.reader.pos += 3
                 self._last_component_anonymous = False
                 parts.append("this(this)")
                 continue
             if self.reader.text[saved] in DIGITS and _ANONYMOUS.fullmatch(component):
-                # A `__S<n>` is a compiler scope -- a fake parent that makes a name
-                # unique -- and the reference writes nothing for it. `dlang_identifier`
-                # steps over it and reads the next identifier there and then: nothing
-                # else may follow, not a scope type and not the end of the name.
-                # `_D8demangle4mainFZ4__S1xi` is refused, where reading the `xi` as the
-                # symbol's type spelled `demangle.main()`. Only the length-prefixed form
-                # is skipped; `__S` alone and `__S1a` are ordinary names, and so is a
-                # `__S1` reached through a back reference, which `dlang_symbol_backref`
-                # spells as it stands.
+                # `__S<n>`, a compiler scope, is written as nothing, and `dlang_identifier`
+                # reads the next identifier at once: `_D8demangle4mainFZ4__S1xi` is refused.
+                # Via a back reference, `dlang_symbol_backref` spells it as it stands.
                 self._last_component_anonymous = False
                 if not self._opens_symbol_name() or self.reader.peek() == "0":
-                    # `dlang_identifier` there and then: a `0` is a length of nothing
-                    # to it, refused, not the anonymous component the path loop skips.
+                    # a `0` here is a refused length, not the anonymous component
                     raise DemangleFailure("a compiler scope with nothing after it")
                 continue
             if anonymous:
-                # A literal `0` is skipped whole. `dlang_parse_qualified` `continue`s past
-                # it, which steps over the "consume the encoded arguments" every other
-                # component goes through: a function type after it is the symbol's own,
-                # never a scope's, so `_D1a0FZ1bi` is refused where reading `FZ` as the
-                # anonymous component's scope spelled `a.().b`. See `parse` for what
-                # becomes of the type.
+                # Skipped whole: a following function type is the symbol's own, so
+                # `_D1a0FZ1bi` is refused. See `parse` for the type.
                 self._last_component_anonymous = True
                 continue
-            # A scope's own function type *is* spelled -- a symbol inside a function is
-            # written `enclosing(params).inner` -- so the parameters come back here rather
-            # than being discarded.
+            # `enclosing(params).inner`
             spelled = self._spelled_component(component) + self.scope_type()
-            # A back reference that resolves to an anonymous component is not skipped:
-            # `dlang_symbol_backref` reads a zero-length name and appends nothing, and
-            # the `.` before the next component is written all the same. So the slot is
-            # kept, and `_D1a0Qb1ci` is `a..c`; dropping it spelled `a.c`.
+            # A back reference to an anonymous component keeps its slot: `_D1a0Qb1ci` is
+            # `a..c`.
             self._last_component_anonymous = False
             parts.append(spelled)
         return parts
@@ -583,42 +440,19 @@ class _Parser:
         start = reader.pos
         if start + length > reader.end:
             raise DemangleFailure("identifier runs past the end of the name")
-        # A template instance is a *length-prefixed* identifier whose content happens to
-        # be `__T<name><args>Z`. The test above catches only the bare form, so
-        # `_D8demangle11__T4testTaZv` -- where `11` counts `__T4testTaZ` -- was read as
-        # an identifier called `__T4testTaZ` and printed as one. The reference spells it
-        # `demangle.test!(char)`, and this is the largest single group of disagreements
-        # with libiberty's corpus.
-        #
-        # Not bounded by the length prefix while it is read: `dlang_parse_template`
-        # reads the body against the whole of what remains and compares what it
-        # consumed with the length afterwards, refusing the name on a mismatch. Bounding
-        # it first read a mutant of `demangle.fn!(sym, val("null"))` where the reference
-        # refuses it: inside the body, `sym` is followed by a `V` that opens a function
-        # type whose parameter list happens to run to a `Z` far past the body, and the
-        # reference reads that greedily, as it reads any scope inside a type, and then
-        # finds the `v` after it is no template argument. Under the bound the greedy
-        # reading failed at the body's end, was put back, and the name read.
+        # A length-prefixed `__T...Z` is a template instance (`_D8demangle11__T4testTaZv`
+        # is `demangle.test!(char)`). Like `dlang_parse_template`, the body is read
+        # against all that remains and its length checked afterwards, not bounded first.
         text = reader.text[start : start + length]
-        # Five is the shortest a template instance can be -- `__T`, a one-digit length,
-        # a one-character name, and the closing `Z` make six, and `dlang_identifier`
-        # settles for `len >= 5`. Under that, `__T` is a name like any other: the
-        # reference reads `_D4main3__TFZv` as `main.__T()`, and trying the template
-        # grammar on it first refused the name.
+        # `dlang_identifier` needs `len >= 5`: `_D4main3__TFZv` is `main.__T()`.
         if text.startswith(("__T", "__U")) and length >= 5:
             spelled = self.template_instance()
             if reader.pos != start + length:
-                # A body that opens `__T` and does not parse to exactly its length is a
-                # malformed template, not an identifier that happens to look like one:
-                # the reference refuses the whole name rather than printing the
-                # mangling back inside a path.
+                # the reference refuses a malformed template rather than printing it back
                 raise DemangleFailure("malformed template instance")
             return spelled
         if any(char.isascii() and not (char.isalnum() or char == "_") for char in text):
-            # `dlang_lname` copies the bytes, but a `*` in the counted name is not a
-            # D identifier: `_D1aE3foo6En961*` is refused, and so is the seed-17
-            # mutant `_D3std6stream9BOMEndianyG5E3std6system6En961*`.
-            # `tools/mutate.py --seed 17`.
+            # `_D1aE3foo6En961*` is refused.
             raise DemangleFailure("identifier is not a D name")
         reader.pos = start + length
         self._remember_lname(lname_start, reader.pos)
@@ -633,8 +467,7 @@ class _Parser:
         reader = self.reader
         reader.pos += 3
         if reader.peek() == "0":
-            # `dlang_parse_template` refuses a template whose name is the anonymous `0`;
-            # reading one spelled `!()` for `_D5__T0Zv`.
+            # `dlang_parse_template` refuses `_D5__T0Zv`.
             raise DemangleFailure("a template instance with no name")
         name = self._spelled_component(self.symbol_name())
         arguments = []
@@ -651,37 +484,17 @@ class _Parser:
         if marker == "T":
             return self.type_()
         if marker == "S":
-            # A whole qualified name, not one component: `SQBaQz3run` is
-            # `std.parallelism.run`, and reading a single component left the rest to be
-            # taken for further arguments.
-            #
-            # The name may carry its own `_D` prefix -- a symbol argument is mangled as a
-            # complete symbol, so `S_DQBg3net4curl7CurlAPI7_handle` appears where a bare
-            # path would do just as well.
-            # Newer compilers write the argument's *length* first: `S11` then eleven
-            # characters holding `6symbol3foo`, or `S20` then twenty holding a complete
-            # `_D`-prefixed symbol. Without reading it, the length ran together with the
-            # name -- `S116symbol3foo` was read as a name beginning `116symbol` -- and the
-            # whole template instance was refused. Between them the two shapes account
-            # for 73 of the 79 vectors in libiberty's corpus that still disagreed.
-            #
-            # The length bounds the argument, so the cursor cannot run past it into the
-            # arguments that follow.
+            # A whole qualified name: `SQBaQz3run` is `std.parallelism.run`. It may
+            # carry `_D`, and newer compilers write a length first (`S116symbol3foo`),
+            # which then bounds the argument.
             bounded = self._symbol_argument_bound()
             if reader.starts_with("_D"):
-                # A complete mangled symbol, path *and* type: the `_handle` in
-                # `S_DQBg3net4curl7CurlAPI7_handlePv` is a `void*`, and the `Pv` has to be
-                # consumed even though the reference prints only the path.
-                # `dlang_template_symbol_param` takes the `_D` form only where a symbol
-                # name follows the prefix (`dlang_symbol_name_p`); otherwise the `_D`
-                # is read as a length, which it is not, and the name is refused.
-                # `S_DaZv` came back as an argument spelling nothing.
+                # Path and type (`S_DQBg3net4curl7CurlAPI7_handlePv`); only the path is
+                # printed. `dlang_symbol_name_p` must accept what follows the `_D`, else
+                # it is a length and the name is refused (`S_DaZv`).
                 after = reader.text[reader.pos + 2 : reader.pos + 5]
-                # A back reference counts as a name only where it points at one:
-                # `dlang_symbol_name_p` follows the `Q` and asks for a digit there.
-                # Taking any `Q` read `S_DQiZv` -- a reference into the middle of a
-                # type -- as a symbol argument spelling nothing, `abc!()`, where the
-                # reference refuses the name. Found by mutating real symbols.
+                # A `Q` counts only if it points at a digit (`dlang_symbol_name_p`):
+                # `S_DQiZv` is refused.
                 named = after[:1] in DIGITS or after in ("__T", "__U")
                 if after[:1] == "Q":
                     named = self._back_reference_targets_identifier(reader.pos + 2)
@@ -700,36 +513,18 @@ class _Parser:
             if bounded is not None:
                 reader.pos = bounded
             if not spelled:
-                # `qualified_name` leaves out an anonymous component, which is right
-                # inside a path -- the reference writes nothing for it -- and leaves an
-                # `S` argument spelling nothing at all. It still took a slot, so
-                # `TrieBuilder!(..., , ...)` came back with a visible empty argument in
-                # the middle of the list.
+                # An anonymous-only argument still takes a slot, so it is refused.
                 raise DemangleFailure("a symbol argument with no name")
             return self._cap(spelled)
         if marker == "V":
-            # The type's own first character is kept: an associative array writes its
-            # values as key/value pairs, and nothing in the *spelling* of `int[int]`
-            # distinguishes it from a static array of one.
+            # Kept to tell `int[int]` from a static array of one.
             code = self._type_code()
             kind = self.type_()
             return self.template_value(kind, code=code)
-        # A bare symbol name -- a length, a `Q` back reference or a `_D` symbol with no
-        # `S` in front of it -- was read here, on the grounds that the compiler emits one
-        # where the argument's kind is unambiguous. It does not. `TemplateArgX` is
-        # `T Type`, `V Type Value`, `S Number_opt QualifiedName` or `X` and nothing else,
-        # `dlang_template_args` refuses everything else outright, and no name in either
-        # corpus -- 1,257 real symbols and libiberty's own 366 vectors -- needs it.
-        #
-        # What it did instead was rescue malformed names into plausible ones. A mutated
-        # `TSQBi...` that has lost its `S` reads the `Q` back references after it as
-        # further arguments, so a qualified name came apart into
-        # `PackedArrayViewImpl!(float, std, uni, BitPacked!(uint, 11uL), BitPacked, 16uL)`
-        # -- five arguments where the name has two -- and a bare `0` took a slot and was
-        # spelled as one, giving `!(null, )` and `!(, )` with a visible empty argument.
+        # `TemplateArgX` is `T`, `V`, `S` or `X`; `dlang_template_args` refuses a bare
+        # symbol name, and accepting one rescued malformed names into plausible ones.
         if marker == "X":
-            # An externally mangled argument: a length and that many characters, kept as
-            # they stand because they are another mangling entirely.
+            # Externally mangled: a length and that many characters, kept as they stand.
             length = reader.number()
             start = reader.pos
             reader.pos = min(start + length, reader.end)
@@ -753,11 +548,8 @@ class _Parser:
         self._suffix_modifiers = True
         try:
             path = ".".join(self.qualified_name())
-            # As in `parse`: a type after an anonymous last component belongs to that
-            # component, which the reference does not spell, so neither is the type.
-            # `dlang_parse_qualified` steps past the `0` and `dlang_parse_mangle` reads
-            # the type as the symbol's own, printing nothing for it: `foo.bar` for
-            # `_D3foo3bar0FNbmZm`, as an argument just as at the top.
+            # As in `parse`: an anonymous last component's type is not spelled
+            # (`foo.bar` for `_D3foo3bar0FNbmZm`).
             anonymous_last = self._last_component_anonymous
             trailing = self.trailing_type()
             return path if anonymous_last else path + trailing
@@ -786,19 +578,15 @@ class _Parser:
             reader.pos += 1
             return self.real_literal()
         if char == "c":
-            # A complex literal: two reals, written `<real>+<imaginary>i`, each introduced
-            # by its own `c`.
+            # A complex literal: `c<real>c<imaginary>`, spelled `<real>+<imaginary>i`.
             reader.pos += 1
             real = self.real_literal()
             if not reader.eat("c"):
                 raise DemangleFailure("complex literal without its imaginary part")
             return f"{real}+{self.real_literal()}i"
         if char == "A":
-            # An array literal: `A <count> <value>...`, where each value has the element
-            # type. `VAmA2i104i1281` is a `ulong[]` holding `[104, 1281]`. Where the type
-            # is an associative array the values come in pairs -- `[1:2, 3:4]` -- and
-            # neither half is spelled as the element type, because there is no one
-            # element type to spell them as.
+            # `A <count> <value>...`: `VAmA2i104i1281` is `[104, 1281]`; an associative
+            # array's values come in pairs, `[1:2, 3:4]`.
             reader.pos += 1
             count = reader.number()
             if code == "H":
@@ -807,21 +595,14 @@ class _Parser:
                     for _ in range(count)
                 )
                 return "[" + ", ".join(pairs) + "]"
-            # An element carries no type of its own: `dlang_parse_arrayliteral` reads
-            # each value with no type at all, so the reference writes `[104, 1281]` for
-            # a `ulong[]` -- no `uL` -- and `[0, 1]` for a `bool[]` and `[65, 66]` for a
-            # `char[]`. Spelling the elements as the element type wrote `[false, true]`
-            # and `['A', 'B']`.
+            # `dlang_parse_arrayliteral` reads elements untyped: `[0, 1]` for a `bool[]`.
             return "[" + ", ".join(self.template_value(None, suffix=False) for _ in range(count)) + "]"
         if char == "f":
-            # A function literal: a whole mangled symbol standing where a value was
-            # expected, which is how a lambda reaches a struct's field.
+            # A function literal: a whole mangled symbol, as a lambda in a struct field.
             reader.pos += 1
             return self.mangled_symbol()
         if char == "S":
-            # A struct literal: the type's own name, then `S <count>` and that many field
-            # values. A field carries no type of its own, so none of them is spelled as a
-            # character or a bool however it was mangled.
+            # A struct literal: `S <count>` field values, each untyped.
             reader.pos += 1
             count = reader.number()
             fields = ", ".join(self.template_value(None, suffix=False) for _ in range(count))
@@ -888,10 +669,7 @@ class _Parser:
             if self._is_symbol_argument(stop, end):
                 reader.pos = stop
                 return end
-        # No split works, so the digits are not a length at all: this is the older form,
-        # `S <LName>`, where the argument is an ordinary length-prefixed name and the
-        # first digits belong to *it*. `S6symbol` is that shape, and reading its `6` as
-        # an outer length left nothing that parsed.
+        # No split works: the older `S <LName>` form, as `S6symbol`.
         return None
 
     def _is_symbol_argument(self, start, end):
@@ -902,11 +680,8 @@ class _Parser:
         try:
             reader.pos, reader.end = start, end
             self._in_symbol_argument = True
-            # `dlang_template_symbol_param` parses the region only where it opens on a
-            # digit or on `_D`; anything else is left standing and the length does not
-            # match. Without the test, `S1i` -- a one-character name `i` in the older
-            # form -- had the `1` taken for a length and the `i` for a symbol's type,
-            # and the argument the reference spells `i` was refused.
+            # `dlang_template_symbol_param` parses the region only on a digit or `_D`,
+            # so `S1i` is the old-form name `i`.
             prefixed = reader.starts_with("_D")
             if prefixed:
                 reader.pos += 2
@@ -914,22 +689,15 @@ class _Parser:
                 return False
             self.qualified_name()
             if prefixed:
-                # `dlang_parse_mangle`: `_D QualifiedName Type` or `_D QualifiedName Z`,
-                # and the type is not optional. A region that is a qualified name and
-                # nothing more, `_D6symbol3foo3bar2Zv`, is not a symbol to it, and the
-                # argument is spelled as it stands; reading it as one spelled
-                # `symbol.foo.bar.Zv`.
+                # `dlang_parse_mangle` needs a type: `_D6symbol3foo3bar2Zv` is spelled
+                # as it stands.
                 if reader.pos >= end:
                     return False
                 if reader.peek() == "Z":
                     reader.pos += 1
                 else:
                     self.trailing_type()
-            # Unprefixed: the region is a qualified name and nothing more. A leftover
-            # type letter -- `S11` then `9symbol3foo`, nine characters of name and an
-            # `o` -- made the length look exact because `trailing_type` ate the `o` as
-            # `ifloat`, and the argument was spelled `symbol3fo`. libiberty refuses.
-            # `tools/mutate.py --seed 15`.
+            # Unprefixed: a qualified name and nothing more.
             return reader.pos == end
         except (DemangleFailure, _Exhausted):
             return False
@@ -954,9 +722,9 @@ class _Parser:
 
         The test is "read one and see", which means a full speculative parse whose result
         is then thrown away. `scope_type` runs it for every component of the path, and
-        the region it reads contains scopes that run it again -- so the same position was
-        read over and over, and a real 2,695-character D symbol out of
-        `std.format.formattedWrite` took seconds rather than milliseconds.
+        the region it reads contains scopes that run it again -- so without memoising,
+        the same position is read over and over, and a long symbol such as one from
+        `std.format.formattedWrite` takes seconds rather than milliseconds.
 
         Whether a symbol name starts at a position is a property of the position, so
         asking twice can only get the same answer. The one piece of parser state that
@@ -1056,35 +824,18 @@ class _Parser:
             reader.depth += 1
             try:
                 if reader.peek() not in DIGITS:
-                    # `dlang_symbol_backref` reads a `dlang_number` and then that many
-                    # characters, so what a `Q` points at is a length-prefixed identifier
-                    # and nothing else -- not a `__T` template instance, and not another
-                    # `Q`. Reading whatever stood there resolved a mutated index onto a
-                    # whole template and spelled it as a path component:
-                    # `_D3std5range__T6ChunksTAhZQo5emptyMFNaNbNdNiNfZb` came back
-                    # `std.range.Chunks!(ubyte[]).Chunks!(ubyte[]).empty()`, with the
-                    # instance named twice. 56 of the 119 shapes the mutation fuzzer had
-                    # this scheme reading and the reference refusing were this one.
+                    # `dlang_symbol_backref` targets only a length-prefixed identifier, not
+                    # a `__T` instance or another `Q`.
                     raise DemangleFailure("a back reference to something that is not an identifier")
                 while reader.peek() == "0" and reader.text[reader.pos + 1 : reader.pos + 2] in DIGITS:
-                    # `dlang_symbol_backref` reads the length with `dlang_number`, which
-                    # takes the whole digit run: `06289` is a length of 6289 and `01a` is
-                    # `a`. Only a lone `0` is the empty identifier, which `symbol_name`
-                    # reads as the anonymous component it is. Stopping at the first `0`
-                    # read a target inside a mutated name's digits as anonymous and went
-                    # on, spelling `..length` where the reference refuses the name.
+                    # `dlang_number` takes the whole digit run (`06289` is 6289); only a
+                    # lone `0` is the empty identifier.
                     reader.pos += 1
                 if reader.peek() == "0":
                     resolved = self.symbol_name()
                 else:
-                    # `dlang_symbol_backref` is `dlang_number` and then `dlang_lname` --
-                    # a length and that many characters, spelled as they stand, with
-                    # only the constructor and destructor renames. A target whose body
-                    # happens to be a template instance, `13__T4testThTuZ`, is the
-                    # identifier `__T4testThTuZ` to it, where `symbol_name` read the
-                    # template and spelled `test!(ubyte, wchar)` twice over. No
-                    # compiler points a back reference at one; the reference's reading
-                    # is the one followed.
+                    # `dlang_lname`: spelled as it stands with only the structor renames, so
+                    # `13__T4testThTuZ` is the identifier `__T4testThTuZ`.
                     length = reader.number()
                     start = reader.pos
                     if start + length > reader.end:
@@ -1097,8 +848,6 @@ class _Parser:
             reader.pos = saved
         self._resolved[key] = (resolved,)
         return resolved
-
-    # -- types -----------------------------------------------------------------
 
     def scope_type(self):
         work = self._work = self._work - 1
@@ -1119,30 +868,20 @@ class _Parser:
             modifiers = []
             if reader.peek() == "M":
                 reader.pos += 1
-                # The `this` rule, not the type rule: `dlang_parse_qualified` calls
-                # `dlang_type_modifiers` here too, so `MxxF` is refused on the second `x`
-                # as it is on a symbol's own `this`. Reading the run as a type spelled
-                # `foo() const const.bar()` for a name the reference refuses.
+                # `dlang_parse_qualified` calls `dlang_type_modifiers` here too: `MxxF`
+                # is refused.
                 modifiers = self.this_modifiers()
             if reader.peek() not in CALLING_CONVENTIONS:
                 raise DemangleFailure("not a scope")
             _, attributes, parameters, _ = self.function_type(returns=False)
             if self._in_type_name or self._in_symbol_argument:
-                # Inside a type's name or a symbol argument there is no trailing type
-                # for the parameters to be, so `dlang_parse_qualified` keeps them as the
-                # component's scope whenever they parse and the name goes on: the
-                # `QCe` after `QHxFNcQEsZ` in a mutant of `std.utf.byUTF` is the next
-                # parameter of the enclosing function, and the reference spells the
-                # struct `...byUTF(ByCodeUnitImpl)`. Asking for a component to follow
-                # put the function type back and read it as that parameter instead.
+                # No trailing type here, so `dlang_parse_qualified` keeps the parameters
+                # as the component's scope whenever they parse.
                 if reader.pos >= reader.end:
                     raise DemangleFailure("not a scope")
             else:
-                # A full symbol name has to follow, not merely a byte that could open
-                # one. `Qq` opens an identifier back reference *and* a type back
-                # reference, so testing the byte alone made the return type of
-                # `rt_linkOption` look like another path component and took the whole
-                # name with it.
+                # A full symbol name, not a byte that could open one: `Qq` opens both kinds
+                # of back reference (`rt_linkOption`).
                 if not self._opens_symbol_name():
                     raise DemangleFailure("not a scope")
                 after = reader.pos
@@ -1154,10 +893,8 @@ class _Parser:
             return ""
         del saved_depth
         spelled = f"({', '.join(parameters)})"
-        # `suffix_modifiers`: `dlang_parse_qualified` writes a scope's `this` modifiers
-        # for a symbol and for a `_D`-prefixed symbol argument, which goes through
-        # `dlang_parse_mangle`, and not for a plain symbol argument or a type's name --
-        # `main.S.bar().x` for `S4main1S3barMxFZ1x`, with the `const` left out.
+        # `dlang_parse_qualified` writes `this` modifiers only via `dlang_parse_mangle`:
+        # `main.S.bar().x` for `S4main1S3barMxFZ1x`.
         trailing = " ".join(modifiers) if self._suffix_modifiers else ""
         self._last_scope_had_attributes = bool(attributes)
         return self._cap(f"{spelled} {trailing}" if trailing else spelled)
@@ -1182,8 +919,8 @@ class _Parser:
         and `x` (const) and `y` (immutable) `return`, so at most one of the last two
         appears and it comes last. `MOx` reads as `shared const`; `MxO`, `Mxx`, `Myy` and
         `Mxy` are refused, with the unread character left over. Reading the run the way a
-        type reads it spelled `foo.bar() const const` for a symbol the reference will not
-        read at all.
+        type reads it would spell `foo.bar() const const` for a symbol the reference
+        will not read at all.
         """
         found = []
         reader = self.reader
@@ -1226,9 +963,7 @@ class _Parser:
                 reader.pos += 1
                 break
             if char in ("X", "Y"):
-                # `X` is `f(T t...)` and `Y` is `f(T t, ...)`. The difference is exactly
-                # the separator, so `X` glues the ellipsis to the last parameter and `Y`
-                # stands as one of its own.
+                # `X` is `f(T t...)`, `Y` is `f(T t, ...)`.
                 reader.pos += 1
                 if char == "X" and parameters:
                     parameters[-1] += "..."
@@ -1244,25 +979,15 @@ class _Parser:
     def parameter(self):
         """`[M] [Nk] [I[K] | J | K | L] <Type>` -- a fixed sequence, not a set.
 
-        `dlang_function_args` reads each of these once and in this order, and then reads
-        the type. Written as a loop here, it accepted any order and any number of them:
-        `FMMfZv` came back as `(scope scope float)` and `FIJfZv` as `(in out float)`,
-        neither of which is a parameter anything can declare, and `FNkMfZv` reordered
-        `return scope` out of the order the encoding puts it in. The reference hands all
-        three back.
-
-        `I` is the one that takes a second: `in ref`, written `IK`. Nothing else does.
+        `dlang_function_args` reads each of these once, in this order, then the type; `I`
+        alone takes a second, `IK`. Repeats and reorderings such as `FMMfZv`, `FIJfZv`
+        and `FNkMfZv` are refused, as the reference refuses them.
         """
         reader = self.reader
         storage = []
         if reader.starts_with("NkM"):
-            # `return scope`, written in that order. DMD 2.104 began writing `Nk` ahead
-            # of the `M` for a `return scope` parameter, and libiberty -- which reads
-            # `M` then `Nk` and nothing else -- refuses every function the LDC 1.40
-            # runtime declares with one, 766 of its 16,197 symbols. D's own
-            # `core.demangle` reads both orders and spells this one `return scope`,
-            # which is what is followed here; the `M`-first order still reads as
-            # libiberty reads it.
+            # DMD 2.104+ writes `Nk` before `M`; libiberty refuses it, `core.demangle`
+            # reads it as `return scope`, which is followed here.
             reader.pos += 3
             storage.extend(("return", "scope"))
         else:
@@ -1320,11 +1045,7 @@ class _Parser:
         mangled as integers, so the type has to be consulted rather than the value. Every
         other kind is written with the digits the name carried -- see `_Reader.digits`.
 
-        The `N` that marks a negative value is written whatever the kind is, and it used
-        to be dropped for the two kinds that do not spell their digits: `VaN17` came back
-        `'\x11'` and `VbN1` came back `true`, each the *positive* literal. The reference
-        writes `-'\x11'` and `-true`, which is a value D source cannot spell either --
-        but losing the sign spells a different value rather than an unspellable one.
+        The `N` sign is written for every kind; the reference writes `-'\x11'`, `-true`.
         """
         sign = "-" if negative else ""
         if kind == "bool":
@@ -1362,14 +1083,10 @@ class _Parser:
         pair = reader.text[reader.pos : reader.pos + 2]
         if pair == "Nn":
             reader.pos += 2
-            # The reference spells this `typeof(*null)` -- what the type is written as in
-            # D source -- rather than by its name. `noreturn` is the newer spelling and
-            # reads better, but the point of this scheme is to agree with the demangler
-            # everyone else's tooling uses.
+            # As the reference spells `noreturn`.
             return "typeof(*null)"
         if pair == "Nh":
-            # `Nh <Type>`, a SIMD vector. The element type is an array, and the reference
-            # writes the pair as `__vector(byte[8])`.
+            # `Nh <Type>`, a SIMD vector: `__vector(byte[8])`.
             reader.pos += 2
             return self._cap(f"__vector({self.type_()})")
         if pair in WIDE_BASIC_TYPES:
@@ -1382,14 +1099,9 @@ class _Parser:
             reader.pos += 1
             return self._cap(f"{self.type_()}[]")
         if char == "G":
-            # The bound is a *value*, not a length prefix into the name: `char[1234567890]`
-            # is an ordinary declaration and its ten digits reach no further than the two
-            # of `char[10]`.
+            # The bound is a value, not a length prefix.
             reader.pos += 1
-            # The digits the name carried, not the number they spell. `dlang_type`'s `G`
-            # case remembers where the run began and appends it verbatim, so `G012a` is
-            # `char[012]`; re-formatting it wrote `char[12]`, a different bound. Same rule
-            # as an integer literal -- see `_Reader.digits`.
+            # Verbatim digits, as `dlang_type`'s `G` case: `G012a` is `char[012]`.
             _, count = reader.digits()
             return self._cap(f"{self.type_()}[{count}]")
         if char == "H":
@@ -1398,26 +1110,14 @@ class _Parser:
             return self._cap(f"{self.type_()}[{key}]")
         if char == "P":
             reader.pos += 1
-            # D spells a pointer to a function as `int(char[]) function`, not with a `*`:
-            # the word *is* the pointer. Only the `P` that *is* that word absorbs, though,
-            # and `dlang_type` decides that from the character after the `P` -- a calling
-            # convention, and nothing else. Deciding it from the pointee's *spelling*
-            # instead swallowed every level above the first: `PPUZi` and `PPPUZi` both
-            # came back `extern(C) int() function`, so a pointer to a function pointer
-            # was spelled as the function pointer itself.
+            # `int(char[]) function`: the word is the pointer. Only a `P` followed by a
+            # calling convention absorbs (`dlang_type`), so `PPUZi` keeps a `*`.
             absorbs = reader.peek() in CALLING_CONVENTIONS
             pointee = self.type_()
             return self._cap(pointee if absorbs else f"{pointee}*")
         if char in ("C", "S", "E", "T"):
-            # `C <QualifiedName>` and its three siblings, where the name is not optional:
-            # `dlang_parse_qualified` reads at least one symbol name and fails otherwise.
-            # This joined an empty list and returned `""`, so `_D3fooC` -- a variable
-            # whose type is a class with no name -- came back as `foo`, and `_D3fooFCZv`
-            # as `foo()` with the parameter gone. The reference hands both back.
-            #
-            # Measured on how far the cursor moved rather than on what came out: a
-            # zero-length component is anonymous and spells nothing, and `_D3fooC0` is a
-            # name the reference does read.
+            # `dlang_parse_qualified` needs at least one component: `_D3fooC` is refused.
+            # Measured by cursor movement, since `_D3fooC0` (anonymous) reads.
             reader.pos += 1
             before = reader.pos
             outer, outer_suffix = self._in_type_name, self._suffix_modifiers
@@ -1433,12 +1133,8 @@ class _Parser:
             reader.pos += 1
             modifiers = self.this_modifiers()
             if reader.peek() == "Q":
-                # The function type is a back reference: `MxDQsm` is a delegate whose
-                # signature was written earlier in the name. `dlang_type_backref` is
-                # called with `is_function` set and reads a *function type* at the
-                # target, so a `Q` pointing at anything else fails the name. Resolving
-                # it as a type spelled `real delegate*` for `PDQg` where the reference
-                # refuses.
+                # `dlang_type_backref` with `is_function`: the target must be a function
+                # type.
                 target = self._back_reference_target(reader.pos)
                 if target is None or reader.text[target] not in CALLING_CONVENTIONS:
                     raise DemangleFailure("a delegate's back reference does not point at a function type")
@@ -1447,9 +1143,7 @@ class _Parser:
                 return self._cap(" ".join(["", spelled, "delegate", *modifiers]).strip())
             convention, attributes, parameters, returns = self.function_type()
             spelled = f"{convention}{returns}({', '.join(parameters)})"
-            # A delegate's *attributes* belong to the function it wraps and are written
-            # before the word; its own modifiers qualify the delegate and are written
-            # after it -- `char() pure delegate const`.
+            # `char() pure delegate const`
             return self._cap(" ".join([spelled, *attributes, "delegate", *modifiers]))
         if char in CALLING_CONVENTIONS:
             convention, attributes, parameters, returns = self.function_type()
@@ -1457,9 +1151,7 @@ class _Parser:
             spelled = f"{convention}{returns}({', '.join(parameters)})"
             return self._cap(f"{spelled} {words} function" if words else f"{spelled} function")
         if char == "B":
-            # A tuple: `B <Number> <Type>...`, which the reference names rather than
-            # spelling as a bare parenthesised list -- `Tuple!(char, char)`, because that
-            # is the type D source would write.
+            # `B <Number> <Type>...`, spelled `Tuple!(char, char)`.
             reader.pos += 1
             count = reader.number()
             return self._cap(f"Tuple!({', '.join(self.type_() for _ in range(count))})")
@@ -1506,22 +1198,13 @@ class _Parser:
             self._backref_inside_lname = True
             raise DemangleFailure("type back reference targets inside an identifier")
         if at >= self._last_backref:
-            # Reached from inside the resolution of a back reference that stands at or
-            # before this one: the chain has turned round. See `_last_backref`.
+            # The chain has turned round; see `_last_backref`.
             raise DemangleFailure("a type back reference read from inside its own target")
         self._follows -= 1
         if self._follows < 0:
             raise _Exhausted
-        # What a target reads as depends on the bound in force *while it is read*, which
-        # is the one installed below -- this `Q`'s own position -- and not the one that
-        # was in force on the way in. Keyed on the latter, two references to one target
-        # from two places shared an entry and the second was served the first's reading:
-        # in the `emplaceInitializer` mutant of `tools/mutate.py --seed 69` the `Q` at
-        # 122 reads position 49 under a bound that refuses the scope's own function type,
-        # stores the short form, and the `Q` at 143 -- which has no such restriction and
-        # which `c++filt` reads whole -- was handed it. The key costs a little sharing:
-        # only the same `Q` resolved again hits, which is still every repeat the memo
-        # exists to stop.
+        # Keyed on this `Q`'s position: the bound it installs changes the reading, so two
+        # references to one target cannot share.
         key = (target, "type", self._in_symbol_argument, at)
         found = self._resolved.get(key)
         if found is not None:
@@ -1544,14 +1227,11 @@ class _Parser:
         self._resolved[key] = (resolved,)
         return resolved
 
-    # -- what follows the path -------------------------------------------------
-
     def trailing_type(self):
         """The declared thing's own type, spelled the way the reference spells it."""
         reader = self.reader
         if reader.pos >= reader.end:
-            # `_D QualifiedName Type` -- the type is not optional. A bare path is not a
-            # mangled name, and the reference refuses `_D1a` rather than answering `a`.
+            # `_D QualifiedName Type`: the reference refuses `_D1a`.
             raise DemangleFailure("no type after the qualified name")
         if reader.eat("Z"):
             return ""
@@ -1561,31 +1241,19 @@ class _Parser:
             modifiers = self.this_modifiers()
         char = reader.peek()
         if has_this and char not in CALLING_CONVENTIONS:
-            # `M` is the `this` parameter of a member function, so a function type has
-            # to follow it. `dlang_parse_mangle` sets `is_function` on seeing it and
-            # calls `dlang_function_type`, which fails without a calling convention.
-            # Reading a plain type instead dropped the `M`, the modifiers and the type,
-            # so `_D4test3fooMf` came back as `test.foo` -- a variable, from a symbol
-            # that says it is a member function.
+            # `M` is a member function's `this`: a function type must follow.
             raise DemangleFailure("a `this` parameter with no function type after it")
         if char in CALLING_CONVENTIONS:
             _, attributes, parameters, _ = self.function_type(returns=False)
-            # `_D QualifiedName Z` -- and the last component of the path may carry a
-            # parameter list of its own, so a function's `Z` can be followed by the
-            # artificial symbol's `Z` rather than a return type. `dlang_parse_qualified`
-            # reads the parameters, `dlang_parse_mangle` takes the `Z`, and c++filt
-            # spells `_D4main3fooFZZ` as `main.foo()`. Reading a return type there
-            # refused it. The return type itself is never printed, only consumed.
+            # A function's `Z` may be followed by the artificial symbol's: `_D4main3fooFZZ`
+            # is `main.foo()`. The return type is consumed, not printed.
             if not reader.eat("Z"):
                 self.type_()
             self._trailing_had_attributes = bool(attributes)
             spelled = f"({', '.join(parameters)})"
             trailing = " ".join(modifiers)
             return f"{spelled} {trailing}" if trailing else spelled
-        # A variable rather than a function. The reference prints only its path, but the
-        # type still has to be consumed: leaving it made every such symbol fail the
-        # "everything was read" check that stops a partial parse being reported as a
-        # whole one.
+        # A variable: only the path is printed, but the type must be consumed.
         self.type_()
         return ""
 

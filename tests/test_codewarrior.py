@@ -25,9 +25,7 @@ from demangle.schemes.codewarrior._parser import DemangleFailure, demangle_codew
 from .conftest import CONFORMANCE
 from .test_conformance import CODEWARRIOR_EXACT, CODEWARRIOR_TOTAL
 
-#: How many of the vectors auto-detection routes here and reads exactly. The rest are
-#: names `gnuv2` also reads -- validly, and with its own spelling -- and it is offered
-#: first. Naming the language gives all of them.
+#: The rest are names `gnuv2` also validly reads and is offered first.
 AUTODETECTED_EXACT = 36
 
 
@@ -84,7 +82,6 @@ class TestAgainstTheReferencesOwnVectors:
             ("__dt__6CActorFv", "CActor::~CActor()"),
             # A template argument list written literally into the symbol.
             ("destroy<PUi>__4rstlFPUiPUi", "rstl::destroy<unsigned int*>(unsigned int*, unsigned int*)"),
-            # An operator.
             ("__pl__FRC9CRelAngleRC9CRelAngle", "operator+(const CRelAngle&, const CRelAngle&)"),
             # A pointer to member, with the two hidden parameters that say it is const.
             (
@@ -145,6 +142,16 @@ class TestWhatItRefusesToClaim:
             assert not codewarrior.detect(name), name
             assert demangle.demangle(name) == name
 
+    def test_a_name_another_scheme_refused_is_not_claimed(self):
+        for name in (
+            "_RINvNtCsicaZO8UCM9y_3std2rt10lang_startuECsipD1KD37Gle__6consts",
+            "__RNvCs1Y7DaGC1cwg_7ustc__6consts",
+            "_ZN3foo__6consts",
+        ):
+            assert not codewarrior.detect(name), name
+            assert demangle.demangle(name) == name
+        assert codewarrior.detect("__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>")
+
     def test_no_name_from_any_other_scheme_s_corpus_is_read_as_this_one(self):
         """Over every checked-in corpus but the two pre-Itanium ones: none taken."""
         claimed = []
@@ -164,14 +171,39 @@ class TestWhatItRefusesToClaim:
         assert claimed == []
 
 
+class TestTheSecondSeparatorScreen:
+    """A special name (`__dt__6CActorFv`) has a `__` of its own, so `detect` turns a name
+    that opens `__` and has no second one away without parsing it -- `__libc_start_main`
+    and the rest of a C library's reserved names, which are most of what a real symbol
+    table offers this scheme. The parse would refuse every one of them anyway."""
+
+    def _turned_away(self, name):
+        return name[:2] == "__" and name.find("__", 2) < 0 and name[2:4] != "op"
+
+    def test_every_name_it_turns_away_is_one_the_parse_refuses(self):
+        names = [row[0] for row in vectors()]
+        names += [f"__{row[0]}" for row in vectors()] + [f"__{row[0].replace('__', '_')}" for row in vectors()]
+        names += ["__libc_start_main", "__cxa_atexit", "__stack_chk_fail", "__x", "___x", "__opx", "__o"]
+        turned_away = [name for name in names if self._turned_away(name)]
+        assert len(turned_away) > 40
+        for name in turned_away:
+            with pytest.raises(DemangleFailure):
+                demangle_codewarrior(name)
+            assert not codewarrior.detect(name), name
+
+    def test_special_names_still_read(self):
+        assert codewarrior.detect("__dt__6CActorFv")
+        assert codewarrior.detect("__RTTI__40TObjOwnerDerivedFromIObj<12CStringTable>")
+        assert not codewarrior.detect("__libc_start_main")
+
+
 class TestASpellingThatCannotBeADeclaration:
     """`void` among other parameters, which no declaration contains.
 
     The same bar `gnuv2` holds a reading to, and the same reason: these two grammars read
     the same run of type letters out of the same C names. `f__Fcsv` is `char, short,
     void` to both of them, and `void` is a parameter list only when it is the whole of
-    it. Found while closing the `gnuv2` half -- with that one fixed, this scheme picked
-    the name up instead.
+    it.
     """
 
     def test_void_among_others_is_refused(self):
@@ -183,17 +215,16 @@ class TestASpellingThatCannotBeADeclaration:
         assert demangle.demangle("__ct__3FooFv") == "Foo::Foo()"
 
     def test_nothing_follows_an_ellipsis(self):
-        """`...` ends the list. With `gnuv2` refusing `foo__Fex`, this scheme picked it
-        up instead, as `foo(..., long long)`."""
+        """`...` ends the list, so `foo__Fex` is not `foo(..., long long)`."""
         for name in ("foo__Fex", "foo__Fei"):
             assert not codewarrior.detect(name), name
             assert demangle.demangle(name) == name
         assert demangle.demangle("foo__Fie", language="codewarrior") == "foo(int, ...)"
 
     def test_a_qualified_name_in_the_names_own_seat_is_read_or_refused_not_echoed(self):
-        """`Q23foo3bar__Fv` is `foo::bar()`; it came back as a function called
-        `Q23foo3bar`. A count with too few names behind it is refused, and so is the
-        `Q2_` spelling, which this compiler never wrote."""
+        """`Q23foo3bar__Fv` is `foo::bar()`, not a function called `Q23foo3bar`. A count
+        with too few names behind it is refused, and so is the `Q2_` spelling, which this
+        compiler never wrote."""
         assert demangle.demangle("Q23foo3bar__Fv", language="codewarrior") == "foo::bar()"
         for name in ("Q23foo__Fv", "Q2_3foo3bar__Fv"):
             assert demangle.demangle(name, language="codewarrior") == name

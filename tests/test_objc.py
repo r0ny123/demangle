@@ -1,8 +1,8 @@
 """Objective-C symbol names.
 
 The corpus in `test_conformance.py` pins the spellings. What is pinned here is each rule
-that had to be *found* -- in clang's own sources, or by compiling Objective-C and reading
-what came out -- rather than assumed, plus the two places the mangling loses information.
+taken from clang's own sources or from compiled Objective-C, plus the two places the
+mangling loses information.
 """
 
 import pathlib
@@ -10,6 +10,7 @@ import pathlib
 import pytest
 
 import demangle
+from demangle.core import registry
 from demangle.schemes.objc import gnu_method_readings, mangle_gnu_method, parse_objc_symbol
 from demangle.schemes.objc._parser import DemangleFailure, decode_type_encoding
 from demangle.schemes.objc.nodes import Symbol
@@ -212,8 +213,8 @@ class TestRegisteredAsALanguage:
         assert demangle.demangle("_i_NSString__length", language="objective-c") == "-[NSString length]"
 
     def test_the_block_labels_are_claimed_unasked(self):
-        """`parse` read these; the detector's screen never mentioned them, so
-        auto-detection handed back unchanged what `language="objc"` read."""
+        """`parse` reads these and the detector's screen admits them, so auto-detection
+        answers what `language="objc"` answers."""
         assert demangle.demangle("__block_literal_global") == "global block literal"
         assert demangle.demangle("__block_descriptor_32_e5_v8?0l8") == "block descriptor"
 
@@ -256,11 +257,9 @@ class TestTree:
 class TestTheMethodShapeScreen:
     """`_i_`/`_c_` after every strip `_candidates` makes, computed without the list.
 
-    `detect` is offered every symbol in a binary, and asking the question by building
-    the candidate list and running a generator over it was two thirds of what it cost:
-    1.13us a name over the shipped libstdc++, against 0.43 for the same predicate
-    written out. These pin that it *is* the same predicate -- the strips are one or two
-    characters off the front, and each of them is a case here.
+    `detect` is offered every symbol in a binary, so the question is answered without
+    building the candidate list. These pin that it *is* the same predicate -- the strips
+    are one or two characters off the front, and each of them is a case here.
     """
 
     @pytest.mark.parametrize(
@@ -288,3 +287,19 @@ class TestTheMethodShapeScreen:
         assert _method_prefixed(name) is expected
         listed = any(candidate.startswith(("_i_", "_c_")) for candidate in _candidates(name)) if name else False
         assert listed is expected
+
+    def test_the_registry_s_openings_are_every_prefix_the_screen_accepts(self):
+        """`DETECT_SCREEN` spells `_method_prefixed` as openings the registry can test
+        without importing this scheme; a name it accepts must start with one of them."""
+        from demangle.schemes.objc import DETECT_SCREEN
+        from demangle.schemes.objc._parser import _method_prefixed
+
+        openings = DETECT_SCREEN[1]
+        heads = ["", "_", "__", ".", "._", ".__", "l_", "L_", "l__", "x", "l", "L"]
+        names = [f"{head}{body}" for head in heads for body in ("_i_A_b", "_c_A_b", "i_A_b", "_x_A")]
+        for name in names:
+            if _method_prefixed(name):
+                assert name.startswith(openings), name
+        assert demangle.detect("-[NSString length]") == "objc"
+        assert registry.candidates("_memcpy") == registry.candidates("_ZN1f")
+        assert "objc" not in [plugin.name for plugin in registry.candidates("_memcpy")]

@@ -46,9 +46,12 @@ __all__ = [
     "unescape_path",
 ]
 
-#: Prefixes the linker gives its own generated symbols. `go:` and `type:` are current;
-#: `go.` and `type.` are what Go wrote before 1.20 and still appear in older binaries.
 GENERATED_PREFIXES = ("go:", "type:", "go.", "type.")
+"""Prefixes the linker gives its own generated symbols.
+
+`go:` and `type:` are current; `go.` and `type.` are what Go wrote before 1.20 and still
+appear in older binaries.
+"""
 
 _HEX = "0123456789abcdefABCDEF"
 
@@ -93,8 +96,7 @@ def unescape_path(prefix):
             out.append(raw[index])
             index += 1
             continue
-        # Go's own bound: `if i+2 >= len(s)` is the error case, so two hex digits must
-        # both be present.
+        # Go's own bound: `if i+2 >= len(s)` is the error case.
         if index + 2 >= len(raw):
             raise ValueError("escape sequence must contain two hex digits")
         digits = raw[index + 1 : index + 3].decode("ascii", "replace")
@@ -226,10 +228,8 @@ def parse_go_symbol(symbol):
             break
 
     if generated:
-        # What follows the prefix is the linker's own text -- a type string, a pair of
-        # them, an object's name -- and not a package-qualified declaration. It is not
-        # split: `type:.eq.[2]string` has no package, and reading its leading `.` as
-        # the separator dropped the dot. Its escapes are decoded where they stand.
+        # The linker's own text (`type:.eq.[2]string`), not a package-qualified
+        # declaration: not split, escapes decoded in place.
         package, rest = "", body
     else:
         _, dot = _package_boundary(body)
@@ -247,14 +247,8 @@ def parse_go_symbol(symbol):
     except ValueError as error:
         raise ParseError(symbol, None, str(error)) from error
     if not _is_text(package) or not _is_text(name):
-        # `unescape_path` is a faithful port of `PrefixToPath`, which works on bytes and
-        # is content to hand back whatever the escapes decoded to. This package returns
-        # `str`, so a decoding that is not valid UTF-8 arrives as lone surrogates -- a
-        # string Python will not encode, so a caller writing the result to a file, a
-        # socket or JSON gets a `UnicodeEncodeError` out of a function documented never
-        # to raise. `PathToPrefix` only ever produces this from a path that was not text
-        # to begin with, which the module system does not permit, so refusing costs
-        # nothing real and the name comes back unchanged instead.
+        # `PrefixToPath` works on bytes; a decoding that is not UTF-8 would come back as
+        # lone surrogates Python cannot encode. No valid module path produces one.
         raise ParseError(symbol, None, "package path does not decode to text")
 
     receiver, pointer, generic = None, False, None

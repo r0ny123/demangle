@@ -36,8 +36,8 @@ def imports_of(path):
     Relative imports are resolved against the file's own package, so
     `from ..msvc import x` inside `schemes/rust/` comes back as
     `demangle.schemes.msvc` and can be compared on path segments. Comparing the raw
-    `"..msvc"` on substrings let the most obvious cross-scheme import -- a top-level
-    one -- walk straight through the rule meant to forbid it.
+    `"..msvc"` on substrings would let the most obvious cross-scheme import -- a
+    top-level one -- walk straight through the rule meant to forbid it.
 
     A `from` import also records the name behind the `import`, so
     `from demangle.core import spelling` comes back as both `demangle.core` and
@@ -66,14 +66,11 @@ def corpus_names():
     """Every mangled name in every conformance corpus, whatever scheme wrote it."""
     import gzip
 
-    # Anchored on this file, not on `demangle.__file__`. Walking up from the package
-    # only reaches `tests/` when the package is an editable install pointing into this
-    # checkout; from an installed wheel or sdist it lands in site-packages, where there
-    # is no `tests/conformance` -- which is exactly how the suite failed when the CI job
-    # that installs the sdist and runs the shipped tests got round to this one.
+    # Anchored on this file, not `demangle.__file__`, which is in site-packages when the
+    # sdist's tests run against an installed package.
     conformance = Path(__file__).parent / "conformance"
     names = []
-    for path in sorted(conformance.iterdir()):
+    for path in sorted([*conformance.iterdir(), *(conformance / "reported").glob("*.txt")]):
         if path.suffix == ".gz":
             text = gzip.decompress(path.read_bytes()).decode("utf-8", "surrogateescape")
         elif path.suffix == ".txt":
@@ -88,45 +85,17 @@ def python_files(subdirectory):
     return sorted((SOURCE / subdirectory).rglob("*.py"))
 
 
-def _is_top_level_import(path, name):
-    """Whether `name` is imported at the top level of `path`.
-
-    `core/style.py` may name scheme option objects inside a function body, where
-    the import stays lazy and cycle-free. A top-level import there would be a real
-    layering inversion, so the rule checks those and excuses only the lazy ones.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    package = ["demangle", *path.relative_to(SOURCE).parts[:-1]]
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            if any(alias.name == name or name.startswith(alias.name + ".") for alias in node.names):
-                return True
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                base = package[: len(package) - node.level + 1]
-                module = ".".join([*base, node.module] if node.module else base)
-            else:
-                module = node.module or ""
-            candidates = [module, *(f"{module}.{a.name}" for a in node.names if a.name != "*")]
-            if name in candidates:
-                return True
-    return False
-
-
 class TestLayering:
     def test_core_never_imports_a_scheme(self):
         """`core` is the contract; a dependency on any scheme inverts the layering.
 
-        The one exception is `style`, which names the built-in option objects inside a
-        function body so the import stays lazy and cycle-free. Only a top-level import
-        there counts; anything deeper is the lazy form the layering allows.
+        `registry` and `style` name scheme modules by dotted path and import them on
+        first use, so neither has an import statement for one.
         """
         offenders = []
         for path in python_files("core"):
             for name in imports_of(path):
                 if "schemes" not in name:
-                    continue
-                if path.name == "style.py" and not _is_top_level_import(path, name):
                     continue
                 offenders.append(f"{path.name} imports {name}")
         assert offenders == []
@@ -216,8 +185,8 @@ class TestPluginContract:
             assert callable(plugin.parse)
             assert plugin.description, f"{plugin.name} has no description"
 
-    def test_detection_is_cheap_and_total(self):
-        """`detect` runs on every symbol a caller offers, mangled or not."""
+    def test_detection_is_total(self):
+        """`detect` runs on every symbol a caller is offered and never raises."""
         for plugin in available():
             for value in ["", "memcpy", "_Z1fv", "?f@@YAXH@Z", "\x00\xff"]:
                 assert isinstance(plugin.detect(value), bool)
@@ -319,12 +288,13 @@ class TestTheTreeSpellsWhatTheTextPathSpells:
     the two drift apart are cross-cutting -- a builder that forgets to distribute over a
     pack, a tree assembled from parsed fields rather than from the fragments.
 
-    It has caught three: a pack holding an empty pack (`core/ast.py`), a declarator over
-    an empty pack (`core/spelling.py`), and a Free Pascal program's `program variable `
-    lead, which the tree looked for under the unit's raw name and a program's unit is
-    spelled without its `P$`.
+    The shapes that pin it are a pack holding an empty pack (`core/ast.py`), a
+    declarator over an empty pack (`core/spelling.py`), and a Free Pascal program's
+    `program variable ` lead, which the tree must look for under the unit's spelled
+    name, since a program's unit is spelled without its `P$`.
     """
 
+    @pytest.mark.sweep
     def test_every_corpus_name_in_both_styles(self, subtests):
         names = corpus_names()
         assert len(names) > 50_000, "corpora did not load; this test would prove nothing"
@@ -350,17 +320,14 @@ class TestReadingAnAnswerAgainChangesNothing:
     library's promise is that a name it cannot read comes back unchanged, and a
     demangled answer is such a name.
 
-    It failed for 49 of the corpora's names, all of them Swift and all for one reason.
     A Swift type is spelled with `@` markers -- `@convention(block) (Swift.Int) ->
     Swift.UInt`, `@escaping @differentiable @callee_guaranteed (@unowned Swift.Float)` --
-    and `@` is the Delphi scheme's first character and its qualifier separator, so that
-    scheme claimed the answer and read the markers as scope: `escaping
-    ::differentiable ::callee_guaranteed (::unowned Swift.Float)`. The claim was never
-    about re-reading output alone -- `@feat.00` and `@comp.id` are in every COFF object
-    MSVC and clang-cl emit, and came back with the `@` taken off. Fixed by screening
-    `delphi.detect` on the alphabet Borland exports are actually made of; see there.
+    and `@` is the Delphi scheme's first character and its qualifier separator, so
+    `delphi.detect` screens on the alphabet Borland exports are made of. `@feat.00` and
+    `@comp.id`, in every COFF object MSVC and clang-cl emit, are left alone the same way.
     """
 
+    @pytest.mark.sweep
     def test_every_corpus_name_in_both_styles(self, subtests):
         names = corpus_names()
         assert len(names) > 50_000, "corpora did not load; this test would prove nothing"
@@ -382,8 +349,8 @@ class TestTheToolsAndTheSuiteAgree:
     `tools/differential.py` excuses a name from its corpus replay; `test_conformance.py`
     pins the same set for the suite. They are edited in different files for different
     reasons, and a name excused in one and not the other means one of the two has stopped
-    watching it -- which is how a deliberate shortfall came to be reported as a clean
-    100% by the tool while the suite was failing on it.
+    watching it -- so a deliberate shortfall could be reported as a clean 100% by
+    the tool while the suite fails on it.
     """
 
     @staticmethod
@@ -402,10 +369,6 @@ class TestTheToolsAndTheSuiteAgree:
         from . import test_conformance as pins
 
         tool = self.module("differential")
-        # The two sets are equal. `_Z16templateTemplate...S4_` was the one entry the tool
-        # carried and the suite did not -- excused against an older reference version
-        # rather than against a corpus -- and it is now a reference defect with the
-        # declaration as its expected column, which is checked rather than excused.
         assert set(pins.GNU_DIVERGENCES) == tool.KNOWN_DIVERGENCES
 
     def test_no_excused_name_is_also_a_reference_defect(self):

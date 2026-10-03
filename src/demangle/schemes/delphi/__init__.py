@@ -64,15 +64,12 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Borland/Embarcadero Delphi and C++Builder symbol mangling",
     aliases=("borland", "bcc", "c++builder", "embarcadero"),
-    # `@` is this scheme's own qualifier. MSVC 32-bit `__fastcall` C decoration is
-    # `@name@N` with a decimal byte count; detection refuses that shape rather than
-    # truncating at the first `@`.
+    # `detect` refuses MSVC 32-bit `__fastcall` `@name@N` rather than truncating it.
     first_characters="@",
-    # `priority` is ascending: *lower is offered first*. Before Swift, which also lists
-    # `@` (for `@__swiftmacro_`) but whose detect is a prefix test that Delphi names
-    # fail.
+    # Lower is offered first: before Swift, whose `@__swiftmacro_` prefix Delphi names fail.
     priority=35,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

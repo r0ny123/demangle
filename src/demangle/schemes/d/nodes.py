@@ -35,8 +35,7 @@ class _D(Node):
         return "".join(render(part) for part in self.parts)
 
     def spell(self, declarator="", style=None):
-        # Accepted to match `Node.spell` and ignored: D has no declarator position, and
-        # the output styles exist only where the two C++ references disagree.
+        # Accepted to match `Node.spell` and ignored: D has no declarator position.
         return rendered(self.render)
 
     def build(self, builder):

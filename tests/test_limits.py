@@ -1,11 +1,11 @@
 """Resource bounds, and the cache that must not outlive what it was keyed on.
 
 `SECURITY.md` promises that recursion depth, output length, substitution count and
-input length are all bounded, and that a caller can tighten any of them per call. It was
-a promise about the package that only some of the package kept: MSVC read a
-hundred-thousand-character name under `max_input=32` and then rejected it on output
-length a fifth of a second later, and Rust read one under `max_input=32` and answered.
-A bound checked after the work it was meant to prevent is a report, not a bound.
+input length are all bounded, and that a caller can tighten any of them per call. A
+bound checked after the work it was meant to prevent is a report, not a bound: an MSVC
+name of a hundred thousand characters under `max_input=32` must be refused at the
+input, not read and then rejected on output length a fifth of a second later, and a
+Rust one must not be answered.
 
 The tests here are written per *plugin* rather than per scheme name, so a scheme added
 later has to keep the promise too rather than quietly not being covered.
@@ -25,8 +25,7 @@ from demangle.schemes.itanium.options import GNU_OPTIONS
 
 from .conftest import load_corpus
 
-#: One real name per scheme, so the bound is tested against something the parser will
-#: actually get its teeth into rather than against a name it refuses immediately.
+#: One real name per scheme, so the bound is tested on a name the parser reads deeply.
 CORPUS_FOR = {
     "itanium": "itanium-real-world.txt",
     "msvc": "msvc-llvm-corpus.txt",
@@ -72,19 +71,14 @@ class TestEveryPluginHonoursTheInputBound:
         demangle.demangle_strict(longest, language=plugin, limits=roomy)
 
 
-#: A hostile name and a label for it. Hoisted out of the `parametrize` below so the label
-#: can be the test id: pytest builds an id from the parameters, and `PYTEST_CURRENT_TEST`
-#: carries it in the environment, where Windows refuses anything past 32,767 characters.
-#: One of these names is sixty thousand characters long, so the whole class failed to
-#: *collect* there -- on the platform whose demangler two of the cases are about.
+#: Labelled so the label is the test id: `PYTEST_CURRENT_TEST` carries the id in the
+#: environment, and Windows refuses values past 32,767 characters.
 HOSTILE_NAMES = [
-    # A GNU-runtime Objective-C method: the reading search was over pairs of
-    # underscore positions, and re-mangled the whole symbol for each pair.
+    # A GNU-runtime Objective-C method: readings search over pairs of underscores.
     ("objc method readings", "_i_" + "a_" * 800),
     # Rust v0 bound lifetimes: the count is a base-62 field, so each further
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
-    # MSVC: `max_input` was not consulted at all.
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
     # Itanium substitution reuse, which can double the output every few bytes.
     ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
@@ -101,11 +95,11 @@ HOSTILE_NAMES = [
 
 
 class TestBoundsAreEnforcedWhileWorking:
-    """A bound has to stop the work, not describe it afterwards.
+    """A bound stops the work rather than describing it afterwards.
 
-    Each of these was a denial of service. The numbers are wide on purpose -- this is a
-    test of asymptotics, not of one machine's speed -- but every case took seconds to
-    days before the fix and milliseconds after.
+    Each case is a denial-of-service shape and must be answered within the limit. The
+    numbers are wide on purpose -- this is a test of asymptotics, not of one machine's
+    speed.
     """
 
     @pytest.mark.parametrize(("name", "mangled"), HOSTILE_NAMES, ids=[label for label, _ in HOSTILE_NAMES])
@@ -117,12 +111,12 @@ class TestBoundsAreEnforcedWhileWorking:
         assert isinstance(result, str)
 
     def test_a_deeply_nested_msvc_name_reports_the_bound_it_hit(self):
-        """It used to say the name was unreadable, which is a different claim."""
+        """It says which bound was hit, not that the name is unreadable."""
         with pytest.raises(demangle.LimitExceeded):
             demangle.demangle_strict("?f@@YAX" + "PA" * 5000 + "H@Z")
 
     def test_an_msvc_symbol_nested_in_a_template_argument_keeps_the_callers_bound(self):
-        """The parser spun up for a nested symbol ran with the default limits, so a
+        """A parser spun up for a nested symbol must run with the caller's limits, or a
         tight `max_depth` could be dodged by putting the deep part in a template argument."""
         nested = "?g@@YAXPAPAPAPAPAPAH@Z"
         tight = Limits(max_depth=5)
@@ -133,13 +127,14 @@ class TestBoundsAreEnforcedWhileWorking:
         assert demangle.demangle_strict(f"??$f@H$1{nested}@@YAXXZ", language="msvc").startswith("void __cdecl f<")
 
     def test_an_msvc_md5_name_is_held_to_max_output(self):
-        """Every other path went through the length check; the hashed one just returned."""
+        """Every path goes through the length check, the hashed one included."""
         with pytest.raises(demangle.LimitExceeded):
             demangle.demangle_strict("??@" + "A" * 1000 + "@", language="msvc", limits=Limits(max_output=10))
 
     def test_an_msvc_array_with_a_thousand_extents_reports_the_bound_it_hit(self):
-        """`DOI@` is a count of 1000, and each extent nested without a depth check: a
-        `RecursionError`, swallowed into a `ParseError` that called the name unreadable."""
+        """`DOI@` is a count of 1000, and each extent nests, so it needs a depth check:
+        without one it is a `RecursionError`, swallowed into a `ParseError` that calls
+        the name unreadable."""
         with pytest.raises(demangle.LimitExceeded):
             demangle.demangle_strict("?arr@@3QAYDOI@" + "1" * 1000 + "HB", language="msvc")
 
@@ -147,7 +142,7 @@ class TestBoundsAreEnforcedWhileWorking:
 class TestNothingEverAnswersWithNothing:
     """`demangle()` returns the spelling or the name. The empty string is neither.
 
-    `_RCCC` returned `""`, which would have a tool label a function with a blank.
+    `_RCCC` must not return `""`, which would have a tool label a function with a blank.
     """
 
     @pytest.mark.parametrize(
@@ -170,7 +165,7 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
     NAME = "_ZNSt6vectorIiSaIiEE9push_backERKi"
 
     def test_two_styles_with_the_same_name_do_not_collide(self):
-        """The key held `style.name`, and a caller may pass a `Style` object instead."""
+        """The key is not `style.name` alone, because a caller may pass a `Style` object."""
         llvm_ish = Style(name="house", spelling_builder=SPELLING_BUILDER)
         gnu_ish = Style(
             name="house",
@@ -180,7 +175,8 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
         assert demangle.demangle(self.NAME, style=llvm_ish) != demangle.demangle(self.NAME, style=gnu_ish)
 
     def test_registering_a_style_invalidates_what_was_cached_under_it(self):
-        """Replacing `llvm` left every name demangled beforehand answering the old way."""
+        """Replacing `llvm` must not leave every name demangled beforehand answering the
+        old way."""
         before = demangle.demangle(self.NAME)
         replacement = Style(
             name="cache-probe",
@@ -199,8 +195,7 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
             assert demangle.demangle(self.NAME, style="cache-probe") != first
             assert demangle.demangle(self.NAME) == before
         finally:
-            # Taken back out, or `--list-styles` in a later test file sees it: this ran
-            # after `test_cli.py` in the default order and hid a missing cleanup.
+            # Taken back out, or `--list-styles` in a later test file sees it.
             from demangle.core.style import _STYLES
 
             if _STYLES is not None:
@@ -214,74 +209,130 @@ class TestTheCacheIsKeyedOnWhatChangesTheAnswer:
         assert demangle.demangle(self.NAME) != self.NAME
 
 
-class TestTheBoundReportedIsTheBoundInForce:
-    """A scheme may narrow the caller's limit; the report has to name what stopped it.
+def _on_a_deep_stack(work):
+    """Run `work` where the interpreter's stack is not the binding bound.
 
-    MSVC's parser holds a ceiling of its own -- `min(limits.max_depth, MAX_DEPTH)`, with
-    `MAX_DEPTH` 64 -- so that a level costing several interpreter frames can never make
-    the answer depend on how deep the caller's own stack already was. The error read the
-    *caller's* figure back out of `limits`, so a parse that stopped at 64 announced
-    "exceeded recursion depth limit of 200000": a number never in force, pointing at a
-    limit already far above the ceiling that would change nothing if raised.
+    A level of nesting costs several frames, so at CPython's default recursion limit
+    the stack may give out before `max_depth` does, and by how much depends on how deep
+    the caller already was. Raising it makes `max_depth` the bound a test observes.
     """
+    import sys
+    import threading
 
-    NAME = "?f@@YAX" + "PA" * 100 + "H@Z"
-
-    def _bound_reported(self, asked):
-        limits = replace(demangle.RELAXED_LIMITS, max_depth=asked)
-        with pytest.raises(demangle.LimitExceeded) as caught:
-            demangle.demangle_strict(self.NAME, limits=limits)
-        return caught.value.limit_value
-
-    @pytest.mark.parametrize("asked", [8, 16, 64])
-    def test_a_caller_tightening_below_the_ceiling_is_told_its_own_figure(self, asked):
-        assert self._bound_reported(asked) == asked
-
-    @pytest.mark.parametrize("asked", [2048, 200_000])
-    def test_a_caller_asking_past_the_ceiling_is_told_the_ceiling(self, asked):
-        from demangle.schemes.msvc._parser import _Demangler
-
-        assert self._bound_reported(asked) == _Demangler.MAX_DEPTH
-
-    def test_the_depth_counter_is_what_stops_it_rather_than_the_interpreter(self):
-        # The point of the ceiling: with a stack far deeper than CPython's default, the
-        # bound still fires at the same place, so the answer does not depend on the
-        # caller's stack. A converted RecursionError could not hold this.
-        import sys
-        import threading
-
-        seen = []
-
-        def run():
-            sys.setrecursionlimit(200_000)
-            seen.append(self._bound_reported(200_000))
-
-        thread = threading.Thread(target=run)
+    seen = []
+    previous_limit = sys.getrecursionlimit()
+    previous_size = threading.stack_size(128 << 20)
+    try:
+        sys.setrecursionlimit(100_000)
+        thread = threading.Thread(target=lambda: seen.append(work()))
         thread.start()
         thread.join()
-        from demangle.schemes.msvc._parser import _Demangler
+    finally:
+        threading.stack_size(previous_size)
+        sys.setrecursionlimit(previous_limit)
+    assert len(seen) == 1, "the work raised"
+    return seen[0]
 
-        assert seen == [_Demangler.MAX_DEPTH]
+
+class TestMsvcNestingFollowsMaxDepth:
+    """MSVC reads as deep as `max_depth` says, as Itanium does.
+
+    A private ceiling of 64 under the caller's bound would stop `RELAXED_LIMITS` reading
+    a name one level deeper than `DEFAULT_LIMITS`, and a caller who raised the bound
+    would be told a figure it had not set. When the interpreter's stack gives out first
+    the name is refused the same way, as the bound in force.
+    """
+
+    DEFAULT = demangle.DEFAULT_LIMITS.max_depth
+
+    @staticmethod
+    def pointers(levels):
+        return "?f@@YAX" + "PA" * levels + "H@Z"
+
+    def _bound_reported(self, mangled, limits):
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="msvc", limits=limits)
+        return caught.value.limit_value
+
+    def test_nesting_just_under_the_default_is_read(self):
+        # `f` and the pointee take the level the last pointer would need.
+        spelled = _on_a_deep_stack(lambda: demangle.demangle_strict(self.pointers(self.DEFAULT - 1)))
+        assert spelled.endswith("int " + "*" * (self.DEFAULT - 1) + ")")
+
+    def test_nesting_just_over_the_default_is_refused_as_the_default(self):
+        assert _on_a_deep_stack(lambda: self._bound_reported(self.pointers(self.DEFAULT), demangle.DEFAULT_LIMITS)) == (
+            self.DEFAULT
+        )
+        assert demangle.demangle(self.pointers(self.DEFAULT)) == self.pointers(self.DEFAULT)
+
+    def test_a_name_past_the_default_reads_under_relaxed_limits(self):
+        deep = self.pointers(300)
+
+        def both():
+            return (
+                self._bound_reported(deep, demangle.DEFAULT_LIMITS),
+                demangle.demangle_strict(deep, limits=demangle.RELAXED_LIMITS),
+            )
+
+        refused, spelled = _on_a_deep_stack(both)
+        assert refused == self.DEFAULT
+        assert spelled.endswith("int " + "*" * 300 + ")")
+
+    @pytest.mark.parametrize("asked", [8, 16, 64, 2048])
+    def test_a_caller_is_told_its_own_figure(self, asked):
+        mangled = self.pointers(asked + 10)
+        limits = replace(demangle.RELAXED_LIMITS, max_depth=asked)
+        assert _on_a_deep_stack(lambda: self._bound_reported(mangled, limits)) == asked
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "?f@@YAX" + "PA" * 4000 + "H@Z",
+            "?f@@YAX" + "P6AX" * 4000 + "H" + "@Z" * 4000 + "@Z",
+            "?f@@YAX" + "V?$A@" * 4000 + "H" + "@@" * 4000 + "@Z",
+            # nested symbols and local scopes recurse through names, never through a type
+            "??$f@$1" * 4000 + "?x@@3HA" + "@@YAXXZ" * 4000,
+            "?g@?1?" * 4000 + "?f@@YAXXZ" + "@YAXXZ" * 4000,
+        ],
+        ids=["pointer", "function-pointer", "template", "address-argument", "local-scope"],
+    )
+    def test_nesting_past_the_interpreters_stack_is_refused_cleanly(self, mangled):
+        """At the default recursion limit these outrun the stack well before 2048 levels."""
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
+        assert caught.value.limit_name == "recursion depth"
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.parse(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
+        assert demangle.demangle(mangled, limits=demangle.RELAXED_LIMITS) == mangled
+
+    def test_a_type_past_the_interpreters_stack_is_refused_cleanly(self):
+        encoding = "PA" * 4000 + "H"
+        for mangled, call in ((encoding, demangle.demangle_type), ("." + encoding, demangle.demangle_strict)):
+            with pytest.raises(demangle.LimitExceeded):
+                call(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
 
 
 class TestDepthExhaustionIsReportedAsABound:
     """Two ceilings govern nesting, and both mean the same thing about the name.
 
-    `max_depth` is one. The interpreter's own recursion limit is the other, and it is
-    the lower of the two in practice -- a production costs several Python frames, so at
-    the default limit an Itanium name gives out around 141 levels of nested template,
-    well under the default `max_depth` of 256. Which binds first depends on the shape of
-    the name and on how deep the caller's stack already was.
+    `max_depth` is one. The interpreter's own recursion limit is the other. At
+    `DEFAULT_LIMITS` `max_depth` binds first: an Itanium name of nested templates is
+    refused at 128 levels, each costing two of the 256. The interpreter's limit binds
+    only when `max_depth` is raised past what the stack can hold -- a production costs
+    several Python frames, so at CPython's default recursion limit the same name gives
+    out around 141 levels under `RELAXED_LIMITS`, whose `max_depth` of 2048 would allow
+    1024. Which binds depends on the shape of the name and on how deep the caller's
+    stack already was.
 
-    One used to arrive as `LimitExceeded` and the other as
+    Both arrive as `LimitExceeded`, not one of them as
     `ParseError: itanium parser failed: RecursionError(...)`, which reads as a defect in
     the parser rather than a bound doing its job.
 
     The nesting below is deeper than the *limit in force*, and that matters rather than
-    being belt and braces. These names were 400 deep, which is under `RELAXED_LIMITS`'
-    `max_depth` of 2048, so on CPython the only thing stopping them was the interpreter's
-    stack -- and on PyPy, whose stack is far deeper, nothing stopped them at all and the
-    names parsed. Deriving the count from `max_depth` tests the bound this asserts the
+    being belt and braces. A name 400 deep is under `RELAXED_LIMITS`' `max_depth` of
+    2048, so on CPython the only thing stopping it would be the interpreter's stack --
+    and on PyPy, whose stack is far deeper, nothing would stop it at all and the name
+    would parse. Deriving the count from `max_depth` tests the bound this asserts the
     existence of, on any interpreter, and cannot drift if the limit is retuned.
     """
 
@@ -293,12 +344,7 @@ class TestDepthExhaustionIsReportedAsABound:
         "mangled",
         [
             "_Z1f" + "1XI" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
-            # An expression nested inside an expression, which is what `ng` is -- not a
-            # `decltype` nested inside a `decltype`, which was here before and which
-            # neither reference reads: `_Z1fDTDTfp_EEv` is handed back by `c++filt` 2.42
-            # and `llvm-cxxfilt` 18.1 alike. It parsed here only through a catch-all in
-            # `_expression` that read whatever could open a `<type>` as one, and it went
-            # with that. `-(-(-fp))` is the same shape and is read the same way by both.
+            # `-(-(-fp))`: nested expressions both references read (unlike nested `DT`).
             "_Z1fDT" + "ng" * DEEPER_THAN_THE_LIMIT + "fp_" + "Ev",
             "_Z1f" + "PF" * DEEPER_THAN_THE_LIMIT + "i" + "E" * DEEPER_THAN_THE_LIMIT,
             "?f@@YAX" + "PA" * DEEPER_THAN_THE_LIMIT + "H@Z",
@@ -309,10 +355,8 @@ class TestDepthExhaustionIsReportedAsABound:
             demangle.demangle_strict(mangled, limits=demangle.RELAXED_LIMITS)
 
     def test_and_demangle_still_answers(self):
-        # 400 rather than the count above, and correctly: this one runs under the
-        # *default* limits, whose `max_depth` of 256 the counter reaches well before
-        # here. What it asserts is that the bound comes back as the name unchanged
-        # rather than as an exception, which is `demangle()`'s promise.
+        # 400 is past the *default* `max_depth` of 256; the bound must come back as the
+        # name unchanged, not as an exception.
         deep = "_Z1f" + "1XI" * 400 + "i" + "E" * 400
         assert demangle.demangle(deep) == deep
 
@@ -321,15 +365,16 @@ class TestALimitRefusesRatherThanTruncates:
     """A bound must end the reading, not hand the name to a laxer scheme.
 
     `demangle()` tries the schemes that claim a name in priority order and moves on when
-    one fails. A `LimitExceeded` was being treated as one of those failures, and it is a
-    different statement: the scheme *did* claim the name and then ran out of the budget
-    the caller set. Offering the same text on is how an Itanium name that spends more
-    substitutions than a tightened budget allows came back as a declaration built by the
+    one fails. A `LimitExceeded` is not one of those failures, and it is a different
+    statement: the scheme *did* claim the name and then ran out of the budget the caller
+    set. Offering the same text on is how an Itanium name that spends more substitutions
+    than a tightened budget allows would come back as a declaration built by the
     pre-Itanium scheme out of the mangling itself.
 
-    Nine corpus names did this, found by tightening each bound in turn over all 77,749 of
-    them and asking which came back *different* rather than refused. A caller who lowers
-    a limit is defending against hostile input, which is the last place to start guessing.
+    Nine corpus names would do this: tighten each bound in turn over the libstdc++ and
+    libiberty pre-Itanium corpora and ask which come back *different* rather than
+    refused. A caller who lowers a limit is defending against hostile input, which is
+    the last place to start guessing.
     """
 
     #: An Itanium name whose trailing `__i` the pre-Itanium schemes will read as a
@@ -342,8 +387,7 @@ class TestALimitRefusesRatherThanTruncates:
     def test_the_name_comes_back_whole_rather_than_read_by_another_scheme(self):
         tight = replace(demangle.RELAXED_LIMITS, max_substitutions=2)
         assert demangle.demangle(self.OVERSPENT, limits=tight) == self.OVERSPENT
-        # What the scheme it used to fall through to says about the same text, so the
-        # test fails if that reading ever becomes the answer again.
+        # The pre-Itanium misreading, which must never become the answer.
         assert demangle.demangle(self.OVERSPENT, language="gnuv2") == "_ZN11Expressions2f2ILi1EEEvPApsT(int)"
 
     @pytest.mark.parametrize("entry", ["demangle_strict", "parse"])
@@ -359,10 +403,10 @@ class TestALimitRefusesRatherThanTruncates:
 
     @pytest.mark.parametrize(("field", "value"), [("max_depth", 4), ("max_output", 8)])
     def test_a_type_descriptor_reports_the_bound_as_one(self, field, value):
-        """The descriptor branch sat in front of the translation and leaked `_LimitHit`.
+        """The descriptor branch must not leak `_LimitHit`.
 
-        `api` wrapped it in the arm meant for a plugin with a defect, so a caller who
-        lowered a bound was told `msvc parser failed: _LimitHit('recursion depth')` --
+        Wrapped by `api` in the arm meant for a plugin with a defect, it would tell a
+        caller who lowered a bound `msvc parser failed: _LimitHit('recursion depth')` --
         the wrong type, and a message accusing this library of a bug for doing what was
         asked.
         """
@@ -373,8 +417,9 @@ class TestALimitRefusesRatherThanTruncates:
             "class std::vector<int, class std::allocator<int>> `RTTI Type Descriptor Name'"
         )
 
+    @pytest.mark.sweep
     def test_no_corpus_name_answers_differently_under_a_tighter_bound(self, subtests):
-        """The property the nine were found by, over a sample of every corpus."""
+        """The property that finds them, over the libstdc++ and pre-Itanium corpora."""
         names = [
             mangled for corpus in ("itanium-libstdcxx.txt", "gnuv2-libiberty.txt") for mangled, _ in load_corpus(corpus)
         ]

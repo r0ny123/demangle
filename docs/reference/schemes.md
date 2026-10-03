@@ -1,125 +1,191 @@
 # Schemes
 
-Each mangling scheme is a plugin. `core` never imports one and they never import each
-other, so any of them can be developed, replaced or shipped separately -- see
-[Adding a scheme](../adding-a-scheme.md).
+Each mangling scheme is a plugin, so any of them can be developed, replaced or shipped
+separately -- see [Adding a scheme](../adding-a-scheme.md) and
+[Architecture](../ARCHITECTURE.md).
+
+Each section renders what the scheme's package exports, then the modules behind it: its
+options, its node kinds and, where it is worth reading, its parser. Each object appears
+once, with the module that says most about it -- an options class with its options.
 
 ## Itanium C++ ABI
 
-GCC, Clang, and essentially every C++ toolchain outside the Microsoft ecosystem.
-
 ::: demangle.schemes.itanium
+    options:
+      members:
+        - PLUGIN
+        - detect
+        - parse
+        - parse_type
+        - ItaniumParser
 
 ### Options
 
 ::: demangle.schemes.itanium.options
+    options:
+      heading_level: 3
 
 ### Substitutions
 
-Back-reference numbering is implicit in the encoding, so one wrong entry silently
-corrupts every later reference in a name. It lives in its own module for that reason.
-
 ::: demangle.schemes.itanium.substitutions
+    options:
+      heading_level: 3
 
 ### Parser
 
 ::: demangle.schemes.itanium.parser
     options:
-      members:
-        - ItaniumParser
-        - detect
-        - parse
+      heading_level: 3
+      members: false
 
 ## Microsoft Visual C++
 
 ::: demangle.schemes.msvc
+    options:
+      members:
+        - PLUGIN
+        - detect
+        - parse
+        - parse_type
+
+### Options
+
+::: demangle.schemes.msvc.options
+    options:
+      heading_level: 3
 
 ### Nodes
 
-MSVC's declarator spelling is its own -- calling conventions sit inside the parentheses,
-and the spacing rules differ -- so it supplies its own node kinds and renderer rather
-than reusing the shared C-family one.
-
 ::: demangle.schemes.msvc.nodes
     options:
+      heading_level: 3
       members:
         - Indirection
         - FunctionType
         - Declaration
         - render
+        - spelled_after
+        - prefixed
+        - merge_qualifiers
+        - ordered_qualifiers
+        - apply_qualifiers
+        - is_member_function_pointer
+        - qualify_declared
 
 ## Rust
 
 ::: demangle.schemes.rust
 
+### Options
+
+::: demangle.schemes.rust.options
+    options:
+      heading_level: 3
+
+### Nodes
+
+::: demangle.schemes.rust.nodes
+    options:
+      heading_level: 3
+
 ## Swift
 
-The largest grammar here by a wide margin. The mangling is postfix and compresses against
-three tables that span a whole name, so the demangler is a stack machine rather than
-recursive descent; and how a node is *spelled* depends on where it sits, so the printer
-is a separate pass.
-
 ::: demangle.schemes.swift
+    options:
+      members:
+        - PLUGIN
+        - detect
+        - parse
+        - parse_type
+        - demangle_symbol
+        - demangle_type
+        - demangle_old_symbol
+        - print_root
+        - demangle_symbolic
+        - typerefs
+        - SymbolicReference
+        - scan
+        - end_of_name
+        - Image
+        - elf_image
+        - macho_image
+        - ContextResolver
+
+### Options
+
+::: demangle.schemes.swift.options
+    options:
+      heading_level: 3
 
 ### Demangler
 
 ::: demangle.schemes.swift._demangler
     options:
+      show_root_heading: false
+      heading_level: 4
       members:
         - Demangler
-        - demangle_symbol
 
 ### The Swift 3 mangling
 
-A different grammar, still what the ObjC runtime holds for a Swift class.
-
 ::: demangle.schemes.swift._old_demangler
     options:
+      show_root_heading: false
+      heading_level: 4
       members:
         - OldDemangler
-        - demangle_old_symbol
 
 ### Printer
 
 ::: demangle.schemes.swift._printer
     options:
+      show_root_heading: false
+      heading_level: 4
       members:
         - Printer
-        - print_root
 
 ### Symbolic references
 
-A mangled name in a Swift binary's *metadata* is not always self-contained: where it
-would have to spell a type the image already describes, the compiler writes a one-byte
-marker and a four-byte offset instead. Reading one needs the image, which is why it is a
-separate entry point rather than something `demangle()` could do.
-
 ::: demangle.schemes.swift.symbolic
     options:
+      heading_level: 3
       members:
-        - SymbolicReference
         - read
-        - scan
-        - end_of_name
         - names
 
 ### Resolving one
 
 ::: demangle.schemes.swift.resolve
     options:
+      heading_level: 3
       members:
-        - Image
-        - elf_image
-        - macho_image
-        - ContextResolver
+        - MalformedImage
+
+### Nodes
+
+::: demangle.schemes.swift.nodes
+    options:
+      heading_level: 3
 
 ## D
 
 ::: demangle.schemes.d
 
+### Nodes
+
+::: demangle.schemes.d.nodes
+    options:
+      heading_level: 3
+
 ## Go
 
 ::: demangle.schemes.go
+
+### Nodes
+
+::: demangle.schemes.go.nodes
+    options:
+      heading_level: 3
 
 ## Nim
 
@@ -127,18 +193,21 @@ separate entry point rather than something `demangle()` could do.
 
 ### Parser
 
-The mangling is not injective, and both places it loses information are documented here
-alongside what the decoder does about them.
-
 ::: demangle.schemes.nim._parser
     options:
+      show_root_heading: false
+      heading_level: 4
       members:
         - mangle
         - unmangle
         - mangle_module
         - unmangle_module
-        - parse_nim_symbol
-        - detect
+
+### Nodes
+
+::: demangle.schemes.nim.nodes
+    options:
+      heading_level: 3
 
 ## Free Pascal
 
@@ -148,80 +217,81 @@ alongside what the decoder does about them.
 
 ::: demangle.schemes.pascal._parser
     options:
+      show_root_heading: false
+      heading_level: 4
       members:
-        - PascalSymbol
-        - parse_pascal_symbol
         - spell_routine_name
-        - detect
+
+### Nodes
+
+::: demangle.schemes.pascal.nodes
+    options:
+      heading_level: 3
 
 ## Pre-Itanium C++
 
-Everything C++ before the Itanium ABI: g++ before 3.0, Lucid's `lcc`, the ARM/cfront
-encoding, HP aCC and EDG. Five manglings and one demangler, ported from libiberty's
-`cplus-dem.c` at GCC 8.3.0 -- the last release that carried it. The style is an option
-rather than something detection can work out, because nothing in one of these names says
-which of the five compilers wrote it.
-
 ::: demangle.schemes.gnuv2
+    options:
+      members:
+        - PLUGIN
+        - STYLES
+        - detect
+        - parse
+        - GnuV2Symbol
+        - demangle_gnuv2
 
 ### Options
 
 ::: demangle.schemes.gnuv2.options
+    options:
+      heading_level: 3
 
 ### Parser
 
 ::: demangle.schemes.gnuv2._parser
     options:
-      members:
-        - GnuV2Symbol
-        - demangle_gnuv2
+      show_root_heading: false
+      heading_level: 4
+      members: false
 
 ### Nodes
 
 ::: demangle.schemes.gnuv2.nodes
     options:
-      members:
-        - Symbol
-        - GnuV2Name
-        - Parameters
-        - Type
-        - build
+      heading_level: 3
 
 ## CodeWarrior
 
-Metrowerks' C++ mangling, and the other pre-Itanium one: libiberty never read it, so the
-reference is `encounter/cwdemangle`. GameCube and Wii titles, Palm OS, BeOS and classic
-Mac OS were built with it.
-
 ::: demangle.schemes.codewarrior
+    options:
+      members:
+        - PLUGIN
+        - detect
+        - parse
+        - CodeWarriorSymbol
+        - demangle_codewarrior
 
 ### Options
 
 ::: demangle.schemes.codewarrior.options
+    options:
+      heading_level: 3
 
 ### Parser
 
 ::: demangle.schemes.codewarrior._parser
     options:
-      members:
-        - CodeWarriorSymbol
-        - demangle_codewarrior
+      show_root_heading: false
+      heading_level: 4
+      members: false
 
 ### Nodes
 
 ::: demangle.schemes.codewarrior.nodes
     options:
-      members:
-        - Symbol
-        - CodeWarriorName
-        - Parameters
-        - Type
-        - build
+      heading_level: 3
 
 ## Delphi / C++Builder
-
-Borland and Embarcadero's scheme, shared by Delphi BPLs and C++Builder objects. A
-different mangling from Free Pascal. Transcribed from `unmangle.c`.
 
 ::: demangle.schemes.delphi
 
@@ -229,52 +299,37 @@ different mangling from Free Pascal. Transcribed from `unmangle.c`.
 
 ::: demangle.schemes.delphi._parser
     options:
-      members:
-        - DelphiSymbol
-        - parse_delphi_symbol
-        - detect
+      show_root_heading: false
+      heading_level: 4
+      members: false
+
+### Nodes
+
+::: demangle.schemes.delphi.nodes
+    options:
+      heading_level: 3
 
 ## Ada / GNAT
 
-The last of the pre-Itanium formats libiberty still carries: when the GNU v2, Lucid, ARM
-and HP styles were dropped from the default, `--format=gnat` stayed. A GNAT symbol is a
-lower-case dotted path with no types and no marker saying whose it is, so the difficulty
-is not the grammar but deciding what is Ada at all -- which is why `detect` asks for
-something GNAT wrote that a C compiler would not.
-
-Note that this is the one scheme where a name spelling *itself* is a reading rather than
-a refusal: `demangle_ada("x")` is `x`, because a bare lower-case identifier is a valid
-Ada unit name. `detect` still declines it, so autodetection never claims it.
-
 ::: demangle.schemes.ada
+
+### Nodes
+
+::: demangle.schemes.ada.nodes
     options:
-      members:
-        - AdaSymbol
-        - demangle_ada
-        - detect
-        - parse
+      heading_level: 3
 
 ## JNI
 
-The one scheme here that was transcribed from a normative specification rather than from
-a reference implementation: the JNI Design Overview writes down how a `native` method's
-class, name and -- where it is overloaded -- parameter types are encoded into the C
-function the runtime calls.
-
 ::: demangle.schemes.jni
+
+### Nodes
+
+::: demangle.schemes.jni.nodes
     options:
-      members:
-        - JniSymbol
-        - descriptor_types
-        - parse_jni_symbol
-        - detect
-        - parse
+      heading_level: 3
 
 ## Objective-C
-
-Barely a mangling, and what there is comes from the compiler rather than the language.
-Four families of name, three runtimes, and one form -- the GNU-family method mangling --
-that is not injective, which clang's own source says out loud.
 
 ::: demangle.schemes.objc
 
@@ -282,21 +337,13 @@ that is not injective, which clang's own source says out loud.
 
 ::: demangle.schemes.objc._parser
     options:
+      show_root_heading: false
+      heading_level: 4
       members:
-        - ObjcSymbol
-        - parse_objc_symbol
-        - mangle_gnu_method
-        - gnu_method_readings
         - decode_type_encoding
-        - detect
 
 ### Nodes
 
 ::: demangle.schemes.objc.nodes
     options:
-      members:
-        - Symbol
-        - ClassName
-        - Category
-        - Selector
-        - build
+      heading_level: 3

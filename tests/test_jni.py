@@ -96,8 +96,7 @@ class TestWhatIsRefused:
             # parameters, so it never stands here -- bare or as an array's element.
             "Java_pkg_C_m__V",
             "Java_pkg_C_m___3V",
-            # An overload head that unescapes to `a//b`: the fallback path refused the
-            # empty component, the overload loop did not, and `a..b(int)` was read.
+            # An overload head that unescapes to `a//b`: an empty component.
             "Java_a__b__I",
             # A surrogate on its own is not a character, and no Java identifier holds
             # one: a high surrogate with no low one after it, a low one with nothing
@@ -129,8 +128,9 @@ class TestACharacterOutsideTheBasicMultilingualPlane:
     """`_0XXXX` is one UTF-16 code unit, so a supplementary character is two escapes.
 
     javac writes `_0d83d_0de00` for U+1F600, and taken one escape at a time the pair
-    came out as two lone surrogates -- a string Python will not encode, so a caller
-    writing the result anywhere got a `UnicodeEncodeError` out of `demangle()`.
+    would come out as two lone surrogates -- a string Python will not encode, so a
+    caller writing the result anywhere would get a `UnicodeEncodeError` out of
+    `demangle()`.
     """
 
     @pytest.mark.parametrize(
@@ -248,14 +248,11 @@ class TestItClaimsNothingItShouldNot:
     """The screen that matters: a scheme offered every symbol in a binary."""
 
     def test_no_other_scheme_s_corpus_name_is_claimed(self, subtests):
-        from .conftest import CONFORMANCE, load_corpus
+        from .conftest import corpus_files, load_corpus
 
-        names = [
-            path.name
-            for path in sorted(CONFORMANCE.iterdir())
-            if not path.name.endswith(".gz") and path.name != "jni-real-world.txt"
-        ]
-        for corpus in [*names, "itanium-libcxxabi.txt"]:
+        for corpus in corpus_files():
+            if corpus.startswith(("jni-", "reported/jni")):
+                continue
             for mangled, _ in load_corpus(corpus):
                 if mangled.startswith("Java_"):
                     with subtests.test(mangled=mangled):

@@ -62,10 +62,7 @@ class _Spelled(Node):
     __slots__ = ()
 
     def spell(self, declarator="", style=None):
-        # The C++ output styles do not reach here: MSVC's declarator spelling is its own
-        # and does not vary with what llvm-cxxfilt and GNU c++filt disagree about. What a
-        # style *can* carry is this scheme's own options, which say which parts of a
-        # declaration to print at all.
+        # C++ output styles do not apply; a style carries only this scheme's options.
         options = get_style(style).options_for("msvc") or DEFAULT_OPTIONS
         return rendered(lambda: render(self, declarator, options=options))
 
@@ -194,23 +191,16 @@ def render(
             return node.text + declarator
         # the reference spaces a declarator off a type ending in an alphanumeric character
         # or a template's ">", and abuts it to anything else: "struct S *" but "struct S_*"
-        # and "enum <unnamed-type-*"
         tail = node.text[-1:]
         sigil = declarator.startswith(("*", "&"))
-        # `decltype(auto)` ends in a bracket that closes a keyword, not a declarator,
-        # and takes the space a word does: `decltype(auto) *f`. LLVM's main branch,
-        # which reads the type, looks only at the last character and writes
-        # `decltype(auto)*f` -- and `decltype(auto)f` for a variable with no sigil at
-        # all, which is not a declaration.
+        # `decltype(auto) *f`: LLVM's main branch writes `decltype(auto)*f`.
         word = tail == ">" or (tail.isascii() and tail.isalnum()) or node.text.endswith(_KEYWORDS_ENDING_IN_A_BRACKET)
         abuts = sigil and not word
         return node.text + ("" if abuts else " ") + declarator
     if kind == "indirection":
         token = node.sigil + " ".join(ordered_qualifiers(node.qualifiers))
         separator = " " if _spaced_off_the_sigil(node, declarator, declarator_is_function, options) else ""
-        # Whatever this points at is being written as a *pointee*, which is what decides
-        # where a function's calling convention goes. Said here, where it is known,
-        # rather than guessed from the declarator's text further down.
+        # Said here, where it is known, rather than guessed from the declarator's text.
         return render(node.inner, token + separator + declarator, options=options, as_pointee=True, sigil=True)
     if kind == "array":
         if sigil or declarator.startswith(("*", "&")):
@@ -224,61 +214,30 @@ def render(
         if options.member_type:
             lead += node.member_type
         if not options.variable_type and not node.declares_a_function:
-            # A variable spelled as its name alone. Its access and storage still print:
-            # `public: static C::sm`, which is what the reference gives.
+            # `public: static C::sm`, as the reference gives.
             return lead + node.declarator.text + node.suffix
-        # The member qualifiers go *inside* whatever the return type wraps around the
-        # declarator, which is where `FunctionSignatureNode::outputPost` writes them:
-        # after the parameter list. Appended out here they came past the wrapping, so
-        # `?b7@S@@QEBAAEAY01$$CBDXZ` -- a const member returning a reference to an array,
-        # which clang emits -- read `char const (& S::b7(void))[2] const`: a const array
-        # rather than a const member function. They stay on the declaration as well,
-        # because they are how the symbol is reached rather than part of its type, and
-        # `signature()` and the tree both read them off it.
+        # Member qualifiers go inside the return type's wrapping, after the parameter
+        # list (`FunctionSignatureNode::outputPost`), not after the whole declarator.
         return lead + render(node.type, node.declarator.text, options=options, member_cv=node.suffix)
-    # A function reached as a *pointer's* pointee has its convention printed by the
-    # pointer, not by the signature, and the reference's flag never reaches it there:
-    # `--no-calling-convention` gives `int (__cdecl * fn(void))(int)`, dropping the one
-    # `fn` carries and keeping the one the pointer it returns carries. Told apart by the
-    # declarator, which is what says how this function is being written.
-    # A declarator opening with a sigil is a pointee whatever route it arrived by; anything
-    # else is one only if an indirection said so. Matching `Owner::*` in the declarator's
-    # *text* did this before, and a conversion operator's name ends in exactly that when
-    # it converts to a member pointer -- so `??BFoo@@QEAAPEQBar@@HXZ` was written
-    # `int Bar::* (__cdecl Foo::operator int Bar::*)(void)`, bracketing a declarator that
-    # is not a pointer's at all. Anchoring the pattern harder would not have helped: a
-    # template owner puts a space and a comma in front of its own `::*`.
+    # A pointer's pointee has its convention printed by the pointer, which the reference's
+    # `--no-calling-convention` does not reach: `int (__cdecl * fn(void))(int)`.
     as_pointee = as_pointee or declarator.startswith(("*", "&"))
     convention = node.convention if options.calling_convention or as_pointee else ""
-    # Suppressed is not the same as absent. A constructor writes no return type and
-    # nothing around the parameter list either; a function whose return type is merely
-    # *not printed* keeps the shape it had, so a bare `$$A6A_N_N@Z` reads `__cdecl(bool)`
-    # rather than the `__cdecl (bool)` a constructor's spelling would give.
+    # Suppressed is not absent: `$$A6A_N_N@Z` reads `__cdecl(bool)`, not a constructor's
+    # `__cdecl (bool)`.
     suppressed = node.returns is not None and not (options.return_type or as_pointee)
-    # A declaration threads its own down; a nested function type carries its own and is
-    # never handed one, so the two never collide.
     member_cv = node.member_cv or member_cv
     params = ", ".join([render(parameter, options=options) for parameter in node.parameters])
     if node.returns is None:
-        # the forms that write no return type write nothing around the parameter list
-        # either, so the convention simply precedes the name: "public: __thiscall foo::foo(void)"
+        # No return type, nothing around the parameters: "public: __thiscall foo::foo(void)"
         return spelled_after(convention, f"{declarator}({params}){member_cv}")
     if not convention and not as_pointee:
-        # a convention spelled with nothing leaves a named declarator alone, while a pointer
-        # keeps its parentheses and the space the convention would have filled: "int ( *)()"
+        # a pointer keeps the space the convention would have filled: "int ( *)()"
         inner = f"{declarator}({params}){member_cv}"
         return inner if suppressed else render(node.returns, inner, True, options)
-    # a member-pointer declarator is "Owner::*", possibly qualified; the test is anchored so
-    # that a nested type's own "::*" - which a rendered parameter may hold - does not count
     if as_pointee:
-        # An attribute-spelled convention carries a space of its own here, so a pointer to a
-        # __swiftcall function reads "int (__attribute__((__swiftcall__))  *j)(int)".
-        #
-        # A convention *spelled with nothing* still leaves the space it would have filled:
-        # "int ( *)()", which is what the reference prints. One that was suppressed takes
-        # its space with it -- `dbghelp` under UNDNAME_NO_MS_KEYWORDS gives "int (*)(void)"
-        # -- and the two are told apart by the option, because a run dropping every
-        # Microsoft keyword has nothing left in this position either way.
+        # "int (__attribute__((__swiftcall__))  *j)(int)". A suppressed convention takes
+        # its space with it, as `dbghelp` under UNDNAME_NO_MS_KEYWORDS: "int (*)(void)".
         gap = "  " if convention.startswith("__attribute__") else " "
         if not convention and not options.ms_keywords:
             gap = ""
@@ -313,16 +272,15 @@ def _spaced_off_the_sigil(node, declarator, declarator_is_function, options):
         return False
     if node.qualifiers:
         return True
-    # Anything that is not a function declarator abuts, which is how a parenthesised
-    # *pointer* declarator gets `int (*(*a)[20])()`: only a return type is ever rendered
-    # around a function declarator, so nothing else arrives here claiming to be one.
+    # Anything but a function declarator abuts: `int (*(*a)[20])()`.
     if not declarator_is_function or declarator.startswith(("*", "&")):
         return False
     return options.ms_keywords or node.inner.kind != "function"
 
 
 def spelled_after(convention, text):
-    """Join a calling convention to what follows it, skipping the ones spelled with nothing."""
+    """Join a calling convention to what follows it, skipping the ones spelled with
+    nothing."""
     return f"{convention} {text}" if convention else text
 
 
@@ -334,10 +292,10 @@ def prefixed(text, node):
     so `--no-member-type` drops all three together.
 
     After them and not before, which is where the reference writes it: `?fn@@$$J0EAAHH@Z`
-    is `private: virtual extern "C" int __cdecl fn(int)`, and this had
-    `extern "C" virtual`. Only a name carrying both shows it, and every `$$J` in the
-    corpora is on a free function or an ordinary member, where `member_type` is empty and
-    the two orders are the same string.
+    is `private: virtual extern "C" int __cdecl fn(int)`, not `extern "C" virtual`.
+    Only a name carrying both shows the difference, and every `$$J` in the corpora is on
+    a free function or an ordinary member, where `member_type` is empty and the two
+    orders are the same string.
     """
     if not text:
         return node
@@ -347,23 +305,15 @@ def prefixed(text, node):
 
 
 def merge_qualifiers(left, right):
-    # "__unaligned" travels with const and volatile: a pointer that points at an unaligned
-    # pointer keeps it - "int __unaligned *__unaligned *"
+    # "int __unaligned *__unaligned *"
     return ordered_qualifiers(tuple(left) + tuple(right))
 
 
-#: The order the reference writes them in, which is fixed: `outputQualifiers` tests a
-#: bitmask, const first, so the order they were *read* in never reaches the output.
-#: `__unaligned` comes last -- `int const __unaligned *` on a pointee and
-#: `*__restrict __unaligned` on a pointer, both measured.
+#: The reference's fixed order (`outputQualifiers` tests a bitmask, const first).
 _QUALIFIER_ORDER = ("const", "volatile", "__restrict", "__unaligned")
 
 
-#: The same order, keyed on the word without its leading underscores. A run with
-#: `leading_underscores` off spells `__restrict` as `restrict`, and a table of literal
-#: spellings does not recognise that -- so it dropped the qualifier rather than ordering
-#: it, and `?foo_piad@@YAXPIAD@Z` came out `void cdecl foo_piad(char *)` where the
-#: reference writes `char *restrict`. Eight of `msvc-dbghelp.txt`'s rows are that.
+#: Keyed without leading underscores, so `leading_underscores=False`'s `restrict` ranks.
 _QUALIFIER_RANK = {qual.lstrip("_"): rank for rank, qual in enumerate(_QUALIFIER_ORDER)}
 
 
@@ -388,9 +338,9 @@ def apply_qualifiers(node, quals):
     Only ever reached with a named type: an indirection merges its qualifiers as it is
     built, and a back-reference declines rather than accept one.
 
-    In `_QUALIFIER_ORDER` and not in the order they arrived. Appending meant a type
-    qualified twice -- a pointee qualifier and then the variable's own, which
-    `?s4@PR13182@@3PCDD` is -- came out `char volatile const *` where the reference
+    In `_QUALIFIER_ORDER` and not in the order they arrived. Appending would make a
+    type qualified twice -- a pointee qualifier and then the variable's own, which
+    `?s4@PR13182@@3PCDD` is -- come out `char volatile const *` where the reference
     writes `char const volatile *`. So any already at the end of the text are taken back
     off and the whole set is written in one order.
     """
@@ -437,14 +387,7 @@ def _qualify(node, quals):
     """
     if node.kind == "indirection":
         return Indirection(node.sigil, merge_qualifiers(node.qualifiers, quals), node.inner)
-    # A named type spells its qualifiers in its own text, so one it already carries must
-    # not be spelled twice: "?s@@3QBDD" is "char const volatile *const", not
-    # "char const const ..". `apply_qualifiers` collapses the repeat, because it takes the
-    # trailing qualifiers back off before writing the union.
-    #
-    # Which is why the test is on the *trailing* words and not on the text. Asking whether
-    # the word appears anywhere in it found one inside a template argument and dropped a
-    # qualifier that belongs to the symbol: `?h@FTypeWithQuals@@3U?$S@$$A8@@HCAHXZ@1@C` is
-    # `struct FTypeWithQuals::S<int __cdecl(void) volatile &&> volatile FTypeWithQuals::h`,
-    # and the trailing `volatile` went missing because the argument has one.
+    # Only *trailing* words count: "?s@@3QBDD" is "char const volatile *const", but a
+    # qualifier inside a template argument (`?h@FTypeWithQuals@@3U?$S@$$A8@@HCAHXZ@1@C`)
+    # must not suppress the symbol's own.
     return apply_qualifiers(node, quals)

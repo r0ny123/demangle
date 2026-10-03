@@ -6,7 +6,8 @@ Three modes:
   --corpus     replay a checked-in corpus file (mangled name, tab, expected spelling).
                Needs no reference binary, so it runs in CI and offline. With no argument
                every checked-in corpus is replayed, each with the style and language it
-               was recorded under -- see CORPUS_SETTINGS.
+               was recorded under -- see `corpus_settings` -- and every file in
+               `reported/` under the language (and style) its name gives.
   --live       demangle names on stdin with both this library and a reference binary,
                reporting every disagreement. Used when hunting new failures.
   --cross      run several reference *versions* over the same names and report where the
@@ -20,7 +21,7 @@ Agreeing with one build of one reference is not the same as being right, and the
 difference is not hypothetical. llvm-cxxfilt 16 drops a constructor's name after an ABI
 tag -- `failure[abi:cxx11]::(...)` -- which 18 fixed. Between 18 and 20, LLVM changed
 its substitution numbering for a template template parameter application; on that name
-18 was wrong, and a corpus recorded against 18 had baked the wrong answer in.
+18 was wrong, and a corpus recorded against 18 would bake the wrong answer in.
 
 So --cross reports reference-versus-reference disagreement as the finding it is. Where
 the versions differ, being on one side is not evidence of anything, and the question has
@@ -44,38 +45,34 @@ from demangle.core.errors import DemanglingError
 
 REFERENCES = {"itanium": "llvm-cxxfilt", "msvc": "llvm-undname", "gnu": "c++filt"}
 
-#: How each checked-in corpus must be replayed. A corpus records the output of one
-#: reference under one style, so replaying it under another is guaranteed to disagree --
-#: a false failure, not a real one. Anything not listed uses the defaults.
+#: How each checked-in corpus must be replayed: under the style or language it was
+#: recorded with. Anything not listed uses the defaults.
 CORPUS_SETTINGS = {
     "itanium-real-world-gnu.txt": {"style": "gnu"},
     "msvc-llvm-corpus.txt": {"language": "msvc"},
     "msvc-clang.txt": {"language": "msvc"},
     "msvc-reference-defects.txt": {"language": "msvc"},
     "msvc-boost.txt": {"language": "msvc"},
-    # Auto-detection would work on all four, but naming the language keeps the file
-    # scored as the Swift corpus it is rather than as a test of the detector.
     "swift-reference-defects.txt": {"language": "swift"},
-    # Go on purpose. Most Go symbols carry nothing that distinguishes them from any other
-    # dotted name -- `bytes.Compare` could be anything -- so the scheme declines to claim
-    # them and a caller names the language instead, which is how a tool that read the
-    # binary's build info would do it. Replaying this corpus on auto-detection would be
-    # measuring the detector's caution rather than the demangler.
+    # Most Go symbols are indistinguishable from any dotted name, so detection declines them.
     "go-real-world.txt": {"language": "go"},
-    # D on purpose, for the same reason as Go above is not the issue here -- D names
-    # are distinctive -- but so the file is scored as the D corpus rather than as a
-    # test of the detector.
     "d-libiberty.txt": {"language": "d"},
-    # Pre-Itanium names carry no marker of their own, so detection is held to a
-    # deliberately narrow claim (see tests/test_gnuv2.py); a caller who knows the
-    # binary's compiler names the language, and so does the replay.
+    # Pre-Itanium detection is deliberately narrow (see tests/test_gnuv2.py).
     "gnuv2-real-world.txt": {"language": "gnuv2"},
 }
 
-#: Files in `tests/conformance/` that are not mangled-name corpora at all. The refusal
-#: lists have one column, and `nim-lossy.txt` has three -- it records the names Nim's own
-#: mangling does not preserve, which is a thing to keep visible rather than a thing to
-#: replay. Their own test modules read them.
+
+def corpus_settings(path):
+    """How to replay `path`: `CORPUS_SETTINGS`, or for `reported/<scheme>[-<style>].txt`
+    the language and style its name gives."""
+    if path.parent.name == "reported":
+        language, _, style = path.stem.partition("-")
+        return {"language": language, "style": style or "llvm"}
+    return CORPUS_SETTINGS.get(path.name, {})
+
+
+#: Files in `tests/conformance/` that are not two-column corpora replayable with
+#: `demangle()`; their own test modules read them.
 NOT_REPLAYED = frozenset(
     {
         "nim-lossy.txt",
@@ -84,83 +81,37 @@ NOT_REPLAYED = frozenset(
         "pascal-refusals.txt",
         "delphi-refusals.txt",
         "swift-refusals.txt",
-        # Three columns, and the first is hex: a name holding a symbolic reference is not
-        # text, and what it spells depends on the image it came out of. Replayed by
-        # tests/test_swift_symbolic.py, which carries the fragments as well.
+        # Hex names with symbolic references; tests/test_swift_symbolic.py.
         "swift-symbolic.txt",
-        # libcxxabi's own vectors, 29,928 of them, of which 14 do not match. Pinned
-        # by tests/test_conformance.py because that is where the shortfall is grouped
-        # and named: one number for the whole suite would say only that something
-        # somewhere disagreed. Stored gzipped; this replay reads gzip when a .gz
-        # path is named explicitly, but the default run covers the plain-text
-        # corpora.
+        # 15 known mismatches, grouped and named in tests/test_conformance.py.
         "itanium-libcxxabi.txt",
         "itanium-libcxxabi.txt.gz",
-        # Swift's own vectors, all 514 of which match. Pinned by tests/test_swift.py in
-        # both directions, for the reason the two above are.
+        # tests/test_swift.py.
         "swift-upstream.txt",
-        # rustc-demangle's own vectors, whose expected column is its `{:#}` mode rather
-        # than the `{}` this library prints. Pinned by tests/test_rust.py, which records
-        # the four that differ by name.
+        # Expected column is rustc-demangle's `{:#}` mode; tests/test_rust.py.
         "rustc-upstream.txt",
-        # GNAT's vectors. Four of the 34 carry no GNAT-specific encoding at all -- they
-        # are lower-case identifiers joined by `__` -- so detection declines them on
-        # purpose and `demangle()` returns them unchanged; a fifth is a name the
-        # reference itself declines. Replaying them here would report five failures for
-        # five deliberate answers. Pinned by tests/test_ada.py, which asserts both the
-        # by-language score and the auto-detected count.
+        # Five deliberate non-answers under auto-detection; tests/test_ada.py.
         "ada-libiberty.txt",
-        # Bare `<type>` encodings rather than symbols -- `Pi`, `PKFvRiE`. They are read by
-        # `demangle_type(..., language="itanium")`, and `demangle()` refuses every one of
-        # them on purpose, so replaying them here would report 1,076 failures for the
-        # feature working as designed. Pinned by tests/test_types.py against both
-        # references: `c++filt -t` for the gnu style, `llvm-cxxfilt --types` for llvm.
+        # Bare `<type>` encodings for `demangle_type`; tests/test_types.py.
         "itanium-types.txt",
         "itanium-types-llvm.txt",
-        # Three columns -- name, flag, spelling -- because what it records is what each
-        # of `llvm-undname`'s suppression flags *changes*, not what a name demangles to.
-        # Replayed by tests/test_msvc.py, which knows what the middle column means.
+        # Three columns (name, flag, spelling); tests/test_msvc.py.
         "msvc-suppressions.txt",
-        # The same three columns, for the `UnDecorateSymbolName` mask bits `llvm-undname`
-        # has no flag for. Recorded from `dbghelp.dll` rather than from `llvm-undname`;
-        # regenerate with tools/generate_msvc_dbghelp_corpus.py, on Windows. Replayed by
-        # tests/test_msvc_options.py.
+        # Same three columns, from `dbghelp.dll`; tests/test_msvc_options.py.
         "msvc-dbghelp.txt",
-        # What `UNDNAME_NAME_ONLY` prints. Two columns, but the second is not a
-        # demangling: no `MsvcOptions` field claims to reproduce it, and
-        # tests/test_msvc_options.py measures the gap rather than asserting there is none.
+        # A comparison, not a demangling; tests/test_msvc_options.py.
         "msvc-name-only.txt",
-        # Swift's `simplified-manglings.txt`: the expected column is what
-        # `swift-demangle --simplified` prints, not what `demangle()` prints by default,
-        # so replaying it here would report 173 failures for a feature working as
-        # designed. Pinned by tests/test_swift_simplified.py.
+        # Scored under `--simplified`; tests/test_swift_simplified.py.
         "swift-simplified.txt",
-        # Four columns -- name, style, and the spelling with and without `DMGL_PARAMS` --
-        # because one of these names has no single reading: the five pre-Itanium styles
-        # read the same bytes differently and the name does not say which wrote it. The
-        # style is an option, so replaying the file here would score every ARM, Lucid and
-        # HP vector against GNU's reading of it. Pinned by tests/test_gnuv2.py, which
-        # knows what the second column means and scores both settings of the third.
+        # Four columns (name, style, with and without params); tests/test_gnuv2.py.
         "gnuv2-libiberty.txt",
-        # Three columns -- name, options, spelling -- and a name valid under both
-        # pre-Itanium manglings goes to `gnuv2`, which is offered first and spells it its
-        # own way. Replaying it here would score CodeWarrior's vectors against GNU v2's
-        # reading of them. Pinned by tests/test_codewarrior.py, which names the language.
+        # Three columns, and auto-detection prefers `gnuv2`; tests/test_codewarrior.py.
         "codewarrior-cwdemangle.txt",
     }
 )
 
-#: Names in these corpora that the reference and this library legitimately disagree on,
-#: because the two reference implementations disagree with *each other* about what goes
-#: in the substitution table. Recorded here so the tool reports a clean run rather than a
-#: failure someone has to remember the reason for. tests/test_conformance.py pins the
-#: same list.
-#: Names where a reference discards part of the symbol, so following it would mean
-#: spelling distinct symbols identically. `llvm-undname` reads the first element of a
-#: vftable's base path and drops the rest, mapping three different vtables onto one
-#: spelling; versions 16, 18 and 20 all lose it identically. Listed here so `--cross`
-#: reports a genuine finding rather than these, and so removing one is a deliberate act.
-#: `tests/test_conformance.py` pins the spellings.
+#: Names where a reference discards part of the symbol: `llvm-undname` (16, 18, 20) keeps
+#: only the first element of a vftable's base path. tests/test_conformance.py pins them.
 REFERENCE_LOSES_INFORMATION = {
     "??_7A@B@@6BC@D@@E@F@@@",
     "??_7A@B@@6BC@D@@E@F@@G@H@@@",
@@ -168,20 +119,8 @@ REFERENCE_LOSES_INFORMATION = {
     "??_7A@@6BB@@C@@D@@@",
 }
 
-#: Kept in step with `GNU_DIVERGENCES` in tests/test_conformance.py: the same set, for
-#: the tool rather than for the suite. Both are checked against each other by
-#: `tests/test_architecture.py`, because a name excused here and not there -- or the
-#: other way round -- means one of the two stops seeing a regression on it.
-#:
-#: `_Z16templateTemplate...S4_` was here as well, excused against llvm-cxxfilt 18 rather
-#: than against a corpus. It is a reference defect and now sits in
-#: `itanium-reference-defects.txt` with the declaration as its expected column, which is
-#: the stronger of the two: an excused name is one nothing checks, and that one is
-#: checked. A name cannot be both, and `tests/test_architecture.py` says so.
-#: Empty. The last name here was `modern::measured`, whose template argument list
-#: carries a requires-clause that c++filt prints after the parameters and this once
-#: printed nothing for; it is read as each reference reads it now, and the set has to
-#: equal `GNU_DIVERGENCES` in `tests/test_conformance.py`.
+#: Must equal `GNU_DIVERGENCES` in tests/test_conformance.py (tests/test_architecture.py
+#: checks both ways).
 KNOWN_DIVERGENCES: set[str] = set()
 
 
@@ -217,7 +156,7 @@ def replay(paths, style, language, show, quiet, overrides=True):
     failures = []
     reasons = Counter()
     for path in paths:
-        settings = CORPUS_SETTINGS.get(path.name, {}) if overrides else {}
+        settings = corpus_settings(path) if overrides else {}
         corpus_style = settings.get("style", style)
         corpus_language = settings.get("language", language)
         for mangled, expected in load_corpus(path):
@@ -425,10 +364,11 @@ def main():
         return live(names, arguments.tool, arguments.style, arguments.language, arguments.show)
 
     if arguments.cross:
+        directory = Path(__file__).resolve().parent.parent / "tests" / "conformance"
         paths = arguments.corpus or sorted(
             path
-            for path in (Path(__file__).resolve().parent.parent / "tests" / "conformance").glob("itanium-*.txt")
-            if path.name not in NOT_REPLAYED
+            for path in [*directory.glob("itanium-*.txt"), *directory.glob("reported/itanium*.txt")]
+            if path.name not in NOT_REPLAYED or path.parent.name == "reported"
         )
         names = [mangled for path in paths for mangled, _ in load_corpus(path)]
         return cross(names, arguments.cross, arguments.style, arguments.language, arguments.show)
@@ -437,6 +377,7 @@ def main():
     if not paths:
         directory = Path(__file__).resolve().parent.parent / "tests" / "conformance"
         paths = [path for path in sorted(directory.glob("*.txt")) if path.name not in NOT_REPLAYED]
+        paths += sorted(directory.glob("reported/*.txt"))
     if not paths:
         sys.exit("no corpus files found")
     return replay(

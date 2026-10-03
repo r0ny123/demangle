@@ -1,12 +1,10 @@
 """The README's factual claims, checked against the code.
 
-Three separate documents had drifted from the pinned conformance numbers at once, which
-is what happens to any figure a human has to remember to update. These tests make the
-drift a test failure instead.
+A figure a human has to remember to update drifts from the pinned conformance numbers.
+These tests make that drift a test failure.
 
-The conformance tables moved to `CONFORMANCE.md` when the README was cut down to what a
-reader meets first, so the count checks read both files and the example checks read the
-README, which is where the examples are.
+The conformance tables live in `CONFORMANCE.md` and the examples in the README, so the
+count checks read both files and the example checks read the README.
 """
 
 import pathlib
@@ -18,6 +16,7 @@ import pytest
 import demangle
 
 from . import test_conformance as pins
+from .test_parity import STYLE_SAMPLES
 
 README = Path(__file__).parent.parent / "README.md"
 CONFORMANCE = Path(__file__).parent.parent / "CONFORMANCE.md"
@@ -56,7 +55,6 @@ def prose():
         (pins.RUST_TOOLCHAIN_EXACT, pins.RUST_TOOLCHAIN_TOTAL),
         (pins.ITANIUM_LLVM_EXACT, pins.ITANIUM_LLVM_TOTAL),
         (pins.ITANIUM_GNU_EXACT, pins.ITANIUM_GNU_TOTAL),
-        (pins.REGRESSIONS_EXACT, pins.REGRESSIONS_TOTAL),
         (pins.REFERENCE_DEFECTS_EXACT, pins.REFERENCE_DEFECTS_TOTAL),
         (pins.NO_PARAMS_AGREE, pins.NO_PARAMS_TOTAL),
         (pins.GNUV2_EXACT, pins.GNUV2_TOTAL),
@@ -69,7 +67,7 @@ def test_every_pinned_count_appears_in_the_prose(prose, exact, total):
 
 
 def test_the_prose_states_no_stale_conformance_numbers(prose):
-    """Any `N / M` in the table must be a pin, not a number left over from before."""
+    """Any `N / M` in the table must be a pin, not a stale number."""
     pinned = {
         (pins.LIBSTDCXX_EXACT, pins.LIBSTDCXX_TOTAL),
         (pins.RUST_EXACT, pins.RUST_TOTAL),
@@ -77,7 +75,6 @@ def test_the_prose_states_no_stale_conformance_numbers(prose):
         (pins.RUST_TOOLCHAIN_EXACT, pins.RUST_TOOLCHAIN_TOTAL),
         (pins.ITANIUM_LLVM_EXACT, pins.ITANIUM_LLVM_TOTAL),
         (pins.ITANIUM_GNU_EXACT, pins.ITANIUM_GNU_TOTAL),
-        (pins.REGRESSIONS_EXACT, pins.REGRESSIONS_TOTAL),
         (pins.REFERENCE_DEFECTS_EXACT, pins.REFERENCE_DEFECTS_TOTAL),
         (pins.TYPES_LLVM_EXACT, pins.TYPES_TOTAL),
         (pins.TYPES_GNU_EXACT, pins.TYPES_TOTAL),
@@ -174,12 +171,11 @@ class TestExamples:
         function = next(tree.find("function"))
         assert len(function.parameters) == 1
 
-    def test_every_scheme_returns_a_tree_as_the_readme_says(self, readme):
+    @pytest.mark.parametrize("language", sorted(STYLE_SAMPLES))
+    def test_every_scheme_returns_a_tree_as_the_readme_says(self, readme, language):
         assert "All schemes return full trees" in readme
-        # Real names from the conformance corpora; an invented one is as likely to be
-        # malformed as to prove anything.
-        for name in ("_ZNSt6vectorIiSaIiEE9push_backERKi", "?f@@YAXH@Z", "_RNvCsdEttCVZFADF_8features10btree_work"):
-            assert len(list(demangle.parse(name).walk())) > 1, name
+        tree = demangle.parse(STYLE_SAMPLES[language], language=language)
+        assert len(list(tree.walk())) > 1
 
 
 class TestWorkedExample:

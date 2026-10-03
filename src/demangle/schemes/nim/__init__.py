@@ -26,7 +26,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import DemangleFailure, NimSymbol, detect, parse_nim_symbol
+from ._parser import _COMPILER_PREFIXES, DemangleFailure, NimSymbol, detect, parse_nim_symbol
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -62,6 +62,10 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     return builder.raw(symbol.text)
 
 
+#: What `detect` needs to see, for the registry to screen on without calling it: a `__`
+#: or a compiler-generated opening. See `core.registry._screened`.
+DETECT_SCREEN = (("__",), _COMPILER_PREFIXES)
+
 PLUGIN = LanguagePlugin(
     name="nim",
     node_kinds=("name", "path", "symbol"),
@@ -69,12 +73,11 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Nim symbol mangling",
     aliases=(),
-    # `priority` is ascending: *lower is offered first*. Offered early, alongside Go, and
-    # its `detect` carries the weight instead: this scheme has no prefix of its own and
-    # has to recognise a whole name, so the predicate is what keeps it off other
-    # schemes' symbols. tests/test_core.py pins the order against every corpus.
+    # Lower is offered first. With no prefix of its own, `detect` is what keeps this
+    # off other schemes' symbols. tests/test_core.py pins the order.
     priority=10,
 )
+"""The scheme as the registry holds it, registered when this package is imported."""
 
 register(PLUGIN)
 

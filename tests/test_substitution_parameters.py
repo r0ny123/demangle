@@ -19,9 +19,9 @@ re-resolve; where the production was *written* is the only thing worth keeping.
 
 Freezing either produces a type the source disproves -- spelled plausibly, matching no
 declaration -- which is the failure this package exists to avoid. llvm-cxxfilt 18.1.3
-freezes both, and reads 312 of the 217,730 distinct Itanium symbols in the shared
-libraries on a stock Ubuntu 24.04 wrongly as a result; GNU c++filt 2.42 mostly does not,
-but freezes it for the constructor case below.
+freezes both, and differs from this on 322 of the 217,730 distinct Itanium symbols in
+the shared libraries of a stock Ubuntu 24.04 as a result; GNU c++filt 2.42 mostly does
+not, but freezes it for the constructor case below.
 
 Every vector in `TestAgainstTheDeclaration` was produced by a compiler on this machine
 from a source in `tools/corpus_sources/reference_defects/`, so what it must spell is
@@ -165,12 +165,11 @@ class TestOutOfScope:
     def test_a_parameter_past_the_end_is_refused_through_a_substitution_too(self):
         """`f<int>` has one argument, so `T0_` names one that is not in scope.
 
-        This used to answer `void f<int>(auto)`, and `S0_` -- the entry `T0_` itself
-        contributed -- answered the same way, which was the property under test. Both
+        Neither answers `void f<int>(auto)`; `S0_` -- the entry `T0_` itself
+        contributed -- must not either, which is the property under test. Both
         `c++filt` 2.42 and `llvm-cxxfilt` 18.1 hand both names back: an index past the
         end of the argument list binds to nothing and nothing later will supply it, and
-        `auto` is a type the encoding does not contain. The property still holds, and
-        now holds of a refusal.
+        `auto` is a type the encoding does not contain. The property holds as a refusal.
         """
         for mangled in ("_Z1fIiEvT0_", "_Z1fIiEvT0_S0_"):
             with pytest.raises(DemanglingError):
@@ -209,7 +208,7 @@ class TestOutOfScope:
         for name, original in saved.items():
             setattr(builder, name, watch(original))
         try:
-            for corpus in ("itanium-reference-defects.txt", "itanium-regressions.txt", "itanium-libstdcxx.txt"):
+            for corpus in ("itanium-reference-defects.txt", "reported/itanium.txt", "itanium-libstdcxx.txt"):
                 for mangled, _ in load_corpus(corpus):
                     with contextlib.suppress(DemanglingError):
                         demangle.parse(mangled)
@@ -222,10 +221,9 @@ class TestOutOfScope:
 class TestPacks:
     """A pack expansion reads its pattern once per member, and the scope does not change.
 
-    That is the one place a memo keyed on the scope is wrong, and it is not theoretical:
-    it made `_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_` -- from libcxxabi's own corpus
-    -- hand every member of `Dp S4_` the first member's answer. The text and the tree
-    disagreed, which is what found it.
+    That is the one place a memo keyed on the scope is wrong: it would hand every member
+    of `Dp S4_` in `_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_` -- from libcxxabi's own
+    corpus -- the first member's answer, and the text and the tree would disagree.
     """
 
     def test_an_expansion_over_a_deferred_entry_ranges_over_its_members(self):
@@ -238,7 +236,7 @@ class TestPacks:
 
     @pytest.mark.parametrize("style", ["llvm", "gnu"])
     def test_the_tree_agrees_with_the_text(self, style):
-        """The disagreement the memo caused, as its own assertion."""
+        """The text and the tree spell the same thing."""
         name = "_Z1fIJicdEEPFvDpT_EPFvDpRPS0_ES8_S1_DpS4_S6_"
         assert demangle.parse(name, style=style).spell(style=style) == demangle.demangle(name, style=style)
 
@@ -249,11 +247,11 @@ class TestPacks:
         Both references print the *first* member -- libcxxabi's `ParameterPack::printLeft`
         prints `Data[OB.CurrentPackIndex]`, and `initializePackExpansion` leaves that
         index at 0 -- so they answer `void f<float, double>(float)`. This prints the
-        members. Making element 0 the default is two lines and breaks eleven of
-        libcxxabi's own vectors: `sizeof...`, the four fold expressions and `sp` all
-        reach a pack through the same path and each wants every member of it. No
-        compiler writes `T_` for a pack -- only `Dp T_` -- so the shape is a mutation
-        finding, and following the references here would cost more than it is worth.
+        members, because making element 0 the default would break eleven of libcxxabi's
+        own vectors: `sizeof...`, the four fold expressions and `sp` all reach a pack
+        through the same path and each wants every member of it. No compiler writes
+        `T_` for a pack -- only `Dp T_` -- so following the references here would cost
+        more than it is worth.
         """
         assert demangle.demangle_strict("_Z1fIJfdEEvT_") == "void f<float, double>(float, double)"
 
@@ -266,7 +264,6 @@ class TestAReferenceOverAPackReturnCollapsesOnEveryMember:
     c++filt refuses. A declarator over a pack applies to every member, and `R`
     over `T&` is `T&`. No compiler writes a function that returns a pack. The
     corpus neighbour with `v` where `R` is still agrees with both references.
-    `tools/mutate.py --seed 19`.
     """
 
     @pytest.mark.parametrize(

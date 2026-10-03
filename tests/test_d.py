@@ -5,9 +5,8 @@ can read in the shipped `libgphobos` and `libgdruntime` -- 16,333 of 19,315 -- w
 nothing mis-spelled and nothing refused among them, and no name anywhere raising anything
 but `DemangleFailure`.
 
-The grammar rules that had to be *measured* rather than read off the specification are
-pinned below, each with the name that settled it. Every one of them was wrong on the
-first reading.
+The grammar rules that are *measured* rather than read off the specification are
+pinned below, each with the name that settles it.
 """
 
 import contextlib
@@ -45,7 +44,8 @@ class TestConformance:
 
 
 class TestGrammar:
-    """Constructs settled against the reference or the ABI, each with the name that proved it."""
+    """Constructs settled against the reference or the ABI, each with the name that
+    proved it."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -105,7 +105,7 @@ class TestSafety:
             parse_d_symbol(value)
 
     def test_detect_takes_only_an_ascii_digit_like_the_parser(self):
-        """`str.isdigit` is Unicode-aware, so `_D²foo` was claimed and then refused."""
+        """`str.isdigit` is Unicode-aware, so `_D²foo` would be claimed and then refused."""
         from demangle.schemes.d import detect
 
         assert detect("_D1a") is True
@@ -121,22 +121,17 @@ class TestSafety:
             "_D3fooE",  # an enum
             "_D3fooT",  # a typedef
             "_D3fooPC",  # and behind a pointer
-            "_D3fooFCZv",  # and as a parameter, where it took the parameter with it
+            "_D3fooFCZv",  # and as a parameter, which it must not drop
             "_D3C33C",
         ],
     )
     def test_a_named_type_with_no_name_is_refused(self, value):
         """`C <QualifiedName>` and its three siblings, where the name is not optional.
 
-        `dlang_parse_qualified` reads at least one symbol name and fails otherwise. This
-        joined an empty list and returned `""`, so `_D3fooC` -- a variable whose type is
-        a class with no name -- came back as `foo`, and `_D3fooFCZv` as `foo()` with the
-        parameter simply gone. `c++filt --format=dlang` (binutils 2.42) hands back every
-        one of these.
-
-        Found by enumerating every `_D` name up to eight characters over a
-        grammar-shaped alphabet: 52,052 of the 260,260 this read were names the
-        reference refuses, and they were all this.
+        `dlang_parse_qualified` reads at least one symbol name and fails otherwise. Joining
+        an empty list to `""` would spell `_D3fooC` -- a variable whose type is a class
+        with no name -- as `foo`, and `_D3fooFCZv` as `foo()` with the parameter simply
+        gone. `c++filt --format=dlang` (binutils 2.42) hands back every one of these.
         """
         with pytest.raises(DemangleFailure):
             parse_d_symbol(value)
@@ -160,8 +155,8 @@ class TestSafety:
         """`[NkM | [M] [Nk]] [I[K] | J | K | L] <Type>` is a sequence, not a set.
 
         `dlang_function_args` reads each of these once and in this order and then reads
-        the type. Written as a loop here, it took any order and any number: `FMMfZv`
-        came back as `(scope scope float)` and `FIJfZv` as `(in out float)`, neither of
+        the type. Written as a loop it would take any order and any number: `FMMfZv`
+        would spell `(scope scope float)` and `FIJfZv` `(in out float)`, neither of
         which is a parameter anything can declare. `c++filt --format=dlang` (binutils
         2.42) hands every one of these back.
         """
@@ -213,9 +208,9 @@ class TestSafety:
         """`M` is a member function's `this`, so a function type has to follow it.
 
         `dlang_parse_mangle` sets `is_function` on seeing `M` and then calls
-        `dlang_function_type`, which fails without a calling convention. This read a
-        plain type instead and dropped the `M`, the modifiers and the type with it, so
-        `_D4test3fooMf` came back as `test.foo` -- a variable, out of a symbol that says
+        `dlang_function_type`, which fails without a calling convention. Reading a
+        plain type instead would drop the `M`, the modifiers and the type with it, so
+        `_D4test3fooMf` would spell `test.foo` -- a variable, out of a symbol that says
         it is a member function. The reference hands all of these back.
         """
         with pytest.raises(DemangleFailure):
@@ -227,9 +222,8 @@ class TestSafety:
             # `M` with a function after it, which is the shape it exists for.
             ("_D4test3fooMFiZv", "test.foo(int)"),
             ("_D4test3fooMxFiZv", "test.foo(int) const"),
-            # The check is on how far the cursor moved, not on what came out: a
-            # zero-length component is anonymous and spells nothing, and the reference
-            # reads this one.
+            # A zero-length component is anonymous and spells nothing; the reference
+            # reads it.
             ("_D3fooC0", "foo"),
             ("_D3fooC3bar", "foo"),
             ("_D3fooFC3barZv", "foo(bar)"),
@@ -248,14 +242,14 @@ class TestSafety:
                     parse_d_symbol(mangled[:cut])
 
 
-class TestRulesThatHadToBeMeasured:
-    """Each of these was wrong on the first reading of the specification."""
+class TestRulesThatDifferFromAPlainReadingOfTheSpecification:
+    """Each of these differs from a plain reading of the specification."""
 
     def test_a_scope_function_has_no_return_type(self):
         """The grammar gives a scope `TypeFunctionNoReturn`.
 
-        Reading a return type anyway swallowed the following path component, so a symbol
-        declared inside a function lost its own name.
+        Reading a return type anyway would swallow the following path component, so a
+        symbol declared inside a function would lose its own name.
         """
         name = "_D2rt3aaA11fakeEntryTIFNbKSQzQy4ImplxC8TypeInfoxQlZ13tiMangledNameyAa"
         assert parse_d_symbol(name).text.endswith(".tiMangledName")
@@ -267,8 +261,8 @@ class TestRulesThatHadToBeMeasured:
     def test_q_is_ambiguous_between_an_identifier_and_a_type(self):
         """The trailing `Qq` here is the *return type*, not another path component.
 
-        Testing only whether the byte could open a name made it look like one and took
-        the rest of the symbol with it.
+        Testing only whether the byte could open a name would make it look like one and
+        take the rest of the symbol with it.
         """
         name = "_D2rt6config13rt_linkOptionFNbNiAyaMDFNbNiQkZQnZQq"
         assert parse_d_symbol(name).text.startswith("rt.config.rt_linkOption(")
@@ -306,9 +300,9 @@ class TestRulesThatHadToBeMeasured:
 
 
 class TestSpellingsOnlyTheReferenceCouldSettle:
-    """Rules with no counterpart in the D ABI: each was derived from the reference.
+    """Rules with no counterpart in the D ABI: each is derived from the reference.
 
-    `c++filt --format=dlang` was run over the input space rather than read from -- every
+    `c++filt --format=dlang` is run over the input space rather than read from -- every
     byte value through a string literal, every character type through a literal, the
     boundaries of what it will accept -- because these are the demangler's own choices
     and the specification says nothing about any of them.
@@ -395,8 +389,8 @@ class TestSpellingsOnlyTheReferenceCouldSettle:
     def test_a_back_referenced_type_is_followed_to_find_its_shape(self):
         """`[0:"c", 2:"a"]` and `[0, "c", 2, "a"]` differ, and only the type says which.
 
-        Written `QFh`, the type says nothing until it is followed -- and the whole name
-        was refused, because the pairs were read as a flat list and the count ran out.
+        Written `QFh`, the type says nothing until it is followed; reading the pairs as a
+        flat list would run the count out and refuse the whole name.
         """
         name = (
             "_D3std9algorithm9iteration__T12FilterResultSQBq8typecons__T5TupleTiVAyaa1_61TiVQla1_62TiVQva1_63ZQBm"
@@ -472,7 +466,7 @@ class TestSpellingsOnlyTheReferenceCouldSettle:
             assert demangle.demangle(name, language="d") == name
 
 
-class TestWhatMutatingRealSymbolsFound:
+class TestReadingsOnlyANameNearARealOneReaches:
     """Five readings that only a name *near* a real one reaches.
 
     `tools/enumerate.py` counts short strings, which is the wrong length for anything
@@ -480,17 +474,14 @@ class TestWhatMutatingRealSymbolsFound:
     pointer, a template argument list several deep. `tools/mutate.py` damages the
     checked-in corpora instead: one character deleted, duplicated, transposed or
     swapped, or the head of one symbol spliced onto the tail of another. Each of these
-    came out of that, and each is checked against `c++filt --format=dlang`.
+    is a shape that mutation reaches, and each is checked against `c++filt --format=dlang`.
     """
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # The `P` that *is* the word `function` absorbs; the ones above it do not.
-            # `dlang_type` decides that from the character after the `P` -- a calling
-            # convention, and nothing else -- and deciding it from the pointee's
-            # *spelling* swallowed every level: `PPUZi` and `PPPUZi` both came back as
-            # `PUZi`, so a pointer to a function pointer was spelled as the pointer.
+            # Only the `P` that *is* the word `function` absorbs: `dlang_type` decides from
+            # the character after the `P` (a calling convention), not the pointee's spelling.
             ("_D3foo3barFUZiZv", "foo.bar(extern(C) int() function)"),
             ("_D3foo3barFPUZiZv", "foo.bar(extern(C) int() function)"),
             ("_D3foo3barFPPUZiZv", "foo.bar(extern(C) int() function*)"),
@@ -504,8 +495,7 @@ class TestWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_parse_integer` appends the characters it read, so a leading zero is
-            # part of the literal. Formatting the value instead spelled `24u` for `024u`.
+            # `dlang_parse_integer` appends the characters it read, so a leading zero stays.
             ("_D3foo__T3barVki024Z3bazFZv", "foo.bar!(024u).baz()"),
             ("_D3foo__T3barVmi007Z3bazFZv", "foo.bar!(007uL).baz()"),
             ("_D3foo__T3barVii00Z3bazFZv", "foo.bar!(00).baz()"),
@@ -523,9 +513,7 @@ class TestWhatMutatingRealSymbolsFound:
         ("mangled", "expected"),
         [
             ("_D3foo__T3barViN13Z3bazFZv", "foo.bar!(-13).baz()"),
-            # The two kinds that spell their *value* rather than their digits used to
-            # drop the sign with the digits, and `-'\x11'` came back as `'\x11'` -- the
-            # positive literal, not an unspellable one.
+            # The kinds that spell their *value* rather than their digits keep the sign.
             ("_D3foo__T3barVaN17Z3bazFZv", "foo.bar!(-'\\x11').baz()"),
             ("_D3foo__T3barVuN1000Z3bazFZv", "foo.bar!(-'\\u03e8').baz()"),
             ("_D3foo__T3barVbN1Z3bazFZv", "foo.bar!(-true).baz()"),
@@ -537,10 +525,7 @@ class TestWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         "mangled",
         [
-            # A bare `0` is the anonymous *scope* inside a path, where the reference
-            # writes nothing for it. An argument list has no such thing: the empty
-            # string took a slot and was spelled as one, so these came back
-            # `foo.bar!(null, ).baz()` and `foo.bar!(, ).qux()`.
+            # A bare `0` is an anonymous *scope* inside a path; an argument list has none.
             "_D3foo__T3barVln0Z3bazFZv",
             "_D3foo__T3bar00Z3quxFZv",
         ],
@@ -549,21 +534,19 @@ class TestWhatMutatingRealSymbolsFound:
         assert demangle.demangle(mangled, language="d") == mangled
 
 
-class TestMoreOfWhatMutatingRealSymbolsFound:
-    """Four more, from the second sitting with `tools/mutate.py`."""
+class TestArtificialSymbolAndModifierRuns:
+    """Further shapes that `tools/mutate.py` reaches."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type.
-            # The `Z` is what makes it one, so a truncated `_D10TypeInfo_c6__vtbl` is not
-            # `_D10TypeInfo_c6__vtblZ` with the end missing -- it is not a symbol.
+            # `dlang_parse_mangle`: an artificial symbol ends with `Z` and has no type; the
+            # `Z` is what makes it one, so without it this is not a symbol.
             ("_D3foo6__vtblZ", "vtable for foo"),
             ("_D3foo6__vtbl", "_D3foo6__vtbl"),
             ("_D3foo7__Class", "_D3foo7__Class"),
             ("_D10TypeInfo_c6__vtbl", "_D10TypeInfo_c6__vtbl"),
-            # And a component that is *called* `__vtbl` with a function type after it is
-            # an ordinary function, which refusing to fall through had made unreadable.
+            # A component *called* `__vtbl` with a function type after it is a function.
             ("_D3foo6__vtblFZv", "foo.__vtbl()"),
         ],
     )
@@ -598,12 +581,9 @@ class TestMoreOfWhatMutatingRealSymbolsFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_parse_qualified` skips a literal `0` with a `continue`, which steps
-            # over the "consume the encoded arguments" every other component goes
-            # through -- so the type belongs to a component the reference left out, and
-            # the reference does not spell it. Writing it after the path said the
-            # component before was that function: `Mutex.unlock()` for a name whose `()`
-            # is somewhere else.
+            # `dlang_parse_qualified` skips a literal `0` with a `continue`, bypassing
+            # the argument parse, so the type belongs to the omitted component and is
+            # not spelled.
             ("_D3foo3bar0FZv", "foo.bar"),
             ("_D3foo3bar0FiZv", "foo.bar"),
             ("_D4core4sync5mutex5Mutex6unlock0FNeZv", "core.sync.mutex.Mutex.unlock"),
@@ -620,14 +600,10 @@ class TestMoreOfWhatMutatingRealSymbolsFound:
         "mangled",
         [
             # `TemplateArgX` is `T Type`, `V Type Value`, `S Number_opt QualifiedName` or
-            # `X`, and nothing else. A bare symbol name was read here as well, on the
-            # grounds that a compiler emits one where the kind is unambiguous -- it does
-            # not, `dlang_template_args` refuses one, and neither corpus has a name that
-            # needs it.
+            # `X`, and nothing else; `dlang_template_args` refuses a bare symbol name.
             "_D3foo__T3bar3bazZ3quxFZv",
             "_D3foo__T3barQeZ3quxFZv",
-            # An `S` argument whose qualified name spells nothing is not an argument
-            # either: it took a slot and was spelled as one.
+            # An `S` argument whose qualified name spells nothing is not an argument either.
             "_D3foo__T3barS0Z3quxFZv",
         ],
     )
@@ -635,15 +611,13 @@ class TestMoreOfWhatMutatingRealSymbolsFound:
         assert demangle.demangle(mangled, language="d") == mangled
 
 
-class TestWhatTheThirdSittingFound:
-    """Four more from `tools/mutate.py`, each measured against `c++filt --format=dlang`."""
+class TestDigitRunsMarkersAndPostblit:
+    """Shapes from `tools/mutate.py`, each measured against `c++filt --format=dlang`."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # `dlang_type`'s `G` case remembers where the digit run began and appends it
-            # verbatim, so a leading zero is part of the bound. Same rule as an integer
-            # literal; re-formatting it wrote a different bound.
+            # `dlang_type`'s `G` case appends the digit run verbatim, leading zero included.
             ("_D3foo3barFG012aZv", "foo.bar(char[012])"),
             ("_D3foo3barFG12aZv", "foo.bar(char[12])"),
             ("_D8demangle4testFG02G42G42aZv", "demangle.test(char[42][42][02])"),
@@ -655,9 +629,8 @@ class TestWhatTheThirdSittingFound:
     @pytest.mark.parametrize(
         ("mangled", "expected"),
         [
-            # Nothing is left to name once the marker is taken off, and the reference
-            # still writes the prefix. Requiring a component before it read the marker as
-            # an ordinary name.
+            # Nothing is left to name once the marker is taken off; the reference still
+            # writes the prefix.
             ("_D6__initZ", "initializer for"),
             ("_D6__vtblZ", "vtable for"),
         ],
@@ -669,8 +642,7 @@ class TestWhatTheThirdSittingFound:
         ("mangled", "expected"),
         [
             # The reference renames `__postblit` only where the type is exactly a `this`
-            # parameter and an empty D-convention signature. "No attributes" was the
-            # first reading of the rule and renamed six shapes it does not.
+            # parameter and an empty D-convention signature.
             ("_D8demangle4test10__postblitMFZv", "demangle.test.this(this)"),
             ("_D8demangle4test10__postblitMFZi", "demangle.test.this(this)"),
             ("_D8demangle4test10__postblitFZv", "demangle.test.__postblit()"),
@@ -689,10 +661,9 @@ class TestWhatTheThirdSittingFound:
         """`dlang_symbol_backref` reads a number and then that many characters.
 
         So what a `Q` points at is an identifier and nothing else -- not a `__T` template
-        instance. Reading whatever stood there resolved a mutated index onto a whole
-        instance and spelled it as a path component, naming it twice: this came back
-        `std.range.Chunks!(ubyte[]).Chunks!(ubyte[]).empty()`. 56 of the 119 shapes the
-        mutation fuzzer had this scheme reading and the reference refusing were this one.
+        instance. Reading whatever stands there would resolve a mutated index onto a
+        whole instance and spell it as a path component, naming it twice:
+        `std.range.Chunks!(ubyte[]).Chunks!(ubyte[]).empty()`.
         """
         name = "_D3std5range__T6ChunksTAhZQo5emptyMFNaNbNdNiNfZb"
         assert demangle.demangle(name, language="d") == name
@@ -704,20 +675,18 @@ class TestWhatTheThirdSittingFound:
 class TestAgainstLibibertysOwnCorpus:
     """The reference's vectors, not this project's.
 
-    `d-real-world.txt` is a corpus this project assembled, and the ROADMAP's claim of
-    100% against `c++filt --format=dlang` was true of it before libiberty's own
-    `d-demangle-expected` had been adopted -- which is larger, and which found 149 of its
-    366 vectors failing when it was.
+    `d-real-world.txt` is a corpus this project assembled, so 100% against it says less
+    than 100% against libiberty's own `d-demangle-expected`, which is larger.
 
-    All 366 pass now. What closed the last of them was worth recording, because each was
-    a rule that could only be *derived* from the reference rather than read out of the D
-    ABI: the five characters it names inside a string (`\a` and `\b` are not among them,
-    and neither `"` nor a backslash is escaped at all), the different rule for a
-    character *literal*, hex float values written with the point after the first digit,
-    associative-array values written as pairs where the type says so -- through a back
-    reference, if that is how the type was written -- struct and function-literal values,
-    `extern(Pascal)`, the anonymous and `__S<n>` path components it leaves out, and the
-    malformed template instances it refuses outright rather than printing back.
+    All 366 vectors pass. The hardest rules to reach are ones that could only be
+    *derived* from the reference rather than read out of the D ABI: the five characters
+    it names inside a string (`\a` and `\b` are not among them, and neither `"` nor a
+    backslash is escaped at all), the different rule for a character *literal*, hex
+    float values written with the point after the first digit, associative-array values
+    written as pairs where the type says so -- through a back reference, if that is how
+    the type was written -- struct and function-literal values, `extern(Pascal)`, the
+    anonymous and `__S<n>` path components it leaves out, and the malformed template
+    instances it refuses outright rather than printing back.
 
     Pinned exactly, in both directions.
     """
@@ -742,12 +711,11 @@ class TestAgainstLibibertysOwnCorpus:
         assert self._score() == self.EXPECTED_EXACT
 
     def test_every_vector_is_answered_promptly(self):
-        """The corpus holds a real symbol that took over 35 seconds.
+        """No corpus symbol takes a second, however many `Q` back references it holds.
 
-        `std.format.formattedWrite`, 2,695 characters with 441 `Q` back references in
-        it. The parser was not looping -- three hundred thousand calls in all -- it was
-        assembling a string far larger than any caller would accept, and `max_output`
-        was checked on the finished string. A bound observed after the work is a report.
+        A long name with many back references must not assemble a string far larger than
+        any caller would accept; `max_output` is enforced while reading, not on the
+        finished string.
         """
         import time
 
@@ -771,9 +739,7 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
 
     Neither shape is one a compiler writes -- both corpora, 1,257 real symbols and
     libiberty's 366 vectors, have neither -- so both are reachable only by mutation, and
-    both are recorded here rather than followed. `tools/mutate.py` carried the first for
-    several sittings as "a deep chain of `Q` back references"; that was the shape of the
-    mutant, not of the disagreement.
+    both are recorded here rather than followed.
     """
 
     @pytest.mark.parametrize(
@@ -801,8 +767,7 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
             ("_D1w__T1bS__T1cZZ1xi", "w.b!(c!()).x"),
             ("_D1w__T1bS__T1cTaZZ1xi", "w.b!(c!(char)).x"),
             ("_D1w__T1bS__T1cZ1yZ1xi", "w.b!(c!().y).x"),
-            # The 44-character `testexpansion.s!(...)` instance with `S` where a
-            # length `8` was. `tools/mutate.py --seed 9`.
+            # The 44-character `testexpansion.s!(...)` instance with `S` where a length was.
             (
                 "_D13testexpansion44__T1sTS13testexpansionS__T1sTiZ1sFiZ6ResultZ1sFS13testexpansion8__T1sTiZ1sFiZ6ResultZ6Result3fooMFNaNfZv",
                 "testexpansion.s!(testexpansion, s!(int).s(int).Result).s(testexpansion.s!(int).s(int).Result).Result.foo()",
@@ -814,14 +779,14 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
 
         `dlang_template_args` has no arm for it -- `dlang_identifier` wants a number --
         and refuses the whole name. The ABI's `S Number_opt QualifiedName` does not
-        require the number. `tools/mutate.py --seed 9` reached it.
+        require the number. `tools/mutate.py --seed 9` reproduces it.
         """
         assert demangle.demangle(mangled, language="d") == expected
 
     def test_the_shape_the_mutation_actually_produced(self):
         """The seed, the one-character edit, and what it turns the name into.
 
-        `13__dgliteral10` becomes `13___dgliteral10`: the length still says 13, so it now
+        `13__dgliteral10` becomes `13___dgliteral10`: the length still says 13, so it
         covers `___dgliteral1` and the `0` that was part of the identifier is handed to
         the grammar as the anonymous `<SymbolName>` -- with the `MFNaNbNiNfZ` after it,
         which is the shape above.
@@ -832,14 +797,12 @@ class TestWhereLibibertyIsNarrowerThanTheGrammar:
         assert demangle.demangle(seed, language="d") == "a.__dgliteral10()"
 
 
-class TestWhatAskingTheReferenceAboutRefusalsFound:
+class TestRefusalsTheReferenceAlsoRefuses:
     """`tools/mutate.py --refusals`: the mutants this scheme refuses that c++filt reads.
 
-    The gate only ever puts names this scheme *reads* to the reference, so a name it
-    refused and the reference read was invisible to it. Asked the other way round over
-    20,000 mutants, seventeen came back read. Two were this scheme's, and are fixed; the
-    rest are libiberty reading past the grammar, and are pinned here as refusals so a
-    change to either side shows up.
+    The gate only puts names this scheme *reads* to the reference, so `--refusals` asks
+    the other way round. Where libiberty reads past the grammar, the name is pinned here
+    as a refusal, so a change to either side shows up.
     """
 
     @pytest.mark.parametrize(
@@ -880,7 +843,7 @@ class TestWhatAskingTheReferenceAboutRefusalsFound:
 
     def test_a_parameter_list_at_the_end_of_the_name_is_still_refused(self):
         """No return type and no `Z` either: `dlang_parse_qualified` backtracks on the
-        end of the name and the reference refuses it, as before."""
+        end of the name and the reference refuses it."""
         name = "_D4main3fooFZ"
         assert demangle.demangle(name, language="d") == name
 
@@ -907,18 +870,17 @@ class TestWhatAskingTheReferenceAboutRefusalsFound:
             parse_d_symbol(mangled)
 
 
-class TestWhatTheSecondAndThirdDrawsFound:
-    """`tools/mutate.py --seed 2` and `--seed 3`, 20,000 mutants each, over the parser as
-    it stood after the pinned draw stood at zero. Three shapes this read and the
-    reference refuses, each settled against `d-demangle.c`."""
+class TestScopeModifiersAndBackReferenceTargets:
+    """Three shapes the reference refuses, each settled against `d-demangle.c`.
+    `tools/mutate.py --seed 2` and `--seed 3`, 20,000 mutants each, draw them."""
 
     @pytest.mark.parametrize(
         "mangled", ["_D4main3fooMxxFZ3barFZv", "_D4main3fooMxOFZ3barFZv", "_D4main3fooMxyFZ3barFZv"]
     )
     def test_a_scope_this_parameter_follows_the_this_rule(self, mangled):
         """`dlang_parse_qualified` reads a scope's `M` modifiers with `dlang_type_modifiers`,
-        the rule under which `x` and `y` come last and once. The scope path read them
-        as a type's run and spelled `foo() const const.bar()`."""
+        the rule under which `x` and `y` come last and once. Reading them
+        as a type's run would spell `foo() const const.bar()`."""
         assert demangle.demangle(mangled, language="d") == mangled
 
     @pytest.mark.parametrize(
@@ -934,9 +896,9 @@ class TestWhatTheSecondAndThirdDrawsFound:
 
     def test_a_digit_after_a_path_is_the_next_component_and_nothing_else(self):
         """`dlang_symbol_name_p` says a digit opens a component, and a component that
-        does not parse fails the name. Backing out and reading the digits as an old-style
-        bare integer value spelled `test!(42)` for a name the reference refuses; the value
-        a compiler writes carries its type, `i42`."""
+        does not parse fails the name. Backing out and reading the digits as an
+        old-style bare integer value would spell `test!(42)` for a name the reference
+        refuses; the value a compiler writes carries its type, `i42`."""
         assert (
             demangle.demangle("_D8demangle__T4testVE3foo3bar42Zv", language="d") == "_D8demangle__T4testVE3foo3bar42Zv"
         )
@@ -957,22 +919,22 @@ class TestWhatTheSecondAndThirdDrawsFound:
     )
     def test_a_one_character_symbol_argument_in_the_older_form(self, mangled, expected):
         """`dlang_template_symbol_param` tries a length only where the region after it
-        opens on a digit or `_D`. `S1i` had its `1` taken for a length and its `i` for a
-        type, and the argument the reference spells `i` was refused."""
+        opens on a digit or `_D`. `S1i` must not have its `1` taken for a length and
+        its `i` for a type: the reference spells the argument `i`."""
         assert demangle.demangle(mangled, language="d") == expected
 
     def test_a_length_prefixed_symbol_argument_may_not_have_a_leftover_type(self):
         """`S11` then `9symbol3foo`: nine characters of name and an `o`. The length
-        looked exact because the leftover was read as `ifloat`, and the argument was
-        spelled `symbol3fo`. libiberty refuses. `tools/mutate.py --seed 15`."""
+        would look exact because the leftover reads as `ifloat`, spelling the argument
+        `symbol3fo`. libiberty refuses. `tools/mutate.py --seed 15`."""
         mangled = "_D8demangle23__T4testS119symbol3fooZv"
         assert demangle.demangle(mangled, language="d") == mangled
         assert demangle.demangle("_D8demangle__T4testS116symbol3fooZv", language="d") == "demangle.test!(symbol.foo)"
 
     def test_a_star_in_an_identifier_is_refused(self):
-        """`6En961*` is six characters including a `*`, which is not a D name.
-        The type still parsed, so `_D3std6stream9BOMEndianyG5E3std6system6En961*`
-        came back `std.stream.BOMEndian`. libiberty refuses. `tools/mutate.py --seed 17`."""
+        """`6En961*` is six characters including a `*`, which is not a D name. The type
+        still parses, so `_D3std6stream9BOMEndianyG5E3std6system6En961*` would read as
+        `std.stream.BOMEndian`. libiberty refuses. `tools/mutate.py --seed 17`."""
         assert demangle.demangle("_D1aE3foo6En961*", language="d") == "_D1aE3foo6En961*"
         assert demangle.demangle("_D1aE3foo6En961i", language="d") == "a"
         assert (
@@ -984,7 +946,7 @@ class TestWhatTheSecondAndThirdDrawsFound:
     def test_a_compiler_scope_is_followed_by_the_next_component_at_once(self, mangled):
         """`dlang_identifier` steps over a `__S<n>` and reads the next identifier there
         and then -- not a scope type, not the symbol's type and not the end of the name.
-        `_D8demangle4mainFZ4__S1xi` read `demangle.main()` with the `xi` as its type,
+        `_D8demangle4mainFZ4__S1xi` would read `demangle.main()` with the `xi` as its type,
         where the reference refuses."""
         assert demangle.demangle(mangled, language="d") == mangled
         assert demangle.demangle("_D8demangle4mainFZ4__S11xi", language="d") == "demangle.main().x"
@@ -992,7 +954,7 @@ class TestWhatTheSecondAndThirdDrawsFound:
     def test_a_delegate_back_reference_points_at_a_function_type(self):
         """`dlang_type_backref` with `is_function` set reads a function type at the
         target and nothing else. `PDQg` in a mutant of a real `std.regex` symbol points
-        at a struct type, which this resolved and spelled `real delegate*` where the
+        at a struct type, which would resolve and spell `real delegate*` where the
         reference refuses."""
         assert demangle.demangle("_D4main3fooFFZvDQeZv", language="d") == "main.foo(void() function, void() delegate)"
         assert demangle.demangle("_D4main3fooFFZvPDQfZv", language="d") == "main.foo(void() function, void() delegate*)"
@@ -1010,15 +972,15 @@ class TestWhatTheSecondAndThirdDrawsFound:
         assert demangle.demangle(mutant, language="d") == mutant
 
 
-class TestWhatTheFourthToSixthDrawsFound:
-    """`tools/mutate.py --seed 4`, `5` and `6`, 20,000 mutants each: four more shapes
-    this read and `c++filt --format=dlang` refuses or spells otherwise, each settled
-    against `d-demangle.c`."""
+class TestZeroLengthNamesAndArrayLiteralValues:
+    """Four shapes `c++filt --format=dlang` refuses or spells otherwise, each settled
+    against `d-demangle.c`. `tools/mutate.py --seed 4`, `5` and `6`, 20,000 mutants each,
+    draw them."""
 
     def test_a_back_reference_to_an_anonymous_component_keeps_its_slot(self):
         """`dlang_symbol_backref` reads a zero-length name and appends nothing, and the
         `.` before the next component is written all the same: `a..c`. A literal `0` is
-        skipped whole, as before."""
+        skipped whole."""
         assert demangle.demangle("_D1a0Qb1ci", language="d") == "a..c"
         assert demangle.demangle("_D1a1b0Qb1ci", language="d") == "a.b..c"
         assert demangle.demangle("_D1a1b0i", language="d") == "a.b"
@@ -1033,18 +995,18 @@ class TestWhatTheFourthToSixthDrawsFound:
     )
     def test_an_array_literal_spells_its_elements_untyped(self, mangled, expected):
         """`dlang_parse_arrayliteral` reads each value with no type: no `uL` on a
-        `ulong`, and no `true` or `'A'` either, where this wrote `[false, true]`."""
+        `ulong`, and no `true` or `'A'` either: not `[false, true]`."""
         assert demangle.demangle(mangled, language="d") == expected
 
     @pytest.mark.parametrize("mangled", ["_D5__T0Zv", "_D__T0Zv", "_D8demangle__T0Zv"])
     def test_a_template_instance_named_by_the_anonymous_zero_is_refused(self, mangled):
-        """`dlang_parse_template` refuses `__T0`; this spelled `!()`."""
+        """`dlang_parse_template` refuses `__T0`, so it is not spelled `!()`."""
         assert demangle.demangle(mangled, language="d") == mangled
 
     def test_no_scope_type_follows_a_literal_anonymous_component(self):
         """`dlang_parse_qualified` `continue`s past a `0`, stepping over the parameters
         every other component may carry, so a function type after it is the symbol's
-        own and nothing may follow it. `_D1a0FZ1bi` read `a.().b`."""
+        own and nothing may follow it. `_D1a0FZ1bi` must not read as `a.().b`."""
         for mangled in ("_D1a0FZ1bi", "_D1a1b0FZ1ci"):
             assert demangle.demangle(mangled, language="d") == mangled
         assert demangle.demangle("_D1a0FZv", language="d") == "a"
@@ -1058,9 +1020,9 @@ class TestAScopeInsideATypesName:
     scope whenever they parse and the name goes on, with no trailing type for them to
     be instead, and the `this` modifiers are written only for a symbol -- `suffix_modifiers`
     is 0 for a type's name and a plain symbol argument, 1 for a symbol and a `_D`-prefixed
-    argument. `tools/mutate.py --seed 8` reached the first through a `std.utf` mutant
-    whose struct name ended `byUTF(...)` and was read here with the parameters handed to
-    the enclosing parameter list instead."""
+    argument. A `std.utf` mutant whose struct name ends `byUTF(...)` is the first:
+    the parameters belong to the name, not to the enclosing parameter list.
+    `tools/mutate.py --seed 8`."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -1081,9 +1043,9 @@ class TestAScopeInsideATypesName:
 class TestAPostblitAnywhereInTheName:
     """`dlang_lname` matches the thirteen characters `__postblitMFZ` as one thing,
     wherever in the name they stand, and writes `this(this)` with no parameter list
-    after it. Renaming only the last component left an interior one as `__postblit()`,
-    which `tools/mutate.py --seed 11` found in a `std.digest` mutant. Any other shape
-    -- attributes, modifiers, a parameter -- is left as `__postblit`, as before."""
+    after it. Renaming only the last component would leave an interior one as
+    `__postblit()`, as in a `std.digest` mutant (`tools/mutate.py --seed 11`). Any other
+    shape -- attributes, modifiers, a parameter -- is left as `__postblit`."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -1110,8 +1072,8 @@ class TestAPostblitAnywhereInTheName:
 class TestABackReferenceIntoADigitRun:
     """`dlang_symbol_backref` reads the length at the target with `dlang_number`, which
     takes the whole digit run: `06289` is a length of 6289, and `01a` is `a`. Only a
-    lone `0` is the empty identifier. Stopping at the first `0` read a target inside a
-    mutated name's own digits as an anonymous component and went on, spelling
+    lone `0` is the empty identifier. Stopping at the first `0` would read a target inside a
+    mutated name's own digits as an anonymous component and go on, spelling
     `..length` and `.array.Appender` where the reference refuses the name.
     `tools/mutate.py --seed 15` and `--seed 17`."""
 
@@ -1136,9 +1098,9 @@ class TestATypeBackReferenceOnlyReadsBackwards:
     """`dlang_type_backref` bounds every type back reference by the one being resolved:
     it must stand before it, so a chain of them walks the name backwards and ends. A
     scope's function type whose parameter refers back to the enum the scope is part of
-    -- `QBa` at 53 pointing at the `E` at 27, whose spelling reaches 53 again -- was
-    read from inside itself two hundred levels deep, each level's speculative scope type
-    falling back to a plain name only where the depth ran out: two kilobytes of
+    -- `QBa` at 53 pointing at the `E` at 27, whose spelling reaches 53 again -- would
+    be read from inside itself two hundred levels deep, each level's speculative scope
+    type falling back to a plain name only where the depth runs out: two kilobytes of
     `SocketOption(SocketOption(...` where the reference reads one level and moves on.
     `tools/mutate.py --seed 5`."""
 
@@ -1182,7 +1144,7 @@ class TestABackReferenceReadsAPlainIdentifier:
     that many characters spelled as they stand, with only the constructor and
     destructor renames. A target whose body happens to be a template instance,
     `13__T4testThTuZ`, is the identifier `__T4testThTuZ` to it, where `symbol_name`
-    read the template and spelled `test!(ubyte, wchar)` twice over. No compiler points
+    would read the template and spell `test!(ubyte, wchar)` twice over. No compiler points
     a back reference at one. `tools/mutate.py --seed 21`."""
 
     def test_a_template_instance_body_is_spelled_as_it_stands(self):
@@ -1204,14 +1166,14 @@ class TestABackReferenceReadsAPlainIdentifier:
         assert demangle.demangle(mangled, language="d") == expected
 
 
-class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
-    """Three more libiberty rules, each reached by a mutant of a real name."""
+class TestIdentifierLengthsAndSymbolForms:
+    """Three libiberty rules, each reached by a mutant of a real name."""
 
     @pytest.mark.parametrize("mangled", ["_D8demangle4mainFZ4__S10xi", "_D8demangle4mainFZ4__S1Qji"])
     def test_a_compiler_scope_is_followed_by_an_identifier_with_a_length(self, mangled):
         """`dlang_identifier` reads the next identifier straight after a `__S<n>`, and a
         `0` there is a length of nothing to it -- refused, not the anonymous component
-        the path loop skips. Reading it as anonymous spelled `demangle.main()`."""
+        the path loop skips. Reading it as anonymous would spell `demangle.main()`."""
         assert demangle.demangle(mangled, language="d") == mangled
 
     def test_a_compiler_scope_still_reads_before_a_real_identifier(self):
@@ -1230,7 +1192,7 @@ class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
         """`dlang_parse_mangle` is `_D QualifiedName Type` or `_D QualifiedName Z`, the
         type not optional, so a length-bounded region that is a qualified name and
         nothing more is not a symbol to `dlang_template_symbol_param` and is spelled as
-        it stands. Reading it as one spelled `symbol.foo.bar.Zv`."""
+        it stands. Reading it as one would spell `symbol.foo.bar.Zv`."""
         assert demangle.demangle(mangled, language="d") == expected
 
     @pytest.mark.parametrize(
@@ -1240,15 +1202,14 @@ class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
             "_D8demangle__T4testS_D0Zv",
             "_D4core8internal2gc4impl12conservativeQw3Gcx__T7markAllS_DaZv",
             # A back reference counts as a name only where it points at one:
-            # `dlang_symbol_name_p` follows the `Q` and asks for a digit there, and `Qi`
-            # here points into the middle of the name. `S_DQiZv` came back `abc!()`.
+            # `dlang_symbol_name_p` follows the `Q` and asks for a digit there.
             "_D8demangle__T3abcS_DQiZv",
         ],
     )
     def test_a_prefix_with_no_name_after_it_is_refused(self, mangled):
         """`dlang_template_symbol_param` takes the `_D` form only where a symbol name
         follows the prefix; otherwise the `_D` is read as a length, which it is not.
-        `S_DaZv` came back as an argument spelling nothing."""
+        `S_DaZv` must not give an argument spelling nothing."""
         assert demangle.demangle(mangled, language="d") == mangled
 
     def test_the_prefixed_form_still_reads(self):
@@ -1261,13 +1222,12 @@ class TestWhatTheTwentyFourthAndTwentySixthDrawsFound:
 class TestATemplateBodyIsReadAgainstTheWholeName:
     """`dlang_parse_template` reads a length-prefixed template body against the whole
     of what remains and compares what it consumed with the length afterwards, refusing
-    the name on a mismatch. Bounding the body first read a mutant of
+    the name on a mismatch. Bounding the body first would read a mutant of
     `demangle.fn!(sym, val("null"))` where the reference refuses it: inside the body,
     `sym` is followed by a `V` that opens a function type whose parameter list happens
     to run to a `Z` far past the body -- `56` and then fifty-six characters -- and the
     reference reads that greedily, as it reads any scope inside a type, then finds the
-    `v` after it is no template argument. Found with an instrumented build of
-    libiberty's own source; `tools/mutate.py --seed 28`."""
+    `v` after it is no template argument. `tools/mutate.py --seed 28`."""
 
     def test_the_greedy_reading_runs_past_the_body_and_the_name_is_refused(self):
         mangled = "_D8demangle32__T2fnTS3symVS3valS1a4_6e756c6cZ3fun13__T8positionZ13__T8confusesZ8demangle4testMOxFZv"
@@ -1301,10 +1261,10 @@ class TestAnAnonymousLastComponentInsideAnArgument:
     """The type after an anonymous last component belongs to that component, which the
     reference does not spell, so neither is the type: `dlang_parse_qualified` steps past
     the `0` and `dlang_parse_mangle` reads the type as the symbol's own and prints
-    nothing for it. `parse` knew this for a whole symbol -- `foo.bar` for
-    `_D3foo3bar0FNbmZm` -- and `mangled_symbol` did not, so the same symbol as a
-    template argument spelled `foo.bar(ulong)`. A mutant of a `core.internal.gc`
-    symbol, `tools/mutate.py --scheme d --seed 38`."""
+    nothing for it. That holds for a whole symbol -- `foo.bar` for `_D3foo3bar0FNbmZm`
+    -- and equally for the same symbol as a template argument, which must not spell
+    `foo.bar(ulong)`. A mutant of a `core.internal.gc` symbol,
+    `tools/mutate.py --scheme d --seed 38`."""
 
     @pytest.mark.parametrize(
         ("mangled", "expected"),
@@ -1348,20 +1308,20 @@ class TestTheMachOUnderscore:
 
 
 class TestTwoBackReferencesToOneTargetReadItTheSameWay:
-    """The memo for a resolved type back reference was keyed on the wrong bound.
+    """The memo for a resolved type back reference is keyed on the bound the target is
+    read under.
 
     Resolving a `Q` installs that `Q`'s own position as the bound a nested back
     reference may not reach past -- the guard that stops a chain turning round and
     reading a target from inside itself. So what a target reads as depends on *that*
-    bound, and the memo was keyed on the bound in force on the way in instead.
-
-    Two references to one target from two places therefore shared an entry, and the
-    second was served whatever the first had read under its own restriction. In this
-    mutant of `core.internal.lifetime.emplaceInitializer` the `Q` at 122 reads position
-    49 under a bound that refuses the scope's own function type and stores the short
-    form, `...emplaceRef`; the `Q` at 143 has no such restriction -- `c++filt
-    --format=dlang` reads it whole -- and was handed the short one. The two answers
-    differed by 190 characters at the end of a 900-character reading, and everything
+    bound; keying the memo on the bound in force on the way in instead would let two
+    references to one target from two places share an entry, and the second would be
+    served whatever the first had read under its own restriction. In this mutant of
+    `core.internal.lifetime.emplaceInitializer` the `Q` at 122 reads position 49 under
+    a bound that refuses the scope's own function type and stores the short form,
+    `...emplaceRef`; the `Q` at 143 has no such restriction -- `c++filt
+    --format=dlang` reads it whole -- and must not be handed the short one. The two
+    answers differ by 190 characters at the end of a 900-character reading, and everything
     before it agreed. `tools/mutate.py --seed 69`.
     """
 
