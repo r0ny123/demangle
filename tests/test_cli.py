@@ -273,6 +273,12 @@ class TestHelp:
         for status in ("0", "1", "2", "130"):
             assert f"\n  {status} " in statuses
 
+    def test_the_examples_fit_a_narrow_terminal(self, capsys, monkeypatch):
+        monkeypatch.setenv("COLUMNS", "78")
+        text = self._help(capsys, "-h")
+        examples = text[text.index("examples:") : text.index("\n\n", text.index("examples:"))]
+        assert max(len(line) for line in examples.splitlines()) <= 78
+
     def test_a_flag_is_never_split_at_its_hyphen(self, capsys, monkeypatch):
         monkeypatch.setenv("COLUMNS", "60")
         text = self._help(capsys, "--help")

@@ -61,13 +61,14 @@ _DESCRIPTION = """\
 Demangle C++, Rust, Swift, MSVC and other symbol names.
 
 examples:
-  nm -a libfoo.so | demangle                  every symbol in a listing, in place
-  demangle _ZN3foo3barEv '?f@@YAXH@Z'         the names given
-  demangle --json-lines --signature _Z1fPi    one JSON object per name, for a program
+  nm -a libfoo.so | demangle                each symbol in a listing, in place
+  demangle _ZN3foo3barEv '?f@@YAXH@Z'       the names given
+  demangle --json-lines --signature _Z1fPi  a JSON object per name
 
 A name that cannot be read is printed unchanged. With no NAME, or where a NAME is -, \
-standard input is read: every symbol-shaped word is demangled and the text around it \
-is copied through, a line at a time. A terminal is read only for -."""
+standard input is read, and answered as it arrives: every symbol-shaped word in it is \
+demangled and the text around it copied through. Under -0 each NUL-ended record is one \
+name instead, and under --types each line one type. A terminal is read only for -."""
 
 _EPILOG = """\
 exit status:
