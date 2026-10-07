@@ -8,6 +8,14 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Added
+
+- **`tools/upstream_drift.py`.** Scores the library on the references' own test
+  vectors as they stand on their `main` branches today -- libcxxabi, LLVM's MSVC
+  tests, Swift's `manglings.txt` and rustc-demangle's -- and reports the vectors the
+  corpora do not yet hold. A weekly workflow runs it and opens an issue when a new
+  vector is misread.
+
 ### Changed
 
 - **Runs on Python 3.11 and 3.12, and on PyPy 3.11.** The floor was 3.13. Nothing in
