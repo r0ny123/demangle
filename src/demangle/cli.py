@@ -29,6 +29,7 @@ traceback, which is what the `strict` error handler does.
 """
 
 import argparse
+import base64
 import codecs
 import contextlib
 import dataclasses
@@ -212,7 +213,8 @@ def build_parser():
         printing.add_argument(
             "--json-lines",
             action="store_true",
-            help="print one JSON object per name: mangled, demangled, language",
+            help="print one JSON object per name: mangled, demangled, language; and mangled_bytes, the "
+            "name's bytes in base64, where they are not UTF-8",
         )
     )
     printing.add_argument(
@@ -642,6 +644,11 @@ def _record(name, arguments, limits):
     is the scheme that read the name, or None where it comes back unchanged. Every
     record has the same keys, so a name nothing reads has its `--signature` fields None
     rather than missing.
+
+    A name whose bytes are not UTF-8 also has `mangled_bytes`, those bytes in base64.
+    `mangled` carries each such byte as a lone surrogate, which `json` writes as an
+    escape and most readers then replace with U+FFFD, so it alone cannot give the name
+    back.
     """
     read = name[1:] if arguments.strip_underscore and name.startswith("_") else name
     try:
@@ -650,7 +657,12 @@ def _record(name, arguments, limits):
         if arguments.strict:
             raise
         scheme = None
-    record = {"mangled": name, "demangled": _expand(name, arguments, limits) if scheme else name, "language": scheme}
+    record = {"mangled": name}
+    raw = _undecodable(name)
+    if raw is not None:
+        record["mangled_bytes"] = base64.b64encode(raw).decode("ascii")
+    record["demangled"] = _expand(name, arguments, limits) if scheme else name
+    record["language"] = scheme
     if arguments.signature:
         if scheme:
             parts = signature(read, language=arguments.language, style=arguments.style, limits=limits)
@@ -658,6 +670,18 @@ def _record(name, arguments, limits):
         else:
             record.update(dict.fromkeys(_SIGNATURE_FIELDS))
     return record
+
+
+def _undecodable(name):
+    """The bytes `name` was read from, where some were not UTF-8; otherwise None."""
+    if name.isascii():
+        return None
+    try:
+        name.encode("utf-8")
+    except UnicodeEncodeError:
+        with contextlib.suppress(UnicodeEncodeError):
+            return name.encode("utf-8", "surrogateescape")
+    return None
 
 
 def _part_of(name, arguments, limits):

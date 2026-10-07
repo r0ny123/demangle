@@ -4,6 +4,7 @@
 than through a subprocess -- which keeps these fast enough to be worth having.
 """
 
+import base64
 import errno
 import io
 import json
@@ -893,6 +894,21 @@ class TestJsonLinesFlag:
     def test_bytes_that_are_not_utf8_stay_valid_json(self, capsys):
         _, out, _ = run(capsys, ["--json-lines", "_Z1f\udcffv"])
         assert self._records(out)[0]["mangled"] == "_Z1f\udcffv"
+
+    def test_bytes_that_are_not_utf8_are_given_back_in_base64(self, capsys, monkeypatch):
+        """A reader that turns `\\udcff` into U+FFFD can still recover the name exactly."""
+        stdin = io.TextIOWrapper(io.BytesIO(b"_Z3foo\xff\0_Z1fv\0caf\xc3\xa9\0"), encoding="utf-8")
+        monkeypatch.setattr("sys.stdin", stdin)
+        main(["--json-lines", "-0"])
+        records = [json.loads(record) for record in capsys.readouterr().out.split("\0")[:-1]]
+        assert records[0] == {
+            "mangled": "_Z3foo\udcff",
+            "mangled_bytes": "X1ozZm9v/w==",
+            "demangled": "_Z3foo\udcff",
+            "language": None,
+        }
+        assert base64.b64decode(records[0]["mangled_bytes"]) == b"_Z3foo\xff"
+        assert ["mangled_bytes" in record for record in records[1:]] == [False, False]
 
     @pytest.mark.parametrize("other", ["--tree", "--json", "--detect", "--both"])
     def test_it_is_one_answer_among_several(self, capsys, other):

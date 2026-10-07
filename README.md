@@ -307,8 +307,11 @@ $ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, i
 `--json-lines` writes one object per name, `{"mangled": ..., "demangled": ...,
 "language": ...}`, where `language` is the scheme that read the name, or `null` where
 it came back unchanged; `--signature` adds the fields of `signature()`, `null` for a
-name nothing reads, so every record has the same keys. Over a stream it writes one per
-symbol the filter rewrites. `--json` is the other question, the parse tree.
+name nothing reads, so every record has the same keys. A name whose bytes are not UTF-8
+has one more, `mangled_bytes`, the bytes in base64: `mangled` carries each such byte as
+a lone surrogate, `"_Z3foo\udcff"`, which most JSON readers turn into U+FFFD. Over a
+stream it writes one per symbol the filter rewrites. `--json` is the other question,
+the parse tree.
 
 `demangle -h` lists the options most runs use and `demangle --help` all of them, with
 the exit statuses: 0 when every name was read or printed unchanged, 1 when one was
