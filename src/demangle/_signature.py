@@ -45,6 +45,7 @@ be filled in later:
 The `None`s are the point. A field that guesses is worse than a field that declines.
 """
 
+import functools
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -514,8 +515,11 @@ def _label_spans(text):
     an operator's own name, `` C::operator<`adjustor{4}' ``, open and close nothing.
     """
     spans = []
+    if "`" not in text:
+        return spans
     angle = paren = brace = quoting = opened = 0
-    for at, char in enumerate(text):
+    for mark in _SPAN_MARKS.finditer(text):
+        at, char = mark.start(), mark.group()
         if quoting:
             if char == "'":
                 quoting -= 1
@@ -529,9 +533,19 @@ def _label_spans(text):
             brace = brace + 1 if char == "{" else max(brace - 1, 0)
         elif char in "()":
             paren = paren + 1 if char == "(" else max(paren - 1, 0)
-        elif char in "<>" and not text[:at].rstrip("<>=-").endswith("operator"):
+        elif char in "<>" and not _ends_an_operator(text, at):
             angle = angle + 1 if char == "<" else max(angle - 1, 0)
     return spans
+
+
+_SPAN_MARKS = re.compile(r"[`'{}()<>]")
+
+
+def _ends_an_operator(text, at):
+    """Whether the `<` or `>` at `at` is part of an operator's name, `operator<<=`."""
+    while at and text[at - 1] in "<>=-":
+        at -= 1
+    return text.endswith("operator", 0, at)
 
 
 def _msvc_label(inside):
@@ -824,16 +838,16 @@ def _words(text, closing=None):
     """`text` split at the spaces outside every bracket and every quoted span."""
     words = []
     start = 0
-    for at in _top_level(text, closing):
-        if text[at] == " ":
-            words.append(text[start:at])
-            start = at + 1
+    for at in _top_level(text, closing, (" ",)):
+        words.append(text[start:at])
+        start = at + 1
     words.append(text[start:])
     return [word for word in words if word]
 
 
-def _top_level(text, closing=None):
-    """The positions in `text` outside every bracket and, with `closing`, every quoted span.
+def _top_level(text, closing, wanted):
+    """Where `text` holds one of `wanted` outside every bracket and, with `closing`, every
+    quoted span.
 
     A span opens at a backtick and closes at `closing`: MSVC writes `'` and nests one
     span in another, `` `void f(void)'::`2'::x ``, and Delphi writes a second backtick,
@@ -843,7 +857,8 @@ def _top_level(text, closing=None):
     `A::operator->` cannot swallow the rest of the text.
     """
     depth = quoting = 0
-    for at, char in enumerate(text):
+    for found in _scanner(closing, wanted).finditer(text):
+        at, char = found.start(), found.group()
         if quoting:
             if char == closing:
                 quoting -= 1
@@ -857,6 +872,13 @@ def _top_level(text, closing=None):
             depth = depth - 1 if depth else 0
         elif not depth:
             yield at
+
+
+@functools.cache
+def _scanner(closing: str | None, wanted: tuple[str, ...]) -> re.Pattern[str]:
+    """What `_top_level` stops at: a bracket, a quote, or one of `wanted`."""
+    marks = "<>()[]" + ("`" + closing if closing else "")
+    return re.compile("|".join([f"[{re.escape(marks)}]", *map(re.escape, wanted)]))
 
 
 def _delphi_head(head, is_function):
@@ -995,17 +1017,14 @@ def _split_last(text, separator, closing=None):
     With `closing`, a quoted span is one piece of a component, which is how MSVC writes
     `` `anonymous namespace'::f `` and the function a local static lives in.
     """
-    if not separator:
+    if not separator or separator not in text:
         return "", text
     phrase = separator.strip()
     cut = -1
-    after = 0
-    for at in _top_level(text, closing):
+    for at in _top_level(text, closing, (separator, " ") if phrase else (separator,)):
         if phrase and text[at] == " ":
             return "", text
-        if at >= after and text.startswith(separator, at):
-            cut = at
-            after = at + len(separator)
+        cut = at
     if cut < 0:
         return "", text
     return text[:cut], text[cut + len(separator) :]
