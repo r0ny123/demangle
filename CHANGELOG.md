@@ -78,6 +78,13 @@ the reference demanglers, and a **Performance** section.
   for the first 8K. It is now flushed once per read of standard input: per line when
   lines trickle in, per 64K when `nm` floods it, which costs nothing measurable. The
   bytes written are the same, `\r\n` and undecodable bytes included.
+- **`demangle -h` is the short help, `demangle --help` the whole of it.** Both open
+  with the usage and three examples; `-h` then lists the options most runs use,
+  and `--help` every option in groups -- reading names, what to print, one part of a
+  name, spelling, MSVC suppressions, resource bounds -- followed by the exit statuses
+  and where the documentation and the issue tracker are. `--simplified`, a Swift flag,
+  had been listed among the MSVC ones. The usage line is one line, so a usage error is
+  two rather than eleven, and a flag is no longer broken across lines at a hyphen.
 - **Flags may follow names.** `demangle _Z1fv -b _Z1gv` was an "unrecognized
   arguments" error, because the names after a flag were not collected; flags and
   names now mix in any order, and after `--` nothing is a flag.

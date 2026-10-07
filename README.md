@@ -310,7 +310,11 @@ it came back unchanged; `--signature` adds the fields of `signature()`, `null` f
 name nothing reads, so every record has the same keys. Over a stream it writes one per
 symbol the filter rewrites. `--json` is the other question, the parse tree.
 
-`python -m demangle` is the same command, where the script is not on `PATH`.
+`demangle -h` lists the options most runs use and `demangle --help` all of them, with
+the exit statuses: 0 when every name was read or printed unchanged, 1 when one was
+refused -- under `--strict`, or with no tree to print for `--tree` or `--json` -- 2 for
+a usage error, and 130 after Ctrl-C. `python -m demangle` is the same command, where
+the script is not on `PATH`.
 
 ## Correctness
 

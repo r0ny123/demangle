@@ -38,6 +38,7 @@ import itertools
 import json
 import os
 import sys
+import textwrap
 
 from . import __version__
 from ._signature import Signature, signature
@@ -52,73 +53,180 @@ _TOKEN = TOKEN
 _TOKEN_MUST_HOLD = TOKEN_MUST_HOLD
 
 
+_DESCRIPTION = """\
+Demangle C++, Rust, Swift, MSVC and other symbol names.
+
+examples:
+  nm -a libfoo.so | demangle                  every symbol in a listing, in place
+  demangle _ZN3foo3barEv '?f@@YAXH@Z'         the names given
+  demangle --json-lines --signature _Z1fPi    one JSON object per name, for a program
+
+A name that cannot be read is printed unchanged. With no NAME, or where a NAME is -, \
+standard input is read: every symbol-shaped word is demangled and the text around it \
+is copied through, a line at a time. A terminal is read only for -."""
+
+_EPILOG = """\
+exit status:
+  0    every name was read, or printed unchanged
+  1    a name was refused: under --strict, or with no tree to print for --tree or --json
+  2    the command line was wrong
+  130  interrupted
+
+documentation: https://r0ny123.github.io/demangle/
+issues: https://github.com/r0ny123/demangle/issues"""
+
+
+class _Formatter(argparse.HelpFormatter):
+    """Wraps a paragraph of prose to the terminal, and leaves one written as several
+    lines -- the examples, the exit statuses -- as it is written.
+
+    Never at a hyphen: `--no-leading-underscores` is one flag, and split across two lines
+    it is two words that are neither.
+    """
+
+    def __init__(self, prog):
+        super().__init__(prog, max_help_position=32)
+
+    def _fill_text(self, text, width, indent):
+        return "\n\n".join(
+            "\n".join(indent + line for line in paragraph.splitlines())
+            if "\n" in paragraph
+            else textwrap.fill(
+                " ".join(paragraph.split()),
+                width,
+                initial_indent=indent,
+                subsequent_indent=indent,
+                break_on_hyphens=False,
+            )
+            for paragraph in text.split("\n\n")
+        )
+
+    def _split_lines(self, text, width):
+        return textwrap.wrap(" ".join(text.split()), width, break_on_hyphens=False)
+
+
+class _Parser(argparse.ArgumentParser):
+    """`-h` is the short help, the options most runs use; `--help` is all of it."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.common = []
+
+    def format_short_help(self):
+        formatter = self._get_formatter()
+        formatter.add_usage(self.usage, self._actions, self._mutually_exclusive_groups)
+        formatter.add_text(self.description)
+        formatter.start_section("common options")
+        formatter.add_arguments(self.common)
+        formatter.end_section()
+        formatter.add_text("demangle --help lists every option, and the exit statuses.")
+        return formatter.format_help()
+
+
+class _ShortHelp(argparse.Action):
+    def __init__(self, option_strings, dest, help=None):
+        super().__init__(option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, nargs=0, help=help)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        assert isinstance(parser, _Parser)
+        print(parser.format_short_help(), end="")
+        parser.exit()
+
+
 def build_parser():
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="demangle",
-        description="Demangle C++, Rust, Swift, MSVC and other symbol names.",
-        epilog=(
-            "With no NAME, or where a NAME is -, names are read from standard input: every "
-            "symbol-shaped word is demangled and the text around it is copied through, a "
-            "line at a time. A terminal is read only for -."
-        ),
+        usage="%(prog)s [options] [NAME ...]",
+        description=_DESCRIPTION,
+        epilog=_EPILOG,
+        formatter_class=_Formatter,
+        add_help=False,
     )
-    parser.add_argument("names", nargs="*", metavar="NAME", help="symbol names to demangle; - reads standard input")
-    parser.add_argument(
-        "-l",
-        "--language",
-        metavar="NAME[,NAME...]",
-        help="force one scheme instead of detecting, or detect among a comma-separated list (aliases accepted)",
+    common = parser.common
+
+    reading = parser.add_argument_group("reading names")
+    common.append(
+        reading.add_argument(
+            "names", nargs="*", metavar="NAME", help="symbol names to demangle; - reads standard input"
+        )
     )
-    parser.add_argument("-s", "--style", default="llvm", help="output style (default: llvm)")
-    parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
-    parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
-    parser.add_argument("--json", action="store_true", help="print the parse tree as JSON")
-    parser.add_argument(
-        "--json-lines",
+    common.append(
+        reading.add_argument(
+            "-l",
+            "--language",
+            metavar="LANGUAGE[,...]",
+            help="force one scheme instead of detecting, or detect among a comma-separated list (aliases accepted)",
+        )
+    )
+    common.append(
+        reading.add_argument(
+            "--strict",
+            action="store_true",
+            help="report failures instead of echoing the input; with --detect, name the scheme that reads a name",
+        )
+    )
+    reading.add_argument(
+        "-_",
+        "--strip-underscore",
         action="store_true",
-        help="print one JSON object per name: mangled, demangled, language",
+        help="ignore one leading underscore, as `c++filt --strip-underscore` does",
     )
-    parser.add_argument(
-        "--signature",
-        action="store_true",
-        help="with --json-lines, add the parts of the name: base_name, parameters, return_type...",
-    )
-    parser.add_argument(
+    reading.add_argument(
         "-0",
         "--null",
         action="store_true",
         help="read standard input as whole names each ended by a NUL, as `find -print0` writes "
         "them, and end each answer with a NUL",
     )
-    parser.add_argument(
+    reading.add_argument(
         "--types",
         action="store_true",
         help="read each NAME as a bare type encoding, not a symbol (needs --language)",
     )
-    parser.add_argument(
-        "-_",
-        "--strip-underscore",
+
+    printing = parser.add_argument_group("what to print")
+    common.append(
+        printing.add_argument(
+            "-d", "--detect", action="store_true", help="print the detected scheme, not the expansion"
+        )
+    )
+    common.append(
+        printing.add_argument(
+            "-b",
+            "--both",
+            action="store_true",
+            help="print the mangled name and its expansion, as `mangled ==> demangled`",
+        )
+    )
+    common.append(
+        printing.add_argument(
+            "-m", "--only-demangled", action="store_true", help="print only what demangled, skipping the rest"
+        )
+    )
+    printing.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
+    printing.add_argument("--json", action="store_true", help="print the parse tree as JSON")
+    common.append(
+        printing.add_argument(
+            "--json-lines",
+            action="store_true",
+            help="print one JSON object per name: mangled, demangled, language",
+        )
+    )
+    printing.add_argument(
+        "--signature",
         action="store_true",
-        help="ignore one leading underscore, as `c++filt --strip-underscore` does",
+        help="with --json-lines, add the parts of the name: base_name, parameters, return_type...",
     )
-    parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="report failures instead of echoing the input; with --detect, name the scheme that reads a name",
-    )
-    parser.add_argument(
-        "-b", "--both", action="store_true", help="print the mangled name and its expansion, as `mangled ==> demangled`"
-    )
-    parser.add_argument(
-        "-m", "--only-demangled", action="store_true", help="print only what demangled, skipping the rest"
-    )
+
     # One name, one part: a silently ignored flag is worse than an error.
-    parts = parser.add_mutually_exclusive_group()
-    parts.add_argument(
-        "-p",
-        "--no-params",
-        action="store_true",
-        help="print the name without its parameter list or return type, as `c++filt -p` does",
+    parts = parser.add_argument_group("printing one part of a name").add_mutually_exclusive_group()
+    common.append(
+        parts.add_argument(
+            "-p",
+            "--no-params",
+            action="store_true",
+            help="print the name without its parameter list or return type, as `c++filt -p` does",
+        )
     )
     parts.add_argument(
         "--base-name", action="store_true", help="print only the last component of the name, without its scope"
@@ -131,16 +239,30 @@ def build_parser():
         action="store_true",
         help="print the return type after the parameter list, as libiberty's `DMGL_RET_POSTFIX` does",
     )
+
+    spelling = parser.add_argument_group("spelling")
+    spelling.add_argument("-s", "--style", default="llvm", help="output style (default: llvm)")
+    spelling.add_argument(
+        "--simplified",
+        action="store_true",
+        help="Swift names the way Xcode shows them, as `swift-demangle --simplified`",
+    )
+    spelling.add_argument(
+        "--keep-hash",
+        action="store_true",
+        help="spell the hash Rust writes to keep a symbol unique, as rustc-demangle's `{}` does",
+    )
+
     less = parser.add_argument_group(
-        "printing less of a name",
+        "printing less of an MSVC name",
         "MSVC decorated names expand to a great deal more than the name. "
         "`--no-calling-convention`, `--no-access-specifier`, `--no-member-type` and "
         "`--no-variable-type` are `llvm-undname`'s flags and mean the same, and apply to "
         "the declaration. `--no-ms-keywords`, `--no-leading-underscores`, "
         "`--no-this-type` and `--no-tag-kind` are `UnDecorateSymbolName` mask bits it has "
         "no flag for, and reach every occurrence of what they name -- inside a template "
-        "argument, and inside the symbol a local name is scoped by. `--no-return-type` is "
-        "shared with the selection above and applies to every scheme.",
+        "argument, and inside the symbol a local name is scoped by. `--no-return-type`, "
+        "above, applies to every scheme.",
     )
     less.add_argument("--no-calling-convention", action="store_true", help="omit `__cdecl` and its siblings")
     less.add_argument("--no-access-specifier", action="store_true", help="omit `public: `, `private: `")
@@ -152,23 +274,21 @@ def build_parser():
     )
     less.add_argument("--no-this-type", action="store_true", help="omit what a member function writes after `()`")
     less.add_argument("--no-tag-kind", action="store_true", help="omit `class`, `struct`, `union`, `enum`")
-    less.add_argument(
-        "--simplified",
-        action="store_true",
-        help="Swift names the way Xcode shows them, as `swift-demangle --simplified`",
+
+    bounds = parser.add_argument_group("resource bounds")
+    bounds.add_argument("--relaxed", action="store_true", help="raise the resource bounds, for input you trust")
+    bounds.add_argument("--max-input", type=int, metavar="N", help="characters of input to consider")
+    bounds.add_argument("--max-output", type=int, metavar="N", help="characters of output to allow")
+    bounds.add_argument("--max-depth", type=int, metavar="N", help="nesting depth to allow")
+
+    information = parser.add_argument_group("information")
+    common.append(information.add_argument("-h", action=_ShortHelp, help="show the common options and exit"))
+    common.append(information.add_argument("--help", action="help", help="show every option and exit"))
+    information.add_argument(
+        "--version", action="version", version=f"demangle {__version__}", help="show the version and exit"
     )
-    parser.add_argument(
-        "--keep-hash",
-        action="store_true",
-        help="spell the hash Rust writes to keep a symbol unique, as rustc-demangle's `{}` does",
-    )
-    parser.add_argument("--relaxed", action="store_true", help="raise the resource bounds, for input you trust")
-    parser.add_argument("--max-input", type=int, metavar="N", help="characters of input to consider")
-    parser.add_argument("--max-output", type=int, metavar="N", help="characters of output to allow")
-    parser.add_argument("--max-depth", type=int, metavar="N", help="nesting depth to allow")
-    parser.add_argument("--list-languages", action="store_true", help="list supported schemes and exit")
-    parser.add_argument("--list-styles", action="store_true", help="list output styles and exit")
-    parser.add_argument("--version", action="version", version=f"demangle {__version__}")
+    information.add_argument("--list-languages", action="store_true", help="list supported schemes and exit")
+    information.add_argument("--list-styles", action="store_true", help="list output styles and exit")
     return parser
 
 

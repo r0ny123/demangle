@@ -7,14 +7,15 @@ than through a subprocess -- which keeps these fast enough to be worth having.
 import io
 import json
 import pathlib
+import re
 import select
 import subprocess
 import sys
 
 import pytest
 
-from demangle import detect
-from demangle.cli import main
+from demangle import __version__, detect
+from demangle.cli import build_parser, main
 
 VECTOR = "_ZNSt6vectorIiSaIiEE9push_backERKi"
 VECTOR_SPELLED = "std::vector<int, std::allocator<int>>::push_back(int const&)"
@@ -189,6 +190,74 @@ class TestArgumentErrors:
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as info:
             main(["--version"])
+        assert info.value.code == 0
+        assert capsys.readouterr().out == f"demangle {__version__}\n"
+
+    def test_a_usage_error_is_two_lines_not_a_screenful(self, capsys):
+        with pytest.raises(SystemExit) as info:
+            main(["--bogus"])
+        assert info.value.code == 2
+        assert capsys.readouterr().err.splitlines() == [
+            "usage: demangle [options] [NAME ...]",
+            "demangle: error: unrecognized arguments: --bogus",
+        ]
+
+
+class TestHelp:
+    """`-h` for the options most runs use, `--help` for all of them; both to stdout."""
+
+    @staticmethod
+    def _help(capsys, flag):
+        with pytest.raises(SystemExit) as info:
+            main([flag])
+        assert info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        return captured.out
+
+    def test_both_open_with_the_usage_and_the_examples(self, capsys):
+        for flag in ("-h", "--help"):
+            text = self._help(capsys, flag)
+            assert text.startswith("usage: demangle [options] [NAME ...]\n")
+            examples = text.index("examples:")
+            assert "nm -a libfoo.so | demangle" in text[examples:]
+            assert examples < text.index("--strict")
+
+    def test_short_help_is_short(self, capsys):
+        text = self._help(capsys, "-h")
+        assert "common options:" in text
+        assert "--no-tag-kind" not in text
+        assert "demangle --help" in text
+        assert len(text.splitlines()) < len(self._help(capsys, "--help").splitlines()) / 2
+
+    def test_full_help_names_every_option(self, capsys):
+        text = self._help(capsys, "--help")
+        for action in build_parser()._actions:
+            for option in action.option_strings:
+                assert option in text, option
+
+    def test_short_help_names_only_real_options(self, capsys):
+        text = self._help(capsys, "-h")
+        options = text[text.index("common options:") :]
+        known = {option for action in build_parser()._actions for option in action.option_strings}
+        assert set(re.findall(r"(?<![\w-])(--?[A-Za-z0-9_][\w-]*)", options)) <= known
+
+    def test_full_help_states_the_exit_statuses(self, capsys):
+        text = self._help(capsys, "--help")
+        statuses = text[text.index("exit status:") :]
+        for status in ("0", "1", "2", "130"):
+            assert f"\n  {status} " in statuses
+
+    def test_a_flag_is_never_split_at_its_hyphen(self, capsys, monkeypatch):
+        monkeypatch.setenv("COLUMNS", "60")
+        text = self._help(capsys, "--help")
+        assert not re.search(r"-\n", text)
+
+    def test_help_wins_over_the_rest_of_the_line(self, capsys):
+        """`demangle -p -h` is a question about `-p`, not a request to demangle nothing."""
+        assert "common options:" in self._help(capsys, "-h")
+        with pytest.raises(SystemExit) as info:
+            main(["-p", "--strict", "-h"])
         assert info.value.code == 0
 
 
