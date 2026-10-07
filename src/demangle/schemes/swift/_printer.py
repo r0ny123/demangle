@@ -104,6 +104,8 @@ _NO_SPACE_BEFORE = frozenset(
         "FunctionType",
         "NoEscapeFunctionType",
         "UncurriedFunctionType",
+        "CalledOnceFunctionType",
+        "CalledAtMostOnceFunctionType",
         "DependentGenericType",
     ]
 )
@@ -380,7 +382,7 @@ class Printer:
         carried no label at all is written `_:`, and there are no separators, because
         `(_:_:)` is one token in that spelling rather than a list.
         """
-        if parameters.kind != "ArgumentTuple":
+        if parameters.kind not in ("ArgumentTuple", "YieldTypes"):
             raise _Invalid
         found = parameters.first.first
         if found.kind != "Tuple":
@@ -429,7 +431,9 @@ class Printer:
         elif kind == "ThinFunctionType":
             self.write("@convention(thin) ")
         elif kind == "CalledOnceFunctionType":
-            self.write("@called(once) ")
+            self.write("@called(exactlyOnce) ")
+        elif kind == "CalledAtMostOnceFunctionType":
+            self.write("@called(atMostOnce) ")
         elif kind == "CFunctionPointer":
             convention_with_clang_type("c")
         elif kind in ("EscapingObjCBlock", "ObjCBlock"):
@@ -951,6 +955,8 @@ class Printer:
                     "UncurriedFunctionType",
                     "CFunctionPointer",
                     "ThinFunctionType",
+                    "CalledOnceFunctionType",
+                    "CalledAtMostOnceFunctionType",
                 ):
                     style = "colon"
             if style == "colon":
@@ -1112,7 +1118,8 @@ _JUST_TEXT = {
     "ImplEscaping": "@escaping",
     "ImplErasedIsolation": "@isolated(any)",
     "ImplNonisolatedNonsendingIsolation": "@caller_isolated",
-    "ImplCalledOnceFunction": "@called(once)",
+    "ImplCalledOnceFunction": "@called(exactlyOnce)",
+    "ImplCalledAtMostOnceFunction": "@called(atMostOnce)",
     "ConcurrentFunctionType": "@Sendable ",
     "IsolatedAnyFunctionType": "@isolated(any) ",
     "NonIsolatedCallerFunctionType": "nonisolated(nonsending) ",
@@ -1503,6 +1510,7 @@ for _kind in (
     "ObjCBlock",
     "EscapingObjCBlock",
     "CalledOnceFunctionType",
+    "CalledAtMostOnceFunctionType",
 ):
     _simple(_kind, lambda self, node, depth: self.print_function_type(None, node, depth))
 
@@ -1519,12 +1527,13 @@ for _kind in (
 for _kind in ("DependentGenericSignature", "DependentPseudogenericSignature"):
     _simple(_kind, lambda self, node, depth: self.print_generic_signature(node, depth))
 
-_simple(
-    "ArgumentTuple",
-    lambda self, node, depth: self.print_function_parameters(
-        None, node, depth, self.options.show_function_argument_types
-    ),
-)
+for _kind in ("ArgumentTuple", "YieldTypes"):
+    _simple(
+        _kind,
+        lambda self, node, depth: self.print_function_parameters(
+            None, node, depth, self.options.show_function_argument_types
+        ),
+    )
 _simple("ImplFunctionType", lambda self, node, depth: self.print_impl_function_type(node, depth))
 _simple("TupleElementName", lambda self, node, depth: self.write(f"{node.text}: "))
 _simple("AssocTypePath", lambda self, node, depth: self.print_children(node, depth, "."))

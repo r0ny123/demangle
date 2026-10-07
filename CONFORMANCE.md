@@ -37,7 +37,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** <sup>[3](#3-bare-types-under-both-references)</sup> |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **8494 / 8494** |
-| Swift — the compiler's own demangler vectors | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **514 / 514** |
+| Swift — the compiler's own demangler vectors | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **531 / 531** |
 | Nim 1.6 and 2.2, against the compiler's own record <sup>[14](#14-nim)</sup> | `.ndi` debug mapping | **2115 / 2115** |
 | Free Pascal 3.2.2 runtime and packages <sup>[5](#5-free-pascal)</sup> | re-assembly + `ppudump` | **3899 / 3899** |
 | Go, from the shipped toolchain | round trip <sup>[16](#16-go)</sup> | **1517 / 1517** |

@@ -373,7 +373,8 @@ class Demangler:
         if self.next_if("_"):
             return 0
         number = self.natural()
-        if number is not None and self.next_if("_"):
+        # `n + 1` has to fit the reference's `int` too.
+        if number is not None and number < _INT_MAX and self.next_if("_"):
             return number + 1
         return None
 
@@ -840,6 +841,7 @@ class Demangler:
         for annotation in _FUNCTION_ANNOTATIONS:
             self.add_child(found, self.pop(annotation.__contains__))
         found = self.add_child(found, self.pop_function_params("ArgumentTuple"))
+        self.add_child(found, self.pop("YieldTypes"))
         found = self.add_child(found, self.pop_function_params("ReturnType"))
         return self.make_type(found)
 
@@ -865,7 +867,7 @@ class Demangler:
         function = found.first
         if function.kind == "DependentGenericType":
             function = function.child(1).first
-        if function.kind not in ("FunctionType", "NoEscapeFunctionType"):
+        if function.kind not in _LABELLED_FUNCTION_TYPES:
             return None
 
         at = 0
@@ -1232,14 +1234,14 @@ class Demangler:
 
         if self.next_if("e"):
             found.add(Node("ImplEscaping"))
-        # The function's isolation, and whether it may be called only once. All three
+        # The function's isolation, and how often it may be called. All three
         # come before the differentiability, where the coroutine kind's `A` cannot reach.
         if self.next_if("A"):
             found.add(Node("ImplErasedIsolation"))
         if self.next_if("N"):
             found.add(Node("ImplNonisolatedNonsendingIsolation"))
         if self.next_if("O"):
-            found.add(Node("ImplCalledOnceFunction"))
+            found.add(Node("ImplCalledAtMostOnceFunction" if self.next_if("o") else "ImplCalledOnceFunction"))
 
         if self.peek() in ("d", "l", "f", "r"):
             found.add(Node("ImplDifferentiabilityKind", index=ord(self.next_char())))
@@ -2094,6 +2096,8 @@ class Demangler:
         char = self.next_char()
         function_kind = _SPECIAL_FUNCTION_TYPES.get(char)
         if function_kind is not None:
+            if char == "O" and self.next_if("o"):
+                function_kind = "CalledAtMostOnceFunctionType"
             return self.pop_function_type(function_kind)
         wrapper = _SPECIAL_TYPE_WRAPPERS.get(char)
         if wrapper is not None:
@@ -2102,6 +2106,10 @@ class Demangler:
             return self.demangle_extended_existential_shape(char)
         if char == "j":
             return self.demangle_symbolic_extended_existential_type()
+        if char == "y":
+            # A coroutine's yields, which `popFunctionType` takes after the parameters.
+            empty = self.pop("EmptyList") is not None
+            return self.with_child("YieldTypes", self.make_type(Node("Tuple")) if empty else self.pop("Type"))
         if char == "z":
             inner = self.next_char()
             if inner == "B":
@@ -2550,6 +2558,11 @@ class Demangler:
 #: Bytes 1-0xC introduce a symbolic reference: a four-byte offset into the binary.
 _SYMBOLIC_REFERENCE_BYTES = frozenset(chr(byte) for byte in range(1, 0xD))
 
+#: The function types `popFunctionParamLabels` finds labels for.
+_LABELLED_FUNCTION_TYPES = frozenset(
+    ["FunctionType", "NoEscapeFunctionType", "CalledOnceFunctionType", "CalledAtMostOnceFunctionType"]
+)
+
 #: Popped in this order by `pop_function_type` and skipped in this order by
 #: `pop_function_param_labels` (the reference's order). A slot is a set where it has
 #: alternative spellings: isolation, and a bare or typed `throws`.
@@ -2630,6 +2643,7 @@ _IMPL_FUNCTION_CONVENTIONS = {
     "O": "objc_method",
     "K": "closure",
     "W": "witness_method",
+    "V": "com_method",
 }
 
 _METATYPE_POPPED_TYPE = {
