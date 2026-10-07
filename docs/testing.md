@@ -168,3 +168,24 @@ has what the build needs and what it reads that this library refuses.
 ```console
 tools/cplus-dem-reference/build.sh
 ```
+
+## The references' vectors as they are today
+
+Every corpus above is a transcription made on a day, and the references keep moving: a
+C++ draft adds a mangling, rustc revises v0, Swift adds a node kind, and each lands in
+the reference's own test file first. `tools/upstream_drift.py` fetches those files from
+their `main` branches -- libcxxabi's `DemangleTestCases.inc`, LLVM's `ms-*.test`,
+Swift's `manglings.txt`, rustc-demangle's `#[test]` vectors -- and scores this library
+on every vector the corpora do not yet hold.
+
+```console
+python tools/upstream_drift.py                   # every source
+python tools/upstream_drift.py --source swift    # one of them
+python tools/upstream_drift.py --cache .drift    # keep the downloads between runs
+```
+
+A name the corpus holds with the same expectation is unchanged; one it holds with a
+different expectation is reported for a person to read, since the corpora carry
+documented deviations; a name the corpus does not hold is new, and a new one this
+library misreads is what the exit status says. `.github/workflows/upstream.yml` runs it
+weekly and opens an issue, or adds to the open one, when something new is misread.
