@@ -62,8 +62,8 @@ the reference demanglers, and a **Performance** section.
   MSVC does, `` Base::`vftable' `` (it printed `` const Base::`vftable' ``),
   `` char *`RTTI Type Descriptor' ``, `` `dynamic initializer for 'Foo'' ``, and keeps
   what the label says about its table, so a class's vftables stay apart:
-  `` B::A::`vftable'{for `D::C'} ``, `` C::f`adjustor{16}' ``. `--base-name` prints `Base`
-  (it printed `` `vftable' ``).
+  `` B::A::`vftable'{for `D::C'} ``, `` C::f`adjustor{16}' ``. `--base-name` prints
+  `Base` (it printed `` `vftable' ``).
 
 ### Fixed
 
