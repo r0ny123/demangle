@@ -526,19 +526,20 @@ def _language_from(parser, text):
     `itanium,swift` is the allow-list `("itanium", "swift")`, which detects among those
     schemes alone. A trailing comma makes a list of one -- `gnuv2,` detects where `gnuv2`
     forces -- as it makes a tuple of one in Python. Checked through the registry, so the
-    aliases `--list-languages` advertises are accepted.
+    aliases `--list-languages` advertises are accepted, and each comes back as the name
+    its scheme is registered under: `-d -l c++` says `itanium`, as `-d --strict` does.
     """
-    from .core.registry import aliases, get
+    from .core.registry import aliases, canonical
 
     names = [name.strip() for name in text.split(",")]
     listed = len(names) > 1
     if listed and not names[-1]:
         names.pop()
-    for name in names:
+    for index, name in enumerate(names):
         if not name:
             parser.error(f"--language {text!r} has an empty name in it; separate names with one comma")
         try:
-            get(name)
+            names[index] = canonical(name)
         except KeyError:
             close = difflib.get_close_matches(name.lower(), sorted({*languages(), *aliases()}), n=1)
             guess = f"did you mean {close[0]!r}? " if close else ""

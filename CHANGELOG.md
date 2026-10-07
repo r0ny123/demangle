@@ -35,10 +35,6 @@ the reference demanglers, and a **Performance** section.
   trailing comma makes a list of one, `-l gnuv2,`, which detects. An unknown name
   suggests the nearest one and points at `--list-languages`, rather than listing all
   forty names and aliases.
-- **`demangle --detect --strict`** names the scheme that reads each name, the answer
-  `detect(name, strict=True)` gives, under the run's own `--relaxed` and `--max-*`
-  bounds. A name none reads is reported on standard error with why, and the status is
-  1. Without `--strict`, `--detect` answers as before.
 - **`demangle --json-lines`**: one JSON object per name, `mangled`, `demangled` and
   `language` -- the scheme that read the name, or null where it came back unchanged --
   and with `--signature` the fields of `signature()` besides, null for a name nothing
@@ -51,11 +47,19 @@ the reference demanglers, and a **Performance** section.
   rather than a newline -- names given as arguments included. A record is one name,
   never a line to filter, so a name with a space or a newline in it reads whole; a
   multi-line `--tree` is one record. Messages stay lines on standard error.
-- **`-` as a NAME reads standard input**, in its place among the others: `demangle
-  _Z1fv - _Z1gv` reads the pipe between the two.
 
 ### Changed
 
+- **`demangle --detect --strict`** names the scheme that reads each name, the answer
+  `detect(name, strict=True)` gives, under the run's own `--relaxed` and `--max-*`
+  bounds. A name none reads is reported on standard error with why, and the status is
+  1: `demangle -d --strict notmangled` printed `-` and exited 0, since `--strict` was
+  ignored under `--detect`. Without `--strict`, `--detect` answers as before, except
+  that a scheme forced by an alias is named by its registered name: `demangle -d -l
+  c++` printed `c++`, and now prints `itanium`, as `--detect --strict` and
+  `--json-lines` do.
+- **`-` as a NAME reads standard input**, in its place among the others: `demangle
+  _Z1fv - _Z1gv` reads the pipe between the two. `demangle -` printed `-`.
 - **`detect()` no longer claims section names and file paths.** MSVC claims a
   `.`-prefixed name only where what follows the dot opens as a type encoding does
   (`.?AV`, `.PEA`, a builtin standing alone), so `.refptr.foo`, `.L123`, `.ARM.exidx`

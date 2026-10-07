@@ -72,6 +72,11 @@ class TestOptions:
         _, out, _ = run(capsys, ["--detect", "--language", "msvc", "_Z1fv"])
         assert out.strip() == "msvc"
 
+    @pytest.mark.parametrize("strict", [[], ["--strict"]])
+    def test_detect_names_a_forced_scheme_by_its_registered_name(self, capsys, strict):
+        _, out, _ = run(capsys, ["--detect", *strict, "-l", "c++", "_Z1fv"])
+        assert out == "itanium\n"
+
     def test_detect_strict_names_the_scheme_that_reads_the_name(self, capsys):
         status, out, err = run(capsys, ["--detect", "--strict", "_Z1fv", "_ZN3Foo"])
         assert (status, out) == (1, "itanium\n")
