@@ -718,7 +718,7 @@ def _part_of(name, arguments, limits):
     """
     try:
         parts = signature(name, language=arguments.language, style=arguments.style, limits=limits)
-    except Exception:
+    except DemanglingError:
         if arguments.strict:
             raise
         return name

@@ -11,7 +11,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 uv python install 3.13
-# Hatch builds environments on its own interpreter, so it must run on 3.13.
+# Hatch builds the test environments itself; its own interpreter is the ceiling's.
 uv tool install --python 3.13 hatch
 
 hatch run lint
