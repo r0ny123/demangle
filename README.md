@@ -1,7 +1,7 @@
 # demangle
 
 [![CI](https://github.com/r0ny123/demangle/actions/workflows/ci.yml/badge.svg)](https://github.com/r0ny123/demangle/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.13%2B-blue)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![Licence](https://img.shields.io/badge/licence-MIT-green)](https://github.com/r0ny123/demangle/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-r0ny123.github.io-blue)](https://r0ny123.github.io/demangle/)
 
@@ -53,7 +53,7 @@ native code, no compiler required.
 pip install demangle
 ```
 
-Python 3.13 or newer. That is the whole dependency list.
+Python 3.11 or newer, on CPython or PyPy. That is the whole dependency list.
 
 The documentation, API reference included, is published at
 <https://r0ny123.github.io/demangle/>.
@@ -98,7 +98,10 @@ what the path carries:
 [Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) works
 one real task through `parse()` end to end — finding every function in libstdc++ that
 takes a string by const reference, and measuring what the regular-expression version of
-the same question gets wrong.
+the same question gets wrong. [Labelling a symbol
+table](https://r0ny123.github.io/demangle/labelling-a-symbol-table/) is the other
+task a tool has: one label per address, the same whichever compiler built the binary,
+with the calls chosen for it.
 
 ### The parts, when the spelling is not what you want
 
@@ -172,6 +175,25 @@ a line at a time, for pipes.
 ['f()', 'main']
 ```
 
+`detect()` reports what a name looks like, which is cheap; `strict=True` reports which
+scheme actually reads it, which costs a parse:
+
+```python
+>>> demangle.detect("_ZN3Foo"), demangle.detect("_ZN3Foo", strict=True)
+('itanium', None)
+```
+
+`language` forces one scheme by name. A sequence of names is an allow-list instead:
+detection as usual, among those schemes alone, so a tool that knows a Mach-O image holds
+C++ and Swift leaves its Objective-C metadata as the linker wrote it:
+
+```python
+>>> demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium", "swift"))
+'_OBJC_CLASS_$_NSData'
+>>> demangle.detect("?f@@YAXH@Z", language=("itanium", "swift")) is None
+True
+```
+
 ### Bytes, when the names came from a symbol table
 
 An ELF or Mach-O string table holds bytes, and they are not reliably UTF-8 — a truncated
@@ -186,6 +208,16 @@ b'foo::bar()'
 `demangleb_strict`, `detectb`, `parseb`, `signatureb`, `demangleb_type` and
 `parseb_type` go with it. Undecodable bytes survive the round trip: `demangleb` hands
 back exactly what it was given, byte for byte, rather than raising.
+
+### Paying for imports at start-up
+
+Each scheme is imported the first time a name needs it, so a script reading one MSVC
+name never loads the Swift reader. A long-running service would rather pay that once,
+before its first request:
+
+```python
+>>> demangle.preload("itanium", "msvc")    # or preload() for every scheme
+```
 
 ### The tree as data
 
@@ -257,6 +289,8 @@ $ nm -a libfoo.so | demangle
 $ demangle _ZNSt6vectorIiSaIiEE9push_backERKi
 $ demangle --tree _Z1fPKc
 $ demangle --detect _RNvC6_123foo3bar
+$ demangle --detect --strict _ZN3Foo               # the scheme that reads it, or an error
+$ nm -a Foo.dylib | demangle -l itanium,swift      # detect among these schemes alone
 $ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the signature
 $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
@@ -268,7 +302,26 @@ $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
 $ demangle --no-tag-kind '?g3@@YAXVV@@@Z'          # `void __cdecl g3(V)`
 $ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
 $ demangle --json _Z1fPi                           # the parse tree as JSON
+$ nm -a libfoo.so | demangle --json-lines          # a JSON object per symbol
+$ demangle --json-lines --signature _Z1fPi         # ... with the parts of the name
+$ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, in and out
 ```
+
+`--json-lines` writes one object per name, `{"mangled": ..., "demangled": ...,
+"language": ...}`, where `language` is the scheme that read the name, or `null` where
+it came back unchanged; `--signature` adds the fields of `signature()`, `null` for a
+name nothing reads, so every record has the same keys. A name whose bytes are not UTF-8
+has one more, `mangled_bytes`, the bytes in base64: `mangled` carries each such byte as
+a lone surrogate, `"_Z3foo\udcff"`, which most JSON readers turn into U+FFFD; where the
+spelling carries them on, `demangled_bytes` does the same for it. Over a stream it
+writes one per symbol the filter rewrites. `--json` is the other question, the parse
+tree.
+
+`demangle -h` lists the options most runs use and `demangle --help` all of them, with
+the exit statuses: 0 when every name was read or printed unchanged, 1 when one was
+refused — under `--strict`, or with no tree to print for `--tree` or `--json` — 2 for
+a usage error, and 130 after Ctrl-C. `python -m demangle` is the same command, where
+the script is not on `PATH`.
 
 ## Correctness
 

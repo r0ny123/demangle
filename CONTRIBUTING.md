@@ -21,8 +21,8 @@ hatch run check
 ```
 
 The pieces are available on their own: `hatch run test`, `cover`, `lint`, `fmt`,
-`bench`, `differential`. `hatch run test:test` runs the suite on Python 3.13 and 3.14,
-and `hatch run docs:serve` previews the documentation site.
+`bench`, `differential`. `hatch run test:test` runs the suite on Python 3.11 to 3.14 and
+PyPy 3.11, and `hatch run docs:serve` previews the documentation site.
 
 `hatch run quick` while iterating (about a minute); `hatch run check` before pushing
 (about seven minutes on four cores). `quick` skips the tests marked `sweep` --
@@ -163,19 +163,21 @@ while before any checks appear. The easiest first contribution is a
 ## CI and workflows
 
 Workflows run with `permissions: contents: read` and grant more only where a job needs
-it. Checkout uses `persist-credentials: false`, because nothing in CI pushes and a token
-left in `.git/config` is readable by every later step. Releases publish through PyPI
+it: the weekly `upstream.yml` has `issues: write`, because its one job files the issue
+that says a reference's vectors moved ahead of a scheme. Checkout uses
+`persist-credentials: false`, because nothing in CI pushes and a token left in
+`.git/config` is readable by every later step. Releases publish through PyPI
 Trusted Publishing, so there is no long-lived API token in repository secrets.
 
-The test matrix is deliberately not a cross product. Both supported versions run on
-Linux; macOS and Windows get one row each, the ceiling and the floor, so neither end of
-the range is only ever exercised on Linux. A fifth row runs Ubuntu on the free-threaded
-3.14t build, for `tests/test_concurrency.py`. This is a pure-Python library, and
-everything that has ever differed between platforms differed in the harness -- a glob, a
-subprocess, a console encoding -- which one row per operating system catches as well as
-a full cross product would. Each extra row has a comment in `ci.yml` saying why it is
-there. Add a row when a defect shows up that only that row would have caught, and say so
-in its comment.
+The test matrix is deliberately not a cross product. Every supported version runs on
+Linux, PyPy 3.11 included; macOS and Windows get one row each, the ceiling and the
+floor, so neither end of the range is only ever exercised on Linux. A further row runs
+Ubuntu on the free-threaded 3.14t build, for `tests/test_concurrency.py`. This is a
+pure-Python library, and everything that has ever differed between platforms differed in
+the harness -- a glob, a subprocess, a console encoding -- which one row per operating
+system catches as well as a full cross product would. Each extra row has a comment in
+`ci.yml` saying why it is there. Add a row when a defect shows up that only that row
+would have caught, and say so in its comment.
 
 Two rules for anyone editing `.github/`:
 

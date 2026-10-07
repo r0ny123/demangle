@@ -11,9 +11,9 @@ that wraps its name is a different place: `int (*`RTTI Type Descriptor Name')[2]
 follows the same rule.
 
 Claiming a leading `.` in a symbol table full of `.text`, `.rodata`, `.L1234` and
-`.constprop.0` is the risk here, and it is answered by measurement rather than by
-argument: what follows the dot has to parse as a *whole* type before anything is said,
-and none of those does.
+`.constprop.0` is the risk here. `detect` claims only a dot followed by what a type
+encoding can open with, which none of those is, and what follows the dot then has to
+parse as a *whole* type before anything is said.
 """
 
 import pathlib
@@ -21,6 +21,7 @@ import pathlib
 import pytest
 
 import demangle
+from demangle.schemes import msvc
 
 from .conftest import load_corpus
 from .test_conformance import MSVC_DESCRIPTORS_EXACT, MSVC_DESCRIPTORS_TOTAL
@@ -78,6 +79,13 @@ NOT_SYMBOLS = [
     ".note.ABI-tag",
     ".hash",
     ".shstrtab",
+    ".refptr.foo",
+    ".ARM.exidx",
+    ".CRT$XCU",
+    ".Y",
+    ".VFoo",
+    ".?Z",
+    ".$$B",
 ]
 
 
@@ -113,6 +121,26 @@ class TestWhatIsNotADescriptor:
     def test_a_section_or_label_name_is_left_alone(self):
         for name in NOT_SYMBOLS:
             assert demangle.demangle(name) == name, name
+
+    def test_a_section_or_label_name_is_not_even_claimed(self):
+        """Declined on its opening, without a parse: `detect` answers what a name looks
+        like, and none of these looks like a type."""
+        for name in NOT_SYMBOLS:
+            assert not msvc.detect(name), name
+            assert demangle.detect(name) is None, name
+
+    @pytest.mark.parametrize("corpus", ["msvc-type-descriptors.txt", "msvc-llvm-corpus.txt"])
+    def test_every_descriptor_name_is_still_claimed(self, corpus):
+        names = [mangled for mangled, _ in load_corpus(corpus)]
+        assert [name for name in names if not msvc.detect(name)] == []
+
+    @pytest.mark.parametrize(
+        "name",
+        [".H", "._W", ".?AVFoo@@", ".?BUBar@@", ".PEAX", ".PAH", ".AEBH", ".P6AHH@Z", ".P8B@@AEXXZ", ".$$QEAH"],
+    )
+    def test_each_opening_a_type_can_have_is_claimed_and_read(self, name):
+        assert demangle.detect(name) == "msvc"
+        assert demangle.detect(name, strict=True) == "msvc"
 
     def test_no_dot_prefixed_name_in_any_corpus_is_read_as_msvc(self):
         """731 of them, and every one belongs to Objective-C, which is offered first."""

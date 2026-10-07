@@ -20,6 +20,7 @@ from dataclasses import fields
 from typing import ClassVar
 
 import demangle
+from demangle._signature import _labelled
 from demangle.schemes.msvc.options import DEFAULT_OPTIONS, MsvcOptions
 
 from .conftest import load_corpus
@@ -27,7 +28,7 @@ from .test_conformance import (
     MSVC_DBGHELP_EXACT,
     MSVC_DBGHELP_TOTAL,
     MSVC_NAME_ONLY_AGREE,
-    MSVC_NAME_ONLY_LOSES_THE_BASE_PATH,
+    MSVC_NAME_ONLY_LABELLED,
     MSVC_NAME_ONLY_REDUCES_A_NESTED_SYMBOL,
     MSVC_NAME_ONLY_TOTAL,
     MSVC_NAME_ONLY_WITHOUT_TAGS,
@@ -352,14 +353,14 @@ class TestTheBitsWithNoFieldOfTheirOwn:
 
     def _groups(self):
         """Every name, sorted into the four ways `qualified_name` and the bit can relate."""
-        groups = {"agree": [], "tags": [], "base path": [], "nested": []}
+        groups = {"agree": [], "tags": [], "labelled": [], "nested": []}
         for mangled, spelled, ours, without_tags in self._named():
-            if ours == spelled:
+            if demangle.signature(mangled).special is not None:
+                groups["labelled"].append(mangled)
+            elif ours == spelled:
                 groups["agree"].append(mangled)
             elif without_tags == spelled:
                 groups["tags"].append(mangled)
-            elif without_tags.startswith("const ") and not spelled.startswith("const "):
-                groups["base path"].append(mangled)
             else:
                 groups["nested"].append(mangled)
         return groups
@@ -378,14 +379,24 @@ class TestTheBitsWithNoFieldOfTheirOwn:
 
         The four counts are the finding, taken over the names the two references spell
         alike unflagged so that what they measure is the mode differing rather than the two
-        houses' typography.
+        houses' typography. A name with a label -- `vftable`, an RTTI descriptor, a dynamic
+        initialiser -- is its own group: `qualified_name` is the class or variable the
+        label is about and `special` the label, where the reference prints both.
         """
         groups = self._groups()
         assert sum(len(names) for names in groups.values()) == MSVC_NAME_ONLY_TOTAL, "corpus did not load"
         assert len(groups["agree"]) == MSVC_NAME_ONLY_AGREE
         assert len(groups["tags"]) == MSVC_NAME_ONLY_WITHOUT_TAGS
-        assert len(groups["base path"]) == MSVC_NAME_ONLY_LOSES_THE_BASE_PATH
+        assert len(groups["labelled"]) == MSVC_NAME_ONLY_LABELLED
         assert len(groups["nested"]) == MSVC_NAME_ONLY_REDUCES_A_NESTED_SYMBOL
+
+    def test_a_labelled_name_is_its_label_and_what_it_is_about(self):
+        """Both of which the reference prints: `` Base::`vftable' `` is `Base` and `vftable`."""
+        spelled_by_name = {mangled: spelled for mangled, spelled, _, _ in self._named()}
+        for mangled in self._groups()["labelled"]:
+            parts = demangle.signature(mangled)
+            assert parts.base_name in spelled_by_name[mangled], mangled
+            assert parts.special in spelled_by_name[mangled], mangled
 
     def test_the_bit_discards_a_vftables_base_path(self):
         """Which is why it has no field, rather than an oversight.
@@ -394,14 +405,16 @@ class TestTheBitsWithNoFieldOfTheirOwn:
         `UNDNAME_NAME_ONLY` answers all three with `B::A::`vftable'`. That is the same loss
         `UNDNAME_DIVERGENCES` records `llvm-undname` making with no flag set at all, and it
         is refused here for the same reason: a tool labelling a binary would show three
-        vtables as one. A caller who wants the name without the path can have it from
-        `base_name` and `namespace`, which say what they are.
+        vtables as one; the CLI's `-p` keeps the path for that reason. A caller who wants
+        the name without the path can have it from `base_name` and `namespace`, which say
+        what they are.
         """
         collapsed = {}
         for mangled, spelled, _, _ in self._named():
             collapsed.setdefault(spelled, []).append(mangled)
         for family in ("B::A::`vftable'", "A::`vftable'"):
             assert len(collapsed[family]) == 3, family
+            assert len({_labelled(demangle.signature(mangled)) for mangled in collapsed[family]}) == 3
         assert len({demangle.demangle(mangled) for mangled in collapsed["B::A::`vftable'"]}) == 3
 
     def test_every_other_difference_is_the_reference_reducing_something(self):
@@ -409,12 +422,12 @@ class TestTheBitsWithNoFieldOfTheirOwn:
 
         41 names hold a symbol inside the name -- a template argument that points at one,
         or the function a local lives in -- which the reference reduces to a bare name and
-        `qualified_name` spells out. Ten more are the vftable family above.
+        `qualified_name` spells out.
         """
         groups = self._groups()
         spelled_by_name = {mangled: spelled for mangled, spelled, _, _ in self._named()}
         without_tags = {mangled: without for mangled, _, _, without in self._named()}
-        for mangled in groups["nested"] + groups["base path"]:
+        for mangled in groups["nested"]:
             assert len(without_tags[mangled]) > len(spelled_by_name[mangled]), mangled
 
 

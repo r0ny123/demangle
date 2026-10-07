@@ -37,7 +37,7 @@ def detect(name):
     - a linker-generated prefix, `go:` or `type:`;
     - a package path with a `/` in it, followed by a `.` -- an import path, which C and
       Pascal symbols do not have and which the C-family schemes encode rather than
-      spell;
+      spell -- unless it is a file's path instead (see `_is_absolute`);
     - a method receiver written `(*Type).Method`.
 
     `fmt.Println` and `main.main` are real Go symbols and are deliberately *not* claimed:
@@ -57,7 +57,14 @@ def detect(name):
     # The last slash of the *symbol*: a path inside generic arguments
     # (`main.F[internal/sync.node]`) is evidence of Go too.
     dot = name.find(".", slash + 1)
-    return 0 < dot < len(name) - 1
+    return 0 < dot < len(name) - 1 and not _is_absolute(name)
+
+
+def _is_absolute(name):
+    """An import path is never absolute -- Go refuses `/x`, and `C:` is no host -- so a
+    leading `/` or `\\`, or a drive letter, is a file, which a symbol table carries for
+    a debugging stab or an object's own name (`/Users/me/build/foo.o`)."""
+    return name[0] in "/\\" or (name[1:2] == ":" and name[2:3] in ("/", "\\"))
 
 
 #: `_wants_structure`'s answer per builder class, asked once per class.

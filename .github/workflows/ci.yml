@@ -23,18 +23,18 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
-      # Must cover every version the classifiers in `pyproject.toml` claim. No PyPy row:
-      # PyPy does not reach `requires-python`.
+      # Must cover every version and implementation the classifiers in `pyproject.toml`
+      # claim. PyPy 3.11 is pure Python here, so it installs the same way.
       matrix:
         os: [ubuntu-latest]
-        python: ["3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "pypy3.11"]
         include:
           # The ceiling, so the top of the range is not only ever run on Linux.
           - os: macos-latest
             python: "3.14"
           # The floor, for the same reason.
           - os: windows-latest
-            python: "3.13"
+            python: "3.11"
           # Free-threaded, for tests/test_concurrency. Not 3.13t: coverage and hypothesis
           # ship compiled wheels, and neither publishes a cp313t one (cp314t onwards),
           # so the test group has no prebuilt install there.

@@ -456,6 +456,39 @@ class TestGrammarFacts:
     def test_a_generic_signature_names_its_parameters_by_position(self):
         assert spell("$s4main1fyyxlF") == "main.f<A>(A) -> ()"
 
+    def test_called_once_comes_in_two_strengths(self):
+        """`XO` is `@called(exactlyOnce)` and `XOo` `@called(atMostOnce)`, and a lowered
+        function type carries them as `O` and `Oo`. Either one is a function type that
+        `printEntity` writes without a colon, as it writes a plain one."""
+        assert spell("$syyXOD") == "@called(exactlyOnce) () -> ()"
+        assert spell("$syyXOoD") == "@called(atMostOnce) () -> ()"
+        assert spell("$sSiIeOogd_D") == "@escaping @called(atMostOnce) @callee_guaranteed () -> (@unowned Swift.Int)"
+        assert spell("$s4main14makeAtMostOnceyyXOoyFyyXOofU_") == (
+            "closure #1 @called(atMostOnce) () -> () in main.makeAtMostOnce() -> @called(atMostOnce) () -> ()"
+        )
+        # Its parameter labels are read, and no space separates it from a generic
+        # signature; both as for a plain function type.
+        assert spell("$s1a1bySi_SitXOoD") == "@called(atMostOnce) (a: Swift.Int, b: Swift.Int) -> ()"
+        assert spell("$s4main1x1a1bySi_SitXOovp") == "main.x : @called(atMostOnce) (a: Swift.Int, b: Swift.Int) -> ()"
+        assert spell("$syxXOoluD") == "<A>@called(atMostOnce) (A) -> ()"
+
+    def test_a_com_method_is_a_function_convention(self):
+        """`V`, beside `M` for `method`; like the others it follows the callee convention."""
+        assert spell("$sSiIetVd_D") == "@escaping @convention(thin) @convention(com_method) () -> (@unowned Swift.Int)"
+        assert demangle.demangle("$sSiIeVd_D", language="swift") == "$sSiIeVd_D"
+
+    def test_a_coroutines_yields_are_printed_in_place_of_its_parameters(self):
+        """`Xy` wraps the yielded types, and `popFunctionType` takes them after the
+        parameters -- which puts them where `printFunctionType` expects the parameters,
+        two from the end. So the reference prints the yields as the parameter list and
+        never prints the parameters. Nothing in `manglings.txt` covers it yet; these are
+        what the reference prints."""
+        assert spell("$sSiSSXySbcD") == "(Swift.String) -> Swift.Int"
+        assert spell("$sSiyXySbcD") == "() -> Swift.Int"
+        assert spell("$s1f1gyS2iSSXySbcF") == "f.g((Swift.String) -> Swift.Int) -> Swift.Int"
+        # The node is not a type, so it is nothing on its own.
+        assert demangle.demangle("$sSiSSXyD", language="swift") == "$sSiSSXyD"
+
 
 class TestTheNodeKindRegistry:
     """Every node kind the demangler builds, over the corpus and the shapes below, is
@@ -622,6 +655,18 @@ class TestNumbersAsTheReferenceReadsThem:
             demangle.demangle_strict("$s" + "9" * 5000, language="swift")
         assert demangle.demangle_strict("$sS1i", language="swift") == "Swift.Int"
 
+    def test_an_index_one_past_the_largest_int_is_refused(self):
+        """`demangleIndex` reads `<n>_` as n + 1 and refuses an n of `INT_MAX`, whose
+        successor an `int` cannot hold."""
+        from demangle.core.errors import ParseError
+
+        assert (
+            demangle.demangle_strict("$s4main1fyyF1xL2147483646_Sivp", language="swift")
+            == "x #2147483648 : Swift.Int in main.f() -> ()"
+        )
+        with pytest.raises(ParseError):
+            demangle.demangle_strict("$s4main1fyyF1xL2147483647_Sivp", language="swift")
+
     def test_the_old_mangling_wraps_at_sixty_four_bits_as_the_reference_does(self):
         """Pinned by the reference's own suite: `_Ttu4222222222222222222222222_rW_2T_2TJ_`
         reads as the signature its low 64 bits count out. A closure's number is then
@@ -761,8 +806,8 @@ class TestTheAsyncMainEntryPoint:
     business is the funclets split off it, which carry the ordinary suffixes --
     `async_MainTY1_` is a suspend-resume partial function *for* the entry point -- so
     swiftlang/swift's `Demangler.cpp` stands a node in for the name and reads what
-    follows as it reads any symbol. Every expected value is `test/Demangle/Inputs/
-    manglings.txt` at main, which the pinned reference build predates and refuses.
+    follows as it reads any symbol. Every expected value is a row of `test/Demangle/
+    Inputs/manglings.txt`, and of `swift-upstream.txt` with it.
     """
 
     @pytest.mark.parametrize(

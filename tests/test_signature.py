@@ -14,12 +14,29 @@ import demangle
 from demangle import Signature, signature, signatureb
 from demangle._signature import _SEPARATORS, _split_last
 from demangle.core.errors import DemanglingError
+from demangle.schemes.delphi._parser import CONVENTIONS as DELPHI_CONVENTIONS
+from demangle.schemes.delphi._parser import LABELS as DELPHI_LABELS
 
 from .conftest import corpus_files, load_corpus, requires_gnu_cxxfilt
 from .test_conformance import NO_PARAMS_AGREE, NO_PARAMS_TOTAL
 
 #: The refusal corpora hold names with no expected column, so they load as nothing.
 CORPORA = [name for name in corpus_files() if load_corpus(name)]
+DELPHI_CORPORA = ["delphi-constructs.txt", "delphi-real-world.txt", "delphi-tdump.txt"]
+PASCAL_CORPORA = ["pascal-real-world.txt"]
+MSVC_SPECIAL_CORPORA = ["msvc-llvm-corpus.txt", "msvc-boost.txt", "msvc-clang.txt", "msvc-type-descriptors.txt"]
+
+#: What the Delphi unmangler writes before a name, none of which is part of it.
+DELPHI_PREFIXES = DELPHI_CONVENTIONS | DELPHI_LABELS
+
+
+def _unlabelled(parts):
+    """The spelling with the label and the convention after it taken out, once each."""
+    spelled = parts.demangled
+    for word in (parts.special, parts.calling_convention):
+        if word:
+            spelled = spelled.replace(f"`{word}'", "", 1).replace(f"{word} ", "", 1)
+    return spelled
 
 
 @pytest.mark.sweep
@@ -42,8 +59,12 @@ class TestTheNameFields:
     def test_the_qualified_name_is_text_from_the_spelling(self, corpus, subtests):
         """Nothing in the name fields is invented: every one of them was spelled.
 
-        Objective-C is the exception, and a deliberate one -- a method's category sits
-        between its class and its selector in the spelling and is not part of its name.
+        A label is spelled in the middle of what it is about -- `` const Base::`vftable' ``,
+        `` int (*`RTTI Type Descriptor')[2] ``, `System::__linkproc__ __fastcall Abort()` --
+        so the name is found in the spelling once the label, and a convention that follows
+        it, are taken out. Objective-C is the exception, and a deliberate one -- a method's
+        category sits between its class and its selector in the spelling and is not part
+        of its name.
         """
         for mangled, _ in load_corpus(corpus):
             try:
@@ -53,7 +74,7 @@ class TestTheNameFields:
             if parts.language == "objc":
                 continue
             with subtests.test(mangled=mangled):
-                assert parts.qualified_name in parts.demangled
+                assert parts.qualified_name in parts.demangled or parts.qualified_name in _unlabelled(parts)
 
     @pytest.mark.parametrize("corpus", CORPORA)
     def test_a_base_name_is_never_empty(self, corpus, subtests):
@@ -152,6 +173,177 @@ class TestMsvc:
         assert parts.parameters is None
 
 
+class TestMsvcSpecials:
+    """A label goes to `special` and the entity it is about stays in the name fields."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "special", "namespace", "base"),
+        [
+            ("??_7Base@@6B@", "vftable", "", "Base"),
+            ("??_7A@B@@6BC@D@@@", "vftable", "B", "A"),
+            ("??_7A@@6BB@@C@@@", "vftable", "", "A"),
+            ("??_8Middle2@@7B@", "vbtable", "", "Middle2"),
+            ("??_SBase@@6B@", "local vftable", "", "Base"),
+            ("??_R0?AUBase@@@8", "RTTI Type Descriptor", "", "Base"),
+            ("??_R1A@?0A@EA@Base@@8", "RTTI Base Class Descriptor", "", "Base"),
+        ],
+    )
+    def test_a_table_or_descriptor_is_data_about_its_class(self, mangled, special, namespace, base):
+        parts = signature(mangled)
+        assert (parts.special, parts.namespace, parts.base_name) == (special, namespace, base)
+        assert (parts.is_data, parts.is_function) == (True, False)
+        assert parts.qualified_name == (f"{namespace}::{base}" if namespace else base)
+
+    @pytest.mark.parametrize(
+        ("mangled", "special"),
+        [
+            ("??_GBase@@UEAAPEAXI@Z", "scalar deleting dtor"),
+            ("??_EBase@@UEAAPEAXI@Z", "vector deleting dtor"),
+            ("??_DDiamond@@QEAAXXZ", "vbase dtor"),
+            ("??_F?$SomeTemplate@H@@QAEXXZ", "default ctor closure"),
+            ("??_O?$SomeTemplate@H@@QAEXXZ", "copy ctor closure"),
+            ("??_KBase@@UEAAPEAXI@Z", "virtual displacement map"),
+            ("??_LBase@@UEAAPEAXI@Z", "eh vector ctor iterator"),
+        ],
+    )
+    def test_a_compiler_made_member_is_a_function_of_its_class(self, mangled, special):
+        parts = signature(mangled)
+        assert parts.special == special
+        assert (parts.is_function, parts.is_data) == (True, False)
+        assert parts.parameters is not None
+        assert "`" not in parts.qualified_name
+
+    @pytest.mark.parametrize(
+        ("mangled", "structor"),
+        [
+            ("??_GBase@@UEAAPEAXI@Z", True),
+            ("??_EBase@@UEAAPEAXI@Z", True),
+            ("??_DDiamond@@QEAAXXZ", True),
+            ("??_F?$SomeTemplate@H@@QAEXXZ", False),
+            ("??_LBase@@UEAAPEAXI@Z", False),
+            ("??_H@YAXPEAX_K1P6APEAX0@Z@Z", False),
+        ],
+    )
+    def test_a_compiler_made_destructor_is_a_destructor(self, mangled, structor):
+        """As Itanium's deleting destructor `_ZN1AD0Ev` is; a closure or an iterator is not."""
+        assert signature(mangled).is_ctor_or_dtor is structor
+
+    def test_an_adjustor_thunk_is_labelled_adjustor_and_names_what_it_adjusts(self):
+        parts = signature("?f@C@@WBA@EAAHXZ")
+        assert (parts.special, parts.namespace, parts.base_name) == ("adjustor", "C", "f")
+        assert parts.parameters == ("void",)
+
+    @pytest.mark.parametrize(
+        ("mangled", "special"),
+        [
+            ("??_EBase@@G3AEPAXI@Z", "adjustor"),
+            ("??_EBase@@W3AEPAXI@Z", "adjustor"),
+            ("??_EBase@@$4PPPPPPPM@A@AEPAXI@Z", "vtordisp"),
+        ],
+    )
+    def test_a_thunk_over_a_compiler_made_member_names_the_member(self, mangled, special):
+        """The thunk's label is `special`; the destructor it adjusts is the name, and a
+        destructor."""
+        parts = signature(mangled)
+        assert (parts.special, parts.namespace, parts.base_name) == (special, "Base", "`vector deleting dtor'")
+        assert parts.is_ctor_or_dtor
+
+    def test_a_vcall_thunk_keeps_its_convention_and_loses_its_payload(self):
+        parts = signature("??_9Base@@$B7AA")
+        assert (parts.special, parts.qualified_name) == ("vcall", "Base")
+        assert parts.calling_convention == "__cdecl"
+        assert parts.is_function
+
+    def test_an_iterator_with_no_class_is_named_by_its_label(self):
+        parts = signature("??_H@YAXPEAX_K1P6APEAX0@Z@Z")
+        assert parts.special == "vector ctor iterator"
+        assert parts.qualified_name == parts.base_name == "vector ctor iterator"
+        assert parts.is_function
+
+    def test_a_dynamic_initialiser_is_about_its_variable(self):
+        parts = signature("??__EFoo@@YAXXZ")
+        assert (parts.special, parts.qualified_name) == ("dynamic initializer for", "Foo")
+        assert (parts.is_function, parts.parameters) == (True, ("void",))
+
+    def test_a_dynamic_initialiser_of_a_static_member_is_about_the_member(self):
+        parts = signature("??__E?i@C@@0HA@@YAXXZ")
+        assert (parts.special, parts.namespace, parts.base_name) == ("dynamic initializer for", "C", "i")
+
+    def test_a_dynamic_atexit_destructor_is_about_a_local_static(self):
+        parts = signature("??__Fvalue@?1??getenv@nowide@boost@@YAPEADPEBD@Z@YAXXZ")
+        assert parts.special == "dynamic atexit destructor for"
+        assert parts.base_name == "value"
+        assert parts.namespace.endswith("getenv(char const *)'::`2'")
+
+    @pytest.mark.parametrize(
+        ("mangled", "namespace", "base"),
+        [
+            ("?x@?$X@$1??_7C@@6B@@@2HA", "X<&const C::`vftable'>", "x"),
+            ("??$f@$1??_7C@@6B@@@YAXXZ", "", "f<&const C::`vftable'>"),
+            ("??$f@$1??_R0?AUBase@@@8@@YAXXZ", "", "f<&struct Base `RTTI Type Descriptor'>"),
+            # An operator's own `<` hides where the argument list opens, not where it closes.
+            ("??$?6$1??_R0?AVC@@@8@@YAXXZ", "", "operator<<<&class C `RTTI Type Descriptor'>"),
+            ("??$?M$1??_R0?AVC@@@8@@YAXXZ", "", "operator<<&class C `RTTI Type Descriptor'>"),
+        ],
+    )
+    def test_a_label_in_a_template_argument_is_not_the_symbols_own(self, mangled, namespace, base):
+        parts = signature(mangled)
+        assert (parts.special, parts.namespace, parts.base_name) == (None, namespace, base)
+
+    @pytest.mark.parametrize(
+        ("mangled", "base"),
+        [("??MC@@W3AE_NH@Z", "operator<"), ("??6C@@W3AEXH@Z", "operator<<"), ("??CC@@W3AEPAU0@XZ", "operator->")],
+    )
+    def test_an_operators_brackets_do_not_hide_its_adjustor(self, mangled, base):
+        parts = signature(mangled)
+        assert (parts.special, parts.namespace, parts.base_name) == ("adjustor", "C", base)
+
+    def test_a_type_descriptor_of_a_declarator_type_is_about_the_type(self):
+        parts = signature("??_R0PEAY01H@8")
+        assert (parts.special, parts.qualified_name) == ("RTTI Type Descriptor", "int (*)[2]")
+
+    def test_an_anonymous_namespace_is_a_component_not_a_phrase(self):
+        parts = signature("?anonymous@?A@N@@3HA")
+        assert parts.special is None
+        assert (parts.namespace, parts.base_name) == ("N::`anonymous namespace'", "anonymous")
+
+    def test_a_local_static_splits_after_its_function(self):
+        parts = signature("?e2@?1???$get_escape_R_string@D@re_detail_500@boost@@YAPEBDXZ@4PEBDB")
+        assert parts.base_name == "e2"
+        assert parts.namespace.startswith("`char const * __cdecl boost::re_detail_500::")
+
+    def test_a_bracket_in_the_function_a_local_lives_in_opens_nothing(self):
+        parts = signature("?x@?1???MC@@QAE_NH@Z@4HA")
+        assert (parts.namespace, parts.base_name) == ("`public: bool __thiscall C::operator<(int)'::`2'", "x")
+
+    def test_a_dynamic_initialiser_is_about_the_name_inside_its_declarator(self):
+        parts = signature("??__E?x@@3PAY02HA@@YAXXZ")
+        assert (parts.special, parts.qualified_name) == ("dynamic initializer for", "x")
+
+    def test_a_dynamic_initialiser_of_a_local_static_keeps_its_function_whole(self):
+        parts = signature("??__E?x@?1??f@@YAXXZ@4HA@@YAXXZ")
+        assert (parts.namespace, parts.base_name) == ("`void __cdecl f(void)'::`2'", "x")
+
+    @pytest.mark.sweep
+    @pytest.mark.parametrize("corpus", MSVC_SPECIAL_CORPORA)
+    def test_every_label_in_the_corpora_is_taken_out_of_the_name(self, corpus, subtests):
+        for mangled, _ in load_corpus(corpus):
+            try:
+                parts = signature(mangled)
+            except DemanglingError:
+                continue
+            if "`" not in parts.demangled:
+                continue
+            with subtests.test(mangled=mangled):
+                joined = f"{parts.namespace}::{parts.base_name}" if parts.namespace else parts.base_name
+                assert joined == parts.qualified_name
+                if parts.special is None:
+                    assert "`" not in parts.base_name.split("<")[0]
+                else:
+                    for field in (parts.qualified_name, parts.namespace, parts.base_name):
+                        assert f"`{parts.special}" not in field
+
+
 class TestTheSchemesThatCarryASignature:
     def test_swift_separates_parameters_from_the_result(self):
         parts = signature("$s4main3FooV3baryS2i_SStF")
@@ -206,6 +398,188 @@ class TestTheSchemesThatCarryASignature:
         assert parts.parameters == ("int TMyClass::*",)
 
 
+class TestDelphi:
+    """The unmangler writes a result, a convention and a label before the name."""
+
+    def test_a_method_has_its_convention_off_its_name(self):
+        parts = signature("@Unit@TForm1@Button1Click$qqrp14System@TObject")
+        assert parts.calling_convention == "__fastcall"
+        assert parts.qualified_name == "Unit::TForm1::Button1Click"
+        assert (parts.namespace, parts.base_name) == ("Unit::TForm1", "Button1Click")
+        assert parts.parameters == ("System::TObject *",)
+
+    @pytest.mark.parametrize(
+        ("mangled", "convention"),
+        [
+            ("@Unit@Proc$qqcv", "__cdecl"),
+            ("@Unit@Proc$qqsv", "__stdcall"),
+            ("@Unit@Proc$qqpv", "__pascal"),
+            ("@Unit@Proc$qqrv", "__fastcall"),
+        ],
+    )
+    def test_each_convention_is_the_convention(self, mangled, convention):
+        parts = signature(mangled)
+        assert parts.calling_convention == convention
+        assert (parts.namespace, parts.base_name) == ("Unit", "Proc")
+
+    def test_a_plain_function_has_no_convention(self):
+        parts = signature("@f$qM8TMyClassi")
+        assert (parts.calling_convention, parts.namespace, parts.base_name) == (None, "", "f")
+
+    def test_saveregs_stays_with_the_convention(self):
+        parts = signature("@f$qqgv")
+        assert (parts.calling_convention, parts.base_name) == ("__saveregs", "f")
+
+    @pytest.mark.parametrize(
+        ("mangled", "base"),
+        [
+            ("@Unit@TFoo@$bcctr$qqrx4TFooi", "`class constructor`"),
+            ("@Unit@TFoo@$bcdtr$qqrv", "`class destructor`"),
+        ],
+    )
+    def test_a_class_constructor_is_one_name(self, mangled, base):
+        parts = signature(mangled)
+        assert (parts.namespace, parts.base_name) == ("Unit::TFoo", base)
+        assert (parts.return_type, parts.calling_convention) == (None, "__fastcall")
+        assert parts.is_ctor_or_dtor
+
+    def test_a_constructor_and_a_destructor(self):
+        built = signature("@Forms@TForm@$bctr$qqrp18Classes@TComponent")
+        assert (built.namespace, built.base_name, built.is_ctor_or_dtor) == ("Forms::TForm", "TForm", True)
+        gone = signature("@Classes@TFileStream@$bdtr$qqrv")
+        assert (gone.namespace, gone.base_name, gone.is_ctor_or_dtor) == ("Classes::TFileStream", "~TFileStream", True)
+        assert gone.calling_convention == "__fastcall"
+
+    def test_an_operator_keeps_its_spelling_in_the_base_name(self):
+        parts = signature("@$beql$qrx5_GUIDt1")
+        assert (parts.namespace, parts.base_name) == ("", "operator ==")
+
+    def test_the_call_operators_brackets_are_its_name_not_its_parameters(self):
+        parts = signature("@std@%less$i%@$bcall$xqrxit1")
+        assert (parts.namespace, parts.base_name) == ("std::less<int>", "operator ()")
+        assert parts.parameters == ("const int&", "const int&")
+
+    def test_a_template_function_has_its_result_off_its_name(self):
+        parts = signature("@Rtti@TValue@%IsType$p17System@TMetaClass%$qqrv$o")
+        assert parts.return_type == "bool"
+        assert parts.calling_convention == "__fastcall"
+        assert (parts.namespace, parts.base_name) == ("Rtti::TValue", "IsType<System::TMetaClass *>")
+
+    def test_a_linker_procedure_is_labelled_and_keeps_its_unit(self):
+        parts = signature("@System@@DynArrayAddRef$qqrv")
+        assert parts.special == "__linkproc__"
+        assert parts.calling_convention == "__fastcall"
+        assert (parts.namespace, parts.base_name) == ("System", "DynArrayAddRef")
+
+    def test_a_bare_linker_procedure(self):
+        parts = signature("@@AsClass")
+        assert (parts.special, parts.qualified_name, parts.is_function) == ("__linkproc__", "AsClass", False)
+
+    def test_a_class_reference_is_a_type_descriptor_of_its_class(self):
+        parts = signature("@$xp$11Forms@TForm")
+        assert (parts.special, parts.namespace, parts.base_name) == ("__tpdsc__", "Forms", "TForm")
+
+    def test_a_thunk_is_labelled_and_named_by_its_operands(self):
+        parts = signature("@$vc1$B0$1$0$")
+        assert (parts.special, parts.qualified_name) == ("__thunk__", "[B,0,1,0]")
+
+    def test_a_virtual_definition_flag_is_labelled(self):
+        parts = signature("@f@#$cf$@bar")
+        assert (parts.special, parts.namespace, parts.base_name) == ("__vdflg__", "f", "bar")
+
+    @pytest.mark.parametrize(
+        ("mangled", "special", "name"),
+        [
+            ("@_$FL$@TMyClass", "__frndl__", "TMyClass"),
+            ("@_$CH$@TMyClass", "__chtbl__", "TMyClass"),
+            ("@_$DC$@TMyClass", "__odtbl__", "TMyClass"),
+            ("@_$TL$@TMyClass", "__thrwl__", "TMyClass"),
+            ("@_$EC$@TMyClass", "__ectbl__", "TMyClass"),
+            ("@_$XX$@TMyClass", "____", "TMyClass"),
+            ("@Unit@_$CH$@TMyClass", "__chtbl__", "Unit::TMyClass"),
+        ],
+    )
+    def test_a_table_is_labelled_and_names_its_class(self, mangled, special, name):
+        parts = signature(mangled)
+        assert (parts.special, parts.qualified_name) == (special, name)
+
+    def test_a_virtual_definition_thunk_is_about_its_class(self):
+        parts = signature("@boost@program_options@%typed_value$oc%@3$vsn")
+        assert parts.special == "__vdthk__"
+        assert (parts.namespace, parts.base_name) == ("boost::program_options", "typed_value<bool, char>")
+        assert parts.parameters is None
+
+    @pytest.mark.parametrize(
+        ("mangled", "name"), [("@System@@", "System"), ("@TStorageStreamBase@3$vsn", "TStorageStreamBase")]
+    )
+    def test_a_label_with_nothing_after_it_is_about_its_scope(self, mangled, name):
+        parts = signature(mangled)
+        assert (parts.namespace, parts.base_name, parts.qualified_name) == ("", name, name)
+
+    @pytest.mark.sweep
+    @pytest.mark.parametrize("corpus", DELPHI_CORPORA)
+    def test_no_prefix_is_left_in_the_name(self, corpus, subtests):
+        for mangled, _ in load_corpus(corpus):
+            try:
+                parts = signature(mangled)
+            except DemanglingError:
+                continue
+            with subtests.test(mangled=mangled):
+                if parts.namespace:
+                    assert parts.qualified_name == f"{parts.namespace}::{parts.base_name}"
+                assert parts.base_name
+                for field in (parts.qualified_name, parts.namespace, parts.base_name):
+                    assert not set(field.replace("::", " ").split()) & DELPHI_PREFIXES
+
+
+class TestPascal:
+    def test_a_unit_function_has_its_result_apart(self):
+        parts = signature("A52_$$_A52_DECODER_READ$PA52_DECODER$POINTER$LONGINT$$LONGINT")
+        assert parts.qualified_name == "A52.A52_DECODER_READ"
+        assert (parts.namespace, parts.base_name, parts.calling_convention) == ("A52", "A52_DECODER_READ", None)
+
+    def test_a_method_splits_at_the_last_dot(self):
+        parts = signature("AVL_TREE$_$TAVLTREE_$__$$_CREATE$$TAVLTREE")
+        assert (parts.namespace, parts.base_name) == ("AVL_TREE.TAVLTREE", "CREATE")
+        assert parts.return_type == "TAVLTREE"
+
+    def test_a_nested_routine_keeps_its_enclosing_routine_in_the_namespace(self):
+        parts = signature("APP$_$TDESKTOP_$_CASCADE$TRECT_$$_DOCOUNT$PVIEW")
+        assert (parts.namespace, parts.base_name) == ("APP.TDESKTOP.CASCADE$TRECT", "DOCOUNT")
+        assert parts.parameters == ("PVIEW",)
+
+    def test_a_routine_with_no_result_has_none(self):
+        parts = signature("AVL_TREE_$$_init$")
+        assert (parts.namespace, parts.base_name, parts.return_type) == ("AVL_TREE", "init", None)
+
+    def test_an_interface_wrapper_is_about_the_interface(self):
+        parts = signature(
+            "WRPR_$CHMREADER_$$_TCOMPARER$1$CRC04FD2F37_$_ICOMPARER$1$CRC04FD2F37_$_0_$_"
+            "SYSTEM$_$TINTERFACEDOBJECT_$__$$_QUERYINTERF$CRCBA546375"
+        )
+        assert parts.special == "interface wrapper for"
+        assert (parts.namespace, parts.base_name) == ("CHMREADER.TCOMPARER$1$CRC04FD2F37", "ICOMPARER$1$CRC04FD2F37")
+
+    @pytest.mark.sweep
+    @pytest.mark.parametrize("corpus", PASCAL_CORPORA)
+    def test_the_name_holds_nothing_but_the_name(self, corpus, subtests):
+        """An `$indirect` symbol keeps the note the printer adds, `(indirect reference)`."""
+        for mangled, _ in load_corpus(corpus):
+            try:
+                parts = signature(mangled)
+            except DemanglingError:
+                continue
+            with subtests.test(mangled=mangled):
+                if parts.namespace:
+                    assert parts.qualified_name == f"{parts.namespace}.{parts.base_name}"
+                assert parts.base_name
+                assert parts.calling_convention is None
+                for field in (parts.qualified_name, parts.namespace, parts.base_name):
+                    assert not set(field.split()) & DELPHI_PREFIXES
+                    assert "(" not in field.removesuffix(" (indirect reference)")
+                    assert " #" not in field
+
+
 class TestTheSchemesThatCarryOnlyAPath:
     @pytest.mark.parametrize(
         ("mangled", "language", "namespace", "base"),
@@ -241,6 +615,59 @@ class TestTheSchemesThatCarryOnlyAPath:
     def test_an_objc_module_constructor_is_prose_and_is_left_whole(self):
         parts = signature(".objc_ctor")
         assert (parts.namespace, parts.base_name) == ("", "Objective-C module constructor")
+        assert parts.special is None
+
+
+class TestObjectiveCMetadata:
+    """A runtime data symbol is *about* a class, as a Swift descriptor is about a type:
+    the label is `special` and the name fields hold the entity."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "special", "namespace", "base"),
+        [
+            ("_OBJC_CLASS_$_NSData", "Objective-C class", "", "NSData"),
+            ("_OBJC_METACLASS_$_NSData", "Objective-C metaclass", "", "NSData"),
+            ("__OBJC_CLASS_RO_$_NSData", "class data for", "", "NSData"),
+            ("l_OBJC_CLASS_NSData", "Objective-C class", "", "NSData"),
+            ("__objc_class_name_NSData", "Objective-C class", "", "NSData"),
+            (".objc_class_name_NSData", "Objective-C class", "", "NSData"),
+            ("_OBJC_IVAR_$_NSData._count", "instance variable offset for", "NSData", "_count"),
+            ("__objc_ivar_offset_NSData.count.i", "instance variable offset for", "NSData", "count"),
+            ("__OBJC_$_CATEGORY_NSString_$_Extra", "Objective-C category", "", "NSString(Extra)"),
+            (".objc_category_name_NSString_Extra", "Objective-C category", "", "NSString(Extra)"),
+            ("__OBJC_$_CATEGORY_INSTANCE_METHODS_NSString_$_Extra", "instance method list for", "", "NSString(Extra)"),
+            (".objc_selector_foo:_v@:", "Objective-C selector", "", "foo:"),
+            # The name is also a letter of the label, and is found after it.
+            (".objc_sel_name_b", "Objective-C selector", "", "b"),
+            ("_OBJC_CLASS_$_C", "Objective-C class", "", "C"),
+        ],
+    )
+    def test_the_label_is_special_and_the_entity_is_the_name(self, mangled, special, namespace, base):
+        parts = signature(mangled)
+        assert (parts.language, parts.special, parts.namespace, parts.base_name) == ("objc", special, namespace, base)
+        assert parts.is_special
+        assert not parts.is_function
+
+    def test_a_method_is_not_about_anything(self):
+        parts = signature("-[NSString length]")
+        assert (parts.special, parts.qualified_name) == (None, "NSString length")
+
+    @pytest.mark.sweep
+    def test_every_labelled_symbol_in_the_corpus_is_split(self, subtests):
+        """Each runtime data symbol that names a class, a category, an instance variable
+        or a selector: the label leads the spelling, and the entity follows it."""
+        split = 0
+        for mangled, _ in load_corpus("objc-real-world.txt"):
+            parts = signature(mangled)
+            if parts.is_function or not demangle.parse(mangled).children():
+                continue
+            split += 1
+            with subtests.test(mangled=mangled):
+                assert parts.special is not None
+                assert parts.demangled.startswith(parts.special + " ")
+                assert parts.qualified_name.replace(" ", ".") in parts.demangled
+                assert not parts.qualified_name.startswith(parts.special)
+        assert split > 1000
 
 
 class TestATreeFromElsewhere:
@@ -302,6 +729,18 @@ class TestSplitLast:
 
     def test_a_space_inside_brackets_is_not_a_phrase(self):
         assert _split_last("a::b<int, char>::c", "::") == ("a::b<int, char>", "c")
+
+    @pytest.mark.parametrize(
+        ("text", "closing", "expected"),
+        [
+            ("`anonymous namespace'::f", "'", ("`anonymous namespace'", "f")),
+            ("`int f(a::b)'::`2'::x", "'", ("`int f(a::b)'::`2'", "x")),
+            ("`bool C::operator<(int)'::`2'::x", "'", ("`bool C::operator<(int)'::`2'", "x")),
+            ("U::T::`class constructor`", "`", ("U::T", "`class constructor`")),
+        ],
+    )
+    def test_a_quoted_span_is_one_piece_of_a_component(self, text, closing, expected):
+        assert _split_last(text, "::", closing) == expected
 
 
 class TestTheObject:

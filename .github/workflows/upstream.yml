@@ -1,0 +1,72 @@
+name: Upstream drift
+
+# The references' own test vectors, as of their `main` branches today, against this
+# library: tools/upstream_drift.py. A new vector this library misreads opens an issue,
+# or adds to the open one, so a mangling that did not exist when a scheme was written is
+# noticed before a user meets it.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: references' vectors at main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip uv
+      - run: uv pip install --system -e .
+      - name: Score the vectors
+        id: drift
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          python tools/upstream_drift.py --show 25 --limit 60000 > drift.md
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat drift.md >> "$GITHUB_STEP_SUMMARY"
+          cat drift.md
+      - name: Open or update the issue
+        if: steps.drift.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # The report first and the run last, so a repeat of last week's report is
+          # recognised by everything above its final line; the report is already cut
+          # to fit a body's 65,536 characters.
+          {
+            cat drift.md
+            echo
+            echo "Run: $RUN_URL"
+          } > body.md
+          gh label create upstream-drift --description "A reference's test vectors moved ahead of a scheme" --color D93F0B --force
+          number=$(gh issue list --label upstream-drift --state open --json number --jq '.[0].number')
+          if [ -z "$number" ]; then
+            gh issue create --title "Upstream drift: new reference vectors misread" --label upstream-drift --body-file body.md
+            exit 0
+          fi
+          last=$(gh issue view "$number" --json body,comments --jq '[.body] + [.comments[].body] | last')
+          if [ "$(printf '%s\n' "$last" | sed '$d')" = "$(sed '$d' body.md)" ]; then
+            echo "The open issue already carries this report."
+          else
+            gh issue comment "$number" --body-file body.md
+          fi
+      - name: Fail the run when a source could not be fetched
+        if: steps.drift.outputs.status == '2'
+        run: exit 2

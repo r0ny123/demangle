@@ -23,30 +23,31 @@ against a full clone of swiftlang/swift.
 
 ## Why a commit and not a release tag
 
-The pinned revision is `871a239941f3613c178b91c294f8584345f30f73`, swiftlang/swift
-`main` as of 2026-08-30. That is deliberate, and the alternative was measured rather
+The pinned revision is `8305a5023a3174493ab8cae462452e2d6baa6a9a`, swiftlang/swift
+`main` as of 2026-10-07. That is deliberate, and the alternative was measured rather
 than guessed. `tests/conformance/swift-upstream.txt` is a transcription of
 `test/Demangle/Inputs/manglings.txt`, and every shipped release refuses part of it:
 
 | revision built | swift-upstream | swift-simplified | swift-refusals | swift-real-world |
 |---|---|---|---|---|
-| `swift-5.10.1-RELEASE` | 455 / 514 | 215 / 217 | 69 / 70 | 8493 / 8494 |
-| `main` @ `871a2399` | **514 / 514** | **217 / 217** | **70 / 70** | 8493 / 8494 |
+| `swift-5.10.1-RELEASE` | 456 / 531 | 215 / 217 | 70 / 71 | 8493 / 8494 |
+| `swift-6.4.0-RELEASE` | 513 / 531 | 217 / 217 | 70 / 71 | 8493 / 8494 |
+| `main` @ `8305a502` | **531 / 531** | **217 / 217** | **71 / 71** | 8493 / 8494 |
 
-One of 5.10.1's misses is not a miss but an abort: `$sTJSdSSSpSrSUSP` takes its printer
-down with `std::bad_alloc`, so scoring it needs one process per name. That name is a
-malformed autodiff subset-parameters thunk, and the fix upstream made for it -- a
-`getNumChildren() < 5` guard in `NodePrinter` -- is the reason the row exists in
-`manglings.txt` at all. This library has the same defect in a milder form: it spells
-the name as a thunk *for nothing*, with an empty "from" clause.
+One miss in each release is not a miss but an abort: `$sTJSdSSSpSrSUSP` takes the
+printer of both 5.10.1 and 6.4.0 down with `std::bad_alloc`, so scoring them needs one
+process per name. That name is a malformed autodiff subset-parameters thunk, and the fix
+upstream made for it -- a `getNumChildren() < 5` guard in `NodePrinter` -- is the reason
+the row exists in `manglings.txt` at all. This library refuses it, as `main` does.
 
-5.10.1's other 58 misses are not defects in it. They are names for constructs that did
-not exist yet -- `sending`, typed `throws`, `@isolated(any)`, `~Copyable`,
-`Builtin.ImplicitActor`, `nonisolated(nonsending)`, `yielding_borrow`/`yielding_mutate`,
-`@called(once)` -- which upstream added to `manglings.txt` afterwards. Counting the rows
-in that file at each tag says the same thing: 446 at 5.10.1, 470 at 6.0.3, 481 at 6.1.3,
-495 at 6.2.4, 500 at 6.3.3, and 514 on `main`. The corpus needs all 514, so no tag
-reaches it.
+5.10.1's other 74 misses and 6.4.0's other 17 are not defects in them. They are names
+for constructs that did not exist yet -- `sending`, typed `throws`, `@isolated(any)`,
+`~Copyable`, `Builtin.ImplicitActor`, `nonisolated(nonsending)`,
+`yielding_borrow`/`yielding_mutate`, `@called(exactlyOnce)` and `@called(atMostOnce)`,
+`@convention(com_method)`, the `async_Main` entry point -- which upstream added to
+`manglings.txt` afterwards. Counting the rows in that file at each tag says the same
+thing: 446 at 5.10.1, 470 at 6.0.3, 481 at 6.1.3, 495 at 6.2.4, 500 at 6.3.3, 512 at
+6.4.0, and 531 on `main`. The corpus needs all 531, so no tag reaches it.
 
 The corpora were recorded with a `main` build, not with `swift-demangle` 5.10.1, which
 spells `$s4main3fooyySiFyyXEfU_TA.1` as
@@ -102,4 +103,5 @@ The three `-D`s in `build.sh` are `swift_demangling_compile_flags` from
 LLVM's headers are needed (`Punycode.h` includes `llvm/ADT/StringRef.h`, `LLVM.h`
 includes `llvm/Support/Casting.h`) but none of its libraries are. Built against
 LLVM 18's headers here; anything from 16 up should do, since `main` uses
-`std::optional` rather than the `llvm::Optional` that LLVM 16 removed.
+`std::optional` rather than the `llvm::Optional` that LLVM 16 removed. The 5.10.1 row
+was measured against LLVM 15's headers for that reason; 6.4.0 builds against 18's.

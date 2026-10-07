@@ -4,14 +4,34 @@
 than through a subprocess -- which keeps these fast enough to be worth having.
 """
 
+import base64
+import errno
 import io
+import json
+import os
+import pathlib
+import re
+import signal
+import subprocess
+import sys
+import threading
 
 import pytest
 
-from demangle.cli import main
+from demangle import __version__, detect
+from demangle.cli import build_parser, main
 
 VECTOR = "_ZNSt6vectorIiSaIiEE9push_backERKi"
 VECTOR_SPELLED = "std::vector<int, std::allocator<int>>::push_back(int const&)"
+
+SOURCE = pathlib.Path(__file__).resolve().parent.parent / "src"
+
+
+def command(*argv, **kwargs):
+    """`python -m demangle` in a fresh interpreter, for what only a real process shows."""
+    return subprocess.Popen(
+        [sys.executable, "-m", "demangle", *argv], env={**os.environ, "PYTHONPATH": str(SOURCE)}, **kwargs
+    )
 
 
 def run(capsys, argv, stdin=None, monkeypatch=None):
@@ -52,6 +72,67 @@ class TestOptions:
         """`--detect` must report the forced language, not the one it would have guessed."""
         _, out, _ = run(capsys, ["--detect", "--language", "msvc", "_Z1fv"])
         assert out.strip() == "msvc"
+
+    @pytest.mark.parametrize("strict", [[], ["--strict"]])
+    def test_detect_names_a_forced_scheme_by_its_registered_name(self, capsys, strict):
+        _, out, _ = run(capsys, ["--detect", *strict, "-l", "c++", "_Z1fv"])
+        assert out == "itanium\n"
+
+    def test_detect_strict_names_the_scheme_that_reads_the_name(self, capsys):
+        status, out, err = run(capsys, ["--detect", "--strict", "_Z1fv", "_ZN3Foo"])
+        assert (status, out) == (1, "itanium\n")
+        assert err.startswith("_ZN3Foo: ")
+
+    def test_detect_strict_answers_what_the_api_answers(self, capsys):
+        names = ["_Z1fv", "?f@@YAXH@Z", "_RNvC6_123foo3bar", "$s4main3FooV3baryS2i_SStF", "_ZN3Foo"]
+        _, out, _ = run(capsys, ["--detect", "--strict", *names])
+        assert out.splitlines() == [detect(name, strict=True) for name in names if detect(name, strict=True)]
+
+    def test_detect_strict_reads_under_the_runs_own_limits(self, capsys):
+        deep = "_Z1f" + "P" * 400 + "i"
+        assert main(["--detect", "--strict", deep]) == 1
+        capsys.readouterr()
+        assert main(["--relaxed", "--detect", "--strict", deep]) == 0
+        assert capsys.readouterr().out == "itanium\n"
+
+    def test_a_comma_separated_language_is_an_allow_list(self, capsys):
+        _, out, _ = run(capsys, ["-l", "itanium,swift", "_Z1fv", "_OBJC_CLASS_$_NSData", "?f@@YAXH@Z"])
+        assert out.splitlines() == ["f()", "_OBJC_CLASS_$_NSData", "?f@@YAXH@Z"]
+
+    def test_an_allow_list_detects_among_its_schemes(self, capsys):
+        _, out, _ = run(capsys, ["--detect", "-l", "itanium, swift", "_Z1fv", "?f@@YAXH@Z"])
+        assert out.splitlines() == ["itanium", "-"]
+
+    def test_an_allow_list_takes_aliases(self, capsys):
+        _, out, _ = run(capsys, ["-l", "c++,ms", "_Z1fv", "?f@@YAXH@Z"])
+        assert out.splitlines() == ["f()", "void __cdecl f(int)"]
+
+    def test_a_trailing_comma_makes_a_list_of_one(self, capsys):
+        """`gnuv2` forces the scheme on any name; `gnuv2,` detects, as `("gnuv2",)` does."""
+        _, forced, _ = run(capsys, ["--detect", "-l", "gnuv2", "_Z1fv"])
+        _, listed, _ = run(capsys, ["--detect", "-l", "gnuv2,", "_Z1fv"])
+        assert (forced, listed) == ("gnuv2\n", "-\n")
+
+    @pytest.mark.parametrize(
+        ("value", "message"),
+        [
+            ("itanium,,swift", "has an empty name in it"),
+            ("itanium,cobol", "unknown language 'cobol'"),
+            (",", "has an empty name in it"),
+        ],
+    )
+    def test_a_bad_allow_list_is_a_usage_error(self, capsys, value, message):
+        with pytest.raises(SystemExit) as info:
+            main(["-l", value, "_Z1fv"])
+        assert info.value.code == 2
+        assert message in capsys.readouterr().err
+
+    def test_an_unknown_language_suggests_the_close_one(self, capsys):
+        with pytest.raises(SystemExit):
+            main(["-l", "itanum", "_Z1fv"])
+        err = capsys.readouterr().err
+        assert "did you mean 'itanium'?" in err
+        assert "--list-languages" in err
 
     def test_style(self, capsys):
         _, out, _ = run(capsys, ["--style", "gnu", VECTOR])
@@ -108,9 +189,106 @@ class TestArgumentErrors:
         assert status == 0
         assert out.strip() == "-_Z1fv"
 
+    def test_flags_may_follow_names(self, capsys):
+        """`demangle NAME... -p`, the way a command line grows when it is edited."""
+        status, out, _ = run(capsys, ["_Z1fv", "-b", "_Z1gv", "-p"])
+        assert (status, out) == (0, "_Z1fv ==> f\n_Z1gv ==> g\n")
+
+    def test_after_the_separator_nothing_is_a_flag(self, capsys):
+        _, out, _ = run(capsys, ["-p", "--", "-p", "_Z1fv"])
+        assert out == "-p\nf\n"
+
+    @pytest.mark.parametrize(
+        ("argv", "expected"),
+        [
+            (["--", "-p"], "-p\n"),
+            (["--", "-_Z1fv"], "-_Z1fv\n"),
+            (["--types", "-l", "itanium", "--", "Pi", "-x"], "int*\n-x\n"),
+            (["_Z1fv", "--", "--strict"], "f()\n--strict\n"),
+            (["--", "--"], "--\n"),
+        ],
+    )
+    def test_a_name_after_the_separator_that_looks_like_a_flag_is_a_name(self, capsys, argv, expected):
+        status, out, _ = run(capsys, argv)
+        assert (status, out) == (0, expected)
+
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as info:
             main(["--version"])
+        assert info.value.code == 0
+        assert capsys.readouterr().out == f"demangle {__version__}\n"
+
+    def test_a_usage_error_is_two_lines_not_a_screenful(self, capsys):
+        with pytest.raises(SystemExit) as info:
+            main(["--bogus"])
+        assert info.value.code == 2
+        assert capsys.readouterr().err.splitlines() == [
+            "usage: demangle [options] [NAME ...]",
+            "demangle: error: unrecognized arguments: --bogus",
+        ]
+
+
+class TestHelp:
+    """`-h` for the options most runs use, `--help` for all of them; both to stdout."""
+
+    @staticmethod
+    def _help(capsys, flag):
+        with pytest.raises(SystemExit) as info:
+            main([flag])
+        assert info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        return captured.out
+
+    def test_both_open_with_the_usage_and_the_examples(self, capsys):
+        for flag in ("-h", "--help"):
+            text = self._help(capsys, flag)
+            assert text.startswith("usage: demangle [options] [NAME ...]\n")
+            examples = text.index("examples:")
+            assert "nm -a libfoo.so | demangle" in text[examples:]
+            assert examples < text.index("--strict")
+
+    def test_short_help_is_short(self, capsys):
+        text = self._help(capsys, "-h")
+        assert "common options:" in text
+        assert "--no-tag-kind" not in text
+        assert "demangle --help" in text
+        assert len(text.splitlines()) < len(self._help(capsys, "--help").splitlines()) / 2
+
+    def test_full_help_names_every_option(self, capsys):
+        text = self._help(capsys, "--help")
+        for action in build_parser()._actions:
+            for option in action.option_strings:
+                assert option in text, option
+
+    def test_short_help_names_only_real_options(self, capsys):
+        text = self._help(capsys, "-h")
+        options = text[text.index("common options:") :]
+        known = {option for action in build_parser()._actions for option in action.option_strings}
+        assert set(re.findall(r"(?<![\w-])(--?[A-Za-z0-9_][\w-]*)", options)) <= known
+
+    def test_full_help_states_the_exit_statuses(self, capsys):
+        text = self._help(capsys, "--help")
+        statuses = text[text.index("exit status:") :]
+        for status in ("0", "1", "2", "130"):
+            assert f"\n  {status} " in statuses
+
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_the_help_fits_a_narrow_terminal(self, capsys, monkeypatch, flag):
+        monkeypatch.setenv("COLUMNS", "78")
+        text = self._help(capsys, flag)
+        assert max(len(line) for line in text.splitlines()) <= 78
+
+    def test_a_flag_is_never_split_at_its_hyphen(self, capsys, monkeypatch):
+        monkeypatch.setenv("COLUMNS", "60")
+        text = self._help(capsys, "--help")
+        assert not re.search(r"-\n", text)
+
+    def test_help_wins_over_the_rest_of_the_line(self, capsys):
+        """`demangle -p -h` is a question about `-p`, not a request to demangle nothing."""
+        assert "common options:" in self._help(capsys, "-h")
+        with pytest.raises(SystemExit) as info:
+            main(["-p", "--strict", "-h"])
         assert info.value.code == 0
 
 
@@ -142,6 +320,193 @@ class TestPipeline:
         assert main([]) == 0
         assert devnull_calls, "stdout should be redirected to devnull after a broken pipe"
         assert capsys.readouterr().err == ""
+
+    def test_a_pipe_closed_before_the_last_flush_is_not_an_error_either(self, monkeypatch):
+        """Output short enough to sit in the buffer meets the closed pipe on the way out."""
+
+        class ClosedOnFlush(io.StringIO):
+            def flush(self):
+                raise BrokenPipeError(32, "Broken pipe")
+
+        monkeypatch.setattr("sys.stdout", ClosedOnFlush())
+        monkeypatch.setattr("os.dup2", lambda *a: None)
+        monkeypatch.setattr("sys.stdout.fileno", lambda: 1, raising=False)
+        assert main(["_Z1fv"]) == 0
+
+    def test_windows_einval_on_a_closed_pipe_is_a_closed_pipe(self, monkeypatch):
+        class ClosedOnFlush(io.StringIO):
+            def flush(self):
+                raise OSError(errno.EINVAL, "Invalid argument")
+
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr("sys.stdout", ClosedOnFlush())
+        monkeypatch.setattr("os.dup2", lambda *a: None)
+        monkeypatch.setattr("sys.stdout.fileno", lambda: 1, raising=False)
+        assert main(["_Z1fv"]) == 0
+
+    def test_einval_elsewhere_is_not_swallowed(self, monkeypatch):
+        class Failing(io.StringIO):
+            def flush(self):
+                raise OSError(errno.EINVAL, "Invalid argument")
+
+        monkeypatch.setattr("sys.platform", "linux")
+        monkeypatch.setattr("sys.stdout", Failing())
+        with pytest.raises(OSError):
+            main(["_Z1fv"])
+
+    def test_head_on_a_long_pipe_ends_quietly(self, tmp_path):
+        """`demangle < table | head -1`, through a real pipe, so SIGPIPE's path is the real one."""
+        table = tmp_path / "table.txt"
+        table.write_bytes(f"0000 T {VECTOR}\n".encode() * 200_000)
+        with table.open("rb") as names:
+            process = command(stdin=names, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            assert process.stdout is not None and process.stderr is not None
+            first = process.stdout.readline()
+            process.stdout.close()
+            err = process.stderr.read()
+            process.wait(timeout=60)
+        assert first == f"0000 T {VECTOR_SPELLED}{os.linesep}".encode()
+        assert (process.returncode, err) == (0, b"")
+
+    def test_each_line_is_answered_before_the_next_arrives(self):
+        """Nothing waits for the input to end, or for 64K of it: `tail -f log | demangle`."""
+        process = command(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert process.stdin is not None and process.stdout is not None
+        try:
+            process.stdin.write(b"at _Z1fv\n")
+            process.stdin.flush()
+            answer = []
+            stdout = process.stdout
+            reader = threading.Thread(target=lambda: answer.append(stdout.readline()), daemon=True)
+            reader.start()
+            reader.join(60)
+            assert answer, "the first line was not answered while the input stayed open"
+            assert answer == [f"at f(){os.linesep}".encode()]
+        finally:
+            process.stdin.close()
+            process.wait(timeout=60)
+
+    @staticmethod
+    def _interrupt(*_, **__):
+        raise KeyboardInterrupt
+
+    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    def test_ctrl_c_on_windows_exits_130_without_a_traceback(self, capsys, monkeypatch, where):
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
+        assert main(["_Z1fv"]) == 130
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    def test_ctrl_c_elsewhere_dies_of_sigint(self, capsys, monkeypatch, where):
+        """So that a shell loop over the command stops, as it does for one Ctrl-C killed."""
+        calls = []
+        monkeypatch.setattr("sys.platform", "linux")
+        monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
+        monkeypatch.setattr("signal.signal", lambda *a: calls.append(("signal", *a)))
+        monkeypatch.setattr("os.kill", lambda *a: calls.append(("kill", *a)))
+        main(["_Z1fv"])
+        assert calls == [("signal", signal.SIGINT, signal.SIG_DFL), ("kill", os.getpid(), signal.SIGINT)]
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows has no death by signal")
+    def test_ctrl_c_on_a_real_process(self):
+        process = command(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert process.stdin is not None and process.stdout is not None
+        process.stdin.write(b"_Z1fv\n")
+        process.stdin.flush()
+        assert process.stdout.readline() == b"f()\n"
+        process.send_signal(signal.SIGINT)
+        _, err = process.communicate(timeout=60)
+        assert process.returncode == -signal.SIGINT
+        assert err == b""
+
+
+class TestStandardInput:
+    """When standard input is read, and what `-` means."""
+
+    @staticmethod
+    def _stdin(monkeypatch, text, terminal=False):
+        stdin = io.StringIO(text)
+        monkeypatch.setattr(stdin, "isatty", lambda: terminal)
+        monkeypatch.setattr("sys.stdin", stdin)
+
+    def test_a_dash_reads_standard_input(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "T _Z1fv\n")
+        assert main(["-"]) == 0
+        assert capsys.readouterr().out == "T f()\n"
+
+    def test_a_dash_among_names_reads_standard_input_in_its_place(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "_Z1gv\n")
+        main(["_Z1fv", "-", "_Z1hv"])
+        assert capsys.readouterr().out == "f()\ng()\nh()\n"
+
+    def test_a_dash_after_the_separator_still_reads_standard_input(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "_Z1gv\n")
+        main(["--", "-"])
+        assert capsys.readouterr().out == "g()\n"
+
+    def test_a_terminal_with_no_names_is_a_usage_error_not_a_wait(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, VECTOR, terminal=True)
+        with pytest.raises(SystemExit) as info:
+            main([])
+        assert info.value.code == 2
+        err = capsys.readouterr().err
+        assert "standard input is a terminal" in err
+        assert "give - to type them" in err
+
+    def test_a_dash_reads_a_terminal_because_it_asks_to(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "_Z1fv\n", terminal=True)
+        assert main(["-"]) == 0
+        assert capsys.readouterr().out == "f()\n"
+
+    def test_names_never_touch_standard_input(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "", terminal=True)
+        assert main(["_Z1fv"]) == 0
+
+    def test_a_closed_standard_input_is_a_usage_error(self, capsys, monkeypatch):
+        monkeypatch.setattr("sys.stdin", None)
+        with pytest.raises(SystemExit) as info:
+            main([])
+        assert info.value.code == 2
+        assert "standard input is closed" in capsys.readouterr().err
+
+    def test_a_closed_standard_input_does_not_matter_to_names(self, capsys, monkeypatch):
+        monkeypatch.setattr("sys.stdin", None)
+        assert main(["_Z1fv"]) == 0
+        assert capsys.readouterr().out == "f()\n"
+
+    def test_bytes_that_are_not_utf8_come_back_as_they_went_in(self, tmp_path):
+        table = tmp_path / "table.txt"
+        table.write_bytes(b"\xff _Z1fv\r\nno newline at the end")
+        with table.open("rb") as names:
+            process = command(stdin=names, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, err = process.communicate(timeout=60)
+        assert (out, err) == (b"\xff f()\r\nno newline at the end", b"")
+
+    def test_crlf_comes_back_crlf_where_standard_output_writes_newlines_as_crlf(self, monkeypatch):
+        """Windows' streams, in-process: `\\n` is written `\\r\\n`, so `\\r\\n` must not be."""
+        stdout = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", newline="\r\n")
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"T _Z1fv\r\nx\r\ny\n"), encoding="utf-8"))
+        monkeypatch.setattr("sys.stdout", stdout)
+        assert main([]) == 0
+        assert stdout.buffer.getvalue() == b"T f()\r\nx\r\ny\r\n"
+
+    def test_a_null_record_keeps_its_newlines_where_standard_output_writes_newlines_as_crlf(self, monkeypatch):
+        stdout = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", newline="\r\n")
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"not\r\nmangled\0_Z1fv\0"), encoding="utf-8"))
+        monkeypatch.setattr("sys.stdout", stdout)
+        assert main(["-0"]) == 0
+        assert stdout.buffer.getvalue() == b"not\r\nmangled\0f()\0"
+
+
+class TestTheModule:
+    def test_python_dash_m_runs_the_command(self):
+        process = command(VECTOR, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out, err = process.communicate(timeout=60)
+        assert (process.returncode, out, err) == (0, VECTOR_SPELLED + "\n", "")
 
 
 class TestTheStreamFilter:
@@ -196,6 +561,50 @@ class TestTheStreamFilter:
         assert capsys.readouterr().out == "-[NSString length]\n"
 
 
+class TestNullFlag:
+    """`-0`: whole names ended by NUL in, answers ended by NUL out.
+
+    For a name a newline cannot end -- an Objective-C method with a space in it, one
+    with a newline in it -- and for whatever `find -print0` and `xargs -0` hand over.
+    """
+
+    def test_records_in_and_out(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin=f"{VECTOR}\0memcpy\0", monkeypatch=monkeypatch)
+        assert out == f"{VECTOR_SPELLED}\0memcpy\0"
+
+    def test_a_record_is_one_whole_name_not_a_line_to_filter(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin="T _Z1fv\0a\n_Z1gv\0", monkeypatch=monkeypatch)
+        assert out == "T _Z1fv\0a\n_Z1gv\0"
+
+    def test_a_last_record_without_its_nul_still_reads(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin="_Z1fv\0_Z1gv", monkeypatch=monkeypatch)
+        assert out == "f()\0g()\0"
+
+    def test_an_empty_record_stays_one(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin="_Z1fv\0\0_Z1gv\0", monkeypatch=monkeypatch)
+        assert out == "f()\0\0g()\0"
+
+    def test_names_on_the_command_line_end_with_nul_too(self, capsys):
+        _, out, _ = run(capsys, ["--null", "-b", "_Z1fv", "_Z1gv"])
+        assert out == "_Z1fv ==> f()\0_Z1gv ==> g()\0"
+
+    def test_a_multi_line_tree_is_one_record(self, capsys):
+        _, out, _ = run(capsys, ["-0", "--tree", "_Z1fPKc"])
+        assert out.count("\0") == 1
+        assert out.endswith("\0")
+        assert "\n" in out
+
+    def test_types_read_records_too(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0", "--types", "-l", "itanium"], stdin="Pi\0I like Pi\0", monkeypatch=monkeypatch)
+        assert out == "int*\0I like Pi\0"
+
+    def test_errors_stay_lines_on_standard_error(self, capsys):
+        status, out, err = run(capsys, ["-0", "--strict", "memcpy"])
+        assert (status, out) == (1, "")
+        assert err.endswith("\n")
+        assert "\0" not in err
+
+
 class TestLimitFlags:
     def test_a_tight_output_bound_refuses(self, capsys):
         assert main(["--max-output", "4", "--strict", "_ZNSt6vectorIiSaIiEE9push_backERKi"]) == 1
@@ -206,6 +615,19 @@ class TestLimitFlags:
         assert main(["--strict", deep]) == 1
         capsys.readouterr()
         assert main(["--relaxed", "--strict", deep]) == 0
+
+    @pytest.mark.parametrize(
+        ("argv", "remedy"),
+        [
+            (["--max-output", "4", VECTOR], "--max-output N or --relaxed raises it"),
+            (["--max-input", "3", "_Z1fv"], "--max-input N or --relaxed raises it"),
+            (["_Z1f" + "P" * 400 + "i"], "--max-depth N or --relaxed raises it"),
+        ],
+        ids=["output", "input", "depth"],
+    )
+    def test_a_bound_that_was_hit_says_how_to_move_it(self, capsys, argv, remedy):
+        assert main(["--strict", *argv]) == 1
+        assert remedy in capsys.readouterr().err
 
     def test_a_non_positive_bound_is_rejected(self):
         with pytest.raises(SystemExit):
@@ -234,6 +656,56 @@ class TestPartFlags:
     def test_no_params(self, capsys, name, expected):
         _, out, _ = run(capsys, ["-p", name])
         assert out.strip() == expected
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("??_7Base@@6B@", "Base::`vftable'"),
+            ("??_7A@B@@6BC@D@@@", "B::A::`vftable'{for `D::C'}"),
+            ("??_GBase@@UEAAPEAXI@Z", "Base::`scalar deleting dtor'"),
+            ("?f@C@@WBA@EAAHXZ", "C::f`adjustor{16}'"),
+            ("??_EBase@@W3AEPAXI@Z", "Base::`vector deleting dtor'`adjustor{4}'"),
+            ("??_R1A@?0A@EA@Base@@8", "Base::`RTTI Base Class Descriptor at (0, -1, 0, 64)'"),
+            ("??_R0?AUBase@@@8", "Base `RTTI Type Descriptor'"),
+            ("??_R0PAD@8", "char *`RTTI Type Descriptor'"),
+            ("??_R0AAH@8", "int &`RTTI Type Descriptor'"),
+            ("??_R0PAY01H@8", "int (*`RTTI Type Descriptor')[2]"),
+            ("??_R0P6AXXZ@8", "void (__cdecl *`RTTI Type Descriptor')(void)"),
+            ("??_H@YAXPEAX_K1P6APEAX0@Z@Z", "`vector ctor iterator'"),
+            ("??__EFoo@@YAXXZ", "`dynamic initializer for 'Foo''"),
+            ("??__FFoo@@YAXXZ", "`dynamic atexit destructor for 'Foo''"),
+            ("??__E?i@C@@0HA@@YAXXZ", "`dynamic initializer for 'C::i''"),
+        ],
+    )
+    def test_no_params_writes_an_msvc_label_where_msvc_does(self, capsys, name, expected):
+        """After the name, as the reference spells it, but without the `const` that is
+        about the label's table."""
+        _, out, _ = run(capsys, ["-p", name])
+        assert out.strip() == expected
+
+    def test_no_params_tells_a_classs_vftables_apart(self, capsys):
+        """`{for ...}` is which base's table it is, so it stays: three tables, three lines."""
+        _, out, _ = run(capsys, ["-p", "??_7A@B@@6BC@D@@@", "??_7A@B@@6BC@D@@E@F@@@", "??_7A@B@@6BC@D@@E@F@@G@H@@@"])
+        assert len(set(out.split("\n")) - {""}) == 3
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("@System@@Abort$qqrv", "System::__linkproc__ Abort"),
+            ("@@AsClass", "__linkproc__ AsClass"),
+            ("@OWL@TFileStreamBase@3$vsn", "OWL::TFileStreamBase::__vdthk__"),
+            ("@f@#$cf$@bar", "f::__vdflg__ bar"),
+            ("@$xp$11Forms@TForm", "__tpdsc__ Forms::TForm"),
+        ],
+    )
+    def test_no_params_writes_a_delphi_label_where_delphi_does(self, capsys, name, expected):
+        """After the scope for the three the unmangler writes there, its convention off."""
+        _, out, _ = run(capsys, ["-p", name])
+        assert out.strip() == expected
+
+    def test_base_name_of_an_msvc_label_is_the_class_it_is_about(self, capsys):
+        _, out, _ = run(capsys, ["--base-name", "??_7Base@@6B@"])
+        assert out.strip() == "Base"
 
     def test_no_params_keeps_the_symbols_decoration(self, capsys):
         _, out, _ = run(capsys, ["-p", "_ZN3Foo3barEv@@GLIBCXX_3.4"])
@@ -347,6 +819,10 @@ class TestTypeFlag:
             with pytest.raises(SystemExit):
                 run(capsys, ["--types", "-l", "itanium", *extra, "Pi"])
 
+    def test_it_refuses_a_list_of_schemes(self, capsys):
+        with pytest.raises(SystemExit):
+            run(capsys, ["--types", "-l", "itanium,msvc", "Pi"])
+
     def test_it_refuses_a_scheme_with_no_type_grammar_once_rather_than_per_name(self, capsys):
         with pytest.raises(SystemExit):
             run(capsys, ["--types", "-l", "rust", "Pi", "Pc", "i"])
@@ -354,6 +830,10 @@ class TestTypeFlag:
     def test_crlf_input_reads_the_same_as_lf(self, capsys, monkeypatch):
         _, out, _ = run(capsys, ["--types", "-l", "msvc"], stdin="PEAX\r\n", monkeypatch=monkeypatch)
         assert out == "void *\n"
+
+    def test_an_argument_ending_in_a_line_end_reads_the_same(self, capsys):
+        _, out, _ = run(capsys, ["--types", "-l", "itanium", "Pi\r", "Pc\n", "Pv\r\n"])
+        assert out == "int*\nchar*\nvoid*\n"
 
 
 class TestSimplifiedFlag:
@@ -396,6 +876,125 @@ class TestJsonFlag:
     def test_asking_for_both_spellings_of_the_tree_is_refused(self, capsys):
         with pytest.raises(SystemExit):
             run(capsys, ["--json", "--tree", "_Z1fv"])
+
+
+class TestJsonLinesFlag:
+    """`--json-lines`: one object per name, for a program to read rather than a person.
+
+    `--json` stays the parse tree, as it was released; this is the other question, what
+    the command says about each name, as data.
+    """
+
+    @staticmethod
+    def _records(out):
+        return [json.loads(line) for line in out.splitlines()]
+
+    def test_one_object_per_name(self, capsys):
+        status, out, _ = run(capsys, ["--json-lines", "_Z1fv", "memcpy", "?f@@YAXH@Z"])
+        assert status == 0
+        assert self._records(out) == [
+            {"mangled": "_Z1fv", "demangled": "f()", "language": "itanium"},
+            {"mangled": "memcpy", "demangled": "memcpy", "language": None},
+            {"mangled": "?f@@YAXH@Z", "demangled": "void __cdecl f(int)", "language": "msvc"},
+        ]
+
+    def test_language_is_the_scheme_that_read_it_not_the_one_it_looks_like(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "_ZN3Foo"])
+        assert self._records(out) == [{"mangled": "_ZN3Foo", "demangled": "_ZN3Foo", "language": None}]
+
+    def test_language_is_the_canonical_name_when_an_alias_forced_it(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-l", "c++", "_Z1fv"])
+        assert self._records(out)[0]["language"] == "itanium"
+
+    def test_demangled_is_what_the_line_would_have_said(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-p", "-s", "gnu", VECTOR])
+        assert self._records(out)[0]["demangled"] == "std::vector<int, std::allocator<int> >::push_back"
+
+    def test_signature_adds_the_parts(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "--signature", "_ZNK3Foo3barEi"])
+        (record,) = self._records(out)
+        assert record == {
+            "mangled": "_ZNK3Foo3barEi",
+            "demangled": "Foo::bar(int) const",
+            "language": "itanium",
+            "qualified_name": "Foo::bar",
+            "base_name": "bar",
+            "namespace": "Foo",
+            "parameters": ["int"],
+            "return_type": None,
+            "calling_convention": None,
+            "qualifiers": ["const"],
+            "special": None,
+            "decoration": "",
+            "is_function": True,
+            "is_data": False,
+            "is_ctor_or_dtor": False,
+        }
+
+    def test_every_record_has_the_same_keys(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "--signature", "_Z1fv", "memcpy"])
+        read, unread = self._records(out)
+        assert list(read) == list(unread)
+        assert unread["base_name"] is None
+
+    def test_only_demangled_drops_the_unread(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-m", "_Z1fv", "memcpy"])
+        assert [record["mangled"] for record in self._records(out)] == ["_Z1fv"]
+
+    def test_strict_reports_an_unread_name_instead(self, capsys):
+        status, out, err = run(capsys, ["--json-lines", "--strict", "_Z1fv", "memcpy"])
+        assert (status, len(self._records(out))) == (1, 1)
+        assert err.startswith("memcpy: ")
+
+    def test_a_repeated_name_is_answered_each_time_it_comes(self, capsys):
+        status, out, err = run(capsys, ["--json-lines", "--strict", "_Z1fv", "memcpy", "_Z1fv", "memcpy"])
+        assert [record["mangled"] for record in self._records(out)] == ["_Z1fv", "_Z1fv"]
+        assert (status, err.count("memcpy: ")) == (1, 2)
+
+    def test_strip_underscore_reaches_the_record(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-_", "__Z1fv", "_foo"])
+        assert [(r["demangled"], r["language"]) for r in self._records(out)] == [("f()", "itanium"), ("_foo", None)]
+
+    def test_over_a_stream_a_record_per_symbol_and_none_for_the_text(self, capsys, monkeypatch):
+        text = f"0000 T {VECTOR}\n0000 T main_loop\nsome words\n0000 t _Z1fv\n"
+        _, out, _ = run(capsys, ["--json-lines"], stdin=text, monkeypatch=monkeypatch)
+        assert [record["mangled"] for record in self._records(out)] == [VECTOR, "_Z1fv"]
+
+    def test_with_null_each_record_ends_with_nul(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-0", "_Z1fv", "x"])
+        assert [json.loads(record)["mangled"] for record in out.split("\0")[:-1]] == ["_Z1fv", "x"]
+
+    def test_bytes_that_are_not_utf8_stay_valid_json(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "_Z1f\udcffv"])
+        assert self._records(out)[0]["mangled"] == "_Z1f\udcffv"
+
+    def test_bytes_that_are_not_utf8_are_given_back_in_base64(self, capsys, monkeypatch):
+        """A reader that turns `\\udcff` into U+FFFD can still recover the name exactly."""
+        stdin = io.TextIOWrapper(io.BytesIO(b"_Z3foo\xff\0_Z1fv\0caf\xc3\xa9\0"), encoding="utf-8")
+        monkeypatch.setattr("sys.stdin", stdin)
+        main(["--json-lines", "-0"])
+        records = [json.loads(record) for record in capsys.readouterr().out.split("\0")[:-1]]
+        assert records[0] == {
+            "mangled": "_Z3foo\udcff",
+            "mangled_bytes": "X1ozZm9v/w==",
+            "demangled": "_Z3foo\udcff",
+            "language": None,
+        }
+        assert base64.b64decode(records[0]["mangled_bytes"]) == b"_Z3foo\xff"
+        assert ["mangled_bytes" in record for record in records[1:]] == [False, False]
+
+    @pytest.mark.parametrize("other", ["--tree", "--json", "--detect", "--both"])
+    def test_it_is_one_answer_among_several(self, capsys, other):
+        with pytest.raises(SystemExit) as info:
+            main(["--json-lines", other, "_Z1fv"])
+        assert info.value.code == 2
+        assert "choose one" in capsys.readouterr().err
+
+    def test_signature_alone_says_what_it_needs(self, capsys):
+        with pytest.raises(SystemExit) as info:
+            main(["--signature", "_Z1fv"])
+        assert info.value.code == 2
+        assert "add --json-lines" in capsys.readouterr().err
 
 
 class TestMsvcSuppressionFlags:

@@ -3,8 +3,8 @@
 # revision) behind main.cpp. See README.md for requirements and why this revision.
 set -eu
 
-# Not a release tag on purpose: every release through 6.3.3 refuses names the corpora contain.
-REVISION=871a239941f3613c178b91c294f8584345f30f73
+# Not a release tag on purpose: every release through 6.4.0 refuses names the corpora contain.
+REVISION=8305a5023a3174493ab8cae462452e2d6baa6a9a
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source=$here/swift

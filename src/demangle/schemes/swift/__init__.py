@@ -12,7 +12,7 @@ Conformance is exact against a reference built from Swift's own demangler at a p
 
 * every `$s` symbol in the shipped Swift runtime and Foundation -- 48,368 of them --
   spelled identically, with nothing refused;
-* every case in the compiler's own `test/Demangle/Inputs/manglings.txt` -- the 514 rows
+* every case in the compiler's own `test/Demangle/Inputs/manglings.txt` -- the 531 rows
   of `tests/conformance/swift-upstream.txt` -- which is a much harder set: SIL function
   types, function-signature specialisations, key paths, autodiff thunks, macro
   expansions, and the Swift 3 mangling.

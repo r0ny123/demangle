@@ -76,8 +76,19 @@ _FIXED_POINT_INTEGERS = {
 
 
 #: Clang's allocation-token prefix, `__alloc_token_[<digits>_]`. It is no part of the
-#: name, so it is stripped and reported as a suffix, as the reference prints it.
+#: name, so it is stripped and reported as a suffix, as the reference prints it. GNU
+#: c++filt does not read it, nor `_IMPORT_THUNK`; a style decides spelling, not
+#: acceptance, so the gnu style spells both as the reference does.
 _ALLOC_TOKEN = "__alloc_token_"
+
+#: A PE import thunk's prefix, as MinGW and clang targeting Windows write it: `__imp_`
+#: then the whole mangled name, `_Z...`, or `__Z...` where i386 COFF adds its
+#: underscore -- which is not Mach-O's, so Apple's numbering rules are not assumed for
+#: it. Spelled `import thunk for ` as the reference spells it. The reference also reads
+#: a bare `<type>` behind the prefix, `__imp_i` as `import thunk for int`; a symbol
+#: table is full of C imports, so that is not followed.
+_IMPORT_THUNK = "__imp_"
+_IMPORT_THUNK_OPENINGS = (_IMPORT_THUNK + "_Z", _IMPORT_THUNK + "__Z")
 
 #: Greedy, so the split is at the *last* `_block_invoke`: the enclosing function may be
 #: named that too. An underscore with no number after it does not match.
@@ -319,6 +330,7 @@ def detect(name):
         or name.startswith("___Z")
         or name.startswith("____Z")
         or name.startswith(_ALLOC_TOKEN)
+        or name.startswith(_IMPORT_THUNK_OPENINGS)
     )
 
 
@@ -652,10 +664,13 @@ class ItaniumParser:
         mangled = reader.text
         if mangled.startswith(("___Z", "____Z")):
             return self.block_invocation()
-        # See `_ALLOC_TOKEN`. `__alloc_token_malloc` is not one: what follows must be a
-        # mangled name itself.
+        # See `_IMPORT_THUNK`. `__imp_ReadFile` is not one: what follows must be a
+        # mangled name itself, as it must behind `_ALLOC_TOKEN`, which may come next.
+        import_thunk = mangled.startswith(_IMPORT_THUNK_OPENINGS)
+        if import_thunk:
+            reader.pos += len(_IMPORT_THUNK)
         alloc_token = ""
-        if mangled.startswith(_ALLOC_TOKEN):
+        if reader.text.startswith(_ALLOC_TOKEN, reader.pos):
             after = reader.pos + len(_ALLOC_TOKEN)
             digits = after
             while digits < reader.length and reader.text[digits] in DIGITS:
@@ -686,6 +701,8 @@ class ItaniumParser:
 
         if alloc_token:
             result = self.builder.decorated(result, alloc_token)
+        if import_thunk:
+            result = self.builder.special("import thunk for ", result)
         if self.builder.size(result) > self._max_output:
             raise LimitExceeded(self._mangled, "output length", self._max_output)
         return result

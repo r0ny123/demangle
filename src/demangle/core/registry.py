@@ -330,6 +330,20 @@ def get(name):
     return plugin
 
 
+def canonical(name):
+    """The name a plugin is registered under, given that name or an alias of it.
+
+    `get` without the import: naming a scheme is not using it, so a built-in stays
+    unimported until a name reaches its `detect`. Raises KeyError if unknown.
+    """
+    _load()
+    try:
+        with _lock:
+            return name if name in _plugins else _aliases[name]
+    except TypeError:
+        raise KeyError(name) from None
+
+
 def _module_of(name):
     return next(entry[1] for entry in _BUILTIN_MODULES if entry[0] == name)
 

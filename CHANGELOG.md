@@ -8,6 +8,183 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
+### Added
+
+- **`tools/upstream_drift.py`.** Scores the library on the references' own test
+  vectors as they stand on their `main` branches today -- libcxxabi, LLVM's MSVC
+  tests, Swift's `manglings.txt` and rustc-demangle's -- and reports the vectors the
+  corpora do not yet hold. A weekly workflow runs it and opens an issue when a new
+  vector is misread.
+- **PE import thunks.** `__imp__Z3foov`, and `__imp___Z3foov` where i386 COFF adds its
+  underscore, read as `import thunk for foo()` in both styles, and `detect` claims
+  them. Only a whole mangled name after the prefix counts: `__imp_ReadFile` stays as
+  written, and so does the bare `<type>` llvm-cxxfilt's fallback reads there. A legacy
+  Rust name behind the prefix is C++'s, hash and all, as llvm-cxxfilt prints it.
+- **`language=` takes a sequence of names**, as an allow-list: `language=("itanium",
+  "swift")` detects as usual, in the usual order, among those schemes alone, so a
+  caller labelling a table it knows holds C++ and Swift has its Objective-C metadata
+  and its paths left as they are. Every whole-name entry point takes one --
+  `demangle()`, `demangle_strict()`, `parse()`, `signature()`, `demangle_all()`,
+  `detect()`, their bytes forms and the text filters. A list is keyed as the tuple it
+  names; an empty sequence, or one naming an unknown scheme, is a `ValueError`. A
+  sequence always detects, so `("gnuv2",)` is not `"gnuv2"`, which forces the scheme
+  on a name its detection declines.
+- **`detect(name, strict=True)`**, and `detectb`'s, names the scheme that *reads* the
+  name -- the one `demangle()` would use -- or None, rather than the one whose cheap
+  claim it matches: `detect("_ZN3Foo")` is `itanium`, and with `strict=True` it is
+  None. It costs a parse.
+- **`preload(*languages)`** imports schemes now rather than when a name first reaches
+  them -- about 7 ms for MSVC -- so a long-running service pays at start-up. Names or
+  aliases import those schemes; none imports every built-in. An unknown name is a
+  `ValueError`, and nothing is imported.
+- **A page on labelling a symbol table**, for a disassembler or a similarity index:
+  the allow-list, `detect(strict=True)` as language evidence, `signature()`'s
+  `qualified_name` as the label that is the same whichever compiler built the binary,
+  `preload()` and the limits.
+- **`python -m demangle`** runs the command, for an environment where the `demangle`
+  script is not on `PATH`.
+- **`demangle -l itanium,swift`**, the allow-list on the command line: a
+  comma-separated `--language` detects among those schemes alone, as
+  `language=("itanium", "swift")` does. One name still forces its scheme, and a
+  trailing comma makes a list of one, `-l gnuv2,`, which detects. An unknown name
+  suggests the nearest one and points at `--list-languages`, rather than listing all
+  forty names and aliases.
+- **`demangle --json-lines`**: one JSON object per name, `mangled`, `demangled` and
+  `language` -- the scheme that read the name, or null where it came back unchanged --
+  and with `--signature` the fields of `signature()` besides, null for a name nothing
+  reads, so every record has the same keys. A name whose bytes are not UTF-8 has one
+  more, `mangled_bytes`, those bytes in base64, since `mangled` carries each as a lone
+  surrogate that most JSON readers turn into U+FFFD, and `demangled_bytes` where the
+  spelling carries them on. `demangled` is what the line would have said, `-p` and
+  `--style` applied. Over a stream there is one record per symbol the filter rewrites
+  and none for the text around it. `--json` is unchanged: it is the parse tree, and
+  scripts read it as such.
+- **`demangle -0`**, or `--null`: standard input is whole names each ended by a NUL,
+  as `find -print0` and `xargs -0` hand them over, and every answer is ended by a NUL
+  rather than a newline -- names given as arguments included. A record is one name,
+  never a line to filter, so a name with a space or a newline in it reads whole; a
+  multi-line `--tree` is one record. Messages stay lines on standard error.
+
+### Changed
+
+- **Runs on Python 3.11 and 3.12, and on PyPy 3.11.** The floor was 3.13. Nothing in
+  the package or its tests needed a newer interpreter, so the change is the declared
+  floor, the classifiers, the lint and type targets, and CI rows for 3.11, 3.12 and
+  PyPy 3.11. The suite passes unchanged on each.
+- **The Swift port follows swiftlang/swift `main` @ `8305a502` (2026-10-07).**
+  `@called(once)` is now `@called(exactlyOnce)` (`XO`, and `O` in a lowered function
+  type), beside the new `@called(atMostOnce)` (`XOo`, `Oo`). `@convention(com_method)`
+  (`V`) is a new lowered-function convention, a coroutine's yields (`Xy`) are read, and
+  an index of `INT_MAX` is refused. The reference is rebuilt at that commit and
+  `swift-upstream.txt` re-transcribed: 531 / 531, up from 514.
+- **`detect()` no longer claims section names and file paths.** MSVC claims a
+  `.`-prefixed name only where what follows the dot opens as a type encoding does
+  (`.?AV`, `.PEA`, a builtin standing alone), so `.refptr.foo`, `.L123`, `.ARM.exidx`
+  and `.CRT$XCU` are no longer `msvc`; Go no longer takes an absolute path
+  (`/Users/me/build/foo.o`, `C:\...`) for an import path.
+  `demangle()` returns what it did -- the MSVC names never parsed, and Go spelled a
+  path as it stood. Every name in the MSVC and Go corpora is detected as before; the
+  41 `.objc_category_*` names the MSVC scheme claimed and never read are not claimed
+  by it now.
+- **`signature()` splits Objective-C runtime data symbols as it splits Swift's
+  descriptors.** `_OBJC_CLASS_$_NSData` has `special="Objective-C class"` and
+  `qualified_name="NSData"`, where the whole phrase used to be the name; an instance
+  variable's class and name are `namespace` and `base_name`, joined by the scheme's
+  separator, a space, and a category is named `NSString(Extra)`. The CLI's
+  `--base-name` prints the entity alone: `X` for `._OBJC_CLASS_X`.
+- **`signature()` splits MSVC's labels from the name they are about**, as it splits
+  Itanium's `vtable for`. `??_7Base@@6B@` (`` const Base::`vftable' ``) has
+  `special="vftable"` and `qualified_name="Base"`, where `` `vftable' `` used to be the
+  base name and `const Base` the namespace; the same holds for the RTTI descriptors,
+  the deleting destructors, the closures and iterators, the dynamic initialisers
+  (`special="dynamic initializer for"`, the variable for the name) and the thunks
+  (`adjustor`, `vtordisp`, `vcall`). What follows a label about its own table is
+  dropped: `` C::f`adjustor{16}' `` is `special="adjustor"` and `C::f`, and neither keeps
+  the `{16}`, nor a base class descriptor its `at (0, -1, 0, 64)`, nor a vftable its
+  `` {for `A'} ``. A label is the symbol's own only at the end of the name and outside
+  every template argument, so `` X<&const C::`vftable'>::x `` is the static member `x`.
+  The deleting destructors and `vbase dtor` are `is_ctor_or_dtor`, and so is a thunk
+  over one: `` Base::`vector deleting dtor'`adjustor{4}' `` is `special="adjustor"` with
+  `` Base::`vector deleting dtor' `` for the name. `` `anonymous namespace' `` and the
+  function a local static lives in are scopes, where everything before the last `::`
+  used to be the namespace. The CLI's `-p` writes the label where MSVC does,
+  `` Base::`vftable' `` (it printed `` const Base::`vftable' ``),
+  `` Foo `RTTI Type Descriptor' `` (it printed `` class Foo `RTTI Type Descriptor' ``),
+  `` char *`RTTI Type Descriptor' ``, `` `dynamic initializer for 'Foo'' ``, and keeps
+  what the label says about its table, so a class's vftables stay apart:
+  `` B::A::`vftable'{for `D::C'} ``, `` C::f`adjustor{16}' ``. `--base-name` prints
+  `Base` (it printed `` `vftable' ``).
+
+- **`signature()` splits a Delphi name's prefixes out of the name**, the same way.
+  The calling convention, result and label (`__fastcall`, `bool`, `__linkproc__`,
+  `__tpdsc__`) were read as part of the qualified name, which was then not split:
+  `@Unit@TForm1@Button1Click$qqrp14System@TObject` is now `Unit::TForm1` and
+  `Button1Click` with `calling_convention="__fastcall"`, a template function's result
+  is `return_type`, and an `operator` is split before its own spelling. Every label
+  the unmangler writes is `special` -- the virtual-definition thunk `__vdthk__` and the
+  tables `__frndl__`, `__chtbl__`, `__odtbl__`, `__thrwl__`, `__ectbl__` among them --
+  and one with nothing after it is about its scope: `@System@@`
+  (`System::__linkproc__`) is named `System`, where its base name was empty. A class
+  constructor is named `` `class constructor` ``. A constructor and a destructor
+  (`$bctr`, `$bdtr`), a class constructor and a class destructor are now
+  `is_ctor_or_dtor`, which the convention in the name had hidden. `operator ()` keeps
+  its brackets rather than opening its parameter list with them. The CLI's `-p` writes
+  the label where the unmangler does, without the convention:
+  `System::__linkproc__ Abort` (it printed `System::__linkproc__ __fastcall Abort`),
+  `TStream::__vdthk__`, `__tpdsc__ Forms::TForm`; `--base-name` prints the name alone,
+  `Double` for `@$xp$13System@Double`.
+- **`demangle --detect --strict`** names the scheme that reads each name, the answer
+  `detect(name, strict=True)` gives, under the run's own `--relaxed` and `--max-*`
+  bounds. A name none reads is reported on standard error with why, and the status is
+  1: `demangle -d --strict notmangled` printed `-` and exited 0, since `--strict` was
+  ignored under `--detect`. Without `--strict`, `--detect` answers as before, except
+  that a scheme forced by an alias is named by its registered name: `demangle -d -l
+  c++` printed `c++`, and now prints `itanium`, as `--detect --strict` and
+  `--json-lines` do.
+- **`-` as a NAME reads standard input**, in its place among the others: `demangle
+  _Z1fv - _Z1gv` reads the pipe between the two. `demangle -` printed `-`.
+- **`demangle` with no NAME at a terminal is a usage error**, exit status 2, saying
+  how to give it names, rather than a wait for input its user did not know it wanted.
+  `demangle -` still reads what is typed. A closed standard input is the same error,
+  where it was a `TypeError` traceback.
+- **The command answers each line as it arrives.** Output to a pipe was flushed only
+  when Python's buffer filled, so `tail -f log | demangle | grep ...` printed nothing
+  for the first 8K. It is now flushed once per read of standard input: per line when
+  lines trickle in, per 64K when `nm` floods it, which costs nothing measurable. The
+  bytes written are the same, `\r\n` and undecodable bytes included.
+- **`demangle -h` is the short help, `demangle --help` the whole of it.** Both open
+  with the usage and three examples; `-h` then lists the options most runs use,
+  and `--help` every option in groups -- reading names, what to print, one part of a
+  name, spelling, MSVC suppressions, resource bounds -- followed by the exit statuses
+  and where the documentation and the issue tracker are. `--simplified`, a Swift flag,
+  had been listed among the MSVC ones. The usage line is one line, so a usage error is
+  two rather than eleven, and a flag is no longer broken across lines at a hyphen.
+- **A bound the command hit says how to move it**: `_Z1fv: exceeded input length limit
+  of 3: '_Z1fv'; --max-input N or --relaxed raises it, for input you trust`.
+- **Flags may follow names.** `demangle _Z1fv -b _Z1gv` was an "unrecognized
+  arguments" error, because the names after a flag were not collected; flags and names
+  now mix in any order, and after `--` nothing is a flag.
+- **Ctrl-C ends the command with no traceback**, at any point after start-up, by
+  dying of SIGINT, so the shell reports 130 and a `for` loop over `demangle` stops as
+  it does for any command Ctrl-C kills; on Windows the status is 130. A pipe closed
+  before the last flush (`demangle a b | true`) no longer prints `Exception ignored`
+  and exits 120.
+### Fixed
+
+- **A called-once function type is read like any other function type**, as the
+  reference already did at the previous pin: its parameter labels are read
+  (`$s1aySiXOD` was `a@called(once) (Swift.Int) -> ()`), no space separates it from a
+  generic signature, and an entity of that type is printed without a colon.
+- **An Objective-C tree places a name after the label it follows**, so the selector
+  of `.objc_sel_name_b` is no longer found inside `Objective-C`, nor a class called
+  `Object` inside `Objective-C class`.
+- **A Free Pascal interface wrapper is named by its interface.** The base name
+  `signature()` gave a `WRPR_$` symbol ran on past the interface into the entry number
+  and the method it forwards to, `#0: SYSTEM.TINTERFACEDOBJECT.QUERYINTERF(...)`; it
+  is now the interface alone.
+
 ### Performance
 
 - **MSVC demangling is about 12% faster**, with 18% fewer Python calls per name: the
@@ -3798,7 +3975,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/r0ny123/demangle/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/r0ny123/demangle/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/r0ny123/demangle/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/r0ny123/demangle/compare/v0.1.0...v0.2.0

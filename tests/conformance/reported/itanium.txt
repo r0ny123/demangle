@@ -43,3 +43,10 @@ _ZTWN4llvm8parallel11threadIndexE	thread-local wrapper routine for llvm::paralle
 _Z16templateTemplateIN5outer5inner6HolderEiET_IT0_Li3EES5_	outer::inner::Holder<int, 3> templateTemplate<outer::inner::Holder, int>(outer::inner::Holder<int, 3>)
 _Z1gILi2EEvDvmlT_Li4E_i	void g<2>(int vector[2 * 4])
 _Z1hDv8_p	h(pixel vector[8])
+# A PE import thunk, `__imp_` before a whole mangled name, as MinGW and clang targeting
+# Windows write it; `__imp___Z` is i386's, which adds its own underscore. Added with the
+# feature rather than reported.
+__imp__Z3foov	import thunk for foo()
+__imp___Z3foov	import thunk for foo()
+__imp__ZN2ns3barIiEEvT_	import thunk for void ns::bar<int>(int)
+__imp__ZNSt6vectorIiSaIiEE9push_backERKi	import thunk for std::vector<int, std::allocator<int>>::push_back(int const&)

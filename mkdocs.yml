@@ -8,6 +8,7 @@ edit_uri: edit/main/
 nav:
   - Home: index.md
   - Working with the tree: analysing-a-binary.md
+  - Labelling a symbol table: labelling-a-symbol-table.md
   - API reference:
       - Public API: reference/api.md
       - Core: reference/core.md
