@@ -98,7 +98,10 @@ what the path carries:
 [Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) works
 one real task through `parse()` end to end — finding every function in libstdc++ that
 takes a string by const reference, and measuring what the regular-expression version of
-the same question gets wrong.
+the same question gets wrong. [Labelling a symbol
+table](https://r0ny123.github.io/demangle/labelling-a-symbol-table/) is the other
+task a tool has: one label per address, the same whichever compiler built the binary,
+with the calls chosen for it.
 
 ### The parts, when the spelling is not what you want
 
