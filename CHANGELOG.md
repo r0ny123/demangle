@@ -10,6 +10,17 @@ the reference demanglers, and a **Performance** section.
 
 ### Added
 
+- **`tools/upstream_drift.py`.** Scores the library on the references' own test
+  vectors as they stand on their `main` branches today -- libcxxabi, LLVM's MSVC
+  tests, Swift's `manglings.txt` and rustc-demangle's -- and reports the vectors the
+  corpora do not yet hold. A weekly workflow runs it and opens an issue when a new
+  vector is misread.
+- **PE import thunks.** `__imp__Z3foov`, and `__imp___Z3foov` where i386 COFF adds its
+  underscore, read as `import thunk for foo()` in both styles, and `detect` claims
+  them. Only a whole mangled name after the prefix counts: `__imp_ReadFile` stays as
+  written, and so does the bare `<type>` llvm-cxxfilt's fallback reads there. A legacy
+  Rust name behind the prefix is C++'s, hash and all, as llvm-cxxfilt prints it.
+
 ### Changed
 
 - **Runs on Python 3.11 and 3.12, and on PyPy 3.11.** The floor was 3.13. Nothing in
