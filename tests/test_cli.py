@@ -12,6 +12,7 @@ import sys
 
 import pytest
 
+from demangle import detect
 from demangle.cli import main
 
 VECTOR = "_ZNSt6vectorIiSaIiEE9push_backERKi"
@@ -63,6 +64,62 @@ class TestOptions:
         """`--detect` must report the forced language, not the one it would have guessed."""
         _, out, _ = run(capsys, ["--detect", "--language", "msvc", "_Z1fv"])
         assert out.strip() == "msvc"
+
+    def test_detect_strict_names_the_scheme_that_reads_the_name(self, capsys):
+        status, out, err = run(capsys, ["--detect", "--strict", "_Z1fv", "_ZN3Foo"])
+        assert (status, out) == (1, "itanium\n")
+        assert err.startswith("_ZN3Foo: ")
+
+    def test_detect_strict_answers_what_the_api_answers(self, capsys):
+        names = ["_Z1fv", "?f@@YAXH@Z", "_RNvC6_123foo3bar", "$s4main3FooV3baryS2i_SStF", "_ZN3Foo"]
+        _, out, _ = run(capsys, ["--detect", "--strict", *names])
+        assert out.splitlines() == [detect(name, strict=True) for name in names if detect(name, strict=True)]
+
+    def test_detect_strict_reads_under_the_runs_own_limits(self, capsys):
+        deep = "_Z1f" + "P" * 400 + "i"
+        assert main(["--detect", "--strict", deep]) == 1
+        capsys.readouterr()
+        assert main(["--relaxed", "--detect", "--strict", deep]) == 0
+        assert capsys.readouterr().out == "itanium\n"
+
+    def test_a_comma_separated_language_is_an_allow_list(self, capsys):
+        _, out, _ = run(capsys, ["-l", "itanium,swift", "_Z1fv", "_OBJC_CLASS_$_NSData", "?f@@YAXH@Z"])
+        assert out.splitlines() == ["f()", "_OBJC_CLASS_$_NSData", "?f@@YAXH@Z"]
+
+    def test_an_allow_list_detects_among_its_schemes(self, capsys):
+        _, out, _ = run(capsys, ["--detect", "-l", "itanium, swift", "_Z1fv", "?f@@YAXH@Z"])
+        assert out.splitlines() == ["itanium", "-"]
+
+    def test_an_allow_list_takes_aliases(self, capsys):
+        _, out, _ = run(capsys, ["-l", "c++,ms", "_Z1fv", "?f@@YAXH@Z"])
+        assert out.splitlines() == ["f()", "void __cdecl f(int)"]
+
+    def test_a_trailing_comma_makes_a_list_of_one(self, capsys):
+        """`gnuv2` forces the scheme on any name; `gnuv2,` detects, as `("gnuv2",)` does."""
+        _, forced, _ = run(capsys, ["--detect", "-l", "gnuv2", "_Z1fv"])
+        _, listed, _ = run(capsys, ["--detect", "-l", "gnuv2,", "_Z1fv"])
+        assert (forced, listed) == ("gnuv2\n", "-\n")
+
+    @pytest.mark.parametrize(
+        ("value", "message"),
+        [
+            ("itanium,,swift", "has an empty name in it"),
+            ("itanium,cobol", "unknown language 'cobol'"),
+            (",", "has an empty name in it"),
+        ],
+    )
+    def test_a_bad_allow_list_is_a_usage_error(self, capsys, value, message):
+        with pytest.raises(SystemExit) as info:
+            main(["-l", value, "_Z1fv"])
+        assert info.value.code == 2
+        assert message in capsys.readouterr().err
+
+    def test_an_unknown_language_suggests_the_close_one(self, capsys):
+        with pytest.raises(SystemExit):
+            main(["-l", "itanum", "_Z1fv"])
+        err = capsys.readouterr().err
+        assert "did you mean 'itanium'?" in err
+        assert "--list-languages" in err
 
     def test_style(self, capsys):
         _, out, _ = run(capsys, ["--style", "gnu", VECTOR])
@@ -475,6 +532,10 @@ class TestTypeFlag:
         for extra in (["--detect"], ["--base-name"], ["-p"], ["--no-return-type"]):
             with pytest.raises(SystemExit):
                 run(capsys, ["--types", "-l", "itanium", *extra, "Pi"])
+
+    def test_it_refuses_a_list_of_schemes(self, capsys):
+        with pytest.raises(SystemExit):
+            run(capsys, ["--types", "-l", "itanium,msvc", "Pi"])
 
     def test_it_refuses_a_scheme_with_no_type_grammar_once_rather_than_per_name(self, capsys):
         with pytest.raises(SystemExit):

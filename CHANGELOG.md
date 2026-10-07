@@ -29,6 +29,16 @@ the reference demanglers, and a **Performance** section.
   `ValueError`, and nothing is imported.
 - **`python -m demangle`** runs the command, for an environment where the `demangle`
   script is not on `PATH`.
+- **`demangle -l itanium,swift`**, the allow-list on the command line: a
+  comma-separated `--language` detects among those schemes alone, as
+  `language=("itanium", "swift")` does. One name still forces its scheme, and a
+  trailing comma makes a list of one, `-l gnuv2,`, which detects. An unknown name
+  suggests the nearest one and points at `--list-languages`, rather than listing all
+  forty names and aliases.
+- **`demangle --detect --strict`** names the scheme that reads each name, the answer
+  `detect(name, strict=True)` gives, under the run's own `--relaxed` and `--max-*`
+  bounds. A name none reads is reported on standard error with why, and the status is
+  1. Without `--strict`, `--detect` answers as before.
 - **`-` as a NAME reads standard input**, in its place among the others: `demangle
   _Z1fv - _Z1gv` reads the pipe between the two.
 

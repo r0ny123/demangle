@@ -31,6 +31,7 @@ traceback, which is what the `strict` error handler does.
 import argparse
 import codecs
 import contextlib
+import difflib
 import functools
 import itertools
 import json
@@ -39,10 +40,11 @@ import sys
 
 from . import __version__
 from ._signature import signature
-from .api import demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
+from .api import _read, demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
 from .core.ast import Function
 from .core.errors import DemanglingError
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
+from .core.style import get_style
 from .filter import TOKEN, TOKEN_MUST_HOLD
 
 _TOKEN = TOKEN
@@ -60,7 +62,12 @@ def build_parser():
         ),
     )
     parser.add_argument("names", nargs="*", metavar="NAME", help="symbol names to demangle; - reads standard input")
-    parser.add_argument("-l", "--language", help="force a scheme instead of detecting (aliases accepted)")
+    parser.add_argument(
+        "-l",
+        "--language",
+        metavar="NAME[,NAME...]",
+        help="force one scheme instead of detecting, or detect among a comma-separated list (aliases accepted)",
+    )
     parser.add_argument("-s", "--style", default="llvm", help="output style (default: llvm)")
     parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
     parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
@@ -76,7 +83,11 @@ def build_parser():
         action="store_true",
         help="ignore one leading underscore, as `c++filt --strip-underscore` does",
     )
-    parser.add_argument("--strict", action="store_true", help="report failures instead of echoing the input")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="report failures instead of echoing the input; with --detect, name the scheme that reads a name",
+    )
     parser.add_argument(
         "-b", "--both", action="store_true", help="print the mangled name and its expansion, as `mangled ==> demangled`"
     )
@@ -242,20 +253,15 @@ def main(argv=None):
             print(name)
         return 0
 
-    # Through the registry so the advertised aliases are accepted.
     if arguments.language:
-        from .core.registry import aliases, get
-
-        try:
-            get(arguments.language)
-        except KeyError:
-            known = ", ".join(sorted(set(languages()) | set(aliases())))
-            parser.error(f"unknown language {arguments.language!r}; choose from {known}")
+        arguments.language = _language_from(parser, arguments.language)
     if arguments.json and arguments.tree:
         parser.error("--tree and --json are two spellings of the same answer; choose one")
     if arguments.types:
         if not arguments.language:
             parser.error("--types needs --language: a type encoding carries no marker to detect on")
+        if not isinstance(arguments.language, str):
+            parser.error("--types reads with one scheme, so --language names one, not a list")
         # Checked once: a scheme with no type grammar fails on every line.
         from .core.registry import get as _get_plugin
 
@@ -321,6 +327,32 @@ def _stdin_problem(named):
     return None
 
 
+def _language_from(parser, text):
+    """`--language` as the API takes it: one name, which forces that scheme, or a list.
+
+    `itanium,swift` is the allow-list `("itanium", "swift")`, which detects among those
+    schemes alone. A trailing comma makes a list of one -- `gnuv2,` detects where `gnuv2`
+    forces -- as it makes a tuple of one in Python. Checked through the registry, so the
+    aliases `--list-languages` advertises are accepted.
+    """
+    from .core.registry import aliases, get
+
+    names = [name.strip() for name in text.split(",")]
+    listed = len(names) > 1
+    if listed and not names[-1]:
+        names.pop()
+    for name in names:
+        if not name:
+            parser.error(f"--language {text!r} has an empty name in it; separate names with one comma")
+        try:
+            get(name)
+        except KeyError:
+            close = difflib.get_close_matches(name.lower(), sorted({*languages(), *aliases()}), n=1)
+            guess = f"did you mean {close[0]!r}? " if close else ""
+            parser.error(f"unknown language {name!r}; {guess}demangle --list-languages lists them")
+    return tuple(names) if listed else names[0]
+
+
 def _silence_stdout():
     """Point stdout at the null device, so the shutdown flush has somewhere to go."""
     try:
@@ -354,7 +386,11 @@ def _expand(name, arguments, limits):
 def _expand_read(name, arguments, limits):
     """What this run has to say about one name."""
     if arguments.detect:
-        return arguments.language or detect(name) or "-"
+        if arguments.strict:
+            return _scheme_of(name, arguments, limits)
+        if isinstance(arguments.language, str):
+            return arguments.language
+        return detect(name, language=arguments.language) or "-"
     if arguments.types:
         try:
             if arguments.json or arguments.tree:
@@ -375,6 +411,17 @@ def _expand_read(name, arguments, limits):
     if arguments.strict:
         return demangle_strict(name, language=arguments.language, style=arguments.style, limits=limits)
     return demangle(name, language=arguments.language, style=arguments.style, limits=limits)
+
+
+def _scheme_of(name, arguments, limits):
+    """The scheme that reads `name`, raising what `demangle_strict()` raises if none does.
+
+    The question `detect(name, strict=True)` answers, asked under this run's style and
+    limits rather than the defaults, so that `--relaxed --detect --strict` names the
+    scheme `--relaxed` reads a deep name with.
+    """
+    resolved = get_style(arguments.style)
+    return _read(name, resolved.spelling_builder, arguments.language, resolved, limits)[0].name
 
 
 def _part_of(name, arguments, limits):

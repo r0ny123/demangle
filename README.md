@@ -286,6 +286,8 @@ $ nm -a libfoo.so | demangle
 $ demangle _ZNSt6vectorIiSaIiEE9push_backERKi
 $ demangle --tree _Z1fPKc
 $ demangle --detect _RNvC6_123foo3bar
+$ demangle --detect --strict _ZN3Foo               # the scheme that reads it, or an error
+$ nm -a Foo.dylib | demangle -l itanium,swift      # detect among these schemes alone
 $ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the signature
 $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
