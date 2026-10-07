@@ -163,8 +163,10 @@ while before any checks appear. The easiest first contribution is a
 ## CI and workflows
 
 Workflows run with `permissions: contents: read` and grant more only where a job needs
-it. Checkout uses `persist-credentials: false`, because nothing in CI pushes and a token
-left in `.git/config` is readable by every later step. Releases publish through PyPI
+it: the weekly `upstream.yml` has `issues: write`, because its one job files the issue
+that says a reference's vectors moved ahead of a scheme. Checkout uses
+`persist-credentials: false`, because nothing in CI pushes and a token left in
+`.git/config` is readable by every later step. Releases publish through PyPI
 Trusted Publishing, so there is no long-lived API token in repository secrets.
 
 The test matrix is deliberately not a cross product. Both supported versions run on

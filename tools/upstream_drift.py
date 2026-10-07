@@ -23,15 +23,17 @@ Usage
     tools/upstream_drift.py --show 40             more examples per table
 
 Exit status: 0 when every new vector reads as the reference says, 1 when one does not,
-2 when a source could not be fetched.
+2 when a source could not be fetched or read.
 """
 
 import argparse
 import gzip
+import http.client
 import json
 import os
 import re
 import sys
+import traceback
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -73,8 +75,32 @@ MS_TESTS = (
     "ms-windows.test",
 )
 
-_C_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", '"': '"', "'": "'", "\\": "\\", "?": "?"}
-_C_VECTOR = re.compile(r'\{\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\}', re.DOTALL)
+#: A cell longer than this is cut in the report: a vector is thousands of characters at
+#: the long end, and an issue body is capped at 65,536.
+CELL_LIMIT = 300
+
+_C_ESCAPES = {
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "v": "\v",
+    '"': '"',
+    "'": "'",
+    "\\": "\\",
+    "?": "?",
+}
+_C_STRING = r'"(?:[^"\\]|\\.)*"'
+_C_LITERALS = rf"((?:{_C_STRING}\s*)+)"
+_C_VECTOR = re.compile(rf"\{{\s*{_C_LITERALS},\s*{_C_LITERALS}\}}", re.DOTALL)
+_C_BODY = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
+_C_ESCAPE = re.compile(r"\\(x[0-9a-fA-F]+|[0-7]{1,3}|.)", re.DOTALL)
+_RUST_ESCAPE = re.compile(r"\\(\n\s*|u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)", re.DOTALL)
+_RUST_CONCAT = re.compile(r"concat!\(\s*((?:\"(?:[^\"\\]|\\.)*\"\s*,?\s*)+)\)", re.DOTALL)
+_SWIFT_ANNOTATION = re.compile(r"^\{(?:C|T:[^}]*)\}\s*")
+_KEEP_HASH = demangle.style("llvm", rust={"keep_hash": True})
 
 
 def _rust_literal_pattern(hashes_group):
@@ -93,52 +119,50 @@ _RUST_MACRO = re.compile(
     + r")?\s*,?\s*\)",
     re.DOTALL,
 )
-_SWIFT_ANNOTATION = re.compile(r"^\{[^}]*\}\s*")
-_KEEP_HASH = demangle.style("llvm", rust={"keep_hash": True})
 
 
 def _c_unescape(text):
-    out = []
-    i = 0
-    while i < len(text):
-        char = text[i]
-        if char != "\\" or i + 1 >= len(text):
-            out.append(char)
-            i += 1
-            continue
-        nxt = text[i + 1]
-        if nxt == "x":
-            digits = re.match(r"[0-9a-fA-F]+", text[i + 2 :])
-            if digits:
-                out.append(chr(int(digits.group(), 16)))
-                i += 2 + len(digits.group())
-                continue
-        if nxt in _C_ESCAPES:
-            out.append(_C_ESCAPES[nxt])
-            i += 2
-            continue
-        out.append(char)
-        i += 1
-    return "".join(out)
+    def one(found):
+        escape = found.group(1)
+        if escape[0] == "x":
+            code = int(escape[1:], 16)
+            return chr(code) if code <= 0x10FFFF else found.group(0)
+        if escape[0] in "01234567":
+            return chr(int(escape, 8))
+        return _C_ESCAPES.get(escape, found.group(0))
+
+    return _C_ESCAPE.sub(one, text)
+
+
+def _c_literals(adjacent):
+    """The bodies of a run of adjacent C string literals, joined as the compiler joins
+    them: `"a" "b"` is `"ab"`."""
+    return _c_unescape("".join(_C_BODY.findall(adjacent)))
 
 
 def _rust_unescape(text):
     def one(found):
         escape = found.group(1)
+        if escape[0] == "\n":
+            return ""
         if escape.startswith("u{"):
             return chr(int(escape[2:-1], 16))
-        if escape.startswith("x"):
+        if escape[0] == "x":
             return chr(int(escape[1:], 16))
-        return _C_ESCAPES.get(escape, "\\" + escape)
+        return _C_ESCAPES.get(escape, found.group(0))
 
-    text = re.sub(r"\\\n\s*", "", text)
-    return re.sub(r"\\(u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)", one, text)
+    return _RUST_ESCAPE.sub(one, text)
 
 
 def _rust_literal(raw_body, plain_body):
     if raw_body is not None:
         return raw_body
     return None if plain_body is None else _rust_unescape(plain_body)
+
+
+def _rust_fold_concat(text):
+    """`concat!("a", "b")` of plain literals, written as the one literal it means."""
+    return _RUST_CONCAT.sub(lambda found: '"' + "".join(_C_BODY.findall(found.group(1))) + '"', text)
 
 
 class Fetcher:
@@ -162,28 +186,35 @@ class Fetcher:
         return text
 
 
-# ---- sources: each yields (mangled, expected) with expected == mangled for a refusal --
+# ---- sources: each yields (mangled, expected[, mode]), expected == mangled for a refusal
 
 
 def libcxxabi(fetch):
     text = fetch.get(LLVM_RAW + "libcxxabi/test/DemangleTestCases.inc")
     text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
-    return [(_c_unescape(m), _c_unescape(e)) for m, e in _C_VECTOR.findall(text)]
+    return [(_c_literals(m), _c_literals(e)) for m, e in _C_VECTOR.findall(text)]
 
 
 def msvc(fetch):
-    """FileCheck's pairing: a file's `CHECK:` lines match its output lines in order,
-    each from where the previous one matched, not the name written above each."""
+    """FileCheck's pairing: a file's `CHECK:` and `CHECK-NEXT:` lines match its output
+    lines in order, each from where the previous one matched, not the name written
+    above each. llvm-undname echoes every input line before its answer, and a check
+    written for the echo is not an expectation."""
     try:
         listing = json.loads(fetch.get(LLVM_DEMANGLE_TESTS))
         files = [entry["name"] for entry in listing if entry["name"].startswith("ms-")]
-    except (urllib.error.URLError, ValueError, KeyError, TypeError):
+    except (urllib.error.URLError, http.client.HTTPException, ValueError, KeyError, TypeError):
         files = list(MS_TESTS)
     pairs = []
     for name in files:
         lines = fetch.get(LLVM_RAW + "llvm/test/Demangle/" + name).splitlines()
         names = [line.strip() for line in lines if line.strip() and not line.startswith(";")]
-        checks = [line[len("; CHECK:") :].strip() for line in lines if line.startswith("; CHECK:")]
+        checks = [
+            found.group(1).strip()
+            for line in lines
+            if (found := re.match(r"; CHECK(?:-NEXT)?:(.*)", line))
+            if found.group(1).strip() not in names
+        ]
         outputs = [demangle.demangle(mangled, language="msvc") for mangled in names]
         cursor = 0
         for check in checks:
@@ -209,14 +240,11 @@ def swift(fetch):
 def rustc(fetch):
     pairs = []
     for name in ("v0.rs", "legacy.rs", "lib.rs"):
-        for found in _RUST_MACRO.finditer(fetch.get(RUSTC_RAW + name)):
+        for found in _RUST_MACRO.finditer(_rust_fold_concat(fetch.get(RUSTC_RAW + name))):
             macro = found.group(1)
-            literals = [
-                _rust_literal(found.group(3), found.group(4)),
-                _rust_literal(found.group(6), found.group(7)),
-                _rust_literal(found.group(9), found.group(10)),
-            ]
-            first, second, third = literals
+            first = _rust_literal(found.group(3), found.group(4))
+            second = _rust_literal(found.group(6), found.group(7))
+            third = _rust_literal(found.group(9), found.group(10))
             if macro == "t_err":
                 pairs.append((first, first))
             elif macro == "t":
@@ -281,6 +309,9 @@ def recorded(corpus):
 
 
 def score(name, fetch):
+    """A row with a `mode` is a spelling the corpus does not record (rustc-demangle's
+    hashed form), so it is scored against the reference's text whether or not the
+    corpus holds the name."""
     read, corpus, spell, match = SOURCES[name]
     held = recorded(corpus)
     result = {"source": name, "fetched": 0, "unchanged": 0, "differently": [], "new_pass": 0, "new_fail": []}
@@ -301,16 +332,29 @@ def score(name, fetch):
             continue
         got = spell(mangled, mode)
         if mangled in EXPECTED_MISREADS or match(expected, got):
-            result["new_pass"] += 1
+            if mangled in held:
+                result["unchanged"] += 1
+            else:
+                result["new_pass"] += 1
         else:
             result["new_fail"].append((mangled, expected, got))
     return result
 
 
+def _cell(text):
+    """`text` as a Markdown code span whatever it holds: a fence one backtick longer
+    than any run inside, spaced off the content, pipes escaped, and cut at `CELL_LIMIT`."""
+    if len(text) > CELL_LIMIT:
+        text = text[:CELL_LIMIT] + "…"
+    text = text.replace("|", "\\|")
+    fence = "`" * (max((len(run) for run in re.findall(r"`+", text)), default=0) + 1)
+    return f"{fence} {text} {fence}"
+
+
 def _table(rows, show, columns):
     lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
     for row in rows[:show]:
-        lines.append("| " + " | ".join("`" + cell.replace("|", "\\|") + "`" for cell in row) + " |")
+        lines.append("| " + " | ".join(_cell(cell) for cell in row) + " |")
     if len(rows) > show:
         lines.append(f"| … {len(rows) - show} more | | |")
     return lines
@@ -334,19 +378,24 @@ def report(results, show):
     return "\n".join(lines)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--source", nargs="*", choices=sorted(SOURCES), default=sorted(SOURCES))
+    parser.add_argument("--source", nargs="+", choices=sorted(SOURCES), default=sorted(SOURCES))
     parser.add_argument("--cache", type=Path, help="directory to keep the fetched files in")
     parser.add_argument("--show", type=int, default=15, help="examples per table")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     fetch = Fetcher(args.cache)
     results = []
     for name in args.source:
         try:
             results.append(score(name, fetch))
-        except (urllib.error.URLError, OSError) as exc:
+        except (urllib.error.URLError, http.client.HTTPException, OSError) as exc:
             print(f"{name}: could not fetch: {exc}", file=sys.stderr)
+            return 2
+        except Exception:
+            # A reader that cannot cope with the file is not a misread.
+            print(f"{name}: could not read the reference's file", file=sys.stderr)
+            traceback.print_exc()
             return 2
     print(report(results, args.show))
     return 1 if any(r["new_fail"] for r in results) else 0

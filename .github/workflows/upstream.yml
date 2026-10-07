@@ -47,17 +47,24 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          # The report first and the run last, so a repeat of last week's report is
+          # recognised by everything above its final line; a body is capped at 65,536.
           {
-            echo "tools/upstream_drift.py found vectors in the references' test files that this library misreads. Run: $RUN_URL"
+            head -c 60000 drift.md
             echo
-            cat drift.md
+            echo "Run: $RUN_URL"
           } > body.md
           gh label create upstream-drift --description "A reference's test vectors moved ahead of a scheme" --color D93F0B --force
           number=$(gh issue list --label upstream-drift --state open --json number --jq '.[0].number')
-          if [ -n "$number" ]; then
-            gh issue comment "$number" --body-file body.md
-          else
+          if [ -z "$number" ]; then
             gh issue create --title "Upstream drift: new reference vectors misread" --label upstream-drift --body-file body.md
+            exit 0
+          fi
+          last=$(gh issue view "$number" --json body,comments --jq '[.body] + [.comments[].body] | last')
+          if [ "$(printf '%s\n' "$last" | sed '$d')" = "$(sed '$d' body.md)" ]; then
+            echo "The open issue already carries this report."
+          else
+            gh issue comment "$number" --body-file body.md
           fi
       - name: Fail the run when a source could not be fetched
         if: steps.drift.outputs.status == '2'

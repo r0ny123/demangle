@@ -10,7 +10,7 @@ the reference demanglers, and a **Performance** section.
 
 ### Added
 
-- **`tools/upstream_drift.py`** scores the library on the references' own test
+- **`tools/upstream_drift.py`.** Scores the library on the references' own test
   vectors as they stand on their `main` branches today -- libcxxabi, LLVM's MSVC
   tests, Swift's `manglings.txt` and rustc-demangle's -- and reports the vectors the
   corpora do not yet hold. A weekly workflow runs it and opens an issue when a new
