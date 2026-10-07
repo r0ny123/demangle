@@ -518,6 +518,19 @@ def _without_payload(rest):
     return rest
 
 
+def _closes_unopened_angle(rest):
+    """Whether `rest` closes a `<` that opened before it."""
+    depth = 0
+    for char in rest:
+        if char == "<":
+            depth += 1
+        elif char == ">":
+            depth -= 1
+            if depth < 0:
+                return True
+    return False
+
+
 def _declared_name(entity):
     """The name in a spelled declaration.
 
@@ -576,6 +589,10 @@ def _msvc_special(reading, found):
         # A type descriptor's label stands where a declarator's name would, so it can
         # sit inside the type: `` int (*`RTTI Type Descriptor')[2] ``.
         if label is None or ((rest or enclosed) and not label.startswith("RTTI Type Descriptor")):
+            return False
+        if _closes_unopened_angle(rest):
+            # The span sat in a template argument list whose `<` an operator's own name
+            # hid: `` operator<<<&class C `RTTI Type Descriptor'> ``.
             return False
         # The label a thunk adjusts stays in the name it is part of:
         # `` Base::`vector deleting dtor'`adjustor{4}' `` adjusts `` Base::`vector deleting dtor' ``.

@@ -281,6 +281,9 @@ class TestMsvcSpecials:
             ("?x@?$X@$1??_7C@@6B@@@2HA", "X<&const C::`vftable'>", "x"),
             ("??$f@$1??_7C@@6B@@@YAXXZ", "", "f<&const C::`vftable'>"),
             ("??$f@$1??_R0?AUBase@@@8@@YAXXZ", "", "f<&struct Base `RTTI Type Descriptor'>"),
+            # An operator's own `<` hides where the argument list opens, not where it closes.
+            ("??$?6$1??_R0?AVC@@@8@@YAXXZ", "", "operator<<<&class C `RTTI Type Descriptor'>"),
+            ("??$?M$1??_R0?AVC@@@8@@YAXXZ", "", "operator<<&class C `RTTI Type Descriptor'>"),
         ],
     )
     def test_a_label_in_a_template_argument_is_not_the_symbols_own(self, mangled, namespace, base):
