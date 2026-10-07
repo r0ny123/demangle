@@ -441,6 +441,7 @@ class TestDelphi:
         parts = signature(mangled)
         assert (parts.namespace, parts.base_name) == ("Unit::TFoo", base)
         assert (parts.return_type, parts.calling_convention) == (None, "__fastcall")
+        assert parts.is_ctor_or_dtor
 
     def test_a_constructor_and_a_destructor(self):
         built = signature("@Forms@TForm@$bctr$qqrp18Classes@TComponent")

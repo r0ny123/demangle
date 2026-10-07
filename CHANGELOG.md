@@ -77,11 +77,13 @@ the reference demanglers, and a **Performance** section.
   tables `__frndl__`, `__chtbl__`, `__odtbl__`, `__thrwl__`, `__ectbl__` among them --
   and one with nothing after it is about its scope: `@System@@`
   (`System::__linkproc__`) is named `System`, where its base name was empty. A class
-  constructor is named `` `class constructor` ``, and `operator ()` keeps its brackets
-  rather than opening its parameter list with them. The CLI's `-p` writes the label
-  where the unmangler does, without the convention: `System::__linkproc__ Abort` (it
-  printed `System::__linkproc__ __fastcall Abort`), `TStream::__vdthk__`,
-  `__tpdsc__ Forms::TForm`.
+  constructor is named `` `class constructor` ``. A constructor and a destructor
+  (`$bctr`, `$bdtr`), a class constructor and a class destructor are now
+  `is_ctor_or_dtor`, which the convention in the name had hidden. `operator ()` keeps
+  its brackets rather than opening its parameter list with them. The CLI's `-p` writes
+  the label where the unmangler does, without the convention:
+  `System::__linkproc__ Abort` (it printed `System::__linkproc__ __fastcall Abort`),
+  `TStream::__vdthk__`, `__tpdsc__ Forms::TForm`.
 - **A Free Pascal interface wrapper is named by its interface.** The base name
   `signature()` gave a `WRPR_$` symbol ran on past the interface into the entry number
   and the method it forwards to, `#0: SYSTEM.TINTERFACEDOBJECT.QUERYINTERF(...)`; it

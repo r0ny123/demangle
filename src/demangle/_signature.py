@@ -185,8 +185,10 @@ class Signature:
     is_ctor_or_dtor: bool = False
     """Whether it is a constructor or a destructor of the type it sits in.
 
-    C++ repeats the class's own name, or negates it; Swift writes `init` and `deinit`.
-    No other scheme here marks the two, so no other scheme reports them. MSVC's
+    C++ repeats the class's own name, or negates it; Swift writes `init` and `deinit`;
+    Delphi's `$bctr` and `$bdtr` spell C++'s `TForm::TForm` and `TForm::~TForm`, and its
+    `` `class constructor` `` and `` `class destructor` `` are structors of the class
+    too. No other scheme here marks the two, so no other scheme reports them. MSVC's
     `scalar deleting dtor`, `vector deleting dtor` and `vbase dtor` are destructors as
     Itanium's deleting destructor is, and so is a thunk to one,
     `` Base::`vector deleting dtor'`adjustor{4}' ``; its closures and iterators are not.
@@ -1011,11 +1013,15 @@ def _split_last(text, separator, closing=None):
 
 _SWIFT_STRUCTORS = frozenset({"__allocating_init", "__deallocating_deinit", "deinit", "init"})
 
+_DELPHI_CLASS_STRUCTORS = frozenset({"`class constructor`", "`class destructor`"})
+
 
 def _is_structor(reading, namespace, base):
     """Whether a name is a constructor or a destructor of the class it sits in."""
     if reading.scheme == "swift":
         return bool(namespace) and base in _SWIFT_STRUCTORS
+    if reading.scheme == "delphi" and base in _DELPHI_CLASS_STRUCTORS:
+        return bool(namespace)
     if reading.scheme == "msvc" and base[1:-1] in _MSVC_DESTRUCTORS:
         # A thunk's own label is `special`, and the destructor it adjusts is the name.
         return True
