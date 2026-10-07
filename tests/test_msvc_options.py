@@ -20,6 +20,7 @@ from dataclasses import fields
 from typing import ClassVar
 
 import demangle
+from demangle._signature import _labelled
 from demangle.schemes.msvc.options import DEFAULT_OPTIONS, MsvcOptions
 
 from .conftest import load_corpus
@@ -404,14 +405,16 @@ class TestTheBitsWithNoFieldOfTheirOwn:
         `UNDNAME_NAME_ONLY` answers all three with `B::A::`vftable'`. That is the same loss
         `UNDNAME_DIVERGENCES` records `llvm-undname` making with no flag set at all, and it
         is refused here for the same reason: a tool labelling a binary would show three
-        vtables as one. A caller who wants the name without the path can have it from
-        `base_name` and `namespace`, which say what they are.
+        vtables as one; the CLI's `-p` keeps the path for that reason. A caller who wants
+        the name without the path can have it from `base_name` and `namespace`, which say
+        what they are.
         """
         collapsed = {}
         for mangled, spelled, _, _ in self._named():
             collapsed.setdefault(spelled, []).append(mangled)
         for family in ("B::A::`vftable'", "A::`vftable'"):
             assert len(collapsed[family]) == 3, family
+            assert len({_labelled(demangle.signature(mangled)) for mangled in collapsed[family]}) == 3
         assert len({demangle.demangle(mangled) for mangled in collapsed["B::A::`vftable'"]}) == 3
 
     def test_every_other_difference_is_the_reference_reducing_something(self):

@@ -441,12 +441,14 @@ _MSVC_SUFFIXES = (
 
 
 def _labelled(parts):
-    """`qualified_name` with `special` where the scheme writes it, its payload left off.
+    """`qualified_name` with `special` where the scheme writes it.
 
     MSVC writes most of its labels after the name, `` Base::`vftable' ``, and its dynamic
     initialisers around it, `` `dynamic initializer for 'Foo'' ``; every other scheme's
     go before it: `vtable for Base`. A label that is its own name,
-    `` `vector ctor iterator' ``, is written once.
+    `` `vector ctor iterator' ``, is written once. What MSVC writes about the label's own
+    table stays with it -- `` `vftable'{for `A'} ``, `` `adjustor{16}' `` -- because it is
+    what tells one table or thunk of a class from another.
     """
     special, name = parts.special, parts.qualified_name
     if special is None:
@@ -456,13 +458,12 @@ def _labelled(parts):
     joint = _MSVC_SUFFIXES.get(special) if parts.language == "msvc" else None
     if joint is None:
         return f"{special} {name}"
-    spelled = f"`{special}'"
+    spelled, after = _spelled_label(parts.demangled, special)
     if name == special:
         return spelled
     if special.startswith("RTTI Type Descriptor"):
         # Where the type's declarator name would be: `` char *`RTTI Type Descriptor' ``,
         # `` int (*`RTTI Type Descriptor')[2] ``.
-        after = _after_label(parts.demangled, special)
         if not name.endswith(after):
             after = ""
         head = name[: len(name) - len(after)]
@@ -471,12 +472,14 @@ def _labelled(parts):
     return f"{name}{joint}{spelled}"
 
 
-def _after_label(demangled, special):
-    """What follows the span holding `special` in `demangled`, its payload left off."""
+def _spelled_label(demangled, special):
+    """The span holding `special` in `demangled` with its payload, and what follows them."""
     for start, end, _ in reversed(_label_spans(demangled)):
         if _msvc_label(demangled[start + 1 : end]) == special:
-            return _without_payload(demangled[end + 1 :])
-    return ""
+            rest = demangled[end + 1 :]
+            after = _without_payload(rest)
+            return demangled[start : end + 1] + rest[: len(rest) - len(after)], after
+    return f"`{special}'", ""
 
 
 _MSVC_INITIALISERS = ("dynamic initializer for", "dynamic atexit destructor for")

@@ -239,9 +239,11 @@ class TestPartFlags:
         ("name", "expected"),
         [
             ("??_7Base@@6B@", "Base::`vftable'"),
-            ("??_7A@B@@6BC@D@@@", "B::A::`vftable'"),
+            ("??_7A@B@@6BC@D@@@", "B::A::`vftable'{for `D::C'}"),
             ("??_GBase@@UEAAPEAXI@Z", "Base::`scalar deleting dtor'"),
-            ("?f@C@@WBA@EAAHXZ", "C::f`adjustor'"),
+            ("?f@C@@WBA@EAAHXZ", "C::f`adjustor{16}'"),
+            ("??_EBase@@W3AEPAXI@Z", "Base::`vector deleting dtor'`adjustor{4}'"),
+            ("??_R1A@?0A@EA@Base@@8", "Base::`RTTI Base Class Descriptor at (0, -1, 0, 64)'"),
             ("??_R0?AUBase@@@8", "Base `RTTI Type Descriptor'"),
             ("??_R0PAD@8", "char *`RTTI Type Descriptor'"),
             ("??_R0AAH@8", "int &`RTTI Type Descriptor'"),
@@ -254,10 +256,15 @@ class TestPartFlags:
         ],
     )
     def test_no_params_writes_an_msvc_label_where_msvc_does(self, capsys, name, expected):
-        """After the name, as the reference spells it, but without the `const` and the
-        `{...}` that are about the label's table."""
+        """After the name, as the reference spells it, but without the `const` that is
+        about the label's table."""
         _, out, _ = run(capsys, ["-p", name])
         assert out.strip() == expected
+
+    def test_no_params_tells_a_classs_vftables_apart(self, capsys):
+        """`{for ...}` is which base's table it is, so it stays: three tables, three lines."""
+        _, out, _ = run(capsys, ["-p", "??_7A@B@@6BC@D@@@", "??_7A@B@@6BC@D@@E@F@@@", "??_7A@B@@6BC@D@@E@F@@G@H@@@"])
+        assert len(set(out.split("\n")) - {""}) == 3
 
     def test_base_name_of_an_msvc_label_is_the_class_it_is_about(self, capsys):
         _, out, _ = run(capsys, ["--base-name", "??_7Base@@6B@"])

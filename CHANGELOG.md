@@ -59,8 +59,11 @@ the reference demanglers, and a **Performance** section.
   `` Base::`vector deleting dtor' `` for the name. `` `anonymous
   namespace' `` and the function a local static lives in are scopes, where everything
   before the last `::` used to be the namespace. The CLI's `-p` writes the label where
-  MSVC does, `` Base::`vftable' `` (it printed `` const Base::`vftable' ``), and
-  `--base-name` prints `Base` (it printed `` `vftable' ``).
+  MSVC does, `` Base::`vftable' `` (it printed `` const Base::`vftable' ``),
+  `` char *`RTTI Type Descriptor' ``, `` `dynamic initializer for 'Foo'' ``, and keeps
+  what the label says about its table, so a class's vftables stay apart:
+  `` B::A::`vftable'{for `D::C'} ``, `` C::f`adjustor{16}' ``. `--base-name` prints `Base`
+  (it printed `` `vftable' ``).
 
 ### Fixed
 
