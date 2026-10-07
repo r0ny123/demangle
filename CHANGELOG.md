@@ -20,6 +20,23 @@ the reference demanglers, and a **Performance** section.
   them. Only a whole mangled name after the prefix counts: `__imp_ReadFile` stays as
   written, and so does the bare `<type>` llvm-cxxfilt's fallback reads there. A legacy
   Rust name behind the prefix is C++'s, hash and all, as llvm-cxxfilt prints it.
+- **`language=` takes a sequence of names**, as an allow-list: `language=("itanium",
+  "swift")` detects as usual, in the usual order, among those schemes alone, so a
+  caller labelling a table it knows holds C++ and Swift has its Objective-C metadata
+  and its paths left as they are. Every whole-name entry point takes one --
+  `demangle()`, `demangle_strict()`, `parse()`, `signature()`, `demangle_all()`,
+  `detect()`, their bytes forms and the text filters. A list is keyed as the tuple it
+  names; an empty sequence, or one naming an unknown scheme, is a `ValueError`. A
+  sequence always detects, so `("gnuv2",)` is not `"gnuv2"`, which forces the scheme
+  on a name its detection declines.
+- **`detect(name, strict=True)`**, and `detectb`'s, names the scheme that *reads* the
+  name -- the one `demangle()` would use -- or None, rather than the one whose cheap
+  claim it matches: `detect("_ZN3Foo")` is `itanium`, and with `strict=True` it is
+  None. It costs a parse.
+- **`preload(*languages)`** imports schemes now rather than when a name first reaches
+  them -- about 7 ms for MSVC -- so a long-running service pays at start-up. Names or
+  aliases import those schemes; none imports every built-in. An unknown name is a
+  `ValueError`, and nothing is imported.
 
 ### Changed
 
@@ -33,6 +50,20 @@ the reference demanglers, and a **Performance** section.
   (`V`) is a new lowered-function convention, a coroutine's yields (`Xy`) are read, and
   an index of `INT_MAX` is refused. The reference is rebuilt at that commit and
   `swift-upstream.txt` re-transcribed: 531 / 531, up from 514.
+- **`detect()` no longer claims section names and file paths.** MSVC claims a
+  `.`-prefixed name only where what follows the dot opens as a type encoding does
+  (`.?AV`, `.PEA`, a builtin standing alone), so `.refptr.foo`, `.L123`, `.ARM.exidx`
+  and `.CRT$XCU` are no longer `msvc`; Go no longer takes an absolute path
+  (`/Users/me/build/foo.o`, `C:\...`) for an import path.
+  `demangle()` returns what it did -- the MSVC names never parsed, and Go spelled a
+  path as it stood. Every name in the MSVC and Go corpora is detected as before; the
+  41 `.objc_category_*` names the MSVC scheme claimed and never read are not claimed
+  by it now.
+- **`signature()` splits Objective-C runtime data symbols as it splits Swift's
+  descriptors.** `_OBJC_CLASS_$_NSData` has `special="Objective-C class"` and
+  `qualified_name="NSData"`, where the whole phrase used to be the name; an instance
+  variable's class and name are `namespace` and `base_name`, joined by the scheme's
+  separator, a space, and a category is named `NSString(Extra)`.
 
 ### Fixed
 
@@ -40,6 +71,9 @@ the reference demanglers, and a **Performance** section.
   reference already did at the previous pin: its parameter labels are read
   (`$s1aySiXOD` was `a@called(once) (Swift.Int) -> ()`), no space separates it from a
   generic signature, and an entity of that type is printed without a colon.
+- **An Objective-C tree places a name after the label it follows**, so the selector
+  of `.objc_sel_name_b` is no longer found inside `Objective-C`, nor a class called
+  `Object` inside `Objective-C class`.
 
 ### Performance
 

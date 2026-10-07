@@ -25,7 +25,16 @@ from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
-from ._parser import _LimitHit, parse_msvc_symbol_strict, parse_msvc_type
+from ._parser import (
+    _BASIC_TYPES,
+    _CV_QUALS,
+    _EXTENDED_TYPES,
+    _POINTER_KINDS,
+    _TAGGED_TYPES,
+    _LimitHit,
+    parse_msvc_symbol_strict,
+    parse_msvc_type,
+)
 from ._parser import render as _render
 from .options import DEFAULT_OPTIONS, MsvcOptions
 
@@ -89,14 +98,55 @@ def _without_hybrid_marker(name):
 def detect(name):
     """A decorated name opens with `?`; a type descriptor's name opens with `.`.
 
-    The `.` form is claimed although a symbol table is full of `.text`, `.rodata`,
-    `.L1234` and `.constprop.0`: claiming is not reading, and what follows the dot has to
-    parse as a *whole* type before anything is said about it, which none of those do.
-    Measured over every dot-prefixed name in the checked-in corpora and over the section
-    and label names a real object file carries: none is claimed. See
-    `tests/test_msvc.py`.
+    A symbol table is full of other names that open with a dot -- `.text`, `.L1234`,
+    `.refptr.foo`, `.constprop.0`, `.ARM.exidx`, `.CRT$XCU` -- so the `.` form is claimed
+    only where what follows it opens the way a whole type encoding does; see
+    `_opens_a_type`. Claiming is still not reading: the type has to parse to the last
+    character before anything is said about it.
     """
-    return bool(name) and name[0] in "?."
+    return bool(name) and (name[0] == "?" or (name[0] == "." and _opens_a_type(name)))
+
+
+#: After a pointer's or a reference's code and its `E`, `I` and `F` modifiers: the
+#: pointee's cv-class, or `6` for a function. A pointer may also open a pointer to
+#: member, `8` for a function and `Q` to `T` for data.
+_REFERENCE_POINTEE = frozenset("ABCD6")
+_POINTER_POINTEE = frozenset("ABCD68QRST")
+
+
+def _opens_a_type(name):
+    """Whether what follows the dot in `name` opens as a type encoding can, and ends as
+    a one-character type must.
+
+    What `_parser.parse_msvc_type` reads first, with nothing it could go on to accept
+    left out: a qualifier group (`?A`, as in `.?AVFoo@@`), a builtin standing alone
+    (`.H`), an extended one (`._W`), a tagged type ending its name with `@`, a pointer
+    or reference and what it points at (`.PEAX`, `.AEBH`), an array's extent, or `$$Q`,
+    `$$T` and `$$A`, the `$` forms allowed outside a template. Every other opening makes
+    the parser give up, so declining it here loses nothing it would read.
+    """
+    if len(name) < 2:
+        return False
+    first = name[1]
+    if first == "?":
+        return name[2:3] in _CV_QUALS
+    if first in _BASIC_TYPES:
+        return len(name) == 2
+    if first == "_":
+        return len(name) == 3 and name[2] in _EXTENDED_TYPES
+    if first in _TAGGED_TYPES:
+        return name[-1] == "@"
+    if first == "Y":
+        return len(name) > 2 and (name[2] in "0123456789" or "A" <= name[2] <= "P")
+    if first == "$":
+        return name[1:4] in ("$$Q", "$$T", "$$A")
+    if first == "A" or first in _POINTER_KINDS:
+        at = 2
+        for modifier in "EIF":
+            if name.startswith(modifier, at):
+                at += 1
+        return name[at : at + 1] in (_REFERENCE_POINTEE if first == "A" else _POINTER_POINTEE)
+    return False
 
 
 #: What each builder class answered to `_wants_structure`, asked once per class.

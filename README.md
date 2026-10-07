@@ -172,6 +172,25 @@ a line at a time, for pipes.
 ['f()', 'main']
 ```
 
+`detect()` reports what a name looks like, which is cheap; `strict=True` reports which
+scheme actually reads it, which costs a parse:
+
+```python
+>>> demangle.detect("_ZN3Foo"), demangle.detect("_ZN3Foo", strict=True)
+('itanium', None)
+```
+
+`language` forces one scheme by name. A sequence of names is an allow-list instead:
+detection as usual, among those schemes alone, so a tool that knows a Mach-O image holds
+C++ and Swift leaves its Objective-C metadata as the linker wrote it:
+
+```python
+>>> demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium", "swift"))
+'_OBJC_CLASS_$_NSData'
+>>> demangle.detect("?f@@YAXH@Z", language=("itanium", "swift")) is None
+True
+```
+
 ### Bytes, when the names came from a symbol table
 
 An ELF or Mach-O string table holds bytes, and they are not reliably UTF-8 — a truncated
@@ -186,6 +205,16 @@ b'foo::bar()'
 `demangleb_strict`, `detectb`, `parseb`, `signatureb`, `demangleb_type` and
 `parseb_type` go with it. Undecodable bytes survive the round trip: `demangleb` hands
 back exactly what it was given, byte for byte, rather than raising.
+
+### Paying for imports at start-up
+
+Each scheme is imported the first time a name needs it, so a script reading one MSVC
+name never loads the Swift reader. A long-running service would rather pay that once,
+before its first request:
+
+```python
+>>> demangle.preload("itanium", "msvc")    # or preload() for every scheme
+```
 
 ### The tree as data
 

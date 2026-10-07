@@ -104,8 +104,9 @@ def build(symbol):
         if value:
             pieces.append((value, factory))
 
-    parts = []
-    at = 0
+    # Searched for after the label, which can hold the name: `Objective-C selector b`.
+    at = len(symbol.label) if pieces else 0
+    parts = [text[:at]] if at else []
     for value, factory in pieces:
         found = text.find(value, at)
         if found < 0:

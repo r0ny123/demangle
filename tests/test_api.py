@@ -14,6 +14,8 @@ import pytest
 
 import demangle
 
+from .conftest import corpus_files, load_corpus
+
 
 class TestBestEffortContract:
     """`demangle()` never raises and never loses information."""
@@ -91,6 +93,72 @@ class TestDetection:
     def test_c_plus_plus_symbols_are_not_claimed_by_rust(self):
         assert demangle.detect("_ZN3Foo3barEv") == "itanium"
 
+    @pytest.mark.parametrize(
+        "name", [".refptr.foo", ".text", ".L123", ".constprop.0", "/Users/me/build/foo.o", "/home/me/x/y.F"]
+    )
+    def test_a_section_label_or_file_is_not_claimed(self, name):
+        assert demangle.detect(name) is None
+        assert demangle.demangle(name) == name
+
+    @pytest.mark.sweep
+    def test_tightening_msvc_and_go_changed_no_corpus_name_s_answer(self, monkeypatch):
+        """Each claim was narrowed by a test of its own; with that test made to pass every
+        name, as it did before, every corpus name is answered as it is now."""
+        from demangle.core.registry import get
+
+        names = [mangled for corpus in corpus_files() for mangled, _ in load_corpus(corpus)]
+        assert len(names) > 90_000
+        now = [demangle.detect(name) for name in names]
+        get("msvc"), get("go")
+        monkeypatch.setattr("demangle.schemes.msvc._opens_a_type", lambda name: True)
+        monkeypatch.setattr("demangle.schemes.go._is_absolute", lambda name: False)
+        before = [demangle.detect(name) for name in names]
+        assert [
+            (name, was, answer) for name, was, answer in zip(names, before, now, strict=True) if was != answer
+        ] == []
+
+
+class TestStrictDetection:
+    """`detect(name, strict=True)`: which scheme reads the name, not which claims it."""
+
+    @pytest.mark.parametrize(
+        "name,claimed",
+        [("_ZN3Foo", "itanium"), ("?nonsense@@", "msvc"), ("_D88", "d"), ("_TtZZ", "swift")],
+    )
+    def test_a_name_claimed_but_unreadable_is_none(self, name, claimed):
+        assert demangle.detect(name) == claimed
+        assert demangle.detect(name, strict=True) is None
+        assert demangle.detectb(name.encode(), strict=True) is None
+
+    @pytest.mark.parametrize("name", ["_ZN3foo3barEv", "?f@@YAXH@Z", "$s10Foundation4DataV5countSivg", ".PEAX"])
+    def test_a_readable_name_is_its_reader_s(self, name):
+        assert demangle.detect(name, strict=True) == demangle.detect(name)
+
+    def test_it_reads_under_the_allow_list(self):
+        rust = "_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E"
+        assert demangle.detect(rust, strict=True) == "rust"
+        assert demangle.detect(rust, language=["itanium"], strict=True) == "itanium"
+        assert demangle.detect(rust, language=["swift", "msvc"], strict=True) is None
+
+    def test_one_name_forces_as_it_does_for_demangle(self):
+        assert demangle.detect("PyInit__lldb", language="gnuv2") is None
+        assert demangle.detect("PyInit__lldb", language="gnuv2", strict=True) == "gnuv2"
+        assert demangle.detect("PyInit__lldb", language=("gnuv2",), strict=True) is None
+
+    def test_it_never_raises_over_the_name(self):
+        for value in (None, b"_Z1fv", "", "_" * 500, "_Z" + "P" * 300 + "i", "_ZN" * 100_000):
+            assert demangle.detect(value, strict=True) in (None, "itanium")  # ty: ignore[invalid-argument-type]
+
+    @pytest.mark.sweep
+    @pytest.mark.parametrize("corpus", corpus_files())
+    def test_it_names_the_scheme_demangle_reads_with(self, corpus):
+        for mangled, _ in load_corpus(corpus):
+            reader = demangle.detect(mangled, strict=True)
+            if reader is None:
+                assert demangle.demangle(mangled) == mangled, mangled
+            else:
+                assert demangle.demangle(mangled, language=reader) == demangle.demangle(mangled), mangled
+
 
 class TestStyles:
     def test_llvm_and_gnu_differ_where_the_references_differ(self):
@@ -140,6 +208,119 @@ class TestForcedLanguage:
 
     def test_forcing_the_right_language_skips_detection(self):
         assert demangle.demangle("?f@@YAXH@Z", language="msvc") == "void __cdecl f(int)"
+
+
+#: Every entry point that takes `language=` for a whole name, as a call of one argument.
+_LANGUAGE_ENTRY_POINTS = [
+    lambda language: demangle.demangle("_Z1gv", language=language),
+    lambda language: demangle.demangle("_Z1gv", style=demangle.style(), language=language),
+    lambda language: demangle.demangle_strict("_Z1gv", language=language),
+    lambda language: demangle.parse("_Z1gv", language=language).spell(),
+    lambda language: demangle.signature("_Z1gv", language=language).demangled,
+    lambda language: next(demangle.demangle_all(["_Z1gv"], language=language)),
+    lambda language: demangle.demangleb(b"_Z1gv", language=language).decode(),
+    lambda language: demangle.demangleb_strict(b"_Z1gv", language=language).decode(),
+    lambda language: demangle.parseb(b"_Z1gv", language=language).spell(),
+    lambda language: demangle.signatureb(b"_Z1gv", language=language).demangled,
+    lambda language: demangle.demangle_text("_Z1gv", language=language),
+    lambda language: next(demangle.find_symbols("_Z1gv", language=language)).demangled,
+]
+
+
+class TestAllowList:
+    """A sequence of names: detect, but only among those schemes."""
+
+    def test_any_sequence_will_do(self):
+        import collections
+
+        for allowed in (collections.deque(["itanium"]), ["itanium"], ("itanium",)):
+            assert demangle.demangle("_Z3foov", language=allowed) == "foo()"
+            assert demangle.demangleb(b"_Z3foov", language=allowed) == b"foo()"
+            assert demangle.detect("_Z3foov", language=allowed) == "itanium"
+
+    def test_a_scheme_left_out_does_not_read_the_name(self):
+        allowed = ("itanium", "swift")
+        assert demangle.demangle("_OBJC_CLASS_$_NSData", language=allowed) == "_OBJC_CLASS_$_NSData"
+        assert demangle.demangle("example.com/m.(*T).Method", language=allowed) == "example.com/m.(*T).Method"
+        assert demangle.demangle("_ZN3foo3barEv", language=allowed) == "foo::bar()"
+        assert demangle.demangle("$s10Foundation4DataV5countSivg", language=allowed) == (
+            "Foundation.Data.count.getter : Swift.Int"
+        )
+
+    @pytest.mark.parametrize("call", _LANGUAGE_ENTRY_POINTS)
+    def test_every_entry_point_takes_one(self, call):
+        assert call(("swift", "itanium")) == "g()"
+        assert call(["itanium"]) == "g()"
+
+    def test_the_order_is_the_registry_s_not_the_sequence_s(self):
+        """A legacy Rust name is an Itanium name too; Rust is asked first, as always."""
+        rust = "_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E"
+        assert demangle.demangle(rust, language=("itanium", "rust")) == "core::fmt::Formatter::pad"
+        assert demangle.detect(rust, language=("itanium", "rust")) == "rust"
+        assert demangle.detect(rust, language=("itanium",)) == "itanium"
+        assert demangle.demangle(rust, language=("itanium",)) == demangle.demangle(rust, language="itanium")
+
+    def test_a_single_name_detects_where_a_string_forces(self):
+        """`PyInit__lldb` is a C name pre-Itanium detection declines; forced, it reads."""
+        assert demangle.demangle("PyInit__lldb", language=("gnuv2",)) == "PyInit__lldb"
+        assert demangle.demangle("PyInit__lldb", language="gnuv2") != "PyInit__lldb"
+        with pytest.raises(demangle.NotMangledError):
+            demangle.demangle_strict("PyInit__lldb", language=["gnuv2"])
+
+    def test_an_alias_names_its_scheme(self):
+        assert demangle.demangle("_ZN3foo3barEv", language=("gnu", "objective-c")) == "foo::bar()"
+        assert demangle.detect("_ZN3foo3barEv", language=["c++"]) == "itanium"
+
+    def test_a_list_is_keyed_as_the_tuple_it_names(self):
+        demangle.cache_clear()
+        assert demangle.demangle("_ZN3foo3barEv", language=["itanium", "swift"]) == "foo::bar()"
+        assert demangle.demangle("_ZN3foo3barEv", language=("itanium", "swift")) == "foo::bar()"
+        stats = demangle.cache_stats()
+        assert (stats["hits"], stats["misses"]) == (1, 1)
+
+    def test_an_answer_under_one_allow_list_is_not_served_to_another(self):
+        demangle.cache_clear()
+        assert demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium",)) == "_OBJC_CLASS_$_NSData"
+        assert demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium", "objc")) != "_OBJC_CLASS_$_NSData"
+
+    @pytest.mark.parametrize(
+        "language,match",
+        [
+            ((), "names no scheme"),
+            ([], "names no scheme"),
+            (("itanium", "cobol"), "unknown language 'cobol'"),
+            (["itanium", 5], "unknown language 5"),
+            (["itanium", ["swift"]], "unknown language"),
+            ({"itanium"}, "unknown language"),
+            (b"itanium", "unknown language"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "call",
+        [
+            *_LANGUAGE_ENTRY_POINTS,
+            lambda language: demangle.detect("_Z1gv", language=language),
+            lambda language: demangle.detectb(b"_Z1gv", language=language),
+            lambda language: demangle.detect(None, language=language),  # ty: ignore[invalid-argument-type]
+        ],
+    )
+    def test_a_sequence_that_names_nothing_is_refused(self, call, language, match):
+        with pytest.raises(ValueError, match=match):
+            call(language)
+
+    def test_detect_answers_the_first_that_claims_or_none(self):
+        assert demangle.detect("?f@@YAXH@Z", language=("itanium", "msvc")) == "msvc"
+        assert demangle.detect("?f@@YAXH@Z", language=("itanium", "swift")) is None
+        assert demangle.detect("?f@@YAXH@Z", language="msvc") == "msvc"
+        assert demangle.detect("?f@@YAXH@Z", language="itanium") is None
+        assert demangle.detectb(b"?f@@YAXH@Z", language=["msvc"]) == "msvc"
+
+    def test_allowing_a_scheme_imports_none_until_a_name_reaches_it(self):
+        loaded = _schemes_imported_by(
+            "assert demangle.demangle('main', language=('msvc', 'swift', 'go')) == 'main'\n"
+            "assert demangle.detect('?f@@YAXH@Z', language=['swift', 'msvc']) == 'msvc'"
+        )
+        assert loaded == ["msvc"]
 
 
 class TestStructuredOutput:
@@ -393,7 +574,7 @@ class TestCacheStatistics:
         with pytest.raises(ValueError, match="Limits instance"):
             demangle.demangle(name, limits={"max_depth": 1})  # ty: ignore[invalid-argument-type]
         with pytest.raises(ValueError, match="unknown language"):
-            demangle.demangle(name, language=["itanium"])  # ty: ignore[invalid-argument-type]
+            demangle.demangle(name, language={"itanium"})  # ty: ignore[invalid-argument-type]
 
     def test_a_name_named_on_every_page_of_a_table_misses_once(self, monkeypatch):
         """A name still in use survives each turnover of the cache's generations."""
@@ -462,10 +643,9 @@ class TestCacheStatistics:
         assert run.stdout.split() == ["1", "1"]
 
 
-def _schemes_imported_by(script):
-    """The scheme packages imported after `script` runs in a fresh interpreter."""
+def _output_of(script):
+    """What `script` prints in a fresh interpreter, where no scheme has been imported."""
     source = pathlib.Path(__file__).resolve().parent.parent / "src"
-    script += "\nprint(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
     run = subprocess.run(
         [sys.executable, "-c", "import sys, demangle\n" + script],
         capture_output=True,
@@ -473,7 +653,13 @@ def _schemes_imported_by(script):
         check=True,
         env={"PYTHONPATH": str(source)},
     )
-    return run.stdout.split()
+    return run.stdout
+
+
+def _schemes_imported_by(script):
+    """The scheme packages imported after `script` runs in a fresh interpreter."""
+    script += "\nprint(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
+    return _output_of(script).split()
 
 
 class TestStylesImportOnlyWhatIsUsed:
@@ -551,6 +737,55 @@ class TestStylesImportOnlyWhatIsUsed:
                 thread.join()
             assert len(set(map(id, (pair[0] for pair in seen)))) == 1
             assert len(set(map(id, (pair[1] for pair in seen)))) == 1
+
+
+class TestPreload:
+    """`preload()` moves the import of a scheme to start-up; it changes nothing else."""
+
+    def test_names_import_those_schemes_and_no_other(self):
+        assert _schemes_imported_by("demangle.preload('msvc', 'gnu')") == ["itanium", "msvc"]
+
+    def test_no_names_imports_every_built_in(self):
+        from demangle.core.registry import _BUILTIN_NAMES
+
+        assert _schemes_imported_by("demangle.preload()") == sorted(_BUILTIN_NAMES)
+
+    def test_an_unknown_name_is_refused_before_anything_is_imported(self):
+        loaded = _schemes_imported_by(
+            "try:\n    demangle.preload('swift', 'cobol')\nexcept ValueError as error:\n    assert 'cobol' in str(error)"
+        )
+        assert loaded == []
+
+    def test_a_preloaded_scheme_answers_as_a_lazy_one_does(self):
+        script = (
+            "print(demangle.demangle('?f@@YAXH@Z'), demangle.detect('_RNvC6_123foo3bar'),"
+            " [plugin.name for plugin in demangle.core.registry.candidates('x__$/')])\n"
+        )
+        lazy = _output_of(script)
+        assert lazy == _output_of("demangle.preload()\n" + script)
+        assert lazy.startswith("void __cdecl f(int) rust ")
+
+    def test_a_service_s_start_up_pays_for_the_import_and_its_first_name_does_not(self):
+        assert _schemes_imported_by(
+            "demangle.preload('msvc')\n"
+            "before = set(sys.modules)\n"
+            "demangle.demangle('?f@@YAXH@Z')\n"
+            "assert not [m for m in set(sys.modules) - before if '.schemes.' in m], sorted(set(sys.modules) - before)"
+        ) == ["msvc"]
+
+    def test_it_returns_nothing(self):
+        assert demangle.preload("itanium") is None
+
+
+class TestDocstringExamples:
+    def test_every_example_in_the_api_s_docstrings_is_what_the_code_does(self):
+        import doctest
+
+        from demangle import api
+
+        results = doctest.testmod(api)
+        assert results.attempted
+        assert not results.failed
 
 
 class TestIntrospection:

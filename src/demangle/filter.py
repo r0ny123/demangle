@@ -20,11 +20,10 @@ out-parameter and `llvm-undname --warn-trailing` are asked in C.
 """
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import NamedTuple
 
-from .api import _check_limits
-from .api import _resolve as _resolve_language
+from .api import _check_language, _check_limits
 from .api import demangle as _demangle
 from .core.limits import DEFAULT_LIMITS, Limits
 from .core.style import DEFAULT_STYLE, Style, get_style
@@ -80,7 +79,7 @@ class Found(NamedTuple):
 def find_symbols(
     text: str,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> Iterator[Found]:
@@ -93,7 +92,7 @@ def find_symbols(
     string around them -- which is all `demangle_text` does.
     """
     # Validated here: a text with no symbols would never reach `demangle`.
-    _resolve_language(language)
+    language = _check_language(language)
     get_style(style)
     _check_limits(limits)
     return _find_symbols(text, language=language, style=style, limits=limits)
@@ -102,7 +101,7 @@ def find_symbols(
 def _find_symbols(
     text: str,
     *,
-    language: str | None,
+    language: str | Sequence[str] | None,
     style: str | Style | None,
     limits: Limits,
 ) -> Iterator[Found]:
@@ -121,7 +120,7 @@ def _find_symbols(
 def demangle_text(
     text: str,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> str:
@@ -132,7 +131,7 @@ def demangle_text(
     raises `ValueError` when `language` or `style` is not a registered name, or `limits`
     is not a `Limits`.
     """
-    _resolve_language(language)
+    language = _check_language(language)
     get_style(style)
     _check_limits(limits)
     return _demangle_text(text, language=language, style=style, limits=limits)
@@ -141,7 +140,7 @@ def demangle_text(
 def _demangle_text(
     text: str,
     *,
-    language: str | None,
+    language: str | Sequence[str] | None,
     style: str | Style | None,
     limits: Limits,
 ) -> str:
@@ -162,7 +161,7 @@ def demangle_stream(
     fin,
     fout,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> None:
@@ -176,7 +175,7 @@ def demangle_stream(
     so open both ends with `errors="surrogateescape"` if the input is one. The `demangle`
     command does exactly that.
     """
-    _resolve_language(language)
+    language = _check_language(language)
     get_style(style)
     _check_limits(limits)
     for line in fin:
