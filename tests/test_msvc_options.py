@@ -389,6 +389,14 @@ class TestTheBitsWithNoFieldOfTheirOwn:
         assert len(groups["labelled"]) == MSVC_NAME_ONLY_LABELLED
         assert len(groups["nested"]) == MSVC_NAME_ONLY_REDUCES_A_NESTED_SYMBOL
 
+    def test_a_labelled_name_is_its_label_and_what_it_is_about(self):
+        """Both of which the reference prints: `` Base::`vftable' `` is `Base` and `vftable`."""
+        spelled_by_name = {mangled: spelled for mangled, spelled, _, _ in self._named()}
+        for mangled in self._groups()["labelled"]:
+            parts = demangle.signature(mangled)
+            assert parts.base_name in spelled_by_name[mangled], mangled
+            assert parts.special in spelled_by_name[mangled], mangled
+
     def test_the_bit_discards_a_vftables_base_path(self):
         """Which is why it has no field, rather than an oversight.
 

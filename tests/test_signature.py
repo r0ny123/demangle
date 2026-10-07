@@ -30,6 +30,15 @@ MSVC_SPECIAL_CORPORA = ["msvc-llvm-corpus.txt", "msvc-boost.txt", "msvc-clang.tx
 DELPHI_PREFIXES = DELPHI_CONVENTIONS | DELPHI_LABELS
 
 
+def _unlabelled(parts):
+    """The spelling with the label and the convention after it taken out, once each."""
+    spelled = parts.demangled
+    for word in (parts.special, parts.calling_convention):
+        if word:
+            spelled = spelled.replace(f"`{word}'", "", 1).replace(f"{word} ", "", 1)
+    return spelled
+
+
 @pytest.mark.sweep
 class TestTheNameFields:
     """`namespace` + separator + `base_name` == `qualified_name`, everywhere."""
@@ -50,28 +59,22 @@ class TestTheNameFields:
     def test_the_qualified_name_is_text_from_the_spelling(self, corpus, subtests):
         """Nothing in the name fields is invented: every one of them was spelled.
 
-        Objective-C is the exception, and a deliberate one -- a method's category sits
-        between its class and its selector in the spelling and is not part of its name.
-        Delphi's `__linkproc__` and `__vdflg__` are the other: they sit between a unit or
-        class and the name, and are a label, not a component. So is the type an MSVC
-        `RTTI Type Descriptor` describes where it is a pointer to a function or an array:
-        the label sat inside the declarator, and taking it out joins what was on either
-        side.
+        A label is spelled in the middle of what it is about -- `` const Base::`vftable' ``,
+        `` int (*`RTTI Type Descriptor')[2] ``, `System::__linkproc__ __fastcall Abort()` --
+        so the name is found in the spelling once the label, and a convention that follows
+        it, are taken out. Objective-C is the exception, and a deliberate one -- a method's
+        category sits between its class and its selector in the spelling and is not part
+        of its name.
         """
         for mangled, _ in load_corpus(corpus):
             try:
                 parts = signature(mangled)
             except DemanglingError:
                 continue
-            if parts.language == "objc" or parts.special in (
-                "__linkproc__",
-                "__vdflg__",
-                "RTTI Type Descriptor",
-                "RTTI Type Descriptor Name",
-            ):
+            if parts.language == "objc":
                 continue
             with subtests.test(mangled=mangled):
-                assert parts.qualified_name in parts.demangled
+                assert parts.qualified_name in parts.demangled or parts.qualified_name in _unlabelled(parts)
 
     @pytest.mark.parametrize("corpus", CORPORA)
     def test_a_base_name_is_never_empty(self, corpus, subtests):
