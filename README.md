@@ -299,6 +299,7 @@ $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
 $ demangle --no-tag-kind '?g3@@YAXVV@@@Z'          # `void __cdecl g3(V)`
 $ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
 $ demangle --json _Z1fPi                           # the parse tree as JSON
+$ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, in and out
 ```
 
 `python -m demangle` is the same command, where the script is not on `PATH`.

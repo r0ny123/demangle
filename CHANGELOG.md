@@ -39,6 +39,11 @@ the reference demanglers, and a **Performance** section.
   `detect(name, strict=True)` gives, under the run's own `--relaxed` and `--max-*`
   bounds. A name none reads is reported on standard error with why, and the status is
   1. Without `--strict`, `--detect` answers as before.
+- **`demangle -0`**, or `--null`: standard input is whole names each ended by a NUL,
+  as `find -print0` and `xargs -0` hand them over, and every answer is ended by a NUL
+  rather than a newline -- names given as arguments included. A record is one name,
+  never a line to filter, so a name with a space or a newline in it reads whole; a
+  multi-line `--tree` is one record. Messages stay lines on standard error.
 - **`-` as a NAME reads standard input**, in its place among the others: `demangle
   _Z1fv - _Z1gv` reads the pipe between the two.
 

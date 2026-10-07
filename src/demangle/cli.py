@@ -73,6 +73,13 @@ def build_parser():
     parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
     parser.add_argument("--json", action="store_true", help="print the parse tree as JSON")
     parser.add_argument(
+        "-0",
+        "--null",
+        action="store_true",
+        help="read standard input as whole names each ended by a NUL, as `find -print0` writes "
+        "them, and end each answer with a NUL",
+    )
+    parser.add_argument(
         "--types",
         action="store_true",
         help="read each NAME as a bare type encoding, not a symbol (needs --language)",
@@ -482,6 +489,11 @@ def _run(names, arguments):
     for from_stdin, group in itertools.groupby(names, key="-".__eq__):
         if not from_stdin:
             answer = _run_names([list(group)], arguments, limits)
+        elif arguments.null:
+            records = _batches(sys.stdin, "\0")
+            answer = _run_names(
+                ([record.removesuffix("\0") for record in batch] for batch in records), arguments, limits
+            )
         elif arguments.types:
             # No grammar here holds a `\r`, so CRLF input reads the same.
             lines = _batches(sys.stdin, "\n")
@@ -537,7 +549,8 @@ def _chunks(stream):
 
 
 def _run_names(batches, arguments, limits):
-    """One whole name per item: an argument, or a line of standard input under `--types`.
+    """One whole name per item: an argument, a line of standard input under `--types`,
+    or a record of it under `--null`.
 
     No word-splitting here. A caller who typed a name meant that name, and an
     Objective-C method or a Go symbol has spaces and slashes in it. Under `--types` it
@@ -547,10 +560,11 @@ def _run_names(batches, arguments, limits):
     """
     status = 0
     out = sys.stdout
+    end = "\0" if arguments.null else "\n"
     for batch in batches:
         for name in batch:
             if not name:
-                out.write("\n")
+                out.write(end)
                 continue
             try:
                 expanded = _expand(name, arguments, limits)
@@ -562,7 +576,7 @@ def _run_names(batches, arguments, limits):
                 continue
             if arguments.only_demangled and expanded == name:
                 continue
-            out.write(f"{name} ==> {expanded}\n" if arguments.both else f"{expanded}\n")
+            out.write(f"{name} ==> {expanded}{end}" if arguments.both else f"{expanded}{end}")
         out.flush()
     return status
 

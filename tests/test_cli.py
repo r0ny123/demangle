@@ -382,6 +382,50 @@ class TestTheStreamFilter:
         assert capsys.readouterr().out == "-[NSString length]\n"
 
 
+class TestNullFlag:
+    """`-0`: whole names ended by NUL in, answers ended by NUL out.
+
+    For a name a newline cannot end -- an Objective-C method with a space in it, one
+    with a newline in it -- and for whatever `find -print0` and `xargs -0` hand over.
+    """
+
+    def test_records_in_and_out(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin=f"{VECTOR}\0memcpy\0", monkeypatch=monkeypatch)
+        assert out == f"{VECTOR_SPELLED}\0memcpy\0"
+
+    def test_a_record_is_one_whole_name_not_a_line_to_filter(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin="T _Z1fv\0a\n_Z1gv\0", monkeypatch=monkeypatch)
+        assert out == "T _Z1fv\0a\n_Z1gv\0"
+
+    def test_a_last_record_without_its_nul_still_reads(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin="_Z1fv\0_Z1gv", monkeypatch=monkeypatch)
+        assert out == "f()\0g()\0"
+
+    def test_an_empty_record_stays_one(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0"], stdin="_Z1fv\0\0_Z1gv\0", monkeypatch=monkeypatch)
+        assert out == "f()\0\0g()\0"
+
+    def test_names_on_the_command_line_end_with_nul_too(self, capsys):
+        _, out, _ = run(capsys, ["--null", "-b", "_Z1fv", "_Z1gv"])
+        assert out == "_Z1fv ==> f()\0_Z1gv ==> g()\0"
+
+    def test_a_multi_line_tree_is_one_record(self, capsys):
+        _, out, _ = run(capsys, ["-0", "--tree", "_Z1fPKc"])
+        assert out.count("\0") == 1
+        assert out.endswith("\0")
+        assert "\n" in out
+
+    def test_types_read_records_too(self, capsys, monkeypatch):
+        _, out, _ = run(capsys, ["-0", "--types", "-l", "itanium"], stdin="Pi\0I like Pi\0", monkeypatch=monkeypatch)
+        assert out == "int*\0I like Pi\0"
+
+    def test_errors_stay_lines_on_standard_error(self, capsys):
+        status, out, err = run(capsys, ["-0", "--strict", "memcpy"])
+        assert (status, out) == (1, "")
+        assert err.endswith("\n")
+        assert "\0" not in err
+
+
 class TestLimitFlags:
     def test_a_tight_output_bound_refuses(self, capsys):
         assert main(["--max-output", "4", "--strict", "_ZNSt6vectorIiSaIiEE9push_backERKi"]) == 1
