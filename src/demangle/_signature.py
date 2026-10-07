@@ -456,9 +456,27 @@ def _labelled(parts):
     joint = _MSVC_SUFFIXES.get(special) if parts.language == "msvc" else None
     if joint is None:
         return f"{special} {name}"
+    spelled = f"`{special}'"
     if name == special:
-        return f"`{special}'"
-    return f"{name}{joint}`{special}'"
+        return spelled
+    if special.startswith("RTTI Type Descriptor"):
+        # Where the type's declarator name would be: `` char *`RTTI Type Descriptor' ``,
+        # `` int (*`RTTI Type Descriptor')[2] ``.
+        after = _after_label(parts.demangled, special)
+        if not name.endswith(after):
+            after = ""
+        head = name[: len(name) - len(after)]
+        joint = "" if head.endswith(("*", "&")) else " "
+        return f"{head}{joint}{spelled}{after}"
+    return f"{name}{joint}{spelled}"
+
+
+def _after_label(demangled, special):
+    """What follows the span holding `special` in `demangled`, its payload left off."""
+    for start, end, _ in reversed(_label_spans(demangled)):
+        if _msvc_label(demangled[start + 1 : end]) == special:
+            return _without_payload(demangled[end + 1 :])
+    return ""
 
 
 _MSVC_INITIALISERS = ("dynamic initializer for", "dynamic atexit destructor for")
