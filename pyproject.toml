@@ -52,7 +52,7 @@ demangle = "demangle.cli:main"
 test = [
     "pytest>=9.1.1",
     "pytest-cov",
-    "hypothesis>=6",
+    "hypothesis>=6.168.3",
 ]
 # ruff and ty are pinned exactly: they add rules in patch releases. `format` is its own
 # group so the ruff pin has one home (docs also needs ruff to format signatures).
