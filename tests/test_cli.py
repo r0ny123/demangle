@@ -244,7 +244,9 @@ class TestPartFlags:
             ("?f@C@@WBA@EAAHXZ", "C::f`adjustor'"),
             ("??_R0?AUBase@@@8", "Base `RTTI Type Descriptor'"),
             ("??_H@YAXPEAX_K1P6APEAX0@Z@Z", "`vector ctor iterator'"),
-            ("??__EFoo@@YAXXZ", "dynamic initializer for Foo"),
+            ("??__EFoo@@YAXXZ", "`dynamic initializer for 'Foo''"),
+            ("??__FFoo@@YAXXZ", "`dynamic atexit destructor for 'Foo''"),
+            ("??__E?i@C@@0HA@@YAXXZ", "`dynamic initializer for 'C::i''"),
         ],
     )
     def test_no_params_writes_an_msvc_label_where_msvc_does(self, capsys, name, expected):

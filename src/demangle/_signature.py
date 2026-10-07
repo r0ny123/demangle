@@ -423,8 +423,7 @@ _MSVC_LABELS = frozenset(
 _MSVC_DESTRUCTORS = frozenset({"scalar deleting dtor", "vector deleting dtor", "vbase dtor"})
 
 #: How MSVC joins a label to the name it follows: `` Base::`vftable' ``, `` C::f`adjustor{16}' ``,
-#: `` int `RTTI Type Descriptor' ``. Its dynamic initialisers, like every other scheme's
-#: labels, go before the name instead.
+#: `` int `RTTI Type Descriptor' ``. Its dynamic initialisers wrap the name instead.
 _MSVC_SUFFIXES = (
     dict.fromkeys(_MSVC_LABELS, "::")
     | dict.fromkeys(("adjustor", "vtordisp", "vtordispex"), "")
@@ -444,13 +443,16 @@ _MSVC_SUFFIXES = (
 def _labelled(parts):
     """`qualified_name` with `special` where the scheme writes it, its payload left off.
 
-    MSVC writes most of its labels after the name, `` Base::`vftable' ``; the rest, and
-    every other scheme's, go before it: `vtable for Base`. A label that is its own name,
+    MSVC writes most of its labels after the name, `` Base::`vftable' ``, and its dynamic
+    initialisers around it, `` `dynamic initializer for 'Foo'' ``; every other scheme's
+    go before it: `vtable for Base`. A label that is its own name,
     `` `vector ctor iterator' ``, is written once.
     """
     special, name = parts.special, parts.qualified_name
     if special is None:
         return name
+    if parts.language == "msvc" and special in _MSVC_INITIALISERS:
+        return f"`{special} '{name}''"
     joint = _MSVC_SUFFIXES.get(special) if parts.language == "msvc" else None
     if joint is None:
         return f"{special} {name}"
@@ -459,7 +461,8 @@ def _labelled(parts):
     return f"{name}{joint}`{special}'"
 
 
-_MSVC_INITIALISER = re.compile(r"`(dynamic initializer for|dynamic atexit destructor for) (?:'(.*)'|`(.*)')'")
+_MSVC_INITIALISERS = ("dynamic initializer for", "dynamic atexit destructor for")
+_MSVC_INITIALISER = re.compile(rf"`({'|'.join(_MSVC_INITIALISERS)}) (?:'(.*)'|`(.*)')'")
 _MSVC_RTTI = re.compile(r"(RTTI [A-Za-z ]+?)(?: at \(.*\))?")
 _MSVC_LEADING = frozenset(
     {"[thunk]:", "public:", "private:", "protected:", "static", "virtual", "const", "volatile"}
