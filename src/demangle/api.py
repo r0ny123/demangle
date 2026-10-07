@@ -33,7 +33,7 @@ carry the uncommon one's error handling, so they are two functions.
 """
 
 from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypeGuard
 
 from .core import registry as _registry
 from .core import style as _style_module
@@ -128,7 +128,7 @@ def _resolve(language):
 _BYTES_LIKE = (bytes, bytearray, memoryview)
 
 
-def _is_allow_list(language):
+def _is_allow_list(language: object) -> TypeGuard[Sequence[str]]:
     """A sequence of names, as opposed to one name or something that is neither."""
     return isinstance(language, Sequence) and not isinstance(language, (str, *_BYTES_LIKE))
 
@@ -322,8 +322,9 @@ def demangle(
         try:
             cached = _CACHE.get(key)
         except TypeError:
-            if _is_allow_list(language):
-                # The allow-list a tuple would be, keyed as one.
+            if _is_allow_list(language) and type(language) is not tuple:
+                # The allow-list a tuple would be, keyed as one; a tuple that cannot be
+                # keyed holds something that is not a name.
                 return demangle(mangled, language=tuple(language), style=style, limits=limits)
             _refuse_unhashable(language, limits)
         if cached is not MISSING:
