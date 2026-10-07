@@ -99,7 +99,7 @@ _C_VECTOR = re.compile(rf"\{{\s*{_C_LITERALS},\s*{_C_LITERALS}\}}", re.DOTALL)
 _C_BODY = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
 _C_ESCAPE = re.compile(r"\\(x[0-9a-fA-F]+|[0-7]{1,3}|.)", re.DOTALL)
 _RUST_ESCAPE = re.compile(r"\\(\n\s*|u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)", re.DOTALL)
-_RUST_CONCAT = re.compile(r"concat!\(\s*((?:\"(?:[^\"\\]|\\.)*\"\s*,?\s*)+)\)", re.DOTALL)
+_RUST_CONCAT = re.compile(r"concat!\(\s*((?:\"(?:[^\"\\]|\\.)*\"\s*(?:,\s*)?)+)\)", re.DOTALL)
 _SWIFT_ANNOTATION = re.compile(r"^\{(?:C|T:[^}]*)\}\s*")
 _KEEP_HASH = demangle.style("llvm", rust={"keep_hash": True})
 
