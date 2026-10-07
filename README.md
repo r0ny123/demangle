@@ -172,6 +172,17 @@ a line at a time, for pipes.
 ['f()', 'main']
 ```
 
+`language` forces one scheme by name. A sequence of names is an allow-list instead:
+detection as usual, among those schemes alone, so a tool that knows a Mach-O image holds
+C++ and Swift leaves its Objective-C metadata as the linker wrote it:
+
+```python
+>>> demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium", "swift"))
+'_OBJC_CLASS_$_NSData'
+>>> demangle.detect("?f@@YAXH@Z", language=("itanium", "swift")) is None
+True
+```
+
 ### Bytes, when the names came from a symbol table
 
 An ELF or Mach-O string table holds bytes, and they are not reliably UTF-8 — a truncated

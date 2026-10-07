@@ -8,6 +8,18 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Added
+
+- **`language=` takes a sequence of names**, as an allow-list: `language=("itanium",
+  "swift")` detects as usual, in the usual order, among those schemes alone, so a
+  caller labelling a table it knows holds C++ and Swift has its Objective-C metadata
+  and its paths left as they are. Every whole-name entry point takes one --
+  `demangle()`, `demangle_strict()`, `parse()`, `signature()`, `demangle_all()`,
+  `detect()`, their bytes forms and the text filters. A list is keyed as the tuple it
+  names; an empty sequence, or one naming an unknown scheme, is a `ValueError`. A
+  sequence always detects, so `("gnuv2",)` is not `"gnuv2"`, which forces the scheme
+  on a name its detection declines.
+
 ### Performance
 
 - **MSVC demangling is about 12% faster**, with 18% fewer Python calls per name: the

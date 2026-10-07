@@ -43,14 +43,14 @@ be filled in later:
 The `None`s are the point. A field that guesses is worse than a field that declines.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from .api import _decode, _resolve
-from .api import detect as _detect
-from .api import parse as _parse
+from .api import _decode, _read
+from .core.ast import builder_for
 from .core.limits import DEFAULT_LIMITS, Limits
-from .core.style import DEFAULT_STYLE, Style
+from .core.style import DEFAULT_STYLE, Style, get_style
 
 __all__ = ["Signature", "signature", "signatureb"]
 
@@ -174,7 +174,7 @@ class Signature:
 def signature(
     mangled: str,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> Signature:
@@ -184,16 +184,17 @@ def signature(
     parts, and a `Signature` full of `None` would say that it did and that they were
     all empty.
     """
-    tree = _parse(mangled, language=language, style=style, limits=limits)
-    # Through the registry, so an alias (`objective-c`) finds its separator.
-    scheme = _resolve(language).name if language is not None else (_detect(mangled) or "")
-    return _extract(_Reading(scheme, _SEPARATORS.get(scheme, "::"), style), tree)
+    resolved = get_style(style)
+    # The plugin that read the name, under the name it is registered by, so an alias
+    # (`objective-c`) finds its separator.
+    plugin, tree = _read(mangled, builder_for(resolved), language, resolved, limits)
+    return _extract(_Reading(plugin.name, _SEPARATORS.get(plugin.name, "::"), style), tree)
 
 
 def signatureb(
     mangled: bytes,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> Signature:

@@ -12,9 +12,13 @@ one of them is stable ground that later versions can build on without breaking:
     demangle_type(enc, language=...)  a bare type encoding, spelled       -- raises
     parse_type(enc, language=...)     a bare type encoding, as a tree     -- raises
 
-"Raises" means over an unreadable name. Apart from `detect`, which answers None to
-anything, each also raises `TypeError` or `ValueError` for an argument that is wrong
-rather than unreadable -- an unknown `language`, say.
+"Raises" means over an unreadable name. Each also raises `TypeError` or `ValueError` for
+an argument that is wrong rather than unreadable -- an unknown `language`, say; `detect`
+only the `ValueError`, since it answers None to any name, a `str` or not.
+
+`language` is one scheme's name, which forces that scheme, or None, which detects among
+all of them -- or, everywhere but the two type readers, a sequence of names, which
+detects among those alone.
 
 Each single-name entry point has a `...b` form taking and returning bytes, because a
 symbol table holds bytes rather than text.
@@ -27,7 +31,7 @@ Serving both from one function -- with a sentinel, or a flag -- makes the common
 carry the uncommon one's error handling, so they are two functions.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, NoReturn
 
 from .core import registry as _registry
@@ -43,7 +47,7 @@ from .core.errors import (
     reraise_if_operational,
 )
 from .core.limits import DEFAULT_LIMITS, Limits
-from .core.registry import candidates, get, names
+from .core.registry import candidates, canonical, get, names
 from .core.style import DEFAULT_STYLE, Style, available_styles, get_style
 
 __all__ = [
@@ -105,6 +109,10 @@ def _refuse_non_string(mangled):
     raise TypeError(f"expected str, got {type(mangled).__name__}")
 
 
+def _refuse_language(language) -> NoReturn:
+    raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
+
+
 def _resolve(language):
     """Pick the plugin for `language`, or None to mean "detect"."""
     if language is None:
@@ -112,7 +120,44 @@ def _resolve(language):
     try:
         return get(language)
     except (KeyError, TypeError):
-        raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
+        _refuse_language(language)
+
+
+def _allowed(language):
+    """The schemes a sequence of names allows, by the name each is registered under.
+
+    By name rather than by plugin, so allowing a scheme does not import it: `candidates`
+    hands over stand-ins and imported plugins alike, and both answer to the name.
+    """
+    if isinstance(language, (str, bytes)) or not isinstance(language, Sequence):
+        _refuse_language(language)
+    if not language:
+        raise ValueError("language names no scheme; pass None to detect among all of them")
+    allowed = set()
+    for name in language:
+        try:
+            allowed.add(canonical(name))
+        except KeyError:
+            _refuse_language(name)
+    return allowed
+
+
+def _among(mangled, allowed):
+    """`candidates(mangled)`, keeping the schemes in `allowed`, in the same order."""
+    return tuple(plugin for plugin in candidates(mangled) if plugin.name in allowed)
+
+
+def _check_language(language):
+    """`language` refused if it names nothing, and otherwise as a cache key holds it.
+
+    For the entry points that validate before they loop: a list names what a tuple does,
+    and only a tuple can be hashed.
+    """
+    if language is None or isinstance(language, str):
+        _resolve(language)
+        return language
+    _allowed(language)
+    return tuple(language)
 
 
 def _parse_with(plugin, mangled, builder, limits, style):
@@ -167,7 +212,7 @@ def _refuse_unhashable(language, limits) -> NoReturn:
     try:
         hash(language)
     except TypeError:
-        raise ValueError(f"unknown language {language!r}; known languages are {names()}") from None
+        _refuse_language(language)
     if not isinstance(limits, Limits):
         _refuse_limits(limits)
     try:
@@ -180,7 +225,7 @@ def _refuse_unhashable(language, limits) -> NoReturn:
 def demangle(
     mangled: str,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> str:
@@ -194,9 +239,26 @@ def demangle(
     `language`, `style` or `limits` that names nothing, is a mistake in the calling code
     and is reported as one.
 
+    A sequence of names is an allow-list, for a caller that knows which schemes a table
+    can hold -- a Mach-O image's C++ and Swift, say -- and wants nothing else rewriting
+    its Objective-C metadata or its paths:
+
+        >>> import demangle
+        >>> demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium", "swift"))
+        '_OBJC_CLASS_$_NSData'
+        >>> demangle.demangle("$s10Foundation4DataV5countSivg", language=["itanium", "swift"])
+        'Foundation.Data.count.getter : Swift.Int'
+
+    It detects, among those schemes, in the usual order. So `("gnuv2",)` is not
+    `"gnuv2"`, which forces the scheme on a name its detection would decline:
+    `PyInit__lldb` stays as it is under the first and is read as pre-Itanium C++ under
+    the second. One name or several, a sequence is a filter on detection, so an
+    allow-list built at run time means the same whatever its length.
+
     Args:
         mangled: the symbol name. Any string; need not be mangled.
-        language: force a scheme by name, or None to detect.
+        language: force a scheme by name, detect among a sequence of names, or None to
+            detect among all of them.
         style: output spelling policy -- a style name (`"llvm"`, the default, or
             `"gnu"`), a `Style` object such as `style()` returns, or None for the
             default.
@@ -207,8 +269,8 @@ def demangle(
 
     Raises:
         TypeError: `mangled` is not a `str`. Use `demangleb()` for bytes.
-        ValueError: `language` or `style` is not a registered name, or `limits` is not
-            a `Limits`.
+        ValueError: `language` or `style` is not a registered name, `language` is an
+            empty sequence or names one that is not, or `limits` is not a `Limits`.
     """
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
@@ -238,6 +300,8 @@ def demangle(
         # what is accepted or which argument the refusal names.
         if limits is not DEFAULT_LIMITS and not isinstance(limits, Limits):
             _refuse_limits(limits)
+        if isinstance(language, list):
+            language = tuple(language)
         try:
             hash((language, limits))
         except TypeError:
@@ -248,6 +312,9 @@ def demangle(
         try:
             cached = _CACHE.get(key)
         except TypeError:
+            if isinstance(language, list):
+                # The allow-list a tuple would be, keyed as one.
+                return demangle(mangled, language=tuple(language), style=style, limits=limits)
             _refuse_unhashable(language, limits)
         if cached is not MISSING:
             return cached
@@ -259,21 +326,29 @@ def demangle(
     if resolved_style is None:
         resolved_style = get_style(style)
     builder = resolved_style.spelling_builder
-    if language is not None:
-        tried = (_resolve(language),)
-        base = None
-    else:
+    if language is None:
         tried = candidates(mangled)
         if not tried:
             return mangled
         base = _undecorated(mangled)
+        detecting = True
+    elif isinstance(language, str):
+        tried = (_resolve(language),)
+        base = None
+        detecting = False
+    else:
+        tried = _among(mangled, _allowed(language))
+        if not tried:
+            return mangled
+        base = _undecorated(mangled)
+        detecting = True
 
     for candidate in tried:
         try:
             # `_claims` inlined for the hot path; a `detect` that throws is caught by this
             # loop's own handler with the same effect.
             if (
-                language is None
+                detecting
                 and not candidate.detect(mangled)
                 and (base is None or not candidate.symbol_table_decorations or not candidate.detect(base))
             ):
@@ -296,7 +371,7 @@ def demangle(
 def demangle_strict(
     mangled: str,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> str:
@@ -307,22 +382,23 @@ def demangle_strict(
     with the original chained.
 
     Raises:
-        NotMangledError: the name matches no known scheme.
+        NotMangledError: the name matches no known scheme, or none that `language`
+            allows.
         ParseError: the name has a known prefix but does not follow the grammar.
         LimitExceeded: a resource bound was hit.
         TypeError: `mangled` is not a `str`. Use `demangleb_strict()` for bytes.
-        ValueError: `language` or `style` is not a registered name, or `limits` is not
-            a `Limits`.
+        ValueError: `language` or `style` is not a registered name, `language` is an
+            empty sequence or names one that is not, or `limits` is not a `Limits`.
     """
     resolved_style = get_style(style)
     builder = resolved_style.spelling_builder
-    return builder.spell(_parse_handle(mangled, builder, language, resolved_style, limits))
+    return builder.spell(_read(mangled, builder, language, resolved_style, limits)[1])
 
 
 def parse(
     mangled: str,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> Node:
@@ -336,7 +412,7 @@ def parse(
     differs from scheme to scheme; see `node_kinds()`.
     """
     resolved = get_style(style)
-    return _parse_handle(mangled, builder_for(resolved), language, resolved, limits)
+    return _read(mangled, builder_for(resolved), language, resolved, limits)[1]
 
 
 def demangle_type(
@@ -483,26 +559,32 @@ def _type_languages():
     return ", ".join(sorted(name for name in names() if get(name).parse_type is not None))
 
 
-def _parse_handle(mangled, builder, language, style, limits):
+def _read(mangled, builder, language, style, limits):
+    """The plugin that reads `mangled`, and what it built; or the error saying why none
+    does. What `demangle()` does, raising where it would hand the name back."""
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
     _check_limits(limits)
     if not mangled:
         raise NotMangledError(mangled, "empty name")
-    plugin = _resolve(language)
-    if plugin is not None:
+    if language is None:
+        tried = candidates(mangled)
+    elif isinstance(language, str):
+        plugin = _resolve(language)
         try:
-            return _parse_with(plugin, mangled, builder, limits, style)
+            return plugin, _parse_with(plugin, mangled, builder, limits, style)
         except RecursionError as exc:
             raise _depth_exceeded(mangled, limits) from exc
+    else:
+        tried = _among(mangled, _allowed(language))
 
     first_error = None
     base = _undecorated(mangled)
-    for candidate in candidates(mangled):
+    for candidate in tried:
         try:
             if not _claims(candidate, mangled, base):
                 continue
-            return _parse_with(candidate, mangled, builder, limits, style)
+            return candidate, _parse_with(candidate, mangled, builder, limits, style)
         except RecursionError as exc:
             if first_error is None:
                 first_error = _depth_exceeded(mangled, limits)
@@ -587,7 +669,7 @@ def _claims(plugin, mangled, base):
         return False
 
 
-def detect(mangled: str) -> str | None:
+def detect(mangled: str, *, language: str | Sequence[str] | None = None) -> str | None:
     """Name the scheme `mangled` appears to use, or None.
 
     Most schemes are recognised by a prefix, so this reports what the name looks like,
@@ -595,14 +677,22 @@ def detect(mangled: str) -> str | None:
     `codewarrior` and `ada` -- parse the whole name to claim it, and so does a legacy
     Rust name written without its underscore (a bare `ZN...`), which is read up to
     `max_input` to decide.
-    Never raises: like `demangle()`, it is called on every symbol in a table.
+
+    `language` narrows the question to the schemes it names, one or a sequence: the
+    answer is the first of them, in the usual order, that claims the name.
+
+    Never raises over the name: like `demangle()`, it is called on every symbol in a
+    table. A `language` that names nothing is the calling code's mistake, and a
+    `ValueError`.
     """
+    if language is not None:
+        allowed = _allowed((language,) if isinstance(language, str) else language)
     if not isinstance(mangled, str):
         # `detect` answers a verdict for anything in a symbol table, never an exception.
         return None
     if not mangled:
         return None
-    tried = candidates(mangled)
+    tried = candidates(mangled) if language is None else _among(mangled, allowed)
     if not tried:
         return None
     base = _undecorated(mangled)
@@ -635,7 +725,7 @@ def _decode(mangled):
 def demangleb(
     mangled: bytes,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> bytes:
@@ -663,7 +753,7 @@ def demangleb(
 def demangleb_strict(
     mangled: bytes,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> bytes:
@@ -676,7 +766,7 @@ def demangleb_strict(
 def parseb(
     mangled: bytes,
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> Node:
@@ -714,17 +804,19 @@ def parseb_type(
     return parse_type(_decode(mangled), language=language, style=style, limits=limits)
 
 
-def detectb(mangled: bytes) -> str | None:
+def detectb(mangled: bytes, *, language: str | Sequence[str] | None = None) -> str | None:
     """`detect()` over bytes. The scheme's name is a `str`; it is this package's own."""
     if not isinstance(mangled, _BYTES_LIKE):
+        # Refused as `detect` refuses it, whatever the name is.
+        detect("", language=language)
         return None
-    return detect(bytes(mangled).decode(_BYTES_ENCODING, _BYTES_ERRORS))
+    return detect(bytes(mangled).decode(_BYTES_ENCODING, _BYTES_ERRORS), language=language)
 
 
 def demangle_all(
     names_: Iterable[str],
     *,
-    language: str | None = None,
+    language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
     limits: Limits = DEFAULT_LIMITS,
 ) -> Iterator[str]:
@@ -737,7 +829,7 @@ def demangle_all(
     Arguments are validated before the generator is created, so a bad `language`,
     `style` or `limits` is reported at the call rather than at the first `next()`.
     """
-    _resolve(language)
+    language = _check_language(language)
     get_style(style)
     _check_limits(limits)
 

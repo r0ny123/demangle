@@ -142,6 +142,111 @@ class TestForcedLanguage:
         assert demangle.demangle("?f@@YAXH@Z", language="msvc") == "void __cdecl f(int)"
 
 
+#: Every entry point that takes `language=` for a whole name, as a call of one argument.
+_LANGUAGE_ENTRY_POINTS = [
+    lambda language: demangle.demangle("_Z1gv", language=language),
+    lambda language: demangle.demangle("_Z1gv", style=demangle.style(), language=language),
+    lambda language: demangle.demangle_strict("_Z1gv", language=language),
+    lambda language: demangle.parse("_Z1gv", language=language).spell(),
+    lambda language: demangle.signature("_Z1gv", language=language).demangled,
+    lambda language: next(demangle.demangle_all(["_Z1gv"], language=language)),
+    lambda language: demangle.demangleb(b"_Z1gv", language=language).decode(),
+    lambda language: demangle.demangleb_strict(b"_Z1gv", language=language).decode(),
+    lambda language: demangle.parseb(b"_Z1gv", language=language).spell(),
+    lambda language: demangle.signatureb(b"_Z1gv", language=language).demangled,
+    lambda language: demangle.demangle_text("_Z1gv", language=language),
+    lambda language: next(demangle.find_symbols("_Z1gv", language=language)).demangled,
+]
+
+
+class TestAllowList:
+    """A sequence of names: detect, but only among those schemes."""
+
+    def test_a_scheme_left_out_does_not_read_the_name(self):
+        allowed = ("itanium", "swift")
+        assert demangle.demangle("_OBJC_CLASS_$_NSData", language=allowed) == "_OBJC_CLASS_$_NSData"
+        assert demangle.demangle("example.com/m.(*T).Method", language=allowed) == "example.com/m.(*T).Method"
+        assert demangle.demangle("_ZN3foo3barEv", language=allowed) == "foo::bar()"
+        assert demangle.demangle("$s10Foundation4DataV5countSivg", language=allowed) == (
+            "Foundation.Data.count.getter : Swift.Int"
+        )
+
+    @pytest.mark.parametrize("call", _LANGUAGE_ENTRY_POINTS)
+    def test_every_entry_point_takes_one(self, call):
+        assert call(("swift", "itanium")) == "g()"
+        assert call(["itanium"]) == "g()"
+
+    def test_the_order_is_the_registry_s_not_the_sequence_s(self):
+        """A legacy Rust name is an Itanium name too; Rust is asked first, as always."""
+        rust = "_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E"
+        assert demangle.demangle(rust, language=("itanium", "rust")) == "core::fmt::Formatter::pad"
+        assert demangle.detect(rust, language=("itanium", "rust")) == "rust"
+        assert demangle.detect(rust, language=("itanium",)) == "itanium"
+        assert demangle.demangle(rust, language=("itanium",)) == demangle.demangle(rust, language="itanium")
+
+    def test_a_single_name_detects_where_a_string_forces(self):
+        """`PyInit__lldb` is a C name pre-Itanium detection declines; forced, it reads."""
+        assert demangle.demangle("PyInit__lldb", language=("gnuv2",)) == "PyInit__lldb"
+        assert demangle.demangle("PyInit__lldb", language="gnuv2") != "PyInit__lldb"
+        with pytest.raises(demangle.NotMangledError):
+            demangle.demangle_strict("PyInit__lldb", language=["gnuv2"])
+
+    def test_an_alias_names_its_scheme(self):
+        assert demangle.demangle("_ZN3foo3barEv", language=("gnu", "objective-c")) == "foo::bar()"
+        assert demangle.detect("_ZN3foo3barEv", language=["c++"]) == "itanium"
+
+    def test_a_list_is_keyed_as_the_tuple_it_names(self):
+        demangle.cache_clear()
+        assert demangle.demangle("_ZN3foo3barEv", language=["itanium", "swift"]) == "foo::bar()"
+        assert demangle.demangle("_ZN3foo3barEv", language=("itanium", "swift")) == "foo::bar()"
+        stats = demangle.cache_stats()
+        assert (stats["hits"], stats["misses"]) == (1, 1)
+
+    def test_an_answer_under_one_allow_list_is_not_served_to_another(self):
+        demangle.cache_clear()
+        assert demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium",)) == "_OBJC_CLASS_$_NSData"
+        assert demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium", "objc")) != "_OBJC_CLASS_$_NSData"
+
+    @pytest.mark.parametrize(
+        "language,match",
+        [
+            ((), "names no scheme"),
+            ([], "names no scheme"),
+            (("itanium", "cobol"), "unknown language 'cobol'"),
+            (["itanium", 5], "unknown language 5"),
+            (["itanium", ["swift"]], "unknown language"),
+            ({"itanium"}, "unknown language"),
+            (b"itanium", "unknown language"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "call",
+        [
+            *_LANGUAGE_ENTRY_POINTS,
+            lambda language: demangle.detect("_Z1gv", language=language),
+            lambda language: demangle.detectb(b"_Z1gv", language=language),
+            lambda language: demangle.detect(None, language=language),  # ty: ignore[invalid-argument-type]
+        ],
+    )
+    def test_a_sequence_that_names_nothing_is_refused(self, call, language, match):
+        with pytest.raises(ValueError, match=match):
+            call(language)
+
+    def test_detect_answers_the_first_that_claims_or_none(self):
+        assert demangle.detect("?f@@YAXH@Z", language=("itanium", "msvc")) == "msvc"
+        assert demangle.detect("?f@@YAXH@Z", language=("itanium", "swift")) is None
+        assert demangle.detect("?f@@YAXH@Z", language="msvc") == "msvc"
+        assert demangle.detect("?f@@YAXH@Z", language="itanium") is None
+        assert demangle.detectb(b"?f@@YAXH@Z", language=["msvc"]) == "msvc"
+
+    def test_allowing_a_scheme_imports_none_until_a_name_reaches_it(self):
+        loaded = _schemes_imported_by(
+            "assert demangle.demangle('main', language=('msvc', 'swift', 'go')) == 'main'\n"
+            "assert demangle.detect('?f@@YAXH@Z', language=['swift', 'msvc']) == 'msvc'"
+        )
+        assert loaded == ["msvc"]
+
+
 class TestStructuredOutput:
     def test_parse_returns_a_walkable_tree(self):
         tree = demangle.parse("_ZNK3Foo3barIiEEvPKc")
@@ -393,7 +498,7 @@ class TestCacheStatistics:
         with pytest.raises(ValueError, match="Limits instance"):
             demangle.demangle(name, limits={"max_depth": 1})  # ty: ignore[invalid-argument-type]
         with pytest.raises(ValueError, match="unknown language"):
-            demangle.demangle(name, language=["itanium"])  # ty: ignore[invalid-argument-type]
+            demangle.demangle(name, language={"itanium"})  # ty: ignore[invalid-argument-type]
 
     def test_a_name_named_on_every_page_of_a_table_misses_once(self, monkeypatch):
         """A name still in use survives each turnover of the cache's generations."""
