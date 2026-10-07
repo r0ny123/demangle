@@ -8,6 +8,8 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
 ### Added
 
 - **`tools/upstream_drift.py`.** Scores the library on the references' own test
@@ -3973,7 +3975,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/r0ny123/demangle/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/r0ny123/demangle/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/r0ny123/demangle/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/r0ny123/demangle/compare/v0.1.0...v0.2.0
