@@ -8,6 +8,13 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Added
+
+- **PE import thunks.** `__imp__Z3foov`, and `__imp___Z3foov` where i386 COFF adds its
+  underscore, read as `import thunk for foo()` in both styles, and `detect` claims
+  them. Only a whole mangled name after the prefix counts: `__imp_ReadFile` stays as
+  written.
+
 ### Performance
 
 - **MSVC demangling is about 12% faster**, with 18% fewer Python calls per name: the

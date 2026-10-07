@@ -79,6 +79,14 @@ _FIXED_POINT_INTEGERS = {
 #: name, so it is stripped and reported as a suffix, as the reference prints it.
 _ALLOC_TOKEN = "__alloc_token_"
 
+#: A PE import thunk's prefix, as MinGW and clang targeting Windows write it: `__imp_`
+#: then the whole mangled name, `_Z...`, or `__Z...` where i386 COFF adds its
+#: underscore -- which is not Mach-O's, so Apple's numbering rules are not assumed for
+#: it. Spelled `import thunk for ` as the reference spells it. GNU c++filt reads neither
+#: this nor `_ALLOC_TOKEN`, and a style decides spelling, not acceptance, so the gnu
+#: style spells both as the reference does.
+_IMPORT_THUNK = "__imp_"
+
 #: Greedy, so the split is at the *last* `_block_invoke`: the enclosing function may be
 #: named that too. An underscore with no number after it does not match.
 _BLOCK_INVOKE = re.compile(r"(.*)_block_invoke(?:_\d+|\d*)(?:\..*)?\Z", re.DOTALL)
@@ -319,6 +327,7 @@ def detect(name):
         or name.startswith("___Z")
         or name.startswith("____Z")
         or name.startswith(_ALLOC_TOKEN)
+        or name.startswith(("__imp__Z", "__imp___Z"))
     )
 
 
@@ -654,6 +663,10 @@ class ItaniumParser:
             return self.block_invocation()
         # See `_ALLOC_TOKEN`. `__alloc_token_malloc` is not one: what follows must be a
         # mangled name itself.
+        # See `_IMPORT_THUNK`. `__imp_ReadFile` is not one, for the same reason.
+        import_thunk = mangled.startswith(("__imp__Z", "__imp___Z"))
+        if import_thunk:
+            reader.pos += len(_IMPORT_THUNK)
         alloc_token = ""
         if mangled.startswith(_ALLOC_TOKEN):
             after = reader.pos + len(_ALLOC_TOKEN)
@@ -686,6 +699,8 @@ class ItaniumParser:
 
         if alloc_token:
             result = self.builder.decorated(result, alloc_token)
+        if import_thunk:
+            result = self.builder.special("import thunk for ", result)
         if self.builder.size(result) > self._max_output:
             raise LimitExceeded(self._mangled, "output length", self._max_output)
         return result
