@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "demangle"
 description = "Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI and pre-Itanium C++ (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior) -- in pure Python, with no dependencies."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "demangle contributors" }]
@@ -23,10 +23,13 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Free Threading :: 3 - Stable",
     "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Security",
     "Topic :: Software Development :: Disassemblers",
     "Topic :: Software Development :: Debuggers",
@@ -117,7 +120,7 @@ differential = "python tools/differential.py {args}"
 check = ["lint", "test", "differential", "bench --check"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.13", "3.14"]
+python = ["3.11", "3.12", "3.13", "3.14", "pypy3.11"]
 
 # Own template: inheriting the default's scripts would run ty without its dependencies.
 [tool.hatch.envs.docs]
@@ -138,7 +141,7 @@ markers = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -148,4 +151,4 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
 "tests/*" = ["E501"]
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.11"

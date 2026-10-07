@@ -21,7 +21,7 @@ hatch run check
 ```
 
 The pieces are available on their own: `hatch run test`, `cover`, `lint`, `fmt`,
-`bench`, `differential`. `hatch run test:test` runs the suite on Python 3.13 and 3.14,
+`bench`, `differential`. `hatch run test:test` runs the suite on Python 3.11 to 3.14 and PyPy 3.11,
 and `hatch run docs:serve` previews the documentation site.
 
 `hatch run quick` while iterating (about a minute); `hatch run check` before pushing
@@ -167,10 +167,10 @@ it. Checkout uses `persist-credentials: false`, because nothing in CI pushes and
 left in `.git/config` is readable by every later step. Releases publish through PyPI
 Trusted Publishing, so there is no long-lived API token in repository secrets.
 
-The test matrix is deliberately not a cross product. Both supported versions run on
-Linux; macOS and Windows get one row each, the ceiling and the floor, so neither end of
-the range is only ever exercised on Linux. A fifth row runs Ubuntu on the free-threaded
-3.14t build, for `tests/test_concurrency.py`. This is a pure-Python library, and
+The test matrix is deliberately not a cross product. Every supported version runs on
+Linux, PyPy 3.11 included; macOS and Windows get one row each, the ceiling and the
+floor, so neither end of the range is only ever exercised on Linux. A further row runs
+Ubuntu on the free-threaded 3.14t build, for `tests/test_concurrency.py`. This is a pure-Python library, and
 everything that has ever differed between platforms differed in the harness -- a glob, a
 subprocess, a console encoding -- which one row per operating system catches as well as
 a full cross product would. Each extra row has a comment in `ci.yml` saying why it is

@@ -8,6 +8,13 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Changed
+
+- **Runs on Python 3.11 and 3.12, and on PyPy 3.11.** The floor was 3.13. Nothing in
+  the package or its tests needed a newer interpreter, so the change is the declared
+  floor, the classifiers, the lint and type targets, and CI rows for 3.11, 3.12 and
+  PyPy 3.11. The suite passes unchanged on each.
+
 ### Performance
 
 - **MSVC demangling is about 12% faster**, with 18% fewer Python calls per name: the

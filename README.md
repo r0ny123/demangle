@@ -1,7 +1,7 @@
 # demangle
 
 [![CI](https://github.com/r0ny123/demangle/actions/workflows/ci.yml/badge.svg)](https://github.com/r0ny123/demangle/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.13%2B-blue)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![Licence](https://img.shields.io/badge/licence-MIT-green)](https://github.com/r0ny123/demangle/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-r0ny123.github.io-blue)](https://r0ny123.github.io/demangle/)
 
@@ -53,7 +53,7 @@ native code, no compiler required.
 pip install demangle
 ```
 
-Python 3.13 or newer. That is the whole dependency list.
+Python 3.11 or newer. That is the whole dependency list. It runs on CPython 3.11+ and PyPy 3.11.
 
 The documentation, API reference included, is published at
 <https://r0ny123.github.io/demangle/>.
