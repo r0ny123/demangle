@@ -73,7 +73,8 @@ name instead, and under --types each line one type. A terminal is read only for 
 _EPILOG = """\
 exit status:
   0    every name was read, or printed unchanged
-  1    a name was refused: under --strict, or with no tree to print for --tree or --json
+  1    a name was refused: under --strict, or with no tree to print for --tree
+       or --json
   2    the command line was wrong
   130  interrupted
 
@@ -214,8 +215,8 @@ def build_parser():
         printing.add_argument(
             "--json-lines",
             action="store_true",
-            help="print one JSON object per name: mangled, demangled, language; and mangled_bytes, the "
-            "name's bytes in base64, where they are not UTF-8",
+            help="print one JSON object per name: mangled, demangled, language; and mangled_bytes and "
+            "demangled_bytes, those in base64, where they are not UTF-8",
         )
     )
     printing.add_argument(
@@ -480,7 +481,8 @@ def _main(argv):
         if problem:
             parser.error(problem)
 
-    _reconfigure(sys.stdout, errors="surrogateescape")
+    # A NUL-ended record keeps the newlines it holds: nothing translates them.
+    _reconfigure(sys.stdout, errors="surrogateescape", **({"newline": "\n"} if arguments.null else {}))
 
     try:
         status = _run(names, arguments)
@@ -646,7 +648,8 @@ def _record(name, arguments, limits):
     record has the same keys, so a name nothing reads has its `--signature` fields None
     rather than missing.
 
-    A name whose bytes are not UTF-8 also has `mangled_bytes`, those bytes in base64.
+    A name whose bytes are not UTF-8 also has `mangled_bytes`, those bytes in base64,
+    and `demangled_bytes` where the spelling carries them on.
     `mangled` carries each such byte as a lone surrogate, which `json` writes as an
     escape and most readers then replace with U+FFFD, so it alone cannot give the name
     back.
@@ -654,7 +657,8 @@ def _record(name, arguments, limits):
     stripped = arguments.strip_underscore and name.startswith("_")
     read = name[1:] if stripped else name
     parts = None
-    # One read of the name for all three answers: the scheme, the spelling, the parts.
+    # One read of the name for all three answers -- the scheme, the spelling, the
+    # parts -- and a second only under --no-return-type and --ret-postfix.
     try:
         if arguments.signature or _selects_a_part(arguments):
             parts = signature(read, language=arguments.language, style=arguments.style, limits=limits)
@@ -677,6 +681,9 @@ def _record(name, arguments, limits):
     if raw is not None:
         record["mangled_bytes"] = base64.b64encode(raw).decode("ascii")
     record["demangled"] = demangled
+    raw = _undecodable(demangled) if demangled != name else None
+    if raw is not None:
+        record["demangled_bytes"] = base64.b64encode(raw).decode("ascii")
     record["language"] = scheme
     if arguments.signature:
         if parts is not None:
@@ -781,8 +788,8 @@ def _run(names, arguments):
 
 
 #: How many `--json-lines` records a run remembers, so that a name a listing repeats --
-#: every call to one function in a disassembly -- is read once. At a few hundred bytes a
-#: record, a few megabytes.
+#: every call to one function in a disassembly -- is read once. Records average a few
+#: hundred characters and run to tens of thousands, so tens of megabytes at most.
 _REMEMBERED = 1 << 14
 
 

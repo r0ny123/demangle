@@ -273,11 +273,11 @@ class TestHelp:
         for status in ("0", "1", "2", "130"):
             assert f"\n  {status} " in statuses
 
-    def test_the_examples_fit_a_narrow_terminal(self, capsys, monkeypatch):
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_the_help_fits_a_narrow_terminal(self, capsys, monkeypatch, flag):
         monkeypatch.setenv("COLUMNS", "78")
-        text = self._help(capsys, "-h")
-        examples = text[text.index("examples:") : text.index("\n\n", text.index("examples:"))]
-        assert max(len(line) for line in examples.splitlines()) <= 78
+        text = self._help(capsys, flag)
+        assert max(len(line) for line in text.splitlines()) <= 78
 
     def test_a_flag_is_never_split_at_its_hyphen(self, capsys, monkeypatch):
         monkeypatch.setenv("COLUMNS", "60")
@@ -492,6 +492,14 @@ class TestStandardInput:
         monkeypatch.setattr("sys.stdout", stdout)
         assert main([]) == 0
         assert stdout.buffer.getvalue() == b"T f()\r\nx\r\ny\r\n"
+
+    def test_a_null_record_keeps_its_newlines_where_standard_output_writes_newlines_as_crlf(self, monkeypatch):
+        stdout = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", newline="\r\n")
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"not\r\nmangled\0_Z1fv\0"), encoding="utf-8"))
+        monkeypatch.setattr("sys.stdout", stdout)
+        assert main(["-0"]) == 0
+        assert stdout.buffer.getvalue() == b"not\r\nmangled\0f()\0"
 
 
 class TestTheModule:

@@ -309,7 +309,8 @@ $ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, i
 it came back unchanged; `--signature` adds the fields of `signature()`, `null` for a
 name nothing reads, so every record has the same keys. A name whose bytes are not UTF-8
 has one more, `mangled_bytes`, the bytes in base64: `mangled` carries each such byte as
-a lone surrogate, `"_Z3foo\udcff"`, which most JSON readers turn into U+FFFD. Over a
+a lone surrogate, `"_Z3foo\udcff"`, which most JSON readers turn into U+FFFD; where the
+spelling carries them on, `demangled_bytes` does the same for it. Over a
 stream it writes one per symbol the filter rewrites. `--json` is the other question,
 the parse tree.
 

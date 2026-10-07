@@ -40,9 +40,10 @@ the reference demanglers, and a **Performance** section.
   and with `--signature` the fields of `signature()` besides, null for a name nothing
   reads, so every record has the same keys. A name whose bytes are not UTF-8 has one
   more, `mangled_bytes`, those bytes in base64, since `mangled` carries each as a lone
-  surrogate that most JSON readers turn into U+FFFD. `demangled` is what the line
-  would have said, `-p` and `--style` applied. Over a stream there is one record per symbol the
-  filter rewrites and none for the text around it. `--json` is unchanged: it is the
+  surrogate that most JSON readers turn into U+FFFD, and `demangled_bytes` where the
+  spelling carries them on. `demangled` is what the line would have said, `-p` and
+  `--style` applied. Over a stream there is one record per symbol the filter rewrites
+  and none for the text around it. `--json` is unchanged: it is the
   parse tree, and scripts read it as such.
 - **`demangle -0`**, or `--null`: standard input is whole names each ended by a NUL,
   as `find -print0` and `xargs -0` hand them over, and every answer is ended by a NUL
