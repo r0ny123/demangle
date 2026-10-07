@@ -246,6 +246,30 @@ class TestMsvcSpecials:
         assert parts.base_name == "value"
         assert parts.namespace.endswith("getenv(char const *)'::`2'")
 
+    @pytest.mark.parametrize(
+        ("mangled", "namespace", "base"),
+        [
+            ("?x@?$X@$1??_7C@@6B@@@2HA", "X<&const C::`vftable'>", "x"),
+            ("??$f@$1??_7C@@6B@@@YAXXZ", "", "f<&const C::`vftable'>"),
+            ("??$f@$1??_R0?AUBase@@@8@@YAXXZ", "", "f<&struct Base `RTTI Type Descriptor'>"),
+        ],
+    )
+    def test_a_label_in_a_template_argument_is_not_the_symbols_own(self, mangled, namespace, base):
+        parts = signature(mangled)
+        assert (parts.special, parts.namespace, parts.base_name) == (None, namespace, base)
+
+    @pytest.mark.parametrize(
+        ("mangled", "base"),
+        [("??MC@@W3AE_NH@Z", "operator<"), ("??6C@@W3AEXH@Z", "operator<<"), ("??CC@@W3AEPAU0@XZ", "operator->")],
+    )
+    def test_an_operators_brackets_do_not_hide_its_adjustor(self, mangled, base):
+        parts = signature(mangled)
+        assert (parts.special, parts.namespace, parts.base_name) == ("adjustor", "C", base)
+
+    def test_a_type_descriptor_of_a_declarator_type_is_about_the_type(self):
+        parts = signature("??_R0PEAY01H@8")
+        assert (parts.special, parts.qualified_name) == ("RTTI Type Descriptor", "int (*)[2]")
+
     def test_an_anonymous_namespace_is_a_component_not_a_phrase(self):
         parts = signature("?anonymous@?A@N@@3HA")
         assert parts.special is None

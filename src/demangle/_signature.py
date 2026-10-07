@@ -384,7 +384,6 @@ _MSVC_LABELS = frozenset(
         "placement delete closure",
         "placement delete[] closure",
         "scalar deleting dtor",
-        "typeof",
         "vbase dtor",
         "vbtable",
         "vcall",
@@ -408,19 +407,32 @@ _MSVC_LEADING = frozenset(
 _MSVC_CONVENTIONS = frozenset({"__cdecl", "__stdcall", "__fastcall", "__thiscall", "__vectorcall", "__clrcall"})
 
 
-def _quoted_spans(text):
-    """The `` `...' `` spans of `text` that are not inside another or inside braces."""
-    stack = []
+def _label_spans(text):
+    """The `` `...' `` spans of `text` that could hold the symbol's own label.
+
+    Each comes with whether it sits inside parentheses. A span inside another, inside
+    braces or inside a template argument list belongs to a symbol the name mentions --
+    `` X<&const C::`vftable'>::x `` is `x` -- and is not one of them. The `<` and `>` of
+    an operator's own name, `` C::operator<`adjustor{4}' ``, open and close nothing.
+    """
     spans = []
+    angle = paren = brace = quoting = opened = 0
     for at, char in enumerate(text):
-        if char in "`{":
-            stack.append((char, at))
-        elif char == "'" and stack and stack[-1][0] == "`":
-            opened = stack.pop()
-            if not stack:
-                spans.append((opened[1], at))
-        elif char == "}" and stack and stack[-1][0] == "{":
-            stack.pop()
+        if quoting:
+            if char == "'":
+                quoting -= 1
+                if not quoting and not angle and not brace:
+                    spans.append((opened, at, paren > 0))
+            elif char == "`":
+                quoting += 1
+        elif char == "`":
+            quoting, opened = 1, at
+        elif char in "{}":
+            brace = brace + 1 if char == "{" else max(brace - 1, 0)
+        elif char in "()":
+            paren = paren + 1 if char == "(" else max(paren - 1, 0)
+        elif char in "<>" and not text[:at].rstrip("<>=-").endswith("operator"):
+            angle = angle + 1 if char == "<" else max(angle - 1, 0)
     return spans
 
 
@@ -478,7 +490,9 @@ def _msvc_special(reading, found):
     name. The label goes to `label` and the entity -- the class, the variable, the
     type -- stays, as it does for `vtable for Base`. `const`, the access words and the
     `{for `Base'}` path are about the label's table, not the entity, and are dropped.
-    False where the name holds no label.
+    A label is the name's own only where it ends the name, once that path is off, and
+    sits outside every template argument list: `` X<&const C::`vftable'>::x `` is a
+    static member, not a table. False where the name holds no label of its own.
     """
     if reading.scheme != "msvc":
         return False
@@ -492,13 +506,16 @@ def _msvc_special(reading, found):
         if initialiser.group(3):
             text = _declared_name(text)
     else:
-        while spans := _quoted_spans(text):
-            start, end = spans[-1]
+        while spans := _label_spans(text):
+            start, end, enclosed = spans[-1]
             word = _msvc_label(text[start + 1 : end])
-            if word is None:
+            rest = _without_payload(text[end + 1 :])
+            # A type descriptor's label stands where a declarator's name would, so it
+            # can sit inside the type: `` int (*`RTTI Type Descriptor')[2] ``.
+            if word is None or ((rest or enclosed) and not word.startswith("RTTI Type Descriptor")):
                 break
             label = label or word
-            text = text[:start] + _without_payload(text[end + 1 :])
+            text = text[:start] + rest
         if label is None:
             return False
         words = text.split(" ")
