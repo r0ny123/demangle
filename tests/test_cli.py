@@ -176,6 +176,15 @@ class TestArgumentErrors:
         assert status == 0
         assert out.strip() == "-_Z1fv"
 
+    def test_flags_may_follow_names(self, capsys):
+        """`demangle NAME... -p`, the way a command line grows when it is edited."""
+        status, out, _ = run(capsys, ["_Z1fv", "-b", "_Z1gv", "-p"])
+        assert (status, out) == (0, "_Z1fv ==> f\n_Z1gv ==> g\n")
+
+    def test_after_the_separator_nothing_is_a_flag(self, capsys):
+        _, out, _ = run(capsys, ["-p", "--", "-p", "_Z1fv"])
+        assert out == "-p\nf\n"
+
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as info:
             main(["--version"])

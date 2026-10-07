@@ -243,7 +243,7 @@ def _reconfigure(stream, **kwargs):
 
 def main(argv=None):
     parser = build_parser()
-    arguments = parser.parse_args(argv)
+    arguments = parser.parse_intermixed_args(argv)
 
     if arguments.list_languages:
         from .core.registry import available
