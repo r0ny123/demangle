@@ -686,6 +686,10 @@ def _from_parts(reading, found, node):
             # `Foundation.FileHandle.(_check in _2DF8)()`.
             parameters, at = _parameter_list(reading, parts, at, part[1:])
             region = "signed"
+        elif region == "name" and reading.scheme == "pascal" and part.startswith(" #"):
+            # A wrapper's entry number and the method it forwards to follow the
+            # interface it is about: `ICOMPARER #0: SYSTEM.TINTERFACEDOBJECT.QUERYINTERF`.
+            region = "signed"
         elif region != "result" and part.strip() in _RESULT_MARKERS:
             region, result = "result", ""
         elif region == "name":

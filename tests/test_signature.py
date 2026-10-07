@@ -534,9 +534,18 @@ class TestPascal:
         parts = signature("AVL_TREE_$$_init$")
         assert (parts.namespace, parts.base_name, parts.return_type) == ("AVL_TREE", "init", None)
 
+    def test_an_interface_wrapper_is_about_the_interface(self):
+        parts = signature(
+            "WRPR_$CHMREADER_$$_TCOMPARER$1$CRC04FD2F37_$_ICOMPARER$1$CRC04FD2F37_$_0_$_"
+            "SYSTEM$_$TINTERFACEDOBJECT_$__$$_QUERYINTERF$CRCBA546375"
+        )
+        assert parts.special == "interface wrapper for"
+        assert (parts.namespace, parts.base_name) == ("CHMREADER.TCOMPARER$1$CRC04FD2F37", "ICOMPARER$1$CRC04FD2F37")
+
     @pytest.mark.sweep
     @pytest.mark.parametrize("corpus", PASCAL_CORPORA)
     def test_the_name_holds_nothing_but_the_name(self, corpus, subtests):
+        """An `$indirect` symbol keeps the note the printer adds, `(indirect reference)`."""
         for mangled, _ in load_corpus(corpus):
             try:
                 parts = signature(mangled)
@@ -549,7 +558,8 @@ class TestPascal:
                 assert parts.calling_convention is None
                 for field in (parts.qualified_name, parts.namespace, parts.base_name):
                     assert not set(field.split()) & DELPHI_PREFIXES
-                    assert parts.special or "(" not in field
+                    assert "(" not in field.removesuffix(" (indirect reference)")
+                    assert " #" not in field
 
 
 class TestTheSchemesThatCarryOnlyAPath:
