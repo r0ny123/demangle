@@ -761,9 +761,11 @@ def _run(names, arguments):
     """Each NAME in turn, and standard input wherever one is `-`."""
     answer = _answerer(arguments, _limits_from(arguments))
     status = 0
-    for from_stdin, group in itertools.groupby(names, key="-".__eq__):
+    for from_stdin, group in itertools.groupby(names, key=lambda name: name == "-"):
         if not from_stdin:
-            ran = _run_names([list(group)], arguments, answer)
+            # An argument too: `$(cut -f1 types.txt)` from a CRLF file still ends in `\r`.
+            group = [name.rstrip("\r\n") for name in group] if arguments.types else list(group)
+            ran = _run_names([group], arguments, answer)
         elif arguments.null:
             records = _batches(sys.stdin, "\0")
             ran = _run_names(([record.removesuffix("\0") for record in batch] for batch in records), arguments, answer)

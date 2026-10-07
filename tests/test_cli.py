@@ -767,6 +767,10 @@ class TestTypeFlag:
         _, out, _ = run(capsys, ["--types", "-l", "msvc"], stdin="PEAX\r\n", monkeypatch=monkeypatch)
         assert out == "void *\n"
 
+    def test_an_argument_ending_in_a_line_end_reads_the_same(self, capsys):
+        _, out, _ = run(capsys, ["--types", "-l", "itanium", "Pi\r", "Pc\n", "Pv\r\n"])
+        assert out == "int*\nchar*\nvoid*\n"
+
 
 class TestSimplifiedFlag:
     """`--simplified`: Swift names the way Xcode shows them."""
