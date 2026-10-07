@@ -14,6 +14,8 @@ import pytest
 
 import demangle
 
+from .conftest import corpus_files, load_corpus
+
 
 class TestBestEffortContract:
     """`demangle()` never raises and never loses information."""
@@ -90,6 +92,72 @@ class TestDetection:
 
     def test_c_plus_plus_symbols_are_not_claimed_by_rust(self):
         assert demangle.detect("_ZN3Foo3barEv") == "itanium"
+
+    @pytest.mark.parametrize(
+        "name", [".refptr.foo", ".text", ".L123", ".constprop.0", "/Users/me/build/foo.o", "/home/me/x/y.F"]
+    )
+    def test_a_section_label_or_file_is_not_claimed(self, name):
+        assert demangle.detect(name) is None
+        assert demangle.demangle(name) == name
+
+    @pytest.mark.sweep
+    def test_tightening_msvc_and_go_changed_no_corpus_name_s_answer(self, monkeypatch):
+        """Each claim was narrowed by a test of its own; with that test made to pass every
+        name, as it did before, every corpus name is answered as it is now."""
+        from demangle.core.registry import get
+
+        names = [mangled for corpus in corpus_files() for mangled, _ in load_corpus(corpus)]
+        assert len(names) > 90_000
+        now = [demangle.detect(name) for name in names]
+        get("msvc"), get("go")
+        monkeypatch.setattr("demangle.schemes.msvc._opens_a_type", lambda name: True)
+        monkeypatch.setattr("demangle.schemes.go._names_a_file", lambda name, dot: False)
+        before = [demangle.detect(name) for name in names]
+        assert [
+            (name, was, answer) for name, was, answer in zip(names, before, now, strict=True) if was != answer
+        ] == []
+
+
+class TestStrictDetection:
+    """`detect(name, strict=True)`: which scheme reads the name, not which claims it."""
+
+    @pytest.mark.parametrize(
+        "name,claimed",
+        [("_ZN3Foo", "itanium"), ("?nonsense@@", "msvc"), ("_D88", "d"), ("_TtZZ", "swift")],
+    )
+    def test_a_name_claimed_but_unreadable_is_none(self, name, claimed):
+        assert demangle.detect(name) == claimed
+        assert demangle.detect(name, strict=True) is None
+        assert demangle.detectb(name.encode(), strict=True) is None
+
+    @pytest.mark.parametrize("name", ["_ZN3foo3barEv", "?f@@YAXH@Z", "$s10Foundation4DataV5countSivg", ".PEAX"])
+    def test_a_readable_name_is_its_reader_s(self, name):
+        assert demangle.detect(name, strict=True) == demangle.detect(name)
+
+    def test_it_reads_under_the_allow_list(self):
+        rust = "_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E"
+        assert demangle.detect(rust, strict=True) == "rust"
+        assert demangle.detect(rust, language=["itanium"], strict=True) == "itanium"
+        assert demangle.detect(rust, language=["swift", "msvc"], strict=True) is None
+
+    def test_one_name_forces_as_it_does_for_demangle(self):
+        assert demangle.detect("PyInit__lldb", language="gnuv2") is None
+        assert demangle.detect("PyInit__lldb", language="gnuv2", strict=True) == "gnuv2"
+        assert demangle.detect("PyInit__lldb", language=("gnuv2",), strict=True) is None
+
+    def test_it_never_raises_over_the_name(self):
+        for value in (None, b"_Z1fv", "", "_" * 500, "_Z" + "P" * 300 + "i", "_ZN" * 100_000):
+            assert demangle.detect(value, strict=True) in (None, "itanium")  # ty: ignore[invalid-argument-type]
+
+    @pytest.mark.sweep
+    @pytest.mark.parametrize("corpus", corpus_files())
+    def test_it_names_the_scheme_demangle_reads_with(self, corpus):
+        for mangled, _ in load_corpus(corpus):
+            reader = demangle.detect(mangled, strict=True)
+            if reader is None:
+                assert demangle.demangle(mangled) == mangled, mangled
+            else:
+                assert demangle.demangle(mangled, language=reader) == demangle.demangle(mangled), mangled
 
 
 class TestStyles:

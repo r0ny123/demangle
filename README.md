@@ -172,6 +172,14 @@ a line at a time, for pipes.
 ['f()', 'main']
 ```
 
+`detect()` reports what a name looks like, which is cheap; `strict=True` reports which
+scheme actually reads it, which costs a parse:
+
+```python
+>>> demangle.detect("_ZN3Foo"), demangle.detect("_ZN3Foo", strict=True)
+('itanium', None)
+```
+
 `language` forces one scheme by name. A sequence of names is an allow-list instead:
 detection as usual, among those schemes alone, so a tool that knows a Mach-O image holds
 C++ and Swift leaves its Objective-C metadata as the linker wrote it:

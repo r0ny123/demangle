@@ -19,6 +19,20 @@ the reference demanglers, and a **Performance** section.
   names; an empty sequence, or one naming an unknown scheme, is a `ValueError`. A
   sequence always detects, so `("gnuv2",)` is not `"gnuv2"`, which forces the scheme
   on a name its detection declines.
+- **`detect(name, strict=True)`**, and `detectb`'s, names the scheme that *reads* the
+  name -- the one `demangle()` would use -- or None, rather than the one whose cheap
+  claim it matches: `detect("_ZN3Foo")` is `itanium`, and with `strict=True` it is
+  None. It costs a parse.
+
+### Changed
+
+- **`detect()` no longer claims section names and file paths.** MSVC claims a
+  `.`-prefixed name only where what follows the dot opens as a type encoding does
+  (`.?AV`, `.PEA`, a builtin standing alone), so `.refptr.foo`, `.L123`, `.ARM.exidx`
+  and `.CRT$XCU` are no longer `msvc`; Go no longer takes an absolute path
+  (`/Users/me/build/foo.o`, `C:\...`) or a `src/foo.c` file name for an import path.
+  `demangle()` returns what it did -- the MSVC names never parsed, and Go spelled a
+  path as it stood -- and every corpus name is detected as before.
 
 ### Performance
 

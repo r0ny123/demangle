@@ -669,7 +669,12 @@ def _claims(plugin, mangled, base):
         return False
 
 
-def detect(mangled: str, *, language: str | Sequence[str] | None = None) -> str | None:
+def detect(
+    mangled: str,
+    *,
+    language: str | Sequence[str] | None = None,
+    strict: bool = False,
+) -> str | None:
     """Name the scheme `mangled` appears to use, or None.
 
     Most schemes are recognised by a prefix, so this reports what the name looks like,
@@ -678,8 +683,21 @@ def detect(mangled: str, *, language: str | Sequence[str] | None = None) -> str 
     Rust name written without its underscore (a bare `ZN...`), which is read up to
     `max_input` to decide.
 
+    `strict=True` asks the other question: which scheme *reads* the name. The answer is
+    the one `demangle()` would use, under the default style and limits -- the first in
+    detection order that claims the name and then parses it -- or None where it would
+    hand the name back. It costs a parse, which is why it is not the default:
+
+        >>> import demangle
+        >>> demangle.detect("_ZN3Foo")
+        'itanium'
+        >>> demangle.detect("_ZN3Foo", strict=True) is None
+        True
+
     `language` narrows the question to the schemes it names, one or a sequence: the
-    answer is the first of them, in the usual order, that claims the name.
+    answer is the first of them, in the usual order, that claims the name. With
+    `strict`, one name forces that scheme as it does for `demangle()`, and the answer
+    is whether it reads the name.
 
     Never raises over the name: like `demangle()`, it is called on every symbol in a
     table. A `language` that names nothing is the calling code's mistake, and a
@@ -692,6 +710,12 @@ def detect(mangled: str, *, language: str | Sequence[str] | None = None) -> str 
         return None
     if not mangled:
         return None
+    if strict:
+        resolved = get_style(DEFAULT_STYLE)
+        try:
+            return _read(mangled, resolved.spelling_builder, language, resolved, DEFAULT_LIMITS)[0].name
+        except DemanglingError:
+            return None
     tried = candidates(mangled) if language is None else _among(mangled, allowed)
     if not tried:
         return None
@@ -804,13 +828,18 @@ def parseb_type(
     return parse_type(_decode(mangled), language=language, style=style, limits=limits)
 
 
-def detectb(mangled: bytes, *, language: str | Sequence[str] | None = None) -> str | None:
+def detectb(
+    mangled: bytes,
+    *,
+    language: str | Sequence[str] | None = None,
+    strict: bool = False,
+) -> str | None:
     """`detect()` over bytes. The scheme's name is a `str`; it is this package's own."""
     if not isinstance(mangled, _BYTES_LIKE):
         # Refused as `detect` refuses it, whatever the name is.
         detect("", language=language)
         return None
-    return detect(bytes(mangled).decode(_BYTES_ENCODING, _BYTES_ERRORS), language=language)
+    return detect(bytes(mangled).decode(_BYTES_ENCODING, _BYTES_ERRORS), language=language, strict=strict)
 
 
 def demangle_all(
