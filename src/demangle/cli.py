@@ -33,7 +33,9 @@ import codecs
 import contextlib
 import dataclasses
 import difflib
+import errno
 import functools
+import io
 import itertools
 import json
 import os
@@ -454,14 +456,20 @@ def main(argv=None):
         # Inside the `try`: output short enough to sit in the buffer meets a closed pipe here.
         sys.stdout.flush()
         return status
-    except BrokenPipeError:
+    except OSError as exc:
         # `demangle | head` closes the pipe. Caught outside the loop (one error, not one per
         # name); stdout goes to the null device so the shutdown flush does not raise again.
+        if not _closed_pipe(exc):
+            raise
         _silence_stdout()
         return 0
     except KeyboardInterrupt:
         # 128 + SIGINT, what a shell reports for a command Ctrl-C stopped.
         return 130
+
+
+#: The keys that end what is typed at a terminal.
+_END_OF_INPUT = "Ctrl-Z then Enter" if sys.platform == "win32" else "Ctrl-D"
 
 
 def _stdin_problem(named):
@@ -482,7 +490,7 @@ def _stdin_problem(named):
     if terminal:
         return (
             "no NAME given, and standard input is a terminal; give names as arguments, "
-            "pipe them in (nm -a libfoo.so | demangle), or give - to type them, ending with Ctrl-D"
+            f"pipe them in (nm -a libfoo.so | demangle), or give - to type them, ending with {_END_OF_INPUT}"
         )
     return None
 
@@ -511,6 +519,16 @@ def _language_from(parser, text):
             guess = f"did you mean {close[0]!r}? " if close else ""
             parser.error(f"unknown language {name!r}; {guess}demangle --list-languages lists them")
     return tuple(names) if listed else names[0]
+
+
+def _closed_pipe(exc):
+    """Whether `exc` is a write to a pipe its reader has closed.
+
+    Windows reports some of those as `EINVAL` rather than `EPIPE`.
+    """
+    if isinstance(exc, BrokenPipeError):
+        return True
+    return sys.platform == "win32" and exc.errno == errno.EINVAL
 
 
 def _silence_stdout():
@@ -702,7 +720,7 @@ def _batches(stream, separator):
     none, so a filter copies the input through exactly.
     """
     open_piece = []
-    for text in _chunks(stream):
+    for text in _chunks(stream, lines=separator == "\n"):
         *ended, rest = text.split(separator)
         if ended:
             ended[0] = "".join(open_piece) + ended[0]
@@ -714,13 +732,17 @@ def _batches(stream, separator):
         yield ["".join(open_piece)]
 
 
-def _chunks(stream):
+def _chunks(stream, lines):
     """The text of `stream`, as it arrives.
 
     Read from the bytes beneath the text stream with `read1`, which returns what is
     there rather than waiting to fill a buffer: a line typed at a terminal, or written
     by a slow producer, is answered before the next one comes. Undecodable bytes are
     carried as lone surrogates and written back as the same bytes.
+
+    On Windows a line's `\\r\\n` is read as `\\n`, as the text stream would have read it,
+    because standard output writes every `\\n` as `\\r\\n`: kept, it would come out
+    `\\r\\r\\n`.
     """
     binary = getattr(stream, "buffer", None)
     if not hasattr(binary, "read1"):
@@ -728,6 +750,8 @@ def _chunks(stream):
         yield from iter(functools.partial(stream.read, _READ_SIZE), "")
         return
     decoder = codecs.getincrementaldecoder(stream.encoding or "utf-8")("surrogateescape")
+    if lines and sys.platform == "win32":
+        decoder = io.IncrementalNewlineDecoder(decoder, translate=True)
     for chunk in iter(functools.partial(binary.read1, _READ_SIZE), b""):
         yield decoder.decode(chunk)
     yield decoder.decode(b"", final=True)

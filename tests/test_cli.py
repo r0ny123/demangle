@@ -4,13 +4,15 @@
 than through a subprocess -- which keeps these fast enough to be worth having.
 """
 
+import errno
 import io
 import json
+import os
 import pathlib
 import re
-import select
 import subprocess
 import sys
+import threading
 
 import pytest
 
@@ -25,7 +27,9 @@ SOURCE = pathlib.Path(__file__).resolve().parent.parent / "src"
 
 def command(*argv, **kwargs):
     """`python -m demangle` in a fresh interpreter, for what only a real process shows."""
-    return subprocess.Popen([sys.executable, "-m", "demangle", *argv], env={"PYTHONPATH": str(SOURCE)}, **kwargs)
+    return subprocess.Popen(
+        [sys.executable, "-m", "demangle", *argv], env={**os.environ, "PYTHONPATH": str(SOURCE)}, **kwargs
+    )
 
 
 def run(capsys, argv, stdin=None, monkeypatch=None):
@@ -316,10 +320,31 @@ class TestPipeline:
         monkeypatch.setattr("sys.stdout.fileno", lambda: 1, raising=False)
         assert main(["_Z1fv"]) == 0
 
+    def test_windows_einval_on_a_closed_pipe_is_a_closed_pipe(self, monkeypatch):
+        class ClosedOnFlush(io.StringIO):
+            def flush(self):
+                raise OSError(errno.EINVAL, "Invalid argument")
+
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr("sys.stdout", ClosedOnFlush())
+        monkeypatch.setattr("os.dup2", lambda *a: None)
+        monkeypatch.setattr("sys.stdout.fileno", lambda: 1, raising=False)
+        assert main(["_Z1fv"]) == 0
+
+    def test_einval_elsewhere_is_not_swallowed(self, monkeypatch):
+        class Failing(io.StringIO):
+            def flush(self):
+                raise OSError(errno.EINVAL, "Invalid argument")
+
+        monkeypatch.setattr("sys.platform", "linux")
+        monkeypatch.setattr("sys.stdout", Failing())
+        with pytest.raises(OSError):
+            main(["_Z1fv"])
+
     def test_head_on_a_long_pipe_ends_quietly(self, tmp_path):
         """`demangle < table | head -1`, through a real pipe, so SIGPIPE's path is the real one."""
         table = tmp_path / "table.txt"
-        table.write_text(f"0000 T {VECTOR}\n" * 200_000)
+        table.write_bytes(f"0000 T {VECTOR}\n".encode() * 200_000)
         with table.open("rb") as names:
             process = command(stdin=names, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             assert process.stdout is not None and process.stderr is not None
@@ -327,7 +352,7 @@ class TestPipeline:
             process.stdout.close()
             err = process.stderr.read()
             process.wait(timeout=60)
-        assert first == f"0000 T {VECTOR_SPELLED}\n".encode()
+        assert first == f"0000 T {VECTOR_SPELLED}{os.linesep}".encode()
         assert (process.returncode, err) == (0, b"")
 
     def test_each_line_is_answered_before_the_next_arrives(self):
@@ -337,9 +362,13 @@ class TestPipeline:
         try:
             process.stdin.write(b"at _Z1fv\n")
             process.stdin.flush()
-            ready, _, _ = select.select([process.stdout], [], [], 60)
-            assert ready, "the first line was not answered while the input stayed open"
-            assert process.stdout.readline() == b"at f()\n"
+            answer = []
+            stdout = process.stdout
+            reader = threading.Thread(target=lambda: answer.append(stdout.readline()), daemon=True)
+            reader.start()
+            reader.join(60)
+            assert answer, "the first line was not answered while the input stayed open"
+            assert answer == [f"at f(){os.linesep}".encode()]
         finally:
             process.stdin.close()
             process.wait(timeout=60)
@@ -414,6 +443,15 @@ class TestStandardInput:
             process = command(stdin=names, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             out, err = process.communicate(timeout=60)
         assert (out, err) == (b"\xff f()\r\nno newline at the end", b"")
+
+    def test_crlf_comes_back_crlf_where_standard_output_writes_newlines_as_crlf(self, monkeypatch):
+        """Windows' streams, in-process: `\\n` is written `\\r\\n`, so `\\r\\n` must not be."""
+        stdout = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", newline="\r\n")
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"T _Z1fv\r\nx\r\ny\n"), encoding="utf-8"))
+        monkeypatch.setattr("sys.stdout", stdout)
+        assert main([]) == 0
+        assert stdout.buffer.getvalue() == b"T f()\r\nx\r\ny\r\n"
 
 
 class TestTheModule:
