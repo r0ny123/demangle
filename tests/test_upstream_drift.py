@@ -27,9 +27,9 @@ class FakeFetch:
 
 
 class TestLibcxxabi:
-    def test_reads_escapes_and_a_vector_split_over_lines(self):
+    def test_reads_escapes_and_a_vector_split_over_lines_and_skips_commented_ones(self):
         text = (
-            '// clang-format off\n{"_Z1A", "A"},\n{"_Z1fPKc", "f(char const*)"},\n'
+            '// clang-format off\n{"_Z1A", "A"},\n// {"_Z1B", "B"},\n{"_Z1fPKc", "f(char const*)"},\n'
             '{"_ZN1a1bE",\n "a::b"},\n{"_Z1gPFvvE", "g(void (*)())"},\n{"_Z1q", "\\"q\\" \\\\ \\x41"},\n'
         )
         pairs = drift.libcxxabi(FakeFetch({"DemangleTestCases.inc": text}))
@@ -43,11 +43,13 @@ class TestLibcxxabi:
 
 
 class TestMsvc:
-    def test_pairs_a_name_with_the_check_line_after_it(self):
-        text = "; RUN: llvm-undname < %s | FileCheck %s\n\n; CHECK-NOT: Invalid mangled name\n\n?x@@3HA\n; CHECK: int x\n\n?y@@3PEAHEA\n; CHECK: int *y\n"
+    def test_pairs_check_lines_with_names_in_order_as_filecheck_does(self):
+        text = (
+            "; RUN: llvm-undname < %s | FileCheck %s\n\n; CHECK-NOT: Invalid mangled name\n\n"
+            "?x@@3HA\n?y@@3PEAHEA\n?z@@3HA\n\n; CHECK: int x\n; CHECK: int *y\n; CHECK: not what z is\n"
+        )
         pairs = drift.msvc(FakeFetch({"Demangle": '[{"name": "ms-basic.test"}]', "ms-basic.test": text}))
-        assert ("?x@@3HA", "int x") in pairs
-        assert ("?y@@3PEAHEA", "int *y") in pairs
+        assert pairs == [("?x@@3HA", "int x"), ("?y@@3PEAHEA", "int *y"), ("?z@@3HA", "not what z is")]
 
     def test_check_lines_match_as_filecheck_does(self):
         assert drift._contains("void __cdecl f(int,   int)", "public: void __cdecl f(int, int)")
