@@ -187,6 +187,20 @@ class TestArgumentErrors:
         _, out, _ = run(capsys, ["-p", "--", "-p", "_Z1fv"])
         assert out == "-p\nf\n"
 
+    @pytest.mark.parametrize(
+        ("argv", "expected"),
+        [
+            (["--", "-p"], "-p\n"),
+            (["--", "-_Z1fv"], "-_Z1fv\n"),
+            (["--types", "-l", "itanium", "--", "Pi", "-x"], "int*\n-x\n"),
+            (["_Z1fv", "--", "--strict"], "f()\n--strict\n"),
+            (["--", "--"], "--\n"),
+        ],
+    )
+    def test_a_name_after_the_separator_that_looks_like_a_flag_is_a_name(self, capsys, argv, expected):
+        status, out, _ = run(capsys, argv)
+        assert (status, out) == (0, expected)
+
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as info:
             main(["--version"])

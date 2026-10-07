@@ -372,9 +372,25 @@ def _reconfigure(stream, **kwargs):
             reconfigure(**kwargs)
 
 
+def _parse(parser, argv):
+    """The command line, flags and names in any order, and nothing after `--` a flag.
+
+    `--` is cut off here rather than left to `parse_intermixed_args`, which on 3.11 and
+    3.12 still reads `-p` after it as a flag.
+    """
+    argv = list(sys.argv[1:] if argv is None else argv)
+    rest = []
+    if "--" in argv:
+        cut = argv.index("--")
+        argv, rest = argv[:cut], argv[cut + 1 :]
+    arguments = parser.parse_intermixed_args(argv)
+    arguments.names += rest
+    return arguments
+
+
 def main(argv=None):
     parser = build_parser()
-    arguments = parser.parse_intermixed_args(argv)
+    arguments = _parse(parser, argv)
 
     if arguments.list_languages:
         from .core.registry import available
