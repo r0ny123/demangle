@@ -8,6 +8,7 @@ one of them is stable ground that later versions can build on without breaking:
     parse(name)             a tree to inspect                              -- raises
     detect(name)            which scheme, if any
     demangle_all(names)     the batch form, cached
+    preload(*languages)     import schemes now, not on first use
 
     demangle_type(enc, language=...)  a bare type encoding, spelled       -- raises
     parse_type(enc, language=...)     a bare type encoding, as a tree     -- raises
@@ -68,6 +69,7 @@ __all__ = [
     "parse_type",
     "parseb",
     "parseb_type",
+    "preload",
     "style",
     "styles",
 ]
@@ -872,6 +874,34 @@ def demangle_all(
 def languages() -> list[str]:
     """Registered language names, including any third-party plugins."""
     return names()
+
+
+def preload(*languages: str) -> None:
+    """Import schemes now rather than when a name first reaches them.
+
+    A built-in scheme is imported on first use, so a script reading one name pays for
+    the scheme that name needs and no other -- and the first MSVC name a process reads
+    pays about 7 ms for the import. A long-running service would rather pay at start-up:
+
+        >>> import demangle
+        >>> demangle.preload("itanium", "msvc")
+        >>> demangle.preload()
+
+    Names, or aliases, import those schemes; none imports every built-in. The order and
+    every answer are the same either way: this moves the cost, nothing else.
+
+    Raises:
+        ValueError: a name is not a registered language. Nothing is imported then.
+    """
+    for language in languages:
+        try:
+            canonical(language)
+        except KeyError:
+            _refuse_language(language)
+    if not languages:
+        _registry.available()
+    for language in languages:
+        get(language)
 
 
 def styles() -> list[str]:

@@ -39,6 +39,7 @@ from .api import (
     parse_type,
     parseb,
     parseb_type,
+    preload,
     style,
     styles,
 )
@@ -94,6 +95,7 @@ __all__ = [
     "parse_type",
     "parseb",
     "parseb_type",
+    "preload",
     "register_language",
     "register_style",
     "signature",

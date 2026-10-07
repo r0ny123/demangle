@@ -23,6 +23,10 @@ the reference demanglers, and a **Performance** section.
   name -- the one `demangle()` would use -- or None, rather than the one whose cheap
   claim it matches: `detect("_ZN3Foo")` is `itanium`, and with `strict=True` it is
   None. It costs a parse.
+- **`preload(*languages)`** imports schemes now rather than when a name first reaches
+  them -- about 7 ms for MSVC -- so a long-running service pays at start-up. Names or
+  aliases import those schemes; none imports every built-in. An unknown name is a
+  `ValueError`, and nothing is imported.
 
 ### Changed
 

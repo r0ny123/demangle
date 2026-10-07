@@ -635,10 +635,9 @@ class TestCacheStatistics:
         assert run.stdout.split() == ["1", "1"]
 
 
-def _schemes_imported_by(script):
-    """The scheme packages imported after `script` runs in a fresh interpreter."""
+def _output_of(script):
+    """What `script` prints in a fresh interpreter, where no scheme has been imported."""
     source = pathlib.Path(__file__).resolve().parent.parent / "src"
-    script += "\nprint(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
     run = subprocess.run(
         [sys.executable, "-c", "import sys, demangle\n" + script],
         capture_output=True,
@@ -646,7 +645,13 @@ def _schemes_imported_by(script):
         check=True,
         env={"PYTHONPATH": str(source)},
     )
-    return run.stdout.split()
+    return run.stdout
+
+
+def _schemes_imported_by(script):
+    """The scheme packages imported after `script` runs in a fresh interpreter."""
+    script += "\nprint(*sorted(m.split('.')[2] for m in sys.modules if m.count('.') == 2 and '.schemes.' in m))\n"
+    return _output_of(script).split()
 
 
 class TestStylesImportOnlyWhatIsUsed:
@@ -724,6 +729,55 @@ class TestStylesImportOnlyWhatIsUsed:
                 thread.join()
             assert len(set(map(id, (pair[0] for pair in seen)))) == 1
             assert len(set(map(id, (pair[1] for pair in seen)))) == 1
+
+
+class TestPreload:
+    """`preload()` moves the import of a scheme to start-up; it changes nothing else."""
+
+    def test_names_import_those_schemes_and_no_other(self):
+        assert _schemes_imported_by("demangle.preload('msvc', 'gnu')") == ["itanium", "msvc"]
+
+    def test_no_names_imports_every_built_in(self):
+        from demangle.core.registry import _BUILTIN_NAMES
+
+        assert _schemes_imported_by("demangle.preload()") == sorted(_BUILTIN_NAMES)
+
+    def test_an_unknown_name_is_refused_before_anything_is_imported(self):
+        loaded = _schemes_imported_by(
+            "try:\n    demangle.preload('swift', 'cobol')\nexcept ValueError as error:\n    assert 'cobol' in str(error)"
+        )
+        assert loaded == []
+
+    def test_a_preloaded_scheme_answers_as_a_lazy_one_does(self):
+        script = (
+            "print(demangle.demangle('?f@@YAXH@Z'), demangle.detect('_RNvC6_123foo3bar'),"
+            " [plugin.name for plugin in demangle.core.registry.candidates('x__$/')])\n"
+        )
+        lazy = _output_of(script)
+        assert lazy == _output_of("demangle.preload()\n" + script)
+        assert lazy.startswith("void __cdecl f(int) rust ")
+
+    def test_a_service_s_start_up_pays_for_the_import_and_its_first_name_does_not(self):
+        assert _schemes_imported_by(
+            "demangle.preload('msvc')\n"
+            "before = set(sys.modules)\n"
+            "demangle.demangle('?f@@YAXH@Z')\n"
+            "assert not [m for m in set(sys.modules) - before if '.schemes.' in m], sorted(set(sys.modules) - before)"
+        ) == ["msvc"]
+
+    def test_it_returns_nothing(self):
+        assert demangle.preload("itanium") is None
+
+
+class TestDocstringExamples:
+    def test_every_example_in_the_api_s_docstrings_is_what_the_code_does(self):
+        import doctest
+
+        from demangle import api
+
+        results = doctest.testmod(api)
+        assert results.attempted
+        assert not results.failed
 
 
 class TestIntrospection:

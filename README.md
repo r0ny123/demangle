@@ -206,6 +206,16 @@ b'foo::bar()'
 `parseb_type` go with it. Undecodable bytes survive the round trip: `demangleb` hands
 back exactly what it was given, byte for byte, rather than raising.
 
+### Paying for imports at start-up
+
+Each scheme is imported the first time a name needs it, so a script reading one MSVC
+name never loads the Swift reader. A long-running service would rather pay that once,
+before its first request:
+
+```python
+>>> demangle.preload("itanium", "msvc")    # or preload() for every scheme
+```
+
 ### The tree as data
 
 `parse()` returns a walkable tree; `to_dict()` turns it into plain data, `--json` prints
