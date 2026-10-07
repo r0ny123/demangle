@@ -480,23 +480,27 @@ class _Demangler:
             else:
                 base = operator
             args = []
-            # "$S", "$$V" and "$$$V" spell an empty pack and "$$Z" separates arguments:
-            # none contributes an argument.
-            while not self.eat("@"):
-                if self.eof():
+            text, length = self.text, self.length
+            while True:
+                pos = self.pos
+                if pos >= length:
                     raise _Bail
-                if self.text.startswith("$S", self.pos):
-                    self.pos += 2
-                    continue
-                if self.text.startswith("$$V", self.pos) and not self.text.startswith("$$$V", self.pos):
-                    self.pos += 3
-                    continue
-                if self.text.startswith("$$$V", self.pos):
-                    self.pos += 4
-                    continue
-                if self.text.startswith("$$Z", self.pos):
-                    self.pos += 3
-                    continue
+                char = text[pos]
+                if char == "@":
+                    self.pos = pos + 1
+                    break
+                if char == "$":
+                    # "$S", "$$V" and "$$$V" spell an empty pack and "$$Z" separates
+                    # arguments: none contributes an argument.
+                    if text.startswith("$S", pos):
+                        self.pos = pos + 2
+                        continue
+                    if text.startswith("$$$V", pos):
+                        self.pos = pos + 4
+                        continue
+                    if text.startswith(("$$V", "$$Z"), pos):
+                        self.pos = pos + 3
+                        continue
                 self.at_argument = True
                 args.append(self.rendered(self.type()))
             return f"{base}<{', '.join(args)}>"
@@ -517,12 +521,13 @@ class _Demangler:
             self.at_symbol_name = False
         char = self.peek()
         if char in string.digits:
-            index = int(self.take())
+            self.pos += 1
+            index = int(char)
             if index >= len(self.name_backrefs):
                 raise _Bail
             return self.name_backrefs[index], None
         if char == "?":
-            self.take()
+            self.pos += 1
             if self.eat("$"):
                 if self.peek() in string.digits:
                     raise _Bail
@@ -894,11 +899,14 @@ class _Demangler:
             # a type descriptor has read the whole name, the type it describes included
             return first, False, special_form
         scopes = []
+        text, length = self.text, self.length
         while True:
-            if self.eat("@"):
-                break
-            if self.eof():
+            pos = self.pos
+            if pos >= length:
                 raise _Bail
+            if text[pos] == "@":
+                self.pos = pos + 1
+                break
             scopes.append(self.nameFragment(False)[0])
         scopes.reverse()
         if isinstance(first, _Conversion):
