@@ -8,6 +8,14 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Performance
+
+- **MSVC demangling is about 12% faster**, with 18% fewer Python calls per name: the
+  loops over a qualified name's scopes and a template's arguments test the cursor
+  once per step instead of through `eat`, `eof` and four `startswith` calls, and a
+  back-reference digit is read where it was already looked at. Byte-identical output
+  on every MSVC corpus.
+
 ## [0.4.0] - 2026-10-03
 
 ### Added
