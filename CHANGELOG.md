@@ -44,6 +44,20 @@ the reference demanglers, and a **Performance** section.
   `NSString(Extra)`. The tree places a name after the label it follows, so the
   selector of `.objc_sel_name_b` is no longer found inside `Objective-C`.
 
+### Fixed
+
+- **`signature()` no longer leaves a spelled prefix in the name.** A Delphi name's
+  calling convention, result and label (`__fastcall`, `bool`, `__linkproc__`,
+  `__tpdsc__`) were read as part of the qualified name, which was then not split:
+  `@Unit@TForm1@Button1Click$qqrp14System@TObject` is now `Unit::TForm1` and
+  `Button1Click` with `calling_convention="__fastcall"`, a template function's result
+  is `return_type`, and an `operator` is split before its own spelling. MSVC's labels
+  (`` `vftable' ``, `` `RTTI Type Descriptor' ``, `` `scalar deleting dtor' ``,
+  `` `dynamic initializer for 'x'' ``, `` `adjustor{N}' ``) are `special` and the class or
+  variable they are about is the name, as `vtable for` is for Itanium; `` `anonymous
+  namespace' `` and the function a local static lives in split as scopes instead of
+  leaving everything before the last `::` in the base name.
+
 ### Performance
 
 - **MSVC demangling is about 12% faster**, with 18% fewer Python calls per name: the

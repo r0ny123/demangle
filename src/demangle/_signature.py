@@ -35,9 +35,9 @@ be filled in later:
   writes one, cv- and ref-qualifiers, and for MSVC the calling convention and the
   declared access.
 * Swift encodes the whole function type, so parameters, result and `throws` all come
-  back. D, Free Pascal and Delphi encode their parameter types, and Free Pascal a
-  function's result; JNI encodes them for an overloaded method, the one form that needs
-  them.
+  back. D, Free Pascal and Delphi encode their parameter types, Free Pascal a function's
+  result, and Delphi the result of a template function and its calling convention; JNI
+  encodes them for an overloaded method, the one form that needs them.
 * Rust, Go, Nim, Ada and Objective-C encode a path, or a class and a selector, and no
   signature at all. `parameters` is `None` for them, which is not the same as `()`: one
   says "the name does not carry this", the other says "it carries an empty list".
@@ -45,6 +45,7 @@ be filled in later:
 The `None`s are the point. A field that guesses is worse than a field that declines.
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -125,7 +126,10 @@ class Signature:
     """
 
     calling_convention: str | None
-    """`__cdecl`, `__stdcall`, ... . MSVC only; no other scheme writes one."""
+    """`__cdecl`, `__stdcall`, ... . MSVC and Delphi; no other scheme writes one.
+
+    Delphi's `__saveregs` is kept with it, after the convention it modifies.
+    """
 
     qualifiers: tuple[str, ...] = ()
     """What qualifies the declaration rather than its type.
@@ -222,6 +226,11 @@ class _Reading(NamedTuple):
     separator: str
     style: str | Style | None
 
+    @property
+    def quoted(self):
+        """Whether `` `...' `` encloses a span, as MSVC writes its scopes and labels."""
+        return self.scheme == "msvc"
+
     def spell(self, node):
         return node.spell(style=self.style)
 
@@ -255,7 +264,7 @@ def _extract(reading, tree):
         special = found["label"]
     namespace, base = found["namespace"], found["base_name"]
     if namespace is None:
-        namespace, base = _split_last(found["qualified_name"], reading.separator)
+        namespace, base = _split_last(found["qualified_name"], reading.separator, reading.quoted)
 
     return Signature(
         language=reading.scheme,
@@ -306,6 +315,7 @@ def _parts_of(reading, tree):
 
     if kind == "declaration":
         _name_from(reading, found, tree.declarator)
+        _msvc_special(reading, found)
         lead = tree.prefix + getattr(tree, "access", "") + getattr(tree, "member_type", "")
         found["qualifiers"] = _leading(lead) + _trailing(tree.suffix)
         declared = tree.type
@@ -340,11 +350,148 @@ def _parts_of(reading, tree):
     if _from_parts(reading, found, tree):
         return found
 
+    if _msvc_special(reading, found):
+        # Nothing but the label's own function-ness says what it is: a vcall thunk is
+        # code, and a table or a descriptor is an object.
+        found["is_function"] = found["label"] == "vcall"
+        found["is_data"] = not found["is_function"]
+        return found
+
     if kind == "variable":
         # A plugin tree that names its kinds but is not built from fragments.
         found["is_data"] = True
         found["is_function"] = False
     return found
+
+
+#: What MSVC writes between `` ` `` and `'` to say what a symbol is about, rather than what it is
+#: called. `adjustor` and its kin are a thunk's own label and sit after the one they adjust.
+_MSVC_LABELS = frozenset(
+    {
+        "adjustor",
+        "copy ctor closure",
+        "default ctor closure",
+        "eh vector ctor iterator",
+        "eh vector dtor iterator",
+        "eh vector vbase ctor iterator",
+        "local static guard",
+        "local static thread guard",
+        "local vftable",
+        "local vftable ctor closure",
+        "placement delete closure",
+        "placement delete[] closure",
+        "scalar deleting dtor",
+        "typeof",
+        "vbase dtor",
+        "vbtable",
+        "vcall",
+        "vector ctor iterator",
+        "vector deleting dtor",
+        "vector dtor iterator",
+        "vector vbase ctor iterator",
+        "vftable",
+        "virtual displacement map",
+        "vtordisp",
+        "vtordispex",
+    }
+)
+
+_MSVC_INITIALISER = re.compile(r"`(dynamic initializer for|dynamic atexit destructor for) (?:'(.*)'|`(.*)')'")
+_MSVC_RTTI = re.compile(r"(RTTI [A-Za-z ]+?)(?: at \(.*\))?")
+_MSVC_LEADING = frozenset(
+    {"[thunk]:", "public:", "private:", "protected:", "static", "virtual", "const", "volatile"}
+    | {"class", "struct", "union", "enum"}
+)
+_MSVC_CONVENTIONS = frozenset({"__cdecl", "__stdcall", "__fastcall", "__thiscall", "__vectorcall", "__clrcall"})
+
+
+def _quoted_spans(text):
+    """The `` `...' `` spans of `text` that are not inside another or inside braces."""
+    stack = []
+    spans = []
+    for at, char in enumerate(text):
+        if char in "`{":
+            stack.append((char, at))
+        elif char == "'" and stack and stack[-1][0] == "`":
+            opened = stack.pop()
+            if not stack:
+                spans.append((opened[1], at))
+        elif char == "}" and stack and stack[-1][0] == "{":
+            stack.pop()
+    return spans
+
+
+def _msvc_label(inside):
+    """The label a span holds, or None where it holds a scope or a number."""
+    word = inside.split("{")[0].strip()
+    if word in _MSVC_LABELS:
+        return word
+    rtti = _MSVC_RTTI.fullmatch(word)
+    return rtti.group(1) if rtti else None
+
+
+def _without_payload(rest):
+    """`rest` with the `{...}` that follows a label taken off: `{for `B'}`, `{8, {flat}}`."""
+    if not rest.startswith("{"):
+        return rest
+    depth = 0
+    for at, char in enumerate(rest):
+        depth += (char == "{") - (char == "}")
+        if not depth:
+            return rest[at + 1 :]
+    return rest
+
+
+def _declared_name(entity):
+    """The name in a spelled declaration: `private: static int C::i` is `C::i`."""
+    words = _words(entity)
+    while words and words[0] in _MSVC_LEADING:
+        words.pop(0)
+    return words[-1].lstrip("*&") if words else entity
+
+
+def _msvc_special(reading, found):
+    """Take a label out of an MSVC name, leaving the entity it is about.
+
+    MSVC spells `const Base::`vftable'` and `Base::`scalar deleting dtor'` with the
+    label where a name would be, so splitting the spelling makes the label the base
+    name. The label goes to `label` and the entity -- the class, the variable, the
+    type -- stays, as it does for `vtable for Base`. `const`, the access words and the
+    `{for `Base'}` path are about the label's table, not the entity, and are dropped.
+    False where the name holds no label.
+    """
+    if reading.scheme != "msvc":
+        return False
+    text = found["qualified_name"]
+    initialiser = _MSVC_INITIALISER.fullmatch(text)
+    label = None
+    convention = None
+    if initialiser:
+        label = initialiser.group(1)
+        text = initialiser.group(2) or initialiser.group(3)
+        if initialiser.group(3):
+            text = _declared_name(text)
+    else:
+        while spans := _quoted_spans(text):
+            start, end = spans[-1]
+            word = _msvc_label(text[start + 1 : end])
+            if word is None:
+                break
+            label = label or word
+            text = text[:start] + _without_payload(text[end + 1 :])
+        if label is None:
+            return False
+        words = text.split(" ")
+        while words and words[0] in _MSVC_LEADING | _MSVC_CONVENTIONS:
+            if words[0] in _MSVC_CONVENTIONS:
+                convention = words[0]
+            words.pop(0)
+        text = " ".join(words).rstrip(" :")
+    found["label"] = label
+    found["qualified_name"] = text or label
+    if convention:
+        found["calling_convention"] = convention
+    return True
 
 
 def _objc_metadata(reading, found, tree):
@@ -464,11 +611,23 @@ def _from_parts(reading, found, node):
         else:
             qualifiers.extend(word for word in part.split() if word in _DECLARATION_WORDS)
 
+    head = None
+    if reading.scheme == "delphi" and len(components) == 1:
+        head = _delphi_head(components[0], parameters is not None)
+        components = [head.name]
+        label = head.label or label
+        result = result or head.result
+
     found["qualified_name"] = reading.separator.join(components)
-    if len(components) > 1:
+    if head is not None and head.base is not None:
+        found["namespace"], found["base_name"] = head.scope, head.base
+        found["calling_convention"] = head.convention
+    elif len(components) > 1:
         found["namespace"] = reading.separator.join(components[:-1])
         found["base_name"] = components[-1]
     # One component is not a split (`_TtBf32_`); the reader in `_extract` takes over.
+    if head is not None:
+        found["calling_convention"] = head.convention
     found["parameters"] = None if parameters == (_ELIDED,) else parameters
     found["return_type"] = result or None
     found["qualifiers"] = tuple(qualifiers)
@@ -481,6 +640,89 @@ def _from_parts(reading, found, node):
         # not make this a function.
         found["is_function"] = True
     return True
+
+
+_DELPHI_CONVENTIONS = frozenset(
+    {"__cdecl", "__pascal", "__fastcall", "__fortran", "__stdcall", "__syscall", "__interrupt", "__saveregs"}
+)
+
+#: What Delphi's unmangler writes before a name to say what the symbol is: a unit-level
+#: linker procedure, a type descriptor, a virtual-definition flag, a thunk.
+_DELPHI_LABELS = frozenset({"__linkproc__", "__tpdsc__", "__vdflg__", "__thunk__"})
+
+#: The labels whose operand is a type or a thunk's operands, not a name with a result.
+_DELPHI_OPERANDS = frozenset({"__tpdsc__", "__thunk__"})
+
+
+class _DelphiHead(NamedTuple):
+    """The spelled head of a Delphi symbol, taken apart.
+
+    `scope` and `base` are set only where the name holds `operator`, whose spelling has
+    spaces that the bracket-counting reader takes for a phrase.
+    """
+
+    name: str
+    convention: str | None
+    label: str | None
+    result: str | None
+    scope: str | None
+    base: str | None
+
+
+def _words(text):
+    """`text` split at the spaces outside every bracket."""
+    words = [""]
+    depth = 0
+    for char in text:
+        if char in "<([":
+            depth += 1
+        elif char in ">)]":
+            depth = depth - 1 if depth else 0
+        if char == " " and depth == 0:
+            words.append("")
+        else:
+            words[-1] += char
+    return [word for word in words if word]
+
+
+def _delphi_head(head, is_function):
+    """Take the spelled prefixes off a Delphi name.
+
+    The unmangler writes the result, the calling convention and what the symbol is
+    *before* the qualified name -- `bool __fastcall Rtti::TValue::IsType<int>`,
+    `System::__linkproc__ __fastcall Abort`, `__tpdsc__ Forms::TForm` -- so the name is
+    what is left once they are read off. Where the convention is absent, the last word
+    is the name and any before it the result; `operator` names are the exception, which
+    run to the end and are told apart by the word `operator`.
+    """
+    words = _words(head)
+    convention = [word for word in words if word in _DELPHI_CONVENTIONS]
+    words = [word for word in words if word not in _DELPHI_CONVENTIONS]
+    label = None
+    scope = ""
+    for at, word in enumerate(words):
+        marker = word.rsplit("::", 1)[-1]
+        if marker in _DELPHI_LABELS:
+            label = marker
+            scope = word[: len(word) - len(marker)]
+            del words[at]
+            break
+    result = None
+    if label in _DELPHI_OPERANDS or not words:
+        named = words
+    else:
+        first = next((at for at, word in enumerate(words) if word.rsplit("::", 1)[-1] == "operator"), None)
+        if first is None:
+            first = len(words) - 1 if is_function else 0
+        named = words[first:]
+        result = " ".join(words[:first]) or None
+    name = scope + " ".join(named)
+    base = None
+    if named and named[0].rsplit("::", 1)[-1] == "operator":
+        cut = len(scope) + len(named[0]) - len("operator")
+        base = name[cut:]
+        scope = name[:cut].removesuffix("::")
+    return _DelphiHead(name, " ".join(convention) or None, label, result, scope, base)
 
 
 def _holds_a_node(parts):
@@ -560,7 +802,7 @@ def _leading(text):
     return tuple(word.rstrip(":") for word in text.split() if word.rstrip(":") in _LEADING_QUALIFIERS)
 
 
-def _split_last(text, separator):
+def _split_last(text, separator, quoted=False):
     """Split a qualified name at its last separator, counting brackets.
 
     `std::map<int, std::string>::at` splits after `>`, not inside the argument list, and
@@ -571,18 +813,22 @@ def _split_last(text, separator):
     the printer wrote -- `inout Swift.Int`, `operator new`, `__thunk__ [B,0,1,0]` -- and
     the separators in a phrase do not separate components. Those are left whole, which
     is the only answer that is not invented.
+
+    With `quoted`, a backtick opens a span and a `'` closes it, which is how MSVC writes
+    `` `anonymous namespace'::f `` and the function a local static lives in.
     """
-    if not separator or (separator.strip() and _phrase(text)):
+    if not separator or (separator.strip() and _phrase(text, quoted)):
         return "", text
+    opening, closing = ("<([`", ">)]'") if quoted else ("<([", ">)]")
     depth = 0
     cut = -1
     at = 0
     width = len(separator)
     while at < len(text):
         char = text[at]
-        if char in "<([":
+        if char in opening:
             depth += 1
-        elif char in ">)]":
+        elif char in closing:
             depth = depth - 1 if depth else 0
         elif depth == 0 and text.startswith(separator, at):
             cut = at
@@ -594,13 +840,14 @@ def _split_last(text, separator):
     return text[:cut], text[cut + width :]
 
 
-def _phrase(text):
+def _phrase(text, quoted=False):
     """Whether `text` holds a space at bracket depth zero."""
+    opening, closing = ("<([`", ">)]'") if quoted else ("<([", ">)]")
     depth = 0
     for char in text:
-        if char in "<([":
+        if char in opening:
             depth += 1
-        elif char in ">)]":
+        elif char in closing:
             depth = depth - 1 if depth else 0
         elif char == " " and depth == 0:
             return True
@@ -618,7 +865,7 @@ def _is_structor(reading, namespace, base):
         return True
     if not namespace:
         return False
-    _, enclosing = _split_last(namespace, reading.separator)
+    _, enclosing = _split_last(namespace, reading.separator, reading.quoted)
     # `Foo<int>::Foo`: the constructor lacks the class's arguments.
     cut = enclosing.find("<")
     if cut > 0:

@@ -46,9 +46,9 @@ MSVC_DBGHELP_TOTAL, MSVC_DBGHELP_EXACT = 1064, 1064
 #: `signature().qualified_name` against `UNDNAME_NAME_ONLY`; tests/test_msvc_options.py
 #: says why there is no `MsvcOptions` field for that bit.
 MSVC_NAME_ONLY_TOTAL = 478
-MSVC_NAME_ONLY_AGREE = 423
-MSVC_NAME_ONLY_WITHOUT_TAGS = 4
-MSVC_NAME_ONLY_LOSES_THE_BASE_PATH = 10
+MSVC_NAME_ONLY_AGREE = 417
+MSVC_NAME_ONLY_WITHOUT_TAGS = 3
+MSVC_NAME_ONLY_LABELLED = 17
 MSVC_NAME_ONLY_REDUCES_A_NESTED_SYMBOL = 41
 
 #: Replayed by tests/test_msvc_descriptors.py.
