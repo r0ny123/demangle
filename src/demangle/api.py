@@ -125,13 +125,21 @@ def _resolve(language):
         _refuse_language(language)
 
 
+_BYTES_LIKE = (bytes, bytearray, memoryview)
+
+
+def _is_allow_list(language):
+    """A sequence of names, as opposed to one name or something that is neither."""
+    return isinstance(language, Sequence) and not isinstance(language, (str, *_BYTES_LIKE))
+
+
 def _allowed(language):
     """The schemes a sequence of names allows, by the name each is registered under.
 
     By name rather than by plugin, so allowing a scheme does not import it: `candidates`
     hands over stand-ins and imported plugins alike, and both answer to the name.
     """
-    if isinstance(language, (str, bytes)) or not isinstance(language, Sequence):
+    if not _is_allow_list(language):
         _refuse_language(language)
     if not language:
         raise ValueError("language names no scheme; pass None to detect among all of them")
@@ -302,7 +310,7 @@ def demangle(
         # what is accepted or which argument the refusal names.
         if limits is not DEFAULT_LIMITS and not isinstance(limits, Limits):
             _refuse_limits(limits)
-        if isinstance(language, list):
+        if _is_allow_list(language):
             language = tuple(language)
         try:
             hash((language, limits))
@@ -314,7 +322,7 @@ def demangle(
         try:
             cached = _CACHE.get(key)
         except TypeError:
-            if isinstance(language, list):
+            if _is_allow_list(language):
                 # The allow-list a tuple would be, keyed as one.
                 return demangle(mangled, language=tuple(language), style=style, limits=limits)
             _refuse_unhashable(language, limits)
@@ -738,7 +746,6 @@ _BYTES_ENCODING = "utf-8"
 _BYTES_ERRORS = "surrogateescape"
 
 #: `memoryview` because that is what a caller slicing a mapped object file has.
-_BYTES_LIKE = (bytes, bytearray, memoryview)
 
 
 def _decode(mangled):

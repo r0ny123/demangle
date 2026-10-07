@@ -177,30 +177,26 @@ class TestDetection:
             "\\\\server\\share/x.F",
             "C:\\work\\go/src/x.F",
             "C:/work/x.F",
-            "src/foo.c",
-            "build/obj/main.cpp",
-            "lib/x.so",
         ],
     )
     def test_a_file_s_path_is_not_an_import_path(self, name):
-        """A slash and a dot, but no import path is absolute and no package exports only
-        a function named for a file extension."""
+        """A slash and a dot, but no import path is absolute."""
         assert detect(name) is False
         assert demangle.detect(name) is None
 
-    @pytest.mark.parametrize("name", ["_/Users/me/proj/pkg.Func", "example.com/x.Object", "a/b.cpp.F"])
+    @pytest.mark.parametrize("name", ["_/Users/me/proj/pkg.Func", "example.com/x.Object", "src/foo.c"])
     def test_a_path_that_only_resembles_one_is_still_claimed(self, name):
-        """GOPATH-less packages are `_/` and an absolute path; an extension that is not
-        the last thing in the name is not one."""
+        """GOPATH-less packages are `_/` and an absolute path, and a relative path is
+        what an import path looks like."""
         assert detect(name) is True
 
     def test_no_corpus_name_is_taken_for_a_file(self):
-        from demangle.schemes.go import _names_a_file
+        from demangle.schemes.go import _is_absolute
 
         taken = []
         for mangled, _ in ROWS:
             dot = mangled.find(".", mangled.rfind("/") + 1)
-            if "/" in mangled and dot > 0 and _names_a_file(mangled, dot):
+            if "/" in mangled and dot > 0 and _is_absolute(mangled):
                 taken.append(mangled)
         assert taken == []
 

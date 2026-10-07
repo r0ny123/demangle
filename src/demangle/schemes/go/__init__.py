@@ -37,7 +37,7 @@ def detect(name):
     - a linker-generated prefix, `go:` or `type:`;
     - a package path with a `/` in it, followed by a `.` -- an import path, which C and
       Pascal symbols do not have and which the C-family schemes encode rather than
-      spell -- unless it is a file's path instead (see `_names_a_file`);
+      spell -- unless it is a file's path instead (see `_is_absolute`);
     - a method receiver written `(*Type).Method`.
 
     `fmt.Println` and `main.main` are real Go symbols and are deliberately *not* claimed:
@@ -57,26 +57,14 @@ def detect(name):
     # The last slash of the *symbol*: a path inside generic arguments
     # (`main.F[internal/sync.node]`) is evidence of Go too.
     dot = name.find(".", slash + 1)
-    return 0 < dot < len(name) - 1 and not _names_a_file(name, dot)
+    return 0 < dot < len(name) - 1 and not _is_absolute(name)
 
 
-#: What a source or object file's name ends with, and a Go symbol's cannot plausibly:
-#: an unexported function named `o` or `cpp` in a package named for a file.
-_FILE_EXTENSIONS = frozenset({"a", "c", "cc", "cpp", "cxx", "go", "h", "hpp", "m", "mm", "o", "obj", "s", "so"})
-
-
-def _names_a_file(name, dot):
-    """Whether a slashed, dotted `name` is a filesystem path rather than an import path.
-
-    An import path is never absolute -- Go refuses `/x`, and `C:` is no host -- so a
-    leading `/` or `\\`, or a drive letter, is a file, which a symbol table carries for a
-    debugging stab or an object's own name (`/Users/me/build/foo.o`). So is a last
-    element that is one name and an extension (`src/foo.c`), where a Go symbol would be
-    a package `foo` exporting nothing and holding a function called `c`.
-    """
-    if name[0] in "/\\" or (name[1:2] == ":" and name[2:3] in ("/", "\\")):
-        return True
-    return name.find(".", dot + 1) < 0 and name[dot + 1 :] in _FILE_EXTENSIONS
+def _is_absolute(name):
+    """An import path is never absolute -- Go refuses `/x`, and `C:` is no host -- so a
+    leading `/` or `\\`, or a drive letter, is a file, which a symbol table carries for
+    a debugging stab or an object's own name (`/Users/me/build/foo.o`)."""
+    return name[0] in "/\\" or (name[1:2] == ":" and name[2:3] in ("/", "\\"))
 
 
 #: `_wants_structure`'s answer per builder class, asked once per class.

@@ -137,7 +137,7 @@ def _opens_a_type(name):
     if first in _TAGGED_TYPES:
         return name[-1] == "@"
     if first == "Y":
-        return name[2:3].isdigit() or "A" <= name[2:3] <= "P"
+        return len(name) > 2 and (name[2] in "0123456789" or "A" <= name[2] <= "P")
     if first == "$":
         return name[1:4] in ("$$Q", "$$T", "$$A")
     if first == "A" or first in _POINTER_KINDS:

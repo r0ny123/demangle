@@ -111,7 +111,7 @@ class TestDetection:
         now = [demangle.detect(name) for name in names]
         get("msvc"), get("go")
         monkeypatch.setattr("demangle.schemes.msvc._opens_a_type", lambda name: True)
-        monkeypatch.setattr("demangle.schemes.go._names_a_file", lambda name, dot: False)
+        monkeypatch.setattr("demangle.schemes.go._is_absolute", lambda name: False)
         before = [demangle.detect(name) for name in names]
         assert [
             (name, was, answer) for name, was, answer in zip(names, before, now, strict=True) if was != answer
@@ -229,6 +229,14 @@ _LANGUAGE_ENTRY_POINTS = [
 
 class TestAllowList:
     """A sequence of names: detect, but only among those schemes."""
+
+    def test_any_sequence_will_do(self):
+        import collections
+
+        for allowed in (collections.deque(["itanium"]), ["itanium"], ("itanium",)):
+            assert demangle.demangle("_Z3foov", language=allowed) == "foo()"
+            assert demangle.demangleb(b"_Z3foov", language=allowed) == b"foo()"
+            assert demangle.detect("_Z3foov", language=allowed) == "itanium"
 
     def test_a_scheme_left_out_does_not_read_the_name(self):
         allowed = ("itanium", "swift")

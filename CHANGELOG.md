@@ -34,15 +34,22 @@ the reference demanglers, and a **Performance** section.
   `.`-prefixed name only where what follows the dot opens as a type encoding does
   (`.?AV`, `.PEA`, a builtin standing alone), so `.refptr.foo`, `.L123`, `.ARM.exidx`
   and `.CRT$XCU` are no longer `msvc`; Go no longer takes an absolute path
-  (`/Users/me/build/foo.o`, `C:\...`) or a `src/foo.c` file name for an import path.
+  (`/Users/me/build/foo.o`, `C:\...`) for an import path.
   `demangle()` returns what it did -- the MSVC names never parsed, and Go spelled a
-  path as it stood -- and every corpus name is detected as before.
+  path as it stood. Every name in the MSVC and Go corpora is detected as before; the
+  41 `.objc_category_*` names the MSVC scheme claimed and never read are not claimed
+  by it now.
 - **`signature()` splits Objective-C runtime data symbols as it splits Swift's
   descriptors.** `_OBJC_CLASS_$_NSData` has `special="Objective-C class"` and
   `qualified_name="NSData"`, where the whole phrase used to be the name; an instance
-  variable's class and name are `namespace` and `base_name`, and a category is named
-  `NSString(Extra)`. The tree places a name after the label it follows, so the
-  selector of `.objc_sel_name_b` is no longer found inside `Objective-C`.
+  variable's class and name are `namespace` and `base_name`, joined by the scheme's
+  separator, a space, and a category is named `NSString(Extra)`.
+
+### Fixed
+
+- **An Objective-C tree places a name after the label it follows**, so the selector
+  of `.objc_sel_name_b` is no longer found inside `Objective-C`, nor a class called
+  `Object` inside `Objective-C class`.
 
 ### Performance
 
