@@ -27,6 +27,10 @@ the reference demanglers, and a **Performance** section.
   them -- about 7 ms for MSVC -- so a long-running service pays at start-up. Names or
   aliases import those schemes; none imports every built-in. An unknown name is a
   `ValueError`, and nothing is imported.
+- **A page on labelling a symbol table**, for a disassembler or a similarity index:
+  the allow-list, `detect(strict=True)` as language evidence, `signature()`'s
+  `qualified_name` as the label that is the same whichever compiler built the binary,
+  `preload()` and the limits.
 
 ### Changed
 
