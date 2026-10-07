@@ -103,6 +103,8 @@ JOBS = {
             ("_Z1fI", "iTLES_EN1aXKPRDvJBUFMOoAG"),
             ("_Z1f", "iTLES_EN1aXKPRDvJBUFMOoAG"),
             ("_ZN", "1aIiTLES_EKPRDv"),
+            # Where a PE import thunk's prefix stops being one: `__imp_` and a C name.
+            ("__imp_", "_Z1fivE"),
         ],
     ),
     # Bare `<type>` encodings via `demangle_type`, against each reference's type mode.
