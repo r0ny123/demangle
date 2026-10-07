@@ -95,8 +95,8 @@ a script reading one file never notices and a service answering its first reques
 does. `preload()` moves the cost to start-up:
 
 ```python
-demangle.preload()                      # every scheme
-demangle.preload("itanium", "msvc")     # the ones the service will meet
+demangle.preload()  # every scheme
+demangle.preload("itanium", "msvc")  # the ones the service will meet
 ```
 
 ## Hostile tables
