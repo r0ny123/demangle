@@ -1,6 +1,6 @@
 """The Swift symbol tree a caller walks.
 
-Swift's own demangling tree has 382 node kinds, most of which say something about the
+Swift's own demangling tree has 385 node kinds, most of which say something about the
 lowered representation rather than about the declaration --
 `ImplParameterResultDifferentiability` is not what a tool wants to match on. So this
 exposes a small tree in the vocabulary the other schemes here use: `name`, `module`,

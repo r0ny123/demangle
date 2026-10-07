@@ -12,11 +12,17 @@ the reference demanglers, and a **Performance** section.
 
 - **The Swift port follows swiftlang/swift `main` @ `8305a502` (2026-10-07).**
   `@called(once)` is now `@called(exactlyOnce)` (`XO`, and `O` in a lowered function
-  type), beside the new `@called(atMostOnce)` (`XOo`, `Oo`); a closure of either type is
-  printed without a colon, as other function types are. `@convention(com_method)` (`V`)
-  is a new lowered-function convention, a coroutine's yields (`Xy`) are read, and an
-  index of `INT_MAX` is refused. The reference is rebuilt at that commit and
+  type), beside the new `@called(atMostOnce)` (`XOo`, `Oo`). `@convention(com_method)`
+  (`V`) is a new lowered-function convention, a coroutine's yields (`Xy`) are read, and
+  an index of `INT_MAX` is refused. The reference is rebuilt at that commit and
   `swift-upstream.txt` re-transcribed: 531 / 531, up from 514.
+
+### Fixed
+
+- **A called-once function type is read like any other function type**, as the
+  reference already did at the previous pin: its parameter labels are read
+  (`$s1aySiXOD` was `a@called(once) (Swift.Int) -> ()`), no space separates it from a
+  generic signature, and an entity of that type is printed without a colon.
 
 ### Performance
 

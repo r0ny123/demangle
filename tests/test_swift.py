@@ -466,6 +466,11 @@ class TestGrammarFacts:
         assert spell("$s4main14makeAtMostOnceyyXOoyFyyXOofU_") == (
             "closure #1 @called(atMostOnce) () -> () in main.makeAtMostOnce() -> @called(atMostOnce) () -> ()"
         )
+        # Its parameter labels are read, and no space separates it from a generic
+        # signature; both as for a plain function type.
+        assert spell("$s1a1bySi_SitXOoD") == "@called(atMostOnce) (a: Swift.Int, b: Swift.Int) -> ()"
+        assert spell("$s4main1x1a1bySi_SitXOovp") == "main.x : @called(atMostOnce) (a: Swift.Int, b: Swift.Int) -> ()"
+        assert spell("$syxXOoluD") == "<A>@called(atMostOnce) (A) -> ()"
 
     def test_a_com_method_is_a_function_convention(self):
         """`V`, beside `M` for `method`; like the others it follows the callee convention."""
