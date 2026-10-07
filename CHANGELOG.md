@@ -39,6 +39,13 @@ the reference demanglers, and a **Performance** section.
   `detect(name, strict=True)` gives, under the run's own `--relaxed` and `--max-*`
   bounds. A name none reads is reported on standard error with why, and the status is
   1. Without `--strict`, `--detect` answers as before.
+- **`demangle --json-lines`**: one JSON object per name, `mangled`, `demangled` and
+  `language` -- the scheme that read the name, or null where it came back unchanged --
+  and with `--signature` the fields of `signature()` besides, null for a name nothing
+  reads, so every record has the same keys. `demangled` is what the line would have
+  said, `-p` and `--style` applied. Over a stream there is one record per symbol the
+  filter rewrites and none for the text around it. `--json` is unchanged: it is the
+  parse tree, and scripts read it as such.
 - **`demangle -0`**, or `--null`: standard input is whole names each ended by a NUL,
   as `find -print0` and `xargs -0` hand them over, and every answer is ended by a NUL
   rather than a newline -- names given as arguments included. A record is one name,

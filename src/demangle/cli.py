@@ -31,6 +31,7 @@ traceback, which is what the `strict` error handler does.
 import argparse
 import codecs
 import contextlib
+import dataclasses
 import difflib
 import functools
 import itertools
@@ -39,7 +40,7 @@ import os
 import sys
 
 from . import __version__
-from ._signature import signature
+from ._signature import Signature, signature
 from .api import _read, demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
 from .core.ast import Function
 from .core.errors import DemanglingError
@@ -72,6 +73,16 @@ def build_parser():
     parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
     parser.add_argument("-t", "--tree", action="store_true", help="print the parse tree")
     parser.add_argument("--json", action="store_true", help="print the parse tree as JSON")
+    parser.add_argument(
+        "--json-lines",
+        action="store_true",
+        help="print one JSON object per name: mangled, demangled, language",
+    )
+    parser.add_argument(
+        "--signature",
+        action="store_true",
+        help="with --json-lines, add the parts of the name: base_name, parameters, return_type...",
+    )
     parser.add_argument(
         "-0",
         "--null",
@@ -264,6 +275,12 @@ def main(argv=None):
         arguments.language = _language_from(parser, arguments.language)
     if arguments.json and arguments.tree:
         parser.error("--tree and --json are two spellings of the same answer; choose one")
+    if arguments.signature and not arguments.json_lines:
+        parser.error("--signature adds fields to --json-lines records; add --json-lines")
+    if arguments.json_lines:
+        for flag in ("tree", "json", "detect", "both", "types"):
+            if getattr(arguments, flag):
+                parser.error(f"--json-lines and --{flag} are different answers; choose one")
     if arguments.types:
         if not arguments.language:
             parser.error("--types needs --language: a type encoding carries no marker to detect on")
@@ -431,6 +448,38 @@ def _scheme_of(name, arguments, limits):
     return _read(name, resolved.spelling_builder, arguments.language, resolved, limits)[0].name
 
 
+#: What `--signature` adds to a record, in `Signature`'s order: every field but the two a
+#: record carries already.
+_SIGNATURE_FIELDS = tuple(
+    field.name for field in dataclasses.fields(Signature) if field.name not in ("language", "demangled")
+)
+
+
+def _record(name, arguments, limits):
+    """`--json-lines`: what this run has to say about one name, as data.
+
+    `demangled` is what the line would have said, `-p` and the rest applied; `language`
+    is the scheme that read the name, or None where it comes back unchanged. Every
+    record has the same keys, so a name nothing reads has its `--signature` fields None
+    rather than missing.
+    """
+    read = name[1:] if arguments.strip_underscore and name.startswith("_") else name
+    try:
+        scheme = _scheme_of(read, arguments, limits)
+    except DemanglingError:
+        if arguments.strict:
+            raise
+        scheme = None
+    record = {"mangled": name, "demangled": _expand(name, arguments, limits) if scheme else name, "language": scheme}
+    if arguments.signature:
+        if scheme:
+            parts = signature(read, language=arguments.language, style=arguments.style, limits=limits)
+            record.update((field, getattr(parts, field)) for field in _SIGNATURE_FIELDS)
+        else:
+            record.update(dict.fromkeys(_SIGNATURE_FIELDS))
+    return record
+
+
 def _part_of(name, arguments, limits):
     """One piece of a name rather than the whole spelling.
 
@@ -563,16 +612,22 @@ def _run_names(batches, arguments, limits):
     end = "\0" if arguments.null else "\n"
     for batch in batches:
         for name in batch:
-            if not name:
+            if not name and not arguments.json_lines:
                 out.write(end)
                 continue
             try:
-                expanded = _expand(name, arguments, limits)
+                expanded = (
+                    _record(name, arguments, limits) if arguments.json_lines else _expand(name, arguments, limits)
+                )
             except BrokenPipeError:
                 raise
             except Exception as exc:
                 print(f"{name}: {exc}", file=sys.stderr)
                 status = 1
+                continue
+            if isinstance(expanded, dict):
+                if not (arguments.only_demangled and expanded["language"] is None):
+                    out.write(json.dumps(expanded) + end)
                 continue
             if arguments.only_demangled and expanded == name:
                 continue
@@ -600,12 +655,19 @@ def _run_stream(batches, arguments, limits):
                 if not _TOKEN_MUST_HOLD.search(word):
                     continue
                 try:
-                    expanded = _expand(word, arguments, limits)
+                    expanded = (
+                        _record(word, arguments, limits) if arguments.json_lines else _expand(word, arguments, limits)
+                    )
                 except BrokenPipeError:
                     raise
                 except Exception as exc:
                     print(f"{word}: {exc}", file=sys.stderr)
                     status = 1
+                    continue
+                if isinstance(expanded, dict):
+                    # A record for each word the filter would rewrite, and none for the text.
+                    if expanded["language"] is not None:
+                        demangled.append(json.dumps(expanded))
                     continue
                 if expanded == word and not arguments.detect:
                     continue
@@ -614,7 +676,7 @@ def _run_stream(batches, arguments, limits):
                 pieces.append(line[end : match.start()])
                 pieces.append(replacement)
                 end = match.end()
-            if arguments.only_demangled:
+            if arguments.only_demangled or arguments.json_lines:
                 for replacement in demangled:
                     out.write(replacement + "\n")
                 continue

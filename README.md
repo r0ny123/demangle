@@ -299,8 +299,16 @@ $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
 $ demangle --no-tag-kind '?g3@@YAXVV@@@Z'          # `void __cdecl g3(V)`
 $ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
 $ demangle --json _Z1fPi                           # the parse tree as JSON
+$ nm -a libfoo.so | demangle --json-lines          # a JSON object per symbol
+$ demangle --json-lines --signature _Z1fPi         # ... with the parts of the name
 $ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, in and out
 ```
+
+`--json-lines` writes one object per name, `{"mangled": ..., "demangled": ...,
+"language": ...}`, where `language` is the scheme that read the name, or `null` where
+it came back unchanged; `--signature` adds the fields of `signature()`, `null` for a
+name nothing reads, so every record has the same keys. Over a stream it writes one per
+symbol the filter rewrites. `--json` is the other question, the parse tree.
 
 `python -m demangle` is the same command, where the script is not on `PATH`.
 

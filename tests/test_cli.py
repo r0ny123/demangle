@@ -5,6 +5,7 @@ than through a subprocess -- which keeps these fast enough to be worth having.
 """
 
 import io
+import json
 import pathlib
 import select
 import subprocess
@@ -639,6 +640,105 @@ class TestJsonFlag:
     def test_asking_for_both_spellings_of_the_tree_is_refused(self, capsys):
         with pytest.raises(SystemExit):
             run(capsys, ["--json", "--tree", "_Z1fv"])
+
+
+class TestJsonLinesFlag:
+    """`--json-lines`: one object per name, for a program to read rather than a person.
+
+    `--json` stays the parse tree, as it was released; this is the other question, what
+    the command says about each name, as data.
+    """
+
+    @staticmethod
+    def _records(out):
+        return [json.loads(line) for line in out.splitlines()]
+
+    def test_one_object_per_name(self, capsys):
+        status, out, _ = run(capsys, ["--json-lines", "_Z1fv", "memcpy", "?f@@YAXH@Z"])
+        assert status == 0
+        assert self._records(out) == [
+            {"mangled": "_Z1fv", "demangled": "f()", "language": "itanium"},
+            {"mangled": "memcpy", "demangled": "memcpy", "language": None},
+            {"mangled": "?f@@YAXH@Z", "demangled": "void __cdecl f(int)", "language": "msvc"},
+        ]
+
+    def test_language_is_the_scheme_that_read_it_not_the_one_it_looks_like(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "_ZN3Foo"])
+        assert self._records(out) == [{"mangled": "_ZN3Foo", "demangled": "_ZN3Foo", "language": None}]
+
+    def test_language_is_the_canonical_name_when_an_alias_forced_it(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-l", "c++", "_Z1fv"])
+        assert self._records(out)[0]["language"] == "itanium"
+
+    def test_demangled_is_what_the_line_would_have_said(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-p", "-s", "gnu", VECTOR])
+        assert self._records(out)[0]["demangled"] == "std::vector<int, std::allocator<int> >::push_back"
+
+    def test_signature_adds_the_parts(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "--signature", "_ZNK3Foo3barEi"])
+        (record,) = self._records(out)
+        assert record == {
+            "mangled": "_ZNK3Foo3barEi",
+            "demangled": "Foo::bar(int) const",
+            "language": "itanium",
+            "qualified_name": "Foo::bar",
+            "base_name": "bar",
+            "namespace": "Foo",
+            "parameters": ["int"],
+            "return_type": None,
+            "calling_convention": None,
+            "qualifiers": ["const"],
+            "special": None,
+            "decoration": "",
+            "is_function": True,
+            "is_data": False,
+            "is_ctor_or_dtor": False,
+        }
+
+    def test_every_record_has_the_same_keys(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "--signature", "_Z1fv", "memcpy"])
+        read, unread = self._records(out)
+        assert list(read) == list(unread)
+        assert unread["base_name"] is None
+
+    def test_only_demangled_drops_the_unread(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-m", "_Z1fv", "memcpy"])
+        assert [record["mangled"] for record in self._records(out)] == ["_Z1fv"]
+
+    def test_strict_reports_an_unread_name_instead(self, capsys):
+        status, out, err = run(capsys, ["--json-lines", "--strict", "_Z1fv", "memcpy"])
+        assert (status, len(self._records(out))) == (1, 1)
+        assert err.startswith("memcpy: ")
+
+    def test_strip_underscore_reaches_the_record(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-_", "__Z1fv", "_foo"])
+        assert [(r["demangled"], r["language"]) for r in self._records(out)] == [("f()", "itanium"), ("_foo", None)]
+
+    def test_over_a_stream_a_record_per_symbol_and_none_for_the_text(self, capsys, monkeypatch):
+        text = f"0000 T {VECTOR}\n0000 T main_loop\nsome words\n0000 t _Z1fv\n"
+        _, out, _ = run(capsys, ["--json-lines"], stdin=text, monkeypatch=monkeypatch)
+        assert [record["mangled"] for record in self._records(out)] == [VECTOR, "_Z1fv"]
+
+    def test_with_null_each_record_ends_with_nul(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "-0", "_Z1fv", "x"])
+        assert [json.loads(record)["mangled"] for record in out.split("\0")[:-1]] == ["_Z1fv", "x"]
+
+    def test_bytes_that_are_not_utf8_stay_valid_json(self, capsys):
+        _, out, _ = run(capsys, ["--json-lines", "_Z1f\udcffv"])
+        assert self._records(out)[0]["mangled"] == "_Z1f\udcffv"
+
+    @pytest.mark.parametrize("other", ["--tree", "--json", "--detect", "--both"])
+    def test_it_is_one_answer_among_several(self, capsys, other):
+        with pytest.raises(SystemExit) as info:
+            main(["--json-lines", other, "_Z1fv"])
+        assert info.value.code == 2
+        assert "choose one" in capsys.readouterr().err
+
+    def test_signature_alone_says_what_it_needs(self, capsys):
+        with pytest.raises(SystemExit) as info:
+            main(["--signature", "_Z1fv"])
+        assert info.value.code == 2
+        assert "add --json-lines" in capsys.readouterr().err
 
 
 class TestMsvcSuppressionFlags:
