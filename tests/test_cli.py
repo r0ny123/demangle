@@ -6,6 +6,7 @@ than through a subprocess -- which keeps these fast enough to be worth having.
 
 import io
 import pathlib
+import select
 import subprocess
 import sys
 
@@ -152,6 +153,117 @@ class TestPipeline:
         assert main([]) == 0
         assert devnull_calls, "stdout should be redirected to devnull after a broken pipe"
         assert capsys.readouterr().err == ""
+
+    def test_a_pipe_closed_before_the_last_flush_is_not_an_error_either(self, monkeypatch):
+        """Output short enough to sit in the buffer meets the closed pipe on the way out."""
+
+        class ClosedOnFlush(io.StringIO):
+            def flush(self):
+                raise BrokenPipeError(32, "Broken pipe")
+
+        monkeypatch.setattr("sys.stdout", ClosedOnFlush())
+        monkeypatch.setattr("os.dup2", lambda *a: None)
+        monkeypatch.setattr("sys.stdout.fileno", lambda: 1, raising=False)
+        assert main(["_Z1fv"]) == 0
+
+    def test_head_on_a_long_pipe_ends_quietly(self, tmp_path):
+        """`demangle < table | head -1`, through a real pipe, so SIGPIPE's path is the real one."""
+        table = tmp_path / "table.txt"
+        table.write_text(f"0000 T {VECTOR}\n" * 200_000)
+        with table.open("rb") as names:
+            process = command(stdin=names, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            assert process.stdout is not None and process.stderr is not None
+            first = process.stdout.readline()
+            process.stdout.close()
+            err = process.stderr.read()
+            process.wait(timeout=60)
+        assert first == f"0000 T {VECTOR_SPELLED}\n".encode()
+        assert (process.returncode, err) == (0, b"")
+
+    def test_each_line_is_answered_before_the_next_arrives(self):
+        """Nothing waits for the input to end, or for 64K of it: `tail -f log | demangle`."""
+        process = command(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert process.stdin is not None and process.stdout is not None
+        try:
+            process.stdin.write(b"at _Z1fv\n")
+            process.stdin.flush()
+            ready, _, _ = select.select([process.stdout], [], [], 60)
+            assert ready, "the first line was not answered while the input stayed open"
+            assert process.stdout.readline() == b"at f()\n"
+        finally:
+            process.stdin.close()
+            process.wait(timeout=60)
+
+    def test_ctrl_c_exits_130_without_a_traceback(self, capsys, monkeypatch):
+        def interrupted(*_):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr("demangle.cli._expand", interrupted)
+        assert main(["_Z1fv"]) == 130
+        assert capsys.readouterr().err == ""
+
+
+class TestStandardInput:
+    """When standard input is read, and what `-` means."""
+
+    @staticmethod
+    def _stdin(monkeypatch, text, terminal=False):
+        stdin = io.StringIO(text)
+        monkeypatch.setattr(stdin, "isatty", lambda: terminal)
+        monkeypatch.setattr("sys.stdin", stdin)
+
+    def test_a_dash_reads_standard_input(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "T _Z1fv\n")
+        assert main(["-"]) == 0
+        assert capsys.readouterr().out == "T f()\n"
+
+    def test_a_dash_among_names_reads_standard_input_in_its_place(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "_Z1gv\n")
+        main(["_Z1fv", "-", "_Z1hv"])
+        assert capsys.readouterr().out == "f()\ng()\nh()\n"
+
+    def test_a_dash_after_the_separator_still_reads_standard_input(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "_Z1gv\n")
+        main(["--", "-"])
+        assert capsys.readouterr().out == "g()\n"
+
+    def test_a_terminal_with_no_names_is_a_usage_error_not_a_wait(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, VECTOR, terminal=True)
+        with pytest.raises(SystemExit) as info:
+            main([])
+        assert info.value.code == 2
+        err = capsys.readouterr().err
+        assert "standard input is a terminal" in err
+        assert "give - to type them" in err
+
+    def test_a_dash_reads_a_terminal_because_it_asks_to(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "_Z1fv\n", terminal=True)
+        assert main(["-"]) == 0
+        assert capsys.readouterr().out == "f()\n"
+
+    def test_names_never_touch_standard_input(self, capsys, monkeypatch):
+        self._stdin(monkeypatch, "", terminal=True)
+        assert main(["_Z1fv"]) == 0
+
+    def test_a_closed_standard_input_is_a_usage_error(self, capsys, monkeypatch):
+        monkeypatch.setattr("sys.stdin", None)
+        with pytest.raises(SystemExit) as info:
+            main([])
+        assert info.value.code == 2
+        assert "standard input is closed" in capsys.readouterr().err
+
+    def test_a_closed_standard_input_does_not_matter_to_names(self, capsys, monkeypatch):
+        monkeypatch.setattr("sys.stdin", None)
+        assert main(["_Z1fv"]) == 0
+        assert capsys.readouterr().out == "f()\n"
+
+    def test_bytes_that_are_not_utf8_come_back_as_they_went_in(self, tmp_path):
+        table = tmp_path / "table.txt"
+        table.write_bytes(b"\xff _Z1fv\r\nno newline at the end")
+        with table.open("rb") as names:
+            process = command(stdin=names, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out, err = process.communicate(timeout=60)
+        assert (out, err) == (b"\xff f()\r\nno newline at the end", b"")
 
 
 class TestTheModule:

@@ -29,7 +29,10 @@ traceback, which is what the `strict` error handler does.
 """
 
 import argparse
+import codecs
 import contextlib
+import functools
+import itertools
 import json
 import os
 import sys
@@ -51,11 +54,12 @@ def build_parser():
         prog="demangle",
         description="Demangle C++, Rust, Swift, MSVC and other symbol names.",
         epilog=(
-            "With no NAME arguments, names are read from standard input: every "
-            "symbol-shaped word is demangled and the text around it is copied through."
+            "With no NAME, or where a NAME is -, names are read from standard input: every "
+            "symbol-shaped word is demangled and the text around it is copied through, a "
+            "line at a time. A terminal is read only for -."
         ),
     )
-    parser.add_argument("names", nargs="*", metavar="NAME", help="symbol names to demangle")
+    parser.add_argument("names", nargs="*", metavar="NAME", help="symbol names to demangle; - reads standard input")
     parser.add_argument("-l", "--language", help="force a scheme instead of detecting (aliases accepted)")
     parser.add_argument("-s", "--style", default="llvm", help="output style (default: llvm)")
     parser.add_argument("-d", "--detect", action="store_true", help="print the detected scheme, not the expansion")
@@ -271,20 +275,50 @@ def main(argv=None):
 
     arguments.style = _style_from(arguments)
 
-    _reconfigure(sys.stdin, errors="surrogateescape")
+    names = arguments.names or ["-"]
+    if "-" in names:
+        problem = _stdin_problem(named=bool(arguments.names))
+        if problem:
+            parser.error(problem)
+
     _reconfigure(sys.stdout, errors="surrogateescape")
 
     try:
-        if arguments.types:
-            return _run_types(arguments.names or sys.stdin, arguments)
-        if arguments.names:
-            return _run_names(arguments.names, arguments)
-        return _run_stream(sys.stdin, arguments)
+        status = _run(names, arguments)
+        # Inside the `try`: output short enough to sit in the buffer meets a closed pipe here.
+        sys.stdout.flush()
+        return status
     except BrokenPipeError:
         # `demangle | head` closes the pipe. Caught outside the loop (one error, not one per
         # name); stdout goes to the null device so the shutdown flush does not raise again.
         _silence_stdout()
         return 0
+    except KeyboardInterrupt:
+        # 128 + SIGINT, what a shell reports for a command Ctrl-C stopped.
+        return 130
+
+
+def _stdin_problem(named):
+    """Why standard input cannot be read for names, or None.
+
+    A terminal is refused only when nothing asked for it: `demangle` alone, typed at a
+    prompt, would otherwise sit waiting for input its user does not know it wants. `-`
+    asks, and then names are read as they are typed.
+    """
+    if sys.stdin is None:
+        return "standard input is closed; give the names as arguments"
+    if named:
+        return None
+    try:
+        terminal = sys.stdin.isatty()
+    except ValueError:  # closed
+        terminal = False
+    if terminal:
+        return (
+            "no NAME given, and standard input is a terminal; give names as arguments, "
+            "pipe them in (nm -a libfoo.so | demangle), or give - to type them, ending with Ctrl-D"
+        )
+    return None
 
 
 def _silence_stdout():
@@ -322,10 +356,16 @@ def _expand_read(name, arguments, limits):
     if arguments.detect:
         return arguments.language or detect(name) or "-"
     if arguments.types:
-        if arguments.json or arguments.tree:
-            node = parse_type(name, language=arguments.language, style=arguments.style, limits=limits)
-            return json.dumps(node.to_dict()) if arguments.json else "\n".join(_dump(node))
-        return demangle_type(name, language=arguments.language, style=arguments.style, limits=limits)
+        try:
+            if arguments.json or arguments.tree:
+                node = parse_type(name, language=arguments.language, style=arguments.style, limits=limits)
+                return json.dumps(node.to_dict()) if arguments.json else "\n".join(_dump(node))
+            return demangle_type(name, language=arguments.language, style=arguments.style, limits=limits)
+        except DemanglingError:
+            # The bargain `demangle()` makes, which `demangle_type()` leaves to its caller.
+            if arguments.strict:
+                raise
+            return name
     if arguments.json:
         return json.dumps(parse(name, language=arguments.language, style=arguments.style, limits=limits).to_dict())
     if arguments.tree:
@@ -388,112 +428,138 @@ def _without_return_type(name, arguments, limits, parts):
     return spelling[len(prefix) :] if prefix and spelling.startswith(prefix) else spelling
 
 
-def _run_names(names, arguments):
-    """One name per argument: the whole argument is the name, whatever it holds.
-
-    No word-splitting here. A caller who typed a name meant that name, and an
-    Objective-C method or a Go symbol has spaces and slashes in it.
-    """
+def _run(names, arguments):
+    """Each NAME in turn, and standard input wherever one is `-`."""
     limits = _limits_from(arguments)
     status = 0
-    out = sys.stdout
-    for name in names:
-        if not name:
-            out.write("\n")
-            continue
-        try:
-            expanded = _expand(name, arguments, limits)
-        except BrokenPipeError:
-            raise
-        except Exception as exc:
-            print(f"{name}: {exc}", file=sys.stderr)
-            status = 1
-            continue
-        if arguments.only_demangled and expanded == name:
-            continue
-        out.write(f"{name} ==> {expanded}\n" if arguments.both else f"{expanded}\n")
+    for from_stdin, group in itertools.groupby(names, key="-".__eq__):
+        if not from_stdin:
+            answer = _run_names([list(group)], arguments, limits)
+        elif arguments.types:
+            # No grammar here holds a `\r`, so CRLF input reads the same.
+            lines = _batches(sys.stdin, "\n")
+            answer = _run_names(([line.rstrip("\r\n") for line in batch] for batch in lines), arguments, limits)
+        else:
+            answer = _run_stream(_batches(sys.stdin, "\n"), arguments, limits)
+        status = max(status, answer)
     return status
 
 
-def _run_types(names, arguments):
-    """`--types`: one *type* encoding per argument, or per line of standard input.
+#: The most one read takes from standard input. Output is flushed once the read's lines
+#: are written, so a pipe that trickles (`tail -f`) is answered a line at a time and one
+#: that floods (`nm`) pays for a flush per 64K rather than one per line.
+_READ_SIZE = 1 << 16
 
-    Not the filter the default path is, and it cannot be. A type encoding is not
-    symbol-shaped -- `Pi`, `H`, `Si` are ordinary words -- so picking them out of mixed
-    text would mean turning `I like Pi` into `I like int*`, which is the very thing
-    `_TOKEN_MUST_HOLD` exists to prevent. Each input is one encoding, whole.
 
-    An encoding that does not parse comes back unchanged, the bargain `demangle()`
-    makes, unless `--strict` asks to hear about it instead.
+def _batches(stream, separator):
+    """`stream` cut after each `separator`, in batches of what one read brought.
+
+    Each piece keeps its separator, and a last piece the input ended without one keeps
+    none, so a filter copies the input through exactly.
     """
-    limits = _limits_from(arguments)
+    open_piece = []
+    for text in _chunks(stream):
+        *ended, rest = text.split(separator)
+        if ended:
+            ended[0] = "".join(open_piece) + ended[0]
+            open_piece = []
+            yield [piece + separator for piece in ended]
+        if rest:
+            open_piece.append(rest)
+    if open_piece:
+        yield ["".join(open_piece)]
+
+
+def _chunks(stream):
+    """The text of `stream`, as it arrives.
+
+    Read from the bytes beneath the text stream with `read1`, which returns what is
+    there rather than waiting to fill a buffer: a line typed at a terminal, or written
+    by a slow producer, is answered before the next one comes. Undecodable bytes are
+    carried as lone surrogates and written back as the same bytes.
+    """
+    binary = getattr(stream, "buffer", None)
+    if not hasattr(binary, "read1"):
+        # A text stream with no bytes beneath it, such as an `io.StringIO`.
+        yield from iter(functools.partial(stream.read, _READ_SIZE), "")
+        return
+    decoder = codecs.getincrementaldecoder(stream.encoding or "utf-8")("surrogateescape")
+    for chunk in iter(functools.partial(binary.read1, _READ_SIZE), b""):
+        yield decoder.decode(chunk)
+    yield decoder.decode(b"", final=True)
+
+
+def _run_names(batches, arguments, limits):
+    """One whole name per item: an argument, or a line of standard input under `--types`.
+
+    No word-splitting here. A caller who typed a name meant that name, and an
+    Objective-C method or a Go symbol has spaces and slashes in it. Under `--types` it
+    could not be otherwise: a type encoding is not symbol-shaped -- `Pi`, `H`, `Si` are
+    ordinary words -- so picking them out of mixed text would turn `I like Pi` into
+    `I like int*`, which is the very thing `_TOKEN_MUST_HOLD` exists to prevent.
+    """
     status = 0
     out = sys.stdout
-    for raw in names:
-        # No grammar here holds a `\r`, so CRLF input reads the same.
-        name = raw.rstrip("\r\n")
-        if not name:
-            out.write("\n")
-            continue
-        try:
-            expanded = _expand(name, arguments, limits)
-        except BrokenPipeError:
-            raise
-        except DemanglingError as exc:
-            if arguments.strict:
+    for batch in batches:
+        for name in batch:
+            if not name:
+                out.write("\n")
+                continue
+            try:
+                expanded = _expand(name, arguments, limits)
+            except BrokenPipeError:
+                raise
+            except Exception as exc:
                 print(f"{name}: {exc}", file=sys.stderr)
                 status = 1
                 continue
-            expanded = name
-        except Exception as exc:
-            print(f"{name}: {exc}", file=sys.stderr)
-            status = 1
-            continue
-        if arguments.only_demangled and expanded == name:
-            continue
-        out.write(f"{name} ==> {expanded}\n" if arguments.both else f"{expanded}\n")
+            if arguments.only_demangled and expanded == name:
+                continue
+            out.write(f"{name} ==> {expanded}\n" if arguments.both else f"{expanded}\n")
+        out.flush()
     return status
 
 
-def _run_stream(stream, arguments):
+def _run_stream(batches, arguments, limits):
     """A filter: substitute every symbol-shaped word, copy everything else through.
 
     Line by line rather than all at once, so `demangle` in a pipe stays a pipe: someone
     watching `nm ... | demangle` should not have to wait for the input to end.
     """
-    limits = _limits_from(arguments)
     status = 0
     out = sys.stdout
 
-    for line in stream:
-        pieces = []
-        demangled = []
-        end = 0
-        for match in _TOKEN.finditer(line):
-            word = match.group()
-            if not _TOKEN_MUST_HOLD.search(word):
+    for batch in batches:
+        for line in batch:
+            pieces = []
+            demangled = []
+            end = 0
+            for match in _TOKEN.finditer(line):
+                word = match.group()
+                if not _TOKEN_MUST_HOLD.search(word):
+                    continue
+                try:
+                    expanded = _expand(word, arguments, limits)
+                except BrokenPipeError:
+                    raise
+                except Exception as exc:
+                    print(f"{word}: {exc}", file=sys.stderr)
+                    status = 1
+                    continue
+                if expanded == word and not arguments.detect:
+                    continue
+                replacement = f"{word} ==> {expanded}" if arguments.both else expanded
+                demangled.append(replacement)
+                pieces.append(line[end : match.start()])
+                pieces.append(replacement)
+                end = match.end()
+            if arguments.only_demangled:
+                for replacement in demangled:
+                    out.write(replacement + "\n")
                 continue
-            try:
-                expanded = _expand(word, arguments, limits)
-            except BrokenPipeError:
-                raise
-            except Exception as exc:
-                print(f"{word}: {exc}", file=sys.stderr)
-                status = 1
-                continue
-            if expanded == word and not arguments.detect:
-                continue
-            replacement = f"{word} ==> {expanded}" if arguments.both else expanded
-            demangled.append(replacement)
-            pieces.append(line[end : match.start()])
-            pieces.append(replacement)
-            end = match.end()
-        if arguments.only_demangled:
-            for replacement in demangled:
-                out.write(replacement + "\n")
-            continue
-        pieces.append(line[end:])
-        out.write("".join(pieces))
+            pieces.append(line[end:])
+            out.write("".join(pieces))
+        out.flush()
     return status
 
 

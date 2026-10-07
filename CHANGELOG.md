@@ -29,6 +29,8 @@ the reference demanglers, and a **Performance** section.
   `ValueError`, and nothing is imported.
 - **`python -m demangle`** runs the command, for an environment where the `demangle`
   script is not on `PATH`.
+- **`-` as a NAME reads standard input**, in its place among the others: `demangle
+  _Z1fv - _Z1gv` reads the pipe between the two.
 
 ### Changed
 
@@ -45,6 +47,18 @@ the reference demanglers, and a **Performance** section.
   variable's class and name are `namespace` and `base_name`, and a category is named
   `NSString(Extra)`. The tree places a name after the label it follows, so the
   selector of `.objc_sel_name_b` is no longer found inside `Objective-C`.
+- **`demangle` with no NAME at a terminal is a usage error**, exit status 2, saying
+  how to give it names, rather than a wait for input its user did not know it wanted.
+  `demangle -` still reads what is typed. A closed standard input is the same error,
+  where it was a `TypeError` traceback.
+- **The command answers each line as it arrives.** Output to a pipe was flushed only
+  when Python's buffer filled, so `tail -f log | demangle | grep ...` printed nothing
+  for the first 8K. It is now flushed once per read of standard input: per line when
+  lines trickle in, per 64K when `nm` floods it, which costs nothing measurable. The
+  bytes written are the same, `\r\n` and undecodable bytes included.
+- **Ctrl-C ends the command with status 130 and no traceback**, and a pipe closed
+  before the last flush (`demangle a b | true`) no longer prints `Exception ignored`
+  and exits 120.
 
 ### Performance
 
