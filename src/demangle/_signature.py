@@ -74,6 +74,8 @@ _SEPARATORS = {
     # `gnuv2` and `codewarrior` spell C++ and take the `::` default.
 }
 
+_CLOSING = {"msvc": "'", "delphi": "`"}
+
 _TRAILING_QUALIFIERS = frozenset({"const", "volatile", "restrict", "__restrict", "&", "&&", "noexcept"})
 
 #: MSVC's access and storage words, which nothing else in the structured view records.
@@ -227,9 +229,10 @@ class _Reading(NamedTuple):
     style: str | Style | None
 
     @property
-    def quoted(self):
-        """Whether `` `...' `` encloses a span, as MSVC writes its scopes and labels."""
-        return self.scheme == "msvc"
+    def closing(self):
+        """What closes a backtick span: MSVC's `` `anonymous namespace' ``, Delphi's
+        `` `class constructor` ``. None where a backtick is not a quote."""
+        return _CLOSING.get(self.scheme)
 
     def spell(self, node):
         return node.spell(style=self.style)
@@ -264,7 +267,7 @@ def _extract(reading, tree):
         special = found["label"]
     namespace, base = found["namespace"], found["base_name"]
     if namespace is None:
-        namespace, base = _split_last(found["qualified_name"], reading.separator, reading.quoted)
+        namespace, base = _split_last(found["qualified_name"], reading.separator, reading.closing)
 
     return Signature(
         language=reading.scheme,
@@ -443,11 +446,28 @@ def _without_payload(rest):
 
 
 def _declared_name(entity):
-    """The name in a spelled declaration: `private: static int C::i` is `C::i`."""
-    words = _words(entity)
-    while words and words[0] in _MSVC_LEADING:
-        words.pop(0)
-    return words[-1].lstrip("*&") if words else entity
+    """The name in a spelled declaration.
+
+    `private: static int C::i` is `C::i`, and the declarator around a name is not part
+    of it: `int (*x)[3]` is `x`.
+    """
+    name = entity
+    while words := _words(name, "'"):
+        name = words[-1].lstrip("*&")
+        if not name.startswith("("):
+            break
+        name = name[1 : _closing_parenthesis(name)]
+    return name or entity
+
+
+def _closing_parenthesis(text):
+    """Where the `(` that opens `text` closes, or the end where it does not."""
+    depth = 0
+    for at, char in enumerate(text):
+        depth += (char == "(") - (char == ")")
+        if not depth:
+            return at
+    return len(text)
 
 
 def _msvc_special(reading, found):
@@ -664,20 +684,43 @@ class _DelphiHead(NamedTuple):
     base: str | None
 
 
-def _words(text):
-    """`text` split at the spaces outside every bracket."""
-    words = [""]
-    depth = 0
-    for char in text:
-        if char in "<([":
+def _words(text, closing=None):
+    """`text` split at the spaces outside every bracket and every quoted span."""
+    words = []
+    start = 0
+    for at in _top_level(text, closing):
+        if text[at] == " ":
+            words.append(text[start:at])
+            start = at + 1
+    words.append(text[start:])
+    return [word for word in words if word]
+
+
+def _top_level(text, closing=None):
+    """The positions in `text` outside every bracket and, with `closing`, every quoted span.
+
+    A span opens at a backtick and closes at `closing`: MSVC writes `'` and nests one
+    span in another, `` `void f(void)'::`2'::x ``, and Delphi writes a second backtick,
+    `` `class constructor` ``. Inside a span only those two characters count, so the `<`
+    of the function a local lives in, `` `bool C::operator<(int)' ``, opens nothing.
+    Outside one a closing bracket never takes the depth below zero, so the `>` of
+    `A::operator->` cannot swallow the rest of the text.
+    """
+    depth = quoting = 0
+    for at, char in enumerate(text):
+        if quoting:
+            if char == closing:
+                quoting -= 1
+            elif char == "`":
+                quoting += 1
+        elif closing and char == "`":
+            quoting = 1
+        elif char in "<([":
             depth += 1
         elif char in ">)]":
             depth = depth - 1 if depth else 0
-        if char == " " and depth == 0:
-            words.append("")
-        else:
-            words[-1] += char
-    return [word for word in words if word]
+        elif not depth:
+            yield at
 
 
 def _delphi_head(head, is_function):
@@ -695,7 +738,7 @@ def _delphi_head(head, is_function):
     # Imported here, not above: a scheme is loaded when a name of it is first read.
     from .schemes.delphi._parser import CONVENTIONS, LABELS
 
-    words = _words(head)
+    words = _words(head, "`")
     convention = [word for word in words if word in CONVENTIONS]
     words = [word for word in words if word not in CONVENTIONS]
     label = None
@@ -802,56 +845,34 @@ def _leading(text):
     return tuple(word.rstrip(":") for word in text.split() if word.rstrip(":") in _LEADING_QUALIFIERS)
 
 
-def _split_last(text, separator, quoted=False):
+def _split_last(text, separator, closing=None):
     """Split a qualified name at its last separator, counting brackets.
 
     `std::map<int, std::string>::at` splits after `>`, not inside the argument list, and
-    `A::operator->` does not open a bracket it never closes -- the depth is clamped, so
-    an unbalanced `>` from an operator name cannot swallow the rest of the string.
+    `A::operator->` does not open a bracket it never closes.
 
     A space outside every bracket means this is not a qualified name at all but a phrase
     the printer wrote -- `inout Swift.Int`, `operator new`, `__thunk__ [B,0,1,0]` -- and
     the separators in a phrase do not separate components. Those are left whole, which
     is the only answer that is not invented.
 
-    With `quoted`, a backtick opens a span and a `'` closes it, which is how MSVC writes
+    With `closing`, a quoted span is one piece of a component, which is how MSVC writes
     `` `anonymous namespace'::f `` and the function a local static lives in.
     """
-    if not separator or (separator.strip() and _phrase(text, quoted)):
+    if not separator:
         return "", text
-    opening, closing = ("<([`", ">)]'") if quoted else ("<([", ">)]")
-    depth = 0
+    phrase = separator.strip()
     cut = -1
-    at = 0
-    width = len(separator)
-    while at < len(text):
-        char = text[at]
-        if char in opening:
-            depth += 1
-        elif char in closing:
-            depth = depth - 1 if depth else 0
-        elif depth == 0 and text.startswith(separator, at):
+    after = 0
+    for at in _top_level(text, closing):
+        if phrase and text[at] == " ":
+            return "", text
+        if at >= after and text.startswith(separator, at):
             cut = at
-            at += width
-            continue
-        at += 1
+            after = at + len(separator)
     if cut < 0:
         return "", text
-    return text[:cut], text[cut + width :]
-
-
-def _phrase(text, quoted=False):
-    """Whether `text` holds a space at bracket depth zero."""
-    opening, closing = ("<([`", ">)]'") if quoted else ("<([", ">)]")
-    depth = 0
-    for char in text:
-        if char in opening:
-            depth += 1
-        elif char in closing:
-            depth = depth - 1 if depth else 0
-        elif char == " " and depth == 0:
-            return True
-    return False
+    return text[:cut], text[cut + len(separator) :]
 
 
 _SWIFT_STRUCTORS = frozenset({"__allocating_init", "__deallocating_deinit", "deinit", "init"})
@@ -865,7 +886,7 @@ def _is_structor(reading, namespace, base):
         return True
     if not namespace:
         return False
-    _, enclosing = _split_last(namespace, reading.separator, reading.quoted)
+    _, enclosing = _split_last(namespace, reading.separator, reading.closing)
     # `Foo<int>::Foo`: the constructor lacks the class's arguments.
     cut = enclosing.find("<")
     if cut > 0:

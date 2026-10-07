@@ -256,6 +256,18 @@ class TestMsvcSpecials:
         assert parts.base_name == "e2"
         assert parts.namespace.startswith("`char const * __cdecl boost::re_detail_500::")
 
+    def test_a_bracket_in_the_function_a_local_lives_in_opens_nothing(self):
+        parts = signature("?x@?1???MC@@QAE_NH@Z@4HA")
+        assert (parts.namespace, parts.base_name) == ("`public: bool __thiscall C::operator<(int)'::`2'", "x")
+
+    def test_a_dynamic_initialiser_is_about_the_name_inside_its_declarator(self):
+        parts = signature("??__E?x@@3PAY02HA@@YAXXZ")
+        assert (parts.special, parts.qualified_name) == ("dynamic initializer for", "x")
+
+    def test_a_dynamic_initialiser_of_a_local_static_keeps_its_function_whole(self):
+        parts = signature("??__E?x@?1??f@@YAXXZ@4HA@@YAXXZ")
+        assert (parts.namespace, parts.base_name) == ("`void __cdecl f(void)'::`2'", "x")
+
     @pytest.mark.sweep
     @pytest.mark.parametrize("corpus", MSVC_SPECIAL_CORPORA)
     def test_every_label_in_the_corpora_is_taken_out_of_the_name(self, corpus, subtests):
@@ -269,7 +281,9 @@ class TestMsvcSpecials:
             with subtests.test(mangled=mangled):
                 joined = f"{parts.namespace}::{parts.base_name}" if parts.namespace else parts.base_name
                 assert joined == parts.qualified_name
-                if parts.special is not None:
+                if parts.special is None:
+                    assert "`" not in parts.base_name.split("<")[0]
+                else:
                     for field in (parts.qualified_name, parts.namespace, parts.base_name):
                         assert f"`{parts.special}" not in field
 
@@ -359,6 +373,18 @@ class TestDelphi:
     def test_saveregs_stays_with_the_convention(self):
         parts = signature("@f$qqgv")
         assert (parts.calling_convention, parts.base_name) == ("__saveregs", "f")
+
+    @pytest.mark.parametrize(
+        ("mangled", "base"),
+        [
+            ("@Unit@TFoo@$bcctr$qqrx4TFooi", "`class constructor`"),
+            ("@Unit@TFoo@$bcdtr$qqrv", "`class destructor`"),
+        ],
+    )
+    def test_a_class_constructor_is_one_name(self, mangled, base):
+        parts = signature(mangled)
+        assert (parts.namespace, parts.base_name) == ("Unit::TFoo", base)
+        assert (parts.return_type, parts.calling_convention) == (None, "__fastcall")
 
     def test_a_constructor_and_a_destructor(self):
         built = signature("@Forms@TForm@$bctr$qqrp18Classes@TComponent")
@@ -636,6 +662,18 @@ class TestSplitLast:
 
     def test_a_space_inside_brackets_is_not_a_phrase(self):
         assert _split_last("a::b<int, char>::c", "::") == ("a::b<int, char>", "c")
+
+    @pytest.mark.parametrize(
+        ("text", "closing", "expected"),
+        [
+            ("`anonymous namespace'::f", "'", ("`anonymous namespace'", "f")),
+            ("`int f(a::b)'::`2'::x", "'", ("`int f(a::b)'::`2'", "x")),
+            ("`bool C::operator<(int)'::`2'::x", "'", ("`bool C::operator<(int)'::`2'", "x")),
+            ("U::T::`class constructor`", "`", ("U::T", "`class constructor`")),
+        ],
+    )
+    def test_a_quoted_span_is_one_piece_of_a_component(self, text, closing, expected):
+        assert _split_last(text, "::", closing) == expected
 
 
 class TestTheObject:
