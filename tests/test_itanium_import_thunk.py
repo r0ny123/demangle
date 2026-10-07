@@ -3,8 +3,9 @@
 MinGW and clang targeting Windows name the pointer a DLL import goes through after the
 function it imports, so `__imp__Z3foov` is the thunk for `foo()` and, where i386 COFF adds
 its underscore, `__imp___Z3foov` too. llvm-cxxfilt 18 reads both as `import thunk for
-foo()` when what follows the prefix reads by itself; GNU c++filt 2.42 hands both back.
-Behind the prefix a C name is only a C name, and stays as written.
+foo()`; GNU c++filt 2.42 hands both back. Behind the prefix a C name is only a C name,
+and stays as written -- which is where this parts from llvm-cxxfilt, whose fallback
+reads a bare `<type>` there and spells `__imp_i` as `import thunk for int`.
 
 The expected column is what each reference printed on this machine:
 
@@ -46,12 +47,14 @@ def test_both_styles(mangled, llvm, gnu):
         "__imp__ReadFile@20",
         "__imp_foo",
         "__imp_Z3foov",
-        # Three underscores is a block invocation, which needs its `_block_invoke`.
-        "__imp____Z3foov",
+        # A bare type, which llvm-cxxfilt's fallback reads and this does not.
+        "__imp_i",
+        "__imp_3foo",
         # Not a whole mangled name after the prefix.
         "__imp__Z",
         "__imp__Z3foovE",
-        # Neither prefix is read behind the other.
+        # The prefix is read first, and once. An allocation token behind it is what
+        # llvm-cxxfilt's `main` reads and 18 does not; neither is followed here.
         "__imp___alloc_token__Z3foov",
         "__alloc_token___imp__Z3foov",
         "__imp___imp__Z3foov",
@@ -61,6 +64,19 @@ def test_what_is_not_one_stays_as_written(mangled):
     assert demangle.demangle(mangled) == mangled
     assert demangle.demangle(mangled, style="gnu") == mangled
     assert demangle.demangle(mangled, language="itanium") == mangled
+
+
+def test_three_underscores_is_not_a_thunk():
+    """`__imp____Z3foov` has no `_block_invoke`, so it is no block invocation either; the
+    Objective-C scheme's reading is what auto-detection gives it."""
+    assert demangle.demangle("__imp____Z3foov", language="itanium") == "__imp____Z3foov"
+
+
+def test_a_legacy_rust_name_behind_the_prefix_reads_as_the_reference_reads_it():
+    """Rust's scheme never sees the prefix, so the name is C++'s, hash and all -- which is
+    what llvm-cxxfilt prints for it."""
+    assert demangle.detect("__imp__ZN3foo17h0123456789abcdefE") == "itanium"
+    assert demangle.demangle("__imp__ZN3foo17h0123456789abcdefE") == "import thunk for foo::h0123456789abcdef"
 
 
 @pytest.mark.parametrize("mangled", ["__imp_ReadFile", "__imp__ReadFile@20", "__imp_foo", "__imp_Z3foov", "__imp_"])

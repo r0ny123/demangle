@@ -13,7 +13,8 @@ the reference demanglers, and a **Performance** section.
 - **PE import thunks.** `__imp__Z3foov`, and `__imp___Z3foov` where i386 COFF adds its
   underscore, read as `import thunk for foo()` in both styles, and `detect` claims
   them. Only a whole mangled name after the prefix counts: `__imp_ReadFile` stays as
-  written.
+  written, and so does the bare `<type>` llvm-cxxfilt's fallback reads there. A legacy
+  Rust name behind the prefix is C++'s, hash and all, as llvm-cxxfilt prints it.
 
 ### Performance
 
