@@ -50,7 +50,7 @@ demangle = "demangle.cli:main"
 # metadata.
 [dependency-groups]
 test = [
-    "pytest>=8",
+    "pytest>=9.1.1",
     "pytest-cov",
     "hypothesis>=6",
 ]
