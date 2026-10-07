@@ -14,6 +14,8 @@ import demangle
 from demangle import Signature, signature, signatureb
 from demangle._signature import _SEPARATORS, _split_last
 from demangle.core.errors import DemanglingError
+from demangle.schemes.delphi._parser import CONVENTIONS as DELPHI_CONVENTIONS
+from demangle.schemes.delphi._parser import LABELS as DELPHI_LABELS
 
 from .conftest import corpus_files, load_corpus, requires_gnu_cxxfilt
 from .test_conformance import NO_PARAMS_AGREE, NO_PARAMS_TOTAL
@@ -25,9 +27,7 @@ PASCAL_CORPORA = ["pascal-real-world.txt"]
 MSVC_SPECIAL_CORPORA = ["msvc-llvm-corpus.txt", "msvc-boost.txt", "msvc-clang.txt", "msvc-type-descriptors.txt"]
 
 #: What the Delphi unmangler writes before a name, none of which is part of it.
-DELPHI_PREFIXES = frozenset(
-    {"__cdecl", "__pascal", "__fastcall", "__stdcall", "__saveregs", "__linkproc__", "__tpdsc__"}
-)
+DELPHI_PREFIXES = DELPHI_CONVENTIONS | DELPHI_LABELS
 
 
 @pytest.mark.sweep
@@ -371,6 +371,11 @@ class TestDelphi:
         parts = signature("@$beql$qrx5_GUIDt1")
         assert (parts.namespace, parts.base_name) == ("", "operator ==")
 
+    def test_the_call_operators_brackets_are_its_name_not_its_parameters(self):
+        parts = signature("@std@%less$i%@$bcall$xqrxit1")
+        assert (parts.namespace, parts.base_name) == ("std::less<int>", "operator ()")
+        assert parts.parameters == ("const int&", "const int&")
+
     def test_a_template_function_has_its_result_off_its_name(self):
         parts = signature("@Rtti@TValue@%IsType$p17System@TMetaClass%$qqrv$o")
         assert parts.return_type == "bool"
@@ -399,6 +404,35 @@ class TestDelphi:
         parts = signature("@f@#$cf$@bar")
         assert (parts.special, parts.namespace, parts.base_name) == ("__vdflg__", "f", "bar")
 
+    @pytest.mark.parametrize(
+        ("mangled", "special", "name"),
+        [
+            ("@_$FL$@TMyClass", "__frndl__", "TMyClass"),
+            ("@_$CH$@TMyClass", "__chtbl__", "TMyClass"),
+            ("@_$DC$@TMyClass", "__odtbl__", "TMyClass"),
+            ("@_$TL$@TMyClass", "__thrwl__", "TMyClass"),
+            ("@_$EC$@TMyClass", "__ectbl__", "TMyClass"),
+            ("@_$XX$@TMyClass", "____", "TMyClass"),
+            ("@Unit@_$CH$@TMyClass", "__chtbl__", "Unit::TMyClass"),
+        ],
+    )
+    def test_a_table_is_labelled_and_names_its_class(self, mangled, special, name):
+        parts = signature(mangled)
+        assert (parts.special, parts.qualified_name) == (special, name)
+
+    def test_a_virtual_definition_thunk_is_about_its_class(self):
+        parts = signature("@boost@program_options@%typed_value$oc%@3$vsn")
+        assert parts.special == "__vdthk__"
+        assert (parts.namespace, parts.base_name) == ("boost::program_options", "typed_value<bool, char>")
+        assert parts.parameters is None
+
+    @pytest.mark.parametrize(
+        ("mangled", "name"), [("@System@@", "System"), ("@TStorageStreamBase@3$vsn", "TStorageStreamBase")]
+    )
+    def test_a_label_with_nothing_after_it_is_about_its_scope(self, mangled, name):
+        parts = signature(mangled)
+        assert (parts.namespace, parts.base_name, parts.qualified_name) == ("", name, name)
+
     @pytest.mark.sweep
     @pytest.mark.parametrize("corpus", DELPHI_CORPORA)
     def test_no_prefix_is_left_in_the_name(self, corpus, subtests):
@@ -412,7 +446,7 @@ class TestDelphi:
                     assert parts.qualified_name == f"{parts.namespace}::{parts.base_name}"
                 assert parts.base_name
                 for field in (parts.qualified_name, parts.namespace, parts.base_name):
-                    assert not set(field.split()) & DELPHI_PREFIXES
+                    assert not set(field.replace("::", " ").split()) & DELPHI_PREFIXES
 
 
 class TestPascal:

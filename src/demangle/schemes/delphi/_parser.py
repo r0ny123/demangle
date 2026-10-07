@@ -132,6 +132,17 @@ _TABLE_KIND = {
     "EC": "ectbl",
 }
 
+#: What the unmangler writes before or in place of a name to say what the symbol is: a
+#: linker procedure, a type descriptor, a virtual-definition flag or thunk, a thunk, and
+#: a table, `____` where the table's code is not one of `_TABLE_KIND`'s.
+LABELS = frozenset(
+    {"__linkproc__", "__tpdsc__", "__vdflg__", "__vdthk__", "__thunk__", "____"}
+    | {f"__{kind}__" for kind in _TABLE_KIND.values()}
+)
+
+#: The calling conventions as the unmangler spells them, `__saveregs` with them.
+CONVENTIONS = frozenset({spelled.strip() for spelled in CALLING.values()} | {"__saveregs"})
+
 
 class DemangleFailure(Exception):
     """This name is not one this parser reads."""

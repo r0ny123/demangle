@@ -617,6 +617,9 @@ def _from_parts(reading, found, node):
         components = [head.name]
         label = head.label or label
         result = result or head.result
+        if label == "__vdthk__":
+            # `(rtti)` after a virtual-definition thunk is its table's flags.
+            parameters = None
 
     found["qualified_name"] = reading.separator.join(components)
     if head is not None and head.base is not None:
@@ -641,14 +644,6 @@ def _from_parts(reading, found, node):
         found["is_function"] = True
     return True
 
-
-_DELPHI_CONVENTIONS = frozenset(
-    {"__cdecl", "__pascal", "__fastcall", "__fortran", "__stdcall", "__syscall", "__interrupt", "__saveregs"}
-)
-
-#: What Delphi's unmangler writes before a name to say what the symbol is: a unit-level
-#: linker procedure, a type descriptor, a virtual-definition flag, a thunk.
-_DELPHI_LABELS = frozenset({"__linkproc__", "__tpdsc__", "__vdflg__", "__thunk__"})
 
 #: The labels whose operand is a type or a thunk's operands, not a name with a result.
 _DELPHI_OPERANDS = frozenset({"__tpdsc__", "__thunk__"})
@@ -693,16 +688,21 @@ def _delphi_head(head, is_function):
     `System::__linkproc__ __fastcall Abort`, `__tpdsc__ Forms::TForm` -- so the name is
     what is left once they are read off. Where the convention is absent, the last word
     is the name and any before it the result; `operator` names are the exception, which
-    run to the end and are told apart by the word `operator`.
+    run to the end and are told apart by the word `operator`. A label with nothing after
+    it -- `System::__linkproc__`, `TStream::__vdthk__` -- is about its scope, which is
+    then the name.
     """
+    # Imported here, not above: a scheme is loaded when a name of it is first read.
+    from .schemes.delphi._parser import CONVENTIONS, LABELS
+
     words = _words(head)
-    convention = [word for word in words if word in _DELPHI_CONVENTIONS]
-    words = [word for word in words if word not in _DELPHI_CONVENTIONS]
+    convention = [word for word in words if word in CONVENTIONS]
+    words = [word for word in words if word not in CONVENTIONS]
     label = None
     scope = ""
     for at, word in enumerate(words):
         marker = word.rsplit("::", 1)[-1]
-        if marker in _DELPHI_LABELS:
+        if marker in LABELS:
             label = marker
             scope = word[: len(word) - len(marker)]
             del words[at]
@@ -716,7 +716,7 @@ def _delphi_head(head, is_function):
             first = len(words) - 1 if is_function else 0
         named = words[first:]
         result = " ".join(words[:first]) or None
-    name = scope + " ".join(named)
+    name = scope + " ".join(named) if named else scope.removesuffix("::") or label or ""
     base = None
     if named and named[0].rsplit("::", 1)[-1] == "operator":
         cut = len(scope) + len(named[0]) - len("operator")
