@@ -73,6 +73,9 @@ def build(symbol):
     """Assemble the tree for a parsed `DelphiSymbol`."""
     text = symbol.text
     open_paren = text.find("(")
+    if text.startswith("()", open_paren) and text.endswith("operator ", 0, open_paren):
+        # `operator ()` is a name, and the parameter list is the next `(`.
+        open_paren = text.find("(", open_paren + 2)
     if open_paren < 0:
         return Symbol([DelphiName([text])], symbol.kind)
     head, rest = text[:open_paren], text[open_paren:]

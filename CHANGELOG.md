@@ -127,6 +127,27 @@ the reference demanglers, and a **Performance** section.
   it does for any command Ctrl-C kills; on Windows the status is 130. A pipe closed
   before the last flush (`demangle a b | true`) no longer prints `Exception ignored`
   and exits 120.
+- **`signature()` splits MSVC's labels from the name they are about**, as it splits
+  Itanium's `vtable for`. `??_7Base@@6B@` (`` const Base::`vftable' ``) has
+  `special="vftable"` and `qualified_name="Base"`, where `` `vftable' `` used to be the
+  base name and `const Base` the namespace; the same holds for the RTTI descriptors,
+  the deleting destructors, the closures and iterators, the dynamic initialisers
+  (`special="dynamic initializer for"`, the variable for the name) and the thunks
+  (`adjustor`, `vtordisp`, `vcall`). What follows a label about its own table is
+  dropped: `` C::f`adjustor{16}' `` is `special="adjustor"` and `C::f`, and neither keeps
+  the `{16}`, nor a base class descriptor its `at (0, -1, 0, 64)`, nor a vftable its
+  `` {for `A'} ``. A label is the symbol's own only at the end of the name and outside
+  every template argument, so `` X<&const C::`vftable'>::x `` is the static member `x`.
+  The deleting destructors and `vbase dtor` are `is_ctor_or_dtor`, and so is a thunk
+  over one: `` Base::`vector deleting dtor'`adjustor{4}' `` is `special="adjustor"` with
+  `` Base::`vector deleting dtor' `` for the name. `` `anonymous
+  namespace' `` and the function a local static lives in are scopes, where everything
+  before the last `::` used to be the namespace. The CLI's `-p` writes the label where
+  MSVC does, `` Base::`vftable' `` (it printed `` const Base::`vftable' ``),
+  `` char *`RTTI Type Descriptor' ``, `` `dynamic initializer for 'Foo'' ``, and keeps
+  what the label says about its table, so a class's vftables stay apart:
+  `` B::A::`vftable'{for `D::C'} ``, `` C::f`adjustor{16}' ``. `--base-name` prints
+  `Base` (it printed `` `vftable' ``).
 
 ### Fixed
 
@@ -137,6 +158,27 @@ the reference demanglers, and a **Performance** section.
 - **An Objective-C tree places a name after the label it follows**, so the selector
   of `.objc_sel_name_b` is no longer found inside `Objective-C`, nor a class called
   `Object` inside `Objective-C class`.
+- **`signature()` no longer leaves a spelled prefix in the name.** A Delphi name's
+  calling convention, result and label (`__fastcall`, `bool`, `__linkproc__`,
+  `__tpdsc__`) were read as part of the qualified name, which was then not split:
+  `@Unit@TForm1@Button1Click$qqrp14System@TObject` is now `Unit::TForm1` and
+  `Button1Click` with `calling_convention="__fastcall"`, a template function's result
+  is `return_type`, and an `operator` is split before its own spelling. Every label
+  the unmangler writes is `special` -- the virtual-definition thunk `__vdthk__` and the
+  tables `__frndl__`, `__chtbl__`, `__odtbl__`, `__thrwl__`, `__ectbl__` among them --
+  and one with nothing after it is about its scope: `@System@@`
+  (`System::__linkproc__`) is named `System`, where its base name was empty. A class
+  constructor is named `` `class constructor` ``. A constructor and a destructor
+  (`$bctr`, `$bdtr`), a class constructor and a class destructor are now
+  `is_ctor_or_dtor`, which the convention in the name had hidden. `operator ()` keeps
+  its brackets rather than opening its parameter list with them. The CLI's `-p` writes
+  the label where the unmangler does, without the convention:
+  `System::__linkproc__ Abort` (it printed `System::__linkproc__ __fastcall Abort`),
+  `TStream::__vdthk__`, `__tpdsc__ Forms::TForm`.
+- **A Free Pascal interface wrapper is named by its interface.** The base name
+  `signature()` gave a `WRPR_$` symbol ran on past the interface into the entry number
+  and the method it forwards to, `#0: SYSTEM.TINTERFACEDOBJECT.QUERYINTERF(...)`; it
+  is now the interface alone.
 
 ### Performance
 

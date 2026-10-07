@@ -45,7 +45,7 @@ import sys
 import textwrap
 
 from . import __version__
-from ._signature import Signature, signature
+from ._signature import Signature, _labelled, signature
 from .api import _read, demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
 from .core.ast import Function
 from .core.errors import DemanglingError, LimitExceeded
@@ -731,8 +731,7 @@ def _part_from(name, parts, arguments, limits):
         return parts.base_name
     if arguments.no_params:
         # What `c++filt -p` prints: the scoped name without signature or qualifiers.
-        lead = f"{parts.special} " if parts.special else ""
-        return f"{lead}{parts.qualified_name}{parts.decoration}"
+        return f"{_labelled(parts)}{parts.decoration}"
     without = _without_return_type(name, arguments, limits, parts)
     if arguments.ret_postfix and parts.return_type:
         # No space, as `cplus_demangle_v3(name, DMGL_PARAMS | DMGL_RET_POSTFIX)` prints.
