@@ -53,7 +53,7 @@ native code, no compiler required.
 pip install demangle
 ```
 
-Python 3.11 or newer. That is the whole dependency list. It runs on CPython 3.11+ and PyPy 3.11.
+Python 3.11 or newer, on CPython or PyPy. That is the whole dependency list.
 
 The documentation, API reference included, is published at
 <https://r0ny123.github.io/demangle/>.

@@ -1,6 +1,6 @@
 FROM ubuntu:24.04
 
-# No apt Python: Ubuntu 24.04 ships 3.12, below `requires-python`; install.sh uses uv.
+# No apt Python: install.sh takes the interpreters it needs from uv.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates \
