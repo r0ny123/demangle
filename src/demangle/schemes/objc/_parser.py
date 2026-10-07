@@ -45,7 +45,9 @@ class ObjcSymbol:
     """One Objective-C symbol.
 
     `text` is the readable spelling. The remaining fields are what the mangling said,
-    and `raw` is the symbol exactly as it came in, so a caller can rejoin.
+    and `raw` is the symbol exactly as it came in, so a caller can rejoin. `label` is
+    the words a runtime data symbol's spelling opens with, `Objective-C class ` say,
+    and empty for a method or a block.
     """
 
     __slots__ = (
@@ -55,6 +57,7 @@ class ObjcSymbol:
         "class_name",
         "ivar",
         "kind",
+        "label",
         "raw",
         "runtime",
         "selector",
@@ -74,6 +77,7 @@ class ObjcSymbol:
         ivar=None,
         block=None,
         ambiguous=False,
+        label="",
     ):
         self.raw = raw
         self.text = text
@@ -88,6 +92,7 @@ class ObjcSymbol:
         #: Whether another reading of a GNU-family method name re-mangles to the same
         #: symbol. Never true for the Apple form.
         self.ambiguous = ambiguous
+        self.label = label
 
     def __repr__(self):  # pragma: no cover - debugging aid
         return f"ObjcSymbol({self.raw!r}, {self.text!r}, {self.kind!r})"
@@ -529,6 +534,7 @@ def _prefixed(name):
         rest = name[len(prefix) :]
         symbol = _from_prefix(name, rest, label, shape)
         if symbol is not None:
+            symbol.label = label
             return symbol
     return None
 

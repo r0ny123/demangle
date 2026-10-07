@@ -241,6 +241,59 @@ class TestTheSchemesThatCarryOnlyAPath:
     def test_an_objc_module_constructor_is_prose_and_is_left_whole(self):
         parts = signature(".objc_ctor")
         assert (parts.namespace, parts.base_name) == ("", "Objective-C module constructor")
+        assert parts.special is None
+
+
+class TestObjectiveCMetadata:
+    """A runtime data symbol is *about* a class, as a Swift descriptor is about a type:
+    the label is `special` and the name fields hold the entity."""
+
+    @pytest.mark.parametrize(
+        ("mangled", "special", "namespace", "base"),
+        [
+            ("_OBJC_CLASS_$_NSData", "Objective-C class", "", "NSData"),
+            ("_OBJC_METACLASS_$_NSData", "Objective-C metaclass", "", "NSData"),
+            ("__OBJC_CLASS_RO_$_NSData", "class data for", "", "NSData"),
+            ("l_OBJC_CLASS_NSData", "Objective-C class", "", "NSData"),
+            ("__objc_class_name_NSData", "Objective-C class", "", "NSData"),
+            (".objc_class_name_NSData", "Objective-C class", "", "NSData"),
+            ("_OBJC_IVAR_$_NSData._count", "instance variable offset for", "NSData", "_count"),
+            ("__objc_ivar_offset_NSData.count.i", "instance variable offset for", "NSData", "count"),
+            ("__OBJC_$_CATEGORY_NSString_$_Extra", "Objective-C category", "", "NSString(Extra)"),
+            (".objc_category_name_NSString_Extra", "Objective-C category", "", "NSString(Extra)"),
+            ("__OBJC_$_CATEGORY_INSTANCE_METHODS_NSString_$_Extra", "instance method list for", "", "NSString(Extra)"),
+            (".objc_selector_foo:_v@:", "Objective-C selector", "", "foo:"),
+            # The name is also a letter of the label, and is found after it.
+            (".objc_sel_name_b", "Objective-C selector", "", "b"),
+            ("_OBJC_CLASS_$_C", "Objective-C class", "", "C"),
+        ],
+    )
+    def test_the_label_is_special_and_the_entity_is_the_name(self, mangled, special, namespace, base):
+        parts = signature(mangled)
+        assert (parts.language, parts.special, parts.namespace, parts.base_name) == ("objc", special, namespace, base)
+        assert parts.is_special
+        assert not parts.is_function
+
+    def test_a_method_is_not_about_anything(self):
+        parts = signature("-[NSString length]")
+        assert (parts.special, parts.qualified_name) == (None, "NSString length")
+
+    @pytest.mark.sweep
+    def test_every_labelled_symbol_in_the_corpus_is_split(self, subtests):
+        """Each runtime data symbol that names a class, a category, an instance variable
+        or a selector: the label leads the spelling, and the entity follows it."""
+        split = 0
+        for mangled, _ in load_corpus("objc-real-world.txt"):
+            parts = signature(mangled)
+            if parts.is_function or not demangle.parse(mangled).children():
+                continue
+            split += 1
+            with subtests.test(mangled=mangled):
+                assert parts.special is not None
+                assert parts.demangled.startswith(parts.special + " ")
+                assert parts.qualified_name.replace(" ", ".") in parts.demangled
+                assert not parts.qualified_name.startswith(parts.special)
+        assert split > 1000
 
 
 class TestATreeFromElsewhere:

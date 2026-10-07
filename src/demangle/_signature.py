@@ -19,7 +19,9 @@ the schemes come in two kinds:
   components and a `.` inside a name does not -- so reading it gives the same answer
   the printer gave, which splitting the printer's output could not.
 
-Rust's path and Objective-C's class and selector are read off their nodes as they stand.
+Rust's path and Objective-C's class and selector are read off their nodes as they stand,
+and an Objective-C runtime data symbol is split into the label it opens with and the
+class, category, instance variable or selector the label is about.
 
 Text is the last resort, for the places where a tree has already flattened the answer,
 and even there with a reader that counts brackets and that declines a spelling which is
@@ -137,9 +139,10 @@ class Signature:
     """What the symbol is *about*, where it is about something rather than being it.
 
     `vtable for`, `typeinfo for`, `guard variable for`, `non-virtual thunk to`; D's
-    `initializer for`; Swift's `protocol requirements base descriptor for`. The other
+    `initializer for`; Swift's `protocol requirements base descriptor for`;
+    Objective-C's `Objective-C class` and `instance variable offset for`. The other
     fields then describe the entity the symbol is about, so `base_name` on a
-    `vtable for std::ostream` is `ostream`.
+    `vtable for std::ostream` is `ostream`, and on `_OBJC_CLASS_$_NSData` is `NSData`.
     """
 
     decoration: str = ""
@@ -325,7 +328,7 @@ def _parts_of(reading, tree):
             found["namespace"], found["base_name"] = names
             found["qualified_name"] = " ".join(names)
             found["is_function"] = True
-        else:
+        elif not _objc_metadata(reading, found, tree):
             # A module constructor or class reference: prose, not a class and selector.
             found["namespace"], found["base_name"] = "", found["qualified_name"]
         return found
@@ -342,6 +345,39 @@ def _parts_of(reading, tree):
         found["is_data"] = True
         found["is_function"] = False
     return found
+
+
+def _objc_metadata(reading, found, tree):
+    """Read an Objective-C runtime data symbol as a label and the entity it is about.
+
+    `_OBJC_CLASS_$_NSData` spells `Objective-C class NSData`, and the split is the one
+    Swift's descriptors get: the label is `special`, and the name fields hold the class.
+    A category is named as Objective-C names one, `NSString(Extra)`; an instance
+    variable is its class and its own name, joined as a method's class and selector
+    are. False where the tree is not a label before an entity.
+    """
+    parts = tree.parts
+    if not (isinstance(parts[0], str) and parts[0].endswith(" ") and _holds_a_node(parts[1:])):
+        return False
+    entity = parts[1:]
+    objc_kind = tree.objc_kind
+    if objc_kind == "ivar":
+        member = entity[-1]
+        if len(entity) != 2 or not isinstance(member, str) or not member.startswith("."):
+            return False
+        found["namespace"], found["base_name"] = reading.spell(entity[0]), member[1:]
+        found["qualified_name"] = found["namespace"] + reading.separator + found["base_name"]
+    elif objc_kind == "category":
+        found["qualified_name"] = "".join(part if isinstance(part, str) else reading.spell(part) for part in entity)
+        found["namespace"], found["base_name"] = "", found["qualified_name"]
+    elif objc_kind in ("class", "selector") and not isinstance(entity[0], str):
+        # A selector's type encoding follows it, and is not part of its name.
+        found["qualified_name"] = found["base_name"] = reading.spell(entity[0])
+        found["namespace"] = ""
+    else:
+        return False
+    found["label"] = parts[0].strip()
+    return True
 
 
 def _name_from(reading, found, node):

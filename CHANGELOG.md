@@ -33,6 +33,12 @@ the reference demanglers, and a **Performance** section.
   (`/Users/me/build/foo.o`, `C:\...`) or a `src/foo.c` file name for an import path.
   `demangle()` returns what it did -- the MSVC names never parsed, and Go spelled a
   path as it stood -- and every corpus name is detected as before.
+- **`signature()` splits Objective-C runtime data symbols as it splits Swift's
+  descriptors.** `_OBJC_CLASS_$_NSData` has `special="Objective-C class"` and
+  `qualified_name="NSData"`, where the whole phrase used to be the name; an instance
+  variable's class and name are `namespace` and `base_name`, and a category is named
+  `NSString(Extra)`. The tree places a name after the label it follows, so the
+  selector of `.objc_sel_name_b` is no longer found inside `Objective-C`.
 
 ### Performance
 
