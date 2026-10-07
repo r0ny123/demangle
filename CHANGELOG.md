@@ -41,6 +41,29 @@ the reference demanglers, and a **Performance** section.
   the allow-list, `detect(strict=True)` as language evidence, `signature()`'s
   `qualified_name` as the label that is the same whichever compiler built the binary,
   `preload()` and the limits.
+- **`python -m demangle`** runs the command, for an environment where the `demangle`
+  script is not on `PATH`.
+- **`demangle -l itanium,swift`**, the allow-list on the command line: a
+  comma-separated `--language` detects among those schemes alone, as
+  `language=("itanium", "swift")` does. One name still forces its scheme, and a
+  trailing comma makes a list of one, `-l gnuv2,`, which detects. An unknown name
+  suggests the nearest one and points at `--list-languages`, rather than listing all
+  forty names and aliases.
+- **`demangle --json-lines`**: one JSON object per name, `mangled`, `demangled` and
+  `language` -- the scheme that read the name, or null where it came back unchanged --
+  and with `--signature` the fields of `signature()` besides, null for a name nothing
+  reads, so every record has the same keys. A name whose bytes are not UTF-8 has one
+  more, `mangled_bytes`, those bytes in base64, since `mangled` carries each as a lone
+  surrogate that most JSON readers turn into U+FFFD, and `demangled_bytes` where the
+  spelling carries them on. `demangled` is what the line would have said, `-p` and
+  `--style` applied. Over a stream there is one record per symbol the filter rewrites
+  and none for the text around it. `--json` is unchanged: it is the
+  parse tree, and scripts read it as such.
+- **`demangle -0`**, or `--null`: standard input is whole names each ended by a NUL,
+  as `find -print0` and `xargs -0` hand them over, and every answer is ended by a NUL
+  rather than a newline -- names given as arguments included. A record is one name,
+  never a line to filter, so a name with a space or a newline in it reads whole; a
+  multi-line `--tree` is one record. Messages stay lines on standard error.
 
 ### Changed
 
@@ -68,6 +91,42 @@ the reference demanglers, and a **Performance** section.
   `qualified_name="NSData"`, where the whole phrase used to be the name; an instance
   variable's class and name are `namespace` and `base_name`, joined by the scheme's
   separator, a space, and a category is named `NSString(Extra)`.
+- **`demangle --detect --strict`** names the scheme that reads each name, the answer
+  `detect(name, strict=True)` gives, under the run's own `--relaxed` and `--max-*`
+  bounds. A name none reads is reported on standard error with why, and the status is
+  1: `demangle -d --strict notmangled` printed `-` and exited 0, since `--strict` was
+  ignored under `--detect`. Without `--strict`, `--detect` answers as before, except
+  that a scheme forced by an alias is named by its registered name: `demangle -d -l
+  c++` printed `c++`, and now prints `itanium`, as `--detect --strict` and
+  `--json-lines` do.
+- **`-` as a NAME reads standard input**, in its place among the others: `demangle
+  _Z1fv - _Z1gv` reads the pipe between the two. `demangle -` printed `-`.
+- **`demangle` with no NAME at a terminal is a usage error**, exit status 2, saying
+  how to give it names, rather than a wait for input its user did not know it wanted.
+  `demangle -` still reads what is typed. A closed standard input is the same error,
+  where it was a `TypeError` traceback.
+- **The command answers each line as it arrives.** Output to a pipe was flushed only
+  when Python's buffer filled, so `tail -f log | demangle | grep ...` printed nothing
+  for the first 8K. It is now flushed once per read of standard input: per line when
+  lines trickle in, per 64K when `nm` floods it, which costs nothing measurable. The
+  bytes written are the same, `\r\n` and undecodable bytes included.
+- **`demangle -h` is the short help, `demangle --help` the whole of it.** Both open
+  with the usage and three examples; `-h` then lists the options most runs use,
+  and `--help` every option in groups -- reading names, what to print, one part of a
+  name, spelling, MSVC suppressions, resource bounds -- followed by the exit statuses
+  and where the documentation and the issue tracker are. `--simplified`, a Swift flag,
+  had been listed among the MSVC ones. The usage line is one line, so a usage error is
+  two rather than eleven, and a flag is no longer broken across lines at a hyphen.
+- **A bound the command hit says how to move it**: `_Z1fv: exceeded input length limit
+  of 3: '_Z1fv'; --max-input N or --relaxed raises it, for input you trust`.
+- **Flags may follow names.** `demangle _Z1fv -b _Z1gv` was an "unrecognized
+  arguments" error, because the names after a flag were not collected; flags and
+  names now mix in any order, and after `--` nothing is a flag.
+- **Ctrl-C ends the command with no traceback**, at any point after start-up, by
+  dying of SIGINT, so the shell reports 130 and a `for` loop over `demangle` stops as
+  it does for any command Ctrl-C kills; on Windows the status is 130. A pipe closed
+  before the last flush (`demangle a b | true`) no longer prints `Exception ignored`
+  and exits 120.
 
 ### Fixed
 

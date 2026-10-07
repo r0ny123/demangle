@@ -289,6 +289,8 @@ $ nm -a libfoo.so | demangle
 $ demangle _ZNSt6vectorIiSaIiEE9push_backERKi
 $ demangle --tree _Z1fPKc
 $ demangle --detect _RNvC6_123foo3bar
+$ demangle --detect --strict _ZN3Foo               # the scheme that reads it, or an error
+$ nm -a Foo.dylib | demangle -l itanium,swift      # detect among these schemes alone
 $ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the signature
 $ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
 $ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
@@ -300,7 +302,26 @@ $ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
 $ demangle --no-tag-kind '?g3@@YAXVV@@@Z'          # `void __cdecl g3(V)`
 $ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
 $ demangle --json _Z1fPi                           # the parse tree as JSON
+$ nm -a libfoo.so | demangle --json-lines          # a JSON object per symbol
+$ demangle --json-lines --signature _Z1fPi         # ... with the parts of the name
+$ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, in and out
 ```
+
+`--json-lines` writes one object per name, `{"mangled": ..., "demangled": ...,
+"language": ...}`, where `language` is the scheme that read the name, or `null` where
+it came back unchanged; `--signature` adds the fields of `signature()`, `null` for a
+name nothing reads, so every record has the same keys. A name whose bytes are not UTF-8
+has one more, `mangled_bytes`, the bytes in base64: `mangled` carries each such byte as
+a lone surrogate, `"_Z3foo\udcff"`, which most JSON readers turn into U+FFFD; where the
+spelling carries them on, `demangled_bytes` does the same for it. Over a
+stream it writes one per symbol the filter rewrites. `--json` is the other question,
+the parse tree.
+
+`demangle -h` lists the options most runs use and `demangle --help` all of them, with
+the exit statuses: 0 when every name was read or printed unchanged, 1 when one was
+refused -- under `--strict`, or with no tree to print for `--tree` or `--json` -- 2 for
+a usage error, and 130 after Ctrl-C. `python -m demangle` is the same command, where
+the script is not on `PATH`.
 
 ## Correctness
 
