@@ -85,6 +85,8 @@ the reference demanglers, and a **Performance** section.
   and where the documentation and the issue tracker are. `--simplified`, a Swift flag,
   had been listed among the MSVC ones. The usage line is one line, so a usage error is
   two rather than eleven, and a flag is no longer broken across lines at a hyphen.
+- **A bound the command hit says how to move it**: `_Z1fv: exceeded input length limit
+  of 3: '_Z1fv'; --max-input N or --relaxed raises it, for input you trust`.
 - **Flags may follow names.** `demangle _Z1fv -b _Z1gv` was an "unrecognized
   arguments" error, because the names after a flag were not collected; flags and
   names now mix in any order, and after `--` nothing is a flag.

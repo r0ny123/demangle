@@ -516,6 +516,19 @@ class TestLimitFlags:
         capsys.readouterr()
         assert main(["--relaxed", "--strict", deep]) == 0
 
+    @pytest.mark.parametrize(
+        ("argv", "remedy"),
+        [
+            (["--max-output", "4", VECTOR], "--max-output N or --relaxed raises it"),
+            (["--max-input", "3", "_Z1fv"], "--max-input N or --relaxed raises it"),
+            (["_Z1f" + "P" * 400 + "i"], "--max-depth N or --relaxed raises it"),
+        ],
+        ids=["output", "input", "depth"],
+    )
+    def test_a_bound_that_was_hit_says_how_to_move_it(self, capsys, argv, remedy):
+        assert main(["--strict", *argv]) == 1
+        assert remedy in capsys.readouterr().err
+
     def test_a_non_positive_bound_is_rejected(self):
         with pytest.raises(SystemExit):
             main(["--max-depth", "0", "_Z1fv"])

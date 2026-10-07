@@ -44,7 +44,7 @@ from . import __version__
 from ._signature import Signature, signature
 from .api import _read, demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
 from .core.ast import Function
-from .core.errors import DemanglingError
+from .core.errors import DemanglingError, LimitExceeded
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 from .core.style import get_style
 from .filter import TOKEN, TOKEN_MUST_HOLD
@@ -717,6 +717,23 @@ def _chunks(stream):
     yield decoder.decode(b"", final=True)
 
 
+#: The flag that moves each bound, for the message that reports hitting it.
+_BOUND_FLAGS = {"input length": "--max-input", "output length": "--max-output", "recursion depth": "--max-depth"}
+
+
+def _complaint(name, exc):
+    """The line on standard error for a name this run could not answer.
+
+    A bound that was hit says how to move it: the name may be a real one, longer or
+    deeper than the defaults allow for input nobody vouched for.
+    """
+    if isinstance(exc, LimitExceeded):
+        flag = _BOUND_FLAGS.get(exc.limit_name)
+        remedy = f"{flag} N or --relaxed" if flag else "--relaxed"
+        return f"{name}: {exc}; {remedy} raises it, for input you trust"
+    return f"{name}: {exc}"
+
+
 def _run_names(batches, arguments, limits):
     """One whole name per item: an argument, a line of standard input under `--types`,
     or a record of it under `--null`.
@@ -742,7 +759,7 @@ def _run_names(batches, arguments, limits):
             except BrokenPipeError:
                 raise
             except Exception as exc:
-                print(f"{name}: {exc}", file=sys.stderr)
+                print(_complaint(name, exc), file=sys.stderr)
                 status = 1
                 continue
             if isinstance(expanded, dict):
@@ -781,7 +798,7 @@ def _run_stream(batches, arguments, limits):
                 except BrokenPipeError:
                     raise
                 except Exception as exc:
-                    print(f"{word}: {exc}", file=sys.stderr)
+                    print(_complaint(word, exc), file=sys.stderr)
                     status = 1
                     continue
                 if isinstance(expanded, dict):
