@@ -266,6 +266,21 @@ class TestPartFlags:
         _, out, _ = run(capsys, ["-p", "??_7A@B@@6BC@D@@@", "??_7A@B@@6BC@D@@E@F@@@", "??_7A@B@@6BC@D@@E@F@@G@H@@@"])
         assert len(set(out.split("\n")) - {""}) == 3
 
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("@System@@Abort$qqrv", "System::__linkproc__ Abort"),
+            ("@@AsClass", "__linkproc__ AsClass"),
+            ("@OWL@TFileStreamBase@3$vsn", "OWL::TFileStreamBase::__vdthk__"),
+            ("@f@#$cf$@bar", "f::__vdflg__ bar"),
+            ("@$xp$11Forms@TForm", "__tpdsc__ Forms::TForm"),
+        ],
+    )
+    def test_no_params_writes_a_delphi_label_where_delphi_does(self, capsys, name, expected):
+        """After the scope for the three the unmangler writes there, its convention off."""
+        _, out, _ = run(capsys, ["-p", name])
+        assert out.strip() == expected
+
     def test_base_name_of_an_msvc_label_is_the_class_it_is_about(self, capsys):
         _, out, _ = run(capsys, ["--base-name", "??_7Base@@6B@"])
         assert out.strip() == "Base"

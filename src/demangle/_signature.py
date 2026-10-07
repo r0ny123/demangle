@@ -446,13 +446,21 @@ def _labelled(parts):
     MSVC writes most of its labels after the name, `` Base::`vftable' ``, and its dynamic
     initialisers around it, `` `dynamic initializer for 'Foo'' ``; every other scheme's
     go before it: `vtable for Base`. A label that is its own name,
-    `` `vector ctor iterator' ``, is written once. What MSVC writes about the label's own
-    table stays with it -- `` `vftable'{for `A'} ``, `` `adjustor{16}' `` -- because it is
-    what tells one table or thunk of a class from another.
+    `` `vector ctor iterator' ``, is written once. Delphi writes a linker procedure and a
+    virtual-definition flag or thunk after the scope, `System::__linkproc__ Abort`, and
+    after the name it is about where nothing follows, `TStream::__vdthk__`. What MSVC
+    writes about the label's own table stays with it -- `` `vftable'{for `A'} ``,
+    `` `adjustor{16}' `` -- because it is what tells one table or thunk of a class from
+    another.
     """
     special, name = parts.special, parts.qualified_name
     if special is None:
         return name
+    if parts.language == "delphi" and special in _DELPHI_SCOPED:
+        if f"{name}::{special}" in parts.demangled:
+            return f"{name}::{special}"
+        if parts.namespace:
+            return f"{parts.namespace}::{special} {parts.base_name}"
     if parts.language == "msvc" and special in _MSVC_INITIALISERS:
         return f"`{special} '{name}''"
     joint = _MSVC_SUFFIXES.get(special) if parts.language == "msvc" else None
@@ -481,6 +489,9 @@ def _spelled_label(demangled, special):
             return demangled[start : end + 1] + rest[: len(rest) - len(after)], after
     return f"`{special}'", ""
 
+
+#: The Delphi labels the unmangler writes after a scope rather than before the name.
+_DELPHI_SCOPED = frozenset({"__linkproc__", "__vdflg__", "__vdthk__"})
 
 _MSVC_INITIALISERS = ("dynamic initializer for", "dynamic atexit destructor for")
 _MSVC_INITIALISER = re.compile(rf"`({'|'.join(_MSVC_INITIALISERS)}) (?:'(.*)'|`(.*)')'")
