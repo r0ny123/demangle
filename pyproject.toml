@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.24"]
+requires = ["hatchling>=1.32.4"]
 build-backend = "hatchling.build"
 
 [project]
@@ -53,9 +53,9 @@ demangle = "demangle.cli:main"
 # metadata.
 [dependency-groups]
 test = [
-    "pytest>=8",
+    "pytest>=9.1.1",
     "pytest-cov",
-    "hypothesis>=6",
+    "hypothesis>=6.168.3",
 ]
 # ruff and ty are pinned exactly: they add rules in patch releases. `format` is its own
 # group so the ruff pin has one home (docs also needs ruff to format signatures).
@@ -70,7 +70,7 @@ lint = [
 ]
 docs = [
     { include-group = "format" },
-    "mkdocs>=1.6",
+    "mkdocs>=1.6.1",
     "mkdocs-material>=9.5",
     "mkdocstrings-python>=1.10",
 ]
