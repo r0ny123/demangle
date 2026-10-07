@@ -612,7 +612,7 @@ def _expand_read(name, arguments, limits):
         return json.dumps(parse(name, language=arguments.language, style=arguments.style, limits=limits).to_dict())
     if arguments.tree:
         return "\n".join(_dump(parse(name, language=arguments.language, style=arguments.style, limits=limits)))
-    if arguments.no_params or arguments.base_name or arguments.no_return_type or arguments.ret_postfix:
+    if _selects_a_part(arguments):
         return _part_of(name, arguments, limits)
     if arguments.strict:
         return demangle_strict(name, language=arguments.language, style=arguments.style, limits=limits)
@@ -650,26 +650,43 @@ def _record(name, arguments, limits):
     escape and most readers then replace with U+FFFD, so it alone cannot give the name
     back.
     """
-    read = name[1:] if arguments.strip_underscore and name.startswith("_") else name
+    stripped = arguments.strip_underscore and name.startswith("_")
+    read = name[1:] if stripped else name
+    parts = None
+    # One read of the name for all three answers: the scheme, the spelling, the parts.
     try:
-        scheme = _scheme_of(read, arguments, limits)
+        if arguments.signature or _selects_a_part(arguments):
+            parts = signature(read, language=arguments.language, style=arguments.style, limits=limits)
+            scheme = parts.language
+            demangled = _part_from(read, parts, arguments, limits) if _selects_a_part(arguments) else parts.demangled
+        else:
+            resolved = get_style(arguments.style)
+            builder = resolved.spelling_builder
+            plugin, handle = _read(read, builder, arguments.language, resolved, limits)
+            scheme, demangled = plugin.name, builder.spell(handle)
     except DemanglingError:
         if arguments.strict:
             raise
-        scheme = None
+        scheme = demangled = None
+    if demangled is None or (stripped and demangled == read):
+        # As `_expand` answers: what the stripped name does not change, the name as given.
+        demangled = name
     record = {"mangled": name}
     raw = _undecodable(name)
     if raw is not None:
         record["mangled_bytes"] = base64.b64encode(raw).decode("ascii")
-    record["demangled"] = _expand(name, arguments, limits) if scheme else name
+    record["demangled"] = demangled
     record["language"] = scheme
     if arguments.signature:
-        if scheme:
-            parts = signature(read, language=arguments.language, style=arguments.style, limits=limits)
+        if parts is not None:
             record.update((field, getattr(parts, field)) for field in _SIGNATURE_FIELDS)
         else:
             record.update(dict.fromkeys(_SIGNATURE_FIELDS))
     return record
+
+
+def _selects_a_part(arguments):
+    return arguments.no_params or arguments.base_name or arguments.no_return_type or arguments.ret_postfix
 
 
 def _undecodable(name):
@@ -697,6 +714,11 @@ def _part_of(name, arguments, limits):
         if arguments.strict:
             raise
         return name
+    return _part_from(name, parts, arguments, limits)
+
+
+def _part_from(name, parts, arguments, limits):
+    """The piece of `name` this run asks for, from the parts already read off it."""
     if arguments.base_name:
         return parts.base_name
     if arguments.no_params:
@@ -737,24 +759,42 @@ def _without_return_type(name, arguments, limits, parts):
 
 def _run(names, arguments):
     """Each NAME in turn, and standard input wherever one is `-`."""
-    limits = _limits_from(arguments)
+    answer = _answerer(arguments, _limits_from(arguments))
     status = 0
     for from_stdin, group in itertools.groupby(names, key="-".__eq__):
         if not from_stdin:
-            answer = _run_names([list(group)], arguments, limits)
+            ran = _run_names([list(group)], arguments, answer)
         elif arguments.null:
             records = _batches(sys.stdin, "\0")
-            answer = _run_names(
-                ([record.removesuffix("\0") for record in batch] for batch in records), arguments, limits
-            )
+            ran = _run_names(([record.removesuffix("\0") for record in batch] for batch in records), arguments, answer)
         elif arguments.types:
             # No grammar here holds a `\r`, so CRLF input reads the same.
             lines = _batches(sys.stdin, "\n")
-            answer = _run_names(([line.rstrip("\r\n") for line in batch] for batch in lines), arguments, limits)
+            ran = _run_names(([line.rstrip("\r\n") for line in batch] for batch in lines), arguments, answer)
         else:
-            answer = _run_stream(_batches(sys.stdin, "\n"), arguments, limits)
-        status = max(status, answer)
+            ran = _run_stream(_batches(sys.stdin, "\n"), arguments, answer)
+        status = max(status, ran)
     return status
+
+
+#: How many `--json-lines` records a run remembers, so that a name a listing repeats --
+#: every call to one function in a disassembly -- is read once. At a few hundred bytes a
+#: record, a few megabytes.
+_REMEMBERED = 1 << 14
+
+
+def _answerer(arguments, limits):
+    """What this run says about a name: its expansion, or under `--json-lines` the scheme
+    that read it and its record, as JSON."""
+    if not arguments.json_lines:
+        return functools.partial(_expand, arguments=arguments, limits=limits)
+
+    @functools.lru_cache(maxsize=_REMEMBERED)
+    def record(name):
+        fields = _record(name, arguments, limits)
+        return fields["language"], json.dumps(fields)
+
+    return record
 
 
 #: The most one read takes from standard input. Output is flushed once the read's lines
@@ -824,7 +864,7 @@ def _complaint(name, exc):
     return f"{name}: {exc}"
 
 
-def _run_names(batches, arguments, limits):
+def _run_names(batches, arguments, answer):
     """One whole name per item: an argument, a line of standard input under `--types`,
     or a record of it under `--null`.
 
@@ -843,18 +883,17 @@ def _run_names(batches, arguments, limits):
                 out.write(end)
                 continue
             try:
-                expanded = (
-                    _record(name, arguments, limits) if arguments.json_lines else _expand(name, arguments, limits)
-                )
+                expanded = answer(name)
             except BrokenPipeError:
                 raise
             except Exception as exc:
                 print(_complaint(name, exc), file=sys.stderr)
                 status = 1
                 continue
-            if isinstance(expanded, dict):
-                if not (arguments.only_demangled and expanded["language"] is None):
-                    out.write(json.dumps(expanded) + end)
+            if arguments.json_lines:
+                language, text = expanded
+                if not (arguments.only_demangled and language is None):
+                    out.write(text + end)
                 continue
             if arguments.only_demangled and expanded == name:
                 continue
@@ -863,7 +902,7 @@ def _run_names(batches, arguments, limits):
     return status
 
 
-def _run_stream(batches, arguments, limits):
+def _run_stream(batches, arguments, answer):
     """A filter: substitute every symbol-shaped word, copy everything else through.
 
     Line by line rather than all at once, so `demangle` in a pipe stays a pipe: someone
@@ -882,19 +921,18 @@ def _run_stream(batches, arguments, limits):
                 if not _TOKEN_MUST_HOLD.search(word):
                     continue
                 try:
-                    expanded = (
-                        _record(word, arguments, limits) if arguments.json_lines else _expand(word, arguments, limits)
-                    )
+                    expanded = answer(word)
                 except BrokenPipeError:
                     raise
                 except Exception as exc:
                     print(_complaint(word, exc), file=sys.stderr)
                     status = 1
                     continue
-                if isinstance(expanded, dict):
+                if arguments.json_lines:
                     # A record for each word the filter would rewrite, and none for the text.
-                    if expanded["language"] is not None:
-                        demangled.append(json.dumps(expanded))
+                    language, text = expanded
+                    if language is not None:
+                        demangled.append(text)
                     continue
                 if expanded == word and not arguments.detect:
                     continue

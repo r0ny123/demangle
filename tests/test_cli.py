@@ -381,7 +381,7 @@ class TestPipeline:
             process.wait(timeout=60)
 
     @staticmethod
-    def _interrupt(*_):
+    def _interrupt(*_, **__):
         raise KeyboardInterrupt
 
     @pytest.mark.parametrize("where", ["_expand", "_parse"])
@@ -877,6 +877,11 @@ class TestJsonLinesFlag:
         status, out, err = run(capsys, ["--json-lines", "--strict", "_Z1fv", "memcpy"])
         assert (status, len(self._records(out))) == (1, 1)
         assert err.startswith("memcpy: ")
+
+    def test_a_repeated_name_is_answered_each_time_it_comes(self, capsys):
+        status, out, err = run(capsys, ["--json-lines", "--strict", "_Z1fv", "memcpy", "_Z1fv", "memcpy"])
+        assert [record["mangled"] for record in self._records(out)] == ["_Z1fv", "_Z1fv"]
+        assert (status, err.count("memcpy: ")) == (1, 2)
 
     def test_strip_underscore_reaches_the_record(self, capsys):
         _, out, _ = run(capsys, ["--json-lines", "-_", "__Z1fv", "_foo"])
