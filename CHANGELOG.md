@@ -27,6 +27,8 @@ the reference demanglers, and a **Performance** section.
   them -- about 7 ms for MSVC -- so a long-running service pays at start-up. Names or
   aliases import those schemes; none imports every built-in. An unknown name is a
   `ValueError`, and nothing is imported.
+- **`python -m demangle`** runs the command, for an environment where the `demangle`
+  script is not on `PATH`.
 
 ### Changed
 

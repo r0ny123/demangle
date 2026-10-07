@@ -5,6 +5,9 @@ than through a subprocess -- which keeps these fast enough to be worth having.
 """
 
 import io
+import pathlib
+import subprocess
+import sys
 
 import pytest
 
@@ -12,6 +15,13 @@ from demangle.cli import main
 
 VECTOR = "_ZNSt6vectorIiSaIiEE9push_backERKi"
 VECTOR_SPELLED = "std::vector<int, std::allocator<int>>::push_back(int const&)"
+
+SOURCE = pathlib.Path(__file__).resolve().parent.parent / "src"
+
+
+def command(*argv, **kwargs):
+    """`python -m demangle` in a fresh interpreter, for what only a real process shows."""
+    return subprocess.Popen([sys.executable, "-m", "demangle", *argv], env={"PYTHONPATH": str(SOURCE)}, **kwargs)
 
 
 def run(capsys, argv, stdin=None, monkeypatch=None):
@@ -142,6 +152,13 @@ class TestPipeline:
         assert main([]) == 0
         assert devnull_calls, "stdout should be redirected to devnull after a broken pipe"
         assert capsys.readouterr().err == ""
+
+
+class TestTheModule:
+    def test_python_dash_m_runs_the_command(self):
+        process = command(VECTOR, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out, err = process.communicate(timeout=60)
+        assert (process.returncode, out, err) == (0, VECTOR_SPELLED + "\n", "")
 
 
 class TestTheStreamFilter:

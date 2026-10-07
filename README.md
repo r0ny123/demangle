@@ -299,6 +299,8 @@ $ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows 
 $ demangle --json _Z1fPi                           # the parse tree as JSON
 ```
 
+`python -m demangle` is the same command, where the script is not on `PATH`.
+
 ## Correctness
 
 Correctness here is a measurement rather than a claim. Every scheme is scored against

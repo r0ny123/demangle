@@ -93,6 +93,7 @@ demangle/
   _signature.py       signature(): the parts of a name rather than its spelling
   filter.py           demangling the symbols out of text that is not only symbols
   cli.py              the `demangle` command
+  __main__.py         `python -m demangle`, the same command
   core/
     reader.py         a bounds-checked cursor; the input primitive for a new parser
     builder.py        the Builder protocol -- the contract between parser and output
