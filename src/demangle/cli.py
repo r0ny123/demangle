@@ -39,6 +39,7 @@ import io
 import itertools
 import json
 import os
+import signal
 import sys
 import textwrap
 
@@ -391,6 +392,33 @@ def _parse(parser, argv):
 
 
 def main(argv=None):
+    try:
+        return _main(argv)
+    except KeyboardInterrupt:
+        return _interrupted()
+
+
+def _interrupted():
+    """Ctrl-C, ended the way a shell can see it was.
+
+    bash stops a `for` loop over `demangle` only when the command dies of SIGINT; a
+    status of 130 looks to it like any other failure, and the loop goes on. So where
+    there is a SIGINT to die of, what was written is flushed and the command dies of it.
+    Windows has none, and there 130 is the answer.
+    """
+    if sys.platform != "win32":
+        with contextlib.suppress(OSError, ValueError, AttributeError):
+            sys.stdout.flush()
+        try:
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+        except ValueError:  # not the main thread, which alone may set a handler
+            return 130
+        os.kill(os.getpid(), signal.SIGINT)
+    # 128 + SIGINT, what a shell reports for a command Ctrl-C stopped.
+    return 130
+
+
+def _main(argv):
     parser = build_parser()
     arguments = _parse(parser, argv)
 
@@ -463,9 +491,6 @@ def main(argv=None):
             raise
         _silence_stdout()
         return 0
-    except KeyboardInterrupt:
-        # 128 + SIGINT, what a shell reports for a command Ctrl-C stopped.
-        return 130
 
 
 #: The keys that end what is typed at a terminal.

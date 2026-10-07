@@ -90,7 +90,9 @@ the reference demanglers, and a **Performance** section.
 - **Flags may follow names.** `demangle _Z1fv -b _Z1gv` was an "unrecognized
   arguments" error, because the names after a flag were not collected; flags and
   names now mix in any order, and after `--` nothing is a flag.
-- **Ctrl-C ends the command with status 130 and no traceback**, and a pipe closed
+- **Ctrl-C ends the command with no traceback**, at any point after start-up, by
+  dying of SIGINT, so the shell reports 130 and a `for` loop over `demangle` stops as
+  it does for any command Ctrl-C kills; on Windows the status is 130. A pipe closed
   before the last flush (`demangle a b | true`) no longer prints `Exception ignored`
   and exits 120.
 

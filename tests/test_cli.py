@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -373,13 +374,40 @@ class TestPipeline:
             process.stdin.close()
             process.wait(timeout=60)
 
-    def test_ctrl_c_exits_130_without_a_traceback(self, capsys, monkeypatch):
-        def interrupted(*_):
-            raise KeyboardInterrupt
+    @staticmethod
+    def _interrupt(*_):
+        raise KeyboardInterrupt
 
-        monkeypatch.setattr("demangle.cli._expand", interrupted)
+    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    def test_ctrl_c_on_windows_exits_130_without_a_traceback(self, capsys, monkeypatch, where):
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
         assert main(["_Z1fv"]) == 130
         assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    def test_ctrl_c_elsewhere_dies_of_sigint(self, capsys, monkeypatch, where):
+        """So that a shell loop over the command stops, as it does for one Ctrl-C killed."""
+        calls = []
+        monkeypatch.setattr("sys.platform", "linux")
+        monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
+        monkeypatch.setattr("signal.signal", lambda *a: calls.append(("signal", *a)))
+        monkeypatch.setattr("os.kill", lambda *a: calls.append(("kill", *a)))
+        main(["_Z1fv"])
+        assert calls == [("signal", signal.SIGINT, signal.SIG_DFL), ("kill", os.getpid(), signal.SIGINT)]
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows has no death by signal")
+    def test_ctrl_c_on_a_real_process(self):
+        process = command(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert process.stdin is not None and process.stdout is not None
+        process.stdin.write(b"_Z1fv\n")
+        process.stdin.flush()
+        assert process.stdout.readline() == b"f()\n"
+        process.send_signal(signal.SIGINT)
+        _, err = process.communicate(timeout=60)
+        assert process.returncode == -signal.SIGINT
+        assert err == b""
 
 
 class TestStandardInput:
