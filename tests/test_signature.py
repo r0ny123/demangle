@@ -210,6 +210,21 @@ class TestMsvcSpecials:
         assert parts.parameters is not None
         assert "`" not in parts.qualified_name
 
+    @pytest.mark.parametrize(
+        ("mangled", "structor"),
+        [
+            ("??_GBase@@UEAAPEAXI@Z", True),
+            ("??_EBase@@UEAAPEAXI@Z", True),
+            ("??_DDiamond@@QEAAXXZ", True),
+            ("??_F?$SomeTemplate@H@@QAEXXZ", False),
+            ("??_LBase@@UEAAPEAXI@Z", False),
+            ("??_H@YAXPEAX_K1P6APEAX0@Z@Z", False),
+        ],
+    )
+    def test_a_compiler_made_destructor_is_a_destructor(self, mangled, structor):
+        """As Itanium's deleting destructor `_ZN1AD0Ev` is; a closure or an iterator is not."""
+        assert signature(mangled).is_ctor_or_dtor is structor
+
     def test_an_adjustor_thunk_is_labelled_adjustor_and_names_what_it_adjusts(self):
         parts = signature("?f@C@@WBA@EAAHXZ")
         assert (parts.special, parts.namespace, parts.base_name) == ("adjustor", "C", "f")

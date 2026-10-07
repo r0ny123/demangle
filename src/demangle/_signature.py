@@ -162,13 +162,20 @@ class Signature:
     """
 
     is_data: bool = False
-    """Whether the name encodes an object rather than a function."""
+    """Whether the name encodes an object rather than a function.
+
+    Of the symbols with a `special` label, MSVC's tables, descriptors and guards set
+    it. The others -- Itanium's `vtable for` and `typeinfo for`, Delphi's `__tpdsc__`,
+    Free Pascal's `run-time type information for` -- leave it False.
+    """
 
     is_ctor_or_dtor: bool = False
     """Whether it is a constructor or a destructor of the type it sits in.
 
     C++ repeats the class's own name, or negates it; Swift writes `init` and `deinit`.
-    No other scheme here marks the two, so no other scheme reports them.
+    No other scheme here marks the two, so no other scheme reports them. MSVC's
+    `scalar deleting dtor`, `vector deleting dtor` and `vbase dtor` are destructors as
+    Itanium's deleting destructor is; its closures and iterators are not.
     """
 
     @property
@@ -283,7 +290,7 @@ def _extract(reading, tree):
         decoration=decoration,
         is_function=bool(found["is_function"]),
         is_data=found["is_data"],
-        is_ctor_or_dtor=_is_structor(reading, namespace, base),
+        is_ctor_or_dtor=special in _MSVC_DESTRUCTORS or _is_structor(reading, namespace, base),
     )
 
 
@@ -397,6 +404,46 @@ _MSVC_LABELS = frozenset(
         "vtordispex",
     }
 )
+
+#: The labels that name a destructor the compiler made for the class they are about.
+_MSVC_DESTRUCTORS = frozenset({"scalar deleting dtor", "vector deleting dtor", "vbase dtor"})
+
+#: How MSVC joins a label to the name it follows: `` Base::`vftable' ``, `` C::f`adjustor{16}' ``,
+#: `` int `RTTI Type Descriptor' ``. Its dynamic initialisers, like every other scheme's
+#: labels, go before the name instead.
+_MSVC_SUFFIXES = (
+    dict.fromkeys(_MSVC_LABELS, "::")
+    | dict.fromkeys(("adjustor", "vtordisp", "vtordispex"), "")
+    | dict.fromkeys(("RTTI Type Descriptor", "RTTI Type Descriptor Name"), " ")
+    | dict.fromkeys(
+        (
+            "RTTI Base Class Array",
+            "RTTI Base Class Descriptor",
+            "RTTI Class Hierarchy Descriptor",
+            "RTTI Complete Object Locator",
+        ),
+        "::",
+    )
+)
+
+
+def _labelled(parts):
+    """`qualified_name` with `special` where the scheme writes it, its payload left off.
+
+    MSVC writes most of its labels after the name, `` Base::`vftable' ``; the rest, and
+    every other scheme's, go before it: `vtable for Base`. A label that is its own name,
+    `` `vector ctor iterator' ``, is written once.
+    """
+    special, name = parts.special, parts.qualified_name
+    if special is None:
+        return name
+    joint = _MSVC_SUFFIXES.get(special) if parts.language == "msvc" else None
+    if joint is None:
+        return f"{special} {name}"
+    if name == special:
+        return f"`{special}'"
+    return f"{name}{joint}`{special}'"
+
 
 _MSVC_INITIALISER = re.compile(r"`(dynamic initializer for|dynamic atexit destructor for) (?:'(.*)'|`(.*)')'")
 _MSVC_RTTI = re.compile(r"(RTTI [A-Za-z ]+?)(?: at \(.*\))?")

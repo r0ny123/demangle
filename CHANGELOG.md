@@ -43,6 +43,19 @@ the reference demanglers, and a **Performance** section.
   variable's class and name are `namespace` and `base_name`, and a category is named
   `NSString(Extra)`. The tree places a name after the label it follows, so the
   selector of `.objc_sel_name_b` is no longer found inside `Objective-C`.
+- **`signature()` splits MSVC's labels from the name they are about**, as it splits
+  Itanium's `vtable for`. `??_7Base@@6B@` (`` const Base::`vftable' ``) has
+  `special="vftable"` and `qualified_name="Base"`, where `` `vftable' `` used to be the
+  base name and `const Base` the namespace; the same holds for the RTTI descriptors,
+  the deleting destructors, the closures and iterators, the dynamic initialisers
+  (`special="dynamic initializer for"`, the variable for the name) and the thunks
+  (`adjustor`, `vtordisp`, `vcall`). A label's payload -- `{16}` after `adjustor`, ` at
+  (0, -1, 0, 64)` after a base class descriptor, `{for `A'}` after a vftable -- is not
+  kept. The deleting destructors and `vbase dtor` are `is_ctor_or_dtor`. `` `anonymous
+  namespace' `` and the function a local static lives in are scopes, where everything
+  before the last `::` used to be the namespace. The CLI's `-p` writes the label where
+  MSVC does, `` Base::`vftable' `` (it printed `` const Base::`vftable' ``), and
+  `--base-name` prints `Base` (it printed `` `vftable' ``).
 
 ### Fixed
 
@@ -51,12 +64,7 @@ the reference demanglers, and a **Performance** section.
   `__tpdsc__`) were read as part of the qualified name, which was then not split:
   `@Unit@TForm1@Button1Click$qqrp14System@TObject` is now `Unit::TForm1` and
   `Button1Click` with `calling_convention="__fastcall"`, a template function's result
-  is `return_type`, and an `operator` is split before its own spelling. MSVC's labels
-  (`` `vftable' ``, `` `RTTI Type Descriptor' ``, `` `scalar deleting dtor' ``,
-  `` `dynamic initializer for 'x'' ``, `` `adjustor{N}' ``) are `special` and the class or
-  variable they are about is the name, as `vtable for` is for Itanium; `` `anonymous
-  namespace' `` and the function a local static lives in split as scopes instead of
-  leaving everything before the last `::` in the base name.
+  is `return_type`, and an `operator` is split before its own spelling.
 
 ### Performance
 

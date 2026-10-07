@@ -235,6 +235,28 @@ class TestPartFlags:
         _, out, _ = run(capsys, ["-p", name])
         assert out.strip() == expected
 
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("??_7Base@@6B@", "Base::`vftable'"),
+            ("??_7A@B@@6BC@D@@@", "B::A::`vftable'"),
+            ("??_GBase@@UEAAPEAXI@Z", "Base::`scalar deleting dtor'"),
+            ("?f@C@@WBA@EAAHXZ", "C::f`adjustor'"),
+            ("??_R0?AUBase@@@8", "Base `RTTI Type Descriptor'"),
+            ("??_H@YAXPEAX_K1P6APEAX0@Z@Z", "`vector ctor iterator'"),
+            ("??__EFoo@@YAXXZ", "dynamic initializer for Foo"),
+        ],
+    )
+    def test_no_params_writes_an_msvc_label_where_msvc_does(self, capsys, name, expected):
+        """After the name, as the reference spells it, but without the `const` and the
+        `{...}` that are about the label's table."""
+        _, out, _ = run(capsys, ["-p", name])
+        assert out.strip() == expected
+
+    def test_base_name_of_an_msvc_label_is_the_class_it_is_about(self, capsys):
+        _, out, _ = run(capsys, ["--base-name", "??_7Base@@6B@"])
+        assert out.strip() == "Base"
+
     def test_no_params_keeps_the_symbols_decoration(self, capsys):
         _, out, _ = run(capsys, ["-p", "_ZN3Foo3barEv@@GLIBCXX_3.4"])
         assert out.strip() == "Foo::bar@@GLIBCXX_3.4"
