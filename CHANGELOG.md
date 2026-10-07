@@ -54,7 +54,9 @@ the reference demanglers, and a **Performance** section.
   the `{16}`, nor a base class descriptor its `at (0, -1, 0, 64)`, nor a vftable its
   `` {for `A'} ``. A label is the symbol's own only at the end of the name and outside
   every template argument, so `` X<&const C::`vftable'>::x `` is the static member `x`.
-  The deleting destructors and `vbase dtor` are `is_ctor_or_dtor`. `` `anonymous
+  The deleting destructors and `vbase dtor` are `is_ctor_or_dtor`, and so is a thunk
+  over one: `` Base::`vector deleting dtor'`adjustor{4}' `` is `special="adjustor"` with
+  `` Base::`vector deleting dtor' `` for the name. `` `anonymous
   namespace' `` and the function a local static lives in are scopes, where everything
   before the last `::` used to be the namespace. The CLI's `-p` writes the label where
   MSVC does, `` Base::`vftable' `` (it printed `` const Base::`vftable' ``), and

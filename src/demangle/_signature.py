@@ -158,7 +158,10 @@ class Signature:
     about its own table: `adjustor`, not `adjustor{16}`; `RTTI Base Class Descriptor`,
     without its `at (0, -1, 0, 64)`; `vftable`, without its `` {for `A'} ``. A label with
     nothing to be about stands as the name too: MSVC's `` `vector ctor iterator' `` has
-    `special` and `qualified_name` both `vector ctor iterator`.
+    `special` and `qualified_name` both `vector ctor iterator`. Only the last label is
+    taken: a thunk over a compiler-made member,
+    `` Base::`vector deleting dtor'`adjustor{4}' ``, is `adjustor`, and the member it
+    adjusts, `` Base::`vector deleting dtor' ``, is the name.
     """
 
     decoration: str = ""
@@ -185,7 +188,8 @@ class Signature:
     C++ repeats the class's own name, or negates it; Swift writes `init` and `deinit`.
     No other scheme here marks the two, so no other scheme reports them. MSVC's
     `scalar deleting dtor`, `vector deleting dtor` and `vbase dtor` are destructors as
-    Itanium's deleting destructor is; its closures and iterators are not.
+    Itanium's deleting destructor is, and so is a thunk to one,
+    `` Base::`vector deleting dtor'`adjustor{4}' ``; its closures and iterators are not.
     """
 
     @property
@@ -563,18 +567,19 @@ def _msvc_special(reading, found):
         if initialiser.group(3):
             text = _declared_name(text)
     else:
-        while spans := _label_spans(text):
-            start, end, enclosed = spans[-1]
-            word = _msvc_label(text[start + 1 : end])
-            rest = _without_payload(text[end + 1 :])
-            # A type descriptor's label stands where a declarator's name would, so it
-            # can sit inside the type: `` int (*`RTTI Type Descriptor')[2] ``.
-            if word is None or ((rest or enclosed) and not word.startswith("RTTI Type Descriptor")):
-                break
-            label = label or word
-            text = text[:start] + rest
-        if label is None:
+        spans = _label_spans(text)
+        if not spans:
             return False
+        start, end, enclosed = spans[-1]
+        label = _msvc_label(text[start + 1 : end])
+        rest = _without_payload(text[end + 1 :])
+        # A type descriptor's label stands where a declarator's name would, so it can
+        # sit inside the type: `` int (*`RTTI Type Descriptor')[2] ``.
+        if label is None or ((rest or enclosed) and not label.startswith("RTTI Type Descriptor")):
+            return False
+        # The label a thunk adjusts stays in the name it is part of:
+        # `` Base::`vector deleting dtor'`adjustor{4}' `` adjusts `` Base::`vector deleting dtor' ``.
+        text = text[:start] + rest
         words = text.split(" ")
         while words and words[0] in _MSVC_LEADING | _MSVC_CONVENTIONS:
             if words[0] in _MSVC_CONVENTIONS:
@@ -959,6 +964,9 @@ def _is_structor(reading, namespace, base):
     """Whether a name is a constructor or a destructor of the class it sits in."""
     if reading.scheme == "swift":
         return bool(namespace) and base in _SWIFT_STRUCTORS
+    if reading.scheme == "msvc" and base[1:-1] in _MSVC_DESTRUCTORS:
+        # A thunk's own label is `special`, and the destructor it adjusts is the name.
+        return True
     if base.startswith("~"):
         return True
     if not namespace:

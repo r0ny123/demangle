@@ -233,9 +233,20 @@ class TestMsvcSpecials:
         assert (parts.special, parts.namespace, parts.base_name) == ("adjustor", "C", "f")
         assert parts.parameters == ("void",)
 
-    def test_an_adjustor_over_a_compiler_made_member_names_the_class(self):
-        parts = signature("??_EBase@@G3AEPAXI@Z")
-        assert (parts.special, parts.qualified_name) == ("adjustor", "Base")
+    @pytest.mark.parametrize(
+        ("mangled", "special"),
+        [
+            ("??_EBase@@G3AEPAXI@Z", "adjustor"),
+            ("??_EBase@@W3AEPAXI@Z", "adjustor"),
+            ("??_EBase@@$4PPPPPPPM@A@AEPAXI@Z", "vtordisp"),
+        ],
+    )
+    def test_a_thunk_over_a_compiler_made_member_names_the_member(self, mangled, special):
+        """The thunk's label is `special`; the destructor it adjusts is the name, and a
+        destructor."""
+        parts = signature(mangled)
+        assert (parts.special, parts.namespace, parts.base_name) == (special, "Base", "`vector deleting dtor'")
+        assert parts.is_ctor_or_dtor
 
     def test_a_vcall_thunk_keeps_its_convention_and_loses_its_payload(self):
         parts = signature("??_9Base@@$B7AA")
