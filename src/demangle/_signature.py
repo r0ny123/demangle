@@ -149,6 +149,16 @@ class Signature:
     Objective-C's `Objective-C class` and `instance variable offset for`. The other
     fields then describe the entity the symbol is about, so `base_name` on a
     `vtable for std::ostream` is `ostream`, and on `_OBJC_CLASS_$_NSData` is `NSData`.
+
+    Not every scheme writes its label first. MSVC writes most of its labels after the
+    name, `` Base::`vftable' ``, `` C::f`adjustor{16}' ``, and Delphi writes
+    `__linkproc__` between a unit and the procedure, `System::__linkproc__ Abort`; the
+    label is taken from wherever it sits, so `qualified_name` is `Base`, `C::f`,
+    `System::Abort`. The label comes without its quotes and without what follows it
+    about its own table: `adjustor`, not `adjustor{16}`; `RTTI Base Class Descriptor`,
+    without its `at (0, -1, 0, 64)`; `vftable`, without its `` {for `A'} ``. A label with
+    nothing to be about stands as the name too: MSVC's `` `vector ctor iterator' `` has
+    `special` and `qualified_name` both `vector ctor iterator`.
     """
 
     decoration: str = ""
@@ -712,7 +722,6 @@ def _from_parts(reading, found, node):
     found["qualified_name"] = reading.separator.join(components)
     if head is not None and head.base is not None:
         found["namespace"], found["base_name"] = head.scope, head.base
-        found["calling_convention"] = head.convention
     elif len(components) > 1:
         found["namespace"] = reading.separator.join(components[:-1])
         found["base_name"] = components[-1]

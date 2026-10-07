@@ -49,9 +49,12 @@ the reference demanglers, and a **Performance** section.
   base name and `const Base` the namespace; the same holds for the RTTI descriptors,
   the deleting destructors, the closures and iterators, the dynamic initialisers
   (`special="dynamic initializer for"`, the variable for the name) and the thunks
-  (`adjustor`, `vtordisp`, `vcall`). A label's payload -- `{16}` after `adjustor`, ` at
-  (0, -1, 0, 64)` after a base class descriptor, `{for `A'}` after a vftable -- is not
-  kept. The deleting destructors and `vbase dtor` are `is_ctor_or_dtor`. `` `anonymous
+  (`adjustor`, `vtordisp`, `vcall`). What follows a label about its own table is
+  dropped: `` C::f`adjustor{16}' `` is `special="adjustor"` and `C::f`, and neither keeps
+  the `{16}`, nor a base class descriptor its `at (0, -1, 0, 64)`, nor a vftable its
+  `` {for `A'} ``. A label is the symbol's own only at the end of the name and outside
+  every template argument, so `` X<&const C::`vftable'>::x `` is the static member `x`.
+  The deleting destructors and `vbase dtor` are `is_ctor_or_dtor`. `` `anonymous
   namespace' `` and the function a local static lives in are scopes, where everything
   before the last `::` used to be the namespace. The CLI's `-p` writes the label where
   MSVC does, `` Base::`vftable' `` (it printed `` const Base::`vftable' ``), and
@@ -64,7 +67,17 @@ the reference demanglers, and a **Performance** section.
   `__tpdsc__`) were read as part of the qualified name, which was then not split:
   `@Unit@TForm1@Button1Click$qqrp14System@TObject` is now `Unit::TForm1` and
   `Button1Click` with `calling_convention="__fastcall"`, a template function's result
-  is `return_type`, and an `operator` is split before its own spelling.
+  is `return_type`, and an `operator` is split before its own spelling. Every label
+  the unmangler writes is `special` -- the virtual-definition thunk `__vdthk__` and the
+  tables `__frndl__`, `__chtbl__`, `__odtbl__`, `__thrwl__`, `__ectbl__` among them --
+  and one with nothing after it is about its scope: `@System@@`
+  (`System::__linkproc__`) is named `System`, where its base name was empty. A class
+  constructor is named `` `class constructor` ``, and `operator ()` keeps its brackets
+  rather than opening its parameter list with them.
+- **A Free Pascal interface wrapper is named by its interface.** The base name
+  `signature()` gave a `WRPR_$` symbol ran on past the interface into the entry number
+  and the method it forwards to, `#0: SYSTEM.TINTERFACEDOBJECT.QUERYINTERF(...)`; it
+  is now the interface alone.
 
 ### Performance
 
