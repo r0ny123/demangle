@@ -36,7 +36,7 @@ class TestLibcxxabi:
         text = (
             '// clang-format off\n{"_Z1A", "A"},\n// {"_Z1B", "B"},\n{"_Z1fPKc", "f(char const*)"},\n'
             '{"_ZN1a1bE",\n "a::b"},\n{"_ZNSdC1Ev",\n "std::basic_iostream<char, std::char_traits<char>"\n'
-            ' ">::basic_iostream()"},\n{"_Z1q", "\\"q\\" \\\\ \\x41 \\101 \\a"},\n'
+            ' ">::basic_iostream()"},\n{"_Z1q", "\\"q\\" \\\\ \\x41 \\101 \\a"},\n{"_Z1r", "\\x1" "B"},\n'
         )
         pairs = drift.libcxxabi(FakeFetch({"DemangleTestCases.inc": text}))
         assert pairs == [
@@ -45,6 +45,7 @@ class TestLibcxxabi:
             ("_ZN1a1bE", "a::b"),
             ("_ZNSdC1Ev", "std::basic_iostream<char, std::char_traits<char>>::basic_iostream()"),
             ("_Z1q", '"q" \\ A A \a'),
+            ("_Z1r", "\x01B"),
         ]
 
     def test_a_hex_escape_past_unicode_stays_literal(self):
@@ -63,11 +64,14 @@ class TestMsvc:
         pairs = drift.msvc(FakeFetch({"Demangle": '[{"name": "ms-basic.test"}]', "ms-basic.test": text}))
         assert pairs == [("?x@@3HA", "int x"), ("?y@@3PEAHEA", "int *y"), ("?z@@3HA", "not what z is")]
 
-    def test_a_check_for_the_echoed_name_is_not_an_expectation(self):
-        name = "??@a6a285da2eea70dba6b578022be61d81@asdf"
-        text = f"{name}\n; CHECK: {name}\n; CHECK-NEXT: ??@a6a285da2eea70dba6b578022be61d81@\n"
+    def test_a_check_spent_on_the_echo_expects_nothing_and_check_next_takes_the_answer(self):
+        md5 = "??@a6a285da2eea70dba6b578022be61d81@"
+        text = (
+            f"; CHECK-NOT: Invalid mangled name\n\n{md5}\n; CHECK: {md5}\n; CHECK-NEXT: {md5}\n\n"
+            f"{md5}asdf\n; CHECK: {md5}asdf\n; CHECK-NEXT: {md5}\n\n?x@@3HA\n; CHECK: int x\n"
+        )
         pairs = drift.msvc(FakeFetch({"Demangle": '[{"name": "ms-md5.test"}]', "ms-md5.test": text}))
-        assert pairs == [(name, "??@a6a285da2eea70dba6b578022be61d81@")]
+        assert pairs == [(md5, md5), (md5 + "asdf", md5), ("?x@@3HA", "int x")]
 
     def test_check_lines_match_as_filecheck_does(self):
         assert drift._contains("void __cdecl f(int,   int)", "public: void __cdecl f(int, int)")
@@ -101,6 +105,7 @@ class TestRustc:
             't_err!("_RB_");\n'
             't_nohash!(\n    "_RIC0Kee1_\\\n        e2_E",\n    "::<{*\\"\\u{41}\\"}>"\n);\n'
             't_nohash!("_RNvC1a1b", "a\\\\\nb");\n'
+            't_nohash!("_RNvC1a1c", "a\\0b");\n'
         )
         pairs = drift.rustc(FakeFetch({"v0.rs": v0, "legacy.rs": "", "lib.rs": ""}))
         assert pairs == [
@@ -114,6 +119,7 @@ class TestRustc:
             ("_RB_", "_RB_"),
             ("_RIC0Kee1_e2_E", '::<{*"A"}>'),
             ("_RNvC1a1b", "a\\\nb"),
+            ("_RNvC1a1c", "a\0b"),
         ]
 
 
@@ -139,9 +145,9 @@ class TestScoring:
         monkeypatch.setattr(drift, "EXPECTED_MISREADS", {"_Z1mv"})
         result = drift.score("fake", None)
         assert result["fetched"] == 7
-        assert result["unchanged"] == 2
+        assert result["unchanged"] == 1
         assert result["differently"] == [("_Z1fv", "f()", "f(void)")]
-        assert result["new_pass"] == 2
+        assert result["new_pass"] == 3
         assert result["new_fail"] == [("_Z1hv", "nope", "h()"), ("_Z1kv", "k()", "k")]
 
 
@@ -150,6 +156,23 @@ class TestReport:
         assert drift._cell("`anonymous namespace'::f") == "`` `anonymous namespace'::f ``"
         assert drift._cell("a|b") == "` a\\|b `"
         assert drift._cell("x" * 400) == "` " + "x" * 300 + "… `"
+        assert drift._cell("a\nb") == "` a\\nb `"
+
+    def test_the_report_is_cut_on_a_line_to_fit_an_issue(self):
+        results = [
+            {
+                "source": "s",
+                "fetched": 1,
+                "unchanged": 0,
+                "differently": [],
+                "new_pass": 0,
+                "new_fail": [("n" * 50, "e", "g")] * 5,
+            }
+        ]
+        text = drift.report(results, 15, limit=400)
+        assert len(text) < 450
+        assert text.endswith("… cut at 400 characters.")
+        assert "\n\n…" in text
 
     def test_the_summary_and_the_tables(self):
         results = [

@@ -36,7 +36,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
-          python tools/upstream_drift.py --show 25 > drift.md
+          python tools/upstream_drift.py --show 25 --limit 60000 > drift.md
           echo "status=$?" >> "$GITHUB_OUTPUT"
           cat drift.md >> "$GITHUB_STEP_SUMMARY"
           cat drift.md
@@ -48,9 +48,10 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # The report first and the run last, so a repeat of last week's report is
-          # recognised by everything above its final line; a body is capped at 65,536.
+          # recognised by everything above its final line; the report is already cut
+          # to fit a body's 65,536 characters.
           {
-            head -c 60000 drift.md
+            cat drift.md
             echo
             echo "Run: $RUN_URL"
           } > body.md

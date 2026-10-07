@@ -92,6 +92,7 @@ _C_ESCAPES = {
     "\\": "\\",
     "?": "?",
 }
+_RUST_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", '"': '"', "'": "'", "\\": "\\"}
 _C_STRING = r'"(?:[^"\\]|\\.)*"'
 _C_LITERALS = rf"((?:{_C_STRING}\s*)+)"
 _C_VECTOR = re.compile(rf"\{{\s*{_C_LITERALS},\s*{_C_LITERALS}\}}", re.DOTALL)
@@ -136,8 +137,8 @@ def _c_unescape(text):
 
 def _c_literals(adjacent):
     """The bodies of a run of adjacent C string literals, joined as the compiler joins
-    them: `"a" "b"` is `"ab"`."""
-    return _c_unescape("".join(_C_BODY.findall(adjacent)))
+    them: each unescaped on its own, then `"a" "b"` is `"ab"`."""
+    return "".join(_c_unescape(body) for body in _C_BODY.findall(adjacent))
 
 
 def _rust_unescape(text):
@@ -149,7 +150,7 @@ def _rust_unescape(text):
             return chr(int(escape[2:-1], 16))
         if escape[0] == "x":
             return chr(int(escape[1:], 16))
-        return _C_ESCAPES.get(escape, found.group(0))
+        return _RUST_ESCAPES.get(escape, found.group(0))
 
     return _RUST_ESCAPE.sub(one, text)
 
@@ -196,10 +197,11 @@ def libcxxabi(fetch):
 
 
 def msvc(fetch):
-    """FileCheck's pairing: a file's `CHECK:` and `CHECK-NEXT:` lines match its output
-    lines in order, each from where the previous one matched, not the name written
-    above each. llvm-undname echoes every input line before its answer, and a check
-    written for the echo is not an expectation."""
+    """FileCheck's pairing over the stream llvm-undname prints: each input echoed, then
+    its answer. A `CHECK:` matches the first line from where the previous check matched,
+    a `CHECK-NEXT:` only the very next one; the name written above a check is not what
+    it is paired with. A check that lands on an echo is spent on it and expects
+    nothing of this library."""
     try:
         listing = json.loads(fetch.get(LLVM_DEMANGLE_TESTS))
         files = [entry["name"] for entry in listing if entry["name"].startswith("ms-")]
@@ -208,21 +210,26 @@ def msvc(fetch):
     pairs = []
     for name in files:
         lines = fetch.get(LLVM_RAW + "llvm/test/Demangle/" + name).splitlines()
-        names = [line.strip() for line in lines if line.strip() and not line.startswith(";")]
+        stream = []
+        for line in lines:
+            if line.strip() and not line.startswith(";"):
+                mangled = line.strip()
+                stream.append((mangled, mangled, False))
+                stream.append((mangled, demangle.demangle(mangled, language="msvc"), True))
         checks = [
-            found.group(1).strip()
+            (found.group(1) == "-NEXT", found.group(2).strip())
             for line in lines
-            if (found := re.match(r"; CHECK(?:-NEXT)?:(.*)", line))
-            if found.group(1).strip() not in names
+            if (found := re.match(r"; CHECK(-NEXT)?:(.*)", line))
         ]
-        outputs = [demangle.demangle(mangled, language="msvc") for mangled in names]
         cursor = 0
-        for check in checks:
-            matched = next((at for at in range(cursor, len(outputs)) if _contains(check, outputs[at])), None)
+        for adjacent, check in checks:
+            end = min(cursor + 1, len(stream)) if adjacent else len(stream)
+            matched = next((at for at in range(cursor, end) if _contains(check, stream[at][1])), None)
             if matched is None:
-                pairs.append((names[min(cursor, len(names) - 1)], check))
+                pairs.append((stream[min(cursor, len(stream) - 1)][0], check))
                 continue
-            pairs.append((names[matched], check))
+            if stream[matched][2]:
+                pairs.append((stream[matched][0], check))
             cursor = matched + 1
     return pairs
 
@@ -310,8 +317,8 @@ def recorded(corpus):
 
 def score(name, fetch):
     """A row with a `mode` is a spelling the corpus does not record (rustc-demangle's
-    hashed form), so it is scored against the reference's text whether or not the
-    corpus holds the name."""
+    hashed form), so it is new whether or not the corpus holds the name, and scored
+    against the reference's text."""
     read, corpus, spell, match = SOURCES[name]
     held = recorded(corpus)
     result = {"source": name, "fetched": 0, "unchanged": 0, "differently": [], "new_pass": 0, "new_fail": []}
@@ -332,10 +339,7 @@ def score(name, fetch):
             continue
         got = spell(mangled, mode)
         if mangled in EXPECTED_MISREADS or match(expected, got):
-            if mangled in held:
-                result["unchanged"] += 1
-            else:
-                result["new_pass"] += 1
+            result["new_pass"] += 1
         else:
             result["new_fail"].append((mangled, expected, got))
     return result
@@ -346,7 +350,7 @@ def _cell(text):
     than any run inside, spaced off the content, pipes escaped, and cut at `CELL_LIMIT`."""
     if len(text) > CELL_LIMIT:
         text = text[:CELL_LIMIT] + "…"
-    text = text.replace("|", "\\|")
+    text = text.replace("|", "\\|").replace("\r", "\\r").replace("\n", "\\n")
     fence = "`" * (max((len(run) for run in re.findall(r"`+", text)), default=0) + 1)
     return f"{fence} {text} {fence}"
 
@@ -360,7 +364,9 @@ def _table(rows, show, columns):
     return lines
 
 
-def report(results, show):
+def report(results, show, limit=None):
+    """The summary and the tables, cut at `limit` characters on a line boundary so an
+    issue body can hold it."""
     lines = [
         "| source | distinct upstream vectors | unchanged | recorded differently | new, read | new, misread |",
         "|---|---|---|---|---|---|",
@@ -375,7 +381,10 @@ def report(results, show):
         if r["differently"]:
             lines += ["", f"### {r['source']}: recorded with a different expectation", ""]
             lines += _table(r["differently"], show, ("mangled", "recorded", "upstream now"))
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    if limit is not None and len(text) > limit:
+        text = text[: text.rfind("\n", 0, limit)] + f"\n\n… cut at {limit} characters."
+    return text
 
 
 def main(argv=None):
@@ -383,6 +392,7 @@ def main(argv=None):
     parser.add_argument("--source", nargs="+", choices=sorted(SOURCES), default=sorted(SOURCES))
     parser.add_argument("--cache", type=Path, help="directory to keep the fetched files in")
     parser.add_argument("--show", type=int, default=15, help="examples per table")
+    parser.add_argument("--limit", type=int, help="cut the report at this many characters")
     args = parser.parse_args(argv)
     fetch = Fetcher(args.cache)
     results = []
@@ -397,7 +407,7 @@ def main(argv=None):
             print(f"{name}: could not read the reference's file", file=sys.stderr)
             traceback.print_exc()
             return 2
-    print(report(results, args.show))
+    print(report(results, args.show, args.limit))
     return 1 if any(r["new_fail"] for r in results) else 0
 
 
