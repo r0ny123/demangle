@@ -3,6 +3,9 @@ name: Release
 on:
   release:
     types: [published]
+  # tag-release.yml starts this on the new tag: a release made with the workflow token
+  # does not trigger `published`. Run on a branch, the version check below fails.
+  workflow_dispatch:
 
 permissions:
   contents: read

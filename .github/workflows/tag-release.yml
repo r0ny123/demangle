@@ -1,0 +1,63 @@
+name: Tag release
+
+# Cuts the GitHub release for a version bump, so the release is not a step done by hand.
+# It runs when `__version__` changes on `main`, or on demand from `main`, and does nothing
+# if the tag already exists. The release it creates holds the version's CHANGELOG section.
+#
+# A release made with the workflow token does not start other workflows, so release.yml,
+# which publishes to PyPI on `release: published`, would never see it. This starts it
+# itself on the new tag; its `pypi` environment still waits for a person to approve.
+
+on:
+  push:
+    branches: [main]
+    paths: [src/demangle/__init__.py]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: tag and release
+    if: github.repository == 'r0ny123/demangle' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(PYTHONPATH=src python3 -c 'import demangle; print(demangle.__version__)')
+          tag="v$version"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > /dev/null 2>&1; then
+            echo "$tag already exists; nothing to do"
+            exit 0
+          fi
+          awk -v header="## [$version]" '
+            index($0, header) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no section for $version; not releasing" >&2
+            exit 1
+          fi
+          {
+            echo
+            echo "Install with \`python -m pip install --upgrade demangle\`."
+            echo
+            echo "See the [changelog](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for details."
+          } >> notes.md
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md
+          gh workflow run release.yml --ref "$tag"

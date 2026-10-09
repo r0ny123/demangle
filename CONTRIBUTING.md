@@ -166,8 +166,11 @@ Workflows run with `permissions: contents: read` and grant more only where a job
 it: the weekly `upstream.yml` has `issues: write`, because its one job files the issue
 that says a reference's vectors moved ahead of a scheme. Checkout uses
 `persist-credentials: false`, because nothing in CI pushes and a token left in
-`.git/config` is readable by every later step. Releases publish through PyPI
-Trusted Publishing, so there is no long-lived API token in repository secrets.
+`.git/config` is readable by every later step. A release is cut by `tag-release.yml`
+when `__version__` changes on `main`, through the API with `contents: write` and
+`actions: write` on that one job; it starts `release.yml`, which publishes through PyPI
+Trusted Publishing, so there is no long-lived API token in repository secrets. The
+`pypi` environment still waits for a maintainer to approve.
 
 The test matrix is deliberately not a cross product. Every supported version runs on
 Linux, PyPy 3.11 included; macOS and Windows get one row each, the ceiling and the
