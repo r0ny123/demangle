@@ -129,6 +129,8 @@ def elf_image(data):
     program_offset = _field(_U64, data, 0x20, "the program header offset")
     entry_size = _field(_U16, data, 0x36, "the program header entry size")
     count = _field(_U16, data, 0x38, "the program header count")
+    if count and entry_size < 0x38:
+        raise MalformedImage(f"ELF program header entry claims {entry_size} bytes; at least 56 required")
     segments = []
     dynamic = None
     for index in range(count):
@@ -182,7 +184,7 @@ def _apply_dynamic_relocations(data, segments, dynamic):
     if kinds is None:
         return {}
     relative, glob_dat, abs64 = kinds
-    tags = {}
+    tags: dict[int, int] = {}
     for at in range(0, len(dynamic) - 15, 16):
         tag = _U64.unpack_from(dynamic, at)[0]
         if tag == 0:  # DT_NULL
@@ -191,13 +193,17 @@ def _apply_dynamic_relocations(data, segments, dynamic):
     # DT_RELA 7, DT_RELASZ 8, DT_RELAENT 9; DT_SYMTAB 6, DT_SYMENT 11; DT_STRTAB 5
     if 7 not in tags or 8 not in tags:
         return {}
-    entry = tags.get(9) or 24
+    entry = tags.get(9, 24)
+    if entry < 24:
+        raise MalformedImage(f"ELF relocation entry claims {entry} bytes; at least 24 required")
     table = _segment_slice(segments, tags[7], tags[8])
     if table is None:
         return {}
     symbols = _segment_slice(segments, tags[6], 0) if 6 in tags else None
     strings = _segment_slice(segments, tags[5], 0) if 5 in tags else None
-    symbol_size = tags.get(11) or 24
+    symbol_size = tags.get(11, 24)
+    if symbol_size < 24:
+        raise MalformedImage(f"ELF symbol entry claims {symbol_size} bytes; at least 24 required")
     imports = {}
     blob, start = table
     for at in range(start, start + tags[8] - entry + 1, entry):
@@ -244,8 +250,10 @@ def _defined_descriptors(data):
     table_offset = _U64.unpack_from(data, 0x28)[0]
     entry_size = _U16.unpack_from(data, 0x3A)[0]
     count = _U16.unpack_from(data, 0x3C)[0]
-    if not table_offset or entry_size < 0x40:
+    if not table_offset or not count:
         return {}
+    if entry_size < 0x40:
+        raise MalformedImage(f"ELF section header entry claims {entry_size} bytes; at least 64 required")
     headers = []
     for index in range(count):
         at = table_offset + index * entry_size
@@ -261,7 +269,8 @@ def _defined_descriptors(data):
     for kind, offset, size, link, symbol_size in headers:
         if kind not in (11, 2) or link >= len(headers):  # SHT_DYNSYM, SHT_SYMTAB
             continue
-        symbol_size = symbol_size or 24
+        if symbol_size < 24:
+            raise MalformedImage(f"ELF symbol entry claims {symbol_size} bytes; at least 24 required")
         _, strings_offset, strings_size, _, _ = headers[link]
         strings = data[strings_offset : strings_offset + strings_size]
         table = data[offset : offset + size]

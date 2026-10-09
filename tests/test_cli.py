@@ -1165,3 +1165,24 @@ class TestKeepHash:
         assert out.strip() == default
         _, out, _ = run(capsys, ["--keep-hash", name])
         assert out.strip() == kept
+
+
+@pytest.mark.parametrize("options", [[], ["--both"], ["--only-demangled"], ["--json-lines"]])
+def test_stream_preserves_annotations_and_version_markers(capsys, monkeypatch, options):
+    text = "@Override @@Base @GLIBCXX_3.4 _Z1fv\n"
+    status, out, err = run(capsys, options, stdin=text, monkeypatch=monkeypatch)
+    assert status == 0
+    assert err == ""
+    if "--json-lines" in options:
+        records = [json.loads(line) for line in out.splitlines()]
+        assert [record["mangled"] for record in records] == ["_Z1fv"]
+    elif "--only-demangled" in options:
+        assert out == "f()\n"
+    elif "--both" in options:
+        assert out == "@Override @@Base @GLIBCXX_3.4 _Z1fv ==> f()\n"
+    else:
+        assert out == "@Override @@Base @GLIBCXX_3.4 f()\n"
+
+
+def test_explicit_annotation_argument_can_still_be_read(capsys):
+    assert run(capsys, ["@Override"])[1] == "Override\n"

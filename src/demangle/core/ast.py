@@ -15,6 +15,7 @@ JSON, HTML, a token stream -- is a builder, not a second traversal to keep in sy
 
 import inspect
 import sys
+from typing import ClassVar
 
 from .builder import Builder
 from .errors import LimitExceeded
@@ -75,6 +76,7 @@ class Node:
 
     __slots__ = ("size",)
     kind = "node"
+    _node_fields: ClassVar[tuple[str, ...]]
 
     #: The fields a positional `match` sees, in constructor order. Written out on every
     #: class here so type checkers see it; a scheme's own nodes get one derived in
@@ -82,6 +84,9 @@ class Node:
     __match_args__ = ()
 
     # `size`: an upper bound on this subtree's rendered length, set by `AstBuilder`.
+    # `_arity` on declarator nodes counts the rendered pack members. A wrapper
+    # applies to every member, so its width must be multiplied without walking the
+    # subtree. Absent metadata means one scalar (including scheme-specific nodes).
     # Carried so the output bound is checked in constant time on a tree with shared
     # subtrees; erring high is the safe direction.
 
@@ -181,12 +186,24 @@ class Node:
         `Pointer`, `Reference` and every other node whose state lives on a shared base --
         so comparing on it would make all of them equal regardless of content.
         """
-        names = []
-        for klass in reversed((self if isinstance(self, type) else type(self)).__mro__):
-            for slot in getattr(klass, "__slots__", ()):
-                if slot != "size" and slot not in names:
-                    names.append(slot)
-        return names
+        cls = self if isinstance(self, type) else type(self)
+        fields = cls.__dict__.get("_node_fields")
+        if fields is None:
+            names = []
+            for klass in reversed(cls.__mro__):
+                slots = klass.__dict__.get("__slots__", ())
+                # Python accepts one slot as a string as well as a sequence.
+                if isinstance(slots, str):
+                    slots = (slots,)
+                for slot in slots:
+                    if slot not in ("size", "_arity", "__dict__", "__weakref__") and slot not in names:
+                        names.append(slot)
+            # Fields belong to the class, not each node: serialization visits the same
+            # shapes thousands of times. Read the class's own cache so subclasses never
+            # inherit a parent's incomplete field list.
+            fields = tuple(names)
+            cls._node_fields = fields
+        return fields
 
     def __repr__(self):  # pragma: no cover - debugging aid
         fields = ", ".join(f"{slot}={getattr(self, slot, None)!r}" for slot in self._fields())
@@ -421,7 +438,7 @@ class Qualify(Node):
     tree spells what the text path spelled.
     """
 
-    __slots__ = ("cv", "inner", "qualifiers")
+    __slots__ = ("_arity", "cv", "inner", "qualifiers")
     kind = "qualify"
     __match_args__ = ("inner", "qualifiers", "cv")
 
@@ -438,7 +455,10 @@ class Qualify(Node):
 
 
 class _Unary(Node):
-    __slots__ = ("inner",)
+    __slots__ = (
+        "_arity",
+        "inner",
+    )
     __match_args__ = ("inner",)
 
     def __init__(self, inner):
@@ -495,7 +515,10 @@ class Pack(_Unary):
 class ParameterPack(Node):
     """A pack of concrete template arguments."""
 
-    __slots__ = ("members",)
+    __slots__ = (
+        "_arity",
+        "members",
+    )
     kind = "parameter_pack"
     __match_args__ = ("members",)
 
@@ -512,7 +535,7 @@ class ParameterPack(Node):
 class MemberPointer(Node):
     """A pointer to member, `Type Owner::*`."""
 
-    __slots__ = ("inner", "owner")
+    __slots__ = ("_arity", "inner", "owner")
     kind = "member_pointer"
     __match_args__ = ("owner", "inner")
 
@@ -530,7 +553,7 @@ class MemberPointer(Node):
 class Array(Node):
     """An array type. An empty `dimension` means an unbounded array."""
 
-    __slots__ = ("dimension", "inner")
+    __slots__ = ("_arity", "dimension", "inner")
     kind = "array"
     __match_args__ = ("inner", "dimension")
 
@@ -548,7 +571,7 @@ class Array(Node):
 class VendorQualify(Node):
     """A vendor extended qualifier, spelled after the type it applies to."""
 
-    __slots__ = ("inner", "qualifier")
+    __slots__ = ("_arity", "inner", "qualifier")
     kind = "vendor_qualify"
     __match_args__ = ("inner", "qualifier")
 
@@ -631,13 +654,15 @@ class Special(Node):
         return builder.special(self.label, self.inner.build(builder))
 
 
-def _sized(node, size):
+def _sized(node, size, arity=1):
     node.size = size
+    if arity != 1:
+        node._arity = arity
     return node
 
 
 #: An empty pack, which is what a declarator applied to one becomes. Stateless, so shared.
-_EMPTY_PACK = _sized(ParameterPack(()), 0)
+_EMPTY_PACK = _sized(ParameterPack(()), 0, 0)
 
 
 def _distributes_to_nothing(inner):
@@ -743,7 +768,7 @@ class AstBuilder(Builder):
         return _sized(Qualified(parts), _sizes(parts) + 2 * max(len(parts) - 1, 0))
 
     def template(self, base, arguments, angle_space=True):
-        return _sized(Template(base, arguments, angle_space), base.size + _sizes(arguments) + 2 * len(arguments) + 2)
+        return _sized(Template(base, arguments, angle_space), base.size + _sizes(arguments) + 2 * len(arguments) + 3)
 
     def qualify(self, inner, qualifiers, cv=True):
         if not qualifiers:
@@ -753,33 +778,43 @@ class AstBuilder(Builder):
         width = 0
         for qualifier in qualifiers:
             width += len(qualifier) + 1
-        return _sized(Qualify(inner, qualifiers, cv=cv), inner.size + width)
+        return _sized(
+            Qualify(inner, qualifiers, cv=cv),
+            inner.size + width * getattr(inner, "_arity", 1),
+            getattr(inner, "_arity", 1),
+        )
 
     def pointer(self, inner):
         if _distributes_to_nothing(inner):
             return _EMPTY_PACK
-        return _sized(Pointer(inner), inner.size + 3)
+        return _sized(Pointer(inner), inner.size + 3 * getattr(inner, "_arity", 1), getattr(inner, "_arity", 1))
 
     def reference(self, inner):
         if _distributes_to_nothing(inner):
             return _EMPTY_PACK
-        return _sized(Reference(inner), inner.size + 3)
+        return _sized(Reference(inner), inner.size + 3 * getattr(inner, "_arity", 1), getattr(inner, "_arity", 1))
 
     def rvalue_reference(self, inner):
         if _distributes_to_nothing(inner):
             return _EMPTY_PACK
-        return _sized(RValueReference(inner), inner.size + 4)
+        return _sized(RValueReference(inner), inner.size + 4 * getattr(inner, "_arity", 1), getattr(inner, "_arity", 1))
 
     def member_pointer(self, owner, inner):
         # A pointer to a member of no class at all is no pointer.
         if _distributes_to_nothing(owner) or _distributes_to_nothing(inner):
             return _EMPTY_PACK
-        return _sized(MemberPointer(owner, inner), owner.size + inner.size + 5)
+        arity = getattr(owner, "_arity", 1) * getattr(inner, "_arity", 1)
+        width = owner.size * getattr(inner, "_arity", 1) + inner.size * getattr(owner, "_arity", 1) + 5 * arity
+        return _sized(MemberPointer(owner, inner), width, arity)
 
     def array(self, inner, dimension):
         if _distributes_to_nothing(inner):
             return _EMPTY_PACK
-        return _sized(Array(inner, dimension), inner.size + len(dimension) + 4)
+        return _sized(
+            Array(inner, dimension),
+            inner.size + (len(dimension) + 4) * getattr(inner, "_arity", 1),
+            getattr(inner, "_arity", 1),
+        )
 
     def function(self, returns, parameters, suffix="", name=None):
         width = (returns.size + 1 if returns is not None else 0) + (name.size if name is not None else 0)
@@ -799,18 +834,29 @@ class AstBuilder(Builder):
                 flattened.extend(member.members)
             else:
                 flattened.append(member)
-        return _sized(ParameterPack(flattened), _sizes(flattened) + 2 * len(flattened))
+        return _sized(
+            ParameterPack(flattened),
+            _sizes(flattened) + 2 * len(flattened),
+            sum(getattr(member, "_arity", 1) for member in flattened),
+        )
 
     def vendor_qualify(self, inner, qualifier):
         if _distributes_to_nothing(inner):
             return _EMPTY_PACK
-        return _sized(VendorQualify(inner, qualifier), inner.size + len(qualifier) + 1)
+        return _sized(
+            VendorQualify(inner, qualifier),
+            inner.size + (len(qualifier) + 1) * getattr(inner, "_arity", 1),
+            getattr(inner, "_arity", 1),
+        )
 
     def special(self, label, inner):
         return _sized(Special(label, inner), inner.size + len(label))
 
     def decorated(self, inner, decoration):
-        return _sized(Decorated(inner, decoration), inner.size + len(decoration) + 10)
+        # GNU labels each clone separately; counting punctuation keeps the bound
+        # constant time in the subtree size, including numeric suffix components.
+        overhead = max(10, 9 * decoration.count(".")) if decoration.startswith(".") else 10
+        return _sized(Decorated(inner, decoration), inner.size + len(decoration) + overhead)
 
     def spell(self, handle, declarator=""):
         return handle.spell(declarator, style=self._style)

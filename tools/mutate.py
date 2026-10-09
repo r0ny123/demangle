@@ -371,6 +371,8 @@ def main(argv=None):
         help="the divergence count to pin, for this --seed and --count (default 0)",
     )
     args = parser.parse_args(argv)
+    if args.count < 0:
+        parser.error("--count must be non-negative")
 
     if args.refusals:
         for scheme in args.scheme or sorted(SEEDS):

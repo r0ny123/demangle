@@ -17,7 +17,7 @@ import pathlib
 import pytest
 
 from demangle.schemes.swift import demangle_symbolic
-from demangle.schemes.swift.resolve import ContextResolver, Image, _fragment_from_symbol, elf_image
+from demangle.schemes.swift.resolve import ContextResolver, Image, MalformedImage, _fragment_from_symbol, elf_image
 from demangle.schemes.swift.symbolic import (
     CONTEXT,
     DIRECT,
@@ -372,7 +372,7 @@ class TestReadingAnElfImage:
     relocation table holding a `RELATIVE` entry, a `GLOB_DAT` against a symbol the file
     defines, and one against a symbol it imports."""
 
-    def build(self):
+    def data(self):
         import struct
 
         # Layout, all in one segment at virtual 0x1000 = file offset 0:
@@ -411,7 +411,57 @@ class TestReadingAnElfImage:
         struct.pack_into("<QQq", data, 0x180, 0x1300, 8, 0x1234)
         struct.pack_into("<QQq", data, 0x198, 0x1308, (1 << 32) | 6, 0)
         struct.pack_into("<QQq", data, 0x1B0, 0x1310, (2 << 32) | 6, 0)
-        return elf_image(bytes(data))
+        return bytes(data)
+
+    def build(self):
+        return elf_image(self.data())
+
+    @pytest.mark.parametrize(("tag_index", "size"), [(2, 0), (2, 1), (2, 23), (4, 0), (4, 1), (4, 23)])
+    def test_dynamic_entry_sizes_cannot_be_smaller_than_the_fields(self, tag_index, size):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x100 + 16 * tag_index + 8, size)
+        with pytest.raises(MalformedImage, match="entry claims"):
+            elf_image(bytes(data))
+
+    def test_a_short_relocation_at_the_end_of_a_segment_is_a_malformed_image(self):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x108, 0x1000 + len(data) - 1)  # DT_RELA
+        struct.pack_into("<Q", data, 0x118, 1)  # DT_RELASZ
+        struct.pack_into("<Q", data, 0x128, 1)  # DT_RELAENT
+        with pytest.raises(MalformedImage, match="relocation entry"):
+            elf_image(bytes(data))
+
+    @pytest.mark.parametrize(("offset", "size"), [(0x36, 0), (0x36, 55), (0x3A, 0), (0x3A, 63)])
+    def test_header_entry_sizes_cannot_be_smaller_than_the_fields(self, offset, size):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<H", data, offset, size)
+        with pytest.raises(MalformedImage, match="header entry"):
+            elf_image(bytes(data))
+
+    @pytest.mark.parametrize("size", [0, 1, 23])
+    def test_section_symbol_entry_sizes_cannot_be_smaller_than_the_fields(self, size):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x3C0 + 0x38, size)
+        with pytest.raises(MalformedImage, match="symbol entry"):
+            elf_image(bytes(data))
+
+    def test_a_short_symbol_table_at_the_end_of_a_file_is_a_malformed_image(self):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x3C0 + 0x18, len(data) - 1)  # sh_offset
+        struct.pack_into("<Q", data, 0x3C0 + 0x20, 1)  # sh_size
+        struct.pack_into("<Q", data, 0x3C0 + 0x38, 1)  # sh_entsize
+        with pytest.raises(MalformedImage, match="symbol entry"):
+            elf_image(bytes(data))
 
     def test_a_relative_slot_takes_its_addend(self):
         assert self.build().read(0x1300, 8) == (0x1234).to_bytes(8, "little")

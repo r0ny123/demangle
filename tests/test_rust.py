@@ -509,3 +509,37 @@ class TestV0NestingFollowsMaxDepth:
         with pytest.raises(demangle.LimitExceeded):
             demangle.parse(mangled, language="rust", limits=demangle.RELAXED_LIMITS)
         assert demangle.demangle(mangled, limits=demangle.RELAXED_LIMITS) == mangled
+
+
+class TestLegacyLengthArithmetic:
+    def test_long_leading_zero_length_matches_short_length(self):
+        # Decimal length is independent of leading zeros and Python's configurable
+        # integer-string digit limit; the bounded reader consumes both identically.
+        short = "_ZN1aE"
+        long = "_ZN" + "0" * 5000 + "1aE"
+        assert demangle.demangle_strict(long, language="rust") == demangle.demangle_strict(short, language="rust")
+        assert demangle.parse(long, language="rust").spell() == "a"
+
+    def test_oversized_decimal_length_is_refused(self):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict("_ZN" + "9" * 60000 + "E", language="rust")
+
+    def test_many_escapes_preserve_spans(self):
+        component = "$LT$a..$u41$." * 1000
+        name = "_ZN" + str(len(component)) + component + "E"
+        expected = "<a::A." * 1000
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+
+    def test_many_dot_segments_before_an_escape(self):
+        component = "a.." * 10000 + "$LT$"
+        name = "_ZN" + str(len(component)) + component + "E"
+        expected = "a::" * 10000 + "<"
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+
+    def test_many_components_preserve_spans_and_hash(self):
+        name = "_ZN" + "1a" * 5000 + "17h0123456789abcdefE"
+        expected = "::".join(["a"] * 5000)
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected

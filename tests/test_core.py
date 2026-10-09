@@ -840,3 +840,72 @@ class TestLoadingPluginsIsOptIn:
         assert run("-l", "newcomer", "x") == ["PLUGIN"]
         assert run("-l", "itanium", "_Z1fv") == ["PLUGIN"]
         assert any(line.startswith("newcomer") for line in run("--list-languages"))
+
+
+class TestNodeFields:
+    def test_a_string_slot_is_one_field_and_inherited_fields_survive(self):
+        from demangle.core.ast import Node
+
+        class Payload(Node):
+            __slots__ = "payload"
+            kind = "payload"
+
+            def __init__(self, payload):
+                self.payload = payload
+
+        class Extended(Payload):
+            __slots__ = ("__weakref__", "extra")
+
+            def __init__(self, payload, extra):
+                super().__init__(payload)
+                self.extra = extra
+
+        assert Payload("left").to_dict() == {"kind": "payload", "payload": "left"}
+        assert Payload("left") != Payload("right")
+        assert Payload.__match_args__ == ("payload",)
+        assert Extended("left", "right").to_dict() == {"kind": "payload", "payload": "left", "extra": "right"}
+        assert Extended.__match_args__ == ("payload", "extra")
+
+
+class TestPackOutputBounds:
+    @pytest.mark.parametrize(
+        "operation,args",
+        [
+            ("pointer", ()),
+            ("array", ("1234567890",)),
+            ("vendor_qualify", ("longqualifier",)),
+            ("qualify", (["const"],)),
+        ],
+    )
+    def test_distributed_declarators_bound_every_member(self, operation, args):
+        pack = A.parameter_pack([A.builtin("int")] * 20)
+        node = getattr(A, operation)(pack, *args)
+        assert node.size >= len(node.spell())
+        wrapped = A.array(A.pointer(node), "1234567890")
+        assert wrapped.size >= len(wrapped.spell())
+
+    def test_member_pointer_bounds_the_cross_product(self):
+        owners = A.parameter_pack([A.name("Owner")] * 5)
+        types = A.parameter_pack([A.builtin("int")] * 5)
+        node = A.member_pointer(owners, types)
+        assert node.size >= len(node.spell())
+
+    def test_parse_cannot_exceed_output_limit_through_a_pack(self):
+        name = "_Z1fIJ" + "i" * 20 + "EEviA1234567890_T_"
+        assert len(demangle.parse(name).spell()) > 300
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.parse(name, limits=demangle.Limits(max_output=300))
+
+
+class TestStyleOutputBounds:
+    def test_each_gnu_clone_label_counts_toward_the_output_limit(self):
+        name = "_Z1fv" + ".cold" * 10
+        node = demangle.parse(name, style="gnu")
+        assert node.size >= len(node.spell(style="gnu"))
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.parse(name, style="gnu", limits=demangle.Limits(max_output=100))
+
+    def test_gnu_empty_operator_template_includes_the_opening_space(self):
+        node = A.template(A.name("operator<"), [])
+        assert node.spell(style="gnu") == "operator< <>"
+        assert node.size >= len(node.spell(style="gnu"))

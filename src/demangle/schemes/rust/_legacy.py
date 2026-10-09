@@ -78,23 +78,24 @@ class LegacyDemangler:
 
         inpstr = _strip_llvm_suffix(inpstr)
 
-        inn = inpstr
+        cursor = 0
+        limit = len(inpstr)
         for ele in range(self.elements):
             # By index: `rest = rest[1:]` per digit is quadratic in the symbol's length.
-            prefix = 0
-            limit = len(inn)
-            while prefix < limit and inn[prefix] in _DIGITS:
-                prefix += 1
+            prefix = cursor
+            num = 0
+            while cursor < limit and inpstr[cursor] in _DIGITS:
+                num = num * 10 + (ord(inpstr[cursor]) - 48)
+                cursor += 1
 
-            if not prefix:
+            if cursor == prefix:
                 # No length prefix remains: the element count came from the pre-strip string.
                 raise UnableToLegacyDemangle(original_inpstr)
 
-            num = int(inn[:prefix])
-
-            rest = inn[prefix:]
-            inn = rest[num:]
-            rest = rest[:num]
+            # Slice only this component. Copying the remaining path for each element
+            # makes a path with many short components quadratic in its input length.
+            rest = inpstr[cursor : cursor + num]
+            cursor += num
 
             # The trailing hash disambiguates monomorphisations; `rustfilt` and Ghidra
             # omit it.
@@ -112,25 +113,28 @@ class LegacyDemangler:
             if rest[:2] == "_$":
                 rest = rest[1:]
 
-            # Dispatched on the first character: the hot loop over every component.
-            while rest:
-                head = rest[0]
+            # Keep a cursor into the component: slicing its remaining suffix at
+            # every escape makes a long escaped identifier quadratic.
+            position = 0
+            end = len(rest)
+            dollar = -1
+            while position < end:
+                head = rest[position]
                 if head == ".":
-                    if rest[1:2] == ".":
+                    if rest[position + 1 : position + 2] == ".":
                         disp += "::"
-                        rest = rest[2:]
+                        position += 2
                     else:
                         disp += "."
-                        rest = rest[1:]
+                        position += 1
 
                 elif head == "$":
-                    # Below 2 is no closing `$` or an empty escape; both stop the loop
+                    # A missing closing `$` or an empty escape stops the loop
                     # where the reference does.
-                    closing = rest.find("$", 1)
-                    if closing < 2:
+                    closing = rest.find("$", position + 1)
+                    if closing < position + 2:
                         break
-                    escape = rest[1:closing]
-                    after_escape = rest[closing + 1 :]
+                    escape = rest[position + 1 : closing]
 
                     if escape[0] == "u":
                         digits = escape[1:]
@@ -149,30 +153,33 @@ class LegacyDemangler:
                             break
                         disp += chr(c)
 
-                        rest = after_escape
+                        position = closing + 1
                         continue
 
                     else:
                         if escape not in _UNESCAPED:
                             break
                         disp += _UNESCAPED[escape]
-                        rest = after_escape
+                        position = closing + 1
                         continue
 
                 else:
                     # With no `$` left the remainder is taken as it stands, dots and all,
                     # as the reference does.
-                    dollar = rest.find("$")
+                    # Reuse the next escape across intervening dot segments instead
+                    # of rescanning the whole suffix for every segment.
+                    if dollar < position:
+                        dollar = rest.find("$", position)
                     if dollar == -1:
                         break
-                    dot = rest.find(".")
+                    dot = rest.find(".", position)
                     if dot == -1 or dollar < dot:
-                        disp += rest[:dollar]
-                        rest = rest[dollar:]
+                        disp += rest[position:dollar]
+                        position = dollar
                     else:
-                        disp += rest[:dot]
-                        rest = rest[dot:]
-            disp += rest
+                        disp += rest[position:dot]
+                        position = dot
+            disp += rest[position:]
             self.spans.append((component, len(disp)))
 
         # The hash, spelled as rustc-demangle's `{}` does (`{:#}` suppresses it), before
@@ -182,9 +189,9 @@ class LegacyDemangler:
 
         # What follows the closing `E` is kept only as a `.`-introduced vendor suffix, as
         # the reference does; otherwise `_ZN3fooE.llvm moocow` would read as `foo`.
-        if inn[:1] != "E":
+        if inpstr[cursor : cursor + 1] != "E":
             raise UnableToLegacyDemangle(original_inpstr)
-        self.suffix = inn[1:]
+        self.suffix = inpstr[cursor + 1 :]
         if self.suffix:
             if not (self.suffix.startswith(".") and _is_symbol_like(self.suffix)):
                 raise UnableToLegacyDemangle(original_inpstr)
@@ -219,6 +226,10 @@ class LegacyDemangler:
 
             while c < limit and inpstr[c] in _DIGITS:
                 length = length * 10 + (ord(inpstr[c]) - 48)
+                # Once the length exceeds the whole input it cannot become valid.
+                # Bound arithmetic before a malicious digit run builds a huge integer.
+                if length > limit:
+                    raise UnableToLegacyDemangle(inpstr)
                 c += 1
 
             if c + length > limit:

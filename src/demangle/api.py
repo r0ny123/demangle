@@ -286,6 +286,9 @@ def demangle(
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
     if not mangled:
+        _check_language(language)
+        get_style(style)
+        _check_limits(limits)
         return mangled
     # Loaded before the cache is touched: loading registers plugins, which clears it.
     # The registry flag rather than `_load()`, and `__class__ is str` rather than
@@ -587,6 +590,11 @@ def _read(mangled, builder, language, style, limits):
             return plugin, _parse_with(plugin, mangled, builder, limits, style)
         except RecursionError as exc:
             raise _depth_exceeded(mangled, limits) from exc
+        except DemanglingError:
+            raise
+        except Exception as exc:
+            reraise_if_operational(exc)
+            raise ParseError(mangled, None, f"{plugin.name} parser failed: {exc!r}") from exc
     else:
         tried = _among(mangled, _allowed(language))
 

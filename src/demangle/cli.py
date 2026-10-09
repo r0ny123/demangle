@@ -63,7 +63,7 @@ from .core.ast import Function
 from .core.errors import DemanglingError, LimitExceeded
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 from .core.style import get_style
-from .filter import TOKEN, TOKEN_MUST_HOLD
+from .filter import _MARKER_AND_NAME, TOKEN, TOKEN_MUST_HOLD, _says_only_what_the_word_says
 
 _TOKEN = TOKEN
 _TOKEN_MUST_HOLD = TOKEN_MUST_HOLD
@@ -954,10 +954,16 @@ def _run_stream(batches, arguments, answer):
                 if arguments.json_lines:
                     # A record for each word the filter would rewrite, and none for the text.
                     language, text = expanded
+                    if _MARKER_AND_NAME.fullmatch(word) and _says_only_what_the_word_says(
+                        word, json.loads(text)["demangled"]
+                    ):
+                        continue
                     if language is not None:
                         demangled.append(text)
                     continue
                 if expanded == word and not arguments.detect:
+                    continue
+                if not arguments.detect and _says_only_what_the_word_says(word, expanded):
                     continue
                 replacement = f"{word} ==> {expanded}" if arguments.both else expanded
                 demangled.append(replacement)
