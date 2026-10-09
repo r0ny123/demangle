@@ -8,6 +8,24 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-09
+
+### Added
+
+- **`demangle.load_plugins()`** registers the advertised plugins. It is idempotent and
+  safe to call from several threads, and a plugin that fails to load is skipped with a
+  `RuntimeWarning`, as before.
+
+### Changed
+
+- **Behaviour change: plugins installed through the `demangle.languages` entry-point
+  group no longer load on their own.** Call `demangle.load_plugins()` to keep the old
+  behaviour; `demangle` the command does so itself. An entry point may carry the name of
+  a built-in scheme and replace it, so an environment's installed packages could change
+  what `itanium` reads without anyone choosing it; a library that labels symbols for an
+  index needs the same answer from every install. Explicit `register_language()` calls
+  are unchanged.
+
 ## [0.5.0] - 2026-10-07
 
 ### Added
@@ -3975,7 +3993,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/r0ny123/demangle/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/r0ny123/demangle/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/r0ny123/demangle/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/r0ny123/demangle/compare/v0.2.0...v0.3.0
