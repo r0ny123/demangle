@@ -5,7 +5,9 @@ each one's detection order and first characters without importing it, so a schem
 module is imported only once a name reaches its `detect` -- a name starting `?` never
 costs the Swift parser. Third-party languages are found through the
 `demangle.languages` entry-point group, so a separate distribution can add a language
-without a patch here.
+without a patch here -- but only once a caller asks, with `load_plugins()`. Nothing is
+discovered on its own: an installed distribution cannot replace a built-in scheme
+unnoticed, and two installs read a name alike.
 
 The registry is process-global and populated once. Registration is idempotent, so
 importing a plugin module twice is harmless.
@@ -93,6 +95,9 @@ _by_first = None
 #: during import) has its own marker, so another thread never sees a half-loaded registry.
 _loaded = False
 _loading_thread = None
+#: Set when `load_plugins()` starts, so a second call -- or a plugin module calling it
+#: while it is imported -- finds nothing left to do.
+_plugins_loaded = False
 #: Name -> the stand-in holding a lazy built-in's place until its module is imported.
 _stand_ins = {}
 #: Built-ins whose module has made its own `register(PLUGIN)` call.
@@ -225,7 +230,6 @@ def _load():
                     # A caller's plugin already holds the name: it answers to the
                     # built-in's aliases too, as it would had it been registered later.
                     _offer_builtin_aliases(entry[0], entry[5])
-            _load_entry_points()
             _loaded = True
         finally:
             _loading_thread = None
@@ -254,6 +258,26 @@ def _offer_builtin_aliases(name, aliases):
             _aliases.setdefault(alias, name)
 
 
+def load_plugins():
+    """Register the plugins installed distributions advertise, once.
+
+    Third-party languages are opt-in: a distribution advertising the `demangle.languages`
+    entry-point group is not read until this is called, because a plugin may carry the
+    name of a built-in and `register` lets it replace that scheme. Calling it is the
+    caller's decision to accept that. Explicit `register` calls are not affected.
+
+    Safe to call from any thread and as often as you like; only the first call looks.
+    A plugin that fails to load is skipped with a `RuntimeWarning`.
+    """
+    global _plugins_loaded
+    _load()
+    with _lock:
+        if _plugins_loaded:
+            return
+        _plugins_loaded = True
+        _load_entry_points()
+
+
 def _load_entry_points():
     """Discover third-party plugins.
 
@@ -275,7 +299,7 @@ def _load_entry_points():
             plugin = entry.load()
             register(plugin() if callable(plugin) and not isinstance(plugin, LanguagePlugin) else plugin)
         except Exception as exc:  # pragma: no cover - defensive
-            warnings.warn(f"failed to load demangle plugin {entry.name!r}: {exc}", RuntimeWarning, stacklevel=2)
+            warnings.warn(f"failed to load demangle plugin {entry.name!r}: {exc}", RuntimeWarning, stacklevel=3)
 
 
 def _may_advertise_plugins():

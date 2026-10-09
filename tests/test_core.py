@@ -5,6 +5,7 @@ only through whole-name demangling, where a bug would show up as a puzzling spel
 several layers away.
 """
 
+import os
 import pathlib
 import string
 import subprocess
@@ -509,11 +510,19 @@ class TestDetectionOrderIsPinned:
         assert package.detect("_$SDL_MIXER$_Ld1") == "pascal"
 
 
-def _fresh(script):
-    """Run `script` in a new interpreter, where no scheme has been imported yet."""
+def _fresh(script, *paths):
+    """Run `script` in a new interpreter, where no scheme has been imported yet.
+
+    `paths` go on `sys.path` after the source tree, for a script that needs a distribution
+    of its own.
+    """
     source = pathlib.Path(__file__).resolve().parent.parent / "src"
     run = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, check=True, env={"PYTHONPATH": str(source)}
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PYTHONPATH": os.pathsep.join(map(str, (source, *paths)))},
     )
     return run.stdout.split()
 
@@ -682,3 +691,152 @@ class TestPluginDiscoveryScreen:
         monkeypatch.setattr("sys.path", [])
         monkeypatch.setattr("sys.meta_path", [Finder(), *sys.meta_path])
         assert registry._may_advertise_plugins() is True
+
+
+_PLUGIN_MODULE = """
+from demangle.core.plugin import LanguagePlugin
+
+CALLS = []
+
+
+def _plugin(name):
+    return LanguagePlugin(
+        name=name, detect=lambda s: True, parse=lambda m, b, limits, options=None: b.name("PLUGIN")
+    )
+
+
+def shadow():
+    CALLS.append("shadow")
+    return _plugin("itanium")
+
+
+def newcomer():
+    CALLS.append("newcomer")
+    return _plugin("newcomer")
+"""
+
+
+def _advertise(root, **entries):
+    """A distribution under `root` advertising `entries` (name -> `module:attribute`)."""
+    (root / "fakeplugins.py").write_text(_PLUGIN_MODULE)
+    info = root / "fakeplugins-1.0.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: fakeplugins\nVersion: 1.0\n")
+    lines = "".join(f"{name} = {target}\n" for name, target in entries.items())
+    (info / "entry_points.txt").write_text(f"[{registry.ENTRY_POINT_GROUP}]\n{lines}")
+
+
+class TestLoadingPluginsIsOptIn:
+    """An installed distribution cannot replace a built-in scheme, or add one, unless the
+    caller has asked for plugins: two installs would otherwise read a name differently."""
+
+    def test_a_plugin_named_for_a_built_in_replaces_it_only_after_load_plugins(self, tmp_path):
+        _advertise(tmp_path, itanium="fakeplugins:shadow")
+        results = _fresh(
+            "import demangle\n"
+            "print(demangle.demangle('_Z1fv', language='itanium'))\n"
+            "demangle.load_plugins()\n"
+            "print(demangle.demangle('_Z1fv', language='itanium'))\n",
+            tmp_path,
+        )
+        assert results == ["f()", "PLUGIN"]
+
+    def test_a_plugin_under_a_new_name_is_unknown_until_load_plugins(self, tmp_path):
+        _advertise(tmp_path, newcomer="fakeplugins:newcomer")
+        results = _fresh(
+            "import demangle\n"
+            "print('newcomer' in demangle.languages())\n"
+            "demangle.load_plugins()\n"
+            "print('newcomer' in demangle.languages(), demangle.demangle('x', language='newcomer'))\n",
+            tmp_path,
+        )
+        assert results == ["False", "True", "PLUGIN"]
+
+    def test_nothing_discovers_plugins_on_its_own(self, tmp_path):
+        """Not a read, a detect, a parse or a name filter."""
+        _advertise(tmp_path, newcomer="fakeplugins:newcomer", itanium="fakeplugins:shadow")
+        results = _fresh(
+            "import sys, demangle\n"
+            "demangle.demangle('_Z1fv'); demangle.detect('x'); demangle.parse('_Z1fv')\n"
+            "demangle.demangle_text('call _Z1fv here'); demangle.signature('_Z1fv')\n"
+            "print('fakeplugins' in sys.modules, 'newcomer' in demangle.languages())\n",
+            tmp_path,
+        )
+        assert results == ["False", "False"]
+
+    def test_load_plugins_twice_registers_once(self, tmp_path):
+        _advertise(tmp_path, newcomer="fakeplugins:newcomer")
+        results = _fresh(
+            "import demangle, fakeplugins\n"
+            "demangle.load_plugins()\n"
+            "demangle.load_plugins()\n"
+            "print(fakeplugins.CALLS)\n",
+            tmp_path,
+        )
+        assert results == ["['newcomer']"]
+
+    def test_threads_calling_load_plugins_together_register_once(self, tmp_path):
+        _advertise(tmp_path, newcomer="fakeplugins:newcomer")
+        results = _fresh(
+            "import threading, demangle, fakeplugins\n"
+            "gate = threading.Barrier(8)\n"
+            "def run():\n"
+            "    gate.wait()\n"
+            "    demangle.load_plugins()\n"
+            "    assert 'newcomer' in demangle.languages()\n"
+            "threads = [threading.Thread(target=run) for _ in range(8)]\n"
+            "[t.start() for t in threads]; [t.join() for t in threads]\n"
+            "print(fakeplugins.CALLS)\n",
+            tmp_path,
+        )
+        assert results == ["['newcomer']"]
+
+    def test_a_broken_plugin_is_skipped_with_a_warning(self, tmp_path):
+        _advertise(tmp_path, broken="no_such_module:PLUGIN", newcomer="fakeplugins:newcomer")
+        run = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import warnings, demangle\n"
+                "with warnings.catch_warnings(record=True) as caught:\n"
+                "    warnings.simplefilter('always')\n"
+                "    demangle.load_plugins()\n"
+                "print(sorted(w.category.__name__ for w in caught), 'newcomer' in demangle.languages())\n"
+                "print(caught[0].filename)\n",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={
+                "PYTHONPATH": os.pathsep.join(
+                    [str(pathlib.Path(__file__).resolve().parent.parent / "src"), str(tmp_path)]
+                )
+            },
+        )
+        # Attributed to the caller of `load_plugins()`, here `-c`'s "<string>".
+        assert run.stdout.splitlines() == ["['RuntimeWarning'] True", "<string>"]
+
+    def test_register_language_still_replaces_without_load_plugins(self):
+        results = _fresh(
+            "import demangle\n"
+            "from demangle.core.plugin import LanguagePlugin\n"
+            "demangle.register_language(LanguagePlugin(name='itanium', detect=bool,\n"
+            "    parse=lambda m, b, limits, options=None: b.name('MINE')))\n"
+            "print(demangle.demangle('_Z1fv', language='itanium'))\n"
+        )
+        assert results == ["MINE"]
+
+    def test_the_command_line_loads_plugins_as_it_always_has(self, tmp_path):
+        _advertise(tmp_path, newcomer="fakeplugins:newcomer", itanium="fakeplugins:shadow")
+        source = pathlib.Path(__file__).resolve().parent.parent / "src"
+        env = {"PYTHONPATH": os.pathsep.join([str(source), str(tmp_path)])}
+
+        def run(*arguments):
+            done = subprocess.run(
+                [sys.executable, "-m", "demangle", *arguments], capture_output=True, text=True, check=True, env=env
+            )
+            return done.stdout.splitlines()
+
+        assert run("-l", "newcomer", "x") == ["PLUGIN"]
+        assert run("-l", "itanium", "_Z1fv") == ["PLUGIN"]
+        assert any(line.startswith("newcomer") for line in run("--list-languages"))

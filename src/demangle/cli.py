@@ -46,7 +46,19 @@ import textwrap
 
 from . import __version__
 from ._signature import Signature, _labelled, signature
-from .api import _read, demangle, demangle_strict, demangle_type, detect, languages, parse, parse_type, style, styles
+from .api import (
+    _read,
+    demangle,
+    demangle_strict,
+    demangle_type,
+    detect,
+    languages,
+    load_plugins,
+    parse,
+    parse_type,
+    style,
+    styles,
+)
 from .core.ast import Function
 from .core.errors import DemanglingError, LimitExceeded
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
@@ -425,6 +437,8 @@ def _interrupted():
 def _main(argv):
     parser = build_parser()
     arguments = _parse(parser, argv)
+    # The command line accepts installed plugins, as it always has; a library caller opts in.
+    load_plugins()
 
     if arguments.list_languages:
         from .core.registry import available
