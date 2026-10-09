@@ -33,6 +33,7 @@ demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi").base_name
         - languages
         - styles
         - preload
+        - load_plugins
         - demangleb
         - demangleb_strict
         - demangleb_type

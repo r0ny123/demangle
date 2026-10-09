@@ -374,7 +374,9 @@ productions it recognises to a builder, so one parser serves both `demangle()` a
 `parse()`.
 
 Schemes are plugins: a separate distribution can add a language through the
-`demangle.languages` entry-point group without patching this package.
+`demangle.languages` entry-point group without patching this package. Installed plugins
+are not loaded on their own -- call `demangle.load_plugins()` to accept them (the
+`demangle` command does), so an install cannot replace a built-in scheme unnoticed.
 
 See [ARCHITECTURE.md](https://r0ny123.github.io/demangle/ARCHITECTURE/) for the full
 picture and [Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/) to

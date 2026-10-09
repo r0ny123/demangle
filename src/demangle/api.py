@@ -48,7 +48,7 @@ from .core.errors import (
     reraise_if_operational,
 )
 from .core.limits import DEFAULT_LIMITS, Limits
-from .core.registry import candidates, canonical, get, names
+from .core.registry import candidates, canonical, get, load_plugins, names
 from .core.style import DEFAULT_STYLE, Style, available_styles, get_style
 
 __all__ = [
@@ -64,6 +64,7 @@ __all__ = [
     "detect",
     "detectb",
     "languages",
+    "load_plugins",
     "node_kinds",
     "parse",
     "parse_type",
@@ -880,7 +881,7 @@ def demangle_all(
 
 
 def languages() -> list[str]:
-    """Registered language names, including any third-party plugins."""
+    """Registered language names. Third-party plugins appear once `load_plugins()` has run."""
     return names()
 
 

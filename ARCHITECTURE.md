@@ -158,7 +158,9 @@ back-reference scheme with different rules, kept in its own module for the same 
 A scheme is a directory under `schemes/` exposing a `LanguagePlugin` (`core/plugin.py`).
 Nothing in `core` knows the list of schemes at import time: `core/registry.py` finds the
 built-ins lazily and third-party plugins through the `demangle.languages` entry-point
-group, so a separate distribution can add a scheme without a patch to this one.
+group, so a separate distribution can add a scheme without a patch to this one. Those
+are read only when a caller runs `load_plugins()`: a plugin may carry a built-in's name
+and replace it, so that is the caller's choice, never an install's.
 
 Detection is the part with a cost model. It runs on every non-mangled symbol in a
 binary -- in a typical binary, most of them -- so `detect` is expected to be a prefix

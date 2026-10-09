@@ -67,8 +67,9 @@ A scheme's own node kinds are under its section on the [schemes page](schemes.md
 ## Plugins
 
 A distribution can add a scheme of its own by calling `register` or by advertising a
-`demangle.languages` entry point. [Adding a scheme](../adding-a-scheme.md) is the
-walk-through.
+`demangle.languages` entry point. Advertised plugins load only when a program calls
+`demangle.load_plugins()` (the `demangle` command does); `register` always takes
+effect. [Adding a scheme](../adding-a-scheme.md) is the walk-through.
 
 ::: demangle.core.plugin
 

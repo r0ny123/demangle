@@ -34,6 +34,7 @@ from .api import (
     detect,
     detectb,
     languages,
+    load_plugins,
     node_kinds,
     parse,
     parse_type,
@@ -57,7 +58,7 @@ from .core.registry import register as register_language
 from .core.style import Style, register_style
 from .filter import Found, demangle_stream, demangle_text, find_symbols
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 __all__ = [
     "DEFAULT_LIMITS",
@@ -90,6 +91,7 @@ __all__ = [
     "detectb",
     "find_symbols",
     "languages",
+    "load_plugins",
     "node_kinds",
     "parse",
     "parse_type",

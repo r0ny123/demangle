@@ -99,8 +99,10 @@ You do not have to contribute it here. Advertise it from your own distribution:
 demo = "my_package.demo:PLUGIN"
 ```
 
-It is discovered on first use. A plugin that fails to import is skipped with a warning
-rather than taking the library down with it.
+It is discovered when a program calls `demangle.load_plugins()`, which the `demangle`
+command does and a library does not: a plugin named for a built-in replaces it, so
+loading them is the caller's choice. A plugin that fails to import is skipped with a
+warning rather than taking the library down with it.
 
 ## The builder
 
