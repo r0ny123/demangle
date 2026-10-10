@@ -11,20 +11,21 @@ We created an experimental branch `boost/c-extension` branching off `fix/parser-
 
 ### Key Conclusions:
 1. **Piecemeal C Accelerator (`FastReader` / Token Scanning)**:
-   - **Boost Corpus (MSVC)**: Pure Python achieves **12,994 names/s** (76.96 µs/name) vs. C-accelerated **12,575 names/s** (79.52 µs/name) — **1.00x speedup** (0% gain).
-   - **Standard Benchmark Suite (`benchmarks/bench.py`)**: Pure Python achieves **36,469 cold names/s** vs. C-accelerated **36,034 cold names/s** — **1.00x speedup**.
-   - **Why**: Demangling CPU time is dominated by AST node allocations, dictionary substitutions, recursive grammar dispatch, and Python string constructions. Crossing the CPython C-API boundary for individual tokens introduces call overhead that offsets native C pointer math.
+   - **Boost Corpus (MSVC)**: Pure Python achieves **12,685 names/s** (78.83 µs/name) vs. C-accelerated **12,363 names/s** (80.89 µs/name) — **0.97x speedup** (Pure Python is 2.6% faster).
+   - **Itanium Corpus (libstdc++)**: Pure Python achieves **27,233 names/s** (36.72 µs/name) vs. C-accelerated `FastReader` **25,103 names/s** (39.84 µs/name) — **0.92x speedup** (Pure Python is 8.5% faster).
+   - **Standard Benchmark Suite (`benchmarks/bench.py`)**: Pure Python achieves **36,469 cold names/s** vs. C-accelerated **36,034 cold names/s** — **1.00x speedup** (within noise).
+   - **Why**: Demangling CPU time is dominated by AST node allocations, dictionary substitutions, recursive grammar dispatch, and Python string constructions. Crossing the CPython C-API boundary for micro-operations (cursors, single-character lookahead, token slices) introduces function invocation, argument parsing (`PyArg_ParseTuple`), and object boxing (`PyTuple_Pack`, `PyUnicode_FromOrdinal`) overhead. Furthermore, Python's built-in string primitives (`str.find`, `str[start:end]`, `in DIGITS`) are already implemented in vectorized, highly tuned C inside CPython.
 
 2. **End-to-End Native C Demangler**:
    - Benchmarking native C demangling (`__cxa_demangle`) against pure Python across 6,231 real-world Itanium symbols:
      - Pure Python: **26,015 names/s** (38.4 µs/name)
      - Native C: **962,707 names/s** (1.04 µs/name)
      - **Speedup: 37.0x**!
-   - However, native C demangling does not produce `demangle`'s structured AST or guarantee cross-platform conformance across edge cases.
+   - However, native C demangling does not produce `demangle`'s structured AST, cannot support MSVC/Rust/Swift/D/Nim/Pascal uniformly, and differs in formatted string representation on 44% of symbols.
 
 3. **Strategic Recommendation**:
-   - **Do NOT drop pure Python for piecemeal C extensions.** Adding binary build steps, wheel compilation, and platform dependencies for token-level C extensions yields 0% speedup.
-   - Dropping pure Python is only justified if the *entire recursive descent parser and AST builder* are rewritten in C/C++/Rust. Given the library's design requirement of being zero-dependency, pure-Python, and easily auditable across Python 3.10-3.14, PyPy, and free-threaded Python, the pure Python implementation remains the optimal architectural choice.
+   - **Do NOT drop pure Python for piecemeal C extensions.** Adding binary build steps, compiler dependencies, platform-specific wheels, and potential compatibility hurdles across Python 3.11-3.14, PyPy, and free-threaded builds yields zero throughput gain (and a 3-8% slowdown on token scanning).
+   - Dropping pure Python is only justified if the *entire recursive descent parser and AST builder* are rewritten in C/C++/Rust. Given the library's design requirement of being zero-dependency, pure-Python, and easily auditable, pure Python remains the optimal architectural choice.
 
 ---
 
@@ -36,8 +37,8 @@ Ran `benchmarks/audit_boost.py --save benchmarks/audit_boost_results.json`:
 
 | Implementation | Workload | Wall Time | Throughput | Latency (µs/symbol) | Speedup Ratio |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Pure Python** (PR #49 baseline) | 5,843 Boost symbols | 0.4497s | **12,994 names/s** | 76.96 µs | 1.00x (baseline) |
-| **C Accelerated** (`FastReader` + C scanner) | 5,843 Boost symbols | 0.4647s | **12,575 names/s** | 79.52 µs | 0.97x |
+| **Pure Python** (PR #49 baseline) | 5,843 Boost symbols | 0.4606s | **12,685 names/s** | 78.83 µs | 1.00x (baseline) |
+| **C Accelerated** (`FastReader` + C scanner) | 5,843 Boost symbols | 0.4726s | **12,363 names/s** | 80.89 µs | 0.97x (-2.6%) |
 
 ### Profiling Breakdown on Boost Symbols:
 In 1,000 Boost symbols, the parser executes over 1,035,000 function calls:
@@ -46,9 +47,8 @@ In 1,000 Boost symbols, the parser executes over 1,035,000 function calls:
 - `qualifiedNameBody`: 15,868 calls (0.286s cumulative)
 - `typeBody`: 26,825 calls (0.278s cumulative)
 - `render`: 37,086 calls (0.035s cumulative)
-- `Reader.peek / eat / take`: ~184,000 calls
 
-Replacing `Reader.peek / eat / take` with C calls saves minor loop overhead inside the cursor, but each call still incurs Python object boxing and function invocation overhead.
+In MSVC parsing, identifiers are scanned via `@` terminators. Python's `self.text.find("@", pos)` directly leverages glibc `memchr` (vectorized SSE/AVX assembly) without Python-to-C wrapper overhead. Delegating to a custom C extension `_fast_msvc_identifier` requires argument unpacking and 2-tuple packing (`PyTuple_Pack`), which is actually slower than Python's inlined `str.find` + slice.
 
 ---
 

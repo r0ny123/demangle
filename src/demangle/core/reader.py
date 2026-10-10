@@ -13,6 +13,7 @@ its methods are the innermost loop in the package.
 
 import contextlib
 import string
+from typing import TYPE_CHECKING
 
 from .errors import ParseError, TruncatedError
 
@@ -244,8 +245,11 @@ class _PyReader:
         return f"Reader({self.text[: self.pos]!r} | {self.remaining!r})"
 
 
-Reader = _PyReader
-with contextlib.suppress(ImportError):
-    from demangle._speedups import FastReader as _FastReader  # type: ignore[misc]
+if TYPE_CHECKING:
+    Reader = _PyReader
+else:
+    Reader = _PyReader
+    with contextlib.suppress(ImportError):
+        from demangle._speedups import FastReader as _FastReader
 
-    Reader = _FastReader  # type: ignore[misc, assignment]
+        Reader = _FastReader

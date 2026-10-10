@@ -2,15 +2,15 @@
   "symbols_count": 5843,
   "pure_python": {
     "count": 5843,
-    "best_seconds": 0.449656,
-    "names_per_sec": 12994,
-    "microseconds_each": 76.96
+    "best_seconds": 0.460625,
+    "names_per_sec": 12685,
+    "microseconds_each": 78.83
   },
   "c_accelerated": {
     "count": 5843,
-    "best_seconds": 0.464655,
-    "names_per_sec": 12575,
-    "microseconds_each": 79.52
+    "best_seconds": 0.47263,
+    "names_per_sec": 12363,
+    "microseconds_each": 80.89
   },
-  "speedup_ratio": 0.968
+  "speedup_ratio": 0.975
 }

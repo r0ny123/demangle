@@ -78,12 +78,21 @@ def main():
 
     # 2. Benchmark with Pure-Python fallback
     print("\n[2] Running with Pure Python Fallback (C speedups disabled)...")
+    import demangle.schemes.msvc._parser as msvc_parser
+
     orig_reader = reader_module.Reader
+    orig_msvc_fast = msvc_parser._fast_msvc_identifier
     reader_module.Reader = _PyReader
+
+    def _dummy_msvc(text: str, pos: int, length: int) -> tuple[int, str] | None:
+        return None
+
+    setattr(msvc_parser, "_fast_msvc_identifier", _dummy_msvc)  # noqa: B010
     try:
         py_result = bench_workload(symbols)
     finally:
         reader_module.Reader = orig_reader
+        msvc_parser._fast_msvc_identifier = orig_msvc_fast
 
     print(
         f"  Throughput: {py_result['names_per_sec']:,} names/sec "
