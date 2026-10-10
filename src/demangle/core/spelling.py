@@ -155,6 +155,48 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False, tight_before_group=
     return Spelling(inner.left + token, inner.right, ref_kind=ref_kind)
 
 
+class _BuiltinCache(dict):
+    def __missing__(self, key):
+        val = self[key] = Spelling(key)
+        return val
+
+
+_BUILTIN_SPELLINGS = _BuiltinCache(
+    {
+        name: Spelling(name)
+        for name in (
+            "void",
+            "bool",
+            "char",
+            "signed char",
+            "unsigned char",
+            "short",
+            "unsigned short",
+            "int",
+            "unsigned int",
+            "long",
+            "unsigned long",
+            "long long",
+            "unsigned long long",
+            "__int128",
+            "unsigned __int128",
+            "float",
+            "double",
+            "long double",
+            "__float128",
+            "wchar_t",
+            "char8_t",
+            "char16_t",
+            "char32_t",
+            "auto",
+            "decltype(auto)",
+            "decltype(nullptr)",
+            "...",
+        )
+    }
+)
+
+
 class SpellingBuilder(Builder):
     """Builds C++ declaration text. The backend behind `demangle()`.
 
@@ -195,8 +237,8 @@ class SpellingBuilder(Builder):
 
     # The class itself rather than a method calling it: a class attribute does not bind,
     # so `builder.name(text)` is `Spelling(text)`, and these are the builder's commonest
-    # calls.
-    builtin = Spelling
+    # calls. Builtins are finite and immutable, so pre-created instances are returned directly.
+    builtin = _BUILTIN_SPELLINGS.__getitem__
     name = Spelling
     raw = Spelling
 

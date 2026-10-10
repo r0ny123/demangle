@@ -416,13 +416,14 @@ Building upon the initial bounds correction pass, a secondary investigation prof
    - `SubstitutionTable.remember` fast-paths `production != "type"` to avoid candidate frozenset lookups on 99% of calls.
    - `template_arguments` avoids allocating `empties` tracking lists when `gnu_empty_pack_spelling` is disabled.
 
-4. **Scheme Detection & API Hot Paths (`src/demangle/schemes/`, `src/demangle/api.py`)**:
+4. **Scheme Detection & API Hot Paths (`src/demangle/schemes/`, `src/demangle/api.py`, `src/demangle/core/spelling.py`)**:
    - Rust `detect()` guards regex matching (`_LEGACY_ESCAPE.search`) with `if "$" in name`, speeding up rejection of C++ symbols by 3.8x.
    - Swift `detect()` combines `MANGLING_PREFIXES` and `_T` into a single module-level tuple prefix check, evaluating prefixes before falling back to `async_main_entry_point_length`.
    - `_read` inlines candidate detection while properly protecting against third-party plugin exceptions, preventing misattribution as `ParseError` when subsequent candidates or `NotMangledError` are expected.
    - Rust v0 demangler (`src/demangle/schemes/rust/_v0.py`) fast-paths `print_path`, `print_generic_arg`, `print_type`, and `print_sep_list` for plain text-sink demangling (`self._plain`), bypassing `with self.node(...)` context manager entry/exit overhead and dynamic lambda closures while preserving exact AST node hierarchy in AST mode.
    - `AstBuilder` in `src/demangle/core/ast.py` inlines node sizing, width, and arity calculation across all node constructors, removing `_sized()` and `_distributes_to_nothing()` function call overhead.
    - `ItaniumParser` lazily initializes `_closure_prefix_entries` and `_template_name_entries`, avoiding over 12,500 set allocations across conformance runs.
+   - `SpellingBuilder.builtin` in `src/demangle/core/spelling.py` binds to pre-created immutable `Spelling` instances via a specialized `_BuiltinCache.__getitem__`, removing 13,949 duplicate `Spelling` object allocations across libstdc++ conformance symbols alone and speeding up builtin resolution by 2.95x.
 
 **Verification**:
 - `pytest`: **4,549 passed, 384,601 subtests passed** (zero failures across all unit, AST, and conformance tests).
