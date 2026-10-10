@@ -546,7 +546,11 @@ class TestLegacyLengthArithmetic:
 
 
 class TestV0LengthArithmetic:
-    @pytest.mark.parametrize("name", ["_RCs" + "z" * 60000 + "_1a", "_RC" + "9" * 60000 + "a"])
+    @pytest.mark.parametrize(
+        "name",
+        ["_RCs" + "z" * 60000 + "_1a", "_RC" + "9" * 60000 + "a"],
+        ids=["base62-overflow", "decimal-overflow"],
+    )
     def test_oversized_fields_are_refused(self, name):
         with pytest.raises(DemanglingError):
             demangle.demangle_strict(name, language="rust")

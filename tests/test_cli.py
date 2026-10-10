@@ -1207,7 +1207,8 @@ def test_stream_keeps_non_utf8_symbols_whole():
     process = command(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate(b"T _Z3foo\xff\nT _Z1fv\n", timeout=30)
     assert process.returncode == 0
-    assert out == b"T _Z3foo\xff\nT f()\n"
+    newline = os.linesep.encode()
+    assert out == b"T _Z3foo\xff" + newline + b"T f()" + newline
     assert not err
 
 
