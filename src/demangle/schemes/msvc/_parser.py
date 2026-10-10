@@ -21,6 +21,14 @@ from .nodes import (
 )
 from .options import DEFAULT_OPTIONS
 
+try:
+    from demangle._speedups import fast_msvc_identifier as _fast_msvc_identifier
+except ImportError:
+
+    def _fast_msvc_identifier(text, pos, length):
+        return None
+
+
 _BASIC_TYPES = {
     "X": "void",
     "D": "char",
@@ -431,6 +439,10 @@ class _Demangler:
             raise _Bail
 
     def identifier(self):
+        fast = _fast_msvc_identifier(self.text, self.pos, self.length)
+        if fast is not None:
+            self.pos, name = fast
+            return name
         end = self.text.find("@", self.pos)
         if end < 0:
             raise _Bail

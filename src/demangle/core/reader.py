@@ -11,6 +11,7 @@ Kept deliberately small and `__slots__`-ed: an instance exists per name demangle
 its methods are the innermost loop in the package.
 """
 
+import contextlib
 import string
 
 from .errors import ParseError, TruncatedError
@@ -28,7 +29,7 @@ MAX_NUMBER_DIGITS = 20
 _SEQ_ID_VALUES = {char: index for index, char in enumerate(SEQ_ID_ALPHABET)}
 
 
-class Reader:
+class _PyReader:
     """A cursor over `text`, with the lookahead and consumption parsers need.
 
     `length` is the end of input and is not always `len(text)`. A parser may shorten it
@@ -241,3 +242,10 @@ class Reader:
 
     def __repr__(self):  # pragma: no cover - debugging aid
         return f"Reader({self.text[: self.pos]!r} | {self.remaining!r})"
+
+
+Reader = _PyReader
+with contextlib.suppress(ImportError):
+    from demangle._speedups import FastReader as _FastReader  # type: ignore[misc]
+
+    Reader = _FastReader  # type: ignore[misc, assignment]
