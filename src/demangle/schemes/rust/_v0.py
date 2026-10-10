@@ -503,6 +503,7 @@ _BASE_10 = {char: index for index, char in enumerate(string.digits)}
 _BASE_62 = dict(_BASE_10)
 _BASE_62.update({char: 10 + index for index, char in enumerate(string.ascii_lowercase)})
 _BASE_62.update({char: 36 + index for index, char in enumerate(string.ascii_uppercase)})
+_LIFETIMES = tuple("'" + chr(ord("a") + i) for i in range(26))
 
 
 class Parser:
@@ -575,10 +576,10 @@ class Parser:
                 self.next_val = at + 1
                 return 1
         while True:
-            d = _BASE_62.get(inn[at])
-            if d is None:
+            c = inn[at]
+            if c not in _BASE_62:
                 raise UnableTov0Demangle(inn)
-            x = x * 62 + d
+            x = x * 62 + _BASE_62[c]
             # A base-62 accumulator only grows. Refuse as soon as its final
             # x + 1 cannot fit, before a long hostile field builds a huge integer.
             if x >= _U64_MAX:
@@ -647,19 +648,18 @@ class Parser:
         # not a zero length (`_RNvC_1f` must not read as `::f`). A written `0` is legal.
         if at >= end:
             raise UnableTov0Demangle(inn)
-        length = _BASE_10.get(inn[at])
-        if length is None:
+        c0 = inn[at]
+        if c0 not in _BASE_10:
             raise UnableTov0Demangle(inn)
+        length = _BASE_10[c0]
         at += 1
         if length:
-            while True:
-                if at >= end:
-                    raise UnableTov0Demangle(inn)
-                digit = _BASE_10.get(inn[at])
-                if digit is None:
+            while at < end:
+                c = inn[at]
+                if c not in _BASE_10:
                     break
+                length = length * 10 + _BASE_10[c]
                 at += 1
-                length = length * 10 + digit
                 # No identifier can be longer than the entire input. Checking
                 # during accumulation bounds arithmetic on malformed digit runs.
                 if length > end:
@@ -1140,7 +1140,7 @@ class Printer:
             self.invalid()
 
         if depth < 26:
-            self.emit("'" + chr(ord("a") + depth))
+            self.emit(_LIFETIMES[depth])
         else:
             self.emit(f"'_{depth}")
 
@@ -1432,8 +1432,8 @@ class Printer:
                 raise UnableTov0Demangle(p.inn)
             tag = p.inn[at]
             p.next_val = at + 1
-            ty = _BASIC_TYPES.get(tag)
-            if ty is not None:
+            if tag in _BASIC_TYPES:
+                ty = _BASIC_TYPES[tag]
                 if self._plain:
                     self.emit(ty)
                     return None

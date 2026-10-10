@@ -2553,16 +2553,15 @@ class ItaniumParser:
         reader = self.reader
         pos = reader.pos
         char = reader.text[pos] if pos < reader.length else ""
-        if char:
-            builtin = BUILTIN_TYPES.get(char)
-            if builtin is not None and self._depth < self._max_depth:
-                # `_type`'s first arm, without the frame: a builtin records nothing and
-                # binds nothing.
-                reader.pos = pos + 1
-                # A builtin renders as its spelling, so its size is that spelling's length.
-                if len(builtin) > self._max_output:
-                    raise LimitExceeded(self._mangled, "output length", self._max_output)
-                return self.builder.builtin(builtin)
+        if char in BUILTIN_TYPES and self._depth < self._max_depth:
+            # `_type`'s first arm, without the frame: a builtin records nothing and
+            # binds nothing.
+            reader.pos = pos + 1
+            builtin = BUILTIN_TYPES[char]
+            # A builtin renders as its spelling, so its size is that spelling's length.
+            if len(builtin) > self._max_output:
+                raise LimitExceeded(self._mangled, "output length", self._max_output)
+            return self.builder.builtin(builtin)
         depth = self._depth = self._depth + 1
         if depth > self._max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)

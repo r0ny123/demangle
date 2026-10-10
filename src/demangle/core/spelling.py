@@ -157,8 +157,7 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False, tight_before_group=
 
 class _BuiltinCache(dict):
     def __missing__(self, key):
-        val = self[key] = Spelling(key)
-        return val
+        return Spelling(key)
 
 
 _BUILTIN_SPELLINGS = _BuiltinCache(
@@ -184,6 +183,7 @@ _BUILTIN_SPELLINGS = _BuiltinCache(
             "double",
             "long double",
             "__float128",
+            "half",
             "wchar_t",
             "char8_t",
             "char16_t",
@@ -191,7 +191,22 @@ _BUILTIN_SPELLINGS = _BuiltinCache(
             "auto",
             "decltype(auto)",
             "decltype(nullptr)",
+            "decimal32",
+            "decimal64",
+            "decimal128",
+            "std::nullptr_t",
+            "std::bfloat16_t",
+            "_BitInt",
+            "unsigned _BitInt",
             "...",
+            "_Float16",
+            "_Float32",
+            "_Float64",
+            "_Float128",
+            "_Float16x",
+            "_Float32x",
+            "_Float64x",
+            "_Float128x",
         )
     }
 )
@@ -249,7 +264,7 @@ class SpellingBuilder(Builder):
         return Spelling("".join([part if isinstance(part, str) else self.spell(part) for part in parts]))
 
     def qualified(self, parts):
-        n = len(parts)
+        n = len(parts) if isinstance(parts, (list, tuple)) else len(parts := tuple(parts))
         if n == 2:
             p0, p1 = parts
             s0 = p0.left if not p0.right else p0.left + p0.right
@@ -261,7 +276,7 @@ class SpellingBuilder(Builder):
         return Spelling("::".join([part.left if not part.right else part.left + part.right for part in parts]))
 
     def template(self, base, arguments, angle_space=True):
-        n = len(arguments)
+        n = len(arguments) if isinstance(arguments, (list, tuple)) else len(arguments := tuple(arguments))
         if n == 1:
             arg = arguments[0]
             rendered = arg.left if not arg.right else arg.left + arg.right

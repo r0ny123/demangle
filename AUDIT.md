@@ -421,9 +421,14 @@ Building upon the initial bounds correction pass, a secondary investigation prof
    - Swift `detect()` combines `MANGLING_PREFIXES` and `_T` into a single module-level tuple prefix check, evaluating prefixes before falling back to `async_main_entry_point_length`.
    - `_read` inlines candidate detection while properly protecting against third-party plugin exceptions, preventing misattribution as `ParseError` when subsequent candidates or `NotMangledError` are expected.
    - Rust v0 demangler (`src/demangle/schemes/rust/_v0.py`) fast-paths `print_path`, `print_generic_arg`, `print_type`, and `print_sep_list` for plain text-sink demangling (`self._plain`), bypassing `with self.node(...)` context manager entry/exit overhead and dynamic lambda closures while preserving exact AST node hierarchy in AST mode.
+   - Rust v0 hot digit parsers (`integer_62` and `ident`) replaced `.get()` dictionary lookups with direct dictionary subscripts, eliminating over 220,000 function calls. `print_type` replaced `_BASIC_TYPES.get()` with `in` checks (14,183 calls eliminated), and `print_lifetime_from_index` precomputed lifetime strings via `_LIFETIMES`.
    - `AstBuilder` in `src/demangle/core/ast.py` inlines node sizing, width, and arity calculation across all node constructors, removing `_sized()` and `_distributes_to_nothing()` function call overhead.
    - `ItaniumParser` lazily initializes `_closure_prefix_entries` and `_template_name_entries`, avoiding over 12,500 set allocations across conformance runs.
-   - `SpellingBuilder.builtin` in `src/demangle/core/spelling.py` binds to pre-created immutable `Spelling` instances via a specialized `_BuiltinCache.__getitem__`, removing 13,949 duplicate `Spelling` object allocations across libstdc++ conformance symbols alone and speeding up builtin resolution by 2.95x.
+   - `ItaniumParser.type_` inlined `char in BUILTIN_TYPES` direct subscripting, eliminating 31,453 function calls.
+   - `api.py` lazily evaluates `_undecorated(mangled)` in `demangle()` and `_read()` only when a candidate fails `detect()` and supports symbol-table decorations, bypassing `find("@")` on over 14,000 cold names.
+   - `_parse_with` inlined `style.language_options.get(plugin.name)`, saving 13,950 function calls.
+   - `SpellingBuilder.builtin` in `src/demangle/core/spelling.py` binds to pre-created immutable `Spelling` instances via a specialized `_BuiltinCache.__getitem__`, removing duplicate `Spelling` object allocations and speeding up builtin resolution by 2.95x. `_BuiltinCache.__missing__` returns `Spelling(key)` without mutating the cache, preventing unbounded memory growth or cache pollution on unknown inputs.
+   - `SpellingBuilder.qualified` and `template` safeguard arbitrary iterables and generators while retaining fast paths for lists and tuples.
 
 **Verification**:
 - `pytest`: **4,549 passed, 384,601 subtests passed** (zero failures across all unit, AST, and conformance tests).
@@ -431,12 +436,12 @@ Building upon the initial bounds correction pass, a secondary investigation prof
 - `tools/invariants.py`: no invariant broken.
 - `ruff check .`, `ruff format --check .`, and `ty check .`: clean.
 - `benchmarks/bench.py --calls`:
-  - `cold` calls dropped from 3,545,581 (251.4/name) to **3,107,799** (220.4/name) — **437,782 calls eliminated** (-12.3%).
-  - `structured` calls dropped from 191,819 (301.6/name) to **163,273** (256.7/name) — **28,546 calls eliminated** (-14.9%).
+  - `cold` calls dropped from 3,545,581 (251.4/name) to **2,832,987** (200.9/name) — **712,594 calls eliminated** (-20.1% cumulative).
+  - `structured` calls dropped from 191,819 (301.6/name) to **158,031** (248.5/name) — **33,788 calls eliminated** (-17.6% cumulative).
   - `warm` calls remain minimal at 127,886 (3.0/name).
   - `negative` calls remain at 112,814 (8.0/name).
 - `benchmarks/bench.py --check`: passes with no regression against baseline on first measurement.
-  - `cold`: ~36,000 names/s (vs baseline 21,744 names/s, +65%)
-  - `warm`: ~4,800,000 names/s (vs baseline 2,678,592 names/s, +80%)
-  - `negative`: ~2,200,000 names/s (vs baseline 1,210,698 names/s, +81%)
-  - `structured`: ~26,200 names/s (vs baseline 18,083 names/s, +45%)
+  - `cold`: ~36,300 names/s (vs baseline 21,744 names/s, +67%)
+  - `warm`: ~4,880,000 names/s (vs baseline 2,678,592 names/s, +82%)
+  - `negative`: ~2,216,000 names/s (vs baseline 1,210,698 names/s, +83%)
+  - `structured`: ~26,670 names/s (vs baseline 18,083 names/s, +47%)
