@@ -1,0 +1,4 @@
+
+# Punycode scalar bounds, rustc-demangle 0.1.28.
+_RCu5_dn32g	􏿿
+_RCu5_en32g	punycode{en32g}

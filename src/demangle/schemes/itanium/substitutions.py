@@ -177,7 +177,7 @@ class SubstitutionTable:
         against the specification's candidate set, so a parser that records something
         the ABI does not fails loudly here instead of silently renumbering the table.
         """
-        if production not in CANDIDATE_PRODUCTIONS:
+        if production != "type" and production != "prefix" and production not in CANDIDATE_PRODUCTIONS:
             raise AssertionError(
                 f"{production!r} is not a substitution candidate under ABI 5.1.10; "
                 f"candidates are {sorted(CANDIDATE_PRODUCTIONS)}"

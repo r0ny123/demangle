@@ -1,0 +1,10 @@
+# UTF-8 identifier lengths count bytes, checked with c++filt 2.42 arguments.
+_Z2év	é()
+_Z3éav	éa()
+_Z2é	é
+_ZN2é1fEv	é::f()
+_Z3€v	€()
+_Z4😀v	😀()
+_Z1fB2év	f[abi:é]()
+_Z2éB3€v	é[abi:€]()
+_ZW2é1fv	f@é()

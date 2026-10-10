@@ -51,6 +51,7 @@ class BoundedCache:
         "_weigh",
         "_young",
         "_young_weight",
+        "_young_weights",
         "epoch",
         "hits",
         "max_size",
@@ -71,6 +72,7 @@ class BoundedCache:
         self._young = {}
         self._old = {}
         self._young_weight = 0
+        self._young_weights = {}
         self._lock = threading.RLock()
         self.epoch = 0
         self.hits = 0
@@ -79,13 +81,19 @@ class BoundedCache:
     def get(self, key):
         value = self._young.get(key, _MISSING)
         if value is _MISSING:
-            # Read first, so an entry taken from before a `clear()` is not put back.
-            epoch = self.epoch
-            value = self._old.pop(key, _MISSING)
-            if value is _MISSING:
-                self.misses += 1
-                return _MISSING
-            self.put(key, value, epoch)
+            return self.get_old(key)
+        self.hits += 1
+        return value
+
+    def get_old(self, key):
+        """Finish a lookup whose young generation already missed."""
+        # Read first, so an entry taken from before a `clear()` is not put back.
+        epoch = self.epoch
+        value = self._old.pop(key, _MISSING)
+        if value is _MISSING:
+            self.misses += 1
+            return _MISSING
+        self.put(key, value, epoch)
         self.hits += 1
         return value
 
@@ -100,12 +108,17 @@ class BoundedCache:
             if epoch is not None and epoch != self.epoch:
                 return value
             young = self._young
-            if len(young) >= self._generation or self._young_weight >= self._budget:
+            replacing = key in young
+            if not replacing and (len(young) >= self._generation or self._young_weight >= self._budget):
                 self._old = young
                 self._young = young = {}
                 self._young_weight = 0
+                self._young_weights = {}
             young[key] = value
-            self._young_weight += weight
+            if self._weigh is not None:
+                previous_weight = self._young_weights.get(key, 0)
+                self._young_weights[key] = weight
+                self._young_weight += weight - previous_weight
         finally:
             lock.release()
         return value
@@ -115,6 +128,7 @@ class BoundedCache:
             self._young = {}
             self._old = {}
             self._young_weight = 0
+            self._young_weights = {}
             self.epoch += 1
             self.hits = 0
             self.misses = 0

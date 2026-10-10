@@ -72,16 +72,17 @@ _IDENTIFIER = re.compile(r"^[^\W\d_][\w`]*$", re.UNICODE)
 
 #: `<identifier> "__" <module> "_" ["u"] <id>`, split at the *last* `__`: an identifier
 #: may contain one.
-_SYMBOL = re.compile(r"^(.+)__([A-Za-z0-9]*?)_(u?)([0-9]+)$")
+_SYMBOL = re.compile(r"^(.+)__([A-Za-z0-9]*?)_(u?)([0-9]+)\Z")
 
 #: `uniqueModuleName` emits only these, which makes the shape narrow enough to detect on.
-_MODULE_CHARACTERS = re.compile(r"^[a-z0-9ZO]+$")
+_MODULE_CHARACTERS = re.compile(r"^[a-z0-9ZO]+\Z")
 
 #: `ty<Kind>` optionally `_<name>`, then the signature hash (a digest; not recovered).
-_TYPE_NAME = re.compile(r"^ty([A-Z][A-Za-z]*?)(?:_(.+?))?__([A-Za-z0-9_]+)$")
-_TYPE_INFO = re.compile(r"^NTI(v2)?(.*?)__([A-Za-z0-9_]+)_$")
-_MARKER = re.compile(r"^Marker_(.+)$")
-_MODULE_TEMPORARY = re.compile(r"^TM__?([A-Za-z0-9_]+)_([0-9]+(?:\.[0-9]+)?)$")
+_TYPE_HEAD = re.compile(r"^ty([A-Z][A-Za-z]*)_")
+_HASH = re.compile(r"[A-Za-z0-9_]+")
+_HASH_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
+_MARKER = re.compile(r"^Marker_(.+)\Z")
+_MODULE_TEMPORARY = re.compile(r"^TM__?([A-Za-z0-9_]+)_([0-9]+(?:\.[0-9]+)?)\Z")
 
 #: Under Nim 2 a digit run may be the path's own (`pure/base64` is `pureZbase64`), so a
 #: two-digit run is a code only if it names one of these. In practice only `_` is.
@@ -313,17 +314,45 @@ def _routine(name):
     return NimSymbol(name, f"{path}.{spelled}", "routine", name=spelled, module=path)
 
 
+def _hash_separator(name, start, end=None):
+    """The first `__` whose remaining suffix is a nonempty signature hash.
+
+    Walking the hash alphabet backwards validates every candidate suffix at once.
+    Trying a greedy hash regex after each separator instead makes malformed runs of
+    underscores quadratic when an invalid character follows them.
+    """
+    if end is None:
+        end = len(name)
+    candidate = name.find("__", start, end)
+    if candidate < 0:
+        return None
+    if _HASH.fullmatch(name, candidate + 2, end) is not None:
+        return candidate
+    at = end - 1
+    while at >= start and name[at] in _HASH_CHARACTERS:
+        at -= 1
+    stop = name.find("__", max(start, at + 1), end)
+    return stop if stop >= 0 and stop + 2 < end else None
+
+
 def _type_name(name):
     """`ty<Kind>[_<name>]__<signature hash>`. The hash is a digest and does not return."""
-    found = _TYPE_NAME.match(name)
+    found = _TYPE_HEAD.match(name)
     if found is None:
         return None
-    kind, spelled, _hash = found.groups()
-    if spelled is not None:
-        spelled = unmangle(spelled)
+    kind = found.group(1)
+    boundary = found.end() - 1
+    # The optional name is preferred over a bare kind, as in the compiler's shape.
+    stop = _hash_separator(name, boundary + 2)
+    if stop is not None:
+        spelled = unmangle(name[boundary + 1 : stop])
         if spelled is None:
             return None
         return NimSymbol(name, spelled, "type", name=spelled)
+    if not name.startswith("__", boundary) or not name[boundary + 2 :]:
+        return None
+    if not _HASH_CHARACTERS.issuperset(name[boundary + 2 :]):
+        return None
     return NimSymbol(name, kind[0].lower() + kind[1:], "type", name=kind)
 
 
@@ -334,11 +363,19 @@ def _type_info(name):
     says of itself that "the result doesn't have to be unique" -- so it is a readable
     label, not the type's spelling, and this does not pretend otherwise.
     """
-    found = _TYPE_INFO.match(name)
-    if found is None:
+    if not name.startswith("NTI") or not name.endswith("_"):
         return None
-    _version, label, _hash = found.groups()
-    if not label:
+    start = 5 if name.startswith("NTIv2") else 3
+    end = len(name) - 1
+    stop = name.find("__", start, end)
+    if stop < 0:
+        return None
+    if _HASH.fullmatch(name, stop + 2, end) is None:
+        stop = _hash_separator(name, start, end)
+        if stop is None:
+            return None
+    label = name[start:stop]
+    if not label or "\n" in label:
         return None
     return NimSymbol(name, f"type information for {label}", "type-info", name=label)
 
@@ -363,12 +400,17 @@ def _module_temporary(name):
     return NimSymbol(name, f"module temporary #{found.group(2)}", "temporary")
 
 
-_READERS = (_routine, _type_info, _marker, _type_name, _module_temporary)
+_GENERATED_READERS = (_type_info, _marker, _type_name, _module_temporary)
+_READERS = (_routine, *_GENERATED_READERS)
 
 
 def parse_nim_symbol(name):
     """Parse `name`, returning a `NimSymbol`, or raise `DemangleFailure`."""
-    for reader in _READERS:
+    # A routine's identity ends in an ASCII digit. Compiler-generated type-info
+    # names end in `_`; skipping the routine regex avoids backtracking through their
+    # hash on every parse. Digit-ended names keep the original reader precedence.
+    readers = _READERS if name and "0" <= name[-1] <= "9" else _GENERATED_READERS
+    for reader in readers:
         try:
             found = reader(name)
         except UnicodeError:
@@ -387,7 +429,7 @@ _FOREIGN_PREFIXES = ("caml",)
 
 #: A necessary condition of `_SYMBOL`, screened first because `_SYMBOL`'s greedy `(.+)__`
 #: backtracks through every `__` (`std::__cxx11` is everywhere in C++ binaries).
-_ROUTINE_TAIL = re.compile(r"_u?[0-9]+$")
+_ROUTINE_TAIL = re.compile(r"_u?[0-9]+\Z")
 
 
 def detect(name):

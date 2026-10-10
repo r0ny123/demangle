@@ -60,10 +60,11 @@ from .api import (
     styles,
 )
 from .core.ast import Function
+from .core.cache import MISSING, BoundedCache
 from .core.errors import DemanglingError, LimitExceeded
 from .core.limits import DEFAULT_LIMITS, RELAXED_LIMITS, Limits
 from .core.style import get_style
-from .filter import TOKEN, TOKEN_MUST_HOLD
+from .filter import _ASCII_TOKEN, _MARKER_AND_NAME, TOKEN, TOKEN_MUST_HOLD, _says_only_what_the_word_says
 
 _TOKEN = TOKEN
 _TOKEN_MUST_HOLD = TOKEN_MUST_HOLD
@@ -622,7 +623,7 @@ def _expand_read(name, arguments, limits):
             return demangle_type(name, language=arguments.language, style=arguments.style, limits=limits)
         except DemanglingError:
             # The bargain `demangle()` makes, which `demangle_type()` leaves to its caller.
-            if arguments.strict:
+            if arguments.strict or arguments.json or arguments.tree:
                 raise
             return name
     if arguments.json:
@@ -805,17 +806,49 @@ def _run(names, arguments):
 #: hundred characters and run to tens of thousands, so tens of megabytes at most.
 _REMEMBERED = 1 << 14
 
+# Input limits bound parsing, not the original names carried into JSON records.
+# Bound their retained text too; a stream of long refused names must stay a pipe.
+_REMEMBERED_BYTES = 16 << 20
+
 
 def _answerer(arguments, limits):
     """What this run says about a name: its expansion, or under `--json-lines` the scheme
     that read it and its record, as JSON."""
     if not arguments.json_lines:
+        if not (
+            arguments.strip_underscore
+            or arguments.detect
+            or arguments.types
+            or arguments.json
+            or arguments.tree
+            or _selects_a_part(arguments)
+        ):
+            read = demangle_strict if arguments.strict else demangle
+            return functools.partial(read, language=arguments.language, style=arguments.style, limits=limits)
         return functools.partial(_expand, arguments=arguments, limits=limits)
 
-    @functools.lru_cache(maxsize=_REMEMBERED)
+    cache = BoundedCache(
+        max_size=_REMEMBERED,
+        max_weight=_REMEMBERED_BYTES,
+        weigh=lambda name, value: (len(name) << (0 if name.isascii() else 2)) + len(value[1]),
+    )
+
     def record(name):
+        # The current generation is a plain dict; bypass promotion bookkeeping on
+        # repeated disassembly call sites, retaining the bounded cache on a miss.
+        cached = cache._young.get(name, MISSING)
+        if cached is MISSING:
+            cached = cache.get_old(name)
+        if cached is not MISSING:
+            return cached
         fields = _record(name, arguments, limits)
-        return fields["language"], json.dumps(fields)
+        text = json.dumps(fields)
+        weight = (len(name) << (0 if name.isascii() else 2)) + len(text)
+        result = fields["language"], text
+        # Limit each entry as well, bounding the generation's one-entry overshoot.
+        if weight <= _REMEMBERED_BYTES // 16:
+            cache.put(name, result)
+        return result
 
     return record
 
@@ -902,7 +935,7 @@ def _run_names(batches, arguments, answer):
     end = "\0" if arguments.null else "\n"
     for batch in batches:
         for name in batch:
-            if not name and not arguments.json_lines:
+            if not name and not (arguments.json_lines or arguments.strict or arguments.json or arguments.tree):
                 out.write(end)
                 continue
             try:
@@ -933,15 +966,40 @@ def _run_stream(batches, arguments, answer):
     """
     status = 0
     out = sys.stdout
+    substitute = not (arguments.only_demangled or arguments.json_lines or arguments.detect)
+
+    def replace(match):
+        nonlocal status
+        word = match.group()
+        if word.isalnum() or not _TOKEN_MUST_HOLD.search(word):
+            return word
+        try:
+            expanded = answer(word)
+        except BrokenPipeError:
+            raise
+        except Exception as exc:
+            print(_complaint(word, exc), file=sys.stderr)
+            status = 1
+            return word
+        if expanded == word or (word[0] in "@." and _says_only_what_the_word_says(word, expanded)):
+            return word
+        return f"{word} ==> {expanded}" if arguments.both else expanded
 
     for batch in batches:
         for line in batch:
+            if not _TOKEN_MUST_HOLD.search(line):
+                if not (arguments.only_demangled or arguments.json_lines):
+                    out.write(line)
+                continue
+            token = _ASCII_TOKEN if line.isascii() else _TOKEN
+            if substitute:
+                out.write(token.sub(replace, line))
+                continue
             pieces = []
-            demangled = []
             end = 0
-            for match in _TOKEN.finditer(line):
+            for match in token.finditer(line):
                 word = match.group()
-                if not _TOKEN_MUST_HOLD.search(word):
+                if word.isalnum() or not _TOKEN_MUST_HOLD.search(word):
                     continue
                 try:
                     expanded = answer(word)
@@ -954,19 +1012,27 @@ def _run_stream(batches, arguments, answer):
                 if arguments.json_lines:
                     # A record for each word the filter would rewrite, and none for the text.
                     language, text = expanded
+                    if (
+                        word[0] in "@."
+                        and _MARKER_AND_NAME.fullmatch(word)
+                        and _says_only_what_the_word_says(word, json.loads(text)["demangled"])
+                    ):
+                        continue
                     if language is not None:
-                        demangled.append(text)
+                        out.write(text + "\n")
                     continue
                 if expanded == word and not arguments.detect:
                     continue
+                if not arguments.detect and word[0] in "@." and _says_only_what_the_word_says(word, expanded):
+                    continue
                 replacement = f"{word} ==> {expanded}" if arguments.both else expanded
-                demangled.append(replacement)
+                if arguments.only_demangled:
+                    out.write(replacement + "\n")
+                    continue
                 pieces.append(line[end : match.start()])
                 pieces.append(replacement)
                 end = match.end()
             if arguments.only_demangled or arguments.json_lines:
-                for replacement in demangled:
-                    out.write(replacement + "\n")
                 continue
             pieces.append(line[end:])
             out.write("".join(pieces))

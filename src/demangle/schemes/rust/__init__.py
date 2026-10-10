@@ -105,7 +105,7 @@ def detect(name):
             and name[start + _LEGACY_HASH_DIGITS : start + _LEGACY_HASH_DIGITS + 1] == "E"
         ):
             return True
-    if _LEGACY_ESCAPE.search(name) is not None:
+    if "$" in name and _LEGACY_ESCAPE.search(name) is not None:
         return True
     # A bare `ZN` has no marker, so reading it is the only test; bounded like a parse.
     return name[0] == "Z" and name[2:3].isdigit() and len(name) <= DEFAULT_LIMITS.max_input and _reads_as_legacy(name)

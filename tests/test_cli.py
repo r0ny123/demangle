@@ -390,14 +390,14 @@ class TestPipeline:
     def _interrupt(*_, **__):
         raise KeyboardInterrupt
 
-    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    @pytest.mark.parametrize("where", ["_expand", "demangle", "_parse"])
     def test_ctrl_c_on_windows_exits_130_without_a_traceback(self, capsys, monkeypatch, where):
         monkeypatch.setattr("sys.platform", "win32")
         monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
-        assert main(["_Z1fv"]) == 130
+        assert main(["--strip-underscore", "__Z1fv"] if where == "_expand" else ["_Z1fv"]) == 130
         assert capsys.readouterr().err == ""
 
-    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    @pytest.mark.parametrize("where", ["_expand", "demangle", "_parse"])
     def test_ctrl_c_elsewhere_dies_of_sigint(self, capsys, monkeypatch, where):
         """So that a shell loop over the command stops, as it does for one Ctrl-C killed."""
         calls = []
@@ -405,7 +405,7 @@ class TestPipeline:
         monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
         monkeypatch.setattr("signal.signal", lambda *a: calls.append(("signal", *a)))
         monkeypatch.setattr("os.kill", lambda *a: calls.append(("kill", *a)))
-        main(["_Z1fv"])
+        main(["--strip-underscore", "__Z1fv"] if where == "_expand" else ["_Z1fv"])
         assert calls == [("signal", signal.SIGINT, signal.SIG_DFL), ("kill", os.getpid(), signal.SIGINT)]
         assert capsys.readouterr().err == ""
 
@@ -1165,3 +1165,106 @@ class TestKeepHash:
         assert out.strip() == default
         _, out, _ = run(capsys, ["--keep-hash", name])
         assert out.strip() == kept
+
+
+@pytest.mark.parametrize("options", [[], ["--both"], ["--only-demangled"], ["--json-lines"]])
+def test_stream_preserves_annotations_and_version_markers(capsys, monkeypatch, options):
+    text = "@Override @@Base @GLIBCXX_3.4 _Z1fv\n"
+    status, out, err = run(capsys, options, stdin=text, monkeypatch=monkeypatch)
+    assert status == 0
+    assert err == ""
+    if "--json-lines" in options:
+        records = [json.loads(line) for line in out.splitlines()]
+        assert [record["mangled"] for record in records] == ["_Z1fv"]
+    elif "--only-demangled" in options:
+        assert out == "f()\n"
+    elif "--both" in options:
+        assert out == "@Override @@Base @GLIBCXX_3.4 _Z1fv ==> f()\n"
+    else:
+        assert out == "@Override @@Base @GLIBCXX_3.4 f()\n"
+
+
+def test_explicit_annotation_argument_can_still_be_read(capsys):
+    assert run(capsys, ["@Override"])[1] == "Override\n"
+
+
+@pytest.mark.parametrize("suffix", ["é", "\u0301"])
+@pytest.mark.parametrize("options", [[], ["--json-lines"], ["--only-demangled"]])
+def test_stream_never_demangles_only_the_ascii_prefix(capsys, monkeypatch, suffix, options):
+    name = "_Z3foo" + suffix
+    status, out, err = run(capsys, options, stdin=f"T {name}\nT _Z1fv\n", monkeypatch=monkeypatch)
+    assert status == 0
+    assert not err
+    if "--json-lines" in options:
+        assert [json.loads(line)["mangled"] for line in out.splitlines()] == ["_Z1fv"]
+    elif "--only-demangled" in options:
+        assert out == "f()\n"
+    else:
+        assert out == f"T {name}\nT f()\n"
+
+
+def test_stream_keeps_non_utf8_symbols_whole():
+    process = command(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate(b"T _Z3foo\xff\nT _Z1fv\n", timeout=30)
+    assert process.returncode == 0
+    newline = os.linesep.encode()
+    assert out == b"T _Z3foo\xff" + newline + b"T f()" + newline
+    assert not err
+
+
+def test_json_record_cache_bounds_retained_text(monkeypatch):
+    import demangle.cli as cli
+    from demangle.core.limits import DEFAULT_LIMITS
+
+    calls = []
+
+    def record(name, arguments, limits):
+        calls.append(name)
+        return {"mangled": name, "demangled": name, "language": None}
+
+    monkeypatch.setattr(cli, "_record", record)
+    monkeypatch.setattr(cli, "_REMEMBERED_BYTES", 8192)
+    answer = cli._answerer(build_parser().parse_args(["--json-lines"]), DEFAULT_LIMITS)
+    names = [str(index) + "x" * 100 for index in range(64)]
+    for name in names:
+        answer(name)
+    answer(names[0])
+    assert calls.count(names[0]) == 2
+    answer(names[-1])
+    assert calls.count(names[-1]) == 1
+
+
+def test_oversized_json_records_are_not_retained(monkeypatch):
+    import demangle.cli as cli
+    from demangle.core.limits import DEFAULT_LIMITS
+
+    calls = []
+
+    def record(name, arguments, limits):
+        calls.append(name)
+        return {"mangled": name, "demangled": name, "language": None}
+
+    monkeypatch.setattr(cli, "_record", record)
+    monkeypatch.setattr(cli, "_REMEMBERED_BYTES", 8192)
+    answer = cli._answerer(build_parser().parse_args(["--json-lines"]), DEFAULT_LIMITS)
+    large = "x" * 1024
+    assert answer(large) == answer(large)
+    assert calls == [large, large]
+    assert answer("_Z1fv") == answer("_Z1fv")
+    assert calls.count("_Z1fv") == 1
+
+
+@pytest.mark.parametrize("options", [["--strict"], ["--tree"], ["--json"], ["--detect", "--strict"]])
+def test_empty_names_do_not_bypass_required_parsing(capsys, options):
+    status, out, err = run(capsys, [*options, ""])
+    assert status == 1
+    assert out == ""
+    assert "empty name" in err
+
+
+@pytest.mark.parametrize("options", [["--tree"], ["--json"]])
+def test_unreadable_types_cannot_be_printed_as_trees(capsys, options):
+    status, out, err = run(capsys, ["--types", "--language", "itanium", *options, "not-a-type"])
+    assert status == 1
+    assert out == ""
+    assert err

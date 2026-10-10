@@ -257,3 +257,22 @@ class TestItClaimsNothingItShouldNot:
                 if mangled.startswith("Java_"):
                     with subtests.test(mangled=mangled):
                         assert demangle.detect(mangled) != "jni"
+
+
+@pytest.mark.parametrize("count", [1, 1000])
+def test_unicode_path_separators_are_not_signature_candidates(count):
+    mangled = "Java_pkg" + "__003c0" * count + "_method"
+    symbol = parse_jni_symbol(mangled)
+    assert symbol.declaring == "pkg." + ".".join(["π"] * count)
+    assert symbol.method == "method"
+    assert symbol.parameters is None
+
+
+def test_a_long_empty_path_component_is_refused():
+    with pytest.raises(DemangleFailure):
+        parse_jni_symbol("Java_pkg_Class" + "_" * 16000 + "method")
+
+
+def test_an_explicitly_escaped_ascii_signature_code_is_retained():
+    symbol = parse_jni_symbol("Java_pkg_Class_method___00049")
+    assert symbol.parameters == ("int",)

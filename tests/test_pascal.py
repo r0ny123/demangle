@@ -335,3 +335,10 @@ class TestTree:
     def test_a_programs_lead_survives_into_the_tree(self, mangled, expected):
         assert demangle.demangle_strict(mangled) == expected
         assert demangle.parse(mangled).spell() == expected
+
+
+@pytest.mark.parametrize("mangled", ["INIT$_$FOO\n", "_$FOO$_La1\n"])
+def test_trailing_newline_is_not_part_of_a_symbol(mangled):
+    with pytest.raises(DemangleFailure):
+        parse_pascal_symbol(mangled)
+    assert demangle.demangle(mangled, language="pascal") == mangled

@@ -20,6 +20,7 @@ class OutputTooLong(Exception):
 
 
 _U64_MAX = (1 << 64) - 1
+_ZERO_PAD = re.compile(r"0+")
 
 
 class UnableTov0Demangle(Exception):
@@ -247,6 +248,10 @@ class Ident:
             delta = 0
             w = 1
             k = 0
+            # The next decoded scalar is n + (i + delta) // (lent + 1). Delta
+            # only grows within this digit run; stop once no scalar can result,
+            # before a malformed identifier builds unbounded Python integers.
+            scalar_limit = (0x110000 - n) * (lent + 1) - i
             while True:
                 k += base
                 t = min(max((k - bias), t_min), t_max)
@@ -262,6 +267,8 @@ class Ident:
                     return False
 
                 delta = delta + (d * w)
+                if delta >= scalar_limit:
+                    return False
                 if d < t:
                     break
                 w *= base - t
@@ -496,6 +503,7 @@ _BASE_10 = {char: index for index, char in enumerate(string.digits)}
 _BASE_62 = dict(_BASE_10)
 _BASE_62.update({char: 10 + index for index, char in enumerate(string.ascii_lowercase)})
 _BASE_62.update({char: 36 + index for index, char in enumerate(string.ascii_uppercase)})
+_LIFETIMES = tuple("'" + chr(ord("a") + i) for i in range(26))
 
 
 class Parser:
@@ -557,19 +565,31 @@ class Parser:
             self.next_val = at + 1
             return 0
         x = 0
-        while True:
-            d = _BASE_62.get(inn[at])
-            if d is None:
+        if inn.startswith("00000000", at):
+            # Long zero padding is valid and cannot overflow. Skip its arithmetic.
+            padding = _ZERO_PAD.match(inn, at)
+            assert padding is not None
+            at = padding.end()
+            if at >= end:
                 raise UnableTov0Demangle(inn)
-            x = x * 62 + d
+            if inn[at] == "_":
+                self.next_val = at + 1
+                return 1
+        while True:
+            c = inn[at]
+            if c not in _BASE_62:
+                raise UnableTov0Demangle(inn)
+            x = x * 62 + _BASE_62[c]
+            # A base-62 accumulator only grows. Refuse as soon as its final
+            # x + 1 cannot fit, before a long hostile field builds a huge integer.
+            if x >= _U64_MAX:
+                raise UnableTov0Demangle(inn)
             at += 1
             # Nothing reads the cursor after a refusal, so it is written once on the way out.
             if at >= end:
                 raise UnableTov0Demangle(inn)
             if inn[at] == "_":
                 self.next_val = at + 1
-                if x >= _U64_MAX:
-                    raise UnableTov0Demangle(inn)
                 return x + 1
 
     def opt_integer_62(self, tag: str) -> int:
@@ -595,15 +615,16 @@ class Parser:
         else:
             raise UnableTov0Demangle(self.inn)
 
-    def backref(self) -> "Parser":
+    def backref(self) -> int:
+        # Skip passes and memo hits need only the validated offset, not a new parser.
         s_start = self.next_val - 1
         i = self.integer_62()
         if i >= s_start:
             raise UnableTov0Demangle(self.inn)
 
-        return Parser(self.inn, i, self.keep_hash, self.max_depth)
+        return i
 
-    def ident(self, build=True):
+    def ident(self, build=True, display=False):
         """A `<identifier>`: an optional `u`, a decimal length, an optional `_`, the text.
 
         Written out rather than composed from `eat` and `digit_10` because it runs once
@@ -614,7 +635,8 @@ class Parser:
         `Ident` away: building it there would allocate half of those 78,000 objects,
         each with a list of its own, to discard them. What is read, and what is refused,
         is the same either way -- there is one implementation of the production and this
-        is it.
+        is it. `display` returns its spelling directly, avoiding a temporary `Ident` and
+        decode-state list for the ordinary ASCII identifiers the printer emits.
         """
         inn, end = self.inn, self.end
         at = self.next_val
@@ -626,19 +648,22 @@ class Parser:
         # not a zero length (`_RNvC_1f` must not read as `::f`). A written `0` is legal.
         if at >= end:
             raise UnableTov0Demangle(inn)
-        length = _BASE_10.get(inn[at])
-        if length is None:
+        c0 = inn[at]
+        if c0 not in _BASE_10:
             raise UnableTov0Demangle(inn)
+        length = _BASE_10[c0]
         at += 1
         if length:
-            while True:
-                if at >= end:
-                    raise UnableTov0Demangle(inn)
-                digit = _BASE_10.get(inn[at])
-                if digit is None:
+            while at < end:
+                c = inn[at]
+                if c not in _BASE_10:
                     break
+                length = length * 10 + _BASE_10[c]
                 at += 1
-                length = length * 10 + digit
+                # No identifier can be longer than the entire input. Checking
+                # during accumulation bounds arithmetic on malformed digit runs.
+                if length > end:
+                    raise UnableTov0Demangle(inn)
 
         if at < end and inn[at] == "_":
             at += 1
@@ -660,8 +685,16 @@ class Parser:
             if not punycode:
                 raise UnableTov0Demangle(inn)
 
-            return Ident(ascii_part, punycode) if build else None
+            if not build:
+                return None
+            name = Ident(ascii_part, punycode)
+            if display:
+                name.display()
+                return name.disp
+            return name
 
+        if display:
+            return ident
         return Ident(ident, "") if build else None
 
     def skip_path(self):
@@ -923,8 +956,12 @@ class _Scope:
         self.sink.open()
         return self.box
 
-    def __exit__(self, *exception):
-        self.box.append(self.sink.close(self.factory))
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.box.append(self.sink.close(self.factory))
+        else:
+            if len(self.sink._stack) > 1:
+                self.sink._stack.pop()
         return False
 
 
@@ -939,8 +976,9 @@ class TextSink:
     thousand of them.
     """
 
-    #: What each back-referenced subtree spelled, keyed by (offset, bound-lifetime-depth,
-    #: in-value), the only printer state that spelling depends on: a `B` is resolved by
+    #: What each back-referenced subtree spelled, keyed by production, offset,
+    #: bound-lifetime-depth and in-value, together with its required nesting depth.
+    #: Checking the cached height preserves the caller's nesting limit: a `B` is resolved by
     #: printing its target again, and real symbols repeat the same targets many times.
     #: Lives for one symbol.
     __slots__ = ("_parts", "_remaining", "memo")
@@ -951,9 +989,10 @@ class TextSink:
         self.memo = {}
 
     def emit(self, text):
-        remaining = self._remaining = self._remaining - len(text)
+        remaining = self._remaining - len(text)
         if remaining < 0:
             raise OutputTooLong
+        self._remaining = remaining
         self._parts.append(text)
 
     def open(self):
@@ -1008,7 +1047,7 @@ class TreeSink:
 class Printer:
     #: `emit` is the sink's own bound method, stored per instance to avoid a forwarding
     #: frame per emitted fragment.
-    __slots__ = ("_plain", "bound_lifetime_depth", "emit", "max_depth", "parser", "recursion", "sink")
+    __slots__ = ("_peak_depth", "_plain", "bound_lifetime_depth", "emit", "max_depth", "parser", "recursion", "sink")
 
     def __init__(self, parser, sink, bound, recursion=0):
         self.parser = parser
@@ -1018,12 +1057,15 @@ class Printer:
         self._plain = not isinstance(sink, TreeSink)
         self.bound_lifetime_depth = bound
         self.recursion = recursion
+        self._peak_depth = recursion
 
     def check_recursion_limit(self):
         """Check and increment recursion counter. Must be paired with decrement."""
         if self.recursion >= self.max_depth:
             raise RecursedTooDeep(self.max_depth)
         self.recursion += 1
+        if self.recursion > self._peak_depth:
+            self._peak_depth = self.recursion
 
     def invalid(self) -> NoReturn:
         """Abandon this name.
@@ -1049,30 +1091,39 @@ class Printer:
             return True
         return False
 
-    def backref_printer(self):
+    def backref_printer(self, offset=None):
         p = self.parser
-        return Printer(p.backref(), self.sink, self.bound_lifetime_depth, self.recursion + 1)
+        if offset is None:
+            offset = p.backref()
+        target = Parser(p.inn, offset, p.keep_hash, p.max_depth)
+        return Printer(target, self.sink, self.bound_lifetime_depth, self.recursion + 1)
 
-    def backref_remembered(self, printer, kind, in_value):
-        """What this back reference spelled last time, or None to print it now.
+    def backref_remembered(self, kind, in_value):
+        """Return cached spelling only when its subtree fits the remaining depth.
 
-        See `TextSink.memo` for why. Returns `(key, text)`: `text` is None on a miss,
-        and the caller prints the subtree and hands the key back to `backref_record`.
-        The key carries everything the spelling depends on -- where the target starts,
-        which production is being read there, the bound-lifetime depth the names inside
-        it resolve against, and whether a value or a type is being written. Every other
-        input the printer reads is fixed for the symbol.
-
-        Only under a sink that keeps no structure. A `TreeSink` has to build the nodes
-        again, and text is not what it is collecting.
+        Reading the offset first lets a hit avoid allocating a parser and printer.
+        The key carries the spelling context: production, offset, bound-lifetime depth
+        and value/type context. Each value also carries the subtree's nesting height,
+        so reusing it deeper cannot bypass the caller's recursion limit. Propagating
+        that height includes cached children when their enclosing subtree is recorded.
         """
-        key = (kind, printer.parser.next_val, self.bound_lifetime_depth, in_value)
-        return key, self.sink.memo.get(key)
+        key = (kind, self.parser.backref(), self.bound_lifetime_depth, in_value)
+        remembered = self.sink.memo.get(key)
+        if remembered is not None:
+            peak = self.recursion + 1 + remembered[1]
+            if peak > self.max_depth:
+                raise RecursedTooDeep(self.max_depth)
+            if peak > self._peak_depth:
+                self._peak_depth = peak
+            return key, remembered[0]
+        return key, None
 
-    def backref_record(self, key, start):
-        """Remember the fragments emitted since `start` as this key's spelling."""
+    def backref_record(self, key, start, printer):
+        """Remember spelling and nesting height, including expanded back references."""
         parts = self.sink._parts
-        self.sink.memo[key] = "".join(parts[start:])
+        self.sink.memo[key] = ("".join(parts[start:]), printer._peak_depth - printer.recursion)
+        if printer._peak_depth > self._peak_depth:
+            self._peak_depth = printer._peak_depth
 
     def print_lifetime_from_index(self, lt):
         """`'a` through `'z`, then `'_26` and up. The reference's arithmetic exactly.
@@ -1085,18 +1136,17 @@ class Printer:
         `'z`, and every one after it would be numbered one too high. It takes a `for<>`
         binding twenty-six lifetimes to reach, which no compiler writes.
         """
-        self.emit("'")
         if lt == 0:
-            self.emit("_")
+            self.emit("'_")
             return
         depth = self.bound_lifetime_depth - lt
         if depth < 0:
             self.invalid()
 
         if depth < 26:
-            self.emit(chr(ord("a") + depth))
+            self.emit(_LIFETIMES[depth])
         else:
-            self.emit(f"_{depth}")
+            self.emit(f"'_{depth}")
 
     def in_binder(self, val):
         def f1():
@@ -1170,6 +1220,19 @@ class Printer:
         argument list can name its arguments as well as contain them. Elements that
         produced nothing -- every one of them under `TextSink` -- are not collected.
         """
+        if self._plain:
+            element = (
+                self.print_generic_arg
+                if f == "print_generic_arg"
+                else (self.print_type if f == "print_type" else (f if callable(f) else getattr(self, f)))
+            )
+            i = 0
+            while not self.eat("E"):
+                if i > 0:
+                    self.emit(sep)
+                element()
+                i += 1
+            return i
         element = f if callable(f) else getattr(self, f)
         i = 0
         while not self.eat("E"):
@@ -1192,6 +1255,8 @@ class Printer:
         if recursion >= self.max_depth:
             raise RecursedTooDeep(self.max_depth)
         self.recursion = recursion + 1
+        if self.recursion > self._peak_depth:
+            self._peak_depth = self.recursion
         try:
             p = self.parser
             at = p.next_val
@@ -1209,11 +1274,23 @@ class Printer:
                     ns = None
                 elif not ns.isupper():
                     raise UnableTov0Demangle(p.inn)
+                if self._plain:
+                    self.print_path(in_value)
+                    at = p.next_val
+                    dis = p.opt_integer_62("s") if at < p.end and p.inn[at] == "s" else 0
+                    name = p.ident(display=True)
+                    if ns:
+                        ns_str = "closure" if ns == "C" else ("shim" if ns == "S" else ns)
+                        name_str = f":{name}" if name else ""
+                        self.emit(f"::{{{ns_str}{name_str}#{dis}}}")
+                    elif name:
+                        self.emit(f"::{name}")
+                    return None
                 with self.node(nodes.Path) as built:
                     self.print_path(in_value)
                     at = p.next_val
                     dis = p.opt_integer_62("s") if at < p.end and p.inn[at] == "s" else 0
-                    name = p.ident()
+                    name = p.ident(display=True)
                     if ns:
                         with self.node(lambda parts: nodes.Namespace(parts, ns, dis)):
                             self.emit("::{")
@@ -1223,19 +1300,17 @@ class Printer:
                                 self.emit("shim")
                             else:
                                 self.emit(ns)
-                            if name.ascii or name.punycode:
+                            if name:
                                 self.emit(":")
-                                name.display()
                                 with self.node(nodes.RustName):
-                                    self.emit(name.disp)
+                                    self.emit(name)
                             self.emit("#")
                             self.emit(str(dis))
                             self.emit("}")
-                    elif name.ascii or name.punycode:
+                    elif name:
                         self.emit("::")
-                        name.display()
                         with self.node(nodes.RustName):
-                            self.emit(name.disp)
+                            self.emit(name)
                 return built[0]
 
             if tag == "C":
@@ -1243,28 +1318,39 @@ class Printer:
                 disambiguator = 0
                 if at < p.end and p.inn[at] == "s":
                     disambiguator = p.opt_integer_62("s")
-                name = p.ident()
-                name.display()
+                name = p.ident(display=True)
+                if self._plain:
+                    if p.keep_hash and disambiguator:
+                        self.emit(f"{name}[{disambiguator:x}]")
+                    else:
+                        self.emit(name)
+                    return None
                 with self.node(nodes.RustName) as built:
-                    self.emit(name.disp)
+                    self.emit(name)
                     if p.keep_hash and disambiguator:
                         # Plain unpadded hex, as rustc-demangle's `{}` (not `{:#}`) prints.
                         self.emit(f"[{disambiguator:x}]")
                 return built[0]
 
             if tag == "B":
-                printer = self.backref_printer()
                 if not self._plain:
-                    return printer.print_path(in_value)
-                key, remembered = self.backref_remembered(printer, "path", in_value)
+                    return self.backref_printer().print_path(in_value)
+                key, remembered = self.backref_remembered("path", in_value)
                 if remembered is not None:
                     self.emit(remembered)
                     return None
+                printer = self.backref_printer(key[1])
                 start = len(self.sink._parts)
                 result = printer.print_path(in_value)
-                self.backref_record(key, start)
+                self.backref_record(key, start, printer)
                 return result
             if tag == "I":
+                if self._plain:
+                    self.print_path(in_value)
+                    self.emit("::<" if in_value else "<")
+                    self.print_sep_list("print_generic_arg", ", ")
+                    self.emit(">")
+                    return None
                 collected = []
                 with self.node(lambda parts: nodes.Generics(parts, *_generic_fields(collected))) as built:
                     collected.append(self.print_path(in_value))
@@ -1280,6 +1366,14 @@ class Printer:
                     p.opt_integer_62("s")
                     p.skip_path()
 
+                if self._plain:
+                    self.emit("<")
+                    self.print_type()
+                    if tag != "M":
+                        self.emit(" as ")
+                        self.print_path(False)
+                    self.emit(">")
+                    return None
                 seen = []
                 with self.node(lambda parts: nodes.Impl(parts, *_impl_fields(seen))) as built:
                     self.emit("<")
@@ -1303,10 +1397,16 @@ class Printer:
         """
         if self.eat("L"):
             lt = self.parser.integer_62()
+            if self._plain:
+                self.print_lifetime_from_index(lt)
+                return None
             with self.node(lambda parts: nodes.Value(parts, "lifetime")) as built:
                 self.print_lifetime_from_index(lt)
             return built[0]
         if self.eat("K"):
+            if self._plain:
+                self.print_const(False)
+                return None
             with self.node(lambda parts: nodes.Value(parts, "const")) as built:
                 self.print_const(False)
             return built[0]
@@ -1324,6 +1424,8 @@ class Printer:
         if recursion >= self.max_depth:
             raise RecursedTooDeep(self.max_depth)
         self.recursion = recursion + 1
+        if self.recursion > self._peak_depth:
+            self._peak_depth = self.recursion
         try:
             p = self.parser
             # `w` marks a splat argument: `fn(#[splat] (u8, u32))`.
@@ -1334,8 +1436,11 @@ class Printer:
                 raise UnableTov0Demangle(p.inn)
             tag = p.inn[at]
             p.next_val = at + 1
-            ty = _BASIC_TYPES.get(tag)
-            if ty is not None:
+            if tag in _BASIC_TYPES:
+                ty = _BASIC_TYPES[tag]
+                if self._plain:
+                    self.emit(ty)
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "basic")) as built:
                     self.emit(ty)
                 return built[0]
@@ -1345,6 +1450,17 @@ class Printer:
                 return self.print_path(False)
 
             if tag == "R" or tag == "Q":
+                if self._plain:
+                    self.emit("&")
+                    if self.eat("L"):
+                        lt = p.integer_62()
+                        if lt != 0:
+                            self.print_lifetime_from_index(lt)
+                            self.emit(" ")
+                    if tag != "R":
+                        self.emit("mut ")
+                    self.print_type()
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "reference")) as built:
                     self.emit("&")
                     if self.eat("L"):
@@ -1360,6 +1476,10 @@ class Printer:
                 return built[0]
 
             if tag == "P" or tag == "O":
+                if self._plain:
+                    self.emit("*mut " if tag != "P" else "*const ")
+                    self.print_type()
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "pointer")) as built:
                     self.emit("*")
                     if tag != "P":
@@ -1370,6 +1490,14 @@ class Printer:
                 return built[0]
 
             if tag == "A" or tag == "S":
+                if self._plain:
+                    self.emit("[")
+                    self.print_type()
+                    if tag == "A":
+                        self.emit("; ")
+                        self.print_const(True)
+                    self.emit("]")
+                    return None
                 form = "array" if tag == "A" else "slice"
                 with self.node(lambda parts: nodes.Type(parts, form)) as built:
                     self.emit("[")
@@ -1383,6 +1511,13 @@ class Printer:
                 return built[0]
 
             if tag == "T":
+                if self._plain:
+                    self.emit("(")
+                    count = self.print_sep_list("print_type", ", ")
+                    if count == 1:
+                        self.emit(",")
+                    self.emit(")")
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "tuple")) as built:
                     self.emit("(")
                     count = self.print_sep_list("print_type", ", ")
@@ -1392,11 +1527,24 @@ class Printer:
                 return built[0]
 
             if tag == "F":
+                if self._plain:
+                    self.in_binder(1)
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "fn")) as built:
                     self.in_binder(1)
                 return built[0]
 
             if tag == "D":
+                if self._plain:
+                    self.emit("dyn ")
+                    self.in_binder(2)
+                    if not self.eat("L"):
+                        self.invalid()
+                    lt = p.integer_62()
+                    if lt != 0:
+                        self.emit(" + ")
+                        self.print_lifetime_from_index(lt)
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "dyn")) as built:
                     self.emit("dyn ")
                     self.in_binder(2)
@@ -1411,19 +1559,24 @@ class Printer:
                 return built[0]
 
             if tag == "B":
-                printer = self.backref_printer()
                 if not self._plain:
-                    return printer.print_type()
-                key, remembered = self.backref_remembered(printer, "type", None)
+                    return self.backref_printer().print_type()
+                key, remembered = self.backref_remembered("type", None)
                 if remembered is not None:
                     self.emit(remembered)
                     return None
+                printer = self.backref_printer(key[1])
                 start = len(self.sink._parts)
                 result = printer.print_type()
-                self.backref_record(key, start)
+                self.backref_record(key, start, printer)
                 return result
 
             if tag == "W":
+                if self._plain:
+                    self.print_type()
+                    self.emit(" is ")
+                    self.print_pattern()
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "pattern")) as built:
                     self.print_type()
                     self.emit(" is ")
@@ -1477,6 +1630,8 @@ class Printer:
             if self.eat("B"):
                 prin = self.backref_printer()
                 result = prin.print_path_maybe_open_generics()
+                if prin._peak_depth > self._peak_depth:
+                    self._peak_depth = prin._peak_depth
                 return result
 
             elif self.eat("I"):
@@ -1500,9 +1655,7 @@ class Printer:
             else:
                 self.emit(", ")
 
-            name = self.parser.ident()
-            name.display()
-            self.emit(name.disp)
+            self.emit(self.parser.ident(display=True))
             self.emit(" = ")
             # Associated consts are bound like associated types, with a `K` in front:
             # `dyn Trait<LEN = 1>`. rustc-demangle 0.1.28 `v0.rs::print_dyn_trait`.
@@ -1545,6 +1698,8 @@ class Printer:
             if self.eat("B"):
                 printer = self.backref_printer()
                 printer.print_const(in_value)
+                if printer._peak_depth > self._peak_depth:
+                    self._peak_depth = printer._peak_depth
                 return
 
             opened_brace = False
@@ -1637,9 +1792,7 @@ class Printer:
         """
         parser = self.parser
         parser.opt_integer_62("s")
-        name = parser.ident()
-        name.display()
-        self.emit(name.disp)
+        self.emit(parser.ident(display=True))
         self.emit(": ")
         self.print_const(True)
 

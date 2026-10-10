@@ -17,7 +17,14 @@ import pathlib
 import pytest
 
 from demangle.schemes.swift import demangle_symbolic
-from demangle.schemes.swift.resolve import ContextResolver, Image, _fragment_from_symbol, elf_image
+from demangle.schemes.swift.resolve import (
+    ContextResolver,
+    Image,
+    MalformedImage,
+    _fragment_from_symbol,
+    elf_image,
+    macho_image,
+)
 from demangle.schemes.swift.symbolic import (
     CONTEXT,
     DIRECT,
@@ -372,7 +379,7 @@ class TestReadingAnElfImage:
     relocation table holding a `RELATIVE` entry, a `GLOB_DAT` against a symbol the file
     defines, and one against a symbol it imports."""
 
-    def build(self):
+    def data(self):
         import struct
 
         # Layout, all in one segment at virtual 0x1000 = file offset 0:
@@ -411,7 +418,57 @@ class TestReadingAnElfImage:
         struct.pack_into("<QQq", data, 0x180, 0x1300, 8, 0x1234)
         struct.pack_into("<QQq", data, 0x198, 0x1308, (1 << 32) | 6, 0)
         struct.pack_into("<QQq", data, 0x1B0, 0x1310, (2 << 32) | 6, 0)
-        return elf_image(bytes(data))
+        return bytes(data)
+
+    def build(self):
+        return elf_image(self.data())
+
+    @pytest.mark.parametrize(("tag_index", "size"), [(2, 0), (2, 1), (2, 23), (4, 0), (4, 1), (4, 23)])
+    def test_dynamic_entry_sizes_cannot_be_smaller_than_the_fields(self, tag_index, size):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x100 + 16 * tag_index + 8, size)
+        with pytest.raises(MalformedImage, match="entry claims"):
+            elf_image(bytes(data))
+
+    def test_a_short_relocation_at_the_end_of_a_segment_is_a_malformed_image(self):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x108, 0x1000 + len(data) - 1)  # DT_RELA
+        struct.pack_into("<Q", data, 0x118, 1)  # DT_RELASZ
+        struct.pack_into("<Q", data, 0x128, 1)  # DT_RELAENT
+        with pytest.raises(MalformedImage, match="relocation entry"):
+            elf_image(bytes(data))
+
+    @pytest.mark.parametrize(("offset", "size"), [(0x36, 0), (0x36, 55), (0x3A, 0), (0x3A, 63)])
+    def test_header_entry_sizes_cannot_be_smaller_than_the_fields(self, offset, size):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<H", data, offset, size)
+        with pytest.raises(MalformedImage, match="header entry"):
+            elf_image(bytes(data))
+
+    @pytest.mark.parametrize("size", [0, 1, 23])
+    def test_section_symbol_entry_sizes_cannot_be_smaller_than_the_fields(self, size):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x3C0 + 0x38, size)
+        with pytest.raises(MalformedImage, match="symbol entry"):
+            elf_image(bytes(data))
+
+    def test_a_short_symbol_table_at_the_end_of_a_file_is_a_malformed_image(self):
+        import struct
+
+        data = bytearray(self.data())
+        struct.pack_into("<Q", data, 0x3C0 + 0x18, len(data) - 1)  # sh_offset
+        struct.pack_into("<Q", data, 0x3C0 + 0x20, 1)  # sh_size
+        struct.pack_into("<Q", data, 0x3C0 + 0x38, 1)  # sh_entsize
+        with pytest.raises(MalformedImage, match="symbol entry"):
+            elf_image(bytes(data))
 
     def test_a_relative_slot_takes_its_addend(self):
         assert self.build().read(0x1300, 8) == (0x1234).to_bytes(8, "little")
@@ -442,3 +499,158 @@ class TestReadingAnElfImage:
         assert image.imports == {}
         assert image.symbols == {}
         assert image.read(0x1000, 4) == b"\x7fELF"
+
+
+class TestReadingAMachOImage:
+    def data(self):
+        import struct
+
+        data = bytearray(0x100)
+        data[:4] = b"\xcf\xfa\xed\xfe"
+        struct.pack_into("<II", data, 0x10, 1, 0x48)  # ncmds, sizeofcmds
+        struct.pack_into("<II", data, 0x20, 0x19, 0x48)  # LC_SEGMENT_64, cmdsize
+        struct.pack_into("<QQQQ", data, 0x20 + 0x18, 0x1000, 4, 0x80, 4)
+        data[0x80:0x84] = b"DATA"
+        return data
+
+    def test_a_segment_maps_its_file_bytes(self):
+        assert macho_image(bytes(self.data())).read(0x1000, 4) == b"DATA"
+
+    @pytest.mark.parametrize("size", [0, 7, 8, 71])
+    def test_a_segment_command_cannot_read_fields_from_the_next_command(self, size):
+        import struct
+
+        data = self.data()
+        struct.pack_into("<I", data, 0x24, size)
+        with pytest.raises(MalformedImage, match="command at offset"):
+            macho_image(bytes(data))
+
+    @pytest.mark.parametrize("size", [0, 7, 8, 71])
+    def test_commands_cannot_read_beyond_the_declared_command_region(self, size):
+        import struct
+
+        data = self.data()
+        struct.pack_into("<I", data, 0x14, size)
+        with pytest.raises(MalformedImage, match=r"command (count|at offset)"):
+            macho_image(bytes(data))
+
+    def test_a_segment_command_must_hold_the_sections_it_declares(self):
+        import struct
+
+        data = self.data()
+        struct.pack_into("<I", data, 0x60, 1)  # nsects
+        with pytest.raises(MalformedImage, match="cannot hold its 1 sections"):
+            macho_image(bytes(data))
+
+    def test_a_truncated_command_is_skipped(self):
+        assert macho_image(bytes(self.data()[:0x50])).read(0x1000, 4) is None
+
+    def test_a_complete_command_maps_a_truncated_segment_partially(self):
+        image = macho_image(bytes(self.data()[:0x82]))
+        assert image.read(0x1000, 2) == b"DA"
+        assert image.read(0x1000, 4) is None
+
+    def test_an_unknown_command_is_skipped_before_a_known_segment(self):
+        import struct
+
+        data = self.data()
+        data[0x28:0x70] = data[0x20:0x68]
+        struct.pack_into("<II", data, 0x10, 2, 0x50)
+        struct.pack_into("<II", data, 0x20, 0x777, 8)
+        assert macho_image(bytes(data)).read(0x1000, 4) == b"DATA"
+
+    def test_invalid_magic_is_a_malformed_image(self):
+        with pytest.raises(MalformedImage):
+            macho_image(bytes(0x20))
+
+
+def test_utf8_identifier_before_a_symbolic_reference_keeps_the_byte_offset():
+    import struct
+
+    raw = "2é3FooV_".encode() + b"\x01" + struct.pack("<i", -127) + b"t"
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, reference.at, at))
+        return "4demo3BarV"
+
+    assert demangle_symbolic(raw, resolve) == "(é.Foo, demo.Bar)"
+    assert seen == [(-127, 10, 10)]
+
+
+def test_a_resolver_can_return_a_plain_utf8_identifier():
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: "2é2πV") == "é.π"
+
+
+def test_nested_symbolic_fragments_do_not_recode_high_offset_bytes():
+    import struct
+
+    fragment = b"\x01" + struct.pack("<i", -127)
+    answers = iter([fragment.decode("latin-1"), "2é2πV"])
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, at))
+        return next(answers)
+
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", resolve) == "é.π"
+    assert seen == [(0, 1), (-127, 1)]
+
+
+@pytest.mark.parametrize(("module", "type_name"), [("é", "π"), ("demo", "😀")])
+def test_a_context_descriptor_can_name_utf8_identifiers(module, type_name):
+    import struct
+
+    blob = bytearray(0x100)
+    module_raw, type_raw = module.encode(), type_name.encode()
+    blob[0x80 : 0x80 + len(module_raw) + 1] = module_raw + b"\0"
+    blob[0xA0 : 0xA0 + len(type_raw) + 1] = type_raw + b"\0"
+    struct.pack_into("<Iii", blob, 0x10, 0, 0, 0x80 - 0x18)
+    struct.pack_into("<Iii", blob, 0x20, 17, 0x10 - 0x24, 0xA0 - 0x28)
+    resolver = ContextResolver(Image([(0x1000, bytes(blob))]))
+    fragment = resolver.fragment(0x1020)
+    assert fragment == f"{len(module_raw)}{module}{len(type_raw)}{type_name}V"
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: fragment) == f"{module}.{type_name}"
+
+
+def test_a_unicode_fragment_can_hold_a_control_byte_inside_its_identifier():
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: "4demo3é\x01V") == "demo.é\x01"
+
+
+def test_binary_resolver_fragments_can_follow_an_ascii_type_prefix():
+    import struct
+
+    fragment = b"Say\x01" + struct.pack("<i", -127) + b"G"
+    answers = iter([fragment, "2é2πV"])
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, at))
+        return next(answers)
+
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", resolve) == "[é.π]"
+    assert seen == [(0, 1), (-127, 4)]
+
+
+@pytest.mark.parametrize(
+    ("prefix", "suffix", "expected"),
+    [
+        (b"Si_", b"t", "(Swift.Int, demo.Bar)"),
+        (b"Si_\xff", b"t", "(Swift.Int, demo.Bar)"),
+        (b"Say", b"G", "[demo.Bar]"),
+        (b"\xff", b"", "demo.Bar"),
+    ],
+)
+def test_legacy_binary_str_fragments_preserve_prefixes_and_padding(prefix, suffix, expected):
+    import struct
+
+    fragment = prefix + b"\x01" + struct.pack("<i", -127) + suffix
+    answers = iter([fragment.decode("latin-1"), "4demo3BarV"])
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, at))
+        return next(answers)
+
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", resolve) == expected
+    assert seen == [(0, 1), (-127, len(prefix) + 1)]

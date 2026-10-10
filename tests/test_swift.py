@@ -834,3 +834,25 @@ class TestTheAsyncMainEntryPoint:
         whose remainder does not read as a suffix, and so does this: a C function
         called `async_MainLoop` comes back as itself. The name is case-sensitive."""
         assert demangle.demangle(mangled) == mangled
+
+
+@pytest.mark.parametrize(
+    ("mangled", "expected"),
+    [
+        ("$s2é3fooyyF", "é.foo() -> ()"),
+        ("$s4demo2éyyF", "demo.é() -> ()"),
+        ("$s2é2πV", "é.π"),
+        ("_TtC2é3Foo", "é.Foo"),
+        ("$s4😀3fooyyF", "😀.foo() -> ()"),
+        ("$s4demo005gbaFcyyF", "demo.Ã©() -> ()"),
+    ],
+)
+def test_plain_identifiers_count_utf8_bytes_without_recoding_punycode(mangled, expected):
+    assert demangle.demangle_strict(mangled, language="swift") == expected
+    assert demangle.parse(mangled, language="swift").spell() == expected
+
+
+@pytest.mark.parametrize("mangled", ["$s1é3fooyyF", "$s4demo1éyyF", "_TtC1é3Foo", "$s3😀3fooyyF"])
+def test_identifier_length_cannot_end_inside_utf8(mangled):
+    with pytest.raises(DemanglingError):
+        demangle.demangle_strict(mangled, language="swift")

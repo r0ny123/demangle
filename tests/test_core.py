@@ -211,6 +211,17 @@ class TestEveryDeclaratorDistributesOverAPack:
 
 
 class TestBoundedCache:
+    def test_replacing_a_weighted_entry_does_not_age_out_other_entries(self):
+        cache = BoundedCache(max_size=100, max_weight=20, weigh=lambda key, value: len(value))
+        cache.put("hot", "123")
+        cache.put("neighbor", "12")
+        for _ in range(100):
+            cache.put("hot", "1234")
+        assert cache._young_weight == 6
+        cache.put("new", "1")
+        assert cache.get("neighbor") == "12"
+        assert cache.get("hot") == "1234"
+
     def test_a_put_made_from_inside_a_put_on_the_same_thread_does_not_deadlock(self):
         """A signal handler or finalizer can run `demangle()` while its thread is in
         `put`."""
@@ -840,3 +851,262 @@ class TestLoadingPluginsIsOptIn:
         assert run("-l", "newcomer", "x") == ["PLUGIN"]
         assert run("-l", "itanium", "_Z1fv") == ["PLUGIN"]
         assert any(line.startswith("newcomer") for line in run("--list-languages"))
+
+
+class TestNodeFields:
+    def test_a_string_slot_is_one_field_and_inherited_fields_survive(self):
+        from demangle.core.ast import Node
+
+        class Payload(Node):
+            __slots__ = "payload"
+            kind = "payload"
+
+            def __init__(self, payload):
+                self.payload = payload
+
+        class Extended(Payload):
+            __slots__ = ("__weakref__", "extra")
+
+            def __init__(self, payload, extra):
+                super().__init__(payload)
+                self.extra = extra
+
+        assert Payload("left").to_dict() == {"kind": "payload", "payload": "left"}
+        assert Payload("left") != Payload("right")
+        assert Payload.__match_args__ == ("payload",)
+        assert Extended("left", "right").to_dict() == {"kind": "payload", "payload": "left", "extra": "right"}
+        assert Extended.__match_args__ == ("payload", "extra")
+
+
+class TestPackOutputBounds:
+    @pytest.mark.parametrize(
+        "operation,args",
+        [
+            ("pointer", ()),
+            ("array", ("1234567890",)),
+            ("vendor_qualify", ("longqualifier",)),
+            ("qualify", (["const"],)),
+        ],
+    )
+    def test_distributed_declarators_bound_every_member(self, operation, args):
+        pack = A.parameter_pack([A.builtin("int")] * 20)
+        node = getattr(A, operation)(pack, *args)
+        assert node.size >= len(node.spell())
+        wrapped = A.array(A.pointer(node), "1234567890")
+        assert wrapped.size >= len(wrapped.spell())
+
+    def test_member_pointer_bounds_the_cross_product(self):
+        owners = A.parameter_pack([A.name("Owner")] * 5)
+        types = A.parameter_pack([A.builtin("int")] * 5)
+        node = A.member_pointer(owners, types)
+        assert node.size >= len(node.spell())
+
+    def test_parse_cannot_exceed_output_limit_through_a_pack(self):
+        name = "_Z1fIJ" + "i" * 20 + "EEviA1234567890_T_"
+        assert len(demangle.parse(name).spell()) > 300
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.parse(name, limits=demangle.Limits(max_output=300))
+
+
+class TestStyleOutputBounds:
+    def test_each_gnu_clone_label_counts_toward_the_output_limit(self):
+        name = "_Z1fv" + ".cold" * 10
+        node = demangle.parse(name, style="gnu")
+        assert node.size >= len(node.spell(style="gnu"))
+        with pytest.raises(demangle.LimitExceeded):
+            demangle.parse(name, style="gnu", limits=demangle.Limits(max_output=100))
+
+    def test_gnu_empty_operator_template_includes_the_opening_space(self):
+        node = A.template(A.name("operator<"), [])
+        assert node.spell(style="gnu") == "operator< <>"
+        assert node.size >= len(node.spell(style="gnu"))
+
+
+class TestGraphComparison:
+    @staticmethod
+    def generic_chain(depth):
+        from demangle.schemes.rust.nodes import Generics, RustName
+
+        node = RustName(("Base",))
+        for _ in range(depth):
+            node = Generics((node, "<>"), node, ())
+        return node
+
+    def test_redundant_rust_fields_do_not_expand_hash_or_equality_exponentially(self):
+        left = self.generic_chain(100)
+        right = self.generic_chain(100)
+        assert left == right
+        assert hash(left) == hash(right)
+        right.base.base.base.parts = ("different",)
+        assert left != right
+        assert hash(left) != hash(right)
+
+    def test_deep_trees_do_not_exhaust_the_comparison_stack(self):
+        from demangle.core.ast import Name, Pointer
+
+        left, right = Name("int"), Name("int")
+        for _ in range(2000):
+            left, right = Pointer(left), Pointer(right)
+        assert left == right
+        assert hash(left) == hash(right)
+
+    def test_deep_hashing_with_a_lowered_interpreter_limit(self):
+        code = """
+import sys
+from demangle.core.ast import Name, Pointer
+left, right = Name("int"), Name("int")
+for _ in range(2000):
+    left, right = Pointer(left), Pointer(right)
+sys.setrecursionlimit(50)
+assert left == right
+assert hash(left) == hash(right)
+"""
+        environment = {**os.environ, "PYTHONPATH": str(pathlib.Path(demangle.__file__).parent.parent)}
+        result = subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+
+    def test_a_foreign_operational_recursion_error_is_not_retried(self):
+        from demangle.core.ast import Name, Pointer
+
+        calls = []
+
+        class Operational(Name):
+            __slots__ = ()
+
+            def __hash__(self):
+                calls.append(1)
+                raise RecursionError("operational failure")
+
+        with pytest.raises(RecursionError, match="operational failure"):
+            hash(Pointer(Operational("int")))
+        assert calls == [1]
+
+    def test_cycles_compare_but_do_not_have_a_finite_structural_hash(self):
+        from demangle.core.ast import Pointer
+
+        left, right = Pointer(None), Pointer(None)
+        left.inner, right.inner = left, right
+        assert left == right
+        with pytest.raises(TypeError, match="cyclic"):
+            hash(left)
+
+    def test_child_overrides_keep_their_comparison_and_hash_policy(self):
+        from demangle.core.ast import Name, Pointer
+
+        class Custom(Name):
+            __slots__ = ()
+
+            def __eq__(self, other):
+                return True
+
+            def __hash__(self):
+                return 12345
+
+        assert Pointer(Custom("left")) == Pointer(Custom("right"))
+        assert hash(Pointer(Custom("left"))) == hash(Pointer(Custom("right")))
+
+    def test_custom_tuple_hashes_are_not_replaced_by_structural_hashes(self):
+        from demangle.core.ast import Node
+
+        class CustomTuple(tuple):
+            def __hash__(self):
+                return 12345
+
+        class Container(Node):
+            __slots__ = ("value",)
+
+            def __init__(self, value):
+                self.value = value
+
+        node = Container(None)
+        node.value = CustomTuple((node,))
+        assert hash(node) == hash(("Container", node.value))
+
+    def test_subclass_overrides_can_delegate_to_the_base_methods(self):
+        from demangle.core.ast import Name
+
+        class Wrapped(Name):
+            __slots__ = ()
+
+            def __eq__(self, other):
+                return super().__eq__(other)
+
+            def __hash__(self):
+                return super().__hash__()
+
+        assert Wrapped("same") == Wrapped("same")
+        assert Wrapped("left") != Wrapped("right")
+        assert hash(Wrapped("same")) == hash(Wrapped("same"))
+
+    def test_cyclic_sequence_fields_report_a_rendering_limit(self):
+        from demangle.core.ast import Node
+        from demangle.core.errors import LimitExceeded
+
+        class Container(Node):
+            __slots__ = ("value",)
+
+            def __init__(self, value):
+                self.value = value
+
+        value = []
+        value.append(value)
+        with pytest.raises(LimitExceeded):
+            Container(value).to_dict()
+
+    def test_independent_cyclic_sequence_fields_compare_without_looping(self):
+        from demangle.core.ast import Node
+
+        class Container(Node):
+            __slots__ = ("value",)
+
+            def __init__(self):
+                self.value = []
+                self.value.append(self.value)
+
+        assert Container() == Container()
+
+
+class TestClassFieldCacheOwnership:
+    def test_inherited_cache_is_rebuilt_when_a_subclass_skips_class_hooks(self):
+        from demangle.core.ast import Node
+
+        class Parent(Node):
+            __slots__ = ("payload",)
+
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __init_subclass__(cls, **kwargs):
+                pass
+
+        assert Parent("parent").to_dict() == {"kind": "node", "payload": "parent"}
+
+        class Child(Parent):
+            __slots__ = ("extra",)
+
+            def __init__(self, payload, extra):
+                super().__init__(payload)
+                self.extra = extra
+
+        assert Child("child", "extra").to_dict() == {"kind": "node", "payload": "child", "extra": "extra"}
+        assert Parent("parent").to_dict() == {"kind": "node", "payload": "parent"}
+
+    def test_the_owner_tag_does_not_retain_temporary_node_classes(self):
+        import gc
+        import weakref
+
+        from demangle.core.ast import Node
+
+        def temporary_class():
+            class Temporary(Node):
+                __slots__ = ("payload",)
+
+                def __init__(self, payload):
+                    self.payload = payload
+
+            Temporary("payload").to_dict()
+            return weakref.ref(Temporary)
+
+        reference = temporary_class()
+        gc.collect()
+        assert reference() is None
