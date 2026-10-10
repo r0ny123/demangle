@@ -794,3 +794,68 @@ class TestIntrospection:
 
     def test_styles_lists_the_built_ins(self):
         assert set(demangle.styles()) >= {"llvm", "gnu"}
+
+
+@pytest.mark.parametrize("call", [demangle.demangle_strict, demangle.parse, demangle.signature])
+def test_forced_plugin_defects_are_wrapped(call, monkeypatch):
+    from dataclasses import replace
+
+    from demangle import api
+    from demangle.core.registry import get
+
+    failure = RuntimeError("plugin defect")
+
+    def broken(*args):
+        raise failure
+
+    plugin = replace(get("itanium"), parse=broken)
+    monkeypatch.setattr(api, "_resolve", lambda language: plugin)
+    with pytest.raises(demangle.ParseError, match="itanium parser failed") as caught:
+        call("_Z1fv", language="itanium")
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    "arguments,match",
+    [
+        ({"language": "unknown"}, "unknown language"),
+        ({"language": []}, "names no scheme"),
+        ({"style": "unknown"}, "unknown style"),
+        ({"limits": None}, "Limits instance"),
+    ],
+)
+def test_empty_names_still_validate_configuration(arguments, match):
+    with pytest.raises(ValueError, match=match):
+        demangle.demangle("", **arguments)
+
+
+@pytest.mark.parametrize("failure", [MemoryError("resource failure"), demangle.ParseError("_Z1fv")])
+def test_forced_plugin_preserves_operational_and_parse_errors(monkeypatch, failure):
+    from dataclasses import replace
+
+    from demangle import api
+    from demangle.core.registry import get
+
+    def broken(*args):
+        raise failure
+
+    plugin = replace(get("itanium"), parse=broken)
+    monkeypatch.setattr(api, "_resolve", lambda language: plugin)
+    with pytest.raises(type(failure)) as caught:
+        demangle.demangle_strict("_Z1fv", language="itanium")
+    assert caught.value is failure
+
+
+@pytest.mark.parametrize("suffix", ["é", "λ", "\u0301", "\udcff", "\U0001f600"])
+def test_text_filter_does_not_rewrite_a_prefix_of_a_non_ascii_word(suffix):
+    name = "_Z3foo" + suffix
+    text = f"T {name}\nT _Z1fv\n"
+    assert demangle.demangle(name) == name
+    assert demangle.demangle_text(text) == f"T {name}\nT f()\n"
+    assert [found.mangled for found in demangle.find_symbols(text)] == ["_Z1fv"]
+
+
+@pytest.mark.parametrize("prefix", ["é", "\u0301", "\udcff"])
+def test_text_filter_does_not_rewrite_a_suffix_of_a_non_ascii_word(prefix):
+    name = prefix + "_Z1fv"
+    assert demangle.demangle_text(name) == name

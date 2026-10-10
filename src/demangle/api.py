@@ -178,7 +178,7 @@ def _parse_with(plugin, mangled, builder, limits, style):
     toolchain conventions, and means a new scheme inherits the behaviour by setting one
     flag instead of reimplementing it.
     """
-    options = style.options_for(plugin.name)
+    options = style.language_options.get(plugin.name)
     decoration = ""
     if plugin.symbol_table_decorations:
         mangled, decoration = split_decorations(mangled)
@@ -286,6 +286,9 @@ def demangle(
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
     if not mangled:
+        _check_language(language)
+        get_style(style)
+        _check_limits(limits)
         return mangled
     # Loaded before the cache is touched: loading registers plugins, which clears it.
     # The registry flag rather than `_load()`, and `__class__ is str` rather than
@@ -321,7 +324,13 @@ def demangle(
         # An unhashable argument surfaces here as a `TypeError`; not checked in advance,
         # which would hash `limits` twice on every warm call.
         try:
-            cached = _CACHE.get(key)
+            # Repeated names usually live in the young generation. A direct lookup
+            # avoids a Python call while the miss path retains promotion and bounds.
+            cached = _CACHE._young.get(key, MISSING)
+            if cached is MISSING:
+                cached = _CACHE.get_old(key)
+            else:
+                _CACHE.hits += 1
         except TypeError:
             if _is_allow_list(language) and type(language) is not tuple:
                 # The allow-list a tuple would be, keyed as one; a tuple that cannot be
@@ -342,7 +351,7 @@ def demangle(
         tried = candidates(mangled)
         if not tried:
             return mangled
-        base = _undecorated(mangled)
+        base = False
         detecting = True
     elif isinstance(language, str):
         tried = (_resolve(language),)
@@ -352,19 +361,20 @@ def demangle(
         tried = _among(mangled, _allowed(language))
         if not tried:
             return mangled
-        base = _undecorated(mangled)
+        base = False
         detecting = True
 
     for candidate in tried:
         try:
             # `_claims` inlined for the hot path; a `detect` that throws is caught by this
             # loop's own handler with the same effect.
-            if (
-                detecting
-                and not candidate.detect(mangled)
-                and (base is None or not candidate.symbol_table_decorations or not candidate.detect(base))
-            ):
-                continue
+            if detecting and not candidate.detect(mangled):
+                if not candidate.symbol_table_decorations:
+                    continue
+                if base is False:
+                    base = _undecorated(mangled)
+                if base is None or not candidate.detect(base):
+                    continue
             handle = _parse_with(candidate, mangled, builder, limits, resolved_style)
         except LimitExceeded:
             # A limit is not "this name is not mine": offering it to the next scheme would
@@ -587,14 +597,29 @@ def _read(mangled, builder, language, style, limits):
             return plugin, _parse_with(plugin, mangled, builder, limits, style)
         except RecursionError as exc:
             raise _depth_exceeded(mangled, limits) from exc
+        except DemanglingError:
+            raise
+        except Exception as exc:
+            reraise_if_operational(exc)
+            raise ParseError(mangled, None, f"{plugin.name} parser failed: {exc!r}") from exc
     else:
         tried = _among(mangled, _allowed(language))
 
     first_error = None
-    base = _undecorated(mangled)
+    base = False
     for candidate in tried:
         try:
-            if not _claims(candidate, mangled, base):
+            try:
+                claimed = candidate.detect(mangled)
+                if not claimed and candidate.symbol_table_decorations:
+                    if base is False:
+                        base = _undecorated(mangled)
+                    if base is not None:
+                        claimed = candidate.detect(base)
+            except Exception as exc:
+                reraise_if_operational(exc)
+                continue
+            if not claimed:
                 continue
             return candidate, _parse_with(candidate, mangled, builder, limits, style)
         except RecursionError as exc:

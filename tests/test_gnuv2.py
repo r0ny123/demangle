@@ -597,3 +597,30 @@ class TestATemplateValueArgumentWithNoTypeInFrontOfIt:
         """The shape that made this scheme claim C symbols is untouched."""
         assert demangle.demangle("drm_intel_gem_bo_map__cpu") == "drm_intel_gem_bo_map__cpu"
         assert not gnuv2.detect("drm_intel_gem_bo_map__cpu")
+
+
+@pytest.mark.parametrize("zeros", [10, 5000])
+def test_leading_zero_counts_do_not_hit_python_integer_limits(zeros):
+    mangled = "f__" + "0" * zeros + "1AFv"
+    assert demangle.demangle_strict(mangled, language="gnuv2") == "A::f(void)"
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("f__2éFv", "é::f(void)"),
+        ("f__3éaFv", "éa::f(void)"),
+        ("f__6模块Fv", "模块::f(void)"),
+        ("f__4😀Fv", "😀::f(void)"),
+        ("f__Q22é1A", "é::A::f(void)"),
+        ("f__Ft2é1Zi", "f(é<int>)"),
+        ("f__2éFP2é", "é::f(é *)"),
+    ],
+)
+def test_unicode_name_lengths_count_utf8_bytes(name, expected):
+    assert demangle.demangle(name, language="gnuv2") == expected
+
+
+@pytest.mark.parametrize("name", ["f__1éFv", "f__3😀Fv", "f__1\ud800Fv"])
+def test_unicode_names_with_partial_bytes_are_refused(name):
+    assert demangle.demangle(name, language="gnuv2") == name

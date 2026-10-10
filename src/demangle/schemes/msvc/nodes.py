@@ -324,6 +324,8 @@ def ordered_qualifiers(quals):
     the same qualifiers the same way. The spelling kept is the one that was passed in:
     this decides an order, not a wording.
     """
+    if not quals:
+        return ()
     ranked = {}
     for qual in quals:
         rank = _QUALIFIER_RANK.get(qual.lstrip("_"))

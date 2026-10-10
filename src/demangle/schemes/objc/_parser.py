@@ -100,19 +100,21 @@ class ObjcSymbol:
 
 #: `$` is deliberately excluded although clang accepts it: it is the separator these
 #: symbols are built from, and allowing it reads `_OBJC_CLASS_$_` as a class `$_`.
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 
-_SELECTOR = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*)?(?::(?:[A-Za-z_][A-Za-z0-9_]*)?)*$")
+_SELECTOR = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*)?(?::(?:[A-Za-z_][A-Za-z0-9_]*)?)*\Z")
+#: Longest grammar-valid prefix, used to validate all selector/type splits in one scan.
+_SELECTOR_PREFIX = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*)?(?::(?:[A-Za-z_][A-Za-z0-9_]*)?)*")
 
 #: Selectors clang synthesises for C++ ivars; the only ones that open on a `.`.
 _CXX_SPECIAL_SELECTORS = frozenset({".cxx_construct", ".cxx_destruct"})
 
 #: clang's `mangleObjCMethodName` for the Apple runtimes.
-_APPLE_METHOD = re.compile(r"^([-+])\[([A-Za-z_][A-Za-z0-9_]*)(?:\(([A-Za-z_][A-Za-z0-9_]*)\))? ([^]]*)\]$")
+_APPLE_METHOD = re.compile(r"^([-+])\[([A-Za-z_][A-Za-z0-9_]*)(?:\(([A-Za-z_][A-Za-z0-9_]*)\))? ([^]]*)\]\Z")
 
 #: `mangleFunctionBlock`. For a method, `<outer>` is length-prefixed
 #: (`mangleObjCMethodNameAsSourceName`), which no C identifier can be.
-_BLOCK = re.compile(r"^__(.+)_block_invoke(?:_([0-9]+))?$")
+_BLOCK = re.compile(r"^__(.+)_block_invoke(?:_([0-9]+))?\Z")
 
 #: A block in a C++ function: the block's `_`, then `_Z` (or `__Z` from the symbol table).
 _CXX_BLOCK = ("___Z", "____Z")
@@ -131,7 +133,7 @@ def _valid_selector(text):
         return False
     if text in _CXX_SPECIAL_SELECTORS:
         return True
-    return bool(_SELECTOR.match(text)) and (":" in text or bool(_IDENTIFIER.match(text)))
+    return bool(_SELECTOR.match(text)) and (text.endswith(":") or bool(_IDENTIFIER.match(text)))
 
 
 def mangle_gnu_method(is_class_method, class_name, category, selector):
@@ -488,7 +490,7 @@ _APPLE_LABELS = {
 }
 
 #: The linker's GNUstep section bounds: not compiler output, but in every such binary.
-_SECTION_BOUNDS = re.compile(r"^__(start|stop)___objc_([a-z_]+)$")
+_SECTION_BOUNDS = re.compile(r"^__(start|stop)___objc_([a-z_]+)\Z")
 
 #: `GetSymbolNameForTypeEncoding` in `CGObjCGNU.cpp`: `@` (ELF versions) and `=` (breaks
 #: lld on Windows) are written as control bytes.
@@ -503,7 +505,7 @@ def decode_type_encoding(text):
 
 
 #: The assembler's `.<n>` / `.<n>.<n>` uniquing suffix; not part of any name.
-_UNIQUING_SUFFIX = re.compile(r"\.[0-9]+$")
+_UNIQUING_SUFFIX = re.compile(r"\.[0-9]+\Z")
 
 
 def _labelled(name):
@@ -565,11 +567,24 @@ def _from_prefix(name, rest, label, shape):
     if shape == "selector-and-types":
         # Split from the right: the encoding holds no underscore unless it names a
         # struct, and the selector often does.
-        splits = [
-            stop
-            for stop in range(len(rest) - 1, 0, -1)
-            if rest[stop] == "_" and _valid_selector(rest[:stop]) and rest[stop + 1 :]
-        ]
+        prefix = _SELECTOR_PREFIX.match(rest)
+        assert prefix is not None  # The prefix grammar also matches the empty string.
+        end = prefix.end()
+        first_colon = rest.find(":", 0, end)
+        if first_colon < 0:
+            first_colon = end + 1
+        splits = []
+        # Before the first colon, every nonempty prefix is an identifier; after it,
+        # only prefixes ending in a colon are complete selectors. The prefix match
+        # excludes every later invalid character without re-scanning each candidate.
+        for stop in range(min(end, len(rest) - 2), 0, -1):
+            if rest[stop] == "_" and (stop < first_colon or rest[stop - 1] == ":"):
+                splits.append(stop)
+                if len(splits) == 2:
+                    break
+        for special in _CXX_SPECIAL_SELECTORS:
+            if rest.startswith(special + "_") and len(rest) > len(special) + 1:
+                splits.append(len(special))
         if not splits:
             return None
         stop = splits[0]
@@ -615,18 +630,23 @@ def _from_prefix(name, rest, label, shape):
                 return None
             splits = 1
         else:
-            splits = sum(
-                1
-                for stop in range(1, len(rest))
-                if rest[stop] == "_" and _IDENTIFIER.match(rest[:stop]) and _IDENTIFIER.match(rest[stop + 1 :])
-            )
-            if not splits:
+            # Every split shares the same identifier characters. Validate those once
+            # rather than scanning and copying both halves for every underscore (which
+            # is quadratic). A suffix is valid exactly when it opens on a non-digit.
+            if not _IDENTIFIER.match(rest):
                 return None
-            stop = next(
-                stop
-                for stop in range(1, len(rest))
-                if rest[stop] == "_" and _IDENTIFIER.match(rest[:stop]) and _IDENTIFIER.match(rest[stop + 1 :])
-            )
+            stop = None
+            splits = 0
+            for candidate in range(1, len(rest) - 1):
+                if rest[candidate] == "_" and not rest[candidate + 1].isdigit():
+                    splits += 1
+                    if stop is None:
+                        stop = candidate
+                    else:
+                        # Only whether a second reading exists is exposed to callers.
+                        break
+            if stop is None:
+                return None
             class_name, category = rest[:stop], rest[stop + 1 :]
         return ObjcSymbol(
             name,

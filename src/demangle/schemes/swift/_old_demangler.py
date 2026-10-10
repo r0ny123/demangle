@@ -179,7 +179,15 @@ _UINT64_MASK = (1 << 64) - 1
 class OldDemangler:
     """The reference's `OldDemangler`. `None` means failure, as `nullptr` does there."""
 
-    def __init__(self, text):
+    __slots__ = ("has_non_ascii", "reader", "substitutions")
+
+    def __init__(self, text, *, byte_mode=False):
+        self.has_non_ascii = not text.isascii()
+        if self.has_non_ascii and not byte_mode:
+            try:
+                text = text.encode("utf-8").decode("latin-1")
+            except UnicodeEncodeError:
+                text = ""
         self.reader = _Reader(text)
         #: Everything nominal seen so far. `S_`, `S0_`, `S1_` index this list.
         self.substitutions = []
@@ -286,6 +294,11 @@ class OldDemangler:
                 return None
         if not identifier:
             return None
+        if not punycoded and self.has_non_ascii and not identifier.isascii():
+            try:
+                identifier = identifier.encode("latin-1").decode("utf-8")
+            except UnicodeError:
+                return None
 
         if is_operator:
             spelled = []
@@ -1484,6 +1497,6 @@ _IMPL_CONVENTIONS = {
 }
 
 
-def demangle_old_symbol(name):
+def demangle_old_symbol(name, *, byte_mode=False):
     """Read a Swift 3 mangled name into the same tree the current mangling produces."""
-    return OldDemangler(name).demangle_top_level()
+    return OldDemangler(name, byte_mode=byte_mode).demangle_top_level()

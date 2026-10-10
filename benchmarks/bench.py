@@ -305,6 +305,11 @@ def main():
             print("\nno baseline recorded; run with --save first")
             return 1
         baseline = json.loads(BASELINE.read_text())
+        missing = [name for name in baseline if name != "calibration" and name not in results]
+        if missing:
+            print(f"\nbenchmark phases missing: {', '.join(sorted(missing))}")
+            print("a benchmark that skipped its workload cannot establish performance")
+            return 1
         structured = results.get("structured", {})
         if structured.get("parsed") != structured.get("names"):
             print(f"\nstructured benchmark parsed {structured.get('parsed')} of {structured.get('names')} names")

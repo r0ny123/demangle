@@ -1,0 +1,8 @@
+# UTF8 byte lengths in plain identifiers, retaining punycode and byte-escaped suffixes.
+$s2é3fooyyF	é.foo() -> ()
+$s4demo2éyyF	demo.é() -> ()
+$s2é2πV	é.π
+_TtC2é3Foo	é.Foo
+$s4demo3fooyyF.é	demo.foo() -> () with unmangled suffix ".\xC3\xA9"
+$s4demo005gbaFcyyF	demo.Ã©() -> ()
+$s4😀3fooyyF	😀.foo() -> ()

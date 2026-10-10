@@ -51,7 +51,7 @@ nothing but this note:
   defaulting the pack index to 0 breaks eleven of libcxxabi's own vectors.
 - A destructor whose class is named by a vendor extended operator, `v1 <source-name>`.
   `llvm-cxxfilt` writes `~()`, `c++filt` writes the name without `operator`, and this
-  writes the name the encoding gives.
+  follows LLVM's spelling. The references disagree on this unusual encoding.
 
 `--refusals` looks the other way. The comparison above only sees a name this library
 *reads*: a name it refuses and the reference reads never enters it. This mode puts the
@@ -371,6 +371,8 @@ def main(argv=None):
         help="the divergence count to pin, for this --seed and --count (default 0)",
     )
     args = parser.parse_args(argv)
+    if args.count < 0:
+        parser.error("--count must be non-negative")
 
     if args.refusals:
         for scheme in args.scheme or sorted(SEEDS):

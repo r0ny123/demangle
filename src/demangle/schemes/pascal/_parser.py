@@ -50,15 +50,15 @@ KINDS = {
 #: Longest first, so `IIDSTR` is not read as `IID`.
 _KIND_PATTERN = re.compile(r"^(" + "|".join(sorted(KINDS, key=len, reverse=True)) + r")_\$(?!\$)")
 
-_SECTION = re.compile(r"^(INIT|FINALIZE)\$_\$([A-Za-z0-9_.]+)$")
+_SECTION = re.compile(r"^(INIT|FINALIZE)\$_\$([A-Za-z0-9_.]+)\Z")
 
 #: An assembler-local label, not a declaration.
-_LABEL = re.compile(r"^_\$([A-Za-z0-9_.]+)\$_(L[a-z][0-9]+)$")
+_LABEL = re.compile(r"^_\$([A-Za-z0-9_.]+)\$_(L[a-z][0-9]+)\Z")
 
 #: What replaces an over-long name part: a whole parameter list, or inside a generic
 #: type's name after the parameter count.
-_CHECKSUM = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}(?:\.[A-Za-z0-9_.]+)?$|^[0-9]+$")
-_ELIDED_PARAMETERS = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}$")
+_CHECKSUM = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}(?:\.[A-Za-z0-9_.]+)?\Z|^[0-9]+\Z")
+_ELIDED_PARAMETERS = re.compile(r"^(?:CRC|crc)[0-9A-Fa-f]{8}\Z")
 
 #: Written with the parameter separator though parameterless: `AVL_TREE_$$_init$` is
 #: `AVL_TREE.init()`, while `MYUNIT_$$_ADD$` has an empty parameter and is refused.

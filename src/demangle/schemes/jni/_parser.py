@@ -172,12 +172,27 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
     parameters = None
     at = body.find("__")
     while at >= 0:
-        head, tail = body[:at], body[at + 2 :]
+        tail_at = at + 2
+        if (
+            tail_at < len(body)
+            and body[tail_at] not in PRIMITIVES
+            and body[tail_at] != "L"
+            and not body.startswith(("_3", "_0"), tail_at)
+        ):
+            # A descriptor opens on an ASCII type code or an escaped array bracket.
+            # `_0` is retained for callers escaping an ASCII type code explicitly.
+            # Unicode names preceded by `/` also make `__`, but their digit-led
+            # suffix cannot be a signature; avoid copying/decoding each full tail.
+            at = body.find("__", at + 1)
+            continue
+        head, tail = body[:at], body[tail_at:]
         if head:
             try:
                 head_path = unescape(head)
                 if "//" in head_path:
-                    raise DemangleFailure("no component between separators")
+                    # An empty component already decoded in the prefix cannot be
+                    # repaired by any later separator. The final path check refuses it.
+                    break
                 # An empty tail is valid: an overloaded method taking no arguments.
                 candidate = descriptor_types(unescape(tail))
             except DemangleFailure:

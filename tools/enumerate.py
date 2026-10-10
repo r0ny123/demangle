@@ -1228,6 +1228,8 @@ def main(argv=None):
     parser.add_argument("--show", type=int, default=10, help="divergences to print per job")
     parser.add_argument("--quiet", action="store_true", help="counts only")
     args = parser.parse_args(argv)
+    if args.length < 0:
+        parser.error("--length must be non-negative")
 
     total = 0
     for scheme in args.scheme or sorted(JOBS):

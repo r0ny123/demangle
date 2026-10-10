@@ -132,9 +132,17 @@ def main():
     parser.add_argument("--corpus", help="only corpora whose filename holds this")
     parser.add_argument("--quiet", action="store_true", help="one line per corpus")
     arguments = parser.parse_args()
+    if arguments.count < 0:
+        parser.error("--count must be non-negative")
+
+    selected = corpora(arguments.corpus)
+    if not selected:
+        if arguments.corpus is not None:
+            parser.error(f"no usable corpus matches --corpus {arguments.corpus!r}")
+        parser.error("no usable conformance corpora found")
 
     total = 0
-    for name, seeds, alphabet in corpora(arguments.corpus):
+    for name, seeds, alphabet in selected:
         rng = random.Random(arguments.seed)
         broken = []
         for _ in range(arguments.count):

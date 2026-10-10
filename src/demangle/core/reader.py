@@ -130,6 +130,11 @@ class Reader:
     def eat(self, literal):
         """Consume `literal` if it is next, reporting whether it was."""
         pos = self.pos
+        if len(literal) == 1:
+            if pos < self.length and self.text[pos] == literal:
+                self.pos = pos + 1
+                return True
+            return False
         end = pos + len(literal)
         if end <= self.length and self.text.startswith(literal, pos):
             self.pos = end
@@ -140,6 +145,11 @@ class Reader:
         """Consume `literal`, or raise."""
         # `eat` inlined: this is on the path of every fixed-opening production.
         pos = self.pos
+        if len(literal) == 1:
+            if pos < self.length and self.text[pos] == literal:
+                self.pos = pos + 1
+                return
+            raise ParseError(self.text, pos, f"expected {literal!r}")
         end = pos + len(literal)
         if end <= self.length and self.text.startswith(literal, pos):
             self.pos = end

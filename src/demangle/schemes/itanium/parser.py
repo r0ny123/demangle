@@ -358,6 +358,7 @@ class ItaniumParser:
         "_abbrev_expanded",
         "_ambiguous_unresolved_name",
         "_argument_constraint",
+        "_ascii_input",
         "_auto_substitutes",
         "_bare_angle",
         "_bare_entity_prefix_used",
@@ -440,6 +441,7 @@ class ItaniumParser:
         if len(mangled) > limits.max_input:
             raise LimitExceeded(mangled, "input length", limits.max_input)
         self._mangled = mangled
+        self._ascii_input = mangled.isascii()
         self.options = options
         #: Whether `Da` and `Dc` enter the substitution table; see
         #: `ItaniumOptions.undeduced_auto_substitution`. Decided by the name's form when
@@ -457,8 +459,8 @@ class ItaniumParser:
         self._closure_prefix_seen = False
         #: Table indices of the entries a `<type>` may not name: closure prefixes, and
         #: template names whose arguments must follow.
-        self._closure_prefix_entries = set()
-        self._template_name_entries = set()
+        self._closure_prefix_entries = None
+        self._template_name_entries = None
         #: The lowest table index a `<template-template-param>` took, and whether an `S<n>_`
         #: resolved at or after it. `T_ I ... E` records the parameter and its specialisation
         #: (5.1.10; g++ and clang agree, `T_IT0_Li3EES5_`); llvm-cxxfilt 18 records only the
@@ -505,15 +507,15 @@ class ItaniumParser:
         # Re-read spans, keyed by (entry index, scope generation). Without it a chain
         # `T_`, `P S0_`, `P S1_`, ... is quadratic;
         # tests/test_substitution_parameters.py pins that.
-        self._deferred = {}
+        self._deferred = None
         self._depth = 0
         # Precedence of the expression just parsed, read by a containing operator to decide
         # on brackets.
         self._precedence = PRIMARY_PRECEDENCE
         # Pack handles seen in this name. The list holds strong references so an `id()` in
         # the set can never be reused by a new handle.
-        self._packs = []
-        self._pack_ids = set()
+        self._packs = None
+        self._pack_ids = None
 
         # Whether the name just parsed was a constructor or destructor. They are the
         # one case where a template specialisation still encodes no return type.
@@ -542,22 +544,22 @@ class ItaniumParser:
         self._prefix_has_args = False
         # Keyed by identity and holding the handle too, so that a handle the parser has
         # let go of cannot lend its address to a later one.
-        self._specialised_handles = {}
+        self._specialised_handles = None
         # The handles the `Dp` production recorded as expansions, as distinct from the
         # packs they range over; see `_pack_aware`.
-        self._expansion_handles = {}
+        self._expansion_handles = None
         # True while reading the declared entity's name. Only its own template arguments
         # become the `T_` scope, not those of a type in the parameter list.
         self._naming = True
         # Module names by handle identity, plus strong references. A module name is a
         # substitution candidate that decorates the following name rather than being a
         # component.
-        self._modules = []
-        self._module_names = {}
+        self._modules = None
+        self._module_names = None
         # Protocol-qualified `objc_object` handles, which one pointer collapses into
         # `id<...>`; tracked by identity like packs and module names.
-        self._objc_ids = []
-        self._objc_protocols = {}
+        self._objc_ids = None
+        self._objc_protocols = None
         # Types read so far, and how many this parse may re-read. Conversion-operator
         # types and pack patterns are re-read, and nested expansions multiply, so the
         # actual re-reading work is charged as it is spent, generously against
@@ -637,7 +639,7 @@ class ItaniumParser:
         self._scope_has_pack = False
         # Per-kind counters for the synthetic `$T` / `$N` / `$TT` names a generic
         # lambda's declared template parameters are spelled with.
-        self._parameter_counts = {}
+        self._parameter_counts = None
         # True while reading a requires-clause, where parameters are spelled by name.
         self._in_constraint = False
         # Set when a <template-param> resolved to an empty pack: the only way to tell that a
@@ -662,30 +664,35 @@ class ItaniumParser:
         """<mangled-name> ::= _Z <encoding> [. <vendor-specific suffix>]"""
         reader = self.reader
         mangled = reader.text
-        if mangled.startswith(("___Z", "____Z")):
-            return self.block_invocation()
-        # See `_IMPORT_THUNK`. `__imp_ReadFile` is not one: what follows must be a
-        # mangled name itself, as it must behind `_ALLOC_TOKEN`, which may come next.
-        import_thunk = mangled.startswith(_IMPORT_THUNK_OPENINGS)
-        if import_thunk:
-            reader.pos += len(_IMPORT_THUNK)
-        alloc_token = ""
-        if reader.text.startswith(_ALLOC_TOKEN, reader.pos):
-            after = reader.pos + len(_ALLOC_TOKEN)
-            digits = after
-            while digits < reader.length and reader.text[digits] in DIGITS:
-                digits += 1
-            if digits > after and digits < reader.length and reader.text[digits] == "_":
-                after = digits + 1
-            if reader.text.startswith(("_Z", "__Z"), after):
-                reader.pos = after
-                alloc_token = " (.alloc_token)"
-        # A Mach-O symbol carries the linker's extra underscore. Strip it only before a
-        # second one, or `_Z1fv` loses the underscore the grammar needs.
-        if reader.startswith("__Z"):
-            reader.take()
-        if not reader.eat("_Z"):
-            raise NotMangledError(self._mangled, "not an Itanium mangled name")
+        if mangled.startswith("_Z"):
+            reader.pos = 2
+            import_thunk = False
+            alloc_token = ""
+        else:
+            if mangled.startswith(("___Z", "____Z")):
+                return self.block_invocation()
+            # See `_IMPORT_THUNK`. `__imp_ReadFile` is not one: what follows must be a
+            # mangled name itself, as it must behind `_ALLOC_TOKEN`, which may come next.
+            import_thunk = mangled.startswith(_IMPORT_THUNK_OPENINGS)
+            if import_thunk:
+                reader.pos += len(_IMPORT_THUNK)
+            alloc_token = ""
+            if reader.text.startswith(_ALLOC_TOKEN, reader.pos):
+                after = reader.pos + len(_ALLOC_TOKEN)
+                digits = after
+                while digits < reader.length and reader.text[digits] in DIGITS:
+                    digits += 1
+                if digits > after and digits < reader.length and reader.text[digits] == "_":
+                    after = digits + 1
+                if reader.text.startswith(("_Z", "__Z"), after):
+                    reader.pos = after
+                    alloc_token = " (.alloc_token)"
+            # A Mach-O symbol carries the linker's extra underscore. Strip it only before a
+            # second one, or `_Z1fv` loses the underscore the grammar needs.
+            if reader.startswith("__Z"):
+                reader.take()
+            if not reader.eat("_Z"):
+                raise NotMangledError(self._mangled, "not an Itanium mangled name")
 
         result = self.encoding()
 
@@ -1051,9 +1058,9 @@ class ItaniumParser:
                 # `_ZSbIwEvS_`).
                 if candidate:
                     self.subs.remember(base, "unscoped-template-name")
-                    self._note_entry(self._template_name_entries)
+                    self._template_name_entries = self._note_entry(self._template_name_entries)
                 specialised = self.apply_template_args(base)
-                self._specialised_handles[id(specialised)] = specialised
+                self._record_specialised(specialised)
                 return specialised, (), "", True
             if not candidate:
                 # A back-reference is a <name> only as an <unscoped-template-name>, so
@@ -1065,11 +1072,17 @@ class ItaniumParser:
         base = self.unqualified_name()
         if reader.peek() == "I":
             self.subs.remember(base, "unscoped-template-name")
-            self._note_entry(self._template_name_entries)
+            self._template_name_entries = self._note_entry(self._template_name_entries)
             specialised = self.apply_template_args(base)
-            self._specialised_handles[id(specialised)] = specialised
+            self._record_specialised(specialised)
             return specialised, (), "", True
         return base, (), "", False
+
+    def _record_specialised(self, handle):
+        specialised = self._specialised_handles
+        if specialised is None:
+            specialised = self._specialised_handles = {}
+        specialised[id(handle)] = handle
 
     def _spend_prefix(self, combined):
         """Charge a recorded prefix against the budget, or refuse the name.
@@ -1141,7 +1154,9 @@ class ItaniumParser:
         self._try_template_args = False
         # The arguments now in scope are the operator's own, so whether an expansion in
         # the type has a pack to expand is decided by them.
-        self._scope_has_pack = any(id(argument) in self._pack_ids for argument in self.targs.outer())
+        self._scope_has_pack = bool(
+            self._pack_ids and any(id(argument) in self._pack_ids for argument in self.targs.outer())
+        )
         self.subs.restore_from(mark, [])
         reader.pos = start
         spent = self._productions
@@ -1263,7 +1278,7 @@ class ItaniumParser:
                         length = int(text[start:pos])
                     else:
                         length = ord(char) - 48
-                    stop = pos + length
+                    stop = pos + length if self._ascii_input else self._source_name_end(pos, length)
                     if stop > end:
                         raise TruncatedError(text, pos)
                     if not length or text[pos] == "_":
@@ -1304,9 +1319,9 @@ class ItaniumParser:
                             raise LimitExceeded(self._mangled, "substitution", subs._limit)
                         entries.append(combined)
                     if following == "M":
-                        self._note_entry(self._closure_prefix_entries)
+                        self._closure_prefix_entries = self._note_entry(self._closure_prefix_entries)
                     elif following == "I":
-                        self._note_entry(self._template_name_entries)
+                        self._template_name_entries = self._note_entry(self._template_name_entries)
                     continue
                 depth = self._depth = self._depth + 1
                 if depth > max_depth:
@@ -1338,7 +1353,7 @@ class ItaniumParser:
         if is_template:
             # The enclosing <type> production records this name; a back reference to
             # it takes no arguments either.
-            self._specialised_handles[id(name)] = name
+            self._record_specialised(name)
         return name, quals, ref_qualifier, is_template
 
     def _only_a_base_production(self, parts, what):
@@ -1402,7 +1417,7 @@ class ItaniumParser:
                     self._only_a_base_production(parts, "a substitution")
                 self._prefix_ended_on = "a substitution"
                 self._prefix_bare = None
-                self._prefix_has_args = id(component) in self._specialised_handles
+                self._prefix_has_args = bool(self._specialised_handles and id(component) in self._specialised_handles)
                 parts.append(component)
                 return False, module
 
@@ -1429,8 +1444,8 @@ class ItaniumParser:
                 parts[-1] = builder.template(parts[-1], arguments, angle_space)
                 combined = parts[0] if len(parts) == 1 else builder.qualified(parts)
                 self._prefix_has_args = True
-                self._specialised_handles[id(parts[-1])] = parts[-1]
-                self._specialised_handles[id(combined)] = combined
+                self._record_specialised(parts[-1])
+                self._record_specialised(combined)
                 # Only an interior <template-prefix> <template-args> is a separate
                 # candidate. Before the closing `E` the enclosing <type> records it, and
                 # recording twice shifts every index.
@@ -1492,9 +1507,9 @@ class ItaniumParser:
                 raise LimitExceeded(self._mangled, "output length", self._max_output)
             self.subs.remember(combined, "prefix")
             if following == "M":
-                self._note_entry(self._closure_prefix_entries)
+                self._closure_prefix_entries = self._note_entry(self._closure_prefix_entries)
             elif following == "I":
-                self._note_entry(self._template_name_entries)
+                self._template_name_entries = self._note_entry(self._template_name_entries)
         return False, ""
 
     def _note_entry(self, entries):
@@ -1504,7 +1519,10 @@ class ItaniumParser:
         nothing to mark: the entry that reading contributed was marked the first time.
         """
         if self.subs.recording:
+            if entries is None:
+                entries = set()
             entries.add(len(self.subs) - 1)
+        return entries
 
     def _note_template_template_param(self):
         """Remember where the entry a `<template-template-param>` just took sits.
@@ -1904,6 +1922,23 @@ class ItaniumParser:
             spelled = spelled[len("friend ") :]
         return spelled
 
+    def _source_name_end(self, start, length):
+        """ABI source-name lengths count UTF-8 bytes; cursors count codepoints."""
+        reader = self.reader
+        stop = start
+        remaining = length
+        while remaining > 0 and stop < reader.length:
+            value = ord(reader.text[stop])
+            if 0xD800 <= value <= 0xDFFF:
+                raise ParseError(self._mangled, stop, "invalid UTF-8 source name")
+            remaining -= 1 if value < 0x80 else 2 if value < 0x800 else 3 if value < 0x10000 else 4
+            if remaining < 0:
+                raise ParseError(self._mangled, stop, "source-name length splits a UTF-8 character")
+            stop += 1
+        if remaining:
+            raise TruncatedError(self._mangled, start)
+        return stop
+
     def source_name(self):
         """<source-name> ::= <positive length number> <identifier>"""
         text = self.plain_source_name()
@@ -1929,7 +1964,7 @@ class ItaniumParser:
         if mangled[start] == "0":
             reader.padded_length = True
         length = int(mangled[start:pos])
-        stop = pos + length
+        stop = pos + length if self._ascii_input else self._source_name_end(pos, length)
         if stop > end:
             raise TruncatedError(mangled, pos)
         reader.pos = stop
@@ -1959,7 +1994,11 @@ class ItaniumParser:
         length = int(reader.digits())
         if length <= 0:
             raise ParseError(self._mangled, reader.pos, "abi tag of non-positive length")
-        return reader.take_exactly(length)
+        if self._ascii_input:
+            return reader.take_exactly(length)
+        start = reader.pos
+        reader.pos = self._source_name_end(start, length)
+        return reader.text[start : reader.pos]
 
     def module_name(self, module=""):
         """A C++20 module name, as the text that goes after the `@`.
@@ -1985,14 +2024,19 @@ class ItaniumParser:
             module += subname
             handle = self.builder.raw(module)
             # Strong reference plus identity, as for packs.
-            self._modules.append(handle)
-            self._module_names[id(handle)] = module
+            modules = self._modules
+            module_names = self._module_names
+            if modules is None or module_names is None:
+                modules = self._modules = []
+                module_names = self._module_names = {}
+            modules.append(handle)
+            module_names[id(handle)] = module
             self.subs.remember(handle, "module-name")
         return module
 
     def _module_of(self, handle):
         """The module name a substitution stands for, or None if it stands for a type."""
-        return self._module_names.get(id(handle))
+        return self._module_names.get(id(handle)) if self._module_names is not None else None
 
     @staticmethod
     def _in_module(text, module):
@@ -2258,7 +2302,9 @@ class ItaniumParser:
                 # The same, for a component built *over* a parameter. See
                 # `DeferredProduction`.
                 return self._pack_aware(self._reread(index, entry))
-            if self.builder.members(entry) is None and id(entry) not in self._expansion_handles:
+            if self.builder.members(entry) is None and (
+                not self._expansion_handles or id(entry) not in self._expansion_handles
+            ):
                 # `_pack_aware`'s answer for anything that is not a pack.
                 return entry
             return self._pack_aware(entry)
@@ -2281,6 +2327,8 @@ class ItaniumParser:
 
     def _expansion(self, handle):
         """Record `handle` as the result of a `Dp`, and return it."""
+        if self._expansion_handles is None:
+            self._expansion_handles = {}
         self._expansion_handles[id(handle)] = handle
         return handle
 
@@ -2299,7 +2347,11 @@ class ItaniumParser:
         if self._reading_pattern:
             return inner
         members = self.builder.members(inner)
-        if members is not None and not members and id(inner) not in self._expansion_handles:
+        if (
+            members is not None
+            and not members
+            and (not self._expansion_handles or id(inner) not in self._expansion_handles)
+        ):
             raise ParseError(self._mangled, self.reader.pos, "a type built over an empty parameter pack")
         return inner
 
@@ -2316,7 +2368,7 @@ class ItaniumParser:
         `ParameterPackExpansion::printLeft` writes it after the inner expansion has
         restored the pack context.
         """
-        if id(handle) in self._expansion_handles:
+        if self._expansion_handles and id(handle) in self._expansion_handles:
             return handle
         members = self.builder.members(handle)
         if members is None:
@@ -2404,7 +2456,7 @@ class ItaniumParser:
         self._parameter_uses += 1
         bound = self.targs.lookup(index, level)
         if bound is not None:
-            if id(bound) in self._pack_ids:
+            if self._pack_ids and id(bound) in self._pack_ids:
                 self._saw_pack = True
                 if not self.builder.spell(bound):
                     self._saw_empty_pack = True
@@ -2501,16 +2553,15 @@ class ItaniumParser:
         reader = self.reader
         pos = reader.pos
         char = reader.text[pos] if pos < reader.length else ""
-        if char:
-            builtin = BUILTIN_TYPES.get(char)
-            if builtin is not None and self._depth < self._max_depth:
-                # `_type`'s first arm, without the frame: a builtin records nothing and
-                # binds nothing.
-                reader.pos = pos + 1
-                # A builtin renders as its spelling, so its size is that spelling's length.
-                if len(builtin) > self._max_output:
-                    raise LimitExceeded(self._mangled, "output length", self._max_output)
-                return self.builder.builtin(builtin)
+        if char in BUILTIN_TYPES and self._depth < self._max_depth:
+            # `_type`'s first arm, without the frame: a builtin records nothing and
+            # binds nothing.
+            reader.pos = pos + 1
+            builtin = BUILTIN_TYPES[char]
+            # A builtin renders as its spelling, so its size is that spelling's length.
+            if len(builtin) > self._max_output:
+                raise LimitExceeded(self._mangled, "output length", self._max_output)
+            return self.builder.builtin(builtin)
         depth = self._depth = self._depth + 1
         if depth > self._max_depth:
             raise LimitExceeded(self._mangled, "recursion depth", self._max_depth)
@@ -2557,7 +2608,7 @@ class ItaniumParser:
         # Not memoised inside a pack expansion: `Dp` re-reads per member under the same
         # scope, which would get the first member's answer each time.
         key = None if self._pack_index is not None else (index, self.targs.generation)
-        if key is not None:
+        if key is not None and self._deferred is not None:
             found = self._deferred.get(key)
             if found is not None:
                 return found
@@ -2573,6 +2624,8 @@ class ItaniumParser:
             self._naming = saved_naming
             subs.recording = saved_recording
         if key is not None:
+            if self._deferred is None:
+                self._deferred = {}
             self._deferred[key] = result
         return result
 
@@ -2598,8 +2651,13 @@ class ItaniumParser:
             as_template_argument = self._template_name_argument
             self._template_name_argument = False
             if index is not None and (
-                index in self._closure_prefix_entries
-                or (index in self._template_name_entries and reader.peek() != "I" and not as_template_argument)
+                (self._closure_prefix_entries is not None and index in self._closure_prefix_entries)
+                or (
+                    self._template_name_entries is not None
+                    and index in self._template_name_entries
+                    and reader.peek() != "I"
+                    and not as_template_argument
+                )
             ):
                 # A <substitution> is a <type> only through <class-enum-type>, so a
                 # closure prefix or a bare template (outside `template_arg`) cannot
@@ -2788,7 +2846,7 @@ class ItaniumParser:
                 # A pattern more than a declarator round the parameter is re-read per member:
                 # `Dp unary<T_>` over `{int, float}` is `unary<int>, unary<float>`.
                 return self.subs.remember(self._expansion(self._expand_pattern(start, mark, arity)), "type")
-            if id(inner) in self._pack_ids or over_pack:
+            if (self._pack_ids and id(inner) in self._pack_ids) or over_pack:
                 # The expansion is a <type> recorded separately from its pattern
                 # (`Dp R T1_` gives two entries), as both references do. `inner`'s
                 # members are already spelled, so no ellipsis; and it gets a fresh
@@ -2964,8 +3022,13 @@ class ItaniumParser:
                 if spelled == _OBJC_OBJECT:
                     # `objc_object<A>` alone; the first pointer makes it `id<A>`, and
                     # further ones are ordinary: `id<A>*`.
-                    self._objc_ids.append(handle)
-                    self._objc_protocols[id(handle)] = protocol
+                    objc_ids = self._objc_ids
+                    objc_protocols = self._objc_protocols
+                    if objc_ids is None or objc_protocols is None:
+                        objc_ids = self._objc_ids = []
+                        objc_protocols = self._objc_protocols = {}
+                    objc_ids.append(handle)
+                    objc_protocols[id(handle)] = protocol
                 return handle
             return builder.vendor_qualify(self._over_a_pack(inner), qualifier)
         if self._at_function_type():
@@ -3249,12 +3312,15 @@ class ItaniumParser:
         that name is cannot be read off the reference, which refuses every name that
         mentions one.
         """
+        counts = self._parameter_counts
+        if counts is None:
+            counts = self._parameter_counts = {}
         if self.options.gnu_closure_spelling and named:
-            index = self._parameter_counts.get("", 0)
-            self._parameter_counts[""] = index + 1
+            index = counts.get("", 0)
+            counts[""] = index + 1
             return f"${kind}{index}"
-        index = self._parameter_counts.get(kind, 0)
-        self._parameter_counts[kind] = index + 1
+        index = counts.get(kind, 0)
+        counts[kind] = index + 1
         if self.options.gnu_closure_spelling:
             return f"${kind}{index}"
         return f"${kind}" + ("" if index == 0 else str(index - 1))
@@ -3294,8 +3360,8 @@ class ItaniumParser:
         was_naming = self._naming
         self._naming = False
         arguments = []
-        empties = []
         keep_empty = self.options.gnu_empty_pack_spelling
+        empties = [] if keep_empty else None
         # "Preserve the last name we saw -- don't let the template arguments clobber
         # it", as `d_template_args_1` puts it: the constructor of `A<X>::{unnamed
         # type#1}` is `A`, not `X`.
@@ -3335,7 +3401,8 @@ class ItaniumParser:
                 trailing_empty_pack = is_empty_pack
                 if not is_empty_pack or keep_empty:
                     arguments.append(argument)
-                    empties.append(is_empty_pack)
+                    if empties is not None:
+                        empties.append(is_empty_pack)
                 if install_scope:
                     self.targs.add(argument)
         finally:
@@ -3344,7 +3411,7 @@ class ItaniumParser:
             if not install_scope:
                 self._scope_has_pack = outer_has_pack
                 self._argument_constraint = outer_constraint
-        if keep_empty:
+        if empties is not None:
             # c++filt prints an empty pack as an empty argument and keeps the comma,
             # `thread<main::{lambda()#1}, , void>`, and drops the empty ones at the end
             # of the list: `f<int, JE>` is `f<int>`. See `gnu_empty_pack_spelling`.
@@ -3457,8 +3524,13 @@ class ItaniumParser:
             if char == "I":
                 self._legacy_pack_used = True
             handle = builder.parameter_pack(members)
-            self._packs.append(handle)
-            self._pack_ids.add(id(handle))
+            packs = self._packs
+            pack_ids = self._pack_ids
+            if packs is None or pack_ids is None:
+                packs = self._packs = []
+                pack_ids = self._pack_ids = set()
+            packs.append(handle)
+            pack_ids.add(id(handle))
             # An empty pack takes a `T_` slot but spells nothing
             # (`AnalysisManager<Module, JE>`). The builder decides, as it flattened any
             # nested empty packs.

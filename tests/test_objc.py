@@ -182,6 +182,39 @@ class TestTheManglingLosesThings:
             assert parse_objc_symbol(mangled).text == preferred
             assert parse_objc_symbol(mangled).ambiguous
 
+    @pytest.mark.parametrize(
+        ("body", "class_name", "category", "ambiguous"),
+        [
+            ("Root_Extra", "Root", "Extra", False),
+            ("Root_1_Extra", "Root_1", "Extra", False),
+            ("Root__Extra", "Root", "_Extra", True),
+            ("_Root_Extra_", "_Root", "Extra_", False),
+            ("A_" * 1000 + "B", "A", "A_" * 999 + "B", True),
+        ],
+    )
+    def test_fragile_category_splits_preserve_identifiers(self, body, class_name, category, ambiguous):
+        symbol = parse_objc_symbol(".objc_category_name_" + body)
+        assert (symbol.class_name, symbol.category, symbol.ambiguous) == (class_name, category, ambiguous)
+
+    @pytest.mark.parametrize(
+        ("body", "selector", "ambiguous"),
+        [
+            ("take:_v24@0:8i16", "take:", False),
+            ("take:other:_v32@0:8i16i24", "take:other:", False),
+            ("my_value_v16@0:8", "my_value", True),
+            (".cxx_construct_v16@0:8", ".cxx_construct", False),
+            (".cxx_destruct_v16@0:8", ".cxx_destruct", False),
+            ("A_" * 1000 + "v8@0:8", "A_" * 999 + "A", True),
+        ],
+    )
+    def test_selector_type_splits_keep_the_rightmost_complete_selector(self, body, selector, ambiguous):
+        symbol = parse_objc_symbol(".objc_selector_" + body)
+        assert (symbol.selector, symbol.ambiguous) == (selector, ambiguous)
+
+    def test_invalid_selector_prefix_cannot_be_repaired_by_later_underscores(self):
+        with pytest.raises(DemangleFailure):
+            parse_objc_symbol(".objc_selector_A@" + "A_" * 1000 + "v")
+
     def test_a_category_symbol_with_no_separator_is_refused(self):
         """`.objc_category_` + class + category, with nothing between them."""
         with pytest.raises(DemangleFailure):
@@ -194,6 +227,24 @@ class TestRefusesRatherThanGuesses:
         for (mangled,) in rows("objc-refusals.txt"):
             with subtests.test(name=mangled):
                 assert demangle.demangle(mangled) == mangled
+
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "-[Foo take:other]",
+            ".objc_sel_name_take:other",
+            "_OBJC_CLASS_$_Foo\n",
+            "-[Foo take:]\n",
+            ".objc_sel_name_take:\n",
+            ".objc_category_name_Root_Extra\n",
+            "__start___objc_selectors\n",
+            "___cfunc_block_invoke\n",
+        ],
+    )
+    def test_selectors_and_symbols_must_be_complete(self, mangled):
+        with pytest.raises(DemangleFailure):
+            parse_objc_symbol(mangled)
+        assert demangle.demangle(mangled, language="objc") == mangled
 
     def test_the_runtimes_own_c_functions_are_not_objective_c_names(self):
         for name in ("__objc_exec_class", "__objc_msg_forward", "__objc_init_class_tables"):

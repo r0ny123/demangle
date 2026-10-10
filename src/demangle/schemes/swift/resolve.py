@@ -129,6 +129,8 @@ def elf_image(data):
     program_offset = _field(_U64, data, 0x20, "the program header offset")
     entry_size = _field(_U16, data, 0x36, "the program header entry size")
     count = _field(_U16, data, 0x38, "the program header count")
+    if count and entry_size < 0x38:
+        raise MalformedImage(f"ELF program header entry claims {entry_size} bytes; at least 56 required")
     segments = []
     dynamic = None
     for index in range(count):
@@ -182,7 +184,7 @@ def _apply_dynamic_relocations(data, segments, dynamic):
     if kinds is None:
         return {}
     relative, glob_dat, abs64 = kinds
-    tags = {}
+    tags: dict[int, int] = {}
     for at in range(0, len(dynamic) - 15, 16):
         tag = _U64.unpack_from(dynamic, at)[0]
         if tag == 0:  # DT_NULL
@@ -191,13 +193,17 @@ def _apply_dynamic_relocations(data, segments, dynamic):
     # DT_RELA 7, DT_RELASZ 8, DT_RELAENT 9; DT_SYMTAB 6, DT_SYMENT 11; DT_STRTAB 5
     if 7 not in tags or 8 not in tags:
         return {}
-    entry = tags.get(9) or 24
+    entry = tags.get(9, 24)
+    if entry < 24:
+        raise MalformedImage(f"ELF relocation entry claims {entry} bytes; at least 24 required")
     table = _segment_slice(segments, tags[7], tags[8])
     if table is None:
         return {}
     symbols = _segment_slice(segments, tags[6], 0) if 6 in tags else None
     strings = _segment_slice(segments, tags[5], 0) if 5 in tags else None
-    symbol_size = tags.get(11) or 24
+    symbol_size = tags.get(11, 24)
+    if symbol_size < 24:
+        raise MalformedImage(f"ELF symbol entry claims {symbol_size} bytes; at least 24 required")
     imports = {}
     blob, start = table
     for at in range(start, start + tags[8] - entry + 1, entry):
@@ -244,8 +250,10 @@ def _defined_descriptors(data):
     table_offset = _U64.unpack_from(data, 0x28)[0]
     entry_size = _U16.unpack_from(data, 0x3A)[0]
     count = _U16.unpack_from(data, 0x3C)[0]
-    if not table_offset or entry_size < 0x40:
+    if not table_offset or not count:
         return {}
+    if entry_size < 0x40:
+        raise MalformedImage(f"ELF section header entry claims {entry_size} bytes; at least 64 required")
     headers = []
     for index in range(count):
         at = table_offset + index * entry_size
@@ -261,7 +269,8 @@ def _defined_descriptors(data):
     for kind, offset, size, link, symbol_size in headers:
         if kind not in (11, 2) or link >= len(headers):  # SHT_DYNSYM, SHT_SYMTAB
             continue
-        symbol_size = symbol_size or 24
+        if symbol_size < 24:
+            raise MalformedImage(f"ELF symbol entry claims {symbol_size} bytes; at least 24 required")
         _, strings_offset, strings_size, _, _ = headers[link]
         strings = data[strings_offset : strings_offset + strings_size]
         table = data[offset : offset + size]
@@ -334,6 +343,10 @@ def macho_image(data):
     if len(data) < 0x20 or data[:4] != b"\xcf\xfa\xed\xfe":
         raise MalformedImage("not a 64-bit little-endian Mach-O file")
     commands = _field(_U32, data, 0x10, "the load command count")
+    command_bytes = _field(_U32, data, 0x14, "the load command region size")
+    if commands > command_bytes // _MIN_LOAD_COMMAND:
+        raise MalformedImage("load command count does not fit the declared command region")
+    command_end = 0x20 + command_bytes
     at = 0x20
     segments = []
     for _ in range(commands):
@@ -342,7 +355,16 @@ def macho_image(data):
         command, size = struct.unpack_from("<II", data, at)
         if size < _MIN_LOAD_COMMAND:
             raise MalformedImage(f"load command at offset {at} claims {size} bytes")
-        if command == 0x19 and at + 0x48 <= len(data):  # LC_SEGMENT_64
+        if at + size > command_end:
+            raise MalformedImage(f"load command at offset {at} extends beyond the declared command region")
+        if command == 0x19:  # LC_SEGMENT_64
+            if size < 0x48:
+                raise MalformedImage(f"segment command at offset {at} claims {size} bytes; at least 72 required")
+            if at + 0x48 > len(data):
+                break  # Preserve the complete segments of a partially downloaded image.
+            sections = _U32.unpack_from(data, at + 0x40)[0]
+            if size < 0x48 + sections * 0x50:
+                raise MalformedImage(f"segment command at offset {at} cannot hold its {sections} sections")
             vmaddr = _U64.unpack_from(data, at + 0x18)[0]
             fileoff = _U64.unpack_from(data, at + 0x28)[0]
             filesize = _U64.unpack_from(data, at + 0x30)[0]
@@ -467,10 +489,13 @@ class ContextResolver:
             return None
         pieces = [prefix] if prefix else []
         for letter, name in reversed(chain):
-            if not name.isascii():
-                # A non-ASCII identifier would need punycode; the descriptor holds UTF-8.
+            try:
+                identifier = name.decode("utf-8")
+            except UnicodeDecodeError:
                 return None
-            pieces.append(f"{len(name)}{name.decode('ascii')}")
+            # The descriptor stores UTF8 bytes. The demangler accepts their plain
+            # byte-counted spelling as well as the compiler's punycoded spelling.
+            pieces.append(f"{len(name)}{identifier}")
             if letter == _ANONYMOUS_MARK:
                 # The anonymous-context production, with no generic arguments to collect.
                 pieces.append("yXZ")

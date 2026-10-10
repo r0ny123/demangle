@@ -187,8 +187,11 @@ def replay(paths, style, language, show, quiet, overrides=True):
             for reason, count in reasons.most_common():
                 print(f"    {count:5}  {reason}")
 
+    if not total:
+        print("no corpus names were replayed", file=sys.stderr)
+        return 1
     accounted = matched + divergent
-    rate = accounted / total * 100 if total else 0.0
+    rate = accounted / total * 100
     note = f", {divergent} known reference divergence(s)" if divergent else ""
     print(f"\n{matched}/{total} exact ({rate:.2f}%){note}")
     return 0 if accounted == total else 1

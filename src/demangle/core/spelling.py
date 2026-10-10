@@ -155,6 +155,63 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False, tight_before_group=
     return Spelling(inner.left + token, inner.right, ref_kind=ref_kind)
 
 
+class _BuiltinCache(dict):
+    def __missing__(self, key):
+        return Spelling(key)
+
+
+_BUILTIN_SPELLINGS = _BuiltinCache(
+    {
+        name: Spelling(name)
+        for name in (
+            "void",
+            "bool",
+            "char",
+            "signed char",
+            "unsigned char",
+            "short",
+            "unsigned short",
+            "int",
+            "unsigned int",
+            "long",
+            "unsigned long",
+            "long long",
+            "unsigned long long",
+            "__int128",
+            "unsigned __int128",
+            "float",
+            "double",
+            "long double",
+            "__float128",
+            "half",
+            "wchar_t",
+            "char8_t",
+            "char16_t",
+            "char32_t",
+            "auto",
+            "decltype(auto)",
+            "decltype(nullptr)",
+            "decimal32",
+            "decimal64",
+            "decimal128",
+            "std::nullptr_t",
+            "std::bfloat16_t",
+            "_BitInt",
+            "unsigned _BitInt",
+            "...",
+            "_Float16",
+            "_Float32",
+            "_Float64",
+            "_Float128",
+            "_Float16x",
+            "_Float32x",
+            "_Float64x",
+            "_Float128x",
+        )
+    }
+)
+
+
 class SpellingBuilder(Builder):
     """Builds C++ declaration text. The backend behind `demangle()`.
 
@@ -195,8 +252,8 @@ class SpellingBuilder(Builder):
 
     # The class itself rather than a method calling it: a class attribute does not bind,
     # so `builder.name(text)` is `Spelling(text)`, and these are the builder's commonest
-    # calls.
-    builtin = Spelling
+    # calls. Builtins are finite and immutable, so pre-created instances are returned directly.
+    builtin = _BUILTIN_SPELLINGS.__getitem__
     name = Spelling
     raw = Spelling
 
@@ -207,13 +264,34 @@ class SpellingBuilder(Builder):
         return Spelling("".join([part if isinstance(part, str) else self.spell(part) for part in parts]))
 
     def qualified(self, parts):
-        return Spelling("::".join([part.left + part.right for part in parts]))
+        n = len(parts) if isinstance(parts, (list, tuple)) else len(parts := tuple(parts))
+        if n == 2:
+            p0, p1 = parts
+            s0 = p0.left if not p0.right else p0.left + p0.right
+            s1 = p1.left if not p1.right else p1.left + p1.right
+            return Spelling(f"{s0}::{s1}")
+        if n == 1:
+            p0 = parts[0]
+            return Spelling(p0.left if not p0.right else p0.left + p0.right)
+        return Spelling("::".join([part.left if not part.right else part.left + part.right for part in parts]))
 
     def template(self, base, arguments, angle_space=True):
-        rendered = ", ".join([argument.left + argument.right for argument in arguments])
+        n = len(arguments) if isinstance(arguments, (list, tuple)) else len(arguments := tuple(arguments))
+        if n == 1:
+            arg = arguments[0]
+            rendered = arg.left if not arg.right else arg.left + arg.right
+        elif n == 2:
+            a0, a1 = arguments
+            s0 = a0.left if not a0.right else a0.left + a0.right
+            s1 = a1.left if not a1.right else a1.left + a1.right
+            rendered = f"{s0}, {s1}"
+        else:
+            rendered = ", ".join(
+                [argument.left if not argument.right else argument.left + argument.right for argument in arguments]
+            )
         if self.legacy_angle_spacing and angle_space and rendered.endswith(">"):
             rendered += " "
-        name = f"{base.left}{base.right}"
+        name = base.left if not base.right else f"{base.left}{base.right}"
         opening = " <" if self.legacy_angle_spacing and name.endswith("<") else "<"
         return Spelling(f"{name}{opening}{rendered}>")
 

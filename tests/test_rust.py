@@ -509,3 +509,89 @@ class TestV0NestingFollowsMaxDepth:
         with pytest.raises(demangle.LimitExceeded):
             demangle.parse(mangled, language="rust", limits=demangle.RELAXED_LIMITS)
         assert demangle.demangle(mangled, limits=demangle.RELAXED_LIMITS) == mangled
+
+
+class TestLegacyLengthArithmetic:
+    def test_long_leading_zero_length_matches_short_length(self):
+        # Decimal length is independent of leading zeros and Python's configurable
+        # integer-string digit limit; the bounded reader consumes both identically.
+        short = "_ZN1aE"
+        long = "_ZN" + "0" * 5000 + "1aE"
+        assert demangle.demangle_strict(long, language="rust") == demangle.demangle_strict(short, language="rust")
+        assert demangle.parse(long, language="rust").spell() == "a"
+
+    def test_oversized_decimal_length_is_refused(self):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict("_ZN" + "9" * 60000 + "E", language="rust")
+
+    def test_many_escapes_preserve_spans(self):
+        component = "$LT$a..$u41$." * 1000
+        name = "_ZN" + str(len(component)) + component + "E"
+        expected = "<a::A." * 1000
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+
+    def test_many_dot_segments_before_an_escape(self):
+        component = "a.." * 10000 + "$LT$"
+        name = "_ZN" + str(len(component)) + component + "E"
+        expected = "a::" * 10000 + "<"
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+
+    def test_many_components_preserve_spans_and_hash(self):
+        name = "_ZN" + "1a" * 5000 + "17h0123456789abcdefE"
+        expected = "::".join(["a"] * 5000)
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+
+
+class TestV0LengthArithmetic:
+    @pytest.mark.parametrize(
+        "name",
+        ["_RCs" + "z" * 60000 + "_1a", "_RC" + "9" * 60000 + "a"],
+        ids=["base62-overflow", "decimal-overflow"],
+    )
+    def test_oversized_fields_are_refused(self, name):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(name, language="rust")
+        with pytest.raises(DemanglingError):
+            demangle.parse(name, language="rust")
+
+    def test_padded_base62_field_preserves_value(self):
+        padded = "_RCs" + "0" * 60000 + "_1a"
+        assert demangle.demangle_strict(padded, language="rust") == "a"
+        assert demangle.parse(padded, language="rust").spell() == "a"
+
+
+class TestBackreferenceMemoPreservesDepthLimit:
+    def test_cached_subtree_cannot_bypass_a_deeper_nesting_limit(self):
+        # From the compiler-emitted corpus: the second Marker path reuses a text
+        # memo first populated at a shallower depth. Tree parsing always rereads it.
+        name = "_RINvCsgJQ98GVk1lE_5types8witness2DNtB2_6MarkerEL_Bv_EB2_"
+        expected = "types::witness2::<dyn types::Marker, dyn types::Marker>"
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+        limits = demangle.Limits(max_depth=8)
+        for read in (demangle.demangle_strict, demangle.parse):
+            with pytest.raises(demangle.LimitExceeded):
+                read(name, language="rust", limits=limits)
+
+
+class TestPunycodeArithmeticBounds:
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [("dn32g", "\U0010ffff"), ("en32g", "punycode{en32g}")],
+        ids=["highest-scalar", "above-scalar-range"],
+    )
+    def test_scalar_boundary_matches_native_fallback(self, payload, expected):
+        # rustc-demangle 0.1.28: a valid maximum scalar, then its overflowing neighbour.
+        name = "_RCu5_" + payload
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+
+    def test_long_overflowing_punycode_keeps_literal_fallback(self):
+        digits = "9" * 60000
+        name = "_RCu60000_" + digits
+        expected = "punycode{" + digits + "}"
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected

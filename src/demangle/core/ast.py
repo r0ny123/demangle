@@ -15,6 +15,7 @@ JSON, HTML, a token stream -- is a builder, not a second traversal to keep in sy
 
 import inspect
 import sys
+from typing import ClassVar
 
 from .builder import Builder
 from .errors import LimitExceeded
@@ -74,7 +75,9 @@ class Node:
     """
 
     __slots__ = ("size",)
+    _arity = 1
     kind = "node"
+    _node_fields: ClassVar[tuple[type | None, tuple[str, ...]]] = (None, ())
 
     #: The fields a positional `match` sees, in constructor order. Written out on every
     #: class here so type checkers see it; a scheme's own nodes get one derived in
@@ -82,6 +85,9 @@ class Node:
     __match_args__ = ()
 
     # `size`: an upper bound on this subtree's rendered length, set by `AstBuilder`.
+    # `_arity` on declarator nodes counts the rendered pack members. A wrapper
+    # applies to every member, so its width must be multiplied without walking the
+    # subtree. Absent metadata means one scalar (including scheme-specific nodes).
     # Carried so the output bound is checked in constant time on a tree with shared
     # subtrees; erring high is the safe direction.
 
@@ -181,12 +187,25 @@ class Node:
         `Pointer`, `Reference` and every other node whose state lives on a shared base --
         so comparing on it would make all of them equal regardless of content.
         """
-        names = []
-        for klass in reversed((self if isinstance(self, type) else type(self)).__mro__):
-            for slot in getattr(klass, "__slots__", ()):
-                if slot != "size" and slot not in names:
-                    names.append(slot)
-        return names
+        cls = self if isinstance(self, type) else type(self)
+        owner, fields = cls._node_fields
+        if owner is not cls:
+            names = []
+            for klass in reversed(cls.__mro__):
+                slots = klass.__dict__.get("__slots__", ())
+                # Python accepts one slot as a string as well as a sequence.
+                if isinstance(slots, str):
+                    slots = (slots,)
+                for slot in slots:
+                    if slot not in ("size", "_arity", "__dict__", "__weakref__") and slot not in names:
+                        names.append(slot)
+            # Fields belong to the class, not each node: serialization visits the same
+            # shapes thousands of times. Tag the cache with its owner so subclasses
+            # cannot inherit a parent's incomplete fields, while repeated reads avoid
+            # constructing and looking up a class dictionary view.
+            fields = tuple(names)
+            cls._node_fields = (cls, fields)
+        return fields
 
     def __repr__(self):  # pragma: no cover - debugging aid
         fields = ", ".join(f"{slot}={getattr(self, slot, None)!r}" for slot in self._fields())
@@ -195,23 +214,211 @@ class Node:
     def __eq__(self, other):
         if type(self) is not type(other):
             return NotImplemented
-        return all(getattr(self, s, None) == getattr(other, s, None) for s in self._fields())
+        return _equal_nodes(self, other)
 
     def __hash__(self):
-        return hash((type(self).__name__, *(_hashable(getattr(self, s, None)) for s in self._fields())))
+        return _hash_node(self)
 
 
-def _hashable(value):
-    return tuple(value) if isinstance(value, list) else value
+def _equal_nodes(left, right):
+    """Compare each node pair once, including redundant fields in scheme graphs."""
+    root_left, root_right = left, right
+    pending = [(left, right)]
+    seen = set()
+    while pending:
+        left, right = pending.pop()
+        if left is right:
+            continue
+        if (
+            type(left) is type(right)
+            and isinstance(left, Node)
+            and (type(left).__eq__ is Node.__eq__ or (left is root_left and right is root_right))
+        ):
+            pair = (id(left), id(right))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            for field in reversed(left._fields()):
+                pending.append((getattr(left, field, None), getattr(right, field, None)))
+        elif type(left) is type(right) and type(left) in (tuple, list):
+            # Sequence equality treats identical elements as equal without calling
+            # their comparison, including a node occurring in both sequences.
+            pair = (id(left), id(right))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            if len(left) != len(right):
+                return False
+            pending.extend(
+                (left[index], right[index]) for index in range(len(left) - 1, -1, -1) if left[index] is not right[index]
+            )
+        elif not bool(left == right):
+            return False
+    return True
+
+
+class _Prehashed:
+    """Give tuple hashing a child's exact hash, without expanding it again.
+
+    Using the integer itself would change the result: Python hashes large integers
+    modulo its hash prime, whereas a node's returned hash can occupy the whole word.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        self.value = value
+
+    def __hash__(self):
+        return self.value
+
+
+def _hash_value(value, hashes):
+    if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+        return _Prehashed(hashes[id(value)])
+    if type(value) is tuple:
+        return tuple(_hash_value(item, hashes) for item in value)
+    return value
+
+
+class _DeepHash(Exception):
+    pass
+
+
+_ACTIVE = object()
+
+
+def _hash_freeze(sequence, depth, hashes):
+    if depth > 64:
+        raise _DeepHash
+    values = []
+    for value in sequence:
+        if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+            values.append(_Prehashed(_hash_visit(value, depth + 2, hashes)))
+        elif type(value) is tuple:
+            values.append(_hash_freeze(value, depth + 1, hashes))
+        else:
+            values.append(value)
+    return tuple(values)
+
+
+def _hash_visit(node, depth, hashes):
+    key = id(node)
+    cached = hashes.get(key)
+    if cached is not None:
+        if cached is _ACTIVE:
+            raise TypeError("cannot hash a cyclic Node graph")
+        return cached
+    if depth > 64:
+        raise _DeepHash
+    hashes[key] = _ACTIVE
+    fields = node._fields()
+    if len(fields) == 1:
+        value = getattr(node, fields[0], None)
+        if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+            val = _Prehashed(_hash_visit(value, depth + 1, hashes))
+        elif type(value) is tuple or isinstance(value, list):
+            val = _hash_freeze(value, depth, hashes)
+        else:
+            val = value
+        result = hash((type(node).__name__, val))
+    else:
+        values = []
+        for field in fields:
+            value = getattr(node, field, None)
+            if isinstance(value, list):
+                value = tuple(value)
+            if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+                values.append(_Prehashed(_hash_visit(value, depth + 1, hashes)))
+            elif type(value) is tuple:
+                values.append(_hash_freeze(value, depth, hashes))
+            else:
+                values.append(value)
+        result = hash((type(node).__name__, *values))
+    hashes[key] = result
+    return result
+
+
+_INTERNAL_HASH_CODES = (
+    _hash_visit.__code__,
+    _hash_freeze.__code__,
+    Node._fields.__code__,
+    _Prehashed.__init__.__code__,
+    _Prehashed.__hash__.__code__,
+)
+
+
+def _hash_node(root):
+    try:
+        return _hash_visit(root, 0, {})
+    except _DeepHash:
+        return _hash_node_iterative(root)
+    except RecursionError as error:
+        # A lowered interpreter limit or a deep caller can bind before our guard.
+        # An explicit error from a foreign hash/getter is its policy, however: do
+        # not retry it, or a stateful override could hide its original failure.
+        traceback = error.__traceback__
+        while traceback is not None and traceback.tb_next is not None:
+            traceback = traceback.tb_next
+        if traceback is not None and traceback.tb_frame.f_code not in _INTERNAL_HASH_CODES:
+            raise
+        return _hash_node_iterative(root)
+
+
+def _hash_node_iterative(root):
+    """Compute structural hashes in graph order, without retained mutable-node state."""
+    hashes = {}
+    active = set()
+    pending = [(root, None)]
+    while pending:
+        node, values = pending.pop()
+        key = id(node)
+        if key in hashes:
+            continue
+        if values is not None:
+            hashes[key] = hash((type(node).__name__, *(_hash_value(value, hashes) for value in values)))
+            active.remove(key)
+            continue
+        if key in active:
+            raise TypeError("cannot hash a cyclic Node graph")
+        values = []
+        for field in node._fields():
+            value = getattr(node, field, None)
+            # Only a field's list was historically made hashable; nested lists
+            # still raise TypeError, matching Python's tuple hash semantics.
+            values.append(tuple(value) if isinstance(value, list) else value)
+        children = []
+        inspect = list(values)
+        while inspect:
+            value = inspect.pop()
+            if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+                children.append(value)
+            elif type(value) is tuple:
+                # A tuple subclass can override hashing; treat it as an opaque value.
+                inspect.extend(value)
+        if not children:
+            # Leaves and scalar sequences need no proxies or second visit.
+            hashes[key] = hash((type(node).__name__, *values))
+            continue
+        active.add(key)
+        pending.append((node, values))
+        pending.extend((child, None) for child in children)
+    return hashes[id(root)]
 
 
 def _nodes_in(value):
     """Every node a field's value holds, directly or inside a sequence."""
     if isinstance(value, Node):
         return (value,)
-    if isinstance(value, (list, tuple)):
-        return tuple(node for item in value for node in _nodes_in(item))
-    return ()
+    if not isinstance(value, (list, tuple)):
+        return ()
+    nodes = []
+    for item in value:
+        if isinstance(item, Node):
+            nodes.append(item)
+        elif isinstance(item, (list, tuple)):
+            nodes.extend(_nodes_in(item))
+    return nodes
 
 
 def _shared_nodes(root):
@@ -220,17 +427,27 @@ def _shared_nodes(root):
     Visits each distinct node's fields once, so this is linear in the graph however
     badly the expansion of it would blow up.
     """
-    counts = {}
+    visited = set()
+    shared = set()
     stack = [root]
     while stack:
         node = stack.pop()
         key = id(node)
-        counts[key] = counts.get(key, 0) + 1
-        if counts[key] > 1:
+        if key in visited:
+            shared.add(key)
             continue
+        visited.add(key)
         for field in node._fields():
-            stack.extend(_nodes_in(getattr(node, field, None)))
-    return {key for key, count in counts.items() if count > 1}
+            value = getattr(node, field, None)
+            if isinstance(value, Node):
+                stack.append(value)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if isinstance(item, Node):
+                        stack.append(item)
+                    elif isinstance(item, (list, tuple)):
+                        stack.extend(_nodes_in(item))
+    return shared
 
 
 def _emit(node, shared, ids):
@@ -421,7 +638,7 @@ class Qualify(Node):
     tree spells what the text path spelled.
     """
 
-    __slots__ = ("cv", "inner", "qualifiers")
+    __slots__ = ("_arity", "cv", "inner", "qualifiers")
     kind = "qualify"
     __match_args__ = ("inner", "qualifiers", "cv")
 
@@ -438,7 +655,10 @@ class Qualify(Node):
 
 
 class _Unary(Node):
-    __slots__ = ("inner",)
+    __slots__ = (
+        "_arity",
+        "inner",
+    )
     __match_args__ = ("inner",)
 
     def __init__(self, inner):
@@ -495,7 +715,10 @@ class Pack(_Unary):
 class ParameterPack(Node):
     """A pack of concrete template arguments."""
 
-    __slots__ = ("members",)
+    __slots__ = (
+        "_arity",
+        "members",
+    )
     kind = "parameter_pack"
     __match_args__ = ("members",)
 
@@ -512,7 +735,7 @@ class ParameterPack(Node):
 class MemberPointer(Node):
     """A pointer to member, `Type Owner::*`."""
 
-    __slots__ = ("inner", "owner")
+    __slots__ = ("_arity", "inner", "owner")
     kind = "member_pointer"
     __match_args__ = ("owner", "inner")
 
@@ -530,7 +753,7 @@ class MemberPointer(Node):
 class Array(Node):
     """An array type. An empty `dimension` means an unbounded array."""
 
-    __slots__ = ("dimension", "inner")
+    __slots__ = ("_arity", "dimension", "inner")
     kind = "array"
     __match_args__ = ("inner", "dimension")
 
@@ -548,7 +771,7 @@ class Array(Node):
 class VendorQualify(Node):
     """A vendor extended qualifier, spelled after the type it applies to."""
 
-    __slots__ = ("inner", "qualifier")
+    __slots__ = ("_arity", "inner", "qualifier")
     kind = "vendor_qualify"
     __match_args__ = ("inner", "qualifier")
 
@@ -631,30 +854,10 @@ class Special(Node):
         return builder.special(self.label, self.inner.build(builder))
 
 
-def _sized(node, size):
-    node.size = size
-    return node
-
-
 #: An empty pack, which is what a declarator applied to one becomes. Stateless, so shared.
-_EMPTY_PACK = _sized(ParameterPack(()), 0)
-
-
-def _distributes_to_nothing(inner):
-    """Whether applying a declarator to `inner` yields nothing at all.
-
-    A declarator applied to a pack applies to every member -- `Dp O T_` over three
-    arguments is three rvalue references -- so over *no* members it is no references,
-    and the result renders to nothing. `SpellingBuilder` does this, because its
-    `_wrap` distributes through `pack_of` and `pack_of(())` is empty.
-
-    This builder mirrors it. `size` is documented as an over-estimate, so a size for a
-    parameter that renders to nothing would tell a parser asking "did this parameter
-    drop out entirely" the cheap way that it had not, and a separator would be left
-    behind: `f(std::launch, std::function<void ()>&&, )`. Mirroring the distribution
-    makes `size == 0` an exact answer to that question.
-    """
-    return type(inner) is ParameterPack and not inner.members
+_EMPTY_PACK = ParameterPack(())
+_EMPTY_PACK.size = 0
+_EMPTY_PACK._arity = 0
 
 
 def _sizes(nodes):
@@ -666,6 +869,13 @@ def _sizes(nodes):
     over the Itanium corpus. The loop is several times faster for three nodes.
     `spelling.py` says the same thing about its joins.
     """
+    n = len(nodes)
+    if n == 1:
+        return nodes[0].size
+    if n == 2:
+        return nodes[0].size + nodes[1].size
+    if not n:
+        return 0
     total = 0
     for node in nodes:
         total += node.size
@@ -699,95 +909,168 @@ class AstBuilder(Builder):
     a particular result can.
     """
 
-    __slots__ = ("_leaves", "_style")
+    __slots__ = ("_builtins", "_names", "_raws", "_style")
 
     #: Bound on distinct leaves held, so a tool walking unrelated binaries cannot
     #: accumulate without end. Cleared wholesale when full.
     MAX_LEAVES = 4096
 
     def __init__(self, style=None):
-        self._leaves = {}
+        self._builtins = {}
+        self._names = {}
+        self._raws = {}
         # A registered name where there is one, so re-registering is picked up; else the
         # one-off style object. See `builder_for`.
         self._style = style
 
-    def _leaf(self, cls, text):
-        key = (cls, text)
-        found = self._leaves.get(key)
+    def builtin(self, spelling):
+        found = self._builtins.get(spelling)
         if found is not None:
             return found
-        if len(self._leaves) >= self.MAX_LEAVES:
-            self._leaves.clear()
-        node = self._leaves[key] = _sized(cls(text), len(text))
+        if len(self._builtins) >= self.MAX_LEAVES:
+            self._builtins.clear()
+        node = Builtin(spelling)
+        node.size = len(spelling)
+        self._builtins[spelling] = node
         return node
 
-    def builtin(self, spelling):
-        return self._leaf(Builtin, spelling)
-
     def name(self, text):
-        return self._leaf(Name, text)
+        found = self._names.get(text)
+        if found is not None:
+            return found
+        if len(self._names) >= self.MAX_LEAVES:
+            self._names.clear()
+        node = Name(text)
+        node.size = len(text)
+        self._names[text] = node
+        return node
 
     def raw(self, text):
-        return self._leaf(Raw, text)
+        found = self._raws.get(text)
+        if found is not None:
+            return found
+        if len(self._raws) >= self.MAX_LEAVES:
+            self._raws.clear()
+        node = Raw(text)
+        node.size = len(text)
+        self._raws[text] = node
+        return node
 
     def expression(self, form, parts):
         size = 0
         for part in parts:
             size += len(part) if isinstance(part, str) else part.size
-        return _sized(Expression(form, parts), size)
+        node = Expression(form, parts)
+        node.size = size
+        return node
 
     def literal(self, kind, value):
-        return _sized(Literal(kind, value), len(value) + (kind.size if kind else 0))
+        node = Literal(kind, value)
+        node.size = len(value) + (kind.size if kind else 0)
+        return node
 
     def qualified(self, parts):
-        return _sized(Qualified(parts), _sizes(parts) + 2 * max(len(parts) - 1, 0))
+        n = len(parts)
+        node = Qualified(parts)
+        if n == 1:
+            node.size = parts[0].size
+        elif n == 2:
+            node.size = parts[0].size + parts[1].size + 2
+        else:
+            node.size = _sizes(parts) + (2 * (n - 1) if n > 1 else 0)
+        return node
 
     def template(self, base, arguments, angle_space=True):
-        return _sized(Template(base, arguments, angle_space), base.size + _sizes(arguments) + 2 * len(arguments) + 2)
+        n = len(arguments)
+        node = Template(base, arguments, angle_space)
+        if n == 1:
+            node.size = base.size + arguments[0].size + 5
+        elif n == 2:
+            node.size = base.size + arguments[0].size + arguments[1].size + 7
+        else:
+            node.size = base.size + _sizes(arguments) + 2 * n + 3
+        return node
 
     def qualify(self, inner, qualifiers, cv=True):
         if not qualifiers:
             return inner
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
         width = 0
         for qualifier in qualifiers:
             width += len(qualifier) + 1
-        return _sized(Qualify(inner, qualifiers, cv=cv), inner.size + width)
+        arity = getattr(inner, "_arity", 1)
+        node = Qualify(inner, qualifiers, cv=cv)
+        node.size = inner.size + width * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def pointer(self, inner):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(Pointer(inner), inner.size + 3)
+        arity = getattr(inner, "_arity", 1)
+        node = Pointer(inner)
+        node.size = inner.size + 3 * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def reference(self, inner):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(Reference(inner), inner.size + 3)
+        arity = getattr(inner, "_arity", 1)
+        node = Reference(inner)
+        node.size = inner.size + 3 * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def rvalue_reference(self, inner):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(RValueReference(inner), inner.size + 4)
+        arity = getattr(inner, "_arity", 1)
+        node = RValueReference(inner)
+        node.size = inner.size + 4 * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def member_pointer(self, owner, inner):
         # A pointer to a member of no class at all is no pointer.
-        if _distributes_to_nothing(owner) or _distributes_to_nothing(inner):
+        if (type(owner) is ParameterPack and not owner.members) or (type(inner) is ParameterPack and not inner.members):
             return _EMPTY_PACK
-        return _sized(MemberPointer(owner, inner), owner.size + inner.size + 5)
+        owner_arity = getattr(owner, "_arity", 1)
+        inner_arity = getattr(inner, "_arity", 1)
+        arity = owner_arity * inner_arity
+        width = owner.size * inner_arity + inner.size * owner_arity + 5 * arity
+        node = MemberPointer(owner, inner)
+        node.size = width
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def array(self, inner, dimension):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(Array(inner, dimension), inner.size + len(dimension) + 4)
+        arity = getattr(inner, "_arity", 1)
+        node = Array(inner, dimension)
+        node.size = inner.size + (len(dimension) + 4) * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def function(self, returns, parameters, suffix="", name=None):
         width = (returns.size + 1 if returns is not None else 0) + (name.size if name is not None else 0)
         width += _sizes(parameters) + 2 * len(parameters) + len(suffix) + 2
-        return _sized(Function(returns, parameters, suffix, name), width)
+        node = Function(returns, parameters, suffix, name)
+        node.size = width
+        return node
 
     def pack(self, inner):
-        return _sized(Pack(inner), inner.size + 3)
+        node = Pack(inner)
+        node.size = inner.size + 3
+        return node
 
     def parameter_pack(self, members):
         # Nested packs are spliced, as `SpellingBuilder.pack_of` does: otherwise a pack
@@ -799,18 +1082,35 @@ class AstBuilder(Builder):
                 flattened.extend(member.members)
             else:
                 flattened.append(member)
-        return _sized(ParameterPack(flattened), _sizes(flattened) + 2 * len(flattened))
+        arity = sum(getattr(member, "_arity", 1) for member in flattened)
+        node = ParameterPack(flattened)
+        node.size = _sizes(flattened) + 2 * len(flattened)
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def vendor_qualify(self, inner, qualifier):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(VendorQualify(inner, qualifier), inner.size + len(qualifier) + 1)
+        arity = getattr(inner, "_arity", 1)
+        node = VendorQualify(inner, qualifier)
+        node.size = inner.size + (len(qualifier) + 1) * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def special(self, label, inner):
-        return _sized(Special(label, inner), inner.size + len(label))
+        node = Special(label, inner)
+        node.size = inner.size + len(label)
+        return node
 
     def decorated(self, inner, decoration):
-        return _sized(Decorated(inner, decoration), inner.size + len(decoration) + 10)
+        # GNU labels each clone separately; counting punctuation keeps the bound
+        # constant time in the subtree size, including numeric suffix components.
+        overhead = max(10, 9 * decoration.count(".")) if decoration.startswith(".") else 10
+        node = Decorated(inner, decoration)
+        node.size = inner.size + len(decoration) + overhead
+        return node
 
     def spell(self, handle, declarator=""):
         return handle.spell(declarator, style=self._style)

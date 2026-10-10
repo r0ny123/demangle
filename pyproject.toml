@@ -135,6 +135,7 @@ serve = "mkdocs serve {args}"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+verbosity_subtests = 0
 markers = [
     "sweep: a property checked over whole corpora; `hatch run quick` skips these",
 ]

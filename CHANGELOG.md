@@ -8,6 +8,50 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-10
+
+### Fixed
+
+- **Bounds enforcement on hostile and malformed inputs.** Large invalid decimal
+  lengths in Rust legacy symbols (e.g. 60,000 digits) are checked and refused early,
+  preventing denial-of-service in integer parsing. Swift Unicode identifier lengths
+  correctly distinguish UTF-8 byte counts from scalar counts, preventing index
+  out-of-range errors on non-ASCII identifiers. Undersized ELF64 headers and symbol
+  table entries in Swift binaries are validated against minimum structure sizes.
+- **Objective-C syntax and separator scanning.** Selectors require complete colons
+  (`-[Foo take:other]`), and category and selector/type splitting matches components
+  in linear time, eliminating quadratic rescan loops across long underscore-separated
+  names.
+- **Empty-name argument validation.** `demangle("")` validates configuration
+  parameters (`language`, `style`, `limits`) before returning, consistently raising
+  `ValueError` on invalid options rather than silently returning an empty string.
+- **CLI stream filter suppression.** The stream filter preserves metadata annotations
+  (such as Java `@Override` and ELF symbol version markers like `@@GLIBC`) instead of
+  rewriting them when filtering text input.
+- **Forced plugin error handling.** A language plugin raising an unexpected error
+  when explicitly forced via `language=` is chained as a `ParseError` rather than
+  leaking internal operational errors.
+- **AST structure and limit calculations.** Normalized `__slots__` handling preserves
+  payload attributes across custom AST node subclasses. Output bounds calculations
+  track template pack expansions and clone labels against `Limits.max_output`.
+
+### Performance
+
+- **AST serialization is 46% faster.** Serialization and dictionary export eliminate
+  redundant intermediate allocations, reducing serialization time on 5,913 libstdc++
+  ASTs from 120 ms to 89 ms.
+- **Cold demangling call overhead reduced by 20%.** Reduced 712,594 internal Python
+  calls across the cold benchmark suite by inlining hot reader checks, pre-caching
+  builtin type nodes in `SpellingBuilder`, and fast-pathing digit and single-character
+  token lookups.
+- **Itanium and Rust parsing optimizations.** Substitution lookup in the Itanium
+  parser is lazy, avoiding node cloning on unreferenced paths. Rust v0 and legacy
+  symbol traversal uses index cursors rather than repeated string slicing, running
+  up to 77% faster on deep paths.
+- **Bounded CLI stream cache.** CLI `--json-lines` and stream filtering caches enforce
+  a 16 MB memory weight bound (`_REMEMBERED_BYTES`), preventing long-running stream
+  filters from exhausting memory.
+
 ## [0.5.1] - 2026-10-09
 
 ### Added
@@ -3993,7 +4037,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/r0ny123/demangle/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/r0ny123/demangle/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/r0ny123/demangle/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/r0ny123/demangle/compare/v0.3.0...v0.4.0
