@@ -608,7 +608,14 @@ def _read(mangled, builder, language, style, limits):
     base = _undecorated(mangled)
     for candidate in tried:
         try:
-            if not _claims(candidate, mangled, base):
+            try:
+                claimed = candidate.detect(mangled) or (
+                    base is not None and candidate.symbol_table_decorations and candidate.detect(base)
+                )
+            except Exception as exc:
+                reraise_if_operational(exc)
+                continue
+            if not claimed:
                 continue
             return candidate, _parse_with(candidate, mangled, builder, limits, style)
         except RecursionError as exc:

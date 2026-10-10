@@ -985,9 +985,10 @@ class TextSink:
         self.memo = {}
 
     def emit(self, text):
-        remaining = self._remaining = self._remaining - len(text)
+        remaining = self._remaining - len(text)
         if remaining < 0:
             raise OutputTooLong
+        self._remaining = remaining
         self._parts.append(text)
 
     def open(self):
@@ -1131,18 +1132,17 @@ class Printer:
         `'z`, and every one after it would be numbered one too high. It takes a `for<>`
         binding twenty-six lifetimes to reach, which no compiler writes.
         """
-        self.emit("'")
         if lt == 0:
-            self.emit("_")
+            self.emit("'_")
             return
         depth = self.bound_lifetime_depth - lt
         if depth < 0:
             self.invalid()
 
         if depth < 26:
-            self.emit(chr(ord("a") + depth))
+            self.emit("'" + chr(ord("a") + depth))
         else:
-            self.emit(f"_{depth}")
+            self.emit(f"'_{depth}")
 
     def in_binder(self, val):
         def f1():
@@ -1216,6 +1216,19 @@ class Printer:
         argument list can name its arguments as well as contain them. Elements that
         produced nothing -- every one of them under `TextSink` -- are not collected.
         """
+        if self._plain:
+            element = (
+                self.print_generic_arg
+                if f == "print_generic_arg"
+                else (self.print_type if f == "print_type" else (f if callable(f) else getattr(self, f)))
+            )
+            i = 0
+            while not self.eat("E"):
+                if i > 0:
+                    self.emit(sep)
+                element()
+                i += 1
+            return i
         element = f if callable(f) else getattr(self, f)
         i = 0
         while not self.eat("E"):
@@ -1257,6 +1270,18 @@ class Printer:
                     ns = None
                 elif not ns.isupper():
                     raise UnableTov0Demangle(p.inn)
+                if self._plain:
+                    self.print_path(in_value)
+                    at = p.next_val
+                    dis = p.opt_integer_62("s") if at < p.end and p.inn[at] == "s" else 0
+                    name = p.ident(display=True)
+                    if ns:
+                        ns_str = "closure" if ns == "C" else ("shim" if ns == "S" else ns)
+                        name_str = f":{name}" if name else ""
+                        self.emit(f"::{{{ns_str}{name_str}#{dis}}}")
+                    elif name:
+                        self.emit(f"::{name}")
+                    return None
                 with self.node(nodes.Path) as built:
                     self.print_path(in_value)
                     at = p.next_val
@@ -1290,6 +1315,12 @@ class Printer:
                 if at < p.end and p.inn[at] == "s":
                     disambiguator = p.opt_integer_62("s")
                 name = p.ident(display=True)
+                if self._plain:
+                    if p.keep_hash and disambiguator:
+                        self.emit(f"{name}[{disambiguator:x}]")
+                    else:
+                        self.emit(name)
+                    return None
                 with self.node(nodes.RustName) as built:
                     self.emit(name)
                     if p.keep_hash and disambiguator:
@@ -1310,6 +1341,12 @@ class Printer:
                 self.backref_record(key, start, printer)
                 return result
             if tag == "I":
+                if self._plain:
+                    self.print_path(in_value)
+                    self.emit("::<" if in_value else "<")
+                    self.print_sep_list("print_generic_arg", ", ")
+                    self.emit(">")
+                    return None
                 collected = []
                 with self.node(lambda parts: nodes.Generics(parts, *_generic_fields(collected))) as built:
                     collected.append(self.print_path(in_value))
@@ -1325,6 +1362,14 @@ class Printer:
                     p.opt_integer_62("s")
                     p.skip_path()
 
+                if self._plain:
+                    self.emit("<")
+                    self.print_type()
+                    if tag != "M":
+                        self.emit(" as ")
+                        self.print_path(False)
+                    self.emit(">")
+                    return None
                 seen = []
                 with self.node(lambda parts: nodes.Impl(parts, *_impl_fields(seen))) as built:
                     self.emit("<")
@@ -1348,10 +1393,16 @@ class Printer:
         """
         if self.eat("L"):
             lt = self.parser.integer_62()
+            if self._plain:
+                self.print_lifetime_from_index(lt)
+                return None
             with self.node(lambda parts: nodes.Value(parts, "lifetime")) as built:
                 self.print_lifetime_from_index(lt)
             return built[0]
         if self.eat("K"):
+            if self._plain:
+                self.print_const(False)
+                return None
             with self.node(lambda parts: nodes.Value(parts, "const")) as built:
                 self.print_const(False)
             return built[0]
@@ -1383,6 +1434,9 @@ class Printer:
             p.next_val = at + 1
             ty = _BASIC_TYPES.get(tag)
             if ty is not None:
+                if self._plain:
+                    self.emit(ty)
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "basic")) as built:
                     self.emit(ty)
                 return built[0]
@@ -1392,6 +1446,17 @@ class Printer:
                 return self.print_path(False)
 
             if tag == "R" or tag == "Q":
+                if self._plain:
+                    self.emit("&")
+                    if self.eat("L"):
+                        lt = p.integer_62()
+                        if lt != 0:
+                            self.print_lifetime_from_index(lt)
+                            self.emit(" ")
+                    if tag != "R":
+                        self.emit("mut ")
+                    self.print_type()
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "reference")) as built:
                     self.emit("&")
                     if self.eat("L"):
@@ -1407,6 +1472,10 @@ class Printer:
                 return built[0]
 
             if tag == "P" or tag == "O":
+                if self._plain:
+                    self.emit("*mut " if tag != "P" else "*const ")
+                    self.print_type()
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "pointer")) as built:
                     self.emit("*")
                     if tag != "P":
@@ -1417,6 +1486,14 @@ class Printer:
                 return built[0]
 
             if tag == "A" or tag == "S":
+                if self._plain:
+                    self.emit("[")
+                    self.print_type()
+                    if tag == "A":
+                        self.emit("; ")
+                        self.print_const(True)
+                    self.emit("]")
+                    return None
                 form = "array" if tag == "A" else "slice"
                 with self.node(lambda parts: nodes.Type(parts, form)) as built:
                     self.emit("[")
@@ -1430,6 +1507,13 @@ class Printer:
                 return built[0]
 
             if tag == "T":
+                if self._plain:
+                    self.emit("(")
+                    count = self.print_sep_list("print_type", ", ")
+                    if count == 1:
+                        self.emit(",")
+                    self.emit(")")
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "tuple")) as built:
                     self.emit("(")
                     count = self.print_sep_list("print_type", ", ")
@@ -1439,11 +1523,24 @@ class Printer:
                 return built[0]
 
             if tag == "F":
+                if self._plain:
+                    self.in_binder(1)
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "fn")) as built:
                     self.in_binder(1)
                 return built[0]
 
             if tag == "D":
+                if self._plain:
+                    self.emit("dyn ")
+                    self.in_binder(2)
+                    if not self.eat("L"):
+                        self.invalid()
+                    lt = p.integer_62()
+                    if lt != 0:
+                        self.emit(" + ")
+                        self.print_lifetime_from_index(lt)
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "dyn")) as built:
                     self.emit("dyn ")
                     self.in_binder(2)
@@ -1471,6 +1568,11 @@ class Printer:
                 return result
 
             if tag == "W":
+                if self._plain:
+                    self.print_type()
+                    self.emit(" is ")
+                    self.print_pattern()
+                    return None
                 with self.node(lambda parts: nodes.Type(parts, "pattern")) as built:
                     self.print_type()
                     self.emit(" is ")

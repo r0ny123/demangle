@@ -75,6 +75,7 @@ class Node:
     """
 
     __slots__ = ("size",)
+    _arity = 1
     kind = "node"
     _node_fields: ClassVar[tuple[type | None, tuple[str, ...]]] = (None, ())
 
@@ -226,6 +227,8 @@ def _equal_nodes(left, right):
     seen = set()
     while pending:
         left, right = pending.pop()
+        if left is right:
+            continue
         if (
             type(left) is type(right)
             and isinstance(left, Node)
@@ -282,50 +285,72 @@ class _DeepHash(Exception):
     pass
 
 
-def _hash_node(root):
-    hashes = {}
-    active = set()
+_ACTIVE = object()
 
-    def freeze(sequence, depth):
-        if depth > 64:
-            raise _DeepHash
-        values = []
-        for value in sequence:
-            if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
-                values.append(_Prehashed(visit(value, depth + 2)))
-            elif type(value) is tuple:
-                values.append(freeze(value, depth + 1))
-            else:
-                values.append(value)
-        return tuple(values)
 
-    def visit(node, depth):
-        key = id(node)
-        if key in hashes:
-            return hashes[key]
-        if depth > 64:
-            raise _DeepHash
-        if key in active:
+def _hash_freeze(sequence, depth, hashes):
+    if depth > 64:
+        raise _DeepHash
+    values = []
+    for value in sequence:
+        if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+            values.append(_Prehashed(_hash_visit(value, depth + 2, hashes)))
+        elif type(value) is tuple:
+            values.append(_hash_freeze(value, depth + 1, hashes))
+        else:
+            values.append(value)
+    return tuple(values)
+
+
+def _hash_visit(node, depth, hashes):
+    key = id(node)
+    cached = hashes.get(key)
+    if cached is not None:
+        if cached is _ACTIVE:
             raise TypeError("cannot hash a cyclic Node graph")
-        active.add(key)
+        return cached
+    if depth > 64:
+        raise _DeepHash
+    hashes[key] = _ACTIVE
+    fields = node._fields()
+    if len(fields) == 1:
+        value = getattr(node, fields[0], None)
+        if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+            val = _Prehashed(_hash_visit(value, depth + 1, hashes))
+        elif type(value) is tuple or isinstance(value, list):
+            val = _hash_freeze(value, depth, hashes)
+        else:
+            val = value
+        result = hash((type(node).__name__, val))
+    else:
         values = []
-        for field in node._fields():
+        for field in fields:
             value = getattr(node, field, None)
             if isinstance(value, list):
                 value = tuple(value)
             if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
-                values.append(_Prehashed(visit(value, depth + 1)))
+                values.append(_Prehashed(_hash_visit(value, depth + 1, hashes)))
             elif type(value) is tuple:
-                values.append(freeze(value, depth))
+                values.append(_hash_freeze(value, depth, hashes))
             else:
                 values.append(value)
         result = hash((type(node).__name__, *values))
-        hashes[key] = result
-        active.remove(key)
-        return result
+    hashes[key] = result
+    return result
 
+
+_INTERNAL_HASH_CODES = (
+    _hash_visit.__code__,
+    _hash_freeze.__code__,
+    Node._fields.__code__,
+    _Prehashed.__init__.__code__,
+    _Prehashed.__hash__.__code__,
+)
+
+
+def _hash_node(root):
     try:
-        return visit(root, 0)
+        return _hash_visit(root, 0, {})
     except _DeepHash:
         return _hash_node_iterative(root)
     except RecursionError as error:
@@ -335,14 +360,7 @@ def _hash_node(root):
         traceback = error.__traceback__
         while traceback is not None and traceback.tb_next is not None:
             traceback = traceback.tb_next
-        internal = (
-            visit.__code__,
-            freeze.__code__,
-            Node._fields.__code__,
-            _Prehashed.__init__.__code__,
-            _Prehashed.__hash__.__code__,
-        )
-        if traceback is not None and traceback.tb_frame.f_code not in internal:
+        if traceback is not None and traceback.tb_frame.f_code not in _INTERNAL_HASH_CODES:
             raise
         return _hash_node_iterative(root)
 
@@ -409,21 +427,27 @@ def _shared_nodes(root):
     Visits each distinct node's fields once, so this is linear in the graph however
     badly the expansion of it would blow up.
     """
-    counts = {}
+    visited = set()
+    shared = set()
     stack = [root]
     while stack:
         node = stack.pop()
         key = id(node)
-        counts[key] = counts.get(key, 0) + 1
-        if counts[key] > 1:
+        if key in visited:
+            shared.add(key)
             continue
+        visited.add(key)
         for field in node._fields():
             value = getattr(node, field, None)
             if isinstance(value, Node):
                 stack.append(value)
             elif isinstance(value, (list, tuple)):
-                stack.extend(_nodes_in(value))
-    return {key for key, count in counts.items() if count > 1}
+                for item in value:
+                    if isinstance(item, Node):
+                        stack.append(item)
+                    elif isinstance(item, (list, tuple)):
+                        stack.extend(_nodes_in(item))
+    return shared
 
 
 def _emit(node, shared, ids):
@@ -830,32 +854,10 @@ class Special(Node):
         return builder.special(self.label, self.inner.build(builder))
 
 
-def _sized(node, size, arity=1):
-    node.size = size
-    if arity != 1:
-        node._arity = arity
-    return node
-
-
 #: An empty pack, which is what a declarator applied to one becomes. Stateless, so shared.
-_EMPTY_PACK = _sized(ParameterPack(()), 0, 0)
-
-
-def _distributes_to_nothing(inner):
-    """Whether applying a declarator to `inner` yields nothing at all.
-
-    A declarator applied to a pack applies to every member -- `Dp O T_` over three
-    arguments is three rvalue references -- so over *no* members it is no references,
-    and the result renders to nothing. `SpellingBuilder` does this, because its
-    `_wrap` distributes through `pack_of` and `pack_of(())` is empty.
-
-    This builder mirrors it. `size` is documented as an over-estimate, so a size for a
-    parameter that renders to nothing would tell a parser asking "did this parameter
-    drop out entirely" the cheap way that it had not, and a separator would be left
-    behind: `f(std::launch, std::function<void ()>&&, )`. Mirroring the distribution
-    makes `size == 0` an exact answer to that question.
-    """
-    return type(inner) is ParameterPack and not inner.members
+_EMPTY_PACK = ParameterPack(())
+_EMPTY_PACK.size = 0
+_EMPTY_PACK._arity = 0
 
 
 def _sizes(nodes):
@@ -867,6 +869,13 @@ def _sizes(nodes):
     over the Itanium corpus. The loop is several times faster for three nodes.
     `spelling.py` says the same thing about its joins.
     """
+    n = len(nodes)
+    if n == 1:
+        return nodes[0].size
+    if n == 2:
+        return nodes[0].size + nodes[1].size
+    if not n:
+        return 0
     total = 0
     for node in nodes:
         total += node.size
@@ -900,105 +909,168 @@ class AstBuilder(Builder):
     a particular result can.
     """
 
-    __slots__ = ("_leaves", "_style")
+    __slots__ = ("_builtins", "_names", "_raws", "_style")
 
     #: Bound on distinct leaves held, so a tool walking unrelated binaries cannot
     #: accumulate without end. Cleared wholesale when full.
     MAX_LEAVES = 4096
 
     def __init__(self, style=None):
-        self._leaves = {}
+        self._builtins = {}
+        self._names = {}
+        self._raws = {}
         # A registered name where there is one, so re-registering is picked up; else the
         # one-off style object. See `builder_for`.
         self._style = style
 
-    def _leaf(self, cls, text):
-        key = (cls, text)
-        found = self._leaves.get(key)
+    def builtin(self, spelling):
+        found = self._builtins.get(spelling)
         if found is not None:
             return found
-        if len(self._leaves) >= self.MAX_LEAVES:
-            self._leaves.clear()
-        node = self._leaves[key] = _sized(cls(text), len(text))
+        if len(self._builtins) >= self.MAX_LEAVES:
+            self._builtins.clear()
+        node = Builtin(spelling)
+        node.size = len(spelling)
+        self._builtins[spelling] = node
         return node
 
-    def builtin(self, spelling):
-        return self._leaf(Builtin, spelling)
-
     def name(self, text):
-        return self._leaf(Name, text)
+        found = self._names.get(text)
+        if found is not None:
+            return found
+        if len(self._names) >= self.MAX_LEAVES:
+            self._names.clear()
+        node = Name(text)
+        node.size = len(text)
+        self._names[text] = node
+        return node
 
     def raw(self, text):
-        return self._leaf(Raw, text)
+        found = self._raws.get(text)
+        if found is not None:
+            return found
+        if len(self._raws) >= self.MAX_LEAVES:
+            self._raws.clear()
+        node = Raw(text)
+        node.size = len(text)
+        self._raws[text] = node
+        return node
 
     def expression(self, form, parts):
         size = 0
         for part in parts:
             size += len(part) if isinstance(part, str) else part.size
-        return _sized(Expression(form, parts), size)
+        node = Expression(form, parts)
+        node.size = size
+        return node
 
     def literal(self, kind, value):
-        return _sized(Literal(kind, value), len(value) + (kind.size if kind else 0))
+        node = Literal(kind, value)
+        node.size = len(value) + (kind.size if kind else 0)
+        return node
 
     def qualified(self, parts):
-        return _sized(Qualified(parts), _sizes(parts) + 2 * max(len(parts) - 1, 0))
+        n = len(parts)
+        node = Qualified(parts)
+        if n == 1:
+            node.size = parts[0].size
+        elif n == 2:
+            node.size = parts[0].size + parts[1].size + 2
+        else:
+            node.size = _sizes(parts) + (2 * (n - 1) if n > 1 else 0)
+        return node
 
     def template(self, base, arguments, angle_space=True):
-        return _sized(Template(base, arguments, angle_space), base.size + _sizes(arguments) + 2 * len(arguments) + 3)
+        n = len(arguments)
+        node = Template(base, arguments, angle_space)
+        if n == 1:
+            node.size = base.size + arguments[0].size + 5
+        elif n == 2:
+            node.size = base.size + arguments[0].size + arguments[1].size + 7
+        else:
+            node.size = base.size + _sizes(arguments) + 2 * n + 3
+        return node
 
     def qualify(self, inner, qualifiers, cv=True):
         if not qualifiers:
             return inner
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
         width = 0
         for qualifier in qualifiers:
             width += len(qualifier) + 1
-        return _sized(
-            Qualify(inner, qualifiers, cv=cv),
-            inner.size + width * getattr(inner, "_arity", 1),
-            getattr(inner, "_arity", 1),
-        )
+        arity = getattr(inner, "_arity", 1)
+        node = Qualify(inner, qualifiers, cv=cv)
+        node.size = inner.size + width * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def pointer(self, inner):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(Pointer(inner), inner.size + 3 * getattr(inner, "_arity", 1), getattr(inner, "_arity", 1))
+        arity = getattr(inner, "_arity", 1)
+        node = Pointer(inner)
+        node.size = inner.size + 3 * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def reference(self, inner):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(Reference(inner), inner.size + 3 * getattr(inner, "_arity", 1), getattr(inner, "_arity", 1))
+        arity = getattr(inner, "_arity", 1)
+        node = Reference(inner)
+        node.size = inner.size + 3 * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def rvalue_reference(self, inner):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(RValueReference(inner), inner.size + 4 * getattr(inner, "_arity", 1), getattr(inner, "_arity", 1))
+        arity = getattr(inner, "_arity", 1)
+        node = RValueReference(inner)
+        node.size = inner.size + 4 * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def member_pointer(self, owner, inner):
         # A pointer to a member of no class at all is no pointer.
-        if _distributes_to_nothing(owner) or _distributes_to_nothing(inner):
+        if (type(owner) is ParameterPack and not owner.members) or (type(inner) is ParameterPack and not inner.members):
             return _EMPTY_PACK
-        arity = getattr(owner, "_arity", 1) * getattr(inner, "_arity", 1)
-        width = owner.size * getattr(inner, "_arity", 1) + inner.size * getattr(owner, "_arity", 1) + 5 * arity
-        return _sized(MemberPointer(owner, inner), width, arity)
+        owner_arity = getattr(owner, "_arity", 1)
+        inner_arity = getattr(inner, "_arity", 1)
+        arity = owner_arity * inner_arity
+        width = owner.size * inner_arity + inner.size * owner_arity + 5 * arity
+        node = MemberPointer(owner, inner)
+        node.size = width
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def array(self, inner, dimension):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(
-            Array(inner, dimension),
-            inner.size + (len(dimension) + 4) * getattr(inner, "_arity", 1),
-            getattr(inner, "_arity", 1),
-        )
+        arity = getattr(inner, "_arity", 1)
+        node = Array(inner, dimension)
+        node.size = inner.size + (len(dimension) + 4) * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def function(self, returns, parameters, suffix="", name=None):
         width = (returns.size + 1 if returns is not None else 0) + (name.size if name is not None else 0)
         width += _sizes(parameters) + 2 * len(parameters) + len(suffix) + 2
-        return _sized(Function(returns, parameters, suffix, name), width)
+        node = Function(returns, parameters, suffix, name)
+        node.size = width
+        return node
 
     def pack(self, inner):
-        return _sized(Pack(inner), inner.size + 3)
+        node = Pack(inner)
+        node.size = inner.size + 3
+        return node
 
     def parameter_pack(self, members):
         # Nested packs are spliced, as `SpellingBuilder.pack_of` does: otherwise a pack
@@ -1010,29 +1082,35 @@ class AstBuilder(Builder):
                 flattened.extend(member.members)
             else:
                 flattened.append(member)
-        return _sized(
-            ParameterPack(flattened),
-            _sizes(flattened) + 2 * len(flattened),
-            sum(getattr(member, "_arity", 1) for member in flattened),
-        )
+        arity = sum(getattr(member, "_arity", 1) for member in flattened)
+        node = ParameterPack(flattened)
+        node.size = _sizes(flattened) + 2 * len(flattened)
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def vendor_qualify(self, inner, qualifier):
-        if _distributes_to_nothing(inner):
+        if type(inner) is ParameterPack and not inner.members:
             return _EMPTY_PACK
-        return _sized(
-            VendorQualify(inner, qualifier),
-            inner.size + (len(qualifier) + 1) * getattr(inner, "_arity", 1),
-            getattr(inner, "_arity", 1),
-        )
+        arity = getattr(inner, "_arity", 1)
+        node = VendorQualify(inner, qualifier)
+        node.size = inner.size + (len(qualifier) + 1) * arity
+        if arity != 1:
+            node._arity = arity
+        return node
 
     def special(self, label, inner):
-        return _sized(Special(label, inner), inner.size + len(label))
+        node = Special(label, inner)
+        node.size = inner.size + len(label)
+        return node
 
     def decorated(self, inner, decoration):
         # GNU labels each clone separately; counting punctuation keeps the bound
         # constant time in the subtree size, including numeric suffix components.
         overhead = max(10, 9 * decoration.count(".")) if decoration.startswith(".") else 10
-        return _sized(Decorated(inner, decoration), inner.size + len(decoration) + overhead)
+        node = Decorated(inner, decoration)
+        node.size = inner.size + len(decoration) + overhead
+        return node
 
     def spell(self, handle, declarator=""):
         return handle.spell(declarator, style=self._style)

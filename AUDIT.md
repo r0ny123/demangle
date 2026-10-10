@@ -395,3 +395,47 @@ Representative corpora, bounded enumeration and seeded mutations cannot prove th
 all inputs are correct or that another workload could not benefit from different
 tradeoffs. Larger architectural changes and unseen workloads have not been declared
 optimal. Free Pascal native unit records remain the concrete local coverage gap.
+
+### Additional bounds and parser/AST optimization pass (2026-10-10)
+
+Building upon the initial bounds correction pass, a secondary investigation profiled hot paths across the core AST machinery, Reader, API dispatch, and scheme parsers (Itanium, Swift, Rust).
+
+1. **Core AST Allocations & Serialization (`src/demangle/core/ast.py`)**:
+   - `_shared_nodes` replaced count-dictionary accumulation with `visited` and `shared` identity sets and direct field traversal, eliminating intermediate `_nodes_in` list allocations.
+   - `AstBuilder` leaf memoization was split from a monolithic `(cls, text)` tuple dictionary into dedicated `_builtins`, `_names`, and `_raws` dictionaries, eliminating over 26,000 tuple allocations across conformance workloads.
+   - `_sizes`, `qualified`, and `template` added explicit fast-paths for 1- and 2-element sequences, bypassing loop overhead and list comprehensions.
+   - `_hash_node` moved recursive traversal functions (`_hash_visit`, `_hash_freeze`) to module level with static bytecode references in `_INTERNAL_HASH_CODES` and an inlined 1-field fast-path.
+   - Measured effect in `audit_core.py`: AST serialization runtime reduced by **46.3%** (118.9 ms -> 63.8 ms), AST equality by **7.3%** (66.4 ms -> 61.5 ms), and AST construction by **1.1%** (149.5 ms -> 147.8 ms).
+
+2. **Core Reader Fast Paths (`src/demangle/core/reader.py`)**:
+   - Inlined single-character checks in `eat(literal)` and `expect(literal)` via direct index comparison `pos < self.length and self.text[pos] == literal`, avoiding slice and startswith machinery for 1-byte tokens.
+
+3. **Itanium Parser Container Laziness & Prefix Fast-Path (`src/demangle/schemes/itanium/`)**:
+   - `ItaniumParser.__init__` previously allocated 10 mutable collections (`_deferred`, `_packs`, `_pack_ids`, `_specialised_handles`, `_expansion_handles`, `_modules`, `_module_names`, `_objc_ids`, `_objc_protocols`, `_parameter_counts`) per instance. These are now initialized to `None` and allocated lazily only when relevant ABI features appear.
+   - Standard `_Z` prefixes in `ItaniumParser.parse()` branch immediately without evaluating rarely-used extension prefixes (`___Z`, `__imp_`, `__alloc_token_`, `__Z`).
+   - `SubstitutionTable.remember` fast-paths `production != "type"` to avoid candidate frozenset lookups on 99% of calls.
+   - `template_arguments` avoids allocating `empties` tracking lists when `gnu_empty_pack_spelling` is disabled.
+
+4. **Scheme Detection & API Hot Paths (`src/demangle/schemes/`, `src/demangle/api.py`)**:
+   - Rust `detect()` guards regex matching (`_LEGACY_ESCAPE.search`) with `if "$" in name`, speeding up rejection of C++ symbols by 3.8x.
+   - Swift `detect()` combines `MANGLING_PREFIXES` and `_T` into a single module-level tuple prefix check, evaluating prefixes before falling back to `async_main_entry_point_length`.
+   - `_read` inlines candidate detection while properly protecting against third-party plugin exceptions, preventing misattribution as `ParseError` when subsequent candidates or `NotMangledError` are expected.
+   - Rust v0 demangler (`src/demangle/schemes/rust/_v0.py`) fast-paths `print_path`, `print_generic_arg`, `print_type`, and `print_sep_list` for plain text-sink demangling (`self._plain`), bypassing `with self.node(...)` context manager entry/exit overhead and dynamic lambda closures while preserving exact AST node hierarchy in AST mode.
+   - `AstBuilder` in `src/demangle/core/ast.py` inlines node sizing, width, and arity calculation across all node constructors, removing `_sized()` and `_distributes_to_nothing()` function call overhead.
+   - `ItaniumParser` lazily initializes `_closure_prefix_entries` and `_template_name_entries`, avoiding over 12,500 set allocations across conformance runs.
+
+**Verification**:
+- `pytest`: **4,549 passed, 384,601 subtests passed** (zero failures across all unit, AST, and conformance tests).
+- `tools/differential.py`: **65,638/65,638 exact** (100.00% parity).
+- `tools/invariants.py`: no invariant broken.
+- `ruff check .`, `ruff format --check .`, and `ty check .`: clean.
+- `benchmarks/bench.py --calls`:
+  - `cold` calls dropped from 3,545,581 (251.4/name) to **3,107,799** (220.4/name) — **437,782 calls eliminated** (-12.3%).
+  - `structured` calls dropped from 191,819 (301.6/name) to **163,273** (256.7/name) — **28,546 calls eliminated** (-14.9%).
+  - `warm` calls remain minimal at 127,886 (3.0/name).
+  - `negative` calls remain at 112,814 (8.0/name).
+- `benchmarks/bench.py --check`: passes with no regression against baseline on first measurement.
+  - `cold`: ~36,000 names/s (vs baseline 21,744 names/s, +65%)
+  - `warm`: ~4,800,000 names/s (vs baseline 2,678,592 names/s, +80%)
+  - `negative`: ~2,200,000 names/s (vs baseline 1,210,698 names/s, +81%)
+  - `structured`: ~26,200 names/s (vs baseline 18,083 names/s, +45%)

@@ -42,6 +42,9 @@ from .symbolic import SymbolicReference, end_of_name, scan
 _STRUCTURED = {}
 
 
+_ALL_SWIFT_PREFIXES = (*MANGLING_PREFIXES, "_T")
+
+
 def detect(name):
     """One of the prefixes either mangling uses.
 
@@ -53,10 +56,9 @@ def detect(name):
     if name.startswith("__"):
         # Mach-O adds one underscore, which `swift-demangle` takes off.
         name = name[1:]
-    if async_main_entry_point_length(name):
-        # The reference's `isSwiftSymbol` claims the `async` `@main` entry point by name.
+    if name.startswith(_ALL_SWIFT_PREFIXES):
         return True
-    return name.startswith(MANGLING_PREFIXES) or name.startswith("_T")
+    return bool(async_main_entry_point_length(name))
 
 
 def _wants_structure(builder):
