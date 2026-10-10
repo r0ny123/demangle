@@ -956,8 +956,12 @@ class _Scope:
         self.sink.open()
         return self.box
 
-    def __exit__(self, *exception):
-        self.box.append(self.sink.close(self.factory))
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.box.append(self.sink.close(self.factory))
+        else:
+            if len(self.sink._stack) > 1:
+                self.sink._stack.pop()
         return False
 
 
