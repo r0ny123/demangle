@@ -562,3 +562,95 @@ class TestReadingAMachOImage:
     def test_invalid_magic_is_a_malformed_image(self):
         with pytest.raises(MalformedImage):
             macho_image(bytes(0x20))
+
+
+def test_utf8_identifier_before_a_symbolic_reference_keeps_the_byte_offset():
+    import struct
+
+    raw = "2é3FooV_".encode() + b"\x01" + struct.pack("<i", -127) + b"t"
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, reference.at, at))
+        return "4demo3BarV"
+
+    assert demangle_symbolic(raw, resolve) == "(é.Foo, demo.Bar)"
+    assert seen == [(-127, 10, 10)]
+
+
+def test_a_resolver_can_return_a_plain_utf8_identifier():
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: "2é2πV") == "é.π"
+
+
+def test_nested_symbolic_fragments_do_not_recode_high_offset_bytes():
+    import struct
+
+    fragment = b"\x01" + struct.pack("<i", -127)
+    answers = iter([fragment.decode("latin-1"), "2é2πV"])
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, at))
+        return next(answers)
+
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", resolve) == "é.π"
+    assert seen == [(0, 1), (-127, 1)]
+
+
+@pytest.mark.parametrize(("module", "type_name"), [("é", "π"), ("demo", "😀")])
+def test_a_context_descriptor_can_name_utf8_identifiers(module, type_name):
+    import struct
+
+    blob = bytearray(0x100)
+    module_raw, type_raw = module.encode(), type_name.encode()
+    blob[0x80 : 0x80 + len(module_raw) + 1] = module_raw + b"\0"
+    blob[0xA0 : 0xA0 + len(type_raw) + 1] = type_raw + b"\0"
+    struct.pack_into("<Iii", blob, 0x10, 0, 0, 0x80 - 0x18)
+    struct.pack_into("<Iii", blob, 0x20, 17, 0x10 - 0x24, 0xA0 - 0x28)
+    resolver = ContextResolver(Image([(0x1000, bytes(blob))]))
+    fragment = resolver.fragment(0x1020)
+    assert fragment == f"{len(module_raw)}{module}{len(type_raw)}{type_name}V"
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: fragment) == f"{module}.{type_name}"
+
+
+def test_a_unicode_fragment_can_hold_a_control_byte_inside_its_identifier():
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: "4demo3é\x01V") == "demo.é\x01"
+
+
+def test_binary_resolver_fragments_can_follow_an_ascii_type_prefix():
+    import struct
+
+    fragment = b"Say\x01" + struct.pack("<i", -127) + b"G"
+    answers = iter([fragment, "2é2πV"])
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, at))
+        return next(answers)
+
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", resolve) == "[é.π]"
+    assert seen == [(0, 1), (-127, 4)]
+
+
+@pytest.mark.parametrize(
+    ("prefix", "suffix", "expected"),
+    [
+        (b"Si_", b"t", "(Swift.Int, demo.Bar)"),
+        (b"Si_\xff", b"t", "(Swift.Int, demo.Bar)"),
+        (b"Say", b"G", "[demo.Bar]"),
+        (b"\xff", b"", "demo.Bar"),
+    ],
+)
+def test_legacy_binary_str_fragments_preserve_prefixes_and_padding(prefix, suffix, expected):
+    import struct
+
+    fragment = prefix + b"\x01" + struct.pack("<i", -127) + suffix
+    answers = iter([fragment.decode("latin-1"), "4demo3BarV"])
+    seen = []
+
+    def resolve(reference, at):
+        seen.append((reference.offset, at))
+        return next(answers)
+
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", resolve) == expected
+    assert seen == [(0, 1), (-127, len(prefix) + 1)]

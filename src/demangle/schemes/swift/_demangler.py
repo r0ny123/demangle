@@ -245,7 +245,28 @@ class Demangler:
     would have to be caught at each of them.
     """
 
-    def __init__(self, text, resolver=None):
+    __slots__ = (
+        "end",
+        "has_non_ascii",
+        "is_old_function_type_mangling",
+        "nesting",
+        "pos",
+        "resolver",
+        "stack",
+        "substitutions",
+        "text",
+        "words",
+    )
+
+    def __init__(self, text, resolver=None, *, byte_mode=False):
+        self.has_non_ascii = not text.isascii()
+        if self.has_non_ascii and not byte_mode:
+            # Swift lengths and resolver positions address bytes. Symbolic callers
+            # already supply a Latin1 view of raw bytes and must not be recoded.
+            try:
+                text = text.encode("utf-8").decode("latin-1")
+            except UnicodeEncodeError:
+                text = ""  # An unpaired surrogate cannot occur in a UTF8 identifier.
         self.text = text
         #: Called with `(SymbolicReference, offset-of-its-offset-field)`; returns a mangled
         #: fragment for the target, or None. Without one a symbolic reference is refused.
@@ -482,7 +503,18 @@ class Demangler:
             return None
         if self.nesting >= _MAX_NESTING:
             return None
-        inner = Demangler(fragment, self.resolver)
+        # Preserve legacy Latin1 fragments when the grammar reaches a binary token.
+        # A control byte inside a counted identifier is ordinary Unicode text.
+        if isinstance(fragment, bytes):
+            fragment = fragment.decode("latin-1")
+            byte_mode = True
+        else:
+            byte_mode = False
+            if not fragment.isascii() and any(char in _SYMBOLIC_REFERENCE_BYTES or char == "\xff" for char in fragment):
+                probe = _BinaryFragmentProbe(fragment)
+                probe.parse_and_push()
+                byte_mode = probe.binary
+        inner = Demangler(fragment, self.resolver, byte_mode=byte_mode)
         inner.nesting = self.nesting + 1
         resolved = inner.demangle_fragment()
         if resolved is None:
@@ -644,6 +676,11 @@ class Demangler:
         identifier = "".join(pieces)
         if not identifier:
             return None
+        if not punycoded and self.has_non_ascii and not identifier.isascii():
+            try:
+                identifier = identifier.encode("latin-1").decode("utf-8")
+            except UnicodeError:
+                return None
         node = Node("Identifier", text=identifier)
         self.add_substitution(node)
         return node
@@ -2555,6 +2592,26 @@ class Demangler:
         return None
 
 
+class _BinaryFragmentProbe(Demangler):
+    """Classify ambiguous legacy str fragments without invoking their resolver."""
+
+    __slots__ = ("binary",)
+
+    def __init__(self, text):
+        super().__init__(text, byte_mode=True)
+        self.binary = False
+
+    def demangle_symbolic_reference(self, raw_kind):
+        self.binary = True
+        return None
+
+    def demangle_operator(self):
+        if self.peek() == "\xff":
+            self.binary = True
+            return None
+        return super().demangle_operator()
+
+
 #: Bytes 1-0xC introduce a symbolic reference: a four-byte offset into the binary.
 _SYMBOLIC_REFERENCE_BYTES = frozenset(chr(byte) for byte in range(1, 0xD))
 
@@ -3108,7 +3165,7 @@ _OPERATORS = {
 }
 
 
-def demangle_symbol(name, resolver=None):
+def demangle_symbol(name, resolver=None, *, byte_mode=False):
     """Read `name` into a `Global` node, or return `None` if it is not readable.
 
     Swift 3's mangling is a different grammar with its own demangler in the compiler, and
@@ -3118,17 +3175,17 @@ def demangle_symbol(name, resolver=None):
     if name.startswith("_T") and not name.startswith("_T0"):
         from ._old_demangler import demangle_old_symbol
 
-        return demangle_old_symbol(name)
-    return Demangler(name, resolver).demangle_symbol()
+        return demangle_old_symbol(name, byte_mode=byte_mode)
+    return Demangler(name, resolver, byte_mode=byte_mode).demangle_symbol()
 
 
-def demangle_type(name, resolver=None):
+def demangle_type(name, resolver=None, *, byte_mode=False):
     """Read `name` as a type rather than a whole symbol, for `_TtGSa...`-style names.
 
     This is also the entry a metadata typeref takes: those are types, and they carry no
     `$s` prefix for `demangle_symbol` to find.
     """
-    demangler = Demangler(name, resolver)
+    demangler = Demangler(name, resolver, byte_mode=byte_mode)
     demangler.parse_and_push()
     found = demangler.pop()
     return found if found is not None else Node("Suffix", text=name)

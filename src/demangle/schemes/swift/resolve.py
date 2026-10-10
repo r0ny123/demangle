@@ -489,10 +489,13 @@ class ContextResolver:
             return None
         pieces = [prefix] if prefix else []
         for letter, name in reversed(chain):
-            if not name.isascii():
-                # A non-ASCII identifier would need punycode; the descriptor holds UTF-8.
+            try:
+                identifier = name.decode("utf-8")
+            except UnicodeDecodeError:
                 return None
-            pieces.append(f"{len(name)}{name.decode('ascii')}")
+            # The descriptor stores UTF8 bytes. The demangler accepts their plain
+            # byte-counted spelling as well as the compiler's punycoded spelling.
+            pieces.append(f"{len(name)}{identifier}")
             if letter == _ANONYMOUS_MARK:
                 # The anonymous-context production, with no generic arguments to collect.
                 pieces.append("yXZ")

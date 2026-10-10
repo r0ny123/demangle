@@ -400,12 +400,17 @@ def _module_temporary(name):
     return NimSymbol(name, f"module temporary #{found.group(2)}", "temporary")
 
 
-_READERS = (_routine, _type_info, _marker, _type_name, _module_temporary)
+_GENERATED_READERS = (_type_info, _marker, _type_name, _module_temporary)
+_READERS = (_routine, *_GENERATED_READERS)
 
 
 def parse_nim_symbol(name):
     """Parse `name`, returning a `NimSymbol`, or raise `DemangleFailure`."""
-    for reader in _READERS:
+    # A routine's identity ends in an ASCII digit. Compiler-generated type-info
+    # names end in `_`; skipping the routine regex avoids backtracking through their
+    # hash on every parse. Digit-ended names keep the original reader precedence.
+    readers = _READERS if name and "0" <= name[-1] <= "9" else _GENERATED_READERS
+    for reader in readers:
         try:
             found = reader(name)
         except UnicodeError:

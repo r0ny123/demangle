@@ -950,6 +950,37 @@ class TestGraphComparison:
         assert left == right
         assert hash(left) == hash(right)
 
+    def test_deep_hashing_with_a_lowered_interpreter_limit(self):
+        code = """
+import sys
+from demangle.core.ast import Name, Pointer
+left, right = Name("int"), Name("int")
+for _ in range(2000):
+    left, right = Pointer(left), Pointer(right)
+sys.setrecursionlimit(50)
+assert left == right
+assert hash(left) == hash(right)
+"""
+        environment = {**os.environ, "PYTHONPATH": str(pathlib.Path(demangle.__file__).parent.parent)}
+        result = subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+
+    def test_a_foreign_operational_recursion_error_is_not_retried(self):
+        from demangle.core.ast import Name, Pointer
+
+        calls = []
+
+        class Operational(Name):
+            __slots__ = ()
+
+            def __hash__(self):
+                calls.append(1)
+                raise RecursionError("operational failure")
+
+        with pytest.raises(RecursionError, match="operational failure"):
+            hash(Pointer(Operational("int")))
+        assert calls == [1]
+
     def test_cycles_compare_but_do_not_have_a_finite_structural_hash(self):
         from demangle.core.ast import Pointer
 
@@ -1033,3 +1064,49 @@ class TestGraphComparison:
                 self.value.append(self.value)
 
         assert Container() == Container()
+
+
+class TestClassFieldCacheOwnership:
+    def test_inherited_cache_is_rebuilt_when_a_subclass_skips_class_hooks(self):
+        from demangle.core.ast import Node
+
+        class Parent(Node):
+            __slots__ = ("payload",)
+
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __init_subclass__(cls, **kwargs):
+                pass
+
+        assert Parent("parent").to_dict() == {"kind": "node", "payload": "parent"}
+
+        class Child(Parent):
+            __slots__ = ("extra",)
+
+            def __init__(self, payload, extra):
+                super().__init__(payload)
+                self.extra = extra
+
+        assert Child("child", "extra").to_dict() == {"kind": "node", "payload": "child", "extra": "extra"}
+        assert Parent("parent").to_dict() == {"kind": "node", "payload": "parent"}
+
+    def test_the_owner_tag_does_not_retain_temporary_node_classes(self):
+        import gc
+        import weakref
+
+        from demangle.core.ast import Node
+
+        def temporary_class():
+            class Temporary(Node):
+                __slots__ = ("payload",)
+
+                def __init__(self, payload):
+                    self.payload = payload
+
+            Temporary("payload").to_dict()
+            return weakref.ref(Temporary)
+
+        reference = temporary_class()
+        gc.collect()
+        assert reference() is None

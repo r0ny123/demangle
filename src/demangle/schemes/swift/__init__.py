@@ -171,6 +171,10 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
 
     `resolver` is called with `(reference, offset-of-its-offset-field-within-name)` and
     returns a *mangled fragment* naming what the reference points at, or None to decline.
+    Return a Unicode `str` for textual fragments, or `bytes` when a fragment contains
+    binary symbolic references. For compatibility, a `str` whose grammar reaches a symbolic
+    reference token or alignment padding is treated as a Latin1 byte view.
+
     `resolve.ContextResolver` is one, over an `Image`; a caller with a debugger or a
     memory dump writes its own. With no resolver at all, a name holding a reference is
     refused -- which is what the reference demangler does, and better than inventing a
@@ -184,12 +188,16 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     """
     if isinstance(name, str):
         raise TypeError("demangle_symbolic reads bytes; a name holding a reference is not text")
-    # latin-1 maps each byte to one code point; non-ASCII identifiers are punycode anyway.
+    # Latin1 maps each byte to one code point, preserving binary resolver offsets.
     text = name.decode("latin-1")
     if whole_symbol is None:
         whole_symbol = detect(text)
     try:
-        root = demangle_symbol(text, resolver) if whole_symbol else demangle_type(text, resolver)
+        root = (
+            demangle_symbol(text, resolver, byte_mode=True)
+            if whole_symbol
+            else demangle_type(text, resolver, byte_mode=True)
+        )
     except RecursionError:
         return None
     if root is None:

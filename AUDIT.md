@@ -213,3 +213,185 @@ seeded mutations and representative corpora do not prove all inputs correct. Pro
 workload distributions, Windows/macOS, free-threaded Python, Python 3.11/3.14/PyPy and
 documentation builds remain outside this environment's verification. This audit does
 not establish globally optimal performance or that no bugs remain.
+
+## Continued profiling and compatibility review — 2026-10-10
+
+The investigation continued after the second audit commit (`3728106`), rather than
+assuming that fixing the first scaling failures exhausted the useful work. Remote
+main was checked again and remains `ed67b1433db8ae7b91ae323377cd9b437a9149ea`.
+Independent agents owned AST hashing, CLI/filtering, Rust/C++ and Swift/small schemes;
+API/cache integration and final review were handled separately. Timing slots were
+coordinated so the paired measurements did not compete with other agents' tests.
+
+| Finding or candidate | Evidence and resolution |
+|---|---|
+| Rust v0 punycode arithmetic | A 60,000-digit invalid punycode payload built large integers before returning the reference's literal fallback. Bound monotone accumulation by the largest possible Unicode scalar; preserve fallback text. Native highest-scalar/overflow neighbors, text/tree regressions and reference fuzzing pass. |
+| Swift plain Unicode identifiers | `$s2é3fooyyF` was refused while `$s1é3fooyyF` was misread. Swift lengths count UTF8 bytes. Normalize textual manglings to byte cursors, decode identifier payloads at their boundaries, preserve punycode and binary symbolic offsets. Modern/legacy native cases and descriptor/resolver regressions cover the changes. |
+| Hashing below the interpreter stack limit | A 2,000-pointer AST failed to hash with `sys.setrecursionlimit(50)` before the fixed shallow-depth guard could run. Send that recursion failure through the existing iterative fallback. Isolated subprocess regression preserves equality/hash parity. |
+| AST hot-path frames | Scalar hash fields did not need recursive freezing; repeated field discovery read class dictionary views. Skip scalar frames and tag each lazy field cache with its concrete owner. Inherited class hooks, temporary-class collection and custom hash/equality policies remain covered. |
+| Rust temporary allocations | Back-reference memo hits and skip passes created unused parser/printer objects; ordinary identifiers built short-lived decoder objects. Delay back-reference objects until a miss and return ASCII spelling directly. Depth-aware memo behavior is unchanged. |
+| CLI/filter overhead | Ordinary stream mode assembled slices and lists for regex matches; default answers repeatedly checked mode flags. Use regex substitution and a prepared answer function, write selected records directly, and skip marker searches on alphanumeric words. Selection, errors, Unicode and interrupt behavior remain covered. |
+| Nim reader dispatch | Type names/type-info could not be routines unless they ended in an ASCII digit, but the routine regex still backtracked through their hashes. Preserve reader precedence for digit-ended names and prune the impossible routine path otherwise; 27,305 dispatch-equivalence inputs pass. |
+| API young-cache hits | A direct young-generation lookup removes one Python frame on repeated names. A separate old-generation completion path preserves promotion, epochs and statistics without looking in young twice. Existing validation, cache rollover/clear and concurrency tests pass. |
+| Windows test portability | Binary stdout uses CRLF on Windows; long generated pytest IDs exceeded the Windows environment-variable limit. Match the platform newline and give the two long Rust cases short IDs. Commit `0d30719` passed all 14 CI jobs, including Windows. |
+
+### Additional measurements
+
+These comparisons use immutable `3728106` code, CPython 3.13.5, identical inputs
+and alternating before/after order. They measure the additional changes, not a new
+comparison against original main. Each artifact retains individual samples, ranges,
+workload definitions and reproduction commands. Shared-parser comparisons isolate the
+component being optimized. Earlier cumulative measurements remain above.
+
+| Workload | Before median | After median | Time reduction |
+|---|---|---|---|
+| Hash 5,913 libstdc++ ASTs, 9 pairs | 83.711 ms (82.774–84.888) | 66.776 ms (66.157–67.806) | 20.23% |
+| Serialize those ASTs, 9 pairs | 80.174 ms (79.288–111.681) | 75.930 ms (74.441–78.652) | 5.29%; some ranges overlap |
+| Compare those ASTs, 9 pairs | 67.570 ms (66.566–109.508) | 64.652 ms (63.264–67.694) | 4.32%; some ranges overlap |
+| Rust v0 corpus, 2,695 names, 7 pairs | 40.500 µs/name (39.831–41.484) | 36.727 µs/name (36.294–37.233) | 9.32% |
+| Rust invalid punycode, 60,000 digits, 7 pairs | 380.089 ms (379.524–386.502) | 76.173 µs (41.627–80.490) | 99.98%; stress input |
+| Nim ordinary generated types, 9 pairs | 2.137 µs (2.122–2.342) | 1.660 µs (1.648–1.708) | 22.33% |
+| Nim ordinary type-info, 9 pairs | 1.552 µs (1.531–1.569) | 0.922 µs (0.918–0.991) | 40.57% |
+| CLI, 10,000 nm lines, 9 pairs | 24.237 ms | 18.383 ms | 24.15% |
+| CLI, 10,000 disassembly lines, 9 pairs | 38.037 ms | 32.597 ms | 14.30% |
+| CLI, 10,000 mixed log lines, 9 pairs | 4.218 ms | 3.734 ms | 11.48% |
+| Warm API C++ name, 9 pairs of 150,000 calls | 226.408 ns (220.048–257.885) | 204.696 ns (201.370–229.964) | 9.59%; some ranges overlap |
+| Warm API custom limits, same pairs | 327.584 ns (325.508–329.843) | 296.391 ns (295.135–304.725) | 9.52% |
+| Warm API refusal, same pairs | 220.648 ns (220.159–222.942) | 209.000 ns (208.388–210.244) | 5.28% |
+
+Ordinary noncandidate API calls have overlapping ranges (534.762 → 527.046 ns),
+so no speedup is claimed. AST construction also has overlapping ranges and unchanged
+retained node memory. Shared-graph hash improves a further 35.48%, while graph equality
+ranges overlap. Nim separator-heavy cases improve approximately 75% in this pass.
+JSON nm/disassembly medians improve 3.0%/5.5%; mixed JSON results overlap and are not
+claimed as a gain. Deterministic Rust v0 profiling over 2,314 real names removes
+78,967 calls (6.78%) and reduces constructor calls from 57,724 to 19,118 (66.88%).
+The owner tag adds one 56-byte tuple per cached node class, not per node; temporary
+classes remain collectable. The original 2.33% node-memory cost for corrected pack
+bounds remains.
+
+Evidence is in `benchmarks/audit_ast_optimization_results.json`,
+`audit_rust_optimization_results.json`, `audit_cli_results.json`,
+`audit_nim_optimization_results.json` and `audit_api_results.json`. Reproduce with:
+
+```sh
+.venv/bin/python benchmarks/audit_core.py --before 3728106 --trials 9
+.venv/bin/python benchmarks/audit_graph.py --before 3728106 --trials 9 --repeats 30
+.venv/bin/python benchmarks/audit_rust.py --grammar v0 --before 3728106 --repeats 10 --trials 7 --profile
+.venv/bin/python benchmarks/audit_stream.py --before 3728106 --repeats 9
+.venv/bin/python benchmarks/audit_nim.py --before 3728106 --samples 9
+.venv/bin/python benchmarks/audit_api.py --before 3728106 --trials 9
+```
+
+### Rejected alternatives and remaining scope
+
+- Early scalar/type dispatch in equality offered no ordinary gain and made shared
+  graph equality 7.03% slower; reverted.
+- Moving pack cardinality into an integer subclass saved 43,576 bytes on ordinary
+  ASTs but increased the pack-heavy comparison from 92,188 to 420,516 bytes and changed
+  the exact public size type; reverted. Walking for cardinality would reintroduce
+  quadratic construction; weak maps and specialized node subclasses add lifetime or
+  public-type changes without resolving that tradeoff.
+- A grouped token regex was equivalent on short exhaustive inputs and 20,000 random
+  lines but 9–23% slower. A boundary-only marker regex mishandled an Objective-C edge;
+  both rejected.
+- The first young-cache shortcut looked in young twice on misses and slowed ordinary
+  noncandidate calls about 7%; replaced with the measured completion path above.
+- Rust numeric fields already have bounded arithmetic and zero-padding fast paths.
+  The remaining parser work resolves productions and renders output; no further
+  replacement was validated. Itanium nested-prefix growth is charged against the
+  cumulative output budget. MSVC rendering and tiny qualifier branches did not yield
+  another evidence-backed change. Invalid bare-pack declarations and existing native
+  spelling behavior were not changed speculatively.
+- The registry already imports schemes lazily; there is no database or network layer
+  in this dependency-free library to optimize. The investigation covered allocation,
+  retained memory, startup boundaries, parser complexity, cache turnover and stream I/O.
+  Unseen production distributions and larger architectural changes still need their
+  own workloads and compatibility evidence.
+
+Swift allocation was also measured in `benchmarks/audit_swift_unicode_results.json`
+using `benchmarks/audit_swift.py --before 3728106 --samples 9`. Slots reduce the
+modern demangler instance plus dictionary from 192 to 112 bytes (41.67%) and the
+legacy instance from 136 to 56 bytes (58.82%). These figures exclude the referenced
+strings, lists and nodes. Ordinary ASCII latency is 12.710 → 12.736 µs (+0.20%) and
+runtime latency 53.794 → 54.459 µs (+1.24%), with overlapping sample ranges; no latency
+speedup is claimed. UTF8 handling preserves high-bit symbolic offsets and legacy
+Latin1 resolver fragments even after type prefixes or alignment padding. Explicit
+binary resolver answers can also use `bytes`; Unicode strings containing control
+bytes inside length-counted identifiers remain text. Classification uses the existing
+grammar without calling an external resolver, so it cannot invent callback events.
+
+### Final integrated comparison against original main
+
+`benchmarks/audit_integrated_results.json` retains a fresh, idle-run comparison
+against original `ed67b14`, using the final combined implementations. This checks
+that an improvement against the second audit commit does not conceal a remaining
+regression against main. Core/stream/Nim/API use nine pairs; Rust uses seven pairs
+with five corpus repeats. The commands and every sample are in that artifact.
+
+| Workload | Original main | Integrated result | Interpretation |
+|---|---|---|---|
+| Serialize 5,913 ASTs | 118.353 ms | 77.211 ms | 34.76% less time |
+| Hash those ASTs | 74.056 ms | 67.401 ms | 8.99% less time |
+| Construct those ASTs | 107.847 ms | 112.249 ms | 4.08% more median time; corrected bounds retained |
+| Compare those ASTs | 62.487 ms | 64.349 ms | 2.98% more median time; ranges overlap |
+| Rust v0 corpus | 37.416 µs/name | 35.806 µs/name | 4.30% less median time; ranges partly overlap |
+| Nim generated types | 2.306 µs | 1.634 µs | 29.14% less time |
+| Nim type-info | 1.427 µs | 0.903 µs | 36.77% less time |
+| CLI 10,000 nm lines | 22.062 ms | 18.665 ms | 15.40% less time |
+| CLI 10,000 mixed log lines | 16.742 ms | 3.831 ms | 77.12% less time |
+| Library 10,000 plain log lines | 29.666 ms | 2.785 ms | 90.61% less time |
+| Warm API C++ name | 223.423 ns | 200.418 ns | 10.30% less time |
+| JSON CLI 10,000 nm lines | 14.801 ms | 16.135 ms | 9.02% more time for bounded record retention |
+
+The JSON cost is explicit: main's C-implemented `functools.lru_cache` has a faster
+hit than a Python weighted cache, but count-only eviction cannot bound bytes held by
+large answers. Returning large answers through an LRU would retain them regardless
+of their weight. A second Python wrapper would retain the frame cost; a native
+weighted-cache dependency would break this project's dependency-free implementation.
+The weighted cache and oversized-entry refusal remain. JSON disassembly medians are
+1.13% slower with overlapping ranges. Retained JSON allocations fall from 50,425,235
+to 16,552,474 bytes in this integrated run (67.17%). Uncached ordinary API name
+ranges overlap; no improvement is claimed. The final CLI miss path also uses the
+existing old-generation completion helper to avoid a duplicate dictionary lookup;
+no additional timing claim is made for that one-line integration.
+
+### Final verification and closure
+
+- Full CPython 3.13 suite: **4,547 passed, 2 skipped, 384,601 subtests passed**,
+  205.48 seconds. The skipped LLVM-reference check was then run with the built
+  reference on PATH and passed. The remaining skip is Free Pascal's compiled unit
+  records, which are not installed. No Pascal parser was changed in this pass.
+- CPython 3.12 changed-area suite: **1,233 passed, 13,862 subtests passed**.
+- Final JSON/cache integration: **25 passed**; isolated hash/field regressions pass.
+- Corpus replay: **65,638/65,638 exact** on both CPython 3.13 and 3.12.
+- Final native enumeration through length 4 across all supported reference schemes:
+  zero unexplained divergences. Existing accepted divergence rules remain explicit.
+- Cross-entry-point invariants, 1,000 mutants per corpus with seed 2: no invariant
+  broken. Independent Rust checks used 20,000 native mutants at seed 7, 20,000
+  invariant draws at seed 23 and all 2,314 real v0 names at depth bounds 4/8/16/32.
+  Swift native enumeration/mutation and seed-7 invariants also pass.
+- Ruff lint/format, ty and whitespace checks pass. The unchanged benchmark gate
+  passes: 44,142 cold names/s, 4,395,863 warm names/s, 1,811,466 noncandidate names/s,
+  33,205 structured names/s. These are absolute results from one run, not speedup
+  estimates against main.
+- Wheel/source archive build offline. Installed-wheel smoke passes metadata,
+  dependency absence, CLI, API, bytes, AST, UTF8 and symbolic resolver cases. Source
+  archive includes the new evidence, benchmark scripts and reported native cases.
+- CI on `0d30719`: all **14 jobs passed**, including Python 3.11/3.12/3.13/3.14,
+  PyPy 3.11, free-threaded 3.14, Windows, macOS, native differential checks,
+  cross-version references, documentation and distribution installation. The new
+  follow-up commit is also submitted to that same matrix.
+
+The ledger has no unresolved reproduced finding or retained untested candidate in
+these investigated paths. The final adjacent Rust punycode width probe found no
+mismatch: canonical Rust uses checked `usize` arithmetic and a 128-character decode
+buffer; 127/128/4,096-character ASCII prefixes followed by U+10FFFF match its success
+or fallback behavior. The Swift representation and hashing exception paths were
+reviewed for callback side effects and foreign operational errors, not just outputs.
+
+This closes the recorded investigation, not every possible future optimization.
+Representative corpora, bounded enumeration and seeded mutations cannot prove that
+all inputs are correct or that another workload could not benefit from different
+tradeoffs. Larger architectural changes and unseen workloads have not been declared
+optimal. Free Pascal native unit records remain the concrete local coverage gap.

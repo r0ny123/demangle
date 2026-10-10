@@ -575,3 +575,23 @@ class TestBackreferenceMemoPreservesDepthLimit:
         for read in (demangle.demangle_strict, demangle.parse):
             with pytest.raises(demangle.LimitExceeded):
                 read(name, language="rust", limits=limits)
+
+
+class TestPunycodeArithmeticBounds:
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [("dn32g", "\U0010ffff"), ("en32g", "punycode{en32g}")],
+        ids=["highest-scalar", "above-scalar-range"],
+    )
+    def test_scalar_boundary_matches_native_fallback(self, payload, expected):
+        # rustc-demangle 0.1.28: a valid maximum scalar, then its overflowing neighbour.
+        name = "_RCu5_" + payload
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+
+    def test_long_overflowing_punycode_keeps_literal_fallback(self):
+        digits = "9" * 60000
+        name = "_RCu60000_" + digits
+        expected = "punycode{" + digits + "}"
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected

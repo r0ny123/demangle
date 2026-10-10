@@ -113,7 +113,7 @@ def _find_symbols(
     token = _ASCII_TOKEN if text.isascii() else TOKEN
     for match in token.finditer(text):
         word = match.group()
-        if not TOKEN_MUST_HOLD.search(word):
+        if word.isalnum() or not TOKEN_MUST_HOLD.search(word):
             continue
         spelled = _demangle(word, language=language, style=style, limits=limits)
         if spelled == word:
@@ -156,7 +156,7 @@ def _demangle_text(
 
     def replace(match):
         word = match.group()
-        if not TOKEN_MUST_HOLD.search(word):
+        if word.isalnum() or not TOKEN_MUST_HOLD.search(word):
             return word
         spelled = _demangle(word, language=language, style=style, limits=limits)
         return word if _says_only_what_the_word_says(word, spelled) else spelled

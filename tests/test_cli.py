@@ -390,14 +390,14 @@ class TestPipeline:
     def _interrupt(*_, **__):
         raise KeyboardInterrupt
 
-    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    @pytest.mark.parametrize("where", ["_expand", "demangle", "_parse"])
     def test_ctrl_c_on_windows_exits_130_without_a_traceback(self, capsys, monkeypatch, where):
         monkeypatch.setattr("sys.platform", "win32")
         monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
-        assert main(["_Z1fv"]) == 130
+        assert main(["--strip-underscore", "__Z1fv"] if where == "_expand" else ["_Z1fv"]) == 130
         assert capsys.readouterr().err == ""
 
-    @pytest.mark.parametrize("where", ["_expand", "_parse"])
+    @pytest.mark.parametrize("where", ["_expand", "demangle", "_parse"])
     def test_ctrl_c_elsewhere_dies_of_sigint(self, capsys, monkeypatch, where):
         """So that a shell loop over the command stops, as it does for one Ctrl-C killed."""
         calls = []
@@ -405,7 +405,7 @@ class TestPipeline:
         monkeypatch.setattr(f"demangle.cli.{where}", self._interrupt)
         monkeypatch.setattr("signal.signal", lambda *a: calls.append(("signal", *a)))
         monkeypatch.setattr("os.kill", lambda *a: calls.append(("kill", *a)))
-        main(["_Z1fv"])
+        main(["--strip-underscore", "__Z1fv"] if where == "_expand" else ["_Z1fv"])
         assert calls == [("signal", signal.SIGINT, signal.SIG_DFL), ("kill", os.getpid(), signal.SIGINT)]
         assert capsys.readouterr().err == ""
 

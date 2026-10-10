@@ -324,7 +324,13 @@ def demangle(
         # An unhashable argument surfaces here as a `TypeError`; not checked in advance,
         # which would hash `limits` twice on every warm call.
         try:
-            cached = _CACHE.get(key)
+            # Repeated names usually live in the young generation. A direct lookup
+            # avoids a Python call while the miss path retains promotion and bounds.
+            cached = _CACHE._young.get(key, MISSING)
+            if cached is MISSING:
+                cached = _CACHE.get_old(key)
+            else:
+                _CACHE.hits += 1
         except TypeError:
             if _is_allow_list(language) and type(language) is not tuple:
                 # The allow-list a tuple would be, keyed as one; a tuple that cannot be

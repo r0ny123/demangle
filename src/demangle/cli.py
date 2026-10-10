@@ -815,6 +815,16 @@ def _answerer(arguments, limits):
     """What this run says about a name: its expansion, or under `--json-lines` the scheme
     that read it and its record, as JSON."""
     if not arguments.json_lines:
+        if not (
+            arguments.strip_underscore
+            or arguments.detect
+            or arguments.types
+            or arguments.json
+            or arguments.tree
+            or _selects_a_part(arguments)
+        ):
+            read = demangle_strict if arguments.strict else demangle
+            return functools.partial(read, language=arguments.language, style=arguments.style, limits=limits)
         return functools.partial(_expand, arguments=arguments, limits=limits)
 
     cache = BoundedCache(
@@ -828,7 +838,7 @@ def _answerer(arguments, limits):
         # repeated disassembly call sites, retaining the bounded cache on a miss.
         cached = cache._young.get(name, MISSING)
         if cached is MISSING:
-            cached = cache.get(name)
+            cached = cache.get_old(name)
         if cached is not MISSING:
             return cached
         fields = _record(name, arguments, limits)
@@ -956,6 +966,24 @@ def _run_stream(batches, arguments, answer):
     """
     status = 0
     out = sys.stdout
+    substitute = not (arguments.only_demangled or arguments.json_lines or arguments.detect)
+
+    def replace(match):
+        nonlocal status
+        word = match.group()
+        if word.isalnum() or not _TOKEN_MUST_HOLD.search(word):
+            return word
+        try:
+            expanded = answer(word)
+        except BrokenPipeError:
+            raise
+        except Exception as exc:
+            print(_complaint(word, exc), file=sys.stderr)
+            status = 1
+            return word
+        if expanded == word or (word[0] in "@." and _says_only_what_the_word_says(word, expanded)):
+            return word
+        return f"{word} ==> {expanded}" if arguments.both else expanded
 
     for batch in batches:
         for line in batch:
@@ -963,13 +991,15 @@ def _run_stream(batches, arguments, answer):
                 if not (arguments.only_demangled or arguments.json_lines):
                     out.write(line)
                 continue
-            pieces = []
-            demangled = []
-            end = 0
             token = _ASCII_TOKEN if line.isascii() else _TOKEN
+            if substitute:
+                out.write(token.sub(replace, line))
+                continue
+            pieces = []
+            end = 0
             for match in token.finditer(line):
                 word = match.group()
-                if not _TOKEN_MUST_HOLD.search(word):
+                if word.isalnum() or not _TOKEN_MUST_HOLD.search(word):
                     continue
                 try:
                     expanded = answer(word)
@@ -989,20 +1019,20 @@ def _run_stream(batches, arguments, answer):
                     ):
                         continue
                     if language is not None:
-                        demangled.append(text)
+                        out.write(text + "\n")
                     continue
                 if expanded == word and not arguments.detect:
                     continue
                 if not arguments.detect and word[0] in "@." and _says_only_what_the_word_says(word, expanded):
                     continue
                 replacement = f"{word} ==> {expanded}" if arguments.both else expanded
-                demangled.append(replacement)
+                if arguments.only_demangled:
+                    out.write(replacement + "\n")
+                    continue
                 pieces.append(line[end : match.start()])
                 pieces.append(replacement)
                 end = match.end()
             if arguments.only_demangled or arguments.json_lines:
-                for replacement in demangled:
-                    out.write(replacement + "\n")
                 continue
             pieces.append(line[end:])
             out.write("".join(pieces))

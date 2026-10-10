@@ -76,7 +76,7 @@ class Node:
 
     __slots__ = ("size",)
     kind = "node"
-    _node_fields: ClassVar[tuple[str, ...]]
+    _node_fields: ClassVar[tuple[type | None, tuple[str, ...]]] = (None, ())
 
     #: The fields a positional `match` sees, in constructor order. Written out on every
     #: class here so type checkers see it; a scheme's own nodes get one derived in
@@ -187,8 +187,8 @@ class Node:
         so comparing on it would make all of them equal regardless of content.
         """
         cls = self if isinstance(self, type) else type(self)
-        fields = cls.__dict__.get("_node_fields")
-        if fields is None:
+        owner, fields = cls._node_fields
+        if owner is not cls:
             names = []
             for klass in reversed(cls.__mro__):
                 slots = klass.__dict__.get("__slots__", ())
@@ -199,10 +199,11 @@ class Node:
                     if slot not in ("size", "_arity", "__dict__", "__weakref__") and slot not in names:
                         names.append(slot)
             # Fields belong to the class, not each node: serialization visits the same
-            # shapes thousands of times. Read the class's own cache so subclasses never
-            # inherit a parent's incomplete field list.
+            # shapes thousands of times. Tag the cache with its owner so subclasses
+            # cannot inherit a parent's incomplete fields, while repeated reads avoid
+            # constructing and looking up a class dictionary view.
             fields = tuple(names)
-            cls._node_fields = fields
+            cls._node_fields = (cls, fields)
         return fields
 
     def __repr__(self):  # pragma: no cover - debugging aid
@@ -285,19 +286,25 @@ def _hash_node(root):
     hashes = {}
     active = set()
 
-    def freeze(value, depth):
+    def freeze(sequence, depth):
         if depth > 64:
             raise _DeepHash
-        if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
-            return _Prehashed(visit(value, depth + 1))
-        if type(value) is tuple:
-            return tuple(freeze(item, depth + 1) for item in value)
-        return value
+        values = []
+        for value in sequence:
+            if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+                values.append(_Prehashed(visit(value, depth + 2)))
+            elif type(value) is tuple:
+                values.append(freeze(value, depth + 1))
+            else:
+                values.append(value)
+        return tuple(values)
 
     def visit(node, depth):
         key = id(node)
         if key in hashes:
             return hashes[key]
+        if depth > 64:
+            raise _DeepHash
         if key in active:
             raise TypeError("cannot hash a cyclic Node graph")
         active.add(key)
@@ -306,7 +313,12 @@ def _hash_node(root):
             value = getattr(node, field, None)
             if isinstance(value, list):
                 value = tuple(value)
-            values.append(freeze(value, depth))
+            if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+                values.append(_Prehashed(visit(value, depth + 1)))
+            elif type(value) is tuple:
+                values.append(freeze(value, depth))
+            else:
+                values.append(value)
         result = hash((type(node).__name__, *values))
         hashes[key] = result
         active.remove(key)
@@ -315,6 +327,23 @@ def _hash_node(root):
     try:
         return visit(root, 0)
     except _DeepHash:
+        return _hash_node_iterative(root)
+    except RecursionError as error:
+        # A lowered interpreter limit or a deep caller can bind before our guard.
+        # An explicit error from a foreign hash/getter is its policy, however: do
+        # not retry it, or a stateful override could hide its original failure.
+        traceback = error.__traceback__
+        while traceback is not None and traceback.tb_next is not None:
+            traceback = traceback.tb_next
+        internal = (
+            visit.__code__,
+            freeze.__code__,
+            Node._fields.__code__,
+            _Prehashed.__init__.__code__,
+            _Prehashed.__hash__.__code__,
+        )
+        if traceback is not None and traceback.tb_frame.f_code not in internal:
+            raise
         return _hash_node_iterative(root)
 
 

@@ -81,13 +81,19 @@ class BoundedCache:
     def get(self, key):
         value = self._young.get(key, _MISSING)
         if value is _MISSING:
-            # Read first, so an entry taken from before a `clear()` is not put back.
-            epoch = self.epoch
-            value = self._old.pop(key, _MISSING)
-            if value is _MISSING:
-                self.misses += 1
-                return _MISSING
-            self.put(key, value, epoch)
+            return self.get_old(key)
+        self.hits += 1
+        return value
+
+    def get_old(self, key):
+        """Finish a lookup whose young generation already missed."""
+        # Read first, so an entry taken from before a `clear()` is not put back.
+        epoch = self.epoch
+        value = self._old.pop(key, _MISSING)
+        if value is _MISSING:
+            self.misses += 1
+            return _MISSING
+        self.put(key, value, epoch)
         self.hits += 1
         return value
 

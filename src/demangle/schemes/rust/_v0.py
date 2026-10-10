@@ -248,6 +248,10 @@ class Ident:
             delta = 0
             w = 1
             k = 0
+            # The next decoded scalar is n + (i + delta) // (lent + 1). Delta
+            # only grows within this digit run; stop once no scalar can result,
+            # before a malformed identifier builds unbounded Python integers.
+            scalar_limit = (0x110000 - n) * (lent + 1) - i
             while True:
                 k += base
                 t = min(max((k - bias), t_min), t_max)
@@ -263,6 +267,8 @@ class Ident:
                     return False
 
                 delta = delta + (d * w)
+                if delta >= scalar_limit:
+                    return False
                 if d < t:
                     break
                 w *= base - t
@@ -608,15 +614,16 @@ class Parser:
         else:
             raise UnableTov0Demangle(self.inn)
 
-    def backref(self) -> "Parser":
+    def backref(self) -> int:
+        # Skip passes and memo hits need only the validated offset, not a new parser.
         s_start = self.next_val - 1
         i = self.integer_62()
         if i >= s_start:
             raise UnableTov0Demangle(self.inn)
 
-        return Parser(self.inn, i, self.keep_hash, self.max_depth)
+        return i
 
-    def ident(self, build=True):
+    def ident(self, build=True, display=False):
         """A `<identifier>`: an optional `u`, a decimal length, an optional `_`, the text.
 
         Written out rather than composed from `eat` and `digit_10` because it runs once
@@ -627,7 +634,8 @@ class Parser:
         `Ident` away: building it there would allocate half of those 78,000 objects,
         each with a list of its own, to discard them. What is read, and what is refused,
         is the same either way -- there is one implementation of the production and this
-        is it.
+        is it. `display` returns its spelling directly, avoiding a temporary `Ident` and
+        decode-state list for the ordinary ASCII identifiers the printer emits.
         """
         inn, end = self.inn, self.end
         at = self.next_val
@@ -677,8 +685,16 @@ class Parser:
             if not punycode:
                 raise UnableTov0Demangle(inn)
 
-            return Ident(ascii_part, punycode) if build else None
+            if not build:
+                return None
+            name = Ident(ascii_part, punycode)
+            if display:
+                name.display()
+                return name.disp
+            return name
 
+        if display:
+            return ident
         return Ident(ident, "") if build else None
 
     def skip_path(self):
@@ -1070,22 +1086,26 @@ class Printer:
             return True
         return False
 
-    def backref_printer(self):
+    def backref_printer(self, offset=None):
         p = self.parser
-        return Printer(p.backref(), self.sink, self.bound_lifetime_depth, self.recursion + 1)
+        if offset is None:
+            offset = p.backref()
+        target = Parser(p.inn, offset, p.keep_hash, p.max_depth)
+        return Printer(target, self.sink, self.bound_lifetime_depth, self.recursion + 1)
 
-    def backref_remembered(self, printer, kind, in_value):
+    def backref_remembered(self, kind, in_value):
         """Return cached spelling only when its subtree fits the remaining depth.
 
+        Reading the offset first lets a hit avoid allocating a parser and printer.
         The key carries the spelling context: production, offset, bound-lifetime depth
         and value/type context. Each value also carries the subtree's nesting height,
         so reusing it deeper cannot bypass the caller's recursion limit. Propagating
         that height includes cached children when their enclosing subtree is recorded.
         """
-        key = (kind, printer.parser.next_val, self.bound_lifetime_depth, in_value)
+        key = (kind, self.parser.backref(), self.bound_lifetime_depth, in_value)
         remembered = self.sink.memo.get(key)
         if remembered is not None:
-            peak = printer.recursion + remembered[1]
+            peak = self.recursion + 1 + remembered[1]
             if peak > self.max_depth:
                 raise RecursedTooDeep(self.max_depth)
             if peak > self._peak_depth:
@@ -1241,7 +1261,7 @@ class Printer:
                     self.print_path(in_value)
                     at = p.next_val
                     dis = p.opt_integer_62("s") if at < p.end and p.inn[at] == "s" else 0
-                    name = p.ident()
+                    name = p.ident(display=True)
                     if ns:
                         with self.node(lambda parts: nodes.Namespace(parts, ns, dis)):
                             self.emit("::{")
@@ -1251,19 +1271,17 @@ class Printer:
                                 self.emit("shim")
                             else:
                                 self.emit(ns)
-                            if name.ascii or name.punycode:
+                            if name:
                                 self.emit(":")
-                                name.display()
                                 with self.node(nodes.RustName):
-                                    self.emit(name.disp)
+                                    self.emit(name)
                             self.emit("#")
                             self.emit(str(dis))
                             self.emit("}")
-                    elif name.ascii or name.punycode:
+                    elif name:
                         self.emit("::")
-                        name.display()
                         with self.node(nodes.RustName):
-                            self.emit(name.disp)
+                            self.emit(name)
                 return built[0]
 
             if tag == "C":
@@ -1271,23 +1289,22 @@ class Printer:
                 disambiguator = 0
                 if at < p.end and p.inn[at] == "s":
                     disambiguator = p.opt_integer_62("s")
-                name = p.ident()
-                name.display()
+                name = p.ident(display=True)
                 with self.node(nodes.RustName) as built:
-                    self.emit(name.disp)
+                    self.emit(name)
                     if p.keep_hash and disambiguator:
                         # Plain unpadded hex, as rustc-demangle's `{}` (not `{:#}`) prints.
                         self.emit(f"[{disambiguator:x}]")
                 return built[0]
 
             if tag == "B":
-                printer = self.backref_printer()
                 if not self._plain:
-                    return printer.print_path(in_value)
-                key, remembered = self.backref_remembered(printer, "path", in_value)
+                    return self.backref_printer().print_path(in_value)
+                key, remembered = self.backref_remembered("path", in_value)
                 if remembered is not None:
                     self.emit(remembered)
                     return None
+                printer = self.backref_printer(key[1])
                 start = len(self.sink._parts)
                 result = printer.print_path(in_value)
                 self.backref_record(key, start, printer)
@@ -1441,13 +1458,13 @@ class Printer:
                 return built[0]
 
             if tag == "B":
-                printer = self.backref_printer()
                 if not self._plain:
-                    return printer.print_type()
-                key, remembered = self.backref_remembered(printer, "type", None)
+                    return self.backref_printer().print_type()
+                key, remembered = self.backref_remembered("type", None)
                 if remembered is not None:
                     self.emit(remembered)
                     return None
+                printer = self.backref_printer(key[1])
                 start = len(self.sink._parts)
                 result = printer.print_type()
                 self.backref_record(key, start, printer)
@@ -1532,9 +1549,7 @@ class Printer:
             else:
                 self.emit(", ")
 
-            name = self.parser.ident()
-            name.display()
-            self.emit(name.disp)
+            self.emit(self.parser.ident(display=True))
             self.emit(" = ")
             # Associated consts are bound like associated types, with a `K` in front:
             # `dyn Trait<LEN = 1>`. rustc-demangle 0.1.28 `v0.rs::print_dyn_trait`.
@@ -1671,9 +1686,7 @@ class Printer:
         """
         parser = self.parser
         parser.opt_integer_62("s")
-        name = parser.ident()
-        name.display()
-        self.emit(name.disp)
+        self.emit(parser.ident(display=True))
         self.emit(": ")
         self.print_const(True)
 

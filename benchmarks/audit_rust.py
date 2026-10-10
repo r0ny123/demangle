@@ -62,6 +62,7 @@ def main():
     argument_parser.add_argument(
         "--before", default="ed67b1433db8ae7b91ae323377cd9b437a9149ea", help="baseline revision"
     )
+    argument_parser.add_argument("--profile", action="store_true", help="also count calls over real-world names")
     argument_parser.add_argument("--grammar", choices=("legacy", "v0"), default="legacy")
     argument_parser.add_argument("--repeats", type=int, default=10, help="iterations per timing sample")
     argument_parser.add_argument("--trials", type=int, default=7, help="paired samples per workload")
@@ -94,6 +95,7 @@ def main():
             "60000_base62_digits": (["_RCs" + "z" * 60000 + "_1a"], 1),
             "60000_decimal_digits": (["_RC" + "9" * 60000 + "a"], 1),
             "60000_padded_base62_digits": (["_RCs" + "0" * 60000 + "_1a"], arguments.repeats),
+            "60000_invalid_punycode_digits": (["_RCu60000_" + "9" * 60000], 1),
         }
     for label, (inputs, repeats) in workloads.items():
         for name in inputs:
@@ -129,6 +131,37 @@ def main():
             ),
             flush=True,
         )
+
+    if arguments.profile:
+        import cProfile
+        import pstats
+
+        prefixes = ("_ZN", "__ZN", "ZN") if arguments.grammar == "legacy" else ("_R", "__R", "R")
+        real_names = [
+            line.split("\t")[0]
+            for line in (ROOT / "tests" / "conformance" / "rust-real-world.txt").read_text().splitlines()
+            if line.startswith(prefixes)
+        ]
+        counts = {}
+        for label, parser in zip(("before", "after"), parsers, strict=True):
+
+            def run(parser=parser):
+                for name in real_names:
+                    parser().demangle(name, 65536)
+
+            profiler = cProfile.Profile()
+            profiler.runcall(run)
+            stats = pstats.Stats(profiler)
+            # pstats populates these counters at runtime; its stubs omit them.
+            total_calls = stats.total_calls  # ty: ignore[unresolved-attribute]
+            primitive_calls = stats.prim_calls  # ty: ignore[unresolved-attribute]
+            entries = stats.stats  # ty: ignore[unresolved-attribute]
+            counts[label] = {
+                "total_calls": total_calls,
+                "primitive_calls": primitive_calls,
+                "constructor_calls": sum(value[1] for key, value in entries.items() if key[2] == "__init__"),
+            }
+        print(json.dumps({"profile_names": len(real_names), "profile_calls": counts}), flush=True)
 
 
 if __name__ == "__main__":
