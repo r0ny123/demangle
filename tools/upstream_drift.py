@@ -172,6 +172,7 @@ class Fetcher:
         self.token = os.environ.get("GITHUB_TOKEN", "")
 
     def get(self, url):
+        path = None
         if self.cache:
             path = self.cache / re.sub(r"[^A-Za-z0-9._-]", "_", url)
             if path.exists():
@@ -181,7 +182,7 @@ class Fetcher:
             headers["Authorization"] = f"Bearer {self.token}"
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as response:
             text = response.read().decode("utf-8", "surrogateescape")
-        if self.cache:
+        if path is not None:
             self.cache.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8", errors="surrogateescape")
         return text

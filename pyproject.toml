@@ -76,6 +76,8 @@ docs = [
 ]
 dev = [
     { include-group = "lint" },
+    "build",
+    "twine",
 ]
 
 [tool.hatch.version]

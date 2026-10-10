@@ -15,6 +15,14 @@ import string
 
 from .errors import ParseError, TruncatedError
 
+__all__ = [
+    "DIGITS",
+    "MAX_NUMBER_DIGITS",
+    "MAX_SEQ_ID_DIGITS",
+    "SEQ_ID_ALPHABET",
+    "Reader",
+]
+
 DIGITS = frozenset(string.digits)
 #: <seq-id> is base 36 with the digits ordered before the capitals.
 SEQ_ID_ALPHABET = string.digits + string.ascii_uppercase

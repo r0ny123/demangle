@@ -10,6 +10,8 @@ accumulate an entry per distinct symbol ever seen, and there is no natural end t
 
 import threading
 
+__all__ = ["MISSING", "BoundedCache"]
+
 _MISSING = object()
 
 

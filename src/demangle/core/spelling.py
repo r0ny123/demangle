@@ -19,6 +19,16 @@ which matters, because that is exactly what the Itanium back-reference scheme do
 from .builder import Builder
 from .decorations import describe
 
+__all__ = [
+    "LEGACY_SPELLING_BUILDER",
+    "SPELLING_BUILDER",
+    "QualifiedSpelling",
+    "Spelling",
+    "SpellingBuilder",
+    "describe",
+    "pack_of",
+]
+
 #: After these a declarator name needs no separating space of its own.
 _TIGHT_ENDINGS = (" ", "(")
 

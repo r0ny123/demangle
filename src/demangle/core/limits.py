@@ -8,6 +8,8 @@ is larger than memory. The defaults are set well above anything a real compiler 
 
 from dataclasses import dataclass
 
+__all__ = ["DEFAULT_LIMITS", "RELAXED_LIMITS", "Limits"]
+
 
 @dataclass(frozen=True, slots=True)
 class Limits:

@@ -13,6 +13,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+__all__ = ["LanguagePlugin"]
+
 
 @dataclass(frozen=True, slots=True)
 class LanguagePlugin:

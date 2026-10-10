@@ -287,6 +287,9 @@ Swift's own 217 vectors:
 ```console
 $ nm -a libfoo.so | demangle
 $ demangle _ZNSt6vectorIiSaIiEE9push_backERKi
+$ demangle -b _ZN3foo3barEv                         # `mangled ==> demangled`
+$ demangle -m _ZN3foo3barEv                         # only print successfully demangled symbols
+$ demangle -s gnu _ZNSt6vectorIiSaIiEE9push_backERKi # choose output style (llvm, gnu)
 $ demangle --tree _Z1fPKc
 $ demangle --detect _RNvC6_123foo3bar
 $ demangle --detect --strict _ZN3Foo               # the scheme that reads it, or an error
@@ -305,6 +308,7 @@ $ demangle --json _Z1fPi                           # the parse tree as JSON
 $ nm -a libfoo.so | demangle --json-lines          # a JSON object per symbol
 $ demangle --json-lines --signature _Z1fPi         # ... with the parts of the name
 $ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, in and out
+$ demangle --list-languages                        # list supported schemes and aliases
 ```
 
 `--json-lines` writes one object per name, `{"mangled": ..., "demangled": ...,

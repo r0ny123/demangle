@@ -328,3 +328,5 @@ GNU_OPTIONS = ItaniumOptions(
     gnu_exception_spec_first=True,
 )
 """The `gnu` style's options: every field on which GNU c++filt differs, set its way."""
+
+__all__ = ["DEFAULT_OPTIONS", "GNU_OPTIONS", "ItaniumOptions"]

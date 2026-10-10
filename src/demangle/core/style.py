@@ -27,6 +27,14 @@ from typing import Any
 
 from .spelling import LEGACY_SPELLING_BUILDER, SPELLING_BUILDER
 
+__all__ = [
+    "DEFAULT_STYLE",
+    "Style",
+    "available_styles",
+    "get_style",
+    "register_style",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class Style:

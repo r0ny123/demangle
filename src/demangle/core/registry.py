@@ -19,6 +19,19 @@ from importlib import import_module
 
 from .plugin import LanguagePlugin
 
+__all__ = [
+    "ENTRY_POINT_GROUP",
+    "aliases",
+    "available",
+    "candidates",
+    "canonical",
+    "get",
+    "load_plugins",
+    "names",
+    "notify_on_change",
+    "register",
+]
+
 #: Built-in schemes, imported on first use. A two-field entry, `(name, import path)`, is
 #: imported when the registry loads. The longer form also carries what detection needs --
 #: priority, first characters, symbol-table decorations and aliases, as the scheme's

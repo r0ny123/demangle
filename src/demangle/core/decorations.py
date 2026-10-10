@@ -14,8 +14,14 @@ Handling these in `core` rather than in each parser matters because they are ort
 to the grammar: a scheme should not have to know about ELF, and a new scheme gets this
 for free. The reference demanglers pass them through verbatim, and so do we -- the
 suffix identifies *which* copy of a function a symbol is, which is information a caller
-usually wants to keep.
 """
+
+__all__ = [
+    "CLONE_SEPARATOR",
+    "VERSION_SEPARATOR",
+    "describe",
+    "split_decorations",
+]
 
 #: Introduces an ELF version suffix (`@@` default version, `@` non-default). Plugins opt
 #: in, since MSVC names use `@` as their scope separator.

@@ -7,6 +7,16 @@ precisely what was wrong with it. The split between `demangle()` and `parse()` i
 public API is exactly this split, and these are the types the second half raises.
 """
 
+__all__ = [
+    "OPERATIONAL_EXCEPTIONS",
+    "DemanglingError",
+    "LimitExceeded",
+    "NotMangledError",
+    "ParseError",
+    "TruncatedError",
+    "reraise_if_operational",
+]
+
 
 class DemanglingError(Exception):
     """Base class for every failure this package reports."""

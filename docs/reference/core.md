@@ -58,6 +58,7 @@ A scheme's own node kinds are under its section on the [schemes page](schemes.md
         - Decorated
         - Special
         - AstBuilder
+        - AST_BUILDER
         - builder_for
 
 ## Reading

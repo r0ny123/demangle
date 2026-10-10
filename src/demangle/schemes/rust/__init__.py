@@ -25,6 +25,7 @@ from ...core.registry import register
 from ._dispatch import ManglingType, RustDemangler, TypeNotFoundError
 from ._legacy import UnableToLegacyDemangle
 from ._v0 import _LLVM_MARKER, _PATH_TAGS, OutputTooLong, RecursedTooDeep, UnableTov0Demangle, _strip_llvm_suffix
+from .options import DEFAULT_OPTIONS, RustOptions
 
 _DEMANGLER = RustDemangler()
 
@@ -231,6 +232,7 @@ PLUGIN = LanguagePlugin(
     ),
     detect=detect,
     parse=parse,
+    options_type=RustOptions,
     description="Rust legacy (_ZN) and v0 (_R) symbol mangling",
     aliases=("rs",),
     # False because `parse` splits the ELF version itself, after rustc-demangle's
@@ -243,4 +245,12 @@ PLUGIN = LanguagePlugin(
 
 register(PLUGIN)
 
-__all__ = ["PLUGIN", "ManglingType", "RustDemangler", "detect", "parse"]
+__all__ = [
+    "DEFAULT_OPTIONS",
+    "PLUGIN",
+    "ManglingType",
+    "RustDemangler",
+    "RustOptions",
+    "detect",
+    "parse",
+]
