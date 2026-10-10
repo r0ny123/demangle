@@ -320,3 +320,22 @@ class TestForeignSymbolsAreDeclined:
         """The refusal is in detection, not in the grammar."""
         with pytest.raises(demangle.DemanglingError):
             demangle.demangle_strict("caml_apply2", language="nim")
+
+
+@pytest.mark.parametrize("mangled", ["foo__bar_1\n", "tyObject__hash\n", "TM__hash_1\n", "NTIint__hash_\n"])
+def test_trailing_newline_is_not_part_of_a_symbol(mangled):
+    with pytest.raises(DemangleFailure):
+        parse_nim_symbol(mangled)
+    assert demangle.demangle(mangled, language="nim") == mangled
+
+
+@pytest.mark.parametrize("prefix", ["NTIfoo", "NTIv2foo", "tyObject_", "Marker_tyObject_"])
+@pytest.mark.parametrize("tail", ["!", "!_", "!__hash_"])
+def test_many_type_separators_do_not_hide_an_invalid_hash(prefix, tail):
+    mangled = prefix + "_" * 16000 + tail
+    if tail == "!__hash_" and prefix.startswith("NTI"):
+        # A type-info label is kept verbatim; punctuation in it is legitimate.
+        assert parse_nim_symbol(mangled).kind == "type-info"
+    else:
+        with pytest.raises(DemangleFailure):
+            parse_nim_symbol(mangled)

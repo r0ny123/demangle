@@ -358,6 +358,7 @@ class ItaniumParser:
         "_abbrev_expanded",
         "_ambiguous_unresolved_name",
         "_argument_constraint",
+        "_ascii_input",
         "_auto_substitutes",
         "_bare_angle",
         "_bare_entity_prefix_used",
@@ -440,6 +441,7 @@ class ItaniumParser:
         if len(mangled) > limits.max_input:
             raise LimitExceeded(mangled, "input length", limits.max_input)
         self._mangled = mangled
+        self._ascii_input = mangled.isascii()
         self.options = options
         #: Whether `Da` and `Dc` enter the substitution table; see
         #: `ItaniumOptions.undeduced_auto_substitution`. Decided by the name's form when
@@ -1263,7 +1265,7 @@ class ItaniumParser:
                         length = int(text[start:pos])
                     else:
                         length = ord(char) - 48
-                    stop = pos + length
+                    stop = pos + length if self._ascii_input else self._source_name_end(pos, length)
                     if stop > end:
                         raise TruncatedError(text, pos)
                     if not length or text[pos] == "_":
@@ -1904,6 +1906,23 @@ class ItaniumParser:
             spelled = spelled[len("friend ") :]
         return spelled
 
+    def _source_name_end(self, start, length):
+        """ABI source-name lengths count UTF-8 bytes; cursors count codepoints."""
+        reader = self.reader
+        stop = start
+        remaining = length
+        while remaining > 0 and stop < reader.length:
+            value = ord(reader.text[stop])
+            if 0xD800 <= value <= 0xDFFF:
+                raise ParseError(self._mangled, stop, "invalid UTF-8 source name")
+            remaining -= 1 if value < 0x80 else 2 if value < 0x800 else 3 if value < 0x10000 else 4
+            if remaining < 0:
+                raise ParseError(self._mangled, stop, "source-name length splits a UTF-8 character")
+            stop += 1
+        if remaining:
+            raise TruncatedError(self._mangled, start)
+        return stop
+
     def source_name(self):
         """<source-name> ::= <positive length number> <identifier>"""
         text = self.plain_source_name()
@@ -1929,7 +1948,7 @@ class ItaniumParser:
         if mangled[start] == "0":
             reader.padded_length = True
         length = int(mangled[start:pos])
-        stop = pos + length
+        stop = pos + length if self._ascii_input else self._source_name_end(pos, length)
         if stop > end:
             raise TruncatedError(mangled, pos)
         reader.pos = stop
@@ -1959,7 +1978,11 @@ class ItaniumParser:
         length = int(reader.digits())
         if length <= 0:
             raise ParseError(self._mangled, reader.pos, "abi tag of non-positive length")
-        return reader.take_exactly(length)
+        if self._ascii_input:
+            return reader.take_exactly(length)
+        start = reader.pos
+        reader.pos = self._source_name_end(start, length)
+        return reader.text[start : reader.pos]
 
     def module_name(self, module=""):
         """A C++20 module name, as the text that goes after the `@`.

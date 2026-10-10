@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Compare Rust legacy parsing with the audit's original revision.
+"""Compare Rust parsing with a specified original revision.
 
 Run from a checkout containing the proposed changes:
     python benchmarks/audit_rust.py --repeats 10 --trials 7
+    python benchmarks/audit_rust.py --grammar v0 --before 0f56a94 --repeats 10 --trials 7
 
 Corpus timings exercise compiler-emitted symbols. Stress cases exercise valid long
 paths, escaped identifiers, and refusal of an oversized length within default input
@@ -24,11 +25,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from demangle.schemes.rust._legacy import LegacyDemangler  # noqa: E402
+from demangle.schemes.rust._v0 import V0Demangler  # noqa: E402
 
 
-def baseline(revision):
+def baseline(revision, grammar):
+    filename = "_legacy" if grammar == "legacy" else "_v0"
     source = subprocess.run(
-        ["git", "show", f"{revision}:src/demangle/schemes/rust/_legacy.py"],
+        ["git", "show", f"{revision}:src/demangle/schemes/rust/{filename}.py"],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -37,14 +40,19 @@ def baseline(revision):
     module = ModuleType("demangle.schemes.rust._audit_baseline")
     module.__package__ = "demangle.schemes.rust"
     exec(compile(source, f"<{revision} Rust legacy parser>", "exec"), module.__dict__)
-    return module.LegacyDemangler
+    return module.LegacyDemangler if grammar == "legacy" else module.V0Demangler
 
 
 def outcome(parser, name):
     try:
         return (True, parser().demangle(name, 65536))
     except Exception as error:
-        if type(error).__name__ != "UnableToLegacyDemangle":
+        if type(error).__name__ not in {
+            "UnableToLegacyDemangle",
+            "UnableTov0Demangle",
+            "RecursedTooDeep",
+            "OutputTooLong",
+        }:
             raise
         return (False, None)
 
@@ -54,18 +62,23 @@ def main():
     argument_parser.add_argument(
         "--before", default="ed67b1433db8ae7b91ae323377cd9b437a9149ea", help="baseline revision"
     )
+    argument_parser.add_argument("--grammar", choices=("legacy", "v0"), default="legacy")
     argument_parser.add_argument("--repeats", type=int, default=10, help="iterations per timing sample")
     argument_parser.add_argument("--trials", type=int, default=7, help="paired samples per workload")
     arguments = argument_parser.parse_args()
     if arguments.repeats < 1 or arguments.trials < 1:
         argument_parser.error("--repeats and --trials must be positive")
-    parsers = (baseline(arguments.before), LegacyDemangler)
+    parsers = (
+        baseline(arguments.before, arguments.grammar),
+        LegacyDemangler if arguments.grammar == "legacy" else V0Demangler,
+    )
     names = []
     for path in sorted((ROOT / "tests" / "conformance").glob("*rust*.txt")):
         for line in path.read_text().splitlines():
             if line and not line.startswith("#"):
                 name = line.split("\t")[0]
-                if name.startswith(("_ZN", "__ZN", "ZN")):
+                prefixes = ("_ZN", "__ZN", "ZN") if arguments.grammar == "legacy" else ("_R", "__R", "R")
+                if name.startswith(prefixes):
                     names.append(name)
     workloads = {
         "corpus": (names, arguments.repeats),
@@ -75,6 +88,13 @@ def main():
         # A single call already takes hundreds of milliseconds before the fix.
         "60000_digit_invalid_length": (["_ZN" + "9" * 60000 + "E"], 1),
     }
+    if arguments.grammar == "v0":
+        workloads = {
+            "corpus": (names, arguments.repeats),
+            "60000_base62_digits": (["_RCs" + "z" * 60000 + "_1a"], 1),
+            "60000_decimal_digits": (["_RC" + "9" * 60000 + "a"], 1),
+            "60000_padded_base62_digits": (["_RCs" + "0" * 60000 + "_1a"], arguments.repeats),
+        }
     for label, (inputs, repeats) in workloads.items():
         for name in inputs:
             before, after = (outcome(parser, name) for parser in parsers)
@@ -98,6 +118,7 @@ def main():
             json.dumps(
                 {
                     "baseline_revision": arguments.before,
+                    "grammar": arguments.grammar,
                     "workload": label,
                     "names": len(inputs),
                     "repeats": repeats,

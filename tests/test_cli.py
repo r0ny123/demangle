@@ -1186,3 +1186,84 @@ def test_stream_preserves_annotations_and_version_markers(capsys, monkeypatch, o
 
 def test_explicit_annotation_argument_can_still_be_read(capsys):
     assert run(capsys, ["@Override"])[1] == "Override\n"
+
+
+@pytest.mark.parametrize("suffix", ["é", "\u0301"])
+@pytest.mark.parametrize("options", [[], ["--json-lines"], ["--only-demangled"]])
+def test_stream_never_demangles_only_the_ascii_prefix(capsys, monkeypatch, suffix, options):
+    name = "_Z3foo" + suffix
+    status, out, err = run(capsys, options, stdin=f"T {name}\nT _Z1fv\n", monkeypatch=monkeypatch)
+    assert status == 0
+    assert not err
+    if "--json-lines" in options:
+        assert [json.loads(line)["mangled"] for line in out.splitlines()] == ["_Z1fv"]
+    elif "--only-demangled" in options:
+        assert out == "f()\n"
+    else:
+        assert out == f"T {name}\nT f()\n"
+
+
+def test_stream_keeps_non_utf8_symbols_whole():
+    process = command(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate(b"T _Z3foo\xff\nT _Z1fv\n", timeout=30)
+    assert process.returncode == 0
+    assert out == b"T _Z3foo\xff\nT f()\n"
+    assert not err
+
+
+def test_json_record_cache_bounds_retained_text(monkeypatch):
+    import demangle.cli as cli
+    from demangle.core.limits import DEFAULT_LIMITS
+
+    calls = []
+
+    def record(name, arguments, limits):
+        calls.append(name)
+        return {"mangled": name, "demangled": name, "language": None}
+
+    monkeypatch.setattr(cli, "_record", record)
+    monkeypatch.setattr(cli, "_REMEMBERED_BYTES", 8192)
+    answer = cli._answerer(build_parser().parse_args(["--json-lines"]), DEFAULT_LIMITS)
+    names = [str(index) + "x" * 100 for index in range(64)]
+    for name in names:
+        answer(name)
+    answer(names[0])
+    assert calls.count(names[0]) == 2
+    answer(names[-1])
+    assert calls.count(names[-1]) == 1
+
+
+def test_oversized_json_records_are_not_retained(monkeypatch):
+    import demangle.cli as cli
+    from demangle.core.limits import DEFAULT_LIMITS
+
+    calls = []
+
+    def record(name, arguments, limits):
+        calls.append(name)
+        return {"mangled": name, "demangled": name, "language": None}
+
+    monkeypatch.setattr(cli, "_record", record)
+    monkeypatch.setattr(cli, "_REMEMBERED_BYTES", 8192)
+    answer = cli._answerer(build_parser().parse_args(["--json-lines"]), DEFAULT_LIMITS)
+    large = "x" * 1024
+    assert answer(large) == answer(large)
+    assert calls == [large, large]
+    assert answer("_Z1fv") == answer("_Z1fv")
+    assert calls.count("_Z1fv") == 1
+
+
+@pytest.mark.parametrize("options", [["--strict"], ["--tree"], ["--json"], ["--detect", "--strict"]])
+def test_empty_names_do_not_bypass_required_parsing(capsys, options):
+    status, out, err = run(capsys, [*options, ""])
+    assert status == 1
+    assert out == ""
+    assert "empty name" in err
+
+
+@pytest.mark.parametrize("options", [["--tree"], ["--json"]])
+def test_unreadable_types_cannot_be_printed_as_trees(capsys, options):
+    status, out, err = run(capsys, ["--types", "--language", "itanium", *options, "not-a-type"])
+    assert status == 1
+    assert out == ""
+    assert err

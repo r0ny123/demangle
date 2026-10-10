@@ -49,7 +49,12 @@ for label, group in zip(["before", "after"], trees, strict=True):
         "node_bytes",
         sum(sys.getsizeof(node) for node in unique.values()),
     )
-results = {mode: [[], []] for mode in ["serialize", "parse"]}
+comparisons = []
+for module in (before, ast):
+    builder = module.AstBuilder()
+    comparisons.append([parse(name, builder) for name in names])
+assert all(hash(left) == hash(right) for left, right in zip(trees[0], trees[1], strict=True))
+results = {mode: [[], []] for mode in ["serialize", "parse", "hash", "equal"]}
 for iteration in range(args.trials):
     for index in [0, 1] if iteration % 2 == 0 else [1, 0]:
         for mode in results:
@@ -59,9 +64,15 @@ for iteration in range(args.trials):
             if mode == "serialize":
                 for tree in trees[index]:
                     tree.to_dict()
-            else:
+            elif mode == "parse":
                 for name in names:
                     parse(name, builders[index])
+            elif mode == "hash":
+                for tree in trees[index]:
+                    hash(tree)
+            else:
+                for left, right in zip(trees[index], comparisons[index], strict=True):
+                    assert left == right
             elapsed = time.perf_counter() - start
             gc.enable()
             results[mode][index].append(elapsed)

@@ -36,7 +36,12 @@ __all__ = ["Found", "demangle_stream", "demangle_text", "find_symbols"]
 #: `@$bnot$xqv`). `<` and `>` are excluded so objdump's `call 1050 <_ZN3foo3barEv>`
 #: still yields the symbol. An Objective-C method, the one name with a space, gets its
 #: own alternative, anchored on `+[`/`-[` and the first `]`.
-TOKEN = re.compile(r"[+-]\[[^\[\]\r\n]*\]|[A-Za-z0-9_$@?.\-+\[\]/:%#]+")
+# Keep non-ASCII bytes and characters with their word: otherwise `_Z3foo` in an
+# unreadable `_Z3foo\udcff` would be expanded on its own, corrupting the symbol.
+# Non-ASCII punctuation is kept conservatively too, since guessing a boundary can
+# change a name that the whole-name API correctly refuses.
+TOKEN = re.compile(r"[+-]\[[^\[\]\r\n]*\]|(?:[A-Za-z0-9_$@?.\-+\[\]/:%#]|[^\x00-\x7f\s])+")
+_ASCII_TOKEN = re.compile(r"[+-]\[[^\[\]\r\n]*\]|[A-Za-z0-9_$@?.\-+\[\]/:%#]+")
 
 #: A word is offered only if it holds one of these: `I like Pi` must not become
 #: `I like int*` (`demumble`'s warning).
@@ -105,7 +110,8 @@ def _find_symbols(
     style: str | Style | None,
     limits: Limits,
 ) -> Iterator[Found]:
-    for match in TOKEN.finditer(text):
+    token = _ASCII_TOKEN if text.isascii() else TOKEN
+    for match in token.finditer(text):
         word = match.group()
         if not TOKEN_MUST_HOLD.search(word):
             continue
@@ -145,16 +151,18 @@ def _demangle_text(
     limits: Limits,
 ) -> str:
     """`demangle_text` with its arguments already validated, for the callers that loop."""
-    pieces = []
-    end = 0
-    for found in _find_symbols(text, language=language, style=style, limits=limits):
-        pieces.append(text[end : found.start])
-        pieces.append(found.demangled)
-        end = found.end
-    if not pieces:
+    if not TOKEN_MUST_HOLD.search(text):
         return text
-    pieces.append(text[end:])
-    return "".join(pieces)
+
+    def replace(match):
+        word = match.group()
+        if not TOKEN_MUST_HOLD.search(word):
+            return word
+        spelled = _demangle(word, language=language, style=style, limits=limits)
+        return word if _says_only_what_the_word_says(word, spelled) else spelled
+
+    token = _ASCII_TOKEN if text.isascii() else TOKEN
+    return token.sub(replace, text)
 
 
 def demangle_stream(

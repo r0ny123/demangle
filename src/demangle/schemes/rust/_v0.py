@@ -20,6 +20,7 @@ class OutputTooLong(Exception):
 
 
 _U64_MAX = (1 << 64) - 1
+_ZERO_PAD = re.compile(r"0+")
 
 
 class UnableTov0Demangle(Exception):
@@ -557,19 +558,31 @@ class Parser:
             self.next_val = at + 1
             return 0
         x = 0
+        if inn.startswith("00000000", at):
+            # Long zero padding is valid and cannot overflow. Skip its arithmetic.
+            padding = _ZERO_PAD.match(inn, at)
+            assert padding is not None
+            at = padding.end()
+            if at >= end:
+                raise UnableTov0Demangle(inn)
+            if inn[at] == "_":
+                self.next_val = at + 1
+                return 1
         while True:
             d = _BASE_62.get(inn[at])
             if d is None:
                 raise UnableTov0Demangle(inn)
             x = x * 62 + d
+            # A base-62 accumulator only grows. Refuse as soon as its final
+            # x + 1 cannot fit, before a long hostile field builds a huge integer.
+            if x >= _U64_MAX:
+                raise UnableTov0Demangle(inn)
             at += 1
             # Nothing reads the cursor after a refusal, so it is written once on the way out.
             if at >= end:
                 raise UnableTov0Demangle(inn)
             if inn[at] == "_":
                 self.next_val = at + 1
-                if x >= _U64_MAX:
-                    raise UnableTov0Demangle(inn)
                 return x + 1
 
     def opt_integer_62(self, tag: str) -> int:
@@ -639,6 +652,10 @@ class Parser:
                     break
                 at += 1
                 length = length * 10 + digit
+                # No identifier can be longer than the entire input. Checking
+                # during accumulation bounds arithmetic on malformed digit runs.
+                if length > end:
+                    raise UnableTov0Demangle(inn)
 
         if at < end and inn[at] == "_":
             at += 1
@@ -939,8 +956,9 @@ class TextSink:
     thousand of them.
     """
 
-    #: What each back-referenced subtree spelled, keyed by (offset, bound-lifetime-depth,
-    #: in-value), the only printer state that spelling depends on: a `B` is resolved by
+    #: What each back-referenced subtree spelled, keyed by production, offset,
+    #: bound-lifetime-depth and in-value, together with its required nesting depth.
+    #: Checking the cached height preserves the caller's nesting limit: a `B` is resolved by
     #: printing its target again, and real symbols repeat the same targets many times.
     #: Lives for one symbol.
     __slots__ = ("_parts", "_remaining", "memo")
@@ -1008,7 +1026,7 @@ class TreeSink:
 class Printer:
     #: `emit` is the sink's own bound method, stored per instance to avoid a forwarding
     #: frame per emitted fragment.
-    __slots__ = ("_plain", "bound_lifetime_depth", "emit", "max_depth", "parser", "recursion", "sink")
+    __slots__ = ("_peak_depth", "_plain", "bound_lifetime_depth", "emit", "max_depth", "parser", "recursion", "sink")
 
     def __init__(self, parser, sink, bound, recursion=0):
         self.parser = parser
@@ -1018,12 +1036,15 @@ class Printer:
         self._plain = not isinstance(sink, TreeSink)
         self.bound_lifetime_depth = bound
         self.recursion = recursion
+        self._peak_depth = recursion
 
     def check_recursion_limit(self):
         """Check and increment recursion counter. Must be paired with decrement."""
         if self.recursion >= self.max_depth:
             raise RecursedTooDeep(self.max_depth)
         self.recursion += 1
+        if self.recursion > self._peak_depth:
+            self._peak_depth = self.recursion
 
     def invalid(self) -> NoReturn:
         """Abandon this name.
@@ -1054,25 +1075,30 @@ class Printer:
         return Printer(p.backref(), self.sink, self.bound_lifetime_depth, self.recursion + 1)
 
     def backref_remembered(self, printer, kind, in_value):
-        """What this back reference spelled last time, or None to print it now.
+        """Return cached spelling only when its subtree fits the remaining depth.
 
-        See `TextSink.memo` for why. Returns `(key, text)`: `text` is None on a miss,
-        and the caller prints the subtree and hands the key back to `backref_record`.
-        The key carries everything the spelling depends on -- where the target starts,
-        which production is being read there, the bound-lifetime depth the names inside
-        it resolve against, and whether a value or a type is being written. Every other
-        input the printer reads is fixed for the symbol.
-
-        Only under a sink that keeps no structure. A `TreeSink` has to build the nodes
-        again, and text is not what it is collecting.
+        The key carries the spelling context: production, offset, bound-lifetime depth
+        and value/type context. Each value also carries the subtree's nesting height,
+        so reusing it deeper cannot bypass the caller's recursion limit. Propagating
+        that height includes cached children when their enclosing subtree is recorded.
         """
         key = (kind, printer.parser.next_val, self.bound_lifetime_depth, in_value)
-        return key, self.sink.memo.get(key)
+        remembered = self.sink.memo.get(key)
+        if remembered is not None:
+            peak = printer.recursion + remembered[1]
+            if peak > self.max_depth:
+                raise RecursedTooDeep(self.max_depth)
+            if peak > self._peak_depth:
+                self._peak_depth = peak
+            return key, remembered[0]
+        return key, None
 
-    def backref_record(self, key, start):
-        """Remember the fragments emitted since `start` as this key's spelling."""
+    def backref_record(self, key, start, printer):
+        """Remember spelling and nesting height, including expanded back references."""
         parts = self.sink._parts
-        self.sink.memo[key] = "".join(parts[start:])
+        self.sink.memo[key] = ("".join(parts[start:]), printer._peak_depth - printer.recursion)
+        if printer._peak_depth > self._peak_depth:
+            self._peak_depth = printer._peak_depth
 
     def print_lifetime_from_index(self, lt):
         """`'a` through `'z`, then `'_26` and up. The reference's arithmetic exactly.
@@ -1192,6 +1218,8 @@ class Printer:
         if recursion >= self.max_depth:
             raise RecursedTooDeep(self.max_depth)
         self.recursion = recursion + 1
+        if self.recursion > self._peak_depth:
+            self._peak_depth = self.recursion
         try:
             p = self.parser
             at = p.next_val
@@ -1262,7 +1290,7 @@ class Printer:
                     return None
                 start = len(self.sink._parts)
                 result = printer.print_path(in_value)
-                self.backref_record(key, start)
+                self.backref_record(key, start, printer)
                 return result
             if tag == "I":
                 collected = []
@@ -1324,6 +1352,8 @@ class Printer:
         if recursion >= self.max_depth:
             raise RecursedTooDeep(self.max_depth)
         self.recursion = recursion + 1
+        if self.recursion > self._peak_depth:
+            self._peak_depth = self.recursion
         try:
             p = self.parser
             # `w` marks a splat argument: `fn(#[splat] (u8, u32))`.
@@ -1420,7 +1450,7 @@ class Printer:
                     return None
                 start = len(self.sink._parts)
                 result = printer.print_type()
-                self.backref_record(key, start)
+                self.backref_record(key, start, printer)
                 return result
 
             if tag == "W":
@@ -1477,6 +1507,8 @@ class Printer:
             if self.eat("B"):
                 prin = self.backref_printer()
                 result = prin.print_path_maybe_open_generics()
+                if prin._peak_depth > self._peak_depth:
+                    self._peak_depth = prin._peak_depth
                 return result
 
             elif self.eat("I"):
@@ -1545,6 +1577,8 @@ class Printer:
             if self.eat("B"):
                 printer = self.backref_printer()
                 printer.print_const(in_value)
+                if printer._peak_depth > self._peak_depth:
+                    self._peak_depth = printer._peak_depth
                 return
 
             opened_brace = False

@@ -543,3 +543,31 @@ class TestLegacyLengthArithmetic:
         expected = "::".join(["a"] * 5000)
         assert demangle.demangle_strict(name, language="rust") == expected
         assert demangle.parse(name, language="rust").spell() == expected
+
+
+class TestV0LengthArithmetic:
+    @pytest.mark.parametrize("name", ["_RCs" + "z" * 60000 + "_1a", "_RC" + "9" * 60000 + "a"])
+    def test_oversized_fields_are_refused(self, name):
+        with pytest.raises(DemanglingError):
+            demangle.demangle_strict(name, language="rust")
+        with pytest.raises(DemanglingError):
+            demangle.parse(name, language="rust")
+
+    def test_padded_base62_field_preserves_value(self):
+        padded = "_RCs" + "0" * 60000 + "_1a"
+        assert demangle.demangle_strict(padded, language="rust") == "a"
+        assert demangle.parse(padded, language="rust").spell() == "a"
+
+
+class TestBackreferenceMemoPreservesDepthLimit:
+    def test_cached_subtree_cannot_bypass_a_deeper_nesting_limit(self):
+        # From the compiler-emitted corpus: the second Marker path reuses a text
+        # memo first populated at a shallower depth. Tree parsing always rereads it.
+        name = "_RINvCsgJQ98GVk1lE_5types8witness2DNtB2_6MarkerEL_Bv_EB2_"
+        expected = "types::witness2::<dyn types::Marker, dyn types::Marker>"
+        assert demangle.demangle_strict(name, language="rust") == expected
+        assert demangle.parse(name, language="rust").spell() == expected
+        limits = demangle.Limits(max_depth=8)
+        for read in (demangle.demangle_strict, demangle.parse):
+            with pytest.raises(demangle.LimitExceeded):
+                read(name, language="rust", limits=limits)

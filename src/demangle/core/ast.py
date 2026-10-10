@@ -212,23 +212,166 @@ class Node:
     def __eq__(self, other):
         if type(self) is not type(other):
             return NotImplemented
-        return all(getattr(self, s, None) == getattr(other, s, None) for s in self._fields())
+        return _equal_nodes(self, other)
 
     def __hash__(self):
-        return hash((type(self).__name__, *(_hashable(getattr(self, s, None)) for s in self._fields())))
+        return _hash_node(self)
 
 
-def _hashable(value):
-    return tuple(value) if isinstance(value, list) else value
+def _equal_nodes(left, right):
+    """Compare each node pair once, including redundant fields in scheme graphs."""
+    root_left, root_right = left, right
+    pending = [(left, right)]
+    seen = set()
+    while pending:
+        left, right = pending.pop()
+        if (
+            type(left) is type(right)
+            and isinstance(left, Node)
+            and (type(left).__eq__ is Node.__eq__ or (left is root_left and right is root_right))
+        ):
+            pair = (id(left), id(right))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            for field in reversed(left._fields()):
+                pending.append((getattr(left, field, None), getattr(right, field, None)))
+        elif type(left) is type(right) and type(left) in (tuple, list):
+            # Sequence equality treats identical elements as equal without calling
+            # their comparison, including a node occurring in both sequences.
+            pair = (id(left), id(right))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            if len(left) != len(right):
+                return False
+            pending.extend(
+                (left[index], right[index]) for index in range(len(left) - 1, -1, -1) if left[index] is not right[index]
+            )
+        elif not bool(left == right):
+            return False
+    return True
+
+
+class _Prehashed:
+    """Give tuple hashing a child's exact hash, without expanding it again.
+
+    Using the integer itself would change the result: Python hashes large integers
+    modulo its hash prime, whereas a node's returned hash can occupy the whole word.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        self.value = value
+
+    def __hash__(self):
+        return self.value
+
+
+def _hash_value(value, hashes):
+    if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+        return _Prehashed(hashes[id(value)])
+    if type(value) is tuple:
+        return tuple(_hash_value(item, hashes) for item in value)
+    return value
+
+
+class _DeepHash(Exception):
+    pass
+
+
+def _hash_node(root):
+    hashes = {}
+    active = set()
+
+    def freeze(value, depth):
+        if depth > 64:
+            raise _DeepHash
+        if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+            return _Prehashed(visit(value, depth + 1))
+        if type(value) is tuple:
+            return tuple(freeze(item, depth + 1) for item in value)
+        return value
+
+    def visit(node, depth):
+        key = id(node)
+        if key in hashes:
+            return hashes[key]
+        if key in active:
+            raise TypeError("cannot hash a cyclic Node graph")
+        active.add(key)
+        values = []
+        for field in node._fields():
+            value = getattr(node, field, None)
+            if isinstance(value, list):
+                value = tuple(value)
+            values.append(freeze(value, depth))
+        result = hash((type(node).__name__, *values))
+        hashes[key] = result
+        active.remove(key)
+        return result
+
+    try:
+        return visit(root, 0)
+    except _DeepHash:
+        return _hash_node_iterative(root)
+
+
+def _hash_node_iterative(root):
+    """Compute structural hashes in graph order, without retained mutable-node state."""
+    hashes = {}
+    active = set()
+    pending = [(root, None)]
+    while pending:
+        node, values = pending.pop()
+        key = id(node)
+        if key in hashes:
+            continue
+        if values is not None:
+            hashes[key] = hash((type(node).__name__, *(_hash_value(value, hashes) for value in values)))
+            active.remove(key)
+            continue
+        if key in active:
+            raise TypeError("cannot hash a cyclic Node graph")
+        values = []
+        for field in node._fields():
+            value = getattr(node, field, None)
+            # Only a field's list was historically made hashable; nested lists
+            # still raise TypeError, matching Python's tuple hash semantics.
+            values.append(tuple(value) if isinstance(value, list) else value)
+        children = []
+        inspect = list(values)
+        while inspect:
+            value = inspect.pop()
+            if isinstance(value, Node) and type(value).__hash__ is Node.__hash__:
+                children.append(value)
+            elif type(value) is tuple:
+                # A tuple subclass can override hashing; treat it as an opaque value.
+                inspect.extend(value)
+        if not children:
+            # Leaves and scalar sequences need no proxies or second visit.
+            hashes[key] = hash((type(node).__name__, *values))
+            continue
+        active.add(key)
+        pending.append((node, values))
+        pending.extend((child, None) for child in children)
+    return hashes[id(root)]
 
 
 def _nodes_in(value):
     """Every node a field's value holds, directly or inside a sequence."""
     if isinstance(value, Node):
         return (value,)
-    if isinstance(value, (list, tuple)):
-        return tuple(node for item in value for node in _nodes_in(item))
-    return ()
+    if not isinstance(value, (list, tuple)):
+        return ()
+    nodes = []
+    for item in value:
+        if isinstance(item, Node):
+            nodes.append(item)
+        elif isinstance(item, (list, tuple)):
+            nodes.extend(_nodes_in(item))
+    return nodes
 
 
 def _shared_nodes(root):
@@ -246,7 +389,11 @@ def _shared_nodes(root):
         if counts[key] > 1:
             continue
         for field in node._fields():
-            stack.extend(_nodes_in(getattr(node, field, None)))
+            value = getattr(node, field, None)
+            if isinstance(value, Node):
+                stack.append(value)
+            elif isinstance(value, (list, tuple)):
+                stack.extend(_nodes_in(value))
     return {key for key, count in counts.items() if count > 1}
 
 

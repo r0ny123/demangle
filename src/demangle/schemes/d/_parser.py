@@ -207,6 +207,12 @@ class _Reader:
     MAX_VALUE_DIGITS = 1024
 
     def __init__(self, text):
+        # ABI lengths and back-reference distances count UTF-8 bytes.
+        if not text.isascii():
+            try:
+                text = text.encode("utf-8").decode("latin-1")
+            except UnicodeEncodeError as error:
+                raise DemangleFailure("invalid Unicode in name") from error
         self.text = text
         self.pos = 0
         self.end = len(text)
@@ -456,7 +462,16 @@ class _Parser:
             raise DemangleFailure("identifier is not a D name")
         reader.pos = start + length
         self._remember_lname(lname_start, reader.pos)
-        return text
+        return self._decoded_name(text)
+
+    @staticmethod
+    def _decoded_name(name):
+        if name.isascii():
+            return name
+        try:
+            return name.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError) as error:
+            raise DemangleFailure("identifier ends inside a UTF-8 character") from error
 
     @staticmethod
     def _spelled_component(name):
@@ -841,7 +856,7 @@ class _Parser:
                     if start + length > reader.end:
                         raise DemangleFailure("identifier runs past the end of the name")
                     reader.pos = start + length
-                    resolved = self._spelled_component(reader.text[start : start + length])
+                    resolved = self._spelled_component(self._decoded_name(reader.text[start : start + length]))
             finally:
                 reader.depth -= 1
         finally:

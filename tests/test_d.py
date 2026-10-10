@@ -1349,3 +1349,16 @@ class TestTwoBackReferencesToOneTargetReadItTheSameWay:
     def test_the_reading_is_the_references_own(self):
         """Both halves are what `c++filt --format=dlang` 2.42 prints for this name."""
         assert demangle.demangle_strict(self.MANGLED, language="d").count(self.WHOLE) == 2
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [("_D2éi", "é"), ("_D3éai", "éa"), ("_D2éQdi", "é.é"), ("_D4😀i", "😀"), ("_D6模块i", "模块")],
+)
+def test_unicode_identifiers_count_utf8_bytes(name, expected):
+    assert demangle.demangle(name, language="d") == expected
+
+
+@pytest.mark.parametrize("name", ["_D1éi", "_D3😀i", "_D1\ud800i"])
+def test_unicode_identifier_partial_bytes_are_refused(name):
+    assert demangle.demangle(name, language="d") == name

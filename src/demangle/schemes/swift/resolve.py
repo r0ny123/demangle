@@ -343,6 +343,10 @@ def macho_image(data):
     if len(data) < 0x20 or data[:4] != b"\xcf\xfa\xed\xfe":
         raise MalformedImage("not a 64-bit little-endian Mach-O file")
     commands = _field(_U32, data, 0x10, "the load command count")
+    command_bytes = _field(_U32, data, 0x14, "the load command region size")
+    if commands > command_bytes // _MIN_LOAD_COMMAND:
+        raise MalformedImage("load command count does not fit the declared command region")
+    command_end = 0x20 + command_bytes
     at = 0x20
     segments = []
     for _ in range(commands):
@@ -351,7 +355,16 @@ def macho_image(data):
         command, size = struct.unpack_from("<II", data, at)
         if size < _MIN_LOAD_COMMAND:
             raise MalformedImage(f"load command at offset {at} claims {size} bytes")
-        if command == 0x19 and at + 0x48 <= len(data):  # LC_SEGMENT_64
+        if at + size > command_end:
+            raise MalformedImage(f"load command at offset {at} extends beyond the declared command region")
+        if command == 0x19:  # LC_SEGMENT_64
+            if size < 0x48:
+                raise MalformedImage(f"segment command at offset {at} claims {size} bytes; at least 72 required")
+            if at + 0x48 > len(data):
+                break  # Preserve the complete segments of a partially downloaded image.
+            sections = _U32.unpack_from(data, at + 0x40)[0]
+            if size < 0x48 + sections * 0x50:
+                raise MalformedImage(f"segment command at offset {at} cannot hold its {sections} sections")
             vmaddr = _U64.unpack_from(data, at + 0x18)[0]
             fileoff = _U64.unpack_from(data, at + 0x28)[0]
             filesize = _U64.unpack_from(data, at + 0x30)[0]

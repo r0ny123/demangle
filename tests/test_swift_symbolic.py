@@ -17,7 +17,14 @@ import pathlib
 import pytest
 
 from demangle.schemes.swift import demangle_symbolic
-from demangle.schemes.swift.resolve import ContextResolver, Image, MalformedImage, _fragment_from_symbol, elf_image
+from demangle.schemes.swift.resolve import (
+    ContextResolver,
+    Image,
+    MalformedImage,
+    _fragment_from_symbol,
+    elf_image,
+    macho_image,
+)
 from demangle.schemes.swift.symbolic import (
     CONTEXT,
     DIRECT,
@@ -492,3 +499,66 @@ class TestReadingAnElfImage:
         assert image.imports == {}
         assert image.symbols == {}
         assert image.read(0x1000, 4) == b"\x7fELF"
+
+
+class TestReadingAMachOImage:
+    def data(self):
+        import struct
+
+        data = bytearray(0x100)
+        data[:4] = b"\xcf\xfa\xed\xfe"
+        struct.pack_into("<II", data, 0x10, 1, 0x48)  # ncmds, sizeofcmds
+        struct.pack_into("<II", data, 0x20, 0x19, 0x48)  # LC_SEGMENT_64, cmdsize
+        struct.pack_into("<QQQQ", data, 0x20 + 0x18, 0x1000, 4, 0x80, 4)
+        data[0x80:0x84] = b"DATA"
+        return data
+
+    def test_a_segment_maps_its_file_bytes(self):
+        assert macho_image(bytes(self.data())).read(0x1000, 4) == b"DATA"
+
+    @pytest.mark.parametrize("size", [0, 7, 8, 71])
+    def test_a_segment_command_cannot_read_fields_from_the_next_command(self, size):
+        import struct
+
+        data = self.data()
+        struct.pack_into("<I", data, 0x24, size)
+        with pytest.raises(MalformedImage, match="command at offset"):
+            macho_image(bytes(data))
+
+    @pytest.mark.parametrize("size", [0, 7, 8, 71])
+    def test_commands_cannot_read_beyond_the_declared_command_region(self, size):
+        import struct
+
+        data = self.data()
+        struct.pack_into("<I", data, 0x14, size)
+        with pytest.raises(MalformedImage, match=r"command (count|at offset)"):
+            macho_image(bytes(data))
+
+    def test_a_segment_command_must_hold_the_sections_it_declares(self):
+        import struct
+
+        data = self.data()
+        struct.pack_into("<I", data, 0x60, 1)  # nsects
+        with pytest.raises(MalformedImage, match="cannot hold its 1 sections"):
+            macho_image(bytes(data))
+
+    def test_a_truncated_command_is_skipped(self):
+        assert macho_image(bytes(self.data()[:0x50])).read(0x1000, 4) is None
+
+    def test_a_complete_command_maps_a_truncated_segment_partially(self):
+        image = macho_image(bytes(self.data()[:0x82]))
+        assert image.read(0x1000, 2) == b"DA"
+        assert image.read(0x1000, 4) is None
+
+    def test_an_unknown_command_is_skipped_before_a_known_segment(self):
+        import struct
+
+        data = self.data()
+        data[0x28:0x70] = data[0x20:0x68]
+        struct.pack_into("<II", data, 0x10, 2, 0x50)
+        struct.pack_into("<II", data, 0x20, 0x777, 8)
+        assert macho_image(bytes(data)).read(0x1000, 4) == b"DATA"
+
+    def test_invalid_magic_is_a_malformed_image(self):
+        with pytest.raises(MalformedImage):
+            macho_image(bytes(0x20))

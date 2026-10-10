@@ -240,13 +240,14 @@ class _Cur:
     cursor has to be a value the caller can replace, not an index into one buffer.
     """
 
-    __slots__ = ("i", "n", "s")
+    __slots__ = ("_ascii", "i", "n", "s")
 
     def __init__(self, s, i=0):
         self.s = s
         self.i = i
         #: Constant: a cursor is replaced, never re-pointed, and `at` is the hot path.
         self.n = len(s)
+        self._ascii = s.isascii()
 
     def at(self, offset=0):
         """The character `offset` ahead, or `""` past the end, which stands in for NUL."""
@@ -261,6 +262,25 @@ class _Cur:
 
     def advance(self, count=1):
         self.i += count
+
+    def byte_count(self, count):
+        """Convert an ABI byte length to this cursor's character count."""
+        if self._ascii or count <= 0:
+            return count
+        start = at = self.i
+        remaining = count
+        while remaining and at < self.n:
+            code = ord(self.s[at])
+            if 0xD800 <= code <= 0xDFFF:
+                raise DemangleFailure("invalid Unicode in identifier")
+            width = 1 if code < 0x80 else 2 if code < 0x800 else 3 if code < 0x10000 else 4
+            remaining -= width
+            if remaining < 0:
+                raise DemangleFailure("identifier ends inside a UTF-8 character")
+            at += 1
+        if remaining:
+            raise DemangleFailure("identifier runs past the end of the name")
+        return at - start
 
     def take(self, count):
         text = self.s[self.i : self.i + count]
@@ -468,11 +488,12 @@ def consume_count(cur):
         cur.advance()
     digits = cur.s[start : cur.i]
     # The reference detects `int` overflow and returns -1 having consumed the digits.
-    if len(digits) > 9:
-        value = int(digits)
-        if value > 0x7FFFFFFF:
-            return -1
-    return int(digits)
+    significant = digits.lstrip("0") or "0"
+    if len(significant) > 10 or (len(significant) == 10 and significant > "2147483647"):
+        return -1
+    # Leading zeros do not overflow C's accumulator, even beyond Python's decimal
+    # conversion limit. Only the significant digits need to become an integer.
+    return int(significant)
 
 
 def consume_count_with_underscores(cur):
@@ -671,7 +692,7 @@ def _do_type_member(work, cur, decl):
         decl.prepend("::")
 
     if _isdigit(cur.at()):
-        n = consume_count(cur)
+        n = cur.byte_count(consume_count(cur))
         if n == -1 or len(cur.rest()) < n:
             return 0
         decl.prepend(cur.take(n))
@@ -979,7 +1000,7 @@ def demangle_template_value_parm(work, cur, out, tk):
         if cur.at() == "Q":
             success = demangle_qualified(work, cur, out, 0, 1)
         else:
-            symbol_len = consume_count(cur)
+            symbol_len = cur.byte_count(consume_count(cur))
             if symbol_len == -1 or symbol_len > len(cur.rest()):
                 return -1
             if symbol_len == 0:
@@ -1031,7 +1052,7 @@ def _demangle_template(work, cur, tname, trawname, is_type, remember):
             if trawname is not None:
                 trawname.append(spelled)
         else:
-            count = consume_count(cur)
+            count = cur.byte_count(consume_count(cur))
             if count <= 0 or len(cur.rest()) < count:
                 return 0
             name = cur.take(count)
@@ -1063,7 +1084,7 @@ def _demangle_template(work, cur, tname, trawname, is_type, remember):
             cur.advance()
             success = demangle_template_template_parm(work, cur, tname)
             if success:
-                count2 = consume_count(cur)
+                count2 = cur.byte_count(consume_count(cur))
                 if count2 > 0 and len(cur.rest()) >= count2:
                     tname.append(" ")
                     name = cur.take(count2)
@@ -1191,7 +1212,7 @@ def do_hpacc_template_literal(work, cur, out):
     if cur.at() != "A":
         return 0
     cur.advance()
-    literal_len = consume_count(cur)
+    literal_len = cur.byte_count(consume_count(cur))
     if literal_len <= 0 or literal_len > len(cur.rest()):
         return 0
     out.append("&")
@@ -1323,7 +1344,7 @@ def demangle_arm_hp_template(work, cur, n, declp):
 
 def demangle_class_name(work, cur, declp):
     """A length-prefixed class name, with template arguments where it has them."""
-    n = consume_count(cur)
+    n = cur.byte_count(consume_count(cur))
     if n <= 0:
         # Stricter than the reference, which prepends `::` to a zero-length class name.
         return 0
@@ -1466,6 +1487,7 @@ def _demangle_qualified(work, cur, result, isfuncname, append):
 
 def recursively_demangle(work, cur, result, namelength):
     """Demangle the next `namelength` characters as a name in their own right."""
+    namelength = cur.byte_count(namelength)
     name = cur.s[cur.i : cur.i + namelength]
     spelled = _demangle_fresh(work, name)
     result.append(spelled if spelled is not None else name)
@@ -2052,6 +2074,8 @@ def gnu_special(work, cur, declp):
                 n = None
                 if _isdigit(code):
                     n = consume_count(cur)
+                    if not cur._ascii and 0 < n <= len(cur.rest().encode("utf-8", errors="surrogatepass")):
+                        n = cur.byte_count(n)
                     # Too large: a `.<digits>` static local marker. The reference's
                     # `break` leaves only the `switch`, so the loop goes on: `_vt.6i` is
                     # `i virtual table`.
@@ -2091,7 +2115,7 @@ def gnu_special(work, cur, declp):
         elif code == "t":
             success = demangle_template(work, cur, declp, None, 1, 1)
         else:
-            n = consume_count(cur)
+            n = cur.byte_count(consume_count(cur))
             if n < 0 or n > len(cur.rest()):
                 return 0
             here = cur.rest()
@@ -2193,13 +2217,13 @@ def arm_special(work, cur, declp):
         n = consume_count(scan)
         if n == -1:
             return 0
-        scan.advance(n)
+        scan.advance(scan.byte_count(n))
         if scan.at() == "_" and scan.at(1) == "_":
             scan.advance(2)
 
     cur.advance(len(ARM_VTABLE_STRING))
     while not cur.done():
-        n = consume_count(cur)
+        n = cur.byte_count(consume_count(cur))
         if n == -1 or n > len(cur.rest()):
             return 0
         declp.prepend(cur.take(n))

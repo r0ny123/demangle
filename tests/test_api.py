@@ -844,3 +844,18 @@ def test_forced_plugin_preserves_operational_and_parse_errors(monkeypatch, failu
     with pytest.raises(type(failure)) as caught:
         demangle.demangle_strict("_Z1fv", language="itanium")
     assert caught.value is failure
+
+
+@pytest.mark.parametrize("suffix", ["é", "λ", "\u0301", "\udcff", "\U0001f600"])
+def test_text_filter_does_not_rewrite_a_prefix_of_a_non_ascii_word(suffix):
+    name = "_Z3foo" + suffix
+    text = f"T {name}\nT _Z1fv\n"
+    assert demangle.demangle(name) == name
+    assert demangle.demangle_text(text) == f"T {name}\nT f()\n"
+    assert [found.mangled for found in demangle.find_symbols(text)] == ["_Z1fv"]
+
+
+@pytest.mark.parametrize("prefix", ["é", "\u0301", "\udcff"])
+def test_text_filter_does_not_rewrite_a_suffix_of_a_non_ascii_word(prefix):
+    name = prefix + "_Z1fv"
+    assert demangle.demangle_text(name) == name

@@ -108,9 +108,108 @@ Rejected: a marker-suppression microoptimization whose measured ranges overlappe
 and speculative timeout/configuration changes without a reproduced failure. Existing
 documented reference divergences were preserved rather than changed without evidence.
 
-Limits: this environment has GNU `c++filt` but lacks LLVM demanglers, a Rust reference
-toolchain, and `swift-demangle`. Fresh comparison against those external references
-cannot be completed here; their frozen corpora still run. Cross-version Python,
+Initial limits: LLVM, Rust and Swift references were missing during the first pass.
+The follow-up below resolves those limitations with freshly built native references. Cross-version Python,
 Windows/macOS, free-threaded Python, documentation builds, and the full distribution-install
 matrix remain CI responsibilities. No claim is
 made about unseen production workloads or exhaustive correctness.
+
+
+## Follow-up investigation — 2026-10-10
+
+Remote main was checked again and remains `ed67b1433db8ae7b91ae323377cd9b437a9149ea`.
+The first audit commit is `0f56a94`. The draft PR is
+https://github.com/r0ny123/demangle/pull/49. Native references previously missing are
+now available: LLVM 19 cxxfilt/undname, rustc-demangle 0.1.28, the pinned Swift
+reference, and the GCC 8.3 GNUv2 reference.
+
+| Finding | Resolution and evidence |
+|---|---|
+| Itanium Unicode lengths | ABI lengths count UTF-8 bytes, whereas Python slicing counted characters. Fixed source names, nested fast paths and ABI tags; native GNU/LLVM examples and partial-byte regressions. |
+| D Unicode lengths and offsets | `_D2éi` was refused and `_D1éi` accepted; GNU does the reverse. Reader tracks bytes, decoding identifiers at their boundaries. `_D2éQdi` verifies byte-distance back references. Native probes and regressions pass. |
+| GNUv2 Unicode lengths | `f__2éFv` was misread as `éF::f(void)`. Convert ABI byte counts to cursor character counts for length-prefixed names. Classes, nested names, templates, pointer parameters and 30 special-form/style probes match native GNUv2. |
+| Stream Unicode boundaries | A Unicode suffix could cause a refused whole name to be demangled partially. Preserve attached non-ASCII token characters; use the original ASCII regex on ASCII lines. API/CLI regressions. |
+| CLI error handling | Empty explicit names and failed type/tree/JSON requests could exit successfully. Return failure consistently; CLI regressions. |
+| JSON cache retention | Repeated distinct large refused names retained about 50 MB under the count-only cache. Bound retained character storage and individual entry sizes; tracemalloc measures a 67.2% reduction. |
+| Duplicate cache updates | Replacing a young entry accumulated its weight repeatedly and aged out neighbors. Track replacement weights; regression verifies retained neighbors and updated values. |
+| Shared AST hashing/equality | Small shared Rust graphs caused exponential traversal. Per-call memoization and iterative deep-graph traversal preserve structural hashes and custom overrides; graph/deep-tree/cycle/mutation regressions. |
+| Rust v0 limits | Oversized numeric fields consumed unnecessary arithmetic, and memoized back references could bypass depth limits. Bound accumulation and cache subtree height; text/tree depth parity and numeric regressions. Skip long valid zero padding in C. |
+| Nim/Pascal end anchors | Trailing newlines could be accepted as complete names. Exact end anchors and refusal regressions. |
+| Nim/JNI repeated separators | Malformed separator-heavy names caused quadratic work. Validate suffixes once and prune impossible candidates. Nim compared on 78,124 short bodies; JNI on 55,987 inputs. |
+| GNUv2 decimal conversion | Long zero-padded counts hit the interpreter integer-conversion limit. Bound significant-digit conversion; native reference regression. |
+| Swift Mach-O bounds | Load commands/segments could read outside their declared command region. Validate command extent, minimum sizes and section counts; focused regressions. |
+
+### Follow-up measurements
+
+Raw samples, ranges, reference revisions and reproduction parameters are in
+`benchmarks/audit_followup_results.json`. Same interpreter and inputs, alternating
+before/after order, with output parity checked. Core, graph, Rust v0 and stream
+comparisons below use the original `ed67b14` baseline. Nim and JNI use `0f56a94`;
+those parser files are unchanged between the two baseline revisions.
+
+| Workload | Before median | After median | Time reduction |
+|---|---|---|---|
+| Serialize 5,913 libstdc++ ASTs, 7 pairs | 119.356 ms (119.177–121.436) | 80.459 ms (79.868–81.745) | 32.6% |
+| Hash 13-node shared Rust graph, 7 pairs | 7.315 ms (7.022–12.811) | 33.553 µs (29.903–39.157) | 99.54% |
+| Compare shared Rust graphs, 7 pairs | 6.139 ms (6.063–10.445) | 22.650 µs (21.752–26.363) | 99.63% |
+| Rust v0, 60,000 invalid base-62 digits | 429.814 ms | 64.607 µs | 99.98% |
+| Rust v0, 60,000 invalid decimal digits | 243.958 ms | 61.602 µs | 99.97% |
+| Rust v0, 60,000 valid padded digits | 4.967 ms | 50.913 µs | 98.98% |
+| JNI Unicode path, 1,000 candidate separators | 521.779 ms | 675.973 µs | 99.87% |
+| JNI, 1,000 empty components | 77.128 ms | 302.775 µs | 99.61% |
+| Nim malformed type, 4,000 separators | 71.171 ms | 253.711 µs | 99.64% |
+| Library filter, 10,000 plain log lines | 29.146 ms | 2.932 ms | 89.94% |
+| Library filter, 10,000 nm lines | 24.172 ms | 19.732 ms | 18.37% |
+| Library filter, 10,000 mixed log lines | 18.166 ms | 4.108 ms | 77.38% |
+| CLI filter, 10,000 plain log lines | 28.989 ms | 2.609 ms | 91.00% |
+
+These stress cases establish scaling and refusal costs, not a production workload
+mix. Stream tests use warmed parsers and a discard sink to isolate filtering. JSON
+retention over 256 distinct names of 65,536 characters falls from 50,425,235 to
+16,552,537 traced bytes, a reduction of 33,872,698 bytes (67.2%). This counts actual
+traced allocations; the cache's character-storage budget excludes object overhead.
+
+Costs are retained where needed for correctness or bounds: ordinary Rust v0 corpus
+parsing is 37.659 → 39.894 µs/name (+5.9%); ordinary Nim type-info is 1.402 →
+1.539 µs (+9.8%), while ordinary Nim types improve 7.6%. Ordinary JNI has overlapping
+variation (2.355 → 2.394 µs), so no improvement is claimed. Core AST construction is
+106.374 → 109.762 ms (+3.2%); ordinary hashing is 73.633 → 83.427 ms (+13.3%) and
+equality 62.029 → 68.005 ms (+9.6%). Retained node bytes still increase 2.33% from the
+original baseline. Symbol-heavy CLI paths cost roughly 5–8% in this run, with some
+sample ranges overlapping; the warmed JSON nm samples overlap substantially, so their
+median difference is not claimed as a speedup. All raw samples are retained.
+
+The two-line MSVC empty-qualifier fast path removes 1,952 Python calls (1.74%) and
+976 sorting calls (59%) over 609 symbols; no separate wall-clock speedup is claimed.
+
+Rejected approaches: including recursion depth in Rust memo keys or retaining only
+the deepest-context memo increased calls 10–13%; cached subtree height avoids that.
+Purely iterative AST hashing made ordinary hashing 131% slower than the first audit
+commit; shallow recursion with per-call memoization and a deep-graph fallback reduces
+that cost. Count-only JSON caching was rejected because it cannot bound retained
+bytes. Unicode-wide regex scanning is avoided for ASCII input. An annotation check
+on every CLI word was replaced with a marker-prefix guard after measurements exposed
+its cost. Existing documented native-reference divergences remain unchanged.
+
+### Follow-up verification and limits
+
+- Full CPython 3.13 suite: **4,496 passed, 1 skipped, 384,560 subtests passed**.
+- Final CLI/API/Rust/Nim edits: **794 passed, 4,741 subtests passed**.
+- CPython 3.12 changed-area suite: **1,494 passed, 1 skipped, 15,807 subtests passed**.
+- Frozen corpus replay on both interpreters: **65,629/65,629 exact**.
+- Ruff lint/format, type checks and whitespace checks pass; benchmark gate passes
+  without changing the baseline.
+- Native enumeration through length 4 and 20,000 mutants per supported scheme at
+  seed 1: no unexplained divergences. The earlier seed 0 run also passed.
+- Cross-entry-point invariants, 1,000 mutants per corpus at seed 1: no invariant broken.
+  An additional 10,776 Rust v0 text/tree comparisons at depth bounds 4/8/12/16 pass.
+- Wheel and source archive rebuilt offline; isolated installed-wheel smoke verified.
+
+The reproduced findings in the examined paths have been addressed. Follow-up review
+covered adjacent Unicode name/offset handling, special forms, bounds/cache interactions,
+text/tree parity and ordinary-workload regressions. No unresolved reproduced finding
+is being concealed by a performance claim. Coverage is finite: native alphabets,
+seeded mutations and representative corpora do not prove all inputs correct. Production
+workload distributions, Windows/macOS, free-threaded Python, Python 3.11/3.14/PyPy and
+documentation builds remain outside this environment's verification. This audit does
+not establish globally optimal performance or that no bugs remain.
