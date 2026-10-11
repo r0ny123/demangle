@@ -175,7 +175,10 @@ specific `YYYY-MM-DD` date. It updates the package and citation versions, moves 
 under the dated changelog heading, refreshes comparison links, then runs the documentation
 metadata checks. If those checks fail, it restores the original files. Commit and push
 that change to `main`; `tag-release.yml` creates the tag and release only after push CI
-passes for that exact commit. It then starts the PyPI publishing workflow.
+passes for that exact commit. It then starts the PyPI publishing workflow. If starting
+publishing fails, rerun the tag-release job: an existing release no longer stops recovery.
+Active or successful publishing runs are left alone; failed runs retry only failed jobs.
+Cancelled runs require an explicit manual restart.
 
 ```console
 python tools/prepare_release.py 0.7.0 --date 2026-10-12

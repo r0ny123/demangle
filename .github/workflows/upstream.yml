@@ -1,9 +1,5 @@
 name: Upstream drift
 
-# The references' own test vectors, as of their `main` branches today, against this
-# library: tools/upstream_drift.py. A new vector this library misreads opens an issue,
-# or adds to the open one, so a mangling that did not exist when a scheme was written is
-# noticed before a user meets it.
 
 on:
   schedule:
@@ -12,6 +8,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: upstream-drift
+  cancel-in-progress: false
 
 jobs:
   drift:
@@ -47,9 +47,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          # The report first and the run last, so a repeat of last week's report is
-          # recognised by everything above its final line; the report is already cut
-          # to fit a body's 65,536 characters.
+          # Keep the changing run URL last so reports can be compared without it.
           {
             cat drift.md
             echo

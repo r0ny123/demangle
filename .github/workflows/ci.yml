@@ -23,26 +23,19 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
-      # Must cover every version and implementation the classifiers in `pyproject.toml`
-      # claim. PyPy 3.11 is pure Python here, so it installs the same way.
       matrix:
         os: [ubuntu-latest]
         python: ["3.11", "3.12", "3.13", "3.14", "pypy3.11"]
         include:
-          # The ceiling, so the top of the range is not only ever run on Linux.
           - os: macos-latest
             python: "3.14"
-          # The floor, for the same reason.
           - os: windows-latest
             python: "3.11"
-          # Free-threaded, for tests/test_concurrency. Not 3.13t: coverage and hypothesis
-          # ship compiled wheels, and neither publishes a cp313t one (cp314t onwards),
-          # so the test group has no prebuilt install there.
+          # Coverage and Hypothesis have free-threaded wheels from cp314t onwards.
           - os: ubuntu-latest
             python: "3.14t"
     steps:
       - name: Check out
-        # Actions are pinned to full commit SHAs (tags are mutable); Dependabot bumps them.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -54,8 +47,7 @@ jobs:
       - name: Install uv
         run: python -m pip install --upgrade pip uv
       - name: Install
-        # UV_PYTHON pins uv to the free-threaded interpreter set up above; otherwise it
-        # picks the runner's system python.
+        # Prevent uv from selecting the system interpreter instead of free-threaded Python.
         run: uv pip install --system -e . --group test
         env:
           UV_PYTHON: ${{ steps.python.outputs.python-path }}
@@ -64,8 +56,7 @@ jobs:
       - name: Test
         run: python -m pytest -q
       - name: Concurrency and limits in isolation
-        # Fresh process: the cache and registry are global, so the full run could mask
-        # a test that relies on state an earlier test left behind.
+        # A fresh process exposes dependencies on global cache or registry state.
         run: python -m pytest -q -x tests/test_concurrency.py tests/test_limits.py
       - name: Command line works
         run: |
@@ -115,8 +106,6 @@ jobs:
       - run: uv pip install --system -e . --group test
       - name: Replay the committed corpora
         run: python tools/differential.py
-      # Catches a reference changing its output, which a replay of the committed
-      # corpus cannot.
       - name: Regenerate and compare live
         run: |
           python tools/generate_corpus.py --out /tmp/fresh
@@ -128,7 +117,6 @@ jobs:
             --tool llvm-undname --name msvc-clang.txt \
             --defects tests/conformance/msvc-reference-defects.txt
           python tools/differential.py --corpus /tmp/fresh/msvc-clang.txt --language msvc
-      # The reference builds must precede the enumerate/mutate steps, which query them.
       - name: Build the rustc-demangle reference
         run: cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
       - name: Build the Swift reference
@@ -162,9 +150,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y llvm-16 llvm-18 llvm-20 binutils
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e . --group test
-      # Keep c++filt in the set: LLVM versions share bugs, so an all-LLVM set can
-      # outvote a correct answer. llvm-20 is installed for the MSVC step below;
-      # llvm-cxxfilt-20 is not yet vetted for this cross-check, so it is left out.
+      # GNU provides an independent vote because LLVM versions can share bugs.
       - name: Itanium across llvm-cxxfilt versions and GNU
         run: python tools/differential.py --cross llvm-cxxfilt-16 llvm-cxxfilt-18 c++filt
       - name: MSVC across llvm-undname versions
