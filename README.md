@@ -56,7 +56,8 @@ pip install demangle
 Python 3.11 or newer, on CPython or PyPy. That is the whole dependency list.
 
 The documentation, API reference included, is published at
-<https://r0ny123.github.io/demangle/>.
+<https://r0ny123.github.io/demangle/>. An interactive in-browser playground is available
+at <https://r0ny123.github.io/demangle/playground/>.
 
 ## Use
 

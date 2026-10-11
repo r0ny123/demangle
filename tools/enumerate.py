@@ -443,6 +443,14 @@ ACCEPTED = {
         # Or an extended existential shape, which `NodePrinter` prints as
         # `<null node pointer>`; see swift-reference-defects.txt.
         or (first is not None and "<null node pointer>" in first)
+        # Or Swift 6 invertible protocol bit 2 (~Deinitable), which older reference builds
+        # (including the pinned revision) print as ~Swift.<bit 2>.
+        or (
+            first is not None
+            and "Deinitable" in ours
+            and ("<bit 2>" in first or "~Swift.<bit 2>" in first)
+            and ours.replace("Deinitable", "<bit 2>") == first
+        )
     ),
 }
 

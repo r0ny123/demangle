@@ -238,3 +238,11 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
 </div>
 
 Use **Copy link** to share the current symbol, scheme, style, and output view. Sharing explicitly includes the symbol in the URL fragment; no link is created automatically. The runtime banner shows the library version used by the current page.
+
+## Features and capabilities
+
+- Auto-detect or choose any of the 14 supported mangling schemes.
+- Switch between LLVM and GNU spelling and the CLI's four output modes.
+- Inspect qualified names, parameters, return types, calling conventions, and qualifiers.
+- Explore the parsed AST or copy its complete JSON graph.
+- Demangle as you type, with symbols processed locally after the runtime downloads.
