@@ -37,29 +37,32 @@
   },
   "swift": {
     "names": 256,
-    "seconds": 0.015074,
-    "per_second": 16983,
-    "microseconds_each": 58.884,
+    "seconds": 0.0181,
+    "per_second": 14174,
+    "microseconds_each": 70.55,
     "succeeded": 256,
-    "normalised": 2068.706,
-    "relative_to_pivot": 255.4004
+    "normalised": 2303.46,
+    "relative_to_pivot": 336.776,
+    "recorded_on": "GitHub Actions ubuntu-24.04, CPython 3.13.16; run 38108232827"
   },
   "swift_parse": {
     "names": 256,
-    "seconds": 0.017667,
-    "per_second": 14491,
-    "microseconds_each": 69.01,
+    "seconds": 0.0213,
+    "per_second": 12046,
+    "microseconds_each": 83.02,
     "succeeded": 256,
-    "normalised": 2424.561,
-    "relative_to_pivot": 299.3338
+    "normalised": 2710.43,
+    "relative_to_pivot": 396.277,
+    "recorded_on": "GitHub Actions ubuntu-24.04, CPython 3.13.16; run 38108232827"
   },
   "signature": {
     "names": 1280,
-    "seconds": 0.082845,
-    "per_second": 15450,
-    "microseconds_each": 64.723,
+    "seconds": 0.0963,
+    "per_second": 13289,
+    "microseconds_each": 75.25,
     "succeeded": 1280,
-    "normalised": 2273.875,
-    "relative_to_pivot": 280.7303
+    "normalised": 2456.81,
+    "relative_to_pivot": 359.197,
+    "recorded_on": "GitHub Actions ubuntu-24.04, CPython 3.13.16; run 38108232827"
   }
 }
