@@ -8,12 +8,6 @@ edit_uri: edit/main/
 hooks:
   - docs/hooks.py
 
-extra_css:
-  - assets/playground.css
-
-extra_javascript:
-  - assets/playground.js
-
 nav:
   - Home: index.md
   - Playground: playground.md

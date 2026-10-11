@@ -21,3 +21,4 @@ tools/cplus-dem-reference/gcc/
 tools/cplus-dem-reference/build/
 .agents/
 docs/assets/demangle.zip
+playground/assets/

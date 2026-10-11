@@ -17,13 +17,15 @@ import pytest
 import demangle
 
 ROOT = Path(__file__).parent.parent
+PLAYGROUND_HTML = ROOT / "playground" / "index.html"
 PLAYGROUND_MD = ROOT / "docs" / "playground.md"
+PRESET_SOURCE = PLAYGROUND_HTML if PLAYGROUND_HTML.is_file() else PLAYGROUND_MD
 PRESETS = (
     re.findall(
         r'<button\b[^>]*\bdata-symbol="([^"]+)"[^>]*\bdata-scheme="([^"]+)"',
-        PLAYGROUND_MD.read_text(encoding="utf-8"),
+        PRESET_SOURCE.read_text(encoding="utf-8"),
     )
-    if PLAYGROUND_MD.exists()
+    if PRESET_SOURCE.exists()
     else []
 )
 
@@ -41,7 +43,10 @@ def _load_module(name: str, path: Path):
 
 @pytest.fixture
 def bridge():
-    return _load_module("playground_bridge_for_tests", ROOT / "docs/assets/playground_bridge.py")
+    bridge_path = ROOT / "playground" / "playground_bridge.py"
+    if not bridge_path.is_file():
+        bridge_path = ROOT / "docs" / "assets" / "playground_bridge.py"
+    return _load_module("playground_bridge_for_tests", bridge_path)
 
 
 @pytest.fixture
@@ -52,7 +57,7 @@ def build_assets():
 @pytest.mark.parametrize(("symbol", "language"), PRESETS or [(None, None)])
 def test_every_preset_is_accepted(bridge, symbol, language):
     if symbol is None:
-        pytest.skip("docs/playground.md is not part of this distribution")
+        pytest.skip("playground is not part of this distribution")
     result = json.loads(bridge.playground_demangle(symbol, language))
     assert result["success"], f"{language} preset {symbol!r}: {result['error']}"
     assert result["language"] == language

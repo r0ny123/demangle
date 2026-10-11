@@ -1,4 +1,156 @@
 /* ==========================================================================
+   demangle In-Browser Standalone Playground Stylesheet
+   Material Design Light & Slate Dark Palettes
+   ========================================================================== */
+
+:root {
+  --md-default-fg-color: #202124;
+  --md-default-bg-color: #ffffff;
+  --md-code-bg-color: #f8f9fa;
+  --md-code-fg-color: #202124;
+  --md-primary-fg-color: #1a73e8;
+  --md-primary-fg-color--light: #e8f0fe;
+  --md-default-fg-color--light: #5f6368;
+  --md-default-fg-color--lighter: #80868b;
+  --md-default-fg-color--lightest: rgba(0, 0, 0, 0.08);
+  --md-text-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --md-code-font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+[data-theme="dark"] {
+  --md-default-fg-color: #e8eaed;
+  --md-default-bg-color: #1a1b1e;
+  --md-code-bg-color: #24262b;
+  --md-code-fg-color: #e8eaed;
+  --md-primary-fg-color: #8ab4f8;
+  --md-primary-fg-color--light: rgba(138, 180, 248, 0.15);
+  --md-default-fg-color--light: #9aa0a6;
+  --md-default-fg-color--lighter: #bdc1c6;
+  --md-default-fg-color--lightest: rgba(255, 255, 255, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --md-default-fg-color: #e8eaed;
+    --md-default-bg-color: #1a1b1e;
+    --md-code-bg-color: #24262b;
+    --md-code-fg-color: #e8eaed;
+    --md-primary-fg-color: #8ab4f8;
+    --md-primary-fg-color--light: rgba(138, 180, 248, 0.15);
+    --md-default-fg-color--light: #9aa0a6;
+    --md-default-fg-color--lighter: #bdc1c6;
+    --md-default-fg-color--lightest: rgba(255, 255, 255, 0.12);
+  }
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  font-family: var(--md-text-font-family);
+  overflow-x: hidden;
+}
+
+/* Standalone App Navbar */
+.playground-standalone-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--md-code-bg-color);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.nav-brand-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-decoration: none;
+  color: var(--md-default-fg-color);
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.nav-brand .brand-icon {
+  font-size: 1.25rem;
+}
+
+.nav-app-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background-color: var(--md-primary-fg-color--light);
+  color: var(--md-primary-fg-color);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.nav-link, .nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--md-default-fg-color--light);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.nav-link:hover, .nav-btn:hover {
+  color: var(--md-default-fg-color);
+  background-color: var(--md-default-fg-color--lightest);
+}
+
+.nav-link:focus-visible, .nav-btn:focus-visible {
+  outline: 2px solid var(--md-primary-fg-color);
+  outline-offset: 1px;
+}
+
+@media (max-width: 480px) {
+  .playground-standalone-nav {
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+  }
+  .nav-brand {
+    font-size: 1rem;
+  }
+  .nav-link, .nav-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+  }
+}
+
+
+/* ==========================================================================
    demangle In-Browser Playground Stylesheet
    Material for MkDocs Light & Slate Dark Theme Integration
    ========================================================================== */

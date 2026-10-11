@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![Licence](https://img.shields.io/badge/licence-MIT-green)](https://github.com/r0ny123/demangle/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-r0ny123.github.io-blue)](https://r0ny123.github.io/demangle/)
+[![Open Playground](https://img.shields.io/badge/Open%20Playground-r0ny123.github.io-2ea44f?logo=googlechrome&logoColor=white)](https://r0ny123.github.io/demangle/playground/)
 
 **Read mangled symbol names in pure Python** — Itanium C++ (GCC/Clang), MSVC, Rust,
 Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI, and the pre-Itanium

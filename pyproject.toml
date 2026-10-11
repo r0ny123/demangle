@@ -97,6 +97,7 @@ include = [
     "/tools",
     "/benchmarks",
     "/docs",
+    "/playground",
     "/README.md",
     "/ARCHITECTURE.md",
     "/CHANGELOG.md",

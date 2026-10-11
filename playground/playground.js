@@ -485,8 +485,42 @@
             copyText(document.getElementById("btn-share"), url.href);
         });
         document.getElementById("btn-retry-runtime").addEventListener("click", initPyodideRuntime);
+        const btnTheme = document.getElementById("btn-theme-toggle");
+        if (btnTheme) {
+            const savedTheme = localStorage.getItem("demangle-theme");
+            if (savedTheme) {
+                document.documentElement.setAttribute("data-theme", savedTheme);
+                btnTheme.textContent = savedTheme === "dark" ? "☀️ Light" : "🌙 Dark";
+            }
+            btnTheme.addEventListener("click", () => {
+                const current = document.documentElement.getAttribute("data-theme") ||
+                    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+                const next = current === "dark" ? "light" : "dark";
+                document.documentElement.setAttribute("data-theme", next);
+                localStorage.setItem("demangle-theme", next);
+                btnTheme.textContent = next === "dark" ? "☀️ Light" : "🌙 Dark";
+            });
+        }
         window.addEventListener("hashchange", () => { restoreSharedState(); executeDemangle(); });
         elInput.addEventListener("input", clearPresetSelection);
+        window.addEventListener("keydown", (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+                event.preventDefault();
+                if (elInput) {
+                    elInput.focus();
+                    elInput.select();
+                }
+            } else if (event.key === "Escape" && document.activeElement === elInput) {
+                if (elInput && elInput.value) {
+                    elInput.value = "";
+                    clearPresetSelection();
+                    executeDemangle();
+                }
+            } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                executeDemangle();
+            }
+        });
     }
 
     function clearPresetSelection() {

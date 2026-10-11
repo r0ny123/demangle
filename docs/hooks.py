@@ -1,8 +1,9 @@
-"""MkDocs hook: package the pure-Python source for the browser playground."""
+"""MkDocs hook: package the pure-Python source for the browser playground and merge standalone app."""
 
 from __future__ import annotations
 
 import io
+import shutil
 import stat
 import zipfile
 from pathlib import Path
@@ -17,9 +18,6 @@ def build_assets(root_dir: Path | None = None) -> Path:
         root_dir = Path(__file__).resolve().parent.parent
 
     src = root_dir / "src" / "demangle"
-    assets_dir = root_dir / "docs" / "assets"
-    assets_dir.mkdir(parents=True, exist_ok=True)
-
     if not (src / "__init__.py").is_file():
         raise FileNotFoundError(f"demangle source package missing: {src}")
 
@@ -36,18 +34,45 @@ def build_assets(root_dir: Path | None = None) -> Path:
             info.external_attr = (stat.S_IFREG | 0o644) << 16
             archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
-    zip_path = assets_dir / "demangle.zip"
-    zip_path.write_bytes(buf.getvalue())
-    # Remove artifacts emitted by the former fake-wheel/base64 packaging path so a
-    # build from a working tree cannot publish stale copies alongside the zip.
-    (assets_dir / "demangle.whl").unlink(missing_ok=True)
-    (assets_dir / "demangle_bundle.js").unlink(missing_ok=True)
-    return zip_path
+    archive_bytes = buf.getvalue()
+
+    # Emit to playground/assets/ (for standalone playground)
+    playground_assets = root_dir / "playground" / "assets"
+    playground_assets.mkdir(parents=True, exist_ok=True)
+    playground_zip = playground_assets / "demangle.zip"
+    playground_zip.write_bytes(archive_bytes)
+
+    # Also emit to docs/assets/ for backwards compatibility
+    docs_assets = root_dir / "docs" / "assets"
+    docs_assets.mkdir(parents=True, exist_ok=True)
+    docs_zip = docs_assets / "demangle.zip"
+    docs_zip.write_bytes(archive_bytes)
+
+    (docs_assets / "demangle.whl").unlink(missing_ok=True)
+    (docs_assets / "demangle_bundle.js").unlink(missing_ok=True)
+    (playground_assets / "demangle.whl").unlink(missing_ok=True)
+    (playground_assets / "demangle_bundle.js").unlink(missing_ok=True)
+
+    return playground_zip
 
 
 def on_pre_build(config: Any) -> None:
     """MkDocs pre-build event hook."""
     build_assets()
+
+
+def on_post_build(config: Any) -> None:
+    """MkDocs post-build event hook: merge standalone playground into site output."""
+    site_dir = Path(config["site_dir"])
+    playground_src = Path(__file__).resolve().parent.parent / "playground"
+    playground_dest = site_dir / "playground"
+    if playground_src.exists():
+        shutil.copytree(
+            playground_src,
+            playground_dest,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
 
 
 if __name__ == "__main__":
