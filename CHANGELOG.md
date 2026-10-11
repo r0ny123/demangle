@@ -8,6 +8,8 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-11
+
 ### Fixed
 
 - Preserve playground input and selected settings while its runtime loads. Scheme
@@ -16,6 +18,10 @@ the reference demanglers, and a **Performance** section.
 
 ### Added
 
+- MSVC C++20 three-way comparison (`operator<=>`) and ARM64e pointer authentication
+  qualifiers, including their structured AST representation.
+- Swift inverse conformance to `~Deinitable`, with module-name display options respected.
+- A standalone browser playground with theme switching and keyboard shortcuts.
 - Shareable playground links and the loaded library version, runtime retry controls,
   and browser regression tests including a real Pyodide smoke test in CI.
 - Bounded Swift and cross-scheme signature benchmarks with successful-work checks.
@@ -4057,7 +4063,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/r0ny123/demangle/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/r0ny123/demangle/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/r0ny123/demangle/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/r0ny123/demangle/compare/v0.4.0...v0.5.0
