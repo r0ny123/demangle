@@ -1,13 +1,5 @@
 name: Tag release
 
-# Cuts the GitHub release for a version bump, so the release is not a step done by hand.
-# It runs after successful push CI on `main`, or on demand from `main`, and does nothing
-# if the tag already exists. The release it creates holds the version's CHANGELOG section.
-#
-# A release made with the workflow token does not start other workflows, so release.yml,
-# which publishes to PyPI on `release: published`, would never see it. This starts it
-# itself on the new tag; its `pypi` environment still waits for a person to approve.
-
 on:
   workflow_run:
     workflows: [CI]
@@ -29,7 +21,9 @@ jobs:
       github.repository == 'r0ny123/demangle' &&
       ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
        (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success'))
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -52,14 +46,16 @@ jobs:
             echo "No successful push CI run for $RELEASE_SHA; not releasing" >&2
             exit 1
           fi
-      - name: Create the release
+      - name: Create the release if needed
+        id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version=$(PYTHONPATH=src python3 -c 'import demangle; print(demangle.__version__)')
           tag="v$version"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > /dev/null 2>&1; then
-            echo "$tag already exists; nothing to do"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "$tag already has a release"
             exit 0
           fi
           awk -v header="## [$version]" '
@@ -77,5 +73,10 @@ jobs:
             echo
             echo "See the [changelog](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for details."
           } >> notes.md
-          gh release create "$tag" --target "$RELEASE_SHA" --title "$tag" --notes-file notes.md
-          gh workflow run release.yml --ref "$tag"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --title "$tag" --notes-file notes.md
+      # GITHUB_TOKEN release events do not start another workflow; dispatch is explicit.
+      - name: Start or recover publishing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: python3 tools/ensure_release_publish.py "$GITHUB_REPOSITORY" "$RELEASE_TAG"

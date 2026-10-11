@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 
-# Never cancel a deployment midway: a half-published site is worse than a stale one.
+# Do not interrupt an active Pages deployment.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -44,7 +44,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
-      # The minimum Pages deployment accepts.
       pages: write
       id-token: write
     steps:

@@ -3,16 +3,19 @@ name: Release
 on:
   release:
     types: [published]
-  # tag-release.yml starts this on the new tag: a release made with the workflow token
-  # does not trigger `published`. Run on a branch, the version check below fails.
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -43,13 +46,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Protected environment: needs human approval; PyPI's trusted publisher is
-    # scoped to it.
     environment:
       name: pypi
       url: https://pypi.org/p/demangle
     permissions:
-      # Trusted Publishing (OIDC); there is no PyPI API token secret.
       id-token: write
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

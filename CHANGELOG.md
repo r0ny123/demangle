@@ -10,6 +10,8 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
+- Release recovery resumes publishing when a tag and release already exist. Active
+  or successful publishing runs are preserved; failed runs retry only failed jobs.
 - Playground theme settings no longer prevent startup when browser storage is blocked.
   The theme toggle follows the system preference until the user selects a theme.
 - Automatic and manual release runs require successful push CI for the commit being tagged.
