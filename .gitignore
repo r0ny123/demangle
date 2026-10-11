@@ -20,5 +20,4 @@ tools/swift-demangle-reference/build/
 tools/cplus-dem-reference/gcc/
 tools/cplus-dem-reference/build/
 .agents/
-docs/assets/demangle.whl
-docs/assets/demangle_bundle.js
+docs/assets/demangle.zip

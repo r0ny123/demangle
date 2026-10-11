@@ -34,5 +34,32 @@
   "calibration": {
     "seconds": 0.034605,
     "rounds": 200000
+  },
+  "swift": {
+    "names": 256,
+    "seconds": 0.015074,
+    "per_second": 16983,
+    "microseconds_each": 58.884,
+    "succeeded": 256,
+    "normalised": 2068.706,
+    "relative_to_pivot": 255.4004
+  },
+  "swift_parse": {
+    "names": 256,
+    "seconds": 0.017667,
+    "per_second": 14491,
+    "microseconds_each": 69.01,
+    "succeeded": 256,
+    "normalised": 2424.561,
+    "relative_to_pivot": 299.3338
+  },
+  "signature": {
+    "names": 1280,
+    "seconds": 0.082845,
+    "per_second": 15450,
+    "microseconds_each": 64.723,
+    "succeeded": 1280,
+    "normalised": 2273.875,
+    "relative_to_pivot": 280.7303
   }
 }

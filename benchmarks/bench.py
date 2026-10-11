@@ -22,6 +22,10 @@ reproducible on a given interpreter, and fewer calls for the same output is stri
 less work, so it reports what the clock cannot. It is a report and not a gate: the count
 moves with the interpreter version as well as with this package, and a gate that fails
 on someone else's Python would be worse than none.
+
+The Swift phases use a bounded prefix of the real-world corpus, so the additional AST
+work stays quick. `signature` exercises extraction across several schemes without
+making the main corpus-sized workloads larger.
 """
 
 import argparse
@@ -58,6 +62,7 @@ TOLERANCE = 1.25
 PIVOT = "warm"
 
 CALIBRATION_ROUNDS = 200_000
+SPECIALIZED_SAMPLE_SIZE = 256
 
 
 def calibrate():
@@ -135,6 +140,11 @@ def corpus_names(*files):
     return names
 
 
+def corpus_sample(filename, limit):
+    """Read at most `limit` manglings from one conformance corpus."""
+    return corpus_names(filename)[:limit]
+
+
 def time_it(function, repeats=5):
     """Best-of-N wall time. Best, not mean: the minimum is the least noisy estimator."""
     timings = []
@@ -162,6 +172,16 @@ def benchmarks():
         "go-real-world.txt",
     )
     negatives = [f"not_a_mangled_symbol_{index}" for index in range(len(sampled))]
+
+    # Keep these focused paths representative without making the benchmark unbounded.
+    swift = corpus_sample("swift-real-world.txt", SPECIALIZED_SAMPLE_SIZE)
+    signature_inputs = [
+        ("itanium", corpus_sample("itanium-real-world.txt", SPECIALIZED_SAMPLE_SIZE)),
+        ("msvc", corpus_sample("msvc-llvm-corpus.txt", SPECIALIZED_SAMPLE_SIZE)),
+        ("rust", corpus_sample("rust-real-world.txt", SPECIALIZED_SAMPLE_SIZE)),
+        ("go", corpus_sample("go-real-world.txt", SPECIALIZED_SAMPLE_SIZE)),
+        ("swift", swift),
+    ]
 
     def cold():
         demangle.cache_clear()
@@ -193,17 +213,59 @@ def benchmarks():
                     count += 1
         parsed.append(count)
 
-    return parsed, [
-        ("cold", cold, len(sampled)),
-        ("warm", warm, len(sampled) * 3),
-        ("negative", negative, len(negatives)),
-        ("structured", structured, len(itanium) * structured_passes),
-    ]
+    swift_demangled = []
+
+    def swift_demangle():
+        # Keep this parse-oriented measurement independent of the cache left by
+        # `time_it`'s earlier repeats.
+        demangle.cache_clear()
+        count = 0
+        for name in swift:
+            # `demangle` intentionally returns unsupported input unchanged. Counting
+            # changed spellings prevents a fast refusal from looking successful.
+            count += demangle.demangle(name, language="swift") != name
+        swift_demangled.append(count)
+
+    swift_parsed = []
+
+    def swift_parse():
+        count = 0
+        for name in swift:
+            with contextlib.suppress(Exception):
+                demangle.parse(name, language="swift")
+                count += 1
+        swift_parsed.append(count)
+
+    signatures = []
+
+    def signature():
+        count = 0
+        for language, names in signature_inputs:
+            for name in names:
+                with contextlib.suppress(Exception):
+                    demangle.signature(name, language=language)
+                    count += 1
+        signatures.append(count)
+
+    successes = {"swift": swift_demangled, "swift_parse": swift_parsed, "signature": signatures}
+    return (
+        parsed,
+        successes,
+        [
+            ("cold", cold, len(sampled)),
+            ("warm", warm, len(sampled) * 3),
+            ("negative", negative, len(negatives)),
+            ("structured", structured, len(itanium) * structured_passes),
+            ("swift", swift_demangle, len(swift)),
+            ("swift_parse", swift_parse, len(swift)),
+            ("signature", signature, sum(len(names) for _, names in signature_inputs)),
+        ],
+    )
 
 
 def run():
     results = {}
-    parsed, cases = benchmarks()
+    parsed, successes, cases = benchmarks()
     reference = calibrate()
     for name, function, count in cases:
         if not count:
@@ -218,6 +280,9 @@ def run():
         }
     if "structured" in results:
         results["structured"]["parsed"] = parsed[-1] if parsed else 0
+    for name, counts in successes.items():
+        if name in results:
+            results[name]["succeeded"] = counts[-1] if counts else 0
     for data in results.values():
         data["normalised"] = round(data["seconds"] / data["names"] / reference * 1e6, 3)
 
@@ -258,7 +323,7 @@ def calls():
     import pstats
 
     counted = {}
-    _, cases = benchmarks()
+    _, _, cases = benchmarks()
     for name, function, count in cases:
         if not count:
             continue
@@ -315,6 +380,12 @@ def main():
             print(f"\nstructured benchmark parsed {structured.get('parsed')} of {structured.get('names')} names")
             print("a timing that improved because the work stopped happening is not an improvement")
             return 1
+        for name in ("swift", "swift_parse", "signature"):
+            phase = results.get(name, {})
+            if phase.get("succeeded") != phase.get("names"):
+                print(f"\n{name} benchmark succeeded on {phase.get('succeeded', 0)} of {phase.get('names', 0)} names")
+                print("a timing that improved because the work stopped happening is not an improvement")
+                return 1
         # A shrunken corpus would also time as an improvement.
         shrunk = [
             (name, results[name]["names"], baseline[name]["names"])

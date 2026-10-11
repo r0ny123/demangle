@@ -19,139 +19,30 @@
     window.__DEMANGLE_PLAYGROUND_INITIALIZED__ = true;
 
     const DEBOUNCE_MS = 50;
-    let pyodideInstance = null;
+    const assetBase = new URL(".", document.currentScript.src);
+    const MAX_TREE_NODES = 1500;
+    const TREE_PAGE_SIZE = 50;
+    let worker = null;
     let isReady = false;
-    let isBusy = false;
+    let activeRequest = null;
+    let pendingRequest = null;
+    let latestRequestId = 0;
+    let cachedResult = null;
+    let runtimeTimer = null;
+    let treeNodes = 0;
+    let renderedNodes = new WeakMap();
+    let referencePaths = new Map();
     let debounceTimer = null;
 
     // DOM Elements
-    let elStatusBadge, elStatusText, elInput, elScheme, elStyleRadios, elFormatRadios;
+    let elStatusBadge, elInput, elScheme, elStyleRadios, elFormatRadios;
     let elDetectedTag, elOutputDisplay, elOutputStatus, elErrorBanner, elErrorMessage;
     let elSigQualified, elSigBase, elSigNamespace, elSigParams, elSigReturn, elSigCallingConv, elSigQualifiers, elSigSpecial;
     let elTreeContainer, elJsonContent, elTabTree, elTabJson, elPanelTree, elPanelJson;
     let btnClear, btnCopyOutput, btnCopyAst, btnExpandAll, btnCollapseAll;
 
-    const PYTHON_BRIDGE_CODE = `
-import json
-import demangle
-from demangle._signature import _labelled
-
-def playground_demangle(symbol, language=None, style="llvm", output_format="full"):
-    sym = (symbol or "").strip()
-    if not sym:
-        return json.dumps({
-            "empty": True,
-            "success": True,
-            "symbol": "",
-            "output": "",
-            "demangled": "",
-            "detected_language": None,
-            "language": None,
-            "qualified_name": None,
-            "base_name": None,
-            "namespace": None,
-            "parameters": None,
-            "return_type": None,
-            "calling_convention": None,
-            "qualifiers": [],
-            "special": None,
-            "ast": None,
-            "error": None,
-        })
-
-    lang = language.strip().lower() if (language and language.strip().lower() not in ("auto", "")) else None
-    style_val = style if style in ("llvm", "gnu") else "llvm"
-    
-    try:
-        detected = demangle.detect(sym)
-    except Exception:
-        detected = None
-
-    effective_lang = lang or detected
-
-    res = {
-        "empty": False,
-        "symbol": sym,
-        "style": style_val,
-        "detected_language": detected,
-        "language": effective_lang,
-        "error": None,
-    }
-
-    # 1. Signature extraction and formatted output
-    try:
-        sig = demangle.signature(sym, language=lang, style=style_val)
-        res["success"] = True
-        res["language"] = sig.language
-        res["demangled"] = sig.demangled
-        res["qualified_name"] = sig.qualified_name
-        res["base_name"] = sig.base_name
-        res["namespace"] = sig.namespace
-        res["parameters"] = list(sig.parameters) if sig.parameters is not None else None
-        res["return_type"] = sig.return_type
-        res["calling_convention"] = sig.calling_convention
-        res["qualifiers"] = list(sig.qualifiers)
-        res["special"] = sig.special
-
-        if output_format == "both":
-            res["output"] = f"{sym} ==> {sig.demangled}"
-        elif output_format == "base-name":
-            res["output"] = sig.base_name
-        elif output_format == "no-params":
-            dec = getattr(sig, "decoration", "") or ""
-            res["output"] = f"{_labelled(sig)}{dec}"
-        else:
-            res["output"] = sig.demangled
-
-    except demangle.DemanglingError as e:
-        res["success"] = False
-        res["error"] = str(e)
-        try:
-            fallback = demangle.demangle(sym, language=lang, style=style_val)
-        except Exception:
-            fallback = sym
-        res["demangled"] = fallback
-        res["qualified_name"] = None
-        res["base_name"] = None
-        res["namespace"] = None
-        res["parameters"] = None
-        res["return_type"] = None
-        res["calling_convention"] = None
-        res["qualifiers"] = []
-        res["special"] = None
-        if output_format == "both":
-            res["output"] = f"{sym} ==> {fallback}"
-        else:
-            res["output"] = fallback
-    except Exception as e:
-        res["success"] = False
-        res["error"] = str(e)
-        res["demangled"] = sym
-        res["output"] = sym
-        res["qualified_name"] = None
-        res["base_name"] = None
-        res["namespace"] = None
-        res["parameters"] = None
-        res["return_type"] = None
-        res["calling_convention"] = None
-        res["qualifiers"] = []
-        res["special"] = None
-
-    # 2. AST tree parsing
-    try:
-        tree = demangle.parse(sym, language=lang, style=style_val)
-        res["ast"] = tree.to_dict()
-    except Exception as e:
-        res["ast"] = None
-        if not res.get("error"):
-            res["error"] = str(e)
-
-    return json.dumps(res)
-`;
-
     function initDomReferences() {
         elStatusBadge = document.getElementById("playground-status-badge");
-        elStatusText = document.getElementById("playground-status-text");
         elInput = document.getElementById("playground-input-symbol");
         elScheme = document.getElementById("playground-select-scheme");
         elStyleRadios = document.querySelectorAll('input[name="pg-style"]');
@@ -214,180 +105,129 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
         return fallback;
     }
 
-    function base64ToUint8Array(base64) {
-        const binStr = atob(base64);
-        const len = binStr.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binStr.charCodeAt(i);
-        }
-        return bytes;
+    function treeLimitReached() {
+        const notice = document.getElementById("ast-render-notice");
+        notice.hidden = false;
+        notice.textContent = "Tree display limited to 1,500 entries. Raw JSON and Copy AST contain the complete graph.";
     }
 
-    async function loadDemangleBytes() {
-        if (window.DEMANGLE_BUNDLE_BASE64) {
-            return base64ToUint8Array(window.DEMANGLE_BUNDLE_BASE64);
+    function indexReferences(root) {
+        referencePaths = new Map();
+        const stack = [[root, []]];
+        while (stack.length) {
+            const [data, parents] = stack.pop();
+            if (!data || typeof data !== "object" || "$ref" in data) continue;
+            const path = [...parents, data];
+            if (data.id !== undefined) referencePaths.set(data.id, path);
+            for (const value of Object.values(data)) {
+                if (value && typeof value === "object") stack.push([value, path]);
+            }
         }
-        const candidates = [
-            new URL("../assets/demangle.whl", window.location.href),
-            new URL("assets/demangle.whl", window.location.href),
-            new URL("./assets/demangle.whl", window.location.href),
-            new URL("/assets/demangle.whl", window.location.origin),
-        ];
-        for (const url of candidates) {
-            try {
-                const resp = await fetch(url);
-                if (resp.ok) {
-                    const buf = await resp.arrayBuffer();
-                    return new Uint8Array(buf);
-                }
-            } catch (_) {}
-        }
-        throw new Error("Failed to load demangle.whl bundle");
     }
 
-    function loadScript(url) {
-        return new Promise((resolve, reject) => {
-            const script = document.createElement("script");
-            script.src = url;
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error(`Failed to load script ${url}`));
-            document.head.appendChild(script);
-        });
+    function revealReference(id) {
+        const path = referencePaths.get(id);
+        if (!path) return;
+        for (let i = 0; i < path.length; i++) {
+            const branch = renderedNodes.get(path[i]);
+            if (!branch) { treeLimitReached(); return; }
+            branch.open = true;
+            branch.populate(path[i + 1]);
+        }
+        const target = renderedNodes.get(path[path.length - 1]);
+        target.querySelector("summary").focus();
+        target.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+        target.classList.add("ast-node-highlight");
+        setTimeout(() => target.classList.remove("ast-node-highlight"), 1500);
     }
 
-    // Build collapsible AST Tree DOM
-    function buildAstDom(data, roleKey = "root", isRoot = true) {
-        if (data === null || data === undefined) {
+    // Only create children when opened, and page wide arrays under a global DOM budget.
+    function buildAstDom(data, roleKey = "root", isRoot = false) {
+        treeNodes++;
+        if (data === null || typeof data !== "object") {
             const leaf = document.createElement("div");
             leaf.className = "ast-leaf";
-            leaf.innerHTML = `<span class="ast-role">${escapeHtml(roleKey)}:</span> <span class="ast-val-null">null</span>`;
+            leaf.textContent = `${roleKey}: ${JSON.stringify(data)}`;
             return leaf;
         }
-
-        if (typeof data !== "object") {
-            const leaf = document.createElement("div");
-            leaf.className = "ast-leaf";
-            let valClass = typeof data === "number" ? "ast-val-num" : (typeof data === "boolean" ? "ast-val-bool" : "ast-val-str");
-            leaf.innerHTML = `<span class="ast-role">${escapeHtml(roleKey)}:</span> <span class="${valClass}">${escapeHtml(JSON.stringify(data))}</span>`;
-            return leaf;
-        }
-
-        // Shared Graph Reference ($ref)
         if ("$ref" in data) {
             const leaf = document.createElement("div");
             leaf.className = "ast-leaf ast-ref-item";
-            leaf.innerHTML = `
-                <span class="ast-role">${escapeHtml(roleKey)}:</span>
-                <span class="ast-ref-badge" data-ref-target="${data.$ref}" title="Jump to shared node #${data.$ref}">
-                    <span class="ast-ref-icon">🔗</span> ref #${data.$ref}
-                </span>`;
-            const badge = leaf.querySelector(".ast-ref-badge");
-            if (badge) {
-                badge.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    const targetNode = document.getElementById(`ast-node-id-${data.$ref}`);
-                    if (targetNode) {
-                        targetNode.open = true;
-                        targetNode.scrollIntoView({ behavior: "smooth", block: "center" });
-                        targetNode.classList.add("ast-node-highlight");
-                        setTimeout(() => targetNode.classList.remove("ast-node-highlight"), 1500);
-                    }
-                });
-            }
+            const role = document.createElement("span");
+            role.className = "ast-role";
+            role.textContent = `${roleKey}:`;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "ast-ref-badge";
+            button.textContent = `↗ ref #${data.$ref}`;
+            button.title = `Jump to shared node #${data.$ref}`;
+            button.addEventListener("click", () => revealReference(data.$ref));
+            leaf.append(role, button);
             return leaf;
         }
-
-        // Array of items
-        if (Array.isArray(data)) {
-            if (data.length === 0) {
-                const leaf = document.createElement("div");
-                leaf.className = "ast-leaf";
-                leaf.innerHTML = `<span class="ast-role">${escapeHtml(roleKey)}:</span> <span class="ast-val-empty">[]</span>`;
-                return leaf;
-            }
-
-            const details = document.createElement("details");
-            details.className = "ast-branch ast-array-branch";
-            details.open = true;
-
-            const summary = document.createElement("summary");
-            summary.className = "ast-summary";
-            summary.innerHTML = `
-                <span class="ast-role">${escapeHtml(roleKey)}</span>
-                <span class="ast-count-badge">[${data.length}]</span>`;
-            details.appendChild(summary);
-
-            const list = document.createElement("ul");
-            list.className = "ast-list";
-            data.forEach((child, idx) => {
-                const li = document.createElement("li");
-                li.className = "ast-list-item";
-                li.appendChild(buildAstDom(child, `[${idx}]`, false));
-                list.appendChild(li);
-            });
-            details.appendChild(list);
-            return details;
-        }
-
-        // Compound Node Object
+        const isArray = Array.isArray(data);
         const kind = data.kind || "object";
-        const idVal = data.id !== undefined ? data.id : null;
-
         const details = document.createElement("details");
-        details.className = `ast-branch ast-node-branch ast-kind-${sanitizeClass(kind)}`;
-        if (idVal !== null) {
-            details.id = `ast-node-id-${idVal}`;
-        }
-        details.open = true;
-
-        let preview = "";
-        if (data.text) {
-            preview = `<span class="ast-preview">"${escapeHtml(data.text)}"</span>`;
-        } else if (data.spelling) {
-            preview = `<span class="ast-preview">"${escapeHtml(data.spelling)}"</span>`;
-        } else if (kind === "pointer_auth") {
-            preview = `<span class="ast-preview-ptrauth">key=${data.key}, disc=${data.discriminator}, addr=${data.address_discriminated}</span>`;
-        } else if (kind === "function" && data.convention) {
-            preview = `<span class="ast-preview">${escapeHtml(data.convention)}</span>`;
-        }
-
+        details.className = `ast-branch ast-kind-${sanitizeClass(kind)}`;
+        if (data.id !== undefined) details.id = `ast-node-id-${data.id}`;
+        renderedNodes.set(data, details);
         const summary = document.createElement("summary");
         summary.className = "ast-summary";
-        summary.innerHTML = `
-            ${!isRoot ? `<span class="ast-role">${escapeHtml(roleKey)}:</span>` : ""}
-            <span class="ast-kind-badge ast-badge-${sanitizeClass(kind)}">${escapeHtml(kind)}</span>
-            ${idVal !== null ? `<span class="ast-id-badge" title="Node ID #${idVal}">#${idVal}</span>` : ""}
-            ${preview}`;
-        details.appendChild(summary);
-
+        summary.tabIndex = 0;
+        const preview = data.text || data.spelling || data.convention || "";
+        summary.textContent = isArray ? `${roleKey} [${data.length}]` : `${isRoot ? "" : roleKey + ": "}${kind}${data.id !== undefined ? " #" + data.id : ""}${preview ? " — " + preview : ""}`;
+        details.append(summary);
         const list = document.createElement("ul");
         list.className = "ast-list";
-
-        const priorityOrder = ["name", "inner", "parameters", "returns", "pointer_auth", "arguments", "parts", "text", "spelling"];
-        const skipKeys = new Set(["kind", "id"]);
-        const keys = Object.keys(data).filter((k) => !skipKeys.has(k));
-        keys.sort((a, b) => {
-            const ia = priorityOrder.indexOf(a);
-            const ib = priorityOrder.indexOf(b);
-            if (ia !== -1 && ib !== -1) return ia - ib;
-            if (ia !== -1) return -1;
-            if (ib !== -1) return 1;
-            return a.localeCompare(b);
+        details.append(list);
+        const priority = ["name", "inner", "parameters", "returns", "pointer_auth", "arguments", "parts", "text", "spelling"];
+        const keys = Object.keys(data).filter(k => k !== "kind" && k !== "id");
+        if (!isArray) keys.sort((a, b) => {
+            const ia = priority.indexOf(a), ib = priority.indexOf(b);
+            return (ia < 0 ? priority.length : ia) - (ib < 0 ? priority.length : ib) || a.localeCompare(b);
         });
-
-        keys.forEach((k) => {
-            const li = document.createElement("li");
-            li.className = "ast-list-item";
-            li.appendChild(buildAstDom(data[k], k, false));
-            list.appendChild(li);
-        });
-
-        details.appendChild(list);
+        let cursor = 0;
+        let more = null;
+        details.populate = (target, all = false, nextPage = false) => {
+            if (more) more.remove();
+            const targetIndex = target ? keys.findIndex(k => data[k] === target) : -1;
+            const end = all ? keys.length : Math.max(nextPage ? cursor + TREE_PAGE_SIZE : cursor || TREE_PAGE_SIZE, targetIndex + 1);
+            while (cursor < Math.min(end, keys.length) && treeNodes < MAX_TREE_NODES) {
+                const key = keys[cursor++];
+                const item = document.createElement("li");
+                item.className = "ast-list-item";
+                item.append(buildAstDom(data[key], isArray ? `[${key}]` : key));
+                list.append(item);
+            }
+            if (cursor < keys.length) {
+                more = document.createElement("button");
+                more.type = "button";
+                more.className = "btn-action-small ast-load-more";
+                more.textContent = `Show more (${keys.length - cursor} remaining)`;
+                more.disabled = treeNodes >= MAX_TREE_NODES;
+                more.addEventListener("click", () => details.populate(undefined, false, true));
+                list.append(more);
+                if (more.disabled) treeLimitReached();
+            }
+        };
+        details.addEventListener("toggle", () => { if (details.open) details.populate(); });
+        if (isRoot) { details.open = true; details.populate(); }
         return details;
     }
 
+    function renderOutput(res) {
+        const format = getSelectedRadio(elFormatRadios, "full");
+        elOutputDisplay.textContent = res.output_variants?.[format] ?? res.demangled ?? res.symbol;
+    }
+
     function renderResults(res) {
+        treeNodes = 0;
+        renderedNodes = new WeakMap();
+        document.getElementById("ast-render-notice").hidden = true;
+        btnCopyOutput.disabled = !res || res.empty;
+        btnCopyAst.disabled = !res?.ast;
+        btnExpandAll.disabled = !res?.ast;
+        btnCollapseAll.disabled = !res?.ast;
         if (!res || res.empty) {
             if (elOutputStatus) {
                 elOutputStatus.className = "output-status-pill pill-idle";
@@ -428,7 +268,7 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
             }
             if (elErrorBanner) elErrorBanner.style.display = "flex";
             if (elErrorMessage) elErrorMessage.textContent = res.error || "Failed to demangle symbol";
-            if (elOutputDisplay) elOutputDisplay.textContent = res.output || res.symbol;
+            renderOutput(res);
 
             if (elSigQualified) elSigQualified.textContent = "—";
             if (elSigBase) elSigBase.textContent = "—";
@@ -452,7 +292,7 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
             elOutputStatus.textContent = "Valid";
         }
         if (elErrorBanner) elErrorBanner.style.display = "none";
-        if (elOutputDisplay) elOutputDisplay.textContent = res.output;
+        renderOutput(res);
 
         // Structured signature panel
         if (elSigQualified) elSigQualified.textContent = res.qualified_name || "—";
@@ -461,7 +301,12 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
 
         if (elSigParams) {
             if (Array.isArray(res.parameters) && res.parameters.length > 0) {
-                elSigParams.innerHTML = res.parameters.map((p) => `<span class="param-chip">${escapeHtml(p)}</span>`).join("");
+                elSigParams.innerHTML = res.parameters.slice(0, TREE_PAGE_SIZE).map((p) => `<span class="param-chip">${escapeHtml(p)}</span>`).join("");
+                if (res.parameters.length > TREE_PAGE_SIZE) {
+                    const note = document.createElement("span");
+                    note.textContent = `… ${res.parameters.length - TREE_PAGE_SIZE} more (see Raw JSON)`;
+                    elSigParams.append(note);
+                }
             } else if (Array.isArray(res.parameters) && res.parameters.length === 0) {
                 elSigParams.innerHTML = '<span class="param-chip param-empty">() (void / no parameters)</span>';
             } else {
@@ -478,6 +323,7 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
         if (res.ast) {
             if (elTreeContainer) {
                 elTreeContainer.innerHTML = "";
+                indexReferences(res.ast);
                 elTreeContainer.appendChild(buildAstDom(res.ast, "root", true));
             }
             if (elJsonContent) {
@@ -493,37 +339,49 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
         }
     }
 
+    function requestKey() {
+        return JSON.stringify([elInput.value.trim(), elScheme.value, getSelectedRadio(elStyleRadios, "llvm")]);
+    }
+
+    function dispatchPending() {
+        if (!isReady || activeRequest || !pendingRequest) return;
+        activeRequest = pendingRequest;
+        pendingRequest = null;
+        updateStatus("busy", "Demangling…");
+        worker.postMessage({ type: "demangle", ...activeRequest });
+        clearTimeout(runtimeTimer);
+        runtimeTimer = setTimeout(() => runtimeFailed("Demangling took too long. Try a shorter symbol or retry."), 15000);
+    }
+
     function executeDemangle() {
-        if (!isReady || !pyodideInstance || isBusy) return;
-
-        const sym = elInput ? elInput.value.trim() : "";
-        const scheme = elScheme ? elScheme.value : "auto";
-        const style = getSelectedRadio(elStyleRadios, "llvm");
-        const fmt = getSelectedRadio(elFormatRadios, "full");
-
-        try {
-            isBusy = true;
-            updateStatus("busy", "Demangling...");
-            const runner = pyodideInstance.globals.get("playground_demangle");
-            const rawJson = runner(sym, scheme, style, fmt);
-            const data = JSON.parse(rawJson);
-            renderResults(data);
-            updateStatus("ready", "Ready (WebAssembly)");
-        } catch (err) {
-            console.error("Demangling execution error:", err);
-            renderResults({
-                success: false,
-                symbol: sym,
-                error: err.message,
-                output: sym,
-            });
-            updateStatus("ready", "Ready (WebAssembly)");
-        } finally {
-            isBusy = false;
+        clearTimeout(debounceTimer);
+        latestRequestId++;
+        const key = requestKey();
+        if (!elInput.value.trim()) {
+            pendingRequest = null;
+            renderResults({ empty: true });
+            if (isReady) updateStatus("ready", "Ready (WebAssembly)");
+            return;
         }
+        if (cachedResult?.key === key) {
+            pendingRequest = null;
+            renderResults(cachedResult.data);
+            if (isReady) updateStatus("ready", "Ready (WebAssembly)");
+            return;
+        }
+        pendingRequest = { id: latestRequestId, key, symbol: elInput.value.trim(), language: elScheme.value, style: getSelectedRadio(elStyleRadios, "llvm") };
+        btnCopyOutput.disabled = true;
+        btnCopyAst.disabled = true;
+        elOutputStatus.textContent = "Updating";
+        elOutputStatus.className = "output-status-pill pill-idle";
+        dispatchPending();
     }
 
     function scheduleDemangle() {
+        latestRequestId++;
+        pendingRequest = null;
+        btnCopyOutput.disabled = true;
+        btnCopyAst.disabled = true;
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(executeDemangle, DEBOUNCE_MS);
     }
@@ -531,18 +389,20 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
     function setupEventListeners() {
         if (elInput) {
             elInput.addEventListener("input", scheduleDemangle);
-            elInput.addEventListener("change", executeDemangle);
         }
         if (elScheme) {
             elScheme.addEventListener("change", executeDemangle);
         }
         elStyleRadios.forEach((r) => r.addEventListener("change", executeDemangle));
-        elFormatRadios.forEach((r) => r.addEventListener("change", executeDemangle));
+        elFormatRadios.forEach((r) => r.addEventListener("change", () => {
+            if (cachedResult?.key === requestKey()) renderOutput(cachedResult.data);
+        }));
 
         if (btnClear) {
             btnClear.addEventListener("click", () => {
                 if (elInput) {
                     elInput.value = "";
+                    clearPresetSelection();
                     executeDemangle();
                     elInput.focus();
                 }
@@ -552,8 +412,9 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
         // Preset buttons
         document.querySelectorAll(".preset-btn").forEach((btn) => {
             btn.addEventListener("click", () => {
-                document.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("active"));
+                clearPresetSelection();
                 btn.classList.add("active");
+                btn.setAttribute("aria-pressed", "true");
 
                 const sym = btn.dataset.symbol || "";
                 if (elInput) elInput.value = sym;
@@ -572,33 +433,36 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
             });
         });
 
-        // Tab switcher
-        if (elTabTree && elTabJson && elPanelTree && elPanelJson) {
-            elTabTree.addEventListener("click", () => {
-                elTabTree.classList.add("active");
-                elTabTree.setAttribute("aria-selected", "true");
-                elTabJson.classList.remove("active");
-                elTabJson.setAttribute("aria-selected", "false");
-                elPanelTree.style.display = "block";
-                elPanelJson.style.display = "none";
+        const tabs = [elTabTree, elTabJson];
+        const panels = [elPanelTree, elPanelJson];
+        function selectTab(index, focus = false) {
+            tabs.forEach((tab, i) => {
+                tab.classList.toggle("active", i === index);
+                tab.setAttribute("aria-selected", String(i === index));
+                tab.tabIndex = i === index ? 0 : -1;
+                panels[i].hidden = i !== index;
             });
-
-            elTabJson.addEventListener("click", () => {
-                elTabJson.classList.add("active");
-                elTabJson.setAttribute("aria-selected", "true");
-                elTabTree.classList.remove("active");
-                elTabTree.setAttribute("aria-selected", "false");
-                elPanelJson.style.display = "block";
-                elPanelTree.style.display = "none";
-            });
+            if (focus) tabs[index].focus();
         }
+        tabs.forEach((tab, index) => {
+            tab.addEventListener("click", () => selectTab(index));
+            tab.addEventListener("keydown", event => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                selectTab(event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index, true);
+            });
+        });
 
         // Tree Expansion / Collapse
         if (btnExpandAll && elTreeContainer) {
             btnExpandAll.addEventListener("click", () => {
-                elTreeContainer.querySelectorAll("details").forEach((d) => {
-                    d.open = true;
-                });
+                const queue = [elTreeContainer.querySelector("details")];
+                for (let index = 0; index < queue.length; index++) {
+                    const branch = queue[index];
+                    branch.open = true;
+                    branch.populate(undefined, true);
+                    queue.push(...branch.querySelectorAll(":scope > ul > li > details"));
+                }
             });
         }
 
@@ -612,105 +476,113 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
             });
         }
 
-        // Copy Handlers
-        if (btnCopyOutput && elOutputDisplay) {
-            btnCopyOutput.addEventListener("click", async () => {
-                const text = elOutputDisplay.textContent;
-                if (!text || text.includes("Enter a symbol above")) return;
-                try {
-                    await navigator.clipboard.writeText(text);
-                    const label = btnCopyOutput.querySelector(".copy-label");
-                    if (label) {
-                        const orig = label.textContent;
-                        label.textContent = "Copied! ✓";
-                        setTimeout(() => {
-                            label.textContent = orig;
-                        }, 1800);
-                    }
-                } catch (e) {
-                    console.error("Failed to copy:", e);
-                }
-            });
-        }
-
-        if (btnCopyAst && elJsonContent) {
-            btnCopyAst.addEventListener("click", async () => {
-                const text = elJsonContent.textContent;
-                if (!text || text === "{}") return;
-                try {
-                    await navigator.clipboard.writeText(text);
-                    const label = btnCopyAst.querySelector(".copy-label");
-                    if (label) {
-                        const orig = label.textContent;
-                        label.textContent = "Copied! ✓";
-                        setTimeout(() => {
-                            label.textContent = orig;
-                        }, 1800);
-                    }
-                } catch (e) {
-                    console.error("Failed to copy:", e);
-                }
-            });
-        }
+        btnCopyOutput.addEventListener("click", () => copyText(btnCopyOutput, elOutputDisplay.textContent));
+        btnCopyAst.addEventListener("click", () => copyText(btnCopyAst, elJsonContent.textContent));
+        document.getElementById("btn-share").addEventListener("click", () => {
+            const url = new URL(location.href);
+            url.hash = new URLSearchParams({ symbol: elInput.value, language: elScheme.value, style: getSelectedRadio(elStyleRadios, "llvm"), view: getSelectedRadio(elFormatRadios, "full") }).toString();
+            history.replaceState(null, "", url);
+            copyText(document.getElementById("btn-share"), url.href);
+        });
+        document.getElementById("btn-retry-runtime").addEventListener("click", initPyodideRuntime);
+        window.addEventListener("hashchange", () => { restoreSharedState(); executeDemangle(); });
+        elInput.addEventListener("input", clearPresetSelection);
     }
 
-    async function initPyodideRuntime() {
-        initDomReferences();
-        setupEventListeners();
+    function clearPresetSelection() {
+        document.querySelectorAll(".preset-btn").forEach(button => {
+            button.classList.remove("active");
+            button.setAttribute("aria-pressed", "false");
+        });
+    }
 
-        updateStatus("loading", "Booting Pyodide WebAssembly runtime...");
-
+    async function copyText(button, text) {
+        const label = button.querySelector(".copy-label");
         try {
-            if (typeof loadPyodide === "undefined") {
-                updateStatus("loading", "Loading Pyodide from CDN...");
-                await loadScript("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js");
-            }
+            await navigator.clipboard.writeText(text);
+            label.textContent = "Copied!";
+        } catch {
+            label.textContent = "Copy failed";
+            updateStatus("error", "Clipboard unavailable. Select and copy the text, or copy the shared URL from the address bar.");
+        }
+        setTimeout(() => { label.textContent = button.dataset.label; }, 1800);
+    }
 
-            pyodideInstance = await loadPyodide({
-                indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
-            });
-
-            updateStatus("loading", "Mounting demangle bundle into virtual filesystem...");
-            if (!window.DEMANGLE_BUNDLE_BASE64) {
-                try {
-                    await loadScript(new URL("../assets/demangle_bundle.js", window.location.href).href);
-                } catch (_) {
-                    try {
-                        await loadScript(new URL("assets/demangle_bundle.js", window.location.href).href);
-                    } catch (_) {}
-                }
-            }
-            const wheelBytes = await loadDemangleBytes();
-            pyodideInstance.FS.writeFile("/demangle.whl", wheelBytes);
-
-            updateStatus("loading", "Preloading demangle schemes and AST compiler...");
-            await pyodideInstance.runPythonAsync(`
-import sys
-if "/demangle.whl" not in sys.path:
-    sys.path.insert(0, "/demangle.whl")
-import demangle
-demangle.preload()
-` + PYTHON_BRIDGE_CODE);
-
-            isReady = true;
-            updateStatus("ready", "Ready (WebAssembly)");
-
-            // If an initial input or preset is set, trigger execution
-            const firstPreset = document.querySelector(".preset-btn");
-            if (firstPreset) {
-                firstPreset.click();
-            } else if (elInput && elInput.value.trim()) {
-                executeDemangle();
-            }
-        } catch (err) {
-            console.error("Pyodide initialization failure:", err);
-            updateStatus("error", `Failed to initialize: ${err.message}`);
+    function restoreSharedState() {
+        const params = new URLSearchParams(location.hash.slice(1));
+        if (!params.has("symbol")) return;
+        clearPresetSelection();
+        elInput.value = params.get("symbol");
+        const language = params.get("language");
+        if ([...elScheme.options].some(o => o.value === language)) elScheme.value = language;
+        for (const [radios, key] of [[elStyleRadios, "style"], [elFormatRadios, "view"]]) {
+            if ([...radios].some(r => r.value === params.get(key))) radios.forEach(r => { r.checked = r.value === params.get(key); });
         }
     }
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", initPyodideRuntime);
-    } else {
+    function runtimeFailed(message) {
+        clearTimeout(runtimeTimer);
+        worker?.terminate();
+        worker = null;
+        isReady = false;
+        activeRequest = null;
+        updateStatus("error", message);
+        elOutputStatus.textContent = "Unavailable";
+        elOutputStatus.className = "output-status-pill pill-invalid";
+        btnCopyOutput.disabled = true;
+        btnCopyAst.disabled = true;
+        document.getElementById("btn-retry-runtime").hidden = false;
+    }
+
+    function initPyodideRuntime() {
+        worker?.terminate();
+        clearTimeout(runtimeTimer);
+        isReady = false;
+        activeRequest = null;
+        cachedResult = null;
+        document.getElementById("btn-retry-runtime").hidden = true;
+        updateStatus("loading", "Loading WebAssembly runtime…");
+        try {
+            worker = new Worker(new URL("playground-worker.js", assetBase));
+            worker.onmessage = ({ data }) => {
+                if (data.type === "ready") {
+                    clearTimeout(runtimeTimer);
+                    isReady = true;
+                    document.getElementById("playground-engine-version").textContent = `demangle ${data.version} · Pyodide ${data.runtimeVersion}`;
+                    updateStatus("ready", "Ready (WebAssembly)");
+                    executeDemangle();
+                } else if (data.type === "result") {
+                    clearTimeout(runtimeTimer);
+                    const request = activeRequest;
+                    activeRequest = null;
+                    if (request && data.id === latestRequestId) {
+                        cachedResult = { key: request.key, data: data.result };
+                        renderResults(data.result);
+                        updateStatus("ready", "Ready (WebAssembly)");
+                    }
+                    dispatchPending();
+                } else if (data.type === "error") {
+                    runtimeFailed(data.message);
+                }
+            };
+            worker.onerror = event => {
+                event.preventDefault();
+                runtimeFailed("Could not start the runtime. Check your connection and retry.");
+            };
+            runtimeTimer = setTimeout(() => runtimeFailed("Runtime loading timed out. Check your connection and retry."), 90000);
+        } catch (error) {
+            runtimeFailed(`Could not start the runtime: ${error.message}`);
+        }
+    }
+
+    function init() {
+        initDomReferences();
+        restoreSharedState();
+        setupEventListeners();
+        renderResults({ empty: true });
         initPyodideRuntime();
     }
+    window.addEventListener("pagehide", event => { if (!event.persisted) worker?.terminate(); });
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+    else init();
 })();
