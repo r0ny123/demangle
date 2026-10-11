@@ -74,6 +74,9 @@ docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings-python>=1.10",
 ]
+browser = [
+    "playwright>=1.50",
+]
 dev = [
     { include-group = "lint" },
     "build",
@@ -139,6 +142,7 @@ testpaths = ["tests"]
 addopts = "-q"
 verbosity_subtests = 0
 markers = [
+    "browser: opt-in tests that run the built playground in Chromium",
     "sweep: a property checked over whole corpora; `hatch run quick` skips these",
 ]
 

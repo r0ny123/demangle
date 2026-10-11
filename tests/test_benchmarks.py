@@ -30,3 +30,19 @@ def test_gate_rejects_missing_workloads(tmp_path, monkeypatch, capsys, missing):
 
     assert bench.main() == 1
     assert "benchmark phases missing" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("phase", ["swift", "swift_parse", "signature"])
+def test_gate_rejects_phases_that_did_not_complete_their_work(tmp_path, monkeypatch, capsys, phase):
+    baseline = json.loads((ROOT / "benchmarks" / "baseline.json").read_text())
+    results = {name: dict(data) for name, data in baseline.items()}
+    results[phase]["succeeded"] = results[phase]["names"] - 1
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps(baseline))
+    monkeypatch.setattr(bench, "BASELINE", path)
+    monkeypatch.setattr(bench, "run", lambda: results)
+    monkeypatch.setattr(bench, "report", lambda _: None)
+    monkeypatch.setattr(sys, "argv", ["bench.py", "--check"])
+
+    assert bench.main() == 1
+    assert f"{phase} benchmark succeeded" in capsys.readouterr().out

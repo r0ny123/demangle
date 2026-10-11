@@ -8,6 +8,26 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve playground input and selected settings while its runtime loads. Scheme
+  selectors and output controls stay inside their columns on narrow screens and with
+  enlarged text. AST references reveal collapsed ancestors and support keyboard use.
+
+### Added
+
+- Shareable playground links and the loaded library version, runtime retry controls,
+  and browser regression tests including a real Pyodide smoke test in CI.
+- Bounded Swift and cross-scheme signature benchmarks with successful-work checks.
+
+### Performance
+
+- Run playground parsing in a worker and derive signature and AST data from one parse.
+  Output view changes reuse the result; AST expansion is lazy and paged with a display
+  budget while raw JSON remains complete.
+- Deliver a deterministic, zipimportable source archive instead of a synthetic wheel
+  and duplicate base64 bundle.
+
 ## [0.5.2] - 2026-10-10
 
 ### Fixed

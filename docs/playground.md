@@ -1,18 +1,19 @@
 # Interactive Demangling Playground
 
-Explore mangled symbols interactively in your browser. All demangling, scheme detection, structured signature extraction, and AST graph parsing run entirely client-side using **WebAssembly** via [Pyodide](https://pyodide.org/). No symbols are sent over the network.
+Explore mangled symbols interactively in your browser. All demangling, scheme detection, structured signature extraction, and AST graph parsing run entirely client-side using **WebAssembly** via [Pyodide](https://pyodide.org/). Symbols stay in your browser. The runtime is downloaded from a CDN on first load; demangling needs no server requests after initialization.
 
 <div id="playground-app" class="playground-root">
   <!-- Top Status & Runtime Banner -->
   <div class="playground-header">
     <div class="playground-header-info">
       <span class="playground-title-badge">⚡ In-Browser WebAssembly Engine</span>
-      <span class="playground-engine-tag">Pyodide • Pure-Python demangle</span>
+      <span id="playground-engine-version" class="playground-engine-tag">Pyodide • Pure-Python demangle</span>
     </div>
     <div id="playground-status-badge" class="playground-status status-loading" role="status" aria-live="polite">
       <span class="status-spinner" aria-hidden="true"></span>
       <span id="playground-status-text">Loading Pyodide runtime...</span>
     </div>
+    <button type="button" id="btn-retry-runtime" class="btn-action-small" hidden>Retry runtime</button>
   </div>
 
   <!-- Presets Toolbar -->
@@ -22,31 +23,31 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
       <span class="presets-hint">(Click to load representative vector)</span>
     </div>
     <div class="presets-grid" id="playground-presets-container">
-      <button type="button" class="preset-btn preset-bleeding" data-symbol="??__MS@@QEAA?AVstrong_ordering@std@@AEBU0@@Z" data-scheme="msvc" data-style="llvm" data-format="full" title="MSVC C++20 three-way comparison operator<=>">
+      <button type="button" aria-pressed="false" class="preset-btn preset-bleeding" data-symbol="??__MS@@QEAA?AVstrong_ordering@std@@AEBU0@@Z" data-scheme="msvc" data-style="llvm" data-format="full" title="MSVC C++20 three-way comparison operator<=>">
         <span class="preset-badge">C++20</span> MSVC Spaceship
       </button>
-      <button type="button" class="preset-btn preset-bleeding" data-symbol="?foo@@YAXPEAPE__ptrauth20OK@AH@Z" data-scheme="msvc" data-style="llvm" data-format="full" title="MSVC ARM64e pointer authentication qualifiers">
+      <button type="button" aria-pressed="false" class="preset-btn preset-bleeding" data-symbol="?foo@@YAXPEAPE__ptrauth20OK@AH@Z" data-scheme="msvc" data-style="llvm" data-format="full" title="MSVC ARM64e pointer authentication qualifiers">
         <span class="preset-badge">ARM64e</span> MSVC ptrauth
       </button>
-      <button type="button" class="preset-btn preset-bleeding" data-symbol="$sSRyxG15Synchronization19AtomicRepresentableABRi1_zrlMc" data-scheme="swift" data-style="llvm" data-format="full" title="Swift 6 inverted protocol descriptor ~Deinitable">
+      <button type="button" aria-pressed="false" class="preset-btn preset-bleeding" data-symbol="$sSRyxG15Synchronization19AtomicRepresentableABRi1_zrlMc" data-scheme="swift" data-style="llvm" data-format="full" title="Swift 6 inverted protocol descriptor ~Deinitable">
         <span class="preset-badge">Swift 6</span> ~Deinitable
       </button>
-      <button type="button" class="preset-btn" data-symbol="_ZNSt6vectorIiSaIiEE9push_backERKi" data-scheme="itanium" data-style="llvm" data-format="full" title="Itanium C++ std::vector::push_back">
+      <button type="button" aria-pressed="false" class="preset-btn" data-symbol="_ZNSt6vectorIiSaIiEE9push_backERKi" data-scheme="itanium" data-style="llvm" data-format="full" title="Itanium C++ std::vector::push_back">
         <span class="preset-badge">C++</span> Itanium Vector
       </button>
-      <button type="button" class="preset-btn" data-symbol="_RNvC6_123foo3bar" data-scheme="rust" data-style="llvm" data-format="full" title="Rust v0 mangling path">
+      <button type="button" aria-pressed="false" class="preset-btn" data-symbol="_RNvC6_123foo3bar" data-scheme="rust" data-style="llvm" data-format="full" title="Rust v0 mangling path">
         <span class="preset-badge">Rust</span> Rust v0
       </button>
-      <button type="button" class="preset-btn" data-symbol="_D3std5stdio12__ModuleInfoZ" data-scheme="d" data-style="llvm" data-format="full" title="D Language ModuleInfo">
+      <button type="button" aria-pressed="false" class="preset-btn" data-symbol="_D3std5stdio12__ModuleInfoZ" data-scheme="d" data-style="llvm" data-format="full" title="D Language ModuleInfo">
         <span class="preset-badge">D</span> std.stdio
       </button>
-      <button type="button" class="preset-btn" data-symbol="@Unit@TMyClass@MyMethod$qqrv" data-scheme="delphi" data-style="llvm" data-format="full" title="Delphi / C++Builder method">
+      <button type="button" aria-pressed="false" class="preset-btn" data-symbol="@Unit@TMyClass@MyMethod$qqrv" data-scheme="delphi" data-style="llvm" data-format="full" title="Delphi / C++Builder method">
         <span class="preset-badge">Delphi</span> TMyClass
       </button>
-      <button type="button" class="preset-btn" data-symbol="+[NSString stringWithFormat:]" data-scheme="objc" data-style="llvm" data-format="full" title="Objective-C class method">
+      <button type="button" aria-pressed="false" class="preset-btn" data-symbol="+[NSString stringWithFormat:]" data-scheme="objc" data-style="llvm" data-format="full" title="Objective-C class method">
         <span class="preset-badge">Obj-C</span> NSString
       </button>
-      <button type="button" class="preset-btn" data-symbol="Java_com_example_Native_compute" data-scheme="jni" data-style="llvm" data-format="full" title="Java Native Interface method">
+      <button type="button" aria-pressed="false" class="preset-btn" data-symbol="Java_com_example_Native_compute" data-scheme="jni" data-style="llvm" data-format="full" title="Java Native Interface method">
         <span class="preset-badge">JNI</span> Java Native
       </button>
     </div>
@@ -57,6 +58,7 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
     <div class="card-header">
       <label for="playground-input-symbol" class="card-title">Mangled Symbol Input</label>
       <div class="card-actions">
+        <button type="button" id="btn-share" class="btn-copy" data-label="Copy link" title="Copy a link containing this symbol and selected settings"><span class="copy-label">Copy link</span></button>
         <button type="button" id="btn-clear-input" class="btn-action-small" title="Clear input">Clear</button>
       </div>
     </div>
@@ -98,7 +100,7 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
     <!-- Style Selector -->
     <div class="control-group">
       <span class="control-label">Formatting Style</span>
-      <div class="segmented-control" id="control-group-style">
+      <div class="segmented-control" id="control-group-style" role="group" aria-label="Formatting style">
         <label class="segmented-option">
           <input type="radio" name="pg-style" value="llvm" checked>
           <span>LLVM</span>
@@ -108,13 +110,13 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
           <span>GNU</span>
         </label>
       </div>
-      <div class="control-subtext">Template bracket spacing</div>
+      <div class="control-subtext">Scheme-specific spelling</div>
     </div>
 
     <!-- Output Format Selector -->
     <div class="control-group">
       <span class="control-label">Output View</span>
-      <div class="segmented-control" id="control-group-format">
+      <div class="segmented-control" id="control-group-format" role="group" aria-label="Output view">
         <label class="segmented-option">
           <input type="radio" name="pg-format" value="full" checked>
           <span>Full</span>
@@ -143,7 +145,7 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
         <span class="card-title">Demangled Output</span>
         <span id="output-status-indicator" class="output-status-pill pill-idle">Idle</span>
       </div>
-      <button type="button" id="btn-copy-output" class="btn-copy" title="Copy demangled string">
+      <button type="button" id="btn-copy-output" class="btn-copy" data-label="Copy" disabled title="Copy demangled string">
         <span class="copy-icon">📋</span> <span class="copy-label">Copy</span>
       </button>
     </div>
@@ -203,36 +205,36 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
   <!-- Interactive AST Visualizer Section -->
   <div class="playground-card playground-ast-card" id="playground-ast-section">
     <div class="card-header">
-      <div class="ast-tab-bar" role="tablist">
+      <div class="ast-tab-bar" role="tablist" aria-label="AST view">
         <button type="button" id="tab-btn-tree" class="tab-btn active" role="tab" aria-selected="true" aria-controls="ast-tree-panel">
           🌳 AST Tree View
         </button>
-        <button type="button" id="tab-btn-json" class="tab-btn" role="tab" aria-selected="false" aria-controls="ast-json-panel">
+        <button type="button" id="tab-btn-json" class="tab-btn" role="tab" tabindex="-1" aria-selected="false" aria-controls="ast-json-panel">
           { } Raw JSON
         </button>
       </div>
       <div class="ast-actions">
-        <button type="button" id="btn-ast-expand" class="btn-action-small" title="Expand all nodes">Expand All</button>
-        <button type="button" id="btn-ast-collapse" class="btn-action-small" title="Collapse all nodes">Collapse All</button>
-        <button type="button" id="btn-copy-ast" class="btn-copy" title="Copy complete AST JSON">
+        <button type="button" id="btn-ast-expand" class="btn-action-small" disabled title="Expand all nodes">Expand All</button>
+        <button type="button" id="btn-ast-collapse" class="btn-action-small" disabled title="Collapse all nodes">Collapse All</button>
+        <button type="button" id="btn-copy-ast" class="btn-copy" data-label="Copy AST" disabled title="Copy complete AST JSON">
           <span class="copy-icon">📋</span> <span class="copy-label">Copy AST</span>
         </button>
       </div>
     </div>
 
     <!-- Tree View Panel -->
-    <div id="ast-tree-panel" class="ast-panel active" role="tabpanel">
+    <div id="ast-tree-panel" class="ast-panel active" role="tabpanel" aria-labelledby="tab-btn-tree" tabindex="0">
+      <p id="ast-render-notice" class="ast-render-notice" role="status" hidden></p>
       <div id="ast-tree-container" class="ast-tree-root">
         <div class="ast-placeholder">Enter a symbol above to inspect its parsed syntax graph...</div>
       </div>
     </div>
 
     <!-- Raw JSON Panel -->
-    <div id="ast-json-panel" class="ast-panel" role="tabpanel" style="display: none;">
+    <div id="ast-json-panel" class="ast-panel" role="tabpanel" aria-labelledby="tab-btn-json" tabindex="0" hidden>
       <pre class="ast-json-pre"><code id="ast-json-content" class="language-json">{}</code></pre>
     </div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
-<script src="../assets/demangle_bundle.js"></script>
+Use **Copy link** to share the current symbol, scheme, style, and output view. Sharing explicitly includes the symbol in the URL fragment; no link is created automatically. The runtime banner shows the library version used by the current page.

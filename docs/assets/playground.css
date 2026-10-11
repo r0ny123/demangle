@@ -291,7 +291,9 @@
 
 /* Segmented Control */
 .segmented-control {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
   background-color: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.06));
   padding: 0.2rem;
   border-radius: 6px;
@@ -301,7 +303,7 @@
 .segmented-option {
   position: relative;
   cursor: pointer;
-  flex: 1;
+  min-width: 0;
   text-align: center;
 }
 
@@ -563,73 +565,6 @@
   font-weight: 600;
 }
 
-.ast-kind-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 0.08rem 0.45rem;
-  border-radius: 4px;
-  background-color: var(--md-primary-fg-color);
-  color: #ffffff;
-}
-
-.ast-badge-declaration, .ast-badge-function {
-  background-color: #2563eb;
-}
-
-.ast-badge-pointer-auth {
-  background-color: #7c3aed;
-}
-
-.ast-badge-indirection {
-  background-color: #0891b2;
-}
-
-.ast-badge-name {
-  background-color: #059669;
-}
-
-.ast-badge-template {
-  background-color: #d97706;
-}
-
-.ast-badge-type {
-  background-color: #4b5563;
-}
-
-.ast-id-badge {
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 0.05rem 0.3rem;
-  border-radius: 3px;
-  background-color: var(--md-default-fg-color--lightest);
-  color: var(--md-default-fg-color--light);
-}
-
-.ast-count-badge {
-  font-size: 0.72rem;
-  color: var(--md-default-fg-color--light);
-}
-
-.ast-preview {
-  color: #15803d;
-  font-style: italic;
-  font-size: 0.82rem;
-}
-
-[data-md-color-scheme="slate"] .ast-preview {
-  color: #86efac;
-}
-
-.ast-preview-ptrauth {
-  color: #7c3aed;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-[data-md-color-scheme="slate"] .ast-preview-ptrauth {
-  color: #c4b5fd;
-}
-
 .ast-list {
   list-style: none;
   padding-left: 1.25rem;
@@ -647,35 +582,6 @@
   gap: 0.4rem;
   padding: 0.15rem 0.4rem;
   font-size: 0.82rem;
-}
-
-.ast-val-null, .ast-val-empty {
-  color: var(--md-default-fg-color--light);
-  font-style: italic;
-}
-
-.ast-val-str {
-  color: #059669;
-}
-
-[data-md-color-scheme="slate"] .ast-val-str {
-  color: #34d399;
-}
-
-.ast-val-num {
-  color: #2563eb;
-}
-
-[data-md-color-scheme="slate"] .ast-val-num {
-  color: #60a5fa;
-}
-
-.ast-val-bool {
-  color: #d97706;
-}
-
-[data-md-color-scheme="slate"] .ast-val-bool {
-  color: #fbbf24;
 }
 
 .ast-ref-badge {
@@ -716,4 +622,159 @@
   color: var(--md-default-fg-color--light);
   font-style: italic;
   padding: 1rem;
+}
+
+/* Keep native selects and long labels inside their tracks at any text size. */
+.playground-root *, .playground-root *::before, .playground-root *::after {
+  box-sizing: border-box;
+}
+
+.playground-root, .playground-root > *, .control-group, .select-wrapper,
+.sig-cell, .card-title-group {
+  min-width: 0;
+}
+
+.playground-controls-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+}
+
+.playground-select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.segmented-option span {
+  overflow-wrap: anywhere;
+}
+
+.segmented-option input:focus-visible + span,
+.playground-root button:focus-visible, .playground-root summary:focus-visible,
+.playground-select:focus-visible {
+  outline: 2px solid var(--md-primary-fg-color);
+  outline-offset: 2px;
+}
+
+.sig-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+}
+
+.card-header, .card-title-group, .ast-actions, .ast-tab-bar, .presets-label {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.playground-header-info, .control-subtext, .card-title, .card-badge,
+.param-chip, .playground-error-banner, .ast-leaf, .ast-summary {
+  overflow-wrap: anywhere;
+}
+
+.ast-summary {
+  display: list-item;
+  list-style-position: inside;
+}
+
+.ast-leaf {
+  display: block;
+}
+
+.ast-list {
+  padding-left: 0.75rem;
+}
+
+.ast-load-more {
+  margin: 0.3rem;
+}
+
+.playground-root button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.playground-root [hidden] {
+  display: none !important;
+}
+
+.ast-render-notice {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playground-root *, .playground-root *::before, .playground-root *::after {
+    animation: none;
+    transition: none;
+    scroll-behavior: auto;
+  }
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Material styles every details element as an admonition; these are plain AST branches. */
+.md-typeset .playground-root .ast-branch {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: inherit;
+}
+
+.md-typeset .playground-root .ast-summary {
+  margin: 0;
+  padding: 0.2rem 0.4rem;
+  background: var(--md-code-bg-color);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.md-typeset .playground-root .ast-summary::before,
+.md-typeset .playground-root .ast-summary::after {
+  display: none;
+}
+
+.playground-status {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-spinner {
+  flex-shrink: 0;
+}
+
+.playground-root button {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.copy-label {
+  min-width: 0;
+}
+
+/* Keep the documentation header usable with enlarged text on this page. */
+body:has(.playground-root) .md-header__inner {
+  min-width: 0;
+}
+body:has(.playground-root) .md-header__button {
+  flex-shrink: 0;
+  margin: 4px;
+  padding: 8px;
+}
+body:has(.playground-root) .md-header__button svg {
+  width: 24px;
+  height: 24px;
+}
+body:has(.playground-root) .md-header__source {
+  min-width: 0;
+  max-width: 22vw;
+}
+body:has(.playground-root) .md-source__repository {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
