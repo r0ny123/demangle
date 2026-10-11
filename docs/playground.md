@@ -234,5 +234,15 @@ Explore mangled symbols interactively in your browser. All demangling, scheme de
   </div>
 </div>
 
+## Features & Capabilities
+
+- **Zero Network Roundtrips**: Runs 100% client-side via WebAssembly ([Pyodide](https://pyodide.org/)). Your symbol inputs are never transmitted across the network.
+- **Real-Time Keystroke Demangling**: Debounced evaluation executes as you type, updating output and AST graphs instantly.
+- **Comprehensive Scheme Support**: Auto-detects or explicitly overrides any of the 14 supported mangling schemes (Itanium C++, MSVC, Swift, Rust, D, Go, Nim, Delphi, Pascal, Ada, Objective-C, JNI, CodeWarrior, GNU v2).
+- **Formatting Styles**: Switch between standard LLVM style and GNU style (spacing, template formatting).
+- **Output Formats**: Full demangled signature, both (input and demangled), base name only, or signature without parameters.
+- **Structured Signature Decomposition**: Unpacks symbols into qualified name, base name, namespace scope, parameter list, return type, calling convention, and qualifiers via `demangle.signature()`.
+- **Interactive AST Inspector**: Explore the abstract syntax tree hierarchically with collapsible nodes or inspect and copy raw JSON syntax graphs.
+
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
 <script src="../assets/demangle_bundle.js"></script>

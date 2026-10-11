@@ -228,12 +228,22 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
         if (window.DEMANGLE_BUNDLE_BASE64) {
             return base64ToUint8Array(window.DEMANGLE_BUNDLE_BASE64);
         }
-        const resp = await fetch(new URL("../assets/demangle.whl", window.location.href));
-        if (!resp.ok) {
-            throw new Error(`Failed to fetch demangle.whl: HTTP ${resp.status}`);
+        const candidates = [
+            new URL("../assets/demangle.whl", window.location.href),
+            new URL("assets/demangle.whl", window.location.href),
+            new URL("./assets/demangle.whl", window.location.href),
+            new URL("/assets/demangle.whl", window.location.origin),
+        ];
+        for (const url of candidates) {
+            try {
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    const buf = await resp.arrayBuffer();
+                    return new Uint8Array(buf);
+                }
+            } catch (_) {}
         }
-        const buf = await resp.arrayBuffer();
-        return new Uint8Array(buf);
+        throw new Error("Failed to load demangle.whl bundle");
     }
 
     function loadScript(url) {
@@ -661,6 +671,15 @@ def playground_demangle(symbol, language=None, style="llvm", output_format="full
             });
 
             updateStatus("loading", "Mounting demangle bundle into virtual filesystem...");
+            if (!window.DEMANGLE_BUNDLE_BASE64) {
+                try {
+                    await loadScript(new URL("../assets/demangle_bundle.js", window.location.href).href);
+                } catch (_) {
+                    try {
+                        await loadScript(new URL("assets/demangle_bundle.js", window.location.href).href);
+                    } catch (_) {}
+                }
+            }
             const wheelBytes = await loadDemangleBytes();
             pyodideInstance.FS.writeFile("/demangle.whl", wheelBytes);
 
