@@ -3,7 +3,7 @@ from pathlib import Path
 
 import demangle
 from demangle.schemes.msvc._parser import demangle_msvc_symbol, parse_msvc_symbol, parse_msvc_type
-from demangle.schemes.msvc.nodes import render
+from demangle.schemes.msvc.nodes import Declaration, Indirection, PointerAuth, render
 
 # Expected spellings are llvm-undname's; names are from LLVM's test corpus unless marked.
 DEMANGLED = [
@@ -1719,3 +1719,98 @@ class TestAQualifierOnABackReferencedDeducedReturn(unittest.TestCase):
             "::`1'::<lambda_1>::operator()(int) const",
         )
         self.assertEqual(demangle.demangle("?f@@YA?C?<auto>@@XZ", language="msvc"), "<auto> volatile __cdecl f(void)")
+
+
+class TestSpaceshipOperator(unittest.TestCase):
+    """MSVC C++20 three-way comparison spaceship operator (??__M -> operator<=>)."""
+
+    def test_spaceship_operator_demangling(self):
+        cases = [
+            (
+                "??__MS@@QEAA?AVstrong_ordering@std@@AEBU0@@Z",
+                "public: class std::strong_ordering __cdecl S::operator<=>(struct S const &)",
+            ),
+            (
+                "??__MSpaceship@hard@@QEBAHAEBU01@@Z",
+                "public: int __cdecl hard::Spaceship::operator<=>(struct hard::Spaceship const &) const",
+            ),
+            ("??__M@YAHO@Z", "int __cdecl operator<=>(long double)"),
+            (
+                "??__Mns@@YA?AVstrong_ordering@std@@AEBUS@@0@Z",
+                "class std::strong_ordering __cdecl ns::operator<=>(struct S const &, struct S const &)",
+            ),
+            (
+                "??$?__MH@S@@QEAA?AVstrong_ordering@std@@AEBU0@@Z",
+                "public: class std::strong_ordering __cdecl S::operator<=><int>(struct S const &)",
+            ),
+            (
+                "??$?__MH@@YA?AVstrong_ordering@std@@AEBUS@@0@Z",
+                "class std::strong_ordering __cdecl operator<=><int>(struct S const &, struct S const &)",
+            ),
+        ]
+        for mangled, expected in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle.demangle(mangled, language="msvc"), expected)
+                self.assertEqual(demangle.demangle_strict(mangled, language="msvc"), expected)
+
+
+class TestPointerAuthenticationQualifiers(unittest.TestCase):
+    """MSVC ARM64e pointer authentication qualifiers (__ptrauth(...))."""
+
+    def test_ptrauth_vectors(self):
+        cases = [
+            ("?s@@3U?$S@PE__ptrauth1A@ENC@AH@@A", "struct S<int *__ptrauth(2, 0, 1234)> s"),
+            ("?foo@@YAXPEAPE__ptrauth20OK@AH@Z", "void __cdecl foo(int *__ptrauth(3, 1, 234)*)"),
+            (
+                "??$foo@PEAPE__ptrauth0A@EA@AH@@YAXPEAPE__ptrauth0A@EA@AH@Z",
+                "void __cdecl foo<int *__ptrauth(1, 0, 64)*>(int *__ptrauth(1, 0, 64)*)",
+            ),
+            ("?p@@3PE__ptrauth1A@ENC@AHA", "int *__ptrauth(2, 0, 1234)p"),
+            ("?p@@3QE__ptrauth1A@ENC@AHA", "int *const__ptrauth(2, 0, 1234)p"),
+            ("?p@@3RE__ptrauth1A@ENC@AHA", "int *volatile__ptrauth(2, 0, 1234)p"),
+            ("?p@@3SE__ptrauth1A@ENC@AHA", "int *const volatile__ptrauth(2, 0, 1234)p"),
+            ("?p@@3PEI__ptrauth1A@ENC@AHA", "int *__restrict__ptrauth(2, 0, 1234)p"),
+            ("?p@@3AE__ptrauth1A@ENC@AHA", "int &__ptrauth(2, 0, 1234)p"),
+            ("?p@@3$$QE__ptrauth1A@ENC@AHA", "int &&__ptrauth(2, 0, 1234)p"),
+            ("?p@@3PE__ptrauth1A@ENC@AHIA", "int *__restrict__ptrauth(2, 0, 1234)p"),
+            ("?s@@3PE__ptrauth1A@ENC@AHB", "int const *__ptrauth(2, 0, 1234)s"),
+            ("?foo@@YAPE__ptrauth1A@ENC@AHXZ", "int *__ptrauth(2, 0, 1234) __cdecl foo(void)"),
+            (".PE__ptrauth1A@ENC@AH", "int *__ptrauth(2, 0, 1234)`RTTI Type Descriptor Name'"),
+            ("??_R0PE__ptrauth1A@ENC@AH@8", "int *__ptrauth(2, 0, 1234)`RTTI Type Descriptor'"),
+        ]
+        for mangled, expected in cases:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle.demangle(mangled, language="msvc"), expected)
+                self.assertEqual(demangle.demangle_strict(mangled, language="msvc"), expected)
+
+    def test_ptrauth_refusals(self):
+        refusals = [
+            "?p@@3PE__ptrauth?1A@A@AHA",
+            "?p@@3PE__ptrauth?A@A@A@AHA",
+            "?p@@3PE__ptrauth1A@ENC@6AHXZ",
+            "?p@@3PE__ptrauth1A@ENC@8foo@@AEHH@Z",
+            "?p@@3PE__ptrauth1A@ENC@Qfoo@@H",
+        ]
+        for mangled in refusals:
+            with self.subTest(mangled=mangled):
+                self.assertEqual(demangle.demangle(mangled, language="msvc"), mangled)
+
+    def test_ptrauth_ast_inspection(self):
+        mangled = "?p@@3PE__ptrauth1A@ENC@AHA"
+        parsed = demangle.parse(mangled, language="msvc")
+        assert isinstance(parsed, Declaration)
+        self.assertEqual(parsed.declarator.text, "p")
+        indirection = parsed.type
+        assert isinstance(indirection, Indirection)
+        self.assertEqual(indirection.kind, "indirection")
+        self.assertEqual(indirection.sigil, "*")
+        self.assertIsNotNone(indirection.pointer_auth)
+        self.assertEqual(indirection.ptrauth, indirection.pointer_auth)
+        assert isinstance(indirection.pointer_auth, PointerAuth)
+        self.assertEqual(indirection.pointer_auth.kind, "pointer_auth")
+        self.assertEqual(indirection.pointer_auth.key, 2)
+        self.assertEqual(indirection.pointer_auth.address_discriminated, 0)
+        self.assertEqual(indirection.pointer_auth.discriminator, 1234)
+        self.assertEqual(indirection.pointer_auth.render(), "__ptrauth(2, 0, 1234)")
+        self.assertEqual(list(parsed.find("pointer_auth")), [indirection.pointer_auth])
+        self.assertIn("pointer_auth", demangle.node_kinds("msvc"))

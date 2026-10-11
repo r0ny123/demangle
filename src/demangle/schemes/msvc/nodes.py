@@ -38,6 +38,7 @@ __all__ = [
     "FunctionType",
     "Indirection",
     "Name",
+    "PointerAuth",
     "Raw",
     "apply_qualifiers",
     "is_member_function_pointer",
@@ -70,6 +71,25 @@ class _Spelled(Node):
         return builder.raw(render(self))
 
 
+class PointerAuth(_Spelled):
+    """An ARM64e pointer authentication qualifier: __ptrauth(key, address_discriminated, discriminator)."""
+
+    __slots__ = ("address_discriminated", "discriminator", "key")
+    kind = "pointer_auth"
+    __match_args__ = ("key", "address_discriminated", "discriminator")
+
+    def __init__(self, key: int, address_discriminated: int, discriminator: int):
+        self.key = key
+        self.address_discriminated = int(address_discriminated)
+        self.discriminator = discriminator
+
+    def render(self) -> str:
+        return f"__ptrauth({self.key}, {self.address_discriminated}, {self.discriminator})"
+
+    def children(self):
+        return ()
+
+
 class Indirection(_Spelled):
     """A pointer, a reference, or a pointer into a class.
 
@@ -79,16 +99,21 @@ class Indirection(_Spelled):
     carries its own.
     """
 
-    __slots__ = ("inner", "qualifiers", "sigil")
+    __slots__ = ("inner", "pointer_auth", "qualifiers", "sigil")
     kind = "indirection"
 
-    def __init__(self, sigil, qualifiers, inner):
+    def __init__(self, sigil, qualifiers, inner, pointer_auth=None):
         self.sigil = sigil
         self.qualifiers = tuple(qualifiers)
         self.inner = inner
+        self.pointer_auth = pointer_auth
+
+    @property
+    def ptrauth(self):
+        return self.pointer_auth
 
     def children(self):
-        return (self.inner,)
+        return (self.inner, self.pointer_auth) if self.pointer_auth is not None else (self.inner,)
 
     @property
     def points_into_class(self):
@@ -199,9 +224,13 @@ def render(
         return node.text + ("" if abuts else " ") + declarator
     if kind == "indirection":
         token = node.sigil + " ".join(ordered_qualifiers(node.qualifiers))
+        if node.pointer_auth is not None:
+            token += node.pointer_auth.render()
         separator = " " if _spaced_off_the_sigil(node, declarator, declarator_is_function, options) else ""
         # Said here, where it is known, rather than guessed from the declarator's text.
         return render(node.inner, token + separator + declarator, options=options, as_pointee=True, sigil=True)
+    if kind == "pointer_auth":
+        return node.render()
     if kind == "array":
         if sigil or declarator.startswith(("*", "&")):
             declarator = f"({declarator})"
@@ -270,7 +299,7 @@ def _spaced_off_the_sigil(node, declarator, declarator_is_function, options):
     """
     if not declarator or declarator.startswith("["):
         return False
-    if node.qualifiers:
+    if node.pointer_auth is None and node.qualifiers:
         return True
     # Anything but a function declarator abuts: `int (*(*a)[20])()`.
     if not declarator_is_function or declarator.startswith(("*", "&")):
@@ -371,7 +400,7 @@ def qualify_declared(node, quals):
     if not quals:
         return node
     if node.kind == "indirection":
-        return Indirection(node.sigil, node.qualifiers, _qualify_element(node.inner, quals))
+        return Indirection(node.sigil, node.qualifiers, _qualify_element(node.inner, quals), node.pointer_auth)
     return _qualify_element(node, quals)
 
 
@@ -388,7 +417,7 @@ def _qualify(node, quals):
     join those instead of being appended to a rendering that already placed the sigil.
     """
     if node.kind == "indirection":
-        return Indirection(node.sigil, merge_qualifiers(node.qualifiers, quals), node.inner)
+        return Indirection(node.sigil, merge_qualifiers(node.qualifiers, quals), node.inner, node.pointer_auth)
     # Only *trailing* words count: "?s@@3QBDD" is "char const volatile *const", but a
     # qualifier inside a template argument (`?h@FTypeWithQuals@@3U?$S@$$A8@@HCAHXZ@1@C`)
     # must not suppress the symbol's own.

@@ -489,6 +489,48 @@ class TestGrammarFacts:
         # The node is not a type, so it is nothing on its own.
         assert demangle.demangle("$sSiSSXyD", language="swift") == "$sSiSSXyD"
 
+    def test_swift_6_inverted_protocol_constraints(self):
+        """Inverted protocol constraints: bit 0 (~Copyable), bit 1 (~Escapable),
+        bit 2 (~Deinitable), fallback bits (e.g. ~<bit 3>), and module prefix suppression.
+        """
+        sym_copyable = "$sSRyxG15Synchronization19AtomicRepresentableABRi_zrlMc"
+        sym_escapable = "$sSRyxG15Synchronization19AtomicRepresentableABRi0_zrlMc"
+        sym_deinitable = "$sSRyxG15Synchronization19AtomicRepresentableABRi1_zrlMc"
+        sym_bit3 = "$sSRyxG15Synchronization19AtomicRepresentableABRi2_zrlMc"
+
+        # Default: display_module_names=True
+        assert demangle.demangle(sym_copyable) == (
+            "protocol conformance descriptor for < where A: ~Swift.Copyable> Swift.UnsafeBufferPointer<A> : Synchronization.AtomicRepresentable in Synchronization"
+        )
+        assert demangle.demangle(sym_escapable) == (
+            "protocol conformance descriptor for < where A: ~Swift.Escapable> Swift.UnsafeBufferPointer<A> : Synchronization.AtomicRepresentable in Synchronization"
+        )
+        assert demangle.demangle(sym_deinitable) == (
+            "protocol conformance descriptor for < where A: ~Swift.Deinitable> Swift.UnsafeBufferPointer<A> : Synchronization.AtomicRepresentable in Synchronization"
+        )
+        assert demangle.demangle(sym_bit3) == (
+            "protocol conformance descriptor for < where A: ~Swift.<bit 3>> Swift.UnsafeBufferPointer<A> : Synchronization.AtomicRepresentable in Synchronization"
+        )
+
+        # display_module_names=False suppresses "Swift." prefix
+        no_modules = demangle.style("llvm", swift={"display_module_names": False})
+        assert demangle.demangle(sym_copyable, style=no_modules) == (
+            "protocol conformance descriptor for < where A: ~Copyable> UnsafeBufferPointer<A> : AtomicRepresentable in "
+        )
+        assert demangle.demangle(sym_escapable, style=no_modules) == (
+            "protocol conformance descriptor for < where A: ~Escapable> UnsafeBufferPointer<A> : AtomicRepresentable in "
+        )
+        assert demangle.demangle(sym_deinitable, style=no_modules) == (
+            "protocol conformance descriptor for < where A: ~Deinitable> UnsafeBufferPointer<A> : AtomicRepresentable in "
+        )
+        assert demangle.demangle(sym_bit3, style=no_modules) == (
+            "protocol conformance descriptor for < where A: ~<bit 3>> UnsafeBufferPointer<A> : AtomicRepresentable in "
+        )
+
+        # AST inspection
+        tree = demangle.parse(sym_deinitable, language="swift")
+        assert "Deinitable" in tree.spell()
+
 
 class TestTheNodeKindRegistry:
     """Every node kind the demangler builds, over the corpus and the shapes below, is

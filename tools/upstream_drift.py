@@ -298,6 +298,9 @@ EXPECTED_MISREADS = {
     # A `)` after a complete name: llvm-undname stops reading at the name's end, this
     # library refuses leftover input (tests/test_msvc.py, "trailing bytes").
     "??_C@_07LJGFEJEB@D3?$CC?$BB?$AA?$AA?$AA?$AA@)",
+    # Upstream LLVM test typo with trailing single quote in ms-cxx20.test;
+    # this library refuses leftover input.
+    "??__MS@@QEAA?AVstrong_ordering@std@@AEBU0@@Z'",
 }
 
 

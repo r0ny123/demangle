@@ -5,8 +5,18 @@ repo_url: https://github.com/r0ny123/demangle
 repo_name: r0ny123/demangle
 edit_uri: edit/main/
 
+hooks:
+  - docs/hooks.py
+
+extra_css:
+  - assets/playground.css
+
+extra_javascript:
+  - assets/playground.js
+
 nav:
   - Home: index.md
+  - Playground: playground.md
   - Working with the tree: analysing-a-binary.md
   - Labelling a symbol table: labelling-a-symbol-table.md
   - API reference:

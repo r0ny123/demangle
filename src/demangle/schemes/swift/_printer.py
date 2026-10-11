@@ -2346,7 +2346,7 @@ def _print_differentiable_function_type(self, node, depth, as_prefix_context):
 
 
 #: `InvertibleProtocols.def`: the bit each suppressible conformance is written as.
-_INVERTIBLE_PROTOCOLS = {0: "Swift.Copyable", 1: "Swift.Escapable"}
+_INVERTIBLE_PROTOCOLS = {0: "Swift.Copyable", 1: "Swift.Escapable", 2: "Swift.Deinitable"}
 
 
 @_handler("DependentGenericInverseConformanceRequirement")
@@ -2359,7 +2359,10 @@ def _print_inverse_conformance(self, node, depth, as_prefix_context):
     self.print(node.first, depth + 1)
     self.write(": ~")
     bit = node.child(1).index
-    self.write(_INVERTIBLE_PROTOCOLS.get(bit, f"Swift.<bit {bit}>"))
+    name = _INVERTIBLE_PROTOCOLS.get(bit, f"Swift.<bit {bit}>")
+    if not self.options.display_module_names and name.startswith("Swift."):
+        name = name[len("Swift.") :]
+    self.write(name)
     return None
 
 

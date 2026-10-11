@@ -11,6 +11,7 @@ from .nodes import (
     FunctionType,
     Indirection,
     Name,
+    PointerAuth,
     Raw,
     apply_qualifiers,
     is_member_function_pointer,
@@ -997,6 +998,18 @@ class _Demangler:
             raise _Bail
         return int(spelled)
 
+    def ptrauthNumber(self):
+        """A non-negative MSVC-encoded integer for pointer authentication qualifiers.
+
+        Rejects negative integers indicated by a leading '?' with _Bail.
+        Consumes a single ASCII digit '0'..'9' as (ord(char) - ord('0') + 1),
+        or a sequence of hexadecimal nibbles 'A'..'P' terminated by '@'.
+        """
+        spelled = self.templateInteger()
+        if spelled.startswith("-"):
+            raise _Bail
+        return int(spelled)
+
     def arrayType(self, quals):
         count = self.dimension()
         if count == 0:
@@ -1171,6 +1184,13 @@ class _Demangler:
             noexcept_ = self.throwSpecification()
             self.simple = False
             return Indirection(token, own_quals, FunctionType(convention, params, returns, noexcept_))
+        pointer_auth = None
+        if self.text.startswith("__ptrauth", self.pos):
+            self.pos += 9
+            key = self.ptrauthNumber()
+            addr_disc = self.ptrauthNumber()
+            disc = self.ptrauthNumber()
+            pointer_auth = PointerAuth(key, addr_disc, disc)
         pointee_quals = _CV_QUALS.get(self.take())
         if pointee_quals is None:
             raise _Bail
@@ -1181,7 +1201,7 @@ class _Demangler:
         finally:
             self.pointee_depth -= 1
         self.simple = False
-        return Indirection(token, own_quals, pointee)
+        return Indirection(token, own_quals, pointee, pointer_auth)
 
     def memberDataPointer(self, own_quals, token, unaligned=()):
         """A pointer to data member: the class qualifies the declarator, as it does a method.
@@ -1489,7 +1509,9 @@ class _Demangler:
             if restrict and restrict[0] not in declared.qualifiers:
                 # qualifies the pointer, written once: "?h3@@3QIAHIA" is "int *const
                 # __restrict"
-                declared = Indirection(declared.sigil, declared.qualifiers + restrict, declared.inner)
+                declared = Indirection(
+                    declared.sigil, declared.qualifiers + restrict, declared.inner, declared.pointer_auth
+                )
             if member_quals and is_member_function_pointer(declared):
                 # a member function's qualifier follows its parameters, in the group
                 # `this_type` drops

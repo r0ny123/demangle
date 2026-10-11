@@ -146,6 +146,7 @@ markers = [
 line-length = 120
 target-version = "py311"
 src = ["src", "tests"]
+extend-exclude = [".agents"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]

@@ -63,6 +63,7 @@ once, with the module that says most about it -- an options class with its optio
         - Indirection
         - FunctionType
         - Declaration
+        - PointerAuth
         - render
         - spelled_after
         - prefixed

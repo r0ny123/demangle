@@ -145,6 +145,8 @@ def _opens_a_type(name):
         for modifier in "EIF":
             if name.startswith(modifier, at):
                 at += 1
+        if name.startswith("__ptrauth", at):
+            return True
         return name[at : at + 1] in (_REFERENCE_POINTEE if first == "A" else _POINTER_POINTEE)
     return False
 
@@ -274,7 +276,7 @@ def _check_length(mangled, length, limits):
 
 PLUGIN = LanguagePlugin(
     name="msvc",
-    node_kinds=("array", "declaration", "function", "indirection", "name", "raw"),
+    node_kinds=("array", "declaration", "function", "indirection", "name", "pointer_auth", "raw"),
     detect=detect,
     parse=parse,
     parse_type=parse_type,
