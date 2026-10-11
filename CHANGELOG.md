@@ -8,6 +8,18 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- Playground theme settings no longer prevent startup when browser storage is blocked.
+  The theme toggle follows the system preference until the user selects a theme.
+- Automatic and manual release runs require successful push CI for the commit being tagged.
+
+### Added
+
+- A release-preparation command updates package and citation versions, release notes,
+  and comparison links together, with metadata checks and rollback on failure.
+- Browser checks for theme persistence, keyboard shortcuts, and stalled-worker recovery.
+
 ## [0.6.0] - 2026-10-11
 
 ### Fixed

@@ -487,18 +487,26 @@
         document.getElementById("btn-retry-runtime").addEventListener("click", initPyodideRuntime);
         const btnTheme = document.getElementById("btn-theme-toggle");
         if (btnTheme) {
-            const savedTheme = localStorage.getItem("demangle-theme");
-            if (savedTheme) {
-                document.documentElement.setAttribute("data-theme", savedTheme);
-                btnTheme.textContent = savedTheme === "dark" ? "☀️ Light" : "🌙 Dark";
+            const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+            let theme = null;
+            try {
+                const saved = localStorage.getItem("demangle-theme");
+                if (saved === "light" || saved === "dark") theme = saved;
+            } catch { /* Theme persistence is optional when browser storage is blocked. */ }
+            function applyTheme() {
+                if (theme) document.documentElement.setAttribute("data-theme", theme);
+                else document.documentElement.removeAttribute("data-theme");
+                const dark = theme === "dark" || (!theme && systemTheme.matches);
+                btnTheme.textContent = dark ? "☀️ Light" : "🌙 Dark";
             }
+            applyTheme();
+            systemTheme.addEventListener("change", applyTheme);
             btnTheme.addEventListener("click", () => {
-                const current = document.documentElement.getAttribute("data-theme") ||
-                    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-                const next = current === "dark" ? "light" : "dark";
-                document.documentElement.setAttribute("data-theme", next);
-                localStorage.setItem("demangle-theme", next);
-                btnTheme.textContent = next === "dark" ? "☀️ Light" : "🌙 Dark";
+                const dark = theme === "dark" || (!theme && systemTheme.matches);
+                theme = dark ? "light" : "dark";
+                applyTheme();
+                try { localStorage.setItem("demangle-theme", theme); }
+                catch { /* Switching still works without persistence. */ }
             });
         }
         window.addEventListener("hashchange", () => { restoreSharedState(); executeDemangle(); });

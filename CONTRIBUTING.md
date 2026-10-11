@@ -167,6 +167,20 @@ it accepts -- has been through `tools/enumerate.py`, `tools/mutate.py` and
 has why, what each asks, and how to build the references for Rust, Swift and
 pre-Itanium C++ that no distribution ships.
 
+## Preparing a release
+
+After the Unreleased section has notes ready to publish, prepare the release metadata with
+its stable semantic version. The command defaults the date to today; pass `--date` for a
+specific `YYYY-MM-DD` date. It updates the package and citation versions, moves the notes
+under the dated changelog heading, refreshes comparison links, then runs the documentation
+metadata checks. If those checks fail, it restores the original files. Commit and push
+that change to `main`; `tag-release.yml` creates the tag and release only after push CI
+passes for that exact commit. It then starts the PyPI publishing workflow.
+
+```console
+python tools/prepare_release.py 0.7.0 --date 2026-10-12
+```
+
 ## How changes get merged
 
 Leave `CHANGELOG.md` alone: the maintainer writes the entry when merging. A first-time
@@ -181,10 +195,10 @@ Workflows run with `permissions: contents: read` and grant more only where a job
 it: the weekly `upstream.yml` has `issues: write`, because its one job files the issue
 that says a reference's vectors moved ahead of a scheme. Checkout uses
 `persist-credentials: false`, because nothing in CI pushes and a token left in
-`.git/config` is readable by every later step. A release is cut by `tag-release.yml`
-when `__version__` changes on `main`, through the API with `contents: write` and
-`actions: write` on that one job; it starts `release.yml`, which publishes through PyPI
-Trusted Publishing, so there is no long-lived API token in repository secrets. The
+`.git/config` is readable by every later step. `tag-release.yml` cuts a release after
+push CI succeeds on `main` for the exact commit, through the API with `contents: write`
+and `actions: write` on that one job; it starts `release.yml`, which publishes through
+PyPI Trusted Publishing, so there is no long-lived API token in repository secrets. The
 `pypi` environment still waits for a maintainer to approve.
 
 The test matrix is deliberately not a cross product. Every supported version runs on

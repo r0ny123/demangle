@@ -310,6 +310,105 @@ def test_large_ast_paginates_and_keeps_full_graph_in_raw_json(context, site_serv
     assert '"text": "entry-1799"' in page.locator("#ast-json-content").inner_text()
 
 
+@pytest.mark.parametrize("storage", ["blocked", "invalid"])
+def test_theme_storage_cannot_prevent_runtime_startup(context, site_server, storage):
+    if storage == "blocked":
+        context.add_init_script("""Object.defineProperty(window, 'localStorage', {get() {
+          throw new DOMException('Storage blocked', 'SecurityError');
+        }});""")
+    else:
+        context.add_init_script("localStorage.setItem('demangle-theme', 'invalid');")
+    page = open_playground(context, site_server)
+    page.emulate_media(color_scheme="dark")
+    wait_ready(page)
+    button = page.locator("#btn-theme-toggle")
+    assert button.inner_text() == "☀️ Light"
+    assert page.locator("html").get_attribute("data-theme") is None
+    button.click()
+    assert page.locator("html").get_attribute("data-theme") == "light"
+    assert button.inner_text() == "🌙 Dark"
+    page.locator("#playground-input-symbol").fill("usable")
+    page.wait_for_function("document.querySelector('#output-status-indicator').textContent === 'Valid'")
+
+
+def test_theme_follows_system_until_overridden_and_persists(context, site_server):
+    page = open_playground(context, site_server)
+    page.emulate_media(color_scheme="light")
+    wait_ready(page)
+    button = page.locator("#btn-theme-toggle")
+    assert button.inner_text() == "🌙 Dark"
+    page.emulate_media(color_scheme="dark")
+    page.wait_for_function("document.querySelector('#btn-theme-toggle').textContent === '☀️ Light'")
+    button.click()
+    assert page.evaluate("localStorage.getItem('demangle-theme')") == "light"
+    page.reload(wait_until="domcontentloaded")
+    wait_ready(page)
+    assert page.locator("html").get_attribute("data-theme") == "light"
+    assert button.inner_text() == "🌙 Dark"
+
+
+@pytest.mark.parametrize("modifier", ["Control", "Meta"])
+def test_keyboard_shortcuts_focus_demangle_and_clear(context, site_server, modifier):
+    page = open_playground(context, site_server)
+    wait_ready(page)
+    symbol = page.locator("#playground-input-symbol")
+    symbol.fill("shortcut")
+    page.locator("#btn-theme-toggle").focus()
+    page.keyboard.press("Escape")
+    assert symbol.input_value() == "shortcut"
+    page.keyboard.press(f"{modifier}+k")
+    assert symbol.evaluate("node => document.activeElement === node")
+    assert symbol.evaluate("node => node.selectionStart === 0 && node.selectionEnd === node.value.length")
+    page.keyboard.press(f"{modifier}+Enter")
+    page.wait_for_function("document.querySelector('#output-status-indicator').textContent === 'Valid'")
+    assert page.locator("#output-display").inner_text() == "demangled(shortcut)"
+    page.keyboard.press("Escape")
+    assert symbol.input_value() == ""
+    assert page.locator("#btn-copy-output").is_disabled()
+
+
+@pytest.mark.parametrize("stage", ["startup", "parse"])
+def test_stalled_worker_times_out_and_retry_recovers(context, site_server, stage):
+    page = context.new_page()
+    page.clock.install()
+    workers = 0
+
+    def worker_route(route):
+        nonlocal workers
+        workers += 1
+        if workers == 1:
+            script = (
+                "self.onmessage = () => {};"
+                if stage == "startup"
+                else FAKE_WORKER.replace(
+                    'const delay = data.symbol === "slow" ? 240 : 15;',
+                    'if (data.symbol === "stalled") return; const delay = 15;',
+                )
+            )
+        else:
+            script = FAKE_WORKER
+        route.fulfill(body=script, content_type="application/javascript")
+
+    page.route("**/playground-worker.js", worker_route)
+    page.goto(site_server + PLAYGROUND, wait_until="domcontentloaded")
+    symbol = page.locator("#playground-input-symbol")
+    if stage == "parse":
+        wait_ready(page)
+    symbol.fill("stalled")
+    if stage == "parse":
+        page.wait_for_function("window.__demangleWorkerEvents.some(event => event.symbol === 'stalled')")
+    page.clock.fast_forward(90_001 if stage == "startup" else 15_001)
+    page.locator("#btn-retry-runtime").wait_for(state="visible")
+    assert page.locator("#btn-copy-output").is_disabled()
+    assert page.locator("#btn-copy-ast").is_disabled()
+    assert symbol.input_value() == "stalled"
+    page.locator("#btn-retry-runtime").click()
+    wait_ready(page)
+    page.wait_for_function("document.querySelector('#output-status-indicator').textContent === 'Valid'")
+    assert workers == 2
+    assert page.locator("#output-display").inner_text() == "demangled(stalled)"
+
+
 def test_runtime_failure_exposes_retry_and_retry_initializes_worker(context, site_server):
     page = context.new_page()
     workers = 0

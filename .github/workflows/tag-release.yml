@@ -1,7 +1,7 @@
 name: Tag release
 
 # Cuts the GitHub release for a version bump, so the release is not a step done by hand.
-# It runs when `__version__` changes on `main`, or on demand from `main`, and does nothing
+# It runs after successful push CI on `main`, or on demand from `main`, and does nothing
 # if the tag already exists. The release it creates holds the version's CHANGELOG section.
 #
 # A release made with the workflow token does not start other workflows, so release.yml,
@@ -9,9 +9,10 @@ name: Tag release
 # itself on the new tag; its `pypi` environment still waits for a person to approve.
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths: [src/demangle/__init__.py]
   workflow_dispatch:
 
 permissions:
@@ -24,16 +25,33 @@ concurrency:
 jobs:
   release:
     name: tag and release
-    if: github.repository == 'r0ny123/demangle' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'r0ny123/demangle' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
       actions: write
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ env.RELEASE_SHA }}
+      - name: Require successful push CI for the release commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$RELEASE_SHA&event=push&branch=main&status=completed&per_page=100" \
+            --jq ".workflow_runs | any(.head_sha == \"$RELEASE_SHA\" and .head_branch == \"main\" and .event == \"push\" and .status == \"completed\" and .conclusion == \"success\")")
+          if [ "$passed" != "true" ]; then
+            echo "No successful push CI run for $RELEASE_SHA; not releasing" >&2
+            exit 1
+          fi
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,5 +77,5 @@ jobs:
             echo
             echo "See the [changelog](https://github.com/$GITHUB_REPOSITORY/blob/$tag/CHANGELOG.md) for details."
           } >> notes.md
-          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md
+          gh release create "$tag" --target "$RELEASE_SHA" --title "$tag" --notes-file notes.md
           gh workflow run release.yml --ref "$tag"
