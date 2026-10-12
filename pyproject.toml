@@ -62,10 +62,11 @@ test = [
 format = [
     "ruff==0.16.9",
 ]
-# `test` is included so ty can resolve imports under `tests/`.
+# `test` and `browser` are included so ty can resolve imports under `tests/` and `benchmarks/`.
 lint = [
     { include-group = "format" },
     { include-group = "test" },
+    { include-group = "browser" },
     "ty==0.0.84",
 ]
 docs = [

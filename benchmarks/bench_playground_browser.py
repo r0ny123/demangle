@@ -32,7 +32,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import urlopen
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright  # type: ignore[import-not-found,unresolved-import]
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"

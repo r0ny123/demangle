@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [[package]]
@@ -451,6 +451,7 @@ browser = [
 dev = [
     { name = "build" },
     { name = "hypothesis" },
+    { name = "playwright" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -468,6 +469,7 @@ format = [
 ]
 lint = [
     { name = "hypothesis" },
+    { name = "playwright" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -486,6 +488,7 @@ browser = [{ name = "playwright", specifier = ">=1.50" }]
 dev = [
     { name = "build" },
     { name = "hypothesis", specifier = ">=6.168.3" },
+    { name = "playwright", specifier = ">=1.50" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov" },
     { name = "ruff", specifier = "==0.16.9" },
@@ -501,6 +504,7 @@ docs = [
 format = [{ name = "ruff", specifier = "==0.16.9" }]
 lint = [
     { name = "hypothesis", specifier = ">=6.168.3" },
+    { name = "playwright", specifier = ">=1.50" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov" },
     { name = "ruff", specifier = "==0.16.9" },
