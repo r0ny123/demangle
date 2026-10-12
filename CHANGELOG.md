@@ -10,6 +10,10 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
+- Playground navigation, presets, and cards share centered page gutters and a bounded
+  content width. Inner padding, control sizing, and responsive option rows stay aligned
+  on desktop, narrow screens, and with enlarged text; overflow is contained locally.
+
 - Release recovery resumes publishing when a tag and release already exist. Active
   or successful publishing runs are preserved; failed runs retry only failed jobs.
 - Playground theme settings no longer prevent startup when browser storage is blocked.

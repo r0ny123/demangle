@@ -576,7 +576,7 @@ def test_request_error_preserves_input_and_runtime_and_next_request_recovers(con
     assert "demangled(recovered)" in page.locator("#batch-results").inner_text()
 
 
-@pytest.mark.parametrize("width", [320, 375, 768, 1024, 1440])
+@pytest.mark.parametrize("width", [320, 375, 768, 1024, 1280, 1440, 1512, 1728, 1920, 2560])
 @pytest.mark.parametrize("font_scale", [1, 2])
 def test_layout_fits_viewport_with_enlarged_root_font(context, site_server, width, font_scale):
     page = open_playground(context, site_server)
@@ -591,6 +591,13 @@ def test_layout_fits_viewport_with_enlarged_root_font(context, site_server, widt
         """() => {
           const root = document.querySelector('#playground-app');
           const bounds = root.getBoundingClientRect();
+          const nav = document.querySelector('.playground-nav-inner').getBoundingClientRect();
+          const innerEdges = ['.presets-label', '.playground-input-card .card-title', '#playground-input-symbol',
+            '.control-label', '#output-display', '.sig-cell', '#ast-tree-container']
+            .map(selector => root.querySelector(selector).getBoundingClientRect().left);
+          const formatRows = Object.values([...root.querySelectorAll('#control-group-format .segmented-option')]
+            .reduce((rows, node) => {const top = Math.round(node.getBoundingClientRect().top);
+              rows[top] = (rows[top] || 0) + 1; return rows;}, {}));
           const siblings = [...root.children].map(element => element.getBoundingClientRect());
           const controls = [...root.querySelectorAll('button, select, input, textarea')]
             .filter(element => element.getClientRects().length)
@@ -616,6 +623,7 @@ def test_layout_fits_viewport_with_enlarged_root_font(context, site_server, widt
             documentWidth: document.documentElement.scrollWidth,
             viewportWidth: document.documentElement.clientWidth,
             rootLeft: bounds.left, rootRight: bounds.right,
+            rootWidth: bounds.width, navLeft: nav.left, navRight: nav.right, innerEdges, formatRows,
             siblingBoxes: siblings.map(box => [box.top, box.bottom]),
             controlBoxes: controls.map(box => [box.left, box.right]),
             groupContent: groupContent.map(([group, child]) => [group.left, group.right, group.top, group.bottom, child.left, child.right, child.top, child.bottom]),
@@ -625,6 +633,13 @@ def test_layout_fits_viewport_with_enlarged_root_font(context, site_server, widt
     )
     assert metrics["documentWidth"] <= metrics["viewportWidth"], json.dumps(metrics["overflowing"])
     assert metrics["rootLeft"] >= 0 and metrics["rootRight"] <= width
+    assert metrics["rootLeft"] >= 16 * font_scale
+    assert metrics["rootWidth"] <= 1440 * font_scale
+    assert abs(metrics["rootLeft"] - (width - metrics["rootRight"])) <= 1
+    assert abs(metrics["navLeft"] - metrics["rootLeft"]) <= 1
+    assert abs(metrics["navRight"] - metrics["rootRight"]) <= 1
+    assert max(metrics["innerEdges"]) - min(metrics["innerEdges"]) <= 1
+    assert metrics["formatRows"] in ([4], [2, 2])
     assert all(
         metrics["siblingBoxes"][i][1] <= metrics["siblingBoxes"][i + 1][0] + 1
         for i in range(len(metrics["siblingBoxes"]) - 1)
@@ -720,3 +735,53 @@ def test_populated_batch_layout_and_actions_fit_with_enlarged_text(context, site
     )
     assert not metrics["overlap"]
     assert metrics["tableFits"]
+
+
+@pytest.mark.parametrize("width", [320, 1440])
+@pytest.mark.parametrize("mode", ["signature", "error", "batch", "json"])
+def test_populated_panels_and_dark_theme_keep_content_inside_the_shell(context, site_server, width, mode):
+    page = open_playground(context, site_server)
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.emulate_media(color_scheme="dark")
+    wait_ready(page)
+    if mode == "batch":
+        page.locator("#playground-batch-mode").check()
+    page.locator("#playground-input-symbol").fill("invalid" if mode == "error" else "long-" + "x" * 160)
+    expected = "1 line: 1 parsed, 0 failed, 0 blank" if mode == "batch" else "Invalid" if mode == "error" else "Valid"
+    page.wait_for_function(
+        "expected => document.querySelector('#output-status-indicator').textContent === expected", arg=expected
+    )
+    if mode == "json":
+        page.locator("#tab-btn-json").click()
+        assert page.locator(".ast-json-pre").evaluate("node => node.scrollWidth > node.clientWidth")
+    if mode == "error":
+        assert page.locator("#output-error-banner").is_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    assert page.locator("#playground-app").evaluate(
+        """root => {
+          const bounds = root.getBoundingClientRect();
+          return [...root.querySelectorAll('button, select, textarea, .card-header, .sig-cell')]
+            .filter(node => node.getClientRects().length)
+            .every(node => {const box = node.getBoundingClientRect();
+              return box.left >= bounds.left - 1 && box.right <= bounds.right + 1;});
+        }"""
+    )
+
+
+@pytest.mark.parametrize("width", [320, 768, 1440])
+def test_every_documentation_page_keeps_its_content_gutters_and_contains_overflow(context, site_server, width):
+    page = context.new_page()
+    page.set_viewport_size({"width": width, "height": 1000})
+    pages = [path for path in SITE.rglob("index.html") if path.parent != SITE / "playground"]
+    pages.append(SITE / "404.html")
+    for path in sorted(pages):
+        page.goto(site_server + "/" + path.relative_to(SITE).as_posix(), wait_until="domcontentloaded")
+        metrics = page.locator(".md-content__inner").evaluate(
+            """content => {
+              const bounds = content.getBoundingClientRect();
+              return {left: bounds.left, right: bounds.right,
+                width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth};
+            }"""
+        )
+        assert metrics["scrollWidth"] <= metrics["width"], str(path.relative_to(SITE))
+        assert metrics["left"] > 0 and metrics["right"] < width, str(path.relative_to(SITE))
