@@ -39,11 +39,12 @@ function astFor(symbol) {
     return { kind: "function", name: { kind: "name", text: symbol }, parameters: [] };
 }
 function resultFor(request) {
+    if (request.batch) return {batch: true, rows: request.symbol.split("\n").map(line => line.trim() ? resultFor({...request, batch: false, symbol: line.trim()}) : {symbol: "", state: "empty", success: true, empty: true, output_variants: {full: "", both: "", "base-name": "", "no-params": ""}})};
     const symbol = request.symbol;
     const invalid = symbol === "invalid";
     const demangled = invalid ? symbol : `demangled(${symbol})`;
     return {
-        success: !invalid, empty: false, symbol,
+        success: !invalid, empty: false, state: invalid ? "invalid" : "valid", symbol,
         error: invalid ? "Injected parse failure" : null,
         language: request.language === "auto" ? "itanium" : request.language,
         detected_language: request.language === "auto" ? "itanium" : request.language,
@@ -51,8 +52,8 @@ function resultFor(request) {
         output_variants: {
             full: demangled,
             both: `${symbol} ==> ${demangled}`,
-            "base-name": `base(${symbol})`,
-            "no-params": `no-params(${symbol})`
+            "base-name": invalid ? symbol : `base(${symbol})`,
+            "no-params": invalid ? symbol : `no-params(${symbol})`
         },
         qualified_name: `qualified(${symbol})`, base_name: `base(${symbol})`,
         namespace: "demo", parameters: [], return_type: "void",
@@ -231,6 +232,125 @@ def test_format_views_update_cached_output_without_another_worker_request(contex
         page.locator(f'label:has(input[name="pg-format"][value="{view}"])').click()
         assert page.locator("#output-display").inner_text() == expected
     assert len(requests(page)) == 1
+
+
+def test_batch_results_preserve_lines_copy_download_and_cached_views(context, site_server, tmp_path):
+    page = open_playground(context, site_server)
+    wait_ready(page)
+    page.locator("#playground-batch-mode").check()
+    page.locator("#playground-input-symbol").fill("first\n\ninvalid\nfirst\n")
+    page.wait_for_function(
+        "document.querySelector('#output-status-indicator').textContent === '5 lines: 2 parsed, 1 failed, 2 blank'"
+    )
+    rows = page.locator(".batch-table tbody tr")
+    assert rows.count() == 5
+    assert [rows.nth(i).locator("th").inner_text() for i in range(5)] == ["1", "2", "3", "4", "5"]
+    assert "Invalid" in rows.nth(2).inner_text()
+    assert "Injected parse failure" in rows.nth(2).inner_text()
+    assert page.locator("#playground-signature-panel").is_hidden()
+    assert page.locator("#playground-ast-section").is_hidden()
+    sent = len(requests(page))
+    page.locator('label:has(input[name="pg-format"][value="base-name"])').click()
+    assert len(requests(page)) == sent
+    page.locator("#btn-copy-output").click()
+    page.wait_for_function("window.__clipboardWrites.length === 1")
+    expected = "base(first)\n\ninvalid\nbase(first)\n"
+    assert page.evaluate("window.__clipboardWrites[0]") == expected
+    with page.expect_download() as download_info:
+        page.locator("#btn-download-output").click()
+    download = download_info.value
+    assert download.suggested_filename == "demangled.txt"
+    target = tmp_path / download.suggested_filename
+    download.save_as(target)
+    assert target.read_text() == expected
+
+
+def test_batch_share_round_trip_and_invalid_options_restore_defaults(context, site_server):
+    page = open_playground(context, site_server)
+    wait_ready(page)
+    symbol = "first\n\n<&é>\n"
+    page.locator("#playground-batch-mode").check()
+    page.locator("#playground-input-symbol").fill(symbol)
+    page.locator("#playground-select-scheme").select_option("rust")
+    page.locator('label:has(input[name="pg-style"][value="gnu"])').click()
+    page.locator('label:has(input[name="pg-format"][value="both"])').click()
+    page.locator("#btn-share").click()
+    page.wait_for_function("window.__clipboardWrites.length === 1")
+    shared = page.evaluate("window.__clipboardWrites[0]")
+    page.goto(shared, wait_until="domcontentloaded")
+    wait_ready(page)
+    assert page.locator("#playground-batch-mode").is_checked()
+    assert page.locator("#playground-input-symbol").input_value() == symbol
+    assert page.locator("#playground-select-scheme").input_value() == "rust"
+    assert page.locator('input[name="pg-style"][value="gnu"]').is_checked()
+    assert page.locator('input[name="pg-format"][value="both"]').is_checked()
+    page.evaluate("location.hash = 'symbol=single&language=unknown&style=wrong&view=wrong&mode=wrong'")
+    page.get_by_text("demangled(single)", exact=True).wait_for()
+    assert not page.locator("#playground-batch-mode").is_checked()
+    assert page.locator("#playground-select-scheme").input_value() == "auto"
+    assert page.locator('input[name="pg-style"][value="llvm"]').is_checked()
+    assert page.locator('input[name="pg-format"][value="full"]').is_checked()
+
+
+def test_batch_coalescing_clear_and_limits_disable_stale_exports(context, site_server):
+    page = open_playground(context, site_server)
+    wait_ready(page)
+    page.locator("#playground-batch-mode").check()
+    field = page.locator("#playground-input-symbol")
+    field.fill("slow")
+    page.wait_for_function("window.__demangleWorkerEvents.some(event => event.symbol === 'slow')")
+    field.fill("latest\ninvalid")
+    page.wait_for_function(
+        "document.querySelector('#output-status-indicator').textContent === '2 lines: 1 parsed, 1 failed, 0 blank'"
+    )
+    assert "demangled(latest)" in page.locator("#batch-results").inner_text()
+    count = len(requests(page))
+    field.fill("\n" * 500)
+    page.get_by_text("Limit exceeded", exact=True).wait_for()
+    assert len(requests(page)) == count
+    assert page.locator("#btn-copy-output").is_disabled()
+    assert "500 lines and 256 KiB" in page.locator("#output-error-message").inner_text()
+    page.locator("#btn-clear-input").click()
+    assert field.input_value() == ""
+    assert not page.locator("#playground-batch-mode").is_checked()
+    assert page.locator("#batch-results").is_hidden()
+
+
+def test_share_length_and_clipboard_failures_are_announced_without_breaking_runtime(context, site_server):
+    page = open_playground(context, site_server)
+    wait_ready(page)
+    field = page.locator("#playground-input-symbol")
+    field.fill("x" * 8000)
+    page.locator("#btn-share").click()
+    assert "too long" in page.locator("#playground-feedback").inner_text()
+    assert not page.evaluate("location.hash")
+    assert page.evaluate("window.__clipboardWrites.length") == 0
+    field.fill("usable")
+    page.get_by_text("demangled(usable)", exact=True).wait_for()
+    page.evaluate("() => { navigator.clipboard.writeText = async () => {throw new Error('denied');}; }")
+    page.locator("#btn-share").click()
+    page.get_by_text("Copy failed", exact=True).wait_for()
+    assert "Clipboard unavailable" in page.locator("#playground-feedback").inner_text()
+    assert page.locator("#playground-feedback").get_attribute("role") == "status"
+    assert "status-ready" in page.locator("#playground-status-badge").get_attribute("class")
+
+
+def test_native_radio_and_batch_keyboard_controls_have_focus_and_result_announcements(context, site_server):
+    page = open_playground(context, site_server)
+    wait_ready(page)
+    page.locator('input[name="pg-style"][value="llvm"]').focus()
+    page.keyboard.press("ArrowRight")
+    assert page.locator('input[name="pg-style"][value="gnu"]').is_checked()
+    page.locator("#playground-batch-mode").focus()
+    page.keyboard.press("Space")
+    assert page.locator("#playground-batch-mode").is_checked()
+    assert page.locator("#playground-batch-mode").evaluate("node => getComputedStyle(node).outlineStyle") != "none"
+    page.locator("#playground-input-symbol").fill("keyboard")
+    page.wait_for_function(
+        "document.querySelector('#output-status-indicator').textContent === '1 line: 1 parsed, 0 failed, 0 blank'"
+    )
+    assert page.locator("#output-status-indicator").get_attribute("role") == "status"
+    assert page.locator(".output-container").get_attribute("aria-busy") == "false"
 
 
 def test_every_preset_sends_its_symbol_scheme_and_style_to_the_worker(context, site_server):
@@ -432,6 +552,30 @@ def test_runtime_failure_exposes_retry_and_retry_initializes_worker(context, sit
     assert "Injected startup failure" not in page.locator("#playground-status-text").inner_text()
 
 
+def test_request_error_preserves_input_and_runtime_and_next_request_recovers(context, site_server):
+    worker_script = FAKE_WORKER.replace(
+        'if (data.type !== "demangle") return;',
+        'if (data.type !== "demangle") return; if (data.symbol === "request-error") {self.postMessage({type: "request-error", id: data.id, message: "Injected request failure"}); return;}',
+    )
+    page = open_playground(context, site_server, worker_script=worker_script)
+    wait_ready(page)
+    page.locator("#playground-batch-mode").check()
+    field = page.locator("#playground-input-symbol")
+    field.fill("request-error")
+    page.get_by_text("Error", exact=True).wait_for()
+    assert field.input_value() == "request-error"
+    assert "Injected request failure" in page.locator("#output-error-message").inner_text()
+    assert page.locator("#output-error-banner").is_visible()
+    assert page.locator("#btn-retry-runtime").is_hidden()
+    assert page.locator("#btn-copy-output").is_disabled()
+    assert "status-ready" in page.locator("#playground-status-badge").get_attribute("class")
+    field.fill("recovered")
+    page.wait_for_function(
+        "document.querySelector('#output-status-indicator').textContent === '1 line: 1 parsed, 0 failed, 0 blank'"
+    )
+    assert "demangled(recovered)" in page.locator("#batch-results").inner_text()
+
+
 @pytest.mark.parametrize("width", [320, 375, 768, 1024, 1440])
 @pytest.mark.parametrize("font_scale", [1, 2])
 def test_layout_fits_viewport_with_enlarged_root_font(context, site_server, width, font_scale):
@@ -517,7 +661,8 @@ def test_real_pyodide_runtime_version_presets_invalid_symbol_and_default_auto(co
         expected_scheme = preset.get_attribute("data-scheme")
         preset.click()
         page.wait_for_function(
-            "document.querySelector('#output-status-indicator').textContent === 'Valid'", timeout=30_000
+            "['Valid', 'Unchanged'].includes(document.querySelector('#output-status-indicator').textContent)",
+            timeout=30_000,
         )
         assert page.locator("#playground-select-scheme").input_value() == expected_scheme
         assert page.locator("#detected-scheme-tag").inner_text() == expected_scheme
@@ -532,5 +677,46 @@ def test_real_pyodide_runtime_version_presets_invalid_symbol_and_default_auto(co
     assert " ==> " in page.locator("#output-display").inner_text()
 
     page.locator("#playground-input-symbol").fill("not-a-mangled-symbol")
-    page.get_by_text("Invalid", exact=True).wait_for()
+    page.get_by_text("Unrecognized", exact=True).wait_for()
     assert page.locator("#output-error-banner").is_visible()
+
+    page.locator("#playground-input-symbol").fill("_Z")
+    page.get_by_text("Invalid", exact=True).wait_for()
+    page.locator("#playground-input-symbol").fill("_ZN3foo3barEi\n\nmemcpy\n_Z\n")
+    page.locator("#playground-select-scheme").select_option("auto")
+    page.locator("#playground-batch-mode").check()
+    page.wait_for_function(
+        "document.querySelector('#output-status-indicator').textContent === '5 lines: 1 parsed, 2 failed, 2 blank'",
+        timeout=30_000,
+    )
+    rows = page.locator(".batch-table tbody tr")
+    assert "foo::bar(int)" in rows.nth(0).inner_text()
+    assert "Unrecognized" in rows.nth(2).inner_text()
+    assert "Invalid" in rows.nth(3).inner_text()
+    page.locator('label:has(input[name="pg-format"][value="full"])').click()
+    page.locator("#btn-copy-output").click()
+    page.wait_for_function("window.__clipboardWrites.length === 1")
+    assert page.evaluate("window.__clipboardWrites[0]") == "foo::bar(int)\n\nmemcpy\n_Z\n"
+
+
+@pytest.mark.parametrize("width", [320, 768])
+def test_populated_batch_layout_and_actions_fit_with_enlarged_text(context, site_server, width):
+    page = open_playground(context, site_server)
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.evaluate("document.documentElement.style.fontSize = '32px'")
+    wait_ready(page)
+    page.locator("#playground-batch-mode").check()
+    page.locator("#playground-input-symbol").fill("long-" + "x" * 100 + "\ninvalid")
+    page.wait_for_function("document.querySelector('#output-status-indicator').textContent.startsWith('2 lines:')")
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    metrics = page.locator(".playground-output-card .card-header").evaluate(
+        """header => {
+          const boxes = [...header.children].map(node => node.getBoundingClientRect());
+          const [a, b] = boxes;
+          const table = document.querySelector('.batch-table');
+          return {overlap: a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1,
+            tableFits: table.scrollWidth <= table.clientWidth + 1};
+        }"""
+    )
+    assert not metrics["overlap"]
+    assert metrics["tableFits"]

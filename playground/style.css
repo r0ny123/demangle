@@ -847,6 +847,60 @@ html, body {
   display: none !important;
 }
 
+.action-feedback {
+  flex-basis: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--md-default-fg-color--light);
+}
+
+.action-feedback:empty {
+  display: none;
+}
+
+.batch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.batch-toggle input:focus-visible, .output-code-display:focus-visible,
+.ast-panel:focus-visible {
+  outline: 2px solid var(--md-primary-fg-color);
+  outline-offset: 2px;
+}
+
+.batch-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.batch-table caption {
+  text-align: left;
+  margin-bottom: 0.75rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.batch-table th, .batch-table td {
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.batch-table th:first-child {
+  width: 3rem;
+}
+
+.batch-table td:nth-child(2), .batch-table td:nth-child(3) {
+  font-family: var(--md-code-font-family, monospace);
+}
+
 .ast-render-notice {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;

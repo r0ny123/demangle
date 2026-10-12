@@ -135,6 +135,93 @@ def test_success_path_reads_tree_once(bridge, monkeypatch):
     assert calls == 1
 
 
+@pytest.mark.parametrize(
+    ("symbol", "language", "state"),
+    [
+        ("memcpy", None, "unrecognized"),
+        ("_Z", None, "invalid"),
+        ("symbol", "unsupported-scheme", "unsupported"),
+        ("+[NSString stringWithFormat:]", None, "unchanged"),
+    ],
+)
+def test_result_states_distinguish_plain_invalid_unsupported_and_unchanged(bridge, symbol, language, state):
+    result = json.loads(bridge.playground_demangle(symbol, language))
+    assert result["state"] == state
+    assert result["success"] == (state == "unchanged")
+
+
+def test_batch_preserves_order_blank_lines_and_failures_without_building_graphs(bridge, monkeypatch):
+    original = bridge._read
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args[0])
+        plugin, tree = original(*args, **kwargs)
+
+        def no_graph(*args, **kwargs):
+            pytest.fail("batch processing must not serialize ASTs")
+
+        monkeypatch.setattr(type(tree), "to_dict", no_graph)
+        return plugin, tree
+
+    monkeypatch.setattr(bridge, "_read", counted)
+    text = "_ZN3foo3barEi\r\n\nmemcpy\n_Z\n_ZN3foo3barEi\n"
+    result = json.loads(bridge.playground_batch(text))
+    assert result["batch"]
+    rows = result["rows"]
+    assert [row["state"] for row in rows] == ["valid", "empty", "unrecognized", "invalid", "valid", "empty"]
+    assert [row["output_variants"]["full"] for row in rows] == [
+        "foo::bar(int)",
+        "",
+        "memcpy",
+        "_Z",
+        "foo::bar(int)",
+        "",
+    ]
+    assert calls.count("_ZN3foo3barEi") == 1
+    assert all("ast" not in row for row in rows)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["\n" * 500, "x" * (256 * 1024 + 1), "é" * (128 * 1024 + 1)],
+    ids=["too-many-lines", "too-many-bytes", "too-many-utf8-bytes"],
+)
+def test_batch_limits_reject_input_before_parsing(bridge, monkeypatch, text):
+    def no_parse(*args, **kwargs):
+        pytest.fail("oversized batches must not parse")
+
+    monkeypatch.setattr(bridge, "_read", no_parse)
+    with pytest.raises(ValueError, match="500 lines and 256 KiB"):
+        bridge.playground_batch(text)
+
+
+def test_batch_limit_boundary_and_style_variants(bridge):
+    text = "_ZNSt6vectorIiSaIiEE9push_backERKi\n" * 499 + "_ZNSt6vectorIiSaIiEE9push_backERKi"
+    result = json.loads(bridge.playground_batch(text, "itanium", "gnu"))
+    assert len(result["rows"]) == 500
+    expected = json.loads(bridge.playground_demangle(text.split("\n")[0], "itanium", "gnu"))
+    assert all(row["output_variants"] == expected["output_variants"] for row in result["rows"])
+
+
+def test_batch_output_budget_preserves_remaining_lines_without_parsing(bridge, monkeypatch):
+    monkeypatch.setattr(bridge, "MAX_BATCH_OUTPUT_BYTES", 1)
+    original = bridge._read
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args[0])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(bridge, "_read", counted)
+    result = json.loads(bridge.playground_batch("_ZN3foo3barEi\n\n_ZN3foo3bazEv"))
+    rows = result["rows"]
+    assert [row["state"] for row in rows] == ["valid", "empty", "limit"]
+    assert rows[2]["output_variants"]["full"] == "_ZN3foo3bazEv"
+    assert "4 MiB" in rows[2]["error"]
+    assert calls == ["_ZN3foo3barEi"]
+
+
 def test_source_archive_is_deterministic_and_importable(tmp_path, build_assets):
     package = tmp_path / "src" / "demangle"
     package.parent.mkdir()

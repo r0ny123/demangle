@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>demangle Playground — Interactive In-Browser Demangler</title>
-    <meta name="description" content="Read and decompose mangled symbol names interactively in your browser with zero network traffic via Pyodide WebAssembly." />
+    <meta name="description" content="Read and decompose mangled symbol names locally in your browser via Pyodide WebAssembly. Symbols stay in your browser." />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>" />
     <link rel="stylesheet" href="style.css" />
   </head>
@@ -35,7 +35,7 @@
     </header>
 
     <!-- Main Playground Container -->
-<div id="playground-app" class="playground-root">
+<main id="playground-app" class="playground-root">
   <!-- Top Status & Runtime Banner -->
   <div class="playground-header">
     <div class="playground-header-info">
@@ -47,6 +47,7 @@
       <span id="playground-status-text">Loading Pyodide runtime...</span>
     </div>
     <button type="button" id="btn-retry-runtime" class="btn-action-small" hidden>Retry runtime</button>
+    <p id="playground-feedback" class="action-feedback" role="status" aria-atomic="true"></p>
   </div>
 
   <!-- Presets Toolbar -->
@@ -96,7 +97,9 @@
       </div>
     </div>
     <div class="input-wrapper">
-      <textarea id="playground-input-symbol" class="playground-textarea" rows="3" spellcheck="false" placeholder="Type or paste a mangled symbol (e.g. _ZNSt6vector... or ??__MS...)"></textarea>
+      <label class="batch-toggle"><input type="checkbox" id="playground-batch-mode"> Batch: one symbol per line</label>
+      <p id="input-help" class="control-subtext">Inspect one symbol, or enable batch mode for up to 500 lines / 256 KiB. Blank lines and line order are preserved.</p>
+      <textarea id="playground-input-symbol" class="playground-textarea" rows="3" spellcheck="false" aria-describedby="input-help" aria-keyshortcuts="Control+k Meta+k Control+Enter Meta+Enter Escape" placeholder="Type or paste a mangled symbol (e.g. _ZNSt6vector... or ??__MS...)"></textarea>
     </div>
   </div>
 
@@ -133,7 +136,7 @@
     <!-- Style Selector -->
     <div class="control-group">
       <span class="control-label">Formatting Style</span>
-      <div class="segmented-control" id="control-group-style" role="group" aria-label="Formatting style">
+      <div class="segmented-control" id="control-group-style" role="radiogroup" aria-label="Formatting style">
         <label class="segmented-option">
           <input type="radio" name="pg-style" value="llvm" checked>
           <span>LLVM</span>
@@ -149,7 +152,7 @@
     <!-- Output Format Selector -->
     <div class="control-group">
       <span class="control-label">Output View</span>
-      <div class="segmented-control" id="control-group-format" role="group" aria-label="Output view">
+      <div class="segmented-control" id="control-group-format" role="radiogroup" aria-label="Output view">
         <label class="segmented-option">
           <input type="radio" name="pg-format" value="full" checked>
           <span>Full</span>
@@ -176,11 +179,14 @@
     <div class="card-header">
       <div class="card-title-group">
         <span class="card-title">Demangled Output</span>
-        <span id="output-status-indicator" class="output-status-pill pill-idle">Idle</span>
+        <span id="output-status-indicator" class="output-status-pill pill-idle" role="status" aria-atomic="true">Idle</span>
       </div>
-      <button type="button" id="btn-copy-output" class="btn-copy" data-label="Copy" disabled title="Copy demangled string">
-        <span class="copy-icon">📋</span> <span class="copy-label">Copy</span>
-      </button>
+      <div class="card-actions">
+        <button type="button" id="btn-download-output" class="btn-action-small" disabled hidden>Download .txt</button>
+        <button type="button" id="btn-copy-output" class="btn-copy" data-label="Copy" disabled title="Copy demangled output">
+          <span class="copy-icon">📋</span> <span class="copy-label">Copy</span>
+        </button>
+      </div>
     </div>
     <div class="output-container">
       <div id="output-error-banner" class="playground-error-banner" style="display: none;" role="alert">
@@ -190,6 +196,7 @@
       <div id="output-display" class="output-code-display" tabindex="0">
         <span class="output-placeholder">Enter a symbol above to view demangled output...</span>
       </div>
+      <div id="batch-results" hidden></div>
     </div>
   </div>
 
@@ -268,7 +275,7 @@
       <pre class="ast-json-pre"><code id="ast-json-content" class="language-json">{}</code></pre>
     </div>
   </div>
-</div>
+</main>
 
     <script src="playground.js"></script>
   </body>
