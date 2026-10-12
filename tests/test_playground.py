@@ -182,7 +182,11 @@ def test_batch_preserves_order_blank_lines_and_failures_without_building_graphs(
     assert all("ast" not in row for row in rows)
 
 
-@pytest.mark.parametrize("text", ["\n" * 500, "x" * (256 * 1024 + 1), "é" * (128 * 1024 + 1)])
+@pytest.mark.parametrize(
+    "text",
+    ["\n" * 500, "x" * (256 * 1024 + 1), "é" * (128 * 1024 + 1)],
+    ids=["too-many-lines", "too-many-bytes", "too-many-utf8-bytes"],
+)
 def test_batch_limits_reject_input_before_parsing(bridge, monkeypatch, text):
     def no_parse(*args, **kwargs):
         pytest.fail("oversized batches must not parse")
