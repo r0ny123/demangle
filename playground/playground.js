@@ -22,6 +22,9 @@
     const assetBase = new URL(".", document.currentScript.src);
     const MAX_TREE_NODES = 1500;
     const TREE_PAGE_SIZE = 50;
+    const MAX_BATCH_LINES = 500;
+    const MAX_BATCH_BYTES = 256 * 1024;
+    const MAX_SHARE_LENGTH = 8000;
     let worker = null;
     let isReady = false;
     let activeRequest = null;
@@ -40,6 +43,7 @@
     let elSigQualified, elSigBase, elSigNamespace, elSigParams, elSigReturn, elSigCallingConv, elSigQualifiers, elSigSpecial;
     let elTreeContainer, elJsonContent, elTabTree, elTabJson, elPanelTree, elPanelJson;
     let btnClear, btnCopyOutput, btnCopyAst, btnExpandAll, btnCollapseAll;
+    let elBatchMode, elBatchResults, btnDownload;
 
     function initDomReferences() {
         elStatusBadge = document.getElementById("playground-status-badge");
@@ -75,13 +79,79 @@
         btnCopyAst = document.getElementById("btn-copy-ast");
         btnExpandAll = document.getElementById("btn-ast-expand");
         btnCollapseAll = document.getElementById("btn-ast-collapse");
+        elBatchMode = document.getElementById("playground-batch-mode");
+        elBatchResults = document.getElementById("batch-results");
+        btnDownload = document.getElementById("btn-download-output");
     }
 
     function updateStatus(state, message) {
         if (!elStatusBadge) return;
         elStatusBadge.className = `playground-status status-${state}`;
-        const spinnerHtml = state === "loading" || state === "busy" ? '<span class="status-spinner" aria-hidden="true"></span> ' : '';
-        elStatusBadge.innerHTML = `${spinnerHtml}<span id="playground-status-text">${escapeHtml(message)}</span>`;
+        elStatusBadge.querySelector(".status-spinner").hidden = state !== "loading" && state !== "busy";
+        document.getElementById("playground-status-text").textContent = message;
+    }
+
+    function feedback(message) {
+        document.getElementById("playground-feedback").textContent = message;
+    }
+
+    function stateLabel(res) {
+        return { empty: "Blank", valid: "Valid", unchanged: "Unchanged", unrecognized: "Unrecognized", invalid: "Invalid", unsupported: "Unsupported", limit: "Limit exceeded", error: "Error" }[res.state] || (res.success ? "Valid" : "Invalid");
+    }
+
+    function errorMessage(res) {
+        const help = {
+            unrecognized: "No supported mangling prefix was recognized. Plain names remain unchanged; choose a scheme if you know it.",
+            invalid: "The symbol could not be parsed. Check that it is complete and the selected scheme is correct.",
+            unsupported: "The selected scheme is unavailable. Choose a supported scheme or Auto-detect.",
+            limit: "The input exceeded a processing limit. Use a shorter symbol or split the batch.",
+            error: "An unexpected error occurred. Retry, or report the symbol and selected settings."
+        };
+        return [help[res.state], res.error].filter(Boolean).join(" ");
+    }
+
+    function outputText(res) {
+        const format = getSelectedRadio(elFormatRadios, "full");
+        return res.output_variants?.[format] ?? res.demangled ?? res.symbol;
+    }
+
+    function exportText() {
+        return cachedResult?.data.batch ? cachedResult.data.rows.map(outputText).join("\n") : elOutputDisplay.textContent;
+    }
+
+    function renderBatch(res) {
+        const table = document.createElement("table");
+        table.className = "batch-table";
+        const caption = document.createElement("caption");
+        caption.textContent = "Batch results in input order. Copy and download preserve blank lines; failed symbols remain unchanged. Use single-symbol mode to inspect a signature or AST.";
+        table.append(caption);
+        const head = table.createTHead().insertRow();
+        for (const title of ["Line", "Input", "Output", "Status / Details"]) {
+            const cell = document.createElement("th");
+            cell.scope = "col";
+            cell.textContent = title;
+            head.append(cell);
+        }
+        const body = table.createTBody();
+        res.rows.forEach((row, index) => {
+            const tr = body.insertRow();
+            const number = document.createElement("th");
+            number.scope = "row";
+            number.textContent = String(index + 1);
+            tr.append(number);
+            const status = stateLabel(row) + (row.language ? ` (${row.language})` : "");
+            for (const text of [row.symbol, outputText(row), [status, !row.success ? errorMessage(row) : ""].filter(Boolean).join(" — ")]) {
+                tr.insertCell().textContent = text;
+            }
+        });
+        elBatchResults.replaceChildren(table);
+        const converted = res.rows.filter(row => row.success && !row.empty).length;
+        const failed = res.rows.filter(row => !row.success).length;
+        const blank = res.rows.filter(row => row.empty).length;
+        elOutputStatus.className = "output-status-pill pill-idle";
+        elOutputStatus.textContent = `${res.rows.length} ${res.rows.length === 1 ? "line" : "lines"}: ${converted} parsed, ${failed} failed, ${blank} blank`;
+        btnCopyOutput.disabled = false;
+        btnDownload.disabled = false;
     }
 
     function escapeHtml(str) {
@@ -216,11 +286,26 @@
     }
 
     function renderOutput(res) {
-        const format = getSelectedRadio(elFormatRadios, "full");
-        elOutputDisplay.textContent = res.output_variants?.[format] ?? res.demangled ?? res.symbol;
+        if (res.batch) renderBatch(res);
+        else elOutputDisplay.textContent = outputText(res);
     }
 
     function renderResults(res) {
+        document.querySelector(".output-container").setAttribute("aria-busy", "false");
+        const batch = Boolean(res?.batch);
+        elBatchResults.hidden = !batch;
+        elOutputDisplay.hidden = batch;
+        btnDownload.hidden = !batch;
+        btnDownload.disabled = true;
+        document.getElementById("playground-signature-panel").hidden = batch;
+        document.getElementById("playground-ast-section").hidden = batch;
+        if (batch) {
+            elErrorBanner.style.display = "none";
+            elDetectedTag.textContent = "per line";
+            btnCopyAst.disabled = btnExpandAll.disabled = btnCollapseAll.disabled = true;
+            renderBatch(res);
+            return;
+        }
         treeNodes = 0;
         renderedNodes = new WeakMap();
         document.getElementById("ast-render-notice").hidden = true;
@@ -264,10 +349,10 @@
         if (!res.success) {
             if (elOutputStatus) {
                 elOutputStatus.className = "output-status-pill pill-invalid";
-                elOutputStatus.textContent = "Invalid";
+                elOutputStatus.textContent = stateLabel(res);
             }
             if (elErrorBanner) elErrorBanner.style.display = "flex";
-            if (elErrorMessage) elErrorMessage.textContent = res.error || "Failed to demangle symbol";
+            if (elErrorMessage) elErrorMessage.textContent = errorMessage(res) || "Failed to demangle symbol";
             renderOutput(res);
 
             if (elSigQualified) elSigQualified.textContent = "—";
@@ -289,7 +374,7 @@
         // Success state
         if (elOutputStatus) {
             elOutputStatus.className = "output-status-pill pill-valid";
-            elOutputStatus.textContent = "Valid";
+            elOutputStatus.textContent = stateLabel(res);
         }
         if (elErrorBanner) elErrorBanner.style.display = "none";
         renderOutput(res);
@@ -340,7 +425,7 @@
     }
 
     function requestKey() {
-        return JSON.stringify([elInput.value.trim(), elScheme.value, getSelectedRadio(elStyleRadios, "llvm")]);
+        return JSON.stringify([elBatchMode.checked ? elInput.value : elInput.value.trim(), elScheme.value, getSelectedRadio(elStyleRadios, "llvm"), elBatchMode.checked]);
     }
 
     function dispatchPending() {
@@ -350,14 +435,14 @@
         updateStatus("busy", "Demangling…");
         worker.postMessage({ type: "demangle", ...activeRequest });
         clearTimeout(runtimeTimer);
-        runtimeTimer = setTimeout(() => runtimeFailed("Demangling took too long. Try a shorter symbol or retry."), 15000);
+        runtimeTimer = setTimeout(() => runtimeFailed("Demangling took too long. Try a shorter symbol or a smaller batch, then retry."), 15000);
     }
 
     function executeDemangle() {
         clearTimeout(debounceTimer);
         latestRequestId++;
         const key = requestKey();
-        if (!elInput.value.trim()) {
+        if (!elInput.value.trim() && !elBatchMode.checked) {
             pendingRequest = null;
             renderResults({ empty: true });
             if (isReady) updateStatus("ready", "Ready (WebAssembly)");
@@ -369,9 +454,17 @@
             if (isReady) updateStatus("ready", "Ready (WebAssembly)");
             return;
         }
-        pendingRequest = { id: latestRequestId, key, symbol: elInput.value.trim(), language: elScheme.value, style: getSelectedRadio(elStyleRadios, "llvm") };
+        if (elBatchMode.checked && (elInput.value.split("\n").length > MAX_BATCH_LINES || new TextEncoder().encode(elInput.value).length > MAX_BATCH_BYTES)) {
+            pendingRequest = null;
+            renderResults({ success: false, state: "limit", symbol: "", error: "Batch input is limited to 500 lines and 256 KiB. Split it into smaller batches." });
+            btnCopyOutput.disabled = true;
+            return;
+        }
+        pendingRequest = { id: latestRequestId, key, symbol: elBatchMode.checked ? elInput.value : elInput.value.trim(), language: elScheme.value, style: getSelectedRadio(elStyleRadios, "llvm"), batch: elBatchMode.checked };
         btnCopyOutput.disabled = true;
         btnCopyAst.disabled = true;
+        btnDownload.disabled = btnExpandAll.disabled = btnCollapseAll.disabled = true;
+        document.querySelector(".output-container").setAttribute("aria-busy", "true");
         elOutputStatus.textContent = "Updating";
         elOutputStatus.className = "output-status-pill pill-idle";
         dispatchPending();
@@ -382,6 +475,7 @@
         pendingRequest = null;
         btnCopyOutput.disabled = true;
         btnCopyAst.disabled = true;
+        btnDownload.disabled = btnExpandAll.disabled = btnCollapseAll.disabled = true;
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(executeDemangle, DEBOUNCE_MS);
     }
@@ -394,6 +488,7 @@
             elScheme.addEventListener("change", executeDemangle);
         }
         elStyleRadios.forEach((r) => r.addEventListener("change", executeDemangle));
+        elBatchMode.addEventListener("change", executeDemangle);
         elFormatRadios.forEach((r) => r.addEventListener("change", () => {
             if (cachedResult?.key === requestKey()) renderOutput(cachedResult.data);
         }));
@@ -402,6 +497,7 @@
             btnClear.addEventListener("click", () => {
                 if (elInput) {
                     elInput.value = "";
+                    elBatchMode.checked = false;
                     clearPresetSelection();
                     executeDemangle();
                     elInput.focus();
@@ -418,6 +514,7 @@
 
                 const sym = btn.dataset.symbol || "";
                 if (elInput) elInput.value = sym;
+                elBatchMode.checked = false;
                 if (btn.dataset.scheme && elScheme) elScheme.value = btn.dataset.scheme;
                 if (btn.dataset.style) {
                     elStyleRadios.forEach((r) => {
@@ -476,11 +573,24 @@
             });
         }
 
-        btnCopyOutput.addEventListener("click", () => copyText(btnCopyOutput, elOutputDisplay.textContent));
+        btnCopyOutput.addEventListener("click", () => copyText(btnCopyOutput, exportText()));
+        btnDownload.addEventListener("click", () => {
+            const url = URL.createObjectURL(new Blob([exportText()], { type: "text/plain;charset=utf-8" }));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "demangled.txt";
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            feedback("Downloaded demangled.txt. Failed symbols are unchanged and blank lines are preserved.");
+        });
         btnCopyAst.addEventListener("click", () => copyText(btnCopyAst, elJsonContent.textContent));
         document.getElementById("btn-share").addEventListener("click", () => {
             const url = new URL(location.href);
-            url.hash = new URLSearchParams({ symbol: elInput.value, language: elScheme.value, style: getSelectedRadio(elStyleRadios, "llvm"), view: getSelectedRadio(elFormatRadios, "full") }).toString();
+            url.hash = new URLSearchParams({ symbol: elInput.value, language: elScheme.value, style: getSelectedRadio(elStyleRadios, "llvm"), view: getSelectedRadio(elFormatRadios, "full"), mode: elBatchMode.checked ? "batch" : "single" }).toString();
+            if (url.href.length > MAX_SHARE_LENGTH) {
+                feedback("This input is too long for a share link (8,000 characters). Share a smaller example or download batch results.");
+                return;
+            }
             history.replaceState(null, "", url);
             copyText(document.getElementById("btn-share"), url.href);
         });
@@ -521,6 +631,7 @@
             } else if (event.key === "Escape" && document.activeElement === elInput) {
                 if (elInput && elInput.value) {
                     elInput.value = "";
+                    elBatchMode.checked = false;
                     clearPresetSelection();
                     executeDemangle();
                 }
@@ -543,9 +654,10 @@
         try {
             await navigator.clipboard.writeText(text);
             label.textContent = "Copied!";
+            feedback(button.id === "btn-share" ? "Share link copied. It contains your input and selected settings." : "Copied to clipboard.");
         } catch {
             label.textContent = "Copy failed";
-            updateStatus("error", "Clipboard unavailable. Select and copy the text, or copy the shared URL from the address bar.");
+            feedback("Clipboard unavailable. Select and copy the text, or copy the shared URL from the address bar.");
         }
         setTimeout(() => { label.textContent = button.dataset.label; }, 1800);
     }
@@ -555,10 +667,12 @@
         if (!params.has("symbol")) return;
         clearPresetSelection();
         elInput.value = params.get("symbol");
+        elBatchMode.checked = params.get("mode") === "batch";
         const language = params.get("language");
-        if ([...elScheme.options].some(o => o.value === language)) elScheme.value = language;
-        for (const [radios, key] of [[elStyleRadios, "style"], [elFormatRadios, "view"]]) {
-            if ([...radios].some(r => r.value === params.get(key))) radios.forEach(r => { r.checked = r.value === params.get(key); });
+        elScheme.value = [...elScheme.options].some(o => o.value === language) ? language : "auto";
+        for (const [radios, key, fallback] of [[elStyleRadios, "style", "llvm"], [elFormatRadios, "view", "full"]]) {
+            const value = [...radios].some(r => r.value === params.get(key)) ? params.get(key) : fallback;
+            radios.forEach(r => { r.checked = r.value === value; });
         }
     }
 
@@ -568,11 +682,14 @@
         worker = null;
         isReady = false;
         activeRequest = null;
+        cachedResult = null;
+        renderResults({ empty: true });
         updateStatus("error", message);
         elOutputStatus.textContent = "Unavailable";
         elOutputStatus.className = "output-status-pill pill-invalid";
         btnCopyOutput.disabled = true;
         btnCopyAst.disabled = true;
+        btnDownload.disabled = btnExpandAll.disabled = btnCollapseAll.disabled = true;
         document.getElementById("btn-retry-runtime").hidden = false;
     }
 
@@ -600,6 +717,18 @@
                     if (request && data.id === latestRequestId) {
                         cachedResult = { key: request.key, data: data.result };
                         renderResults(data.result);
+                        updateStatus("ready", "Ready (WebAssembly)");
+                    }
+                    dispatchPending();
+                } else if (data.type === "request-error") {
+                    if (activeRequest?.id !== data.id) return;
+                    clearTimeout(runtimeTimer);
+                    const request = activeRequest;
+                    activeRequest = null;
+                    if (data.id === latestRequestId) {
+                        cachedResult = null;
+                        renderResults({ success: false, state: "error", symbol: request.batch ? "" : request.symbol, error: data.message });
+                        btnCopyOutput.disabled = true;
                         updateStatus("ready", "Ready (WebAssembly)");
                     }
                     dispatchPending();

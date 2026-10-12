@@ -18,6 +18,12 @@ the reference demanglers, and a **Performance** section.
 
 ### Added
 
+- Playground batch results preserve line order and blank lines, show individual errors,
+  cache duplicate symbols, and support copying or downloading the selected output view.
+- Share links restore batch mode and validate options, with a size limit and explicit
+  clipboard feedback. Result states distinguish unrecognized, invalid, and unchanged
+  symbols; keyboard focus and live announcements cover batch controls and results.
+
 - A release-preparation command updates package and citation versions, release notes,
   and comparison links together, with metadata checks and rollback on failure.
 - Browser checks for theme persistence, keyboard shortcuts, and stalled-worker recovery.

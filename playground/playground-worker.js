@@ -1,7 +1,7 @@
 /* Python runs in a dedicated worker; symbols never leave this browser. */
 "use strict";
 const PYODIDE_VERSION = "0.26.4";
-let runner;
+let runner, batchRunner;
 
 async function initialize() {
     try {
@@ -31,14 +31,15 @@ import demangle
         await pyodide.runPythonAsync(bridge);
         // Retain one proxy for the lifetime of this worker; terminate() releases the runtime.
         runner = pyodide.globals.get("playground_demangle");
+        batchRunner = pyodide.globals.get("playground_batch");
         self.postMessage({ type: "ready", version: pyodide.runPython("demangle.__version__"), runtimeVersion: PYODIDE_VERSION });
         self.onmessage = ({ data }) => {
             if (data.type !== "demangle") return;
             try {
-                const result = JSON.parse(runner(data.symbol, data.language, data.style));
+                const result = JSON.parse((data.batch ? batchRunner : runner)(data.symbol, data.language, data.style));
                 self.postMessage({ type: "result", id: data.id, result });
             } catch (error) {
-                self.postMessage({ type: "error", message: `Demangling failed: ${error.message}` });
+                self.postMessage({ type: "request-error", id: data.id, message: `Demangling failed: ${error.message}` });
             }
         };
     } catch (error) {
