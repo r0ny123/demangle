@@ -135,33 +135,45 @@ def playground_batch(symbols: str, language: str | None = None, style: str = "ll
     if len(lines) > MAX_BATCH_LINES or len(symbols.encode("utf-8")) > MAX_BATCH_BYTES:
         raise ValueError("Batch input is limited to 500 lines and 256 KiB. Split it into smaller batches.")
     cache = {}
-    rows = []
+    limit_cache = {}
+    encoded_rows = []
     output_bytes = 0
     for line in lines:
         symbol = line.strip()
         if symbol and output_bytes >= MAX_BATCH_OUTPUT_BYTES:
-            row = {
-                "symbol": symbol,
-                "state": "limit",
-                "success": False,
-                "empty": False,
-                "language": None,
-                "error": "Batch output exceeded 4 MiB. Split the input into smaller batches.",
-                "output_variants": {
-                    "full": symbol,
-                    "both": f"{symbol} ==> {symbol}",
-                    "base-name": symbol,
-                    "no-params": symbol,
-                },
-            }
+            encoded = limit_cache.get(symbol)
+            if encoded is None:
+                row = {
+                    "symbol": symbol,
+                    "state": "limit",
+                    "success": False,
+                    "empty": False,
+                    "language": None,
+                    "error": "Batch output exceeded 4 MiB. Split the input into smaller batches.",
+                    "output_variants": {
+                        "full": symbol,
+                        "both": f"{symbol} ==> {symbol}",
+                        "base-name": symbol,
+                        "no-params": symbol,
+                    },
+                }
+                encoded = json.dumps(row)
+                limit_cache[symbol] = encoded
         else:
-            if symbol not in cache:
+            cached = cache.get(symbol)
+            if cached is None:
                 result = _demangle(symbol, language, style, include_ast=False)
-                cache[symbol] = {
+                row = {
                     key: result[key]
                     for key in ("symbol", "state", "success", "empty", "language", "error", "output_variants")
                 }
-            row = cache[symbol]
-        output_bytes += len(json.dumps(row).encode("utf-8"))
-        rows.append(row)
-    return json.dumps({"batch": True, "rows": rows})
+                encoded = json.dumps(row)
+                cache[symbol] = encoded
+            else:
+                encoded = cached
+        # json.dumps defaults to ensure_ascii=True, so this string is ASCII and its
+        # length is its UTF-8 byte length. Cache it per symbol and reuse the encoding
+        # in the final response instead of encoding each occurrence again.
+        output_bytes += len(encoded)
+        encoded_rows.append(encoded)
+    return '{"batch": true, "rows": [' + ", ".join(encoded_rows) + "]}"

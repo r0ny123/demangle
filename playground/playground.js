@@ -35,6 +35,7 @@
     let treeNodes = 0;
     let renderedNodes = new WeakMap();
     let referencePaths = new Map();
+    let renderedBatch = null;
     let debounceTimer = null;
 
     // DOM Elements
@@ -133,6 +134,7 @@
             head.append(cell);
         }
         const body = table.createTBody();
+        const outputCells = [];
         res.rows.forEach((row, index) => {
             const tr = body.insertRow();
             const number = document.createElement("th");
@@ -140,11 +142,14 @@
             number.textContent = String(index + 1);
             tr.append(number);
             const status = stateLabel(row) + (row.language ? ` (${row.language})` : "");
-            for (const text of [row.symbol, outputText(row), [status, !row.success ? errorMessage(row) : ""].filter(Boolean).join(" — ")]) {
-                tr.insertCell().textContent = text;
-            }
+            tr.insertCell().textContent = row.symbol;
+            const outputCell = tr.insertCell();
+            outputCell.textContent = outputText(row);
+            outputCells.push(outputCell);
+            tr.insertCell().textContent = [status, !row.success ? errorMessage(row) : ""].filter(Boolean).join(" — ");
         });
         elBatchResults.replaceChildren(table);
+        renderedBatch = { result: res, outputCells };
         const converted = res.rows.filter(row => row.success && !row.empty).length;
         const failed = res.rows.filter(row => !row.success).length;
         const blank = res.rows.filter(row => row.empty).length;
@@ -286,8 +291,15 @@
     }
 
     function renderOutput(res) {
-        if (res.batch) renderBatch(res);
-        else elOutputDisplay.textContent = outputText(res);
+        if (res.batch) {
+            if (renderedBatch?.result === res) {
+                renderedBatch.outputCells.forEach((cell, index) => { cell.textContent = outputText(res.rows[index]); });
+            } else {
+                renderBatch(res);
+            }
+        } else {
+            elOutputDisplay.textContent = outputText(res);
+        }
     }
 
     function renderResults(res) {
@@ -306,6 +318,8 @@
             renderBatch(res);
             return;
         }
+        renderedBatch = null;
+        elBatchResults.replaceChildren();
         treeNodes = 0;
         renderedNodes = new WeakMap();
         document.getElementById("ast-render-notice").hidden = true;

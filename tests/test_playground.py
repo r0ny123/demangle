@@ -222,6 +222,19 @@ def test_batch_output_budget_preserves_remaining_lines_without_parsing(bridge, m
     assert calls == ["_ZN3foo3barEi"]
 
 
+def test_batch_encoded_row_cache_preserves_json_and_exact_output_budget(bridge, monkeypatch):
+    symbol = "λ"
+    first = json.loads(bridge.playground_batch(symbol))["rows"][0]
+    encoded_row = json.dumps(first)
+    assert len(encoded_row) == len(encoded_row.encode("utf-8"))
+
+    monkeypatch.setattr(bridge, "MAX_BATCH_OUTPUT_BYTES", 2 * len(encoded_row))
+    result_text = bridge.playground_batch("\n".join([symbol] * 3))
+    result = json.loads(result_text)
+    assert [row["state"] for row in result["rows"]] == ["unrecognized", "unrecognized", "limit"]
+    assert result_text == json.dumps({"batch": True, "rows": result["rows"]})
+
+
 def test_source_archive_is_deterministic_and_importable(tmp_path, build_assets):
     package = tmp_path / "src" / "demangle"
     package.parent.mkdir()

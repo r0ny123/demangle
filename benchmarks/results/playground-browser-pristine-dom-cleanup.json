@@ -1,0 +1,125 @@
+{
+  "baseline_revision": "03bd234",
+  "measured_revision": null,
+  "worktree_changed": null,
+  "source_label": "pristine git archive 03bd234",
+  "browser": "Chromium 151.0.7922.173",
+  "requested_pyodide_version": "0.26.4",
+  "runs": [
+    {
+      "proxy_mode": "cold CDN fetch",
+      "pyodide_version": "0.26.4",
+      "runtime": "demangle 0.6.0 \u00b7 Pyodide 0.26.4",
+      "presets": null,
+      "startup": {
+        "dom_content_loaded_ms": 222.1000000089407,
+        "worker_ready_ms": 3439.800000011921,
+        "worker_ready_after_dom_ms": 3217.7000000029802
+      },
+      "single_symbol": {
+        "input_bytes": 34,
+        "worker_compute_and_transfer_ms": 327.6,
+        "render_to_next_frame_ms": 14.1,
+        "dispatch_to_next_frame_ms": 341.7
+      },
+      "cached_format_change": {
+        "elapsed_ms": 0.3,
+        "worker_requests_added": 0
+      },
+      "batch_500_duplicate_symbols": {
+        "input_bytes": 6999,
+        "worker_compute_and_transfer_ms": 9.2,
+        "render_to_next_frame_ms": 24.8,
+        "dispatch_to_next_frame_ms": 34.0,
+        "rendered_rows": 500,
+        "cached_format_switch": {
+          "switches": 20,
+          "elapsed_ms": [
+            6.4,
+            4.6,
+            3.7,
+            3.8,
+            4.9,
+            3.6,
+            3.5,
+            3.6,
+            3.5,
+            3.3,
+            3.5,
+            4.2,
+            3.6,
+            3.5,
+            3.5,
+            3.4,
+            3.6,
+            3.9,
+            3.5,
+            3.2
+          ],
+          "median_ms": 3.6,
+          "p95_ms": 4.9,
+          "worker_requests_added": 0,
+          "rendered_rows": 500
+        },
+        "page_memory": {
+          "table_nodes": 2508,
+          "page_dom_nodes": 97109,
+          "page_js_heap_used_bytes": 2533100,
+          "page_js_heap_total_bytes": 8511488,
+          "page_worker_scopes": 1,
+          "worker_wasm_heap_capacity_bytes": 25165824
+        }
+      },
+      "batch_500_unique_plain_names": {
+        "input_bytes": 8999,
+        "worker_compute_and_transfer_ms": 26.7,
+        "render_to_next_frame_ms": 42.9,
+        "dispatch_to_next_frame_ms": 69.6,
+        "rendered_rows": 500,
+        "page_memory": {
+          "table_nodes": 2508,
+          "page_dom_nodes": 8181,
+          "page_js_heap_used_bytes": 3193696,
+          "page_js_heap_total_bytes": 8249344,
+          "page_worker_scopes": 1,
+          "worker_wasm_heap_capacity_bytes": 25165824
+        }
+      },
+      "single_mode_cleanup_after_batch": {
+        "table_nodes_before": 2508,
+        "table_nodes_after": 2508,
+        "page_dom_nodes_before": 8181,
+        "page_dom_nodes_after": 8200,
+        "page_js_heap_used_bytes_before": 3193696,
+        "page_js_heap_used_bytes_after": 3530916,
+        "worker_requests_added": 1
+      }
+    }
+  ],
+  "cdn_proxy": [
+    {
+      "run": 0,
+      "requests": 5,
+      "bytes": 13780118,
+      "fetch_ms_sum": 654.9,
+      "assets": [
+        "pyodide.js",
+        "python_stdlib.zip",
+        "pyodide.asm.wasm",
+        "pyodide-lock.json",
+        "pyodide.asm.js"
+      ]
+    }
+  ],
+  "local_worker_assets": {
+    "/playground/assets/demangle.zip": {
+      "requests": 1,
+      "bytes": 445572
+    },
+    "/playground/playground_bridge.py": {
+      "requests": 1,
+      "bytes": 6334
+    }
+  },
+  "proxy_request_fetch_ms_median": 121.83
+}

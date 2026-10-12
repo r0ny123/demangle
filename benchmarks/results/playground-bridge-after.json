@@ -1,0 +1,79 @@
+{
+  "baseline_revision": "03bd234",
+  "measured_revision": "03bd234",
+  "measured_working_tree_dirty": true,
+  "python": "3.13.5",
+  "iterations": 51,
+  "timing_method": "alternating paired samples; medians and p95 from paired runs",
+  "output_byte_identity": true,
+  "cases": {
+    "duplicate_valid": {
+      "lines": 500,
+      "input_utf8_bytes": 6999,
+      "previous_main03bd234": {
+        "peak_python_alloc_bytes": 167754,
+        "json_bytes": 126025,
+        "median_ms": 1.582,
+        "p95_ms": 1.7
+      },
+      "current": {
+        "peak_python_alloc_bytes": 289173,
+        "json_bytes": 126025,
+        "median_ms": 0.113,
+        "p95_ms": 0.137
+      },
+      "median_change_percent": -92.9
+    },
+    "unique_plain": {
+      "lines": 500,
+      "input_utf8_bytes": 8999,
+      "previous_main03bd234": {
+        "peak_python_alloc_bytes": 527954,
+        "json_bytes": 165525,
+        "median_ms": 3.482,
+        "p95_ms": 3.588
+      },
+      "current": {
+        "peak_python_alloc_bytes": 567642,
+        "json_bytes": 165525,
+        "median_ms": 2.955,
+        "p95_ms": 3.03
+      },
+      "median_change_percent": -15.1
+    },
+    "blank_lines": {
+      "lines": 500,
+      "input_utf8_bytes": 499,
+      "previous_main03bd234": {
+        "peak_python_alloc_bytes": 106285,
+        "json_bytes": 89025,
+        "median_ms": 1.405,
+        "p95_ms": 1.462
+      },
+      "current": {
+        "peak_python_alloc_bytes": 187707,
+        "json_bytes": 89025,
+        "median_ms": 0.063,
+        "p95_ms": 0.066
+      },
+      "median_change_percent": -95.5
+    },
+    "mixed_repeated": {
+      "lines": 500,
+      "input_utf8_bytes": 4699,
+      "previous_main03bd234": {
+        "peak_python_alloc_bytes": 180856,
+        "json_bytes": 129225,
+        "median_ms": 1.66,
+        "p95_ms": 1.741
+      },
+      "current": {
+        "peak_python_alloc_bytes": 303190,
+        "json_bytes": 129225,
+        "median_ms": 0.182,
+        "p95_ms": 0.299
+      },
+      "median_change_percent": -89.0
+    }
+  }
+}

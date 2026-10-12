@@ -1,0 +1,184 @@
+{
+  "python": "3.13.5 (main, Jul 15 2026, 20:25:40) [GCC 14.2.0]",
+  "source": "/tmp/demangle-baseline",
+  "repeats": 7,
+  "startup_cache": "fresh process; filesystem/bytecode caches warm",
+  "phases": {
+    "cold": {
+      "names": 14101,
+      "median_ms": 310.093,
+      "min_ms": 296.97,
+      "max_ms": 371.036,
+      "retained_bytes": 4228342,
+      "peak_bytes": 4228801,
+      "run_medians_ms": [
+        300.255,
+        310.093,
+        310.986
+      ]
+    },
+    "warm": {
+      "names": 42303,
+      "median_ms": 10.139,
+      "min_ms": 9.676,
+      "max_ms": 13.416,
+      "retained_bytes": 4228446,
+      "peak_bytes": 4228841,
+      "run_medians_ms": [
+        10.172,
+        9.836,
+        10.139
+      ]
+    },
+    "negative": {
+      "names": 14101,
+      "median_ms": 7.823,
+      "min_ms": 7.765,
+      "max_ms": 8.48,
+      "retained_bytes": 232,
+      "peak_bytes": 328,
+      "run_medians_ms": [
+        7.823,
+        8.031,
+        7.78
+      ]
+    },
+    "structured": {
+      "names": 636,
+      "median_ms": 17.429,
+      "min_ms": 17.121,
+      "max_ms": 25.138,
+      "retained_bytes": 4160,
+      "peak_bytes": 10580,
+      "run_medians_ms": [
+        17.384,
+        22.179,
+        17.429
+      ]
+    },
+    "swift": {
+      "names": 256,
+      "median_ms": 15.147,
+      "min_ms": 14.944,
+      "max_ms": 16.369,
+      "retained_bytes": 89876,
+      "peak_bytes": 94665,
+      "run_medians_ms": [
+        15.182,
+        15.073,
+        15.147
+      ]
+    },
+    "swift_parse": {
+      "names": 256,
+      "median_ms": 18.127,
+      "min_ms": 17.954,
+      "max_ms": 19.144,
+      "retained_bytes": 10536,
+      "peak_bytes": 22374,
+      "run_medians_ms": [
+        18.127,
+        18.14,
+        18.108
+      ]
+    },
+    "signature": {
+      "names": 1280,
+      "median_ms": 83.071,
+      "min_ms": 82.012,
+      "max_ms": 103.297,
+      "retained_bytes": 149927,
+      "peak_bytes": 161254,
+      "run_medians_ms": [
+        83.094,
+        83.071,
+        82.675
+      ]
+    },
+    "batch_warm": {
+      "names": 5120,
+      "median_ms": 1.157,
+      "min_ms": 1.122,
+      "max_ms": 1.214,
+      "retained_bytes": 370049,
+      "peak_bytes": 453625,
+      "run_medians_ms": [
+        1.157,
+        1.138,
+        1.172
+      ]
+    },
+    "serialize": {
+      "names": 1280,
+      "median_ms": 31.168,
+      "min_ms": 30.843,
+      "max_ms": 31.527,
+      "retained_bytes": 19616,
+      "peak_bytes": 5543543,
+      "sha256": "e8fd9e67289aa7b0d74b97f10c91a65a5de97f04c7a4a65cbadc65fcc562c954",
+      "run_medians_ms": [
+        31.168,
+        31.018,
+        31.348
+      ]
+    },
+    "stream_warm": {
+      "names": 5120,
+      "median_ms": 9.789,
+      "min_ms": 9.634,
+      "max_ms": 10.081,
+      "retained_bytes": 2798978,
+      "peak_bytes": 3323427,
+      "sha256": "c6f109d1ff047b58516ea566ef81ab96d18e9d05623af0864cb194f3ca79538d",
+      "run_medians_ms": [
+        9.789,
+        9.962,
+        9.701
+      ]
+    },
+    "cli_pipe": {
+      "names": 5120,
+      "median_ms": 116.427,
+      "min_ms": 110.951,
+      "max_ms": 138.616,
+      "retained_bytes": 3200,
+      "peak_bytes": 1062939,
+      "run_medians_ms": [
+        116.427,
+        116.966,
+        111.816
+      ]
+    },
+    "import": {
+      "median_ms": 16.624,
+      "min_ms": 16.045,
+      "max_ms": 33.686,
+      "run_medians_ms": [
+        16.624,
+        16.774,
+        16.392
+      ]
+    },
+    "first_four_languages": {
+      "median_ms": 15.908,
+      "min_ms": 14.952,
+      "max_ms": 18.029,
+      "run_medians_ms": [
+        15.908,
+        15.924,
+        15.541
+      ]
+    },
+    "preload_remaining": {
+      "median_ms": 5.405,
+      "min_ms": 5.201,
+      "max_ms": 5.667,
+      "run_medians_ms": [
+        5.405,
+        5.467,
+        5.287
+      ]
+    }
+  },
+  "independent_runs": 3
+}

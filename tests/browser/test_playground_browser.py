@@ -252,6 +252,13 @@ def test_batch_results_preserve_lines_copy_download_and_cached_views(context, si
     sent = len(requests(page))
     page.locator('label:has(input[name="pg-format"][value="base-name"])').click()
     assert len(requests(page)) == sent
+    assert [rows.nth(i).locator("td").nth(1).inner_text() for i in range(5)] == [
+        "base(first)",
+        "",
+        "invalid",
+        "base(first)",
+        "",
+    ]
     page.locator("#btn-copy-output").click()
     page.wait_for_function("window.__clipboardWrites.length === 1")
     expected = "base(first)\n\ninvalid\nbase(first)\n"
@@ -263,6 +270,13 @@ def test_batch_results_preserve_lines_copy_download_and_cached_views(context, si
     target = tmp_path / download.suggested_filename
     download.save_as(target)
     assert target.read_text() == expected
+
+    page.locator("#playground-batch-mode").uncheck()
+    page.wait_for_function(
+        "document.querySelector('.output-container').getAttribute('aria-busy') === 'false' && "
+        "document.querySelector('#batch-results').hidden"
+    )
+    assert page.locator(".batch-table").count() == 0
 
 
 def test_batch_share_round_trip_and_invalid_options_restore_defaults(context, site_server):

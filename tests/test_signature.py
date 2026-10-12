@@ -688,6 +688,37 @@ class TestATreeFromElsewhere:
         assert (found["is_data"], found["is_function"]) == (True, False)
         assert found["qualified_name"] == "counter"
 
+    def test_shared_nodes_are_spelled_once_per_extraction(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from demangle import _signature
+        from demangle.core.ast import Function, Name, Node
+
+        parameter = Name("item")
+        tree = Function(None, (parameter, parameter), name=Name("f"))
+        monkeypatch.setattr(_signature, "_read", lambda *args: (SimpleNamespace(name="itanium"), tree))
+        original = Node.spell
+        calls = []
+
+        def spell(node, declarator="", style=None):
+            calls.append(node)
+            return original(node, declarator, style)
+
+        monkeypatch.setattr(Node, "spell", spell)
+        first = signature("plugin-input")
+        assert first.demangled == "f(item, item)"
+        assert first.parameters == ("item", "item")
+        assert sum(node is parameter for node in calls) == 1
+        assert sum(node is tree for node in calls) == 1
+
+        # Plugin trees can be reused and changed; no spelling may survive this call.
+        parameter.text = "changed"
+        calls.clear()
+        second = signature("plugin-input")
+        assert second.demangled == "f(changed, changed)"
+        assert second.parameters == ("changed", "changed")
+        assert sum(node is parameter for node in calls) == 1
+
 
 class TestFailing:
     """A name with no parts raises rather than answering with a row of `None`s."""

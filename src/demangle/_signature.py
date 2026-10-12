@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from .api import _decode, _read
-from .core.ast import builder_for
+from .core.ast import Node, builder_for
 from .core.limits import DEFAULT_LIMITS, Limits
 from .core.style import DEFAULT_STYLE, Style, get_style
 
@@ -240,7 +240,7 @@ def signatureb(
     return signature(_decode(mangled), language=language, style=style, limits=limits)
 
 
-class _Reading(NamedTuple):
+class _Reading:
     """What every step of the read needs to know, and nothing else.
 
     `style` travels with the rest because a subtree has to be spelled the way the whole
@@ -248,9 +248,16 @@ class _Reading(NamedTuple):
     the two, and `namespace` would then disagree with `demangled` about the same name.
     """
 
-    scheme: str
-    separator: str
-    style: str | Style | None
+    __slots__ = ("_spellings", "scheme", "separator", "style")
+
+    def __init__(self, scheme: str, separator: str, style: str | Style | None):
+        self.scheme = scheme
+        self.separator = separator
+        self.style = style
+        # Scoped to one extraction: nodes are mutable and must never be cached across calls.
+        # Identity keys avoid the recursive structural hash of an AST node.
+        # Retaining each node also prevents temporary plugin nodes from reusing an id.
+        self._spellings: dict[int, tuple[Node, str]] = {}
 
     @property
     def closing(self):
@@ -259,7 +266,13 @@ class _Reading(NamedTuple):
         return _CLOSING.get(self.scheme)
 
     def spell(self, node):
-        return node.spell(style=self.style)
+        key = id(node)
+        cached = self._spellings.get(key)
+        if cached is None:
+            spelling = node.spell(style=self.style)
+            self._spellings[key] = (node, spelling)
+            return spelling
+        return cached[1]
 
 
 def _extract(reading, tree):
