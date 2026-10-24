@@ -134,7 +134,9 @@ Ghidra runs a script's changes in one transaction, so Undo should take back a ru
 ### Run in Ghidra
 
 The script has been run in headless Ghidra 12.1.4 through PyGhidra 3.1.0, on programs
-built from Rust (v0 and legacy), C++ and Go. Other versions have not been tried.
+built from Rust (v0 and legacy), C++ and Go, with the results below. The Rust v0 and C++
+cases were repeated in Ghidra 12.2, built from its release tag, through PyGhidra 3.2.0,
+with the same results. Other versions have not been tried.
 
 - With auto-analysis on, Ghidra's own Rust demangler had already read the Rust symbols,
   leaving each mangled name as a second label, and the script changed none of 2104.
