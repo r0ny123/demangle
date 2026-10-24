@@ -255,6 +255,7 @@ class Demangler:
         "stack",
         "substitutions",
         "text",
+        "unsplit",
         "words",
     )
 
@@ -277,6 +278,8 @@ class Demangler:
         self.substitutions = []
         #: The word table for identifier substitutions, capped as the reference caps it.
         self.words = []
+        #: Identifiers read but not yet split into `words`; see `_split_words`.
+        self.unsplit = []
         self.is_old_function_type_mangling = False
         #: How many resolved fragments this demangler stands inside.
         self.nesting = 0
@@ -641,6 +644,8 @@ class Demangler:
 
         pieces = []
         while True:
+            if has_word_substitutions and self.unsplit:
+                self._split_words()
             while has_word_substitutions and ("a" <= (char := self.peek()) <= "z" or "A" <= char <= "Z"):
                 char = self.next_char()
                 if "a" <= char <= "z":
@@ -668,7 +673,7 @@ class Demangler:
                     return None
             else:
                 pieces.append(slice_)
-                self._record_words(slice_)
+                self.unsplit.append(slice_)
             self.pos += count
             if not has_word_substitutions:
                 break
@@ -684,6 +689,19 @@ class Demangler:
         node = Node("Identifier", text=identifier)
         self.add_substitution(node)
         return node
+
+    def _split_words(self):
+        """Add the words of every identifier read since the last call to the table.
+
+        Only a word substitution reads the table, and about seven names in ten have none,
+        so the splitting -- a step per character of every identifier, the largest single
+        item in the parser's profile -- waits until one asks. The identifiers are split in
+        the order they were read, and the table is append-only, so a substitution finds
+        exactly the words it would have found had each been split as it was read.
+        """
+        for slice_ in self.unsplit:
+            self._record_words(slice_)
+        self.unsplit.clear()
 
     def _record_words(self, slice_):
         """Split an identifier into the words a later one may refer back to.
