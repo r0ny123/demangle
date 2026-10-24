@@ -389,6 +389,18 @@ class _Demangler:
         self.last_nested_symbol_template = None
         self.requires_signature = False
         self.nested = False
+        #: Template instantiations already read, by name: the text each one spans, the
+        #: `in_pointee_return` it was read under, how many levels below its own it
+        #: reached -- so that a replay deeper down still stops at `max_depth` where
+        #: reading it again would -- and what reading it left behind, its spelling and
+        #: `simple`. See `templateInstantiation`.
+        self.instantiations = {}
+        #: Productions read so far that an instantiation's replay would not reproduce: an
+        #: operator name, which can set `requires_signature` and `conversion_arguments`
+        #: and look past what it reads, and a nested symbol, whose own cursor may read
+        #: one where this count cannot see it. An instantiation holding either is read
+        #: every time.
+        self.unrepeatable = 0
         self.pointee_depth = 0
         #: Return types of pointed-to functions the cursor is inside. The reference's
         #: `OF_NoCallingConvention` reaches template arguments there, so
@@ -399,6 +411,10 @@ class _Demangler:
         self.at_argument = False
         self.member_cv = ""
         self.depth = 0
+        #: The deepest `depth` since the innermost instantiation being read began, or
+        #: since this cursor began. Never past `max_depth`, so only a new peak is tested
+        #: against it.
+        self.peak = 0
         self.max_depth = limits.max_depth
         # Bounded relative to the name too: a two-character back-reference can double the
         # spelling per level. Over 1,025,085 real names the widest is 12x; 32x is clear.
@@ -469,21 +485,50 @@ class _Demangler:
         inside it and the arguments are numbered from 1 - which is what a back-reference
         written inside the argument list resolves against. The rendered result belongs to
         the enclosing scope instead, and the caller records it there.
+
+        Being its own scope is also what makes one worth remembering. Nothing read before
+        it changes how it reads, nothing after its closing "@" decides anything in it, and
+        what it does to this cursor is its position, its spelling and `simple` -- so the
+        same text read again under the same `in_pointee_return` spells the same. And a name
+        repeats whole instantiations: every argument list `std::basic_string<char, ...>`
+        appears in spells it out again, since a back-reference cannot reach into a scope
+        that has closed. Re-reading them was 37% of the name and type productions over
+        msvc-boost.txt. One that does more than this is read every time; see
+        `unrepeatable`.
         """
+        text, length = self.text, self.length
+        start = self.pos
+        if operator is None:
+            # `identifier`, inlined
+            end = text.find("@", start)
+            if end <= start:
+                raise _Bail
+            base = text[start:end]
+            known = self.instantiations.get(base)
+            if known is not None:
+                for span, in_pointee_return, reach, spelled, simple in known:
+                    if (
+                        in_pointee_return == self.in_pointee_return
+                        and self.depth + reach <= self.max_depth
+                        and text.startswith(span, start)
+                    ):
+                        self.pos = start + len(span)
+                        if self.depth + reach > self.peak:
+                            self.peak = self.depth + reach
+                        if simple is not None:
+                            self.simple = simple
+                        return spelled
+            unrepeatable = self.unrepeatable
+            # None until something inside writes it, so that a replay knows whether to.
+            saved_simple, self.simple = self.simple, None
+            # How deep reading it goes, from here.
+            saved_peak, self.peak = self.peak, self.depth
         saved_names, saved_args = self.name_backrefs, self.arg_backrefs
-        self.name_backrefs, self.arg_backrefs = [], []
+        # `rememberName`, inlined: the name is the new scope's first entry.
+        self.name_backrefs, self.arg_backrefs = [base] if operator is None else [], []
         self.template_depth += 1
         try:
-            text, length = self.text, self.length
             if operator is None:
-                # `identifier` and `rememberName`, inlined: the name is the new scope's
-                # first entry.
-                pos = self.pos
-                end = text.find("@", pos)
-                if end <= pos:
-                    raise _Bail
-                base = text[pos:end]
-                self.name_backrefs.append(base)
                 self.pos = end + 1
                 if end + 1 >= length or text[end + 1] == "@":
                     raise _Bail
@@ -518,10 +563,24 @@ class _Demangler:
                 if len(spelled) > max_render:
                     raise _LimitHit("output length", max_render)
                 args.append(spelled)
-            return f"{base}<{', '.join(args)}>"
+            spelled = f"{base}<{', '.join(args)}>"
         finally:
             self.template_depth -= 1
             self.name_backrefs, self.arg_backrefs = saved_names, saved_args
+        if operator is None:
+            simple = self.simple
+            if simple is None:
+                self.simple = saved_simple
+            reach = self.peak - self.depth
+            if saved_peak > self.peak:
+                self.peak = saved_peak
+            if self.unrepeatable == unrepeatable:
+                entry = (text[start : self.pos], self.in_pointee_return, reach, spelled, simple)
+                if known is None:
+                    self.instantiations[base] = [entry]
+                else:
+                    known.append(entry)
+        return spelled
 
     def nameFragment(self, is_leading):
         """One fragment, paired with which spelling its special-name code takes, if any.
@@ -684,6 +743,7 @@ class _Demangler:
         ends rather than at the end of the text.
         """
         options = self.options if options is None else options
+        self.unrepeatable += 1
         if leading_question:
             inner = _Demangler(self.text, options=options)
             inner.pos = self.pos
@@ -802,6 +862,7 @@ class _Demangler:
 
     def operatorName(self):
         """The operator or special name, paired with which spelling it takes."""
+        self.unrepeatable += 1
         if self.eat("_"):
             if self.eat("_"):
                 code = self.peek()
@@ -911,9 +972,12 @@ class _Demangler:
         return name, "func"
 
     def qualifiedName(self):
-        self.depth += 1
-        if self.depth > self.max_depth:
-            raise _LimitHit("recursion depth", self.max_depth)
+        depth = self.depth = self.depth + 1
+        if depth > self.peak:
+            # Only a new peak can be past the bound: `peak` never is.
+            if depth > self.max_depth:
+                raise _LimitHit("recursion depth", self.max_depth)
+            self.peak = depth
         try:
             first, special_form = self.nameFragment(True)
             if special_form == "descriptor":
@@ -967,9 +1031,12 @@ class _Demangler:
         around it - "?h@@YAXPAHPA0@Z" - is a name the mangler cannot have produced, and
         reading one would invent a spelling for it.
         """
-        self.depth += 1
-        if self.depth > self.max_depth:
-            raise _LimitHit("recursion depth", self.max_depth)
+        depth = self.depth = self.depth + 1
+        if depth > self.peak:
+            # as in `qualifiedName`
+            if depth > self.max_depth:
+                raise _LimitHit("recursion depth", self.max_depth)
+            self.peak = depth
         at_argument, self.at_argument = self.at_argument, False
         try:
             # `take`, inlined: this is the commonest production after a name fragment.
@@ -1054,8 +1121,11 @@ class _Demangler:
         count = self.dimension()
         if count == 0:
             raise _Bail
-        if self.depth + count > self.max_depth:
-            raise _LimitHit("recursion depth", self.max_depth)
+        reach = self.depth + count
+        if reach > self.peak:
+            if reach > self.max_depth:
+                raise _LimitHit("recursion depth", self.max_depth)
+            self.peak = reach
         # an extent of nothing is spelled with nothing: "$$BY0A@H" is "int[]"
         extents = [self.dimension() for _ in range(count)]
         self.array_element_depth += 1
