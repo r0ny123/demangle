@@ -19,7 +19,9 @@ The `llvm-*` sources are the other half: not what the references' tests say but 
 the newest LLVM *does*, over every name the checked-in corpora already hold (see
 `tools/llvm_oracle.py`). They need the optional `llvm-demangle-fxti` package, which
 nothing installs; where it is missing they are skipped with a note on stderr, or fail
-the run under `--require-llvm`.
+the run under `--require-llvm`. That package is a native wheel from a third party, so
+the weekly workflow scores the two halves in separate steps: the fetching half, which
+holds a token, under `--no-llvm`, and the `llvm-*` half in a step that holds none.
 
 Usage
 -----
@@ -27,12 +29,14 @@ Usage
     tools/upstream_drift.py --source rustc swift  some of them
     tools/upstream_drift.py --source llvm-d       the newest LLVM's D reader on the corpora
     tools/upstream_drift.py --llvm-version 18     an older LLVM, to reproduce a corpus
+    tools/upstream_drift.py --no-llvm             the fetched sources only; loads no binding
     tools/upstream_drift.py --cache DIR           keep the downloads for the next run
     tools/upstream_drift.py --show 40             more examples per table
 
 Exit status: 0 when every new vector reads as the reference says, 1 when one does not
 or when a corpus name is read differently by the newest LLVM and nothing accounts for
-it, 2 when a source could not be fetched or read.
+it, 2 when a source could not be fetched or read. Any other status is a crash of the
+interpreter or of the binding under it, and the workflow fails the run on it.
 """
 
 import argparse
@@ -457,7 +461,7 @@ def report(results, show, limit=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     every = sorted([*SOURCES, *LLVM_SOURCES])
-    parser.add_argument("--source", nargs="+", choices=every, default=every)
+    parser.add_argument("--source", nargs="+", choices=every, help="default: every source")
     parser.add_argument(
         "--llvm-version", type=int, help="the LLVM release the llvm-* sources ask (default: the newest)"
     )
@@ -466,10 +470,23 @@ def main(argv=None):
         action="store_true",
         help=f"exit 2, rather than skip the llvm-* sources, when {llvm_oracle.PACKAGE} is not installed",
     )
+    parser.add_argument(
+        "--no-llvm",
+        action="store_true",
+        help="leave the llvm-* sources out, so that this run never loads the LLVM binding;"
+        " for a step that holds a token",
+    )
     parser.add_argument("--cache", type=Path, help="directory to keep the fetched files in")
     parser.add_argument("--show", type=int, default=15, help="examples per table")
     parser.add_argument("--limit", type=int, help="cut the report at this many characters")
     args = parser.parse_args(argv)
+    if args.no_llvm:
+        if args.require_llvm or args.llvm_version is not None:
+            parser.error("--no-llvm leaves the llvm-* sources out; --require-llvm and --llvm-version ask for them")
+        if args.source and any(name in LLVM_SOURCES for name in args.source):
+            parser.error("--no-llvm leaves the llvm-* sources out, and --source names one")
+    if args.source is None:
+        args.source = sorted(SOURCES) if args.no_llvm else every
     fetch = Fetcher(args.cache)
     results = []
     for name in args.source:

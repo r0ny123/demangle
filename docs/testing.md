@@ -207,14 +207,27 @@ sources, `llvm-itanium`, `llvm-msvc`, `llvm-rust` and `llvm-d`.
 uv pip install "llvm-demangle-fxti==1.0.0"        # optional: nothing else needs it
 python tools/upstream_drift.py --source llvm-itanium llvm-msvc llvm-rust llvm-d
 python tools/upstream_drift.py --source llvm-msvc --llvm-version 18   # an older LLVM
+python tools/upstream_drift.py --no-llvm                              # the fetched sources only
 ```
 
 The package is not a dependency of anything: without it the sources are skipped with a
-note on stderr, and the weekly workflow installs it pinned and passes `--require-llvm`, so
-that a broken install is an error and not a clean week. Only the newest LLVM is reported
-by default, because the question is what a user with a current toolchain sees. An older
-one is a flag away, and `tests/conformance/` already records what 18 said; the
-`cross-reference` job in `ci.yml` is where LLVM 16, 18 and 20 are held against each other.
+note on stderr. Only the newest LLVM is reported by default, because the question is what
+a user with a current toolchain sees. An older one is a flag away, and `tests/conformance/`
+already records what 18 said; the `cross-reference` job in `ci.yml` is where LLVM 16, 18
+and 20 are held against each other.
+
+The package is a third party's native wheel, so the weekly workflow keeps it away from the
+token. The fetched sources are scored first, in the one step that holds `GITHUB_TOKEN`,
+under `--no-llvm`, which never loads the binding. Only then is the package installed,
+pinned exactly, and the `llvm-*` sources scored in a step with no environment at all and
+with `--require-llvm`, so that a broken install is an error and not a clean week. A further
+step joins the two reports into the one the issue carries and combines the two exit
+statuses into the one the issue logic reads: 1 opens or updates the issue, 2 fails the
+run, and 2 outranks 1. A status other than 0, 1 or 2 from either step -- 139 when the
+native code segfaults, nothing at all when it is killed -- did not score the week, so it
+is reported as an error annotation and fails the run, and is not mistaken for a clean one.
+`tests/test_upstream_workflow.py` pins that shape and runs the combining script over every
+pair of statuses.
 
 Each name falls in one of five places:
 

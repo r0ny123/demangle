@@ -340,3 +340,60 @@ class TestLlvmSources:
             "llvm-rust": "rust",
             "llvm-d": "d",
         }
+
+
+class TestNoLlvm:
+    """`--no-llvm` is how the step that holds a token runs: the binding is a third party's
+    native code, and nothing in that process may so much as ask for it."""
+
+    @pytest.fixture
+    def only_good(self, monkeypatch):
+        monkeypatch.setattr(drift, "recorded", lambda corpus: {})
+        monkeypatch.setattr(
+            drift, "SOURCES", {"good": (lambda fetch: [("_Z1A", "A")], "x", lambda m, _: "A", drift._exact)}
+        )
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError("the LLVM reference was asked for")
+
+        monkeypatch.setattr(drift.llvm_oracle, "run", forbidden)
+        monkeypatch.setattr(drift.llvm_oracle, "binding", forbidden)
+        monkeypatch.delitem(sys.modules, "llvmdemangle", raising=False)
+
+    def test_it_scores_the_fetched_sources_and_loads_no_binding(self, only_good, capsys):
+        assert drift.main(["--no-llvm"]) == 0
+        captured = capsys.readouterr()
+        assert "| good | 1 | 0 | 0 | 1 | 0 |" in captured.out
+        assert "llvm" not in captured.err
+        assert "llvmdemangle" not in sys.modules
+
+    def test_it_is_still_the_fetched_sources_when_they_are_named(self, only_good, capsys):
+        assert drift.main(["--no-llvm", "--source", "good"]) == 0
+        assert "| good |" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--no-llvm", "--source", "good", "llvm-d"],
+            ["--no-llvm", "--require-llvm"],
+            ["--no-llvm", "--llvm-version", "18"],
+        ],
+    )
+    def test_asking_for_the_llvm_sources_as_well_is_an_argument_error(self, only_good, capsys, argv):
+        with pytest.raises(SystemExit) as stop:
+            drift.main(argv)
+        assert stop.value.code == 2
+        assert "--no-llvm leaves the llvm-* sources out" in capsys.readouterr().err
+
+    def test_without_it_the_default_is_every_source_the_llvm_ones_included(self, monkeypatch, capsys):
+        asked = []
+
+        def run(schemes, version=None):
+            asked.append(schemes)
+            return [_llvm_result()]
+
+        monkeypatch.setattr(drift, "SOURCES", {})
+        monkeypatch.setattr(drift.llvm_oracle, "run", run)
+        assert drift.main([]) == 0
+        assert asked == [["d", "itanium", "msvc", "rust"]]
+        assert "| llvm-itanium |" in capsys.readouterr().out

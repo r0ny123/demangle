@@ -30,24 +30,66 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip uv
       - run: uv pip install --system -e .
-      # The newest LLVM, as a reference for the checked-in corpora (tools/llvm_oracle.py).
-      # Installed here and nowhere else, pinned exactly: the package has no place in
-      # pyproject.toml, which keeps the library free of runtime dependencies.
-      - name: Install the LLVM reference
-        run: uv pip install --system "llvm-demangle-fxti==1.0.0"
-      - name: Score the vectors
-        id: drift
+      - name: Score the fetched vectors
+        id: fetched
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
-          # --require-llvm: a broken install must not read as a clean week.
-          python tools/upstream_drift.py --require-llvm --show 25 --limit 60000 > drift.md
+          # --no-llvm: this step holds a token, and the LLVM binding is a third party's
+          # native code. It is installed and run below, in a step that holds none.
+          python tools/upstream_drift.py --no-llvm --show 25 --limit 40000 > fetched.md
           echo "status=$?" >> "$GITHUB_OUTPUT"
-          cat drift.md >> "$GITHUB_STEP_SUMMARY"
-          cat drift.md
+          cat fetched.md >> "$GITHUB_STEP_SUMMARY"
+          cat fetched.md
+      # The newest LLVM, as a reference for the checked-in corpora (tools/llvm_oracle.py).
+      # Installed here and nowhere else, pinned exactly: the package has no place in
+      # pyproject.toml, which keeps the library free of runtime dependencies. It comes
+      # after the step above and is run by one with no `env:`, so no token is ever in the
+      # environment of a process that has imported it.
+      - name: Install the LLVM reference
+        run: uv pip install --system "llvm-demangle-fxti==1.0.0"
+      - name: Score the corpora against the newest LLVM
+        id: llvm
+        run: |
+          set +e
+          # --require-llvm: a broken install must not read as a clean week.
+          python tools/upstream_drift.py --require-llvm --source llvm-itanium llvm-msvc llvm-rust llvm-d --show 25 --limit 20000 > llvm.md
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat llvm.md >> "$GITHUB_STEP_SUMMARY"
+          cat llvm.md
+      - name: Combine the reports and the statuses
+        id: combined
+        env:
+          FETCHED_STATUS: ${{ steps.fetched.outputs.status }}
+          LLVM_STATUS: ${{ steps.llvm.outputs.status }}
+        run: |
+          # One report for the issue, and one status in the terms the steps below read:
+          # 0 clean, 1 something is misread, 2 the run failed. A step that exited with
+          # anything else (139 when the native binding segfaults, nothing at all when it
+          # was killed) did not score the week, so it is a failure and not a clean one.
+          if [ -s fetched.md ] && [ -s llvm.md ]; then
+            { cat fetched.md; echo; cat llvm.md; } > drift.md
+          else
+            cat fetched.md llvm.md > drift.md
+          fi
+          status=0
+          combine() {
+            case "$2" in
+              0) ;;
+              1) [ "$status" = 2 ] || status=1 ;;
+              2) status=2 ;;
+              *)
+                echo "::error::Scoring $1 exited with status '$2', which is none of 0, 1 or 2: a crash, not a clean week"
+                status=2
+                ;;
+            esac
+          }
+          combine "the fetched sources" "$FETCHED_STATUS"
+          combine "the llvm-* sources" "$LLVM_STATUS"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
       - name: Open or update the issue
-        if: steps.drift.outputs.status == '1'
+        if: steps.combined.outputs.status == '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -71,6 +113,6 @@ jobs:
           else
             gh issue comment "$number" --body-file body.md
           fi
-      - name: Fail the run when a source could not be fetched
-        if: steps.drift.outputs.status == '2'
+      - name: Fail the run when a source could not be fetched or scored
+        if: steps.combined.outputs.status == '2'
         run: exit 2

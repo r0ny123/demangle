@@ -210,9 +210,3 @@ class TestRun:
         monkeypatch.setattr(oracle.shutil, "which", lambda tool: None)
         assert oracle.gnu_opinion(["_Z1fv"]) == {}
         assert oracle.gnu_opinion([]) == {}
-
-    def test_the_pin_is_the_one_the_weekly_workflow_installs(self):
-        workflow = (ROOT / ".github" / "workflows" / "upstream.yml").read_text(encoding="utf-8")
-        assert oracle.PIN == "llvm-demangle-fxti==1.0.0"
-        assert f'"{oracle.PIN}"' in workflow
-        assert "--require-llvm" in workflow
