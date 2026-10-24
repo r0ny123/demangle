@@ -8,16 +8,18 @@ to add: IDA's documentation lists Microsoft, Borland, Watcom, Visual Age and GNU
 demanglers, and Ghidra's change history lists GNU, Microsoft and Rust. Swift, Go, D, Nim,
 Free Pascal, Delphi, Ada, JNI and legacy Rust are not on either list.
 
-!!! warning "Not tested inside the hosts"
-    These scripts have never been run in IDA Pro, Binary Ninja or Ghidra. They are
-    written against each tool's published API documentation, and
+!!! warning "IDA and Binary Ninja: not tested inside the hosts"
+    The IDA and Binary Ninja scripts have never been run in IDA Pro or Binary Ninja. They
+    are written against each tool's published API documentation, and
     [the calls they make](#the-calls-each-script-makes) are listed so they can be checked
     against the version you have. What is tested is the part that needs no host: the core
     that decides what a label is, and each script's logic against stand-ins for its host
     that were written from the same documentation. That shows a script does what it means
     to when the host behaves as documented, and nothing about whether it does.
 
-    Try one first on a copy of the database or project, with `DRY_RUN = True`, which
+    The Ghidra script has been [run in Ghidra](#run-in-ghidra), headless, in one version.
+
+    Try a script first on a copy of the database or project, with `DRY_RUN = True`, which
     prints what would change and changes nothing. A call that is not what your version has
     fails with a traceback naming it; [report it](https://github.com/r0ny123/demangle/issues).
 
@@ -128,6 +130,24 @@ read, and is skipped. For that reason there is no `ONLY_LEFT_MANGLED` here.
 Overloads share a short name, so a name another symbol has gets the address after it.
 Ghidra replaces the characters it does not accept in a name, spaces among them, with `_`.
 Ghidra runs a script's changes in one transaction, so Undo should take back a run whole.
+
+### Run in Ghidra
+
+The script has been run in headless Ghidra 12.1.4 through PyGhidra 3.1.0, on programs
+built from Rust (v0 and legacy), C++ and Go. Other versions have not been tried.
+
+- With auto-analysis on, Ghidra's own Rust demangler had already read the Rust symbols,
+  leaving each mangled name as a second label, and the script changed none of 2104.
+- With analysis off, on a Rust v0 program, it renamed 577 of 988 symbols and none failed.
+  No primary symbol was left mangled, each mangled name was kept as a second `IMPORTED`
+  label, and a second run changed nothing.
+- On a g++ program with analysis off it renamed 4 of 46 symbols.
+- On a Go program with `LANGUAGES = ("go",)`, in a dry run, it found nothing to label in
+  16216 symbols: Ghidra's names for Go were already readable.
+
+`tests/test_integrations_ghidra_live.py` repeats the C++ case against your own Ghidra. It
+is skipped unless asked for; [Contributing](CONTRIBUTING.md#getting-set-up) has the
+steps.
 
 ## What they do not do
 

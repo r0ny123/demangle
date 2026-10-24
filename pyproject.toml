@@ -148,6 +148,7 @@ addopts = "-q"
 verbosity_subtests = 0
 markers = [
     "browser: opt-in tests that run the built playground in Chromium",
+    "ghidra: opt-in tests that run integrations/demangle_ghidra.py in headless Ghidra",
     "sweep: a property checked over whole corpora; `hatch run quick` skips these",
 ]
 

@@ -1,7 +1,8 @@
 """The disassembler scripts, run against stand-ins for the hosts they are written for.
 
 IDA, Binary Ninja and Ghidra cannot be run here, so these tests do not show that the
-scripts work in them. What they show is narrower: that each script, given a host that
+scripts work in them; `test_integrations_ghidra_live.py` does that for Ghidra, when asked
+to. What these show is narrower: that each script, given a host that
 behaves as the host's documentation says, makes the calls it means to, in a sensible
 order, and skips what it means to skip. The stand-ins are written from the same
 documentation as the scripts, so a mistake about what a host call does is in both and

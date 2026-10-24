@@ -1,9 +1,11 @@
 """`integrations/demangle_labels.py`: the part of the disassembler scripts that needs no disassembler.
 
-The scripts for IDA, Binary Ninja and Ghidra cannot run here, so everything that can be
-decided without a host is decided in this module, and this is where it is held to account:
-which names get a label, what the label says, and what the options change. The scripts
-themselves are exercised against stand-ins in `test_integrations_hosts.py`.
+The scripts for IDA, Binary Ninja and Ghidra cannot run in an ordinary test run, so
+everything that can be decided without a host is decided in this module, and this is where
+it is held to account: which names get a label, what the label says, and what the options
+change. The scripts themselves are exercised against stand-ins in
+`test_integrations_hosts.py`, and the Ghidra one against Ghidra in the opt-in
+`test_integrations_ghidra_live.py`.
 """
 
 import ast
