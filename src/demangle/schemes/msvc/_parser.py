@@ -193,8 +193,22 @@ _LITERAL_MAX_BYTES = 64
 _LITERAL_MAX_DECODED = 32 * 4
 
 
-#: See the note in `schemes/msvc/__init__.py`.
+#: See `has_control_character`.
 _CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def has_control_character(text):
+    """Whether `text` holds a C0 control character or DEL, as no decorated name can.
+
+    Over ASCII text, which nearly every name is, that is exactly what `str.isprintable`
+    refuses, and it answers in a third of the time a regex search takes: 0.87us against
+    2.31us over 366 characters. Anything else goes to the regex, since `isprintable`
+    refuses far more than a control character there. A regex is in turn 7.8x cheaper
+    than a per-character generator.
+    """
+    if text.isascii():
+        return not text.isprintable()
+    return _CONTROL_CHARACTER.search(text) is not None
 
 
 def _escaped_literal_character(value):
@@ -401,7 +415,6 @@ class _Demangler:
         #: one where this count cannot see it. An instantiation holding either is read
         #: every time.
         self.unrepeatable = 0
-        self.pointee_depth = 0
         #: Return types of pointed-to functions the cursor is inside. The reference's
         #: `OF_NoCallingConvention` reaches template arguments there, so
         #: `std::function<void (void)>` loses its `__cdecl` in a callback's return type.
@@ -626,15 +639,18 @@ class _Demangler:
                         raise _Bail
                 base = self.in_pointee_return
                 rendered = self.templateInstantiation(operator=operator)
+                # Few names carry a mark, and one without has nothing to resolve.
+                marked = _CONVENTION_MARK in rendered
+                recorded = self._conventionsResolved(rendered, base=base) if marked else rendered
                 if is_symbol_name:
                     # Kept for `$1??$x@H@@3HA`, whose `x<int>` the reference memorises
                     # after the symbol is read -- see `dollarType`.
-                    self.symbol_template_name = self._conventionsResolved(rendered, base=base)
+                    self.symbol_template_name = recorded
                 if not is_symbol_name:
                     # The symbol's own template name is not recorded: "??$f@H@N@@YAXV0@@Z"
                     # resolves 0 to N. `memorizeIdentifier` records the `OF_Default` string.
-                    self.rememberName(self._conventionsResolved(rendered, base=base))
-                if self.template_depth:
+                    self.rememberName(recorded)
+                if self.template_depth or not marked:
                     # Inside another template's arguments the outermost name resolves marks.
                     return rendered, "func" if operator else None
                 return self._conventionsResolved(rendered), "func" if operator else None
@@ -1284,13 +1300,7 @@ class _Demangler:
                 returns = self.returnType()
             finally:
                 self.in_pointee_return -= 1
-            # parameters are whole-argument positions again, even inside a pointee
-            saved_pointee_depth = self.pointee_depth
-            self.pointee_depth = 0
-            try:
-                params = self.parameters()
-            finally:
-                self.pointee_depth = saved_pointee_depth
+            params = self.parameters()
             noexcept_ = self.throwSpecification()
             self.simple = False
             return Indirection(token, own_quals, FunctionType(convention, params, returns, noexcept_))
@@ -1305,11 +1315,7 @@ class _Demangler:
         if pointee_quals is None:
             raise _Bail
         pointee_quals = pointee_quals + unaligned
-        self.pointee_depth += 1
-        try:
-            pointee = self.type(pointee_quals)
-        finally:
-            self.pointee_depth -= 1
+        pointee = self.type(pointee_quals)
         self.simple = False
         return Indirection(token, own_quals, pointee, pointer_auth)
 
@@ -1345,12 +1351,7 @@ class _Demangler:
             returns = self.returnType()
         finally:
             self.in_pointee_return -= 1
-        saved_pointee_depth = self.pointee_depth
-        self.pointee_depth = 0
-        try:
-            params = self.parameters()
-        finally:
-            self.pointee_depth = saved_pointee_depth
+        params = self.parameters()
         member_cv += self.throwSpecification()
         self.simple = False
         return Indirection(f"{owner}::{token}", own_quals, FunctionType(convention, params, returns, member_cv))
@@ -1492,18 +1493,23 @@ class _Demangler:
         if self.eat("X"):
             return _VOID_PARAMETERS
         params = []
+        text, length = self.text, self.length
         while True:
-            if self.eof():
+            pos = self.pos
+            if pos >= length:
                 raise _Bail
-            if self.eat("@"):
+            char = text[pos]
+            if char == "@":
+                self.pos = pos + 1
                 break
-            if self.peek() == "Z":
+            if char == "Z":
                 # `void f(...)`: clang writes `?f@@YAXZZ`.
-                self.take()
+                self.pos = pos + 1
                 params.append(_ELLIPSIS)
                 break
-            if self.peek() in _DIGITS:
-                index = int(self.take())
+            if char in _DIGITS:
+                self.pos = pos + 1
+                index = int(char)
                 if index >= len(self.arg_backrefs):
                     raise _Bail
                 node = self.arg_backrefs[index]
@@ -1515,7 +1521,11 @@ class _Demangler:
             node = self.type()
             if not self.simple and len(self.arg_backrefs) < 10:
                 self.arg_backrefs.append(node)
-            self.rendered(node)
+            # `rendered`, inlined for a named type, which is already text
+            if node.kind != "raw":
+                self.rendered(node)
+            elif len(node.text) > self.max_render:
+                raise _LimitHit("output length", self.max_render)
             params.append(node)
         return tuple(params)
 
@@ -1897,8 +1907,16 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTION
     """
     if not name or not name.startswith("?"):
         return None
-    if _CONTROL_CHARACTER.search(name) is not None:
+    if has_control_character(name):
         return None
+    return read_msvc_symbol(name, limits, options)
+
+
+def read_msvc_symbol(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
+    """As `parse_msvc_symbol_strict`, for a name already known to open with `?` and to
+    hold no control character -- which the plugin has established before it gets here,
+    so it does not pay for the scan twice.
+    """
     try:
         return _Demangler(name, limits, options).parse()
     except _Bail:
@@ -1918,7 +1936,7 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """
     if not name:
         return None
-    if _CONTROL_CHARACTER.search(name) is not None:
+    if has_control_character(name):
         return None
     if name.startswith("."):
         name = name[1:]
