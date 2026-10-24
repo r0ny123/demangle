@@ -22,6 +22,7 @@ from .nodes import (
 )
 from .options import DEFAULT_OPTIONS
 
+_DIGITS = frozenset(string.digits)
 _BASIC_TYPES = {
     "X": "void",
     "D": "char",
@@ -473,15 +474,23 @@ class _Demangler:
         self.name_backrefs, self.arg_backrefs = [], []
         self.template_depth += 1
         try:
+            text, length = self.text, self.length
             if operator is None:
-                base = self.identifier()
-                self.rememberName(base)
-                if self.eof() or self.peek() == "@":
+                # `identifier` and `rememberName`, inlined: the name is the new scope's
+                # first entry.
+                pos = self.pos
+                end = text.find("@", pos)
+                if end <= pos:
+                    raise _Bail
+                base = text[pos:end]
+                self.name_backrefs.append(base)
+                self.pos = end + 1
+                if end + 1 >= length or text[end + 1] == "@":
                     raise _Bail
             else:
                 base = operator
             args = []
-            text, length = self.text, self.length
+            options, max_render = self.options, self.max_render
             while True:
                 pos = self.pos
                 if pos >= length:
@@ -503,7 +512,12 @@ class _Demangler:
                         self.pos = pos + 3
                         continue
                 self.at_argument = True
-                args.append(self.rendered(self.type()))
+                node = self.type()
+                # `rendered`, inlined: most arguments are a named type, already text.
+                spelled = node.text if node.kind == "raw" else render(node, options=options)
+                if len(spelled) > max_render:
+                    raise _LimitHit("output length", max_render)
+                args.append(spelled)
             return f"{base}<{', '.join(args)}>"
         finally:
             self.template_depth -= 1
@@ -520,9 +534,12 @@ class _Demangler:
         is_symbol_name = is_leading and self.at_symbol_name
         if is_leading:
             self.at_symbol_name = False
-        char = self.peek()
-        if char in string.digits:
-            self.pos += 1
+        text, pos = self.text, self.pos
+        if pos >= self.length:
+            raise _Bail
+        char = text[pos]
+        if char in _DIGITS:
+            self.pos = pos + 1
             index = int(char)
             if index >= len(self.name_backrefs):
                 raise _Bail
@@ -530,7 +547,7 @@ class _Demangler:
         if char == "?":
             self.pos += 1
             if self.eat("$"):
-                if self.peek() in string.digits:
+                if self.peek() in _DIGITS:
                     raise _Bail
                 operator = None
                 if self.peek() == "?":
@@ -573,8 +590,16 @@ class _Demangler:
                     return self.localScope(), None
             # No code claims it: `demangleSimpleName` reads it as a plain name, "?" and all.
             return self.questionName(), None
-        name = self.identifier()
-        self.rememberName(name)
+        # A plain identifier, the commonest fragment by far: `identifier` and
+        # `rememberName`, inlined.
+        end = text.find("@", pos)
+        if end <= pos:
+            raise _Bail
+        name = text[pos:end]
+        self.pos = end + 1
+        backrefs = self.name_backrefs
+        if len(backrefs) < 10 and name not in backrefs:
+            backrefs.append(name)
         return name, None
 
     def questionName(self):
@@ -611,7 +636,7 @@ class _Demangler:
         if not spelled:
             return False
         if len(spelled) == 1:
-            return spelled == "@" or spelled in string.digits
+            return spelled == "@" or spelled in _DIGITS
         if spelled[-1] != "@":
             return False
         spelled = spelled[:-1]
@@ -890,49 +915,51 @@ class _Demangler:
         if self.depth > self.max_depth:
             raise _LimitHit("recursion depth", self.max_depth)
         try:
-            return self.qualifiedNameBody()
-        finally:
-            self.depth -= 1
-
-    def qualifiedNameBody(self):
-        first, special_form = self.nameFragment(True)
-        if special_form == "descriptor":
-            # a type descriptor has read the whole name, the type it describes included
-            return first, False, special_form
-        scopes = []
-        text, length = self.text, self.length
-        while True:
-            pos = self.pos
-            if pos >= length:
-                raise _Bail
-            if text[pos] == "@":
-                self.pos = pos + 1
-                break
-            scopes.append(self.nameFragment(False)[0])
-        scopes.reverse()
-        if isinstance(first, _Conversion):
-            self.conversion_arguments = first.arguments
-            return "::".join([*scopes, "\0conversion\0"]), False, special_form
-        if isinstance(first, _Structor):
+            first, special_form = self.nameFragment(True)
+            if special_form == "descriptor":
+                # a type descriptor has read the whole name, the type it describes included
+                return first, False, special_form
+            scopes = []
+            text, length = self.text, self.length
+            while True:
+                pos = self.pos
+                if pos >= length:
+                    raise _Bail
+                char = text[pos]
+                if char == "@":
+                    self.pos = pos + 1
+                    break
+                if char == "?" or char in _DIGITS:
+                    scopes.append(self.nameFragment(False)[0])
+                    continue
+                # A plain identifier, as in `nameFragment`.
+                end = text.find("@", pos)
+                if end <= pos:
+                    raise _Bail
+                name = text[pos:end]
+                self.pos = end + 1
+                backrefs = self.name_backrefs
+                if len(backrefs) < 10 and name not in backrefs:
+                    backrefs.append(name)
+                scopes.append(name)
+            scopes.reverse()
+            if isinstance(first, str):
+                scopes.append(first)
+                return "::".join(scopes), False, special_form
+            if isinstance(first, _Conversion):
+                self.conversion_arguments = first.arguments
+                return "::".join([*scopes, "\0conversion\0"]), False, special_form
             if not scopes:
                 raise _Bail
+            # a structor, named for its class
             klass = scopes[-1]
             spelled = klass + first.arguments
             first = "~" + spelled if first.is_destructor else spelled
             return "::".join([*scopes, first]), True, special_form
-        return "::".join([*scopes, first]), False, special_form
-
-    def type(self, quals=()):
-        self.depth += 1
-        if self.depth > self.max_depth:
-            raise _LimitHit("recursion depth", self.max_depth)
-        at_argument, self.at_argument = self.at_argument, False
-        try:
-            return self.typeBody(quals, at_argument)
         finally:
             self.depth -= 1
 
-    def typeBody(self, quals, at_argument=False):
+    def type(self, quals=()):
         """One type, qualified by `quals`.
 
         A digit is a back-reference standing for a whole argument type, so it is only a type
@@ -940,50 +967,63 @@ class _Demangler:
         around it - "?h@@YAXPAHPA0@Z" - is a name the mangler cannot have produced, and
         reading one would invent a spelling for it.
         """
-        char = self.take()
-        if char in _BASIC_TYPES:
-            return apply_qualifiers(_BASIC_TYPE_NODES[char], quals)
-        if char == "_":
-            node = _EXTENDED_TYPE_NODES.get(self.take())
-            if node is None:
+        self.depth += 1
+        if self.depth > self.max_depth:
+            raise _LimitHit("recursion depth", self.max_depth)
+        at_argument, self.at_argument = self.at_argument, False
+        try:
+            # `take`, inlined: this is the commonest production after a name fragment.
+            pos = self.pos
+            if pos >= self.length:
                 raise _Bail
-            self.simple = False
-            return apply_qualifiers(node, quals)
-        if char in _TAGGED_TYPES:
-            kind = _TAGGED_TYPES[char]
-            if kind == "enum":
-                self.expect("4")
-            name, _, special_form = self.qualifiedName()
-            if special_form is not None:
+            self.pos = pos + 1
+            char = self.text[pos]
+            node = _BASIC_TYPE_NODES.get(char)
+            if node is not None:
+                return apply_qualifiers(node, quals) if quals else node
+            kind = _TAGGED_TYPES.get(char)
+            if kind is not None:
+                if kind == "enum":
+                    self.expect("4")
+                name, _, special_form = self.qualifiedName()
+                if special_form is not None:
+                    raise _Bail
+                self.simple = False
+                # `tag_kind` off: `S const *`, not `struct S const *`
+                node = Raw(f"{kind} {name}" if self.options.tag_kind else name)
+                return apply_qualifiers(node, quals) if quals else node
+            if char in _POINTER_KINDS:
+                return self.indirection(merge_qualifiers(_POINTER_KINDS[char], quals), "*")
+            if char == "_":
+                node = _EXTENDED_TYPE_NODES.get(self.take())
+                if node is None:
+                    raise _Bail
+                self.simple = False
+                return apply_qualifiers(node, quals)
+            if char == "Y":
+                return self.arrayType(quals)
+            if char == "A":
+                if quals:
+                    raise _Bail
+                # only "A" introduces a reference; "B" (volatile reference) is not C++:
+                # "?f2@@YAXBDPAD@Z"
+                return self.indirection((), "&")
+            if char == "$":
+                return self.dollarType(quals, at_argument)
+            if char in _DIGITS:
+                # an argument back-reference stands only where a whole argument does; see
+                # parameters()
                 raise _Bail
-            self.simple = False
-            # `tag_kind` off: `S const *`, not `struct S const *`
-            spelled = f"{kind} {name}" if self.options.tag_kind else name
-            return apply_qualifiers(Raw(spelled), quals)
-        if char == "Y":
-            return self.arrayType(quals)
-        if char in _POINTER_KINDS:
-            return self.indirection(merge_qualifiers(_POINTER_KINDS[char], quals), "*")
-        if char == "A":
-            if quals:
-                raise _Bail
-            # only "A" introduces a reference; "B" (volatile reference) is not C++:
-            # "?f2@@YAXBDPAD@Z"
-            return self.indirection((), "&")
-        if char == "$":
-            return self.dollarType(quals, at_argument)
-        if char in string.digits:
-            # an argument back-reference stands only where a whole argument does; see
-            # parameters()
+            if char == "?" and (self.peek() == "<" or self.peek() in _DIGITS):
+                # A named placeholder type, `?A?<decltype-auto>@@`. Through `nameFragment`
+                # so it is remembered: a nested lambda's deduced return is the
+                # back-reference `?A?4@`.
+                placeholder = self.nameFragment(False)[0]
+                self.expect("@")
+                return apply_qualifiers(Raw(placeholder), quals)
             raise _Bail
-        if char == "?" and (self.peek() == "<" or self.peek() in string.digits):
-            # A named placeholder type, `?A?<decltype-auto>@@`. Through `nameFragment`
-            # so it is remembered: a nested lambda's deduced return is the
-            # back-reference `?A?4@`.
-            placeholder = self.nameFragment(False)[0]
-            self.expect("@")
-            return apply_qualifiers(Raw(placeholder), quals)
-        raise _Bail
+        finally:
+            self.depth -= 1
 
     def rendered(self, node, declarator="", member_cv=""):
         text = render(node, declarator, options=self.options, member_cv=member_cv)
@@ -1042,7 +1082,7 @@ class _Demangler:
         """
         negative = self.eat("?")
         char = self.peek()
-        if char in string.digits:
+        if char in _DIGITS:
             value = int(self.take()) + 1
         else:
             value = 0
@@ -1392,7 +1432,7 @@ class _Demangler:
                 self.take()
                 params.append(_ELLIPSIS)
                 break
-            if self.peek() in string.digits:
+            if self.peek() in _DIGITS:
                 index = int(self.take())
                 if index >= len(self.arg_backrefs):
                     raise _Bail
