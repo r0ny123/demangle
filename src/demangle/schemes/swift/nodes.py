@@ -102,9 +102,10 @@ class _TreePrinter(Printer):
     def __init__(self, options=DEFAULT_OPTIONS):
         super().__init__(options)
         self._open = [[]]
+        self.write = self._write
 
-    def write(self, text):
-        super().write(text)
+    def _write(self, text):
+        self.out.append(text)
         if text:
             self._open[-1].append(text)
 
