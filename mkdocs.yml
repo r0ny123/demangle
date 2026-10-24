@@ -13,6 +13,7 @@ nav:
   - Playground: playground.md
   - Working with the tree: analysing-a-binary.md
   - Labelling a symbol table: labelling-a-symbol-table.md
+  - Disassembler integrations: integrations.md
   - API reference:
       - Public API: reference/api.md
       - Core: reference/core.md
