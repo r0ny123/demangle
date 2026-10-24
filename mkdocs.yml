@@ -18,6 +18,7 @@ nav:
       - Core: reference/core.md
       - Schemes: reference/schemes.md
   - Conformance: CONFORMANCE.md
+  - Comparison with other demanglers: comparison.md
   - Architecture: ARCHITECTURE.md
   - Security policy: SECURITY.md
   - Adding a mangling scheme: adding-a-scheme.md
