@@ -203,3 +203,140 @@ class TestExitStatus:
         assert drift.main(["--source", "bad"]) == 1
         assert drift.main(["--source", "broken"]) == 2
         assert "could not read" in capsys.readouterr().err
+
+
+def _llvm_result(source="llvm-itanium", **fields):
+    return {
+        "source": source,
+        "reference": "LLVM 21",
+        "offered": 10,
+        "agree": 6,
+        "known": 1,
+        "unaccounted": [],
+        "declined": [],
+        "refused": [],
+        **fields,
+    }
+
+
+class TestLlvmReport:
+    def test_a_summary_row_per_scheme_and_a_table_for_each_kind_of_difference(self):
+        result = _llvm_result(
+            unaccounted=[("_Z1fv", "g()", "f()")],
+            declined=[("_Z1gv", "g()"), ("_Z1hv", "h()")],
+            refused=[("_Z1iv", "i()")],
+        )
+        text = drift.report([result], 15)
+        assert "| llvm-itanium | 10 | 6 | 1 | 1 | 2 | 1 |" in text
+        assert "### llvm-itanium: read differently by LLVM 21, and nothing accounts for it" in text
+        assert "| mangled | LLVM 21 | this |" in text
+        assert "| ` _Z1fv ` | ` g() ` | ` f() ` |" in text
+        assert "### llvm-itanium: read by LLVM 21, declined by this library" in text
+        assert "### llvm-itanium: read by this library, declined by LLVM 21" in text
+        # the fetched sources' table is not printed when only LLVM was asked
+        assert "distinct upstream vectors" not in text
+
+    def test_it_follows_the_fetched_sources_in_the_same_report(self):
+        fetched = {"source": "s", "fetched": 3, "unchanged": 1, "differently": [], "new_pass": 2, "new_fail": []}
+        text = drift.report([fetched, _llvm_result()], 15)
+        assert text.index("| s | 3 | 1 | 0 | 2 | 0 |") < text.index("| llvm-itanium |")
+        assert "###" not in text
+
+    def test_only_what_is_unaccounted_for_is_a_table_when_nothing_is_declined(self):
+        assert "###" not in drift.report([_llvm_result()], 15)
+
+    def test_the_tables_are_cut_like_the_others(self):
+        text = drift.report([_llvm_result(declined=[(f"_Z{n}", "x") for n in range(30)])], 5)
+        assert "| … 25 more | | |" in text
+
+
+class TestLlvmSources:
+    def run(self, monkeypatch, run, *argv):
+        monkeypatch.setattr(drift.llvm_oracle, "run", run)
+        return drift.main(["--source", *argv])
+
+    def test_each_scheme_is_a_source_and_asks_for_its_own_reader(self, monkeypatch, capsys):
+        asked = []
+
+        def run(schemes, version=None):
+            asked.append((schemes, version))
+            return [_llvm_result("llvm-d")]
+
+        assert self.run(monkeypatch, run, "llvm-d", "llvm-rust", "--llvm-version", "18") == 0
+        assert asked == [(["d", "rust"], 18)]
+        assert "| llvm-d | 10 | 6 | 1 | 0 | 0 | 0 |" in capsys.readouterr().out
+
+    def test_a_name_nothing_accounts_for_is_exit_status_one(self, monkeypatch):
+        def run(schemes, version=None):
+            return [_llvm_result(unaccounted=[("_Z1fv", "g()", "f()")])]
+
+        assert self.run(monkeypatch, run, "llvm-itanium") == 1
+
+    def test_declined_names_are_listed_and_never_fail(self, monkeypatch, capsys):
+        def run(schemes, version=None):
+            return [_llvm_result(declined=[("_Z1gv", "g()")], refused=[("_Z1iv", "i()")])]
+
+        assert self.run(monkeypatch, run, "llvm-itanium") == 0
+        assert "_Z1gv" in capsys.readouterr().out
+
+    def test_without_the_package_the_sources_are_skipped_with_a_note(self, monkeypatch, capsys):
+        def run(schemes, version=None):
+            raise drift.llvm_oracle.Unavailable("the llvm-demangle-fxti package is not installed")
+
+        assert self.run(monkeypatch, run, "llvm-itanium") == 0
+        captured = capsys.readouterr()
+        assert "llvm-*: skipped: the llvm-demangle-fxti package is not installed" in captured.err
+        assert captured.out == ""
+
+    def test_skipping_leaves_the_fetched_sources_alone(self, monkeypatch, capsys):
+        def run(schemes, version=None):
+            raise drift.llvm_oracle.Unavailable("not installed")
+
+        monkeypatch.setattr(drift, "recorded", lambda corpus: {})
+        monkeypatch.setitem(drift.SOURCES, "good", (lambda fetch: [("_Z1A", "A")], "x", lambda m, _: "A", drift._exact))
+        monkeypatch.setattr(drift, "LLVM_SOURCES", {"llvm-itanium": "itanium"})
+        assert self.run(monkeypatch, run, "good", "llvm-itanium") == 0
+        captured = capsys.readouterr()
+        assert "| good | 1 | 0 | 0 | 1 | 0 |" in captured.out
+        assert "skipped" in captured.err
+
+    def test_require_llvm_turns_the_skip_into_exit_status_two(self, monkeypatch, capsys):
+        def run(schemes, version=None):
+            raise drift.llvm_oracle.Unavailable("the llvm-demangle-fxti package is not installed")
+
+        assert self.run(monkeypatch, run, "llvm-itanium", "--require-llvm") == 2
+        assert "could not be scored: the llvm-demangle-fxti package is not installed" in capsys.readouterr().err
+
+    def test_a_version_the_package_lacks_is_exit_status_two_even_without_require(self, monkeypatch, capsys):
+        def run(schemes, version=None):
+            raise ValueError("LLVM 7 is not bundled")
+
+        assert self.run(monkeypatch, run, "llvm-itanium", "--llvm-version", "7") == 2
+        assert "LLVM 7 is not bundled" in capsys.readouterr().err
+
+    def test_a_crash_in_the_comparison_is_exit_status_two(self, monkeypatch, capsys):
+        def run(schemes, version=None):
+            return 1 / 0
+
+        assert self.run(monkeypatch, run, "llvm-itanium") == 2
+        assert "could not be scored" in capsys.readouterr().err
+
+    def test_the_package_that_is_really_absent_is_skipped_and_required_alike(self, monkeypatch, capsys):
+        """No stand-in for `run` here: the import itself fails, as it does where nothing installed the package."""
+        monkeypatch.setitem(sys.modules, "llvmdemangle", None)
+        assert drift.main(["--source", "llvm-d"]) == 0
+        captured = capsys.readouterr()
+        assert (
+            "skipped: the llvm-demangle-fxti package is not installed (pip install llvm-demangle-fxti==1.0.0)"
+            in captured.err
+        )
+        assert drift.main(["--source", "llvm-d", "--require-llvm"]) == 2
+        assert "could not be scored" in capsys.readouterr().err
+
+    def test_every_source_is_the_default_and_the_llvm_ones_are_among_them(self):
+        assert drift.LLVM_SOURCES == {
+            "llvm-itanium": "itanium",
+            "llvm-msvc": "msvc",
+            "llvm-rust": "rust",
+            "llvm-d": "d",
+        }
