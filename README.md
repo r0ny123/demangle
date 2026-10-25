@@ -369,6 +369,15 @@ Taken from `benchmarks/baseline.json`; treat them as ratios rather than absolute
 gap between cold and warm is the point: symbol tables repeat themselves relentlessly, and
 results are cached.
 
+On names it has not seen, a native demangler is faster than this one by an order of
+magnitude or more: LLVM's, through its Python binding `llvm-demangle-fxti`, reads the
+Itanium names libstdc++ exports about 50 times as fast as this package does cold. This
+package is fast enough in practice because a symbol table repeats its names, and a name
+read once costs a dictionary lookup afterwards. [Comparison with other
+demanglers](https://r0ny123.github.io/demangle/comparison/) has the measurements against it
+and other tools, what each one covers, and what this one offers instead;
+`benchmarks/compare.py` reproduces them.
+
 `bench.py --check` gates CI against the committed baseline. It compares figures
 normalised against a calibration workload measured in the same run, so the gate reports
 a slower *demangler* rather than a slower *machine*.
