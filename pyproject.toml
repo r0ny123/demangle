@@ -96,6 +96,7 @@ include = [
     "/src",
     "/tests",
     "/tools",
+    "/integrations",
     "/benchmarks",
     "/docs",
     "/playground",
@@ -141,17 +142,20 @@ serve = "mkdocs serve {args}"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The disassembler scripts import their shared core by name, as a host would find it beside them.
+pythonpath = ["integrations"]
 addopts = "-q"
 verbosity_subtests = 0
 markers = [
     "browser: opt-in tests that run the built playground in Chromium",
+    "ghidra: opt-in tests that run integrations/demangle_ghidra.py in headless Ghidra",
     "sweep: a property checked over whole corpora; `hatch run quick` skips these",
 ]
 
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "tests", "integrations"]
 extend-exclude = [".agents"]
 
 [tool.ruff.lint]
@@ -162,3 +166,10 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
 
 [tool.ty.environment]
 python-version = "3.11"
+# `integrations/` is a folder of scripts that import each other by name.
+extra-paths = ["integrations"]
+
+# The disassembler scripts import modules that exist only inside IDA, Binary Ninja and
+# Ghidra. They are not installed here, and the scripts are not wheel contents.
+[tool.ty.analysis]
+allowed-unresolved-imports = ["ida_*", "idautils", "binaryninja", "binaryninja.**", "ghidra.**"]

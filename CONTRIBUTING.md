@@ -57,6 +57,19 @@ DEMANGLE_BROWSER_TESTS=1 DEMANGLE_PYODIDE_SMOKE=1 \
   python -m pytest -q tests/browser/test_playground_browser.py
 ```
 
+So is the Ghidra test, which runs `integrations/demangle_ghidra.py` in a real headless
+Ghidra: it compiles a small C++ program, imports it with analysis off, runs the script
+twice, and checks the symbol table after each run. It needs Ghidra 11.3 or later with a
+JDK it runs on, the `pyghidra` package for that Ghidra in the same environment as
+`demangle`, and `g++`, `c++` or `clang++` on PATH; without any of them, or without both
+variables below, it is skipped.
+
+```console
+pip install pyghidra
+GHIDRA_INSTALL_DIR=/path/to/ghidra DEMANGLE_GHIDRA_TESTS=1 \
+  python -m pytest -q tests/test_integrations_ghidra_live.py
+```
+
 The toolchain is deliberately the fast one: **ruff** for linting and formatting (it
 replaces black, isort, flake8 and pyupgrade), **ty** for type checking (it replaces
 mypy), **uv** for installing. Both checkers are written in Rust: ruff covers the whole
