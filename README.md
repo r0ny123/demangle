@@ -371,7 +371,7 @@ results are cached.
 
 On names it has not seen, a native demangler is faster than this one by an order of
 magnitude or more: LLVM's, through its Python binding `llvm-demangle-fxti`, reads the
-Itanium names libstdc++ exports about 50 times as fast as this package does cold. This
+Itanium names libstdc++ exports about 55 times as fast as this package does cold. This
 package is fast enough in practice because a symbol table repeats its names, and a name
 read once costs a dictionary lookup afterwards. [Comparison with other
 demanglers](https://r0ny123.github.io/demangle/comparison/) has the measurements against it

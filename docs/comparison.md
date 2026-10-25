@@ -6,18 +6,18 @@ against: what each one covers, what a run of
 measured, and what that measurement cannot say.
 
 The result is mixed, so it comes first. On names it has not seen, `demangle` is slower
-than every native demangler measured here: about 50 times slower than LLVM's on
-Itanium names and 14 times on MSVC names, both read through `llvm-demangle-fxti`, and about
+than every native demangler measured here: about 55 times slower than LLVM's on
+Itanium names and 9 times on MSVC names, both read through `llvm-demangle-fxti`, and about
 15 times slower than the Rust `cpp_demangle` crate on Itanium names. It is level with the
 one other pure-Python reader, `itanium_demangler`. What it has instead is breadth, a parse
 tree, bounded input, one wheel for every platform, and a result cache that makes a repeated
-name cost about half a microsecond.
+name cost under a microsecond.
 
 ## What each one covers
 
 | | `demangle` | `llvm-demangle-fxti` | `cpp-demangle` | `itanium_demangler` |
 |---|---|---|---|---|
-| Version measured | 0.6.0 | 1.0.0 | 0.1.3 | 1.1 |
+| Version measured | `main` after 0.6.0, with the Swift and MSVC speed-ups; it reports 0.6.0 | 1.0.0 | 0.1.3 | 1.1 |
 | Written in | Python | C++: LLVM's Demangle library, vendored; LLVM 11 to 21 selectable | Rust: the [`cpp_demangle`](https://github.com/gimli-rs/cpp_demangle) crate, through PyO3 | Python |
 | Schemes | Fourteen: Itanium C++, MSVC, Rust (legacy and v0), Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI, g++ 2.x with cfront/ARM, Lucid and HP aCC, and CodeWarrior | Itanium, Microsoft, Rust v0 and D; a legacy Rust name is read as the Itanium name it also is | Itanium | Itanium |
 | What comes back | A string (`demangle`), a tree (`parse`), the parts of a signature (`signature`) | A string; for an Itanium function, `ItaniumPartialDemangler` answers for its base name, context, parameters and return type | A string | A tree of nodes, and a string rendering of it |
@@ -48,11 +48,11 @@ Neither was run, and this page says nothing about their speed or their spellings
 
 ## Measured
 
-Run on 2026-10-24 under CPython 3.13.16 on Linux x86-64, on an Intel Xeon at 2.80 GHz with
-four virtual CPUs. The virtual machine was shared with other jobs: the one-minute load
-average read 3.1 when the run began and 3.3 when it ended. That makes every rate lower than
-an idle machine would give, so read the ratios between rows rather than the rates. Each
-figure is the best of 15 passes.
+Run on 2026-10-25 under CPython 3.13.16 on Linux x86-64, on an Intel Xeon at 2.80 GHz with
+four virtual CPUs. The virtual machine is shared with other jobs: the one-minute load
+average read 0.83 when the run began and 1.00 when it ended, and the same workload has run
+up to half again as fast on it on other days. So read the ratios between rows rather than
+the rates. Each figure is the best of 15 passes.
 
 ```console
 pip install llvm-demangle-fxti cpp-demangle itanium-demangler
@@ -61,7 +61,7 @@ python benchmarks/compare.py --repeats 15 --nm /usr/lib/x86_64-linux-gnu/libstdc
 
 The report, as the script printed it:
 
-- 2026-10-24; CPython 3.13.16; Linux x86_64; Intel(R) Xeon(R) Processor @ 2.80GHz
+- 2026-10-25; CPython 3.13.16; Linux x86_64; Intel(R) Xeon(R) Processor @ 2.80GHz
 - cold: every name distinct, `demangle`'s cache emptied before each pass; best of 15 passes; command-line tools run once over the whole list, starting the process included
 - `Read`: output differs from input. `= X`: output identical to X's. `ref`: X is that row's own tool
 
@@ -69,65 +69,65 @@ The report, as the script printed it:
 
 | Tool | us/name | names/s | Read | = llvm-cxxfilt | = c++filt |
 |---|---:|---:|---:|---:|---:|
-| demangle 0.6.0 (pure Python) | 53.8 | 18,600 | 318 | 318 | 176 |
-| demangle 0.6.0, warm cache | 0.46 | 2,190,000 | 318 | 318 | 176 |
-| demangle 0.6.0, style="gnu" | 56.2 | 17,800 | 318 | 182 | 310 |
-| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 1.2 | 819,000 | 318 | 318 | 176 |
-| cpp-demangle 0.1.3 (Rust, native) | 4.0 | 252,000 | 281 | 163 | 264 |
-| itanium_demangler 1.1 (pure Python) | 46.5 | 21,500 | 234 | 109 | 92 |
-| llvm-cxxfilt 18.1.3 (one process) | 48.8 | 20,500 | 318 | ref | 176 |
-| GNU c++filt 2.42 (one process) | 9.7 | 103,000 | 310 | 176 | ref |
+| demangle 0.6.0 (pure Python) | 64.1 | 15,600 | 318 | 318 | 176 |
+| demangle 0.6.0, warm cache | 0.69 | 1,450,000 | 318 | 318 | 176 |
+| demangle 0.6.0, style="gnu" | 67.0 | 14,900 | 318 | 182 | 310 |
+| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 1.4 | 697,000 | 318 | 318 | 176 |
+| cpp-demangle 0.1.3 (Rust, native) | 4.5 | 220,000 | 281 | 163 | 264 |
+| itanium_demangler 1.1 (pure Python) | 55.7 | 18,000 | 234 | 108 | 92 |
+| llvm-cxxfilt 18.1.3 (one process) | 62.3 | 16,100 | 318 | ref | 176 |
+| GNU c++filt 2.42 (one process) | 13.1 | 76,400 | 310 | 176 | ref |
 
 ### itanium-libstdcxx.txt: 5,886 names, itanium
 
 | Tool | us/name | names/s | Read | = llvm-cxxfilt | = c++filt |
 |---|---:|---:|---:|---:|---:|
-| demangle 0.6.0 (pure Python) | 46.8 | 21,400 | 5,886 | 5,886 | 2,927 |
-| demangle 0.6.0, warm cache | 0.39 | 2,540,000 | 5,886 | 5,886 | 2,927 |
-| demangle 0.6.0, style="gnu" | 48.9 | 20,400 | 5,886 | 2,927 | 5,886 |
-| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 0.87 | 1,150,000 | 5,886 | 5,886 | 2,927 |
-| cpp-demangle 0.1.3 (Rust, native) | 3.1 | 323,000 | 5,886 | 3,071 | 5,195 |
-| itanium_demangler 1.1 (pure Python) | 48.2 | 20,700 | 5,817 | 2,718 | 1,460 |
-| llvm-cxxfilt 18.1.3 (one process) | 5.3 | 188,000 | 5,886 | ref | 2,927 |
-| GNU c++filt 2.42 (one process) | 2.7 | 376,000 | 5,886 | 2,927 | ref |
+| demangle 0.6.0 (pure Python) | 53.9 | 18,500 | 5,886 | 5,886 | 2,927 |
+| demangle 0.6.0, warm cache | 0.73 | 1,380,000 | 5,886 | 5,886 | 2,927 |
+| demangle 0.6.0, style="gnu" | 57.6 | 17,400 | 5,886 | 2,927 | 5,886 |
+| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 0.96 | 1,040,000 | 5,886 | 5,886 | 2,927 |
+| cpp-demangle 0.1.3 (Rust, native) | 3.5 | 282,000 | 5,886 | 3,071 | 5,195 |
+| itanium_demangler 1.1 (pure Python) | 58.7 | 17,000 | 5,817 | 2,718 | 1,460 |
+| llvm-cxxfilt 18.1.3 (one process) | 6.9 | 146,000 | 5,886 | ref | 2,927 |
+| GNU c++filt 2.42 (one process) | 3.6 | 275,000 | 5,886 | 2,927 | ref |
 
 ### msvc-boost.txt: 5,843 names, msvc
 
 | Tool | us/name | names/s | Read | = llvm-demangle-fxti | = llvm-undname |
 |---|---:|---:|---:|---:|---:|
-| demangle 0.6.0 (pure Python) | 122.8 | 8,140 | 5,843 | 5,843 | 5,843 |
-| demangle 0.6.0, warm cache | 0.54 | 1,840,000 | 5,843 | 5,843 | 5,843 |
-| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 8.7 | 115,000 | 5,843 | ref | 5,843 |
-| llvm-undname 18.1.3 (one process) | 26.3 | 38,100 | 5,843 | 5,843 | ref |
+| demangle 0.6.0 (pure Python) | 100.9 | 9,910 | 5,843 | 5,843 | 5,843 |
+| demangle 0.6.0, warm cache | 0.90 | 1,110,000 | 5,843 | 5,843 | 5,843 |
+| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 10.7 | 93,400 | 5,843 | ref | 5,843 |
+| llvm-undname 18.1.3 (one process) | 33.4 | 29,900 | 5,843 | 5,843 | ref |
 
 ### rust-real-world.txt: 5,316 names, rust
 
 | Tool | us/name | names/s | Read | = corpus |
 |---|---:|---:|---:|---:|
-| demangle 0.6.0 (pure Python) | 41.4 | 24,200 | 5,316 | 5,316 |
-| demangle 0.6.0, warm cache | 0.43 | 2,340,000 | 5,316 | 5,316 |
-| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 0.99 | 1,020,000 | 5,308 | 2,265 |
-| llvm-demangle-fxti 1.0.0 (LLVM 21, native), rust_demangle() v0 only | 0.65 | 1,540,000 | 2,306 | 2,265 |
+| demangle 0.6.0 (pure Python) | 48.8 | 20,500 | 5,316 | 5,316 |
+| demangle 0.6.0, warm cache | 0.70 | 1,420,000 | 5,316 | 5,316 |
+| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 1.2 | 803,000 | 5,308 | 2,265 |
+| llvm-demangle-fxti 1.0.0 (LLVM 21, native), rust_demangle() v0 only | 0.94 | 1,060,000 | 2,306 | 2,265 |
 
 ### swift-real-world.txt: 8,494 names, swift
 
 | Tool | us/name | names/s | Read | = corpus |
 |---|---:|---:|---:|---:|
-| demangle 0.6.0 (pure Python) | 99.9 | 10,000 | 8,494 | 8,494 |
-| demangle 0.6.0, warm cache | 0.49 | 2,050,000 | 8,494 | 8,494 |
+| demangle 0.6.0 (pure Python) | 88.0 | 11,400 | 8,494 | 8,494 |
+| demangle 0.6.0, warm cache | 0.73 | 1,380,000 | 8,494 | 8,494 |
 
 ### nm -D libstdc++.so.6.0.33: 5,963 names, itanium
 
 | Tool | us/name | names/s | Read | = llvm-cxxfilt | = c++filt |
 |---|---:|---:|---:|---:|---:|
-| demangle 0.6.0 (pure Python) | 47.5 | 21,100 | 5,963 | 5,885 | 2,986 |
-| demangle 0.6.0, warm cache | 0.41 | 2,460,000 | 5,963 | 5,885 | 2,986 |
-| demangle 0.6.0, style="gnu" | 49.4 | 20,300 | 5,963 | 2,926 | 5,963 |
-| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 0.88 | 1,140,000 | 5,888 | 5,960 | 2,929 |
-| cpp-demangle 0.1.3 (Rust, native) | 3.1 | 327,000 | 5,963 | 3,070 | 5,272 |
-| itanium_demangler 1.1 (pure Python) | 48.0 | 20,800 | 5,885 | 2,726 | 1,459 |
-| llvm-cxxfilt 18.1.3 (one process) | 5.9 | 169,000 | 5,885 | ref | 2,926 |
-| GNU c++filt 2.42 (one process) | 3.5 | 284,000 | 5,963 | 2,926 | ref |
+| demangle 0.6.0 (pure Python) | 56.4 | 17,700 | 5,963 | 5,885 | 2,986 |
+| demangle 0.6.0, warm cache | 0.65 | 1,530,000 | 5,963 | 5,885 | 2,986 |
+| demangle 0.6.0, style="gnu" | 56.2 | 17,800 | 5,963 | 2,926 | 5,963 |
+| llvm-demangle-fxti 1.0.0 (LLVM 21, native) | 1.00 | 1,000,000 | 5,888 | 5,960 | 2,929 |
+| cpp-demangle 0.1.3 (Rust, native) | 3.5 | 289,000 | 5,963 | 3,070 | 5,272 |
+| itanium_demangler 1.1 (pure Python) | 57.7 | 17,300 | 5,885 | 2,726 | 1,459 |
+| llvm-cxxfilt 18.1.3 (one process) | 8.1 | 123,000 | 5,885 | ref | 2,926 |
+| GNU c++filt 2.42 (one process) | 3.6 | 275,000 | 5,963 | 2,926 | ref |
 
 How to read the tables:
 
@@ -155,26 +155,26 @@ measured. Each figure below is its cold `us/name` divided by the other tool's:
 
 | Names | `llvm-demangle-fxti` | `cpp-demangle` | `itanium_demangler` |
 |---|---:|---:|---:|
-| Itanium, the libstdc++ exports (`--nm`) | 54x | 15x | 1.0x |
-| Itanium, `itanium-libstdcxx.txt` | 54x | 15x | 1.0x |
-| Itanium, `itanium-real-world.txt` | 45x | 13x | 1.2x |
-| MSVC, `msvc-boost.txt` | 14x | | |
-| Rust, `rust-real-world.txt` | 42x; 64x against `rust_demangle()` alone | | |
+| Itanium, the libstdc++ exports (`--nm`) | 56x | 16x | 1.0x |
+| Itanium, `itanium-libstdcxx.txt` | 56x | 15x | 0.9x |
+| Itanium, `itanium-real-world.txt` | 46x | 14x | 1.2x |
+| MSVC, `msvc-boost.txt` | 9.4x | | |
+| Rust, `rust-real-world.txt` | 41x; 52x against `rust_demangle()` alone | | |
 
 That is the cost of reading names in Python rather than in compiled code. Against the one
 other pure-Python reader the two are level, on Itanium names only.
 
 The command-line tools were run once over the whole list, so their figures include starting
-the process. Over the libstdc++ exports GNU `c++filt` reads 14 times as many names a
-second as `demangle` does cold, and `llvm-cxxfilt` 8.1 times; over the MSVC names
-`llvm-undname` reads 4.7 times as many. On the 318-name corpus process start dominates instead:
-`llvm-cxxfilt` takes about 16 ms in all, 48.8 us a name against `demangle`'s 53.8.
+the process. Over the libstdc++ exports GNU `c++filt` reads 16 times as many names a
+second as `demangle` does cold, and `llvm-cxxfilt` 7.0 times; over the MSVC names
+`llvm-undname` reads 3.0 times as many. On the 318-name corpus process start dominates instead:
+`llvm-cxxfilt` takes about 20 ms in all, 62.3 us a name against `demangle`'s 64.1.
 
 As a job: at the rates for the libstdc++ exports, 100,000 distinct names take `demangle`
-about 4.8 s and `llvm-demangle-fxti` about 0.09 s.
+about 5.6 s and `llvm-demangle-fxti` about 0.10 s.
 
 What narrows the gap in practice is repetition. A symbol table repeats its names, and a
-name read a second time costs 0.4 to 0.5 us here, a dictionary lookup. That is a property
+name read a second time costs 0.65 to 0.9 us here, a dictionary lookup. That is a property
 of the cache and not of the parser: a cache can be put in front of any of the other tools,
 and that was not measured.
 
@@ -253,8 +253,10 @@ and that was not measured.
   ```
 
   `itanium_demangler` also writes constructors as `{ctor}` and does not read
-  `_ZTIDF32_`, which every other tool reads as `typeinfo for _Float32`. A mismatch in the
-  tables is a reason to look at the names, not a verdict.
+  `_ZTIDF32_`, which every other tool reads as `typeinfo for _Float32`. It spells `VK` as
+  `const volatile` or `volatile const` depending on Python's hash seed, so its
+  `= llvm-cxxfilt` count on `itanium-real-world.txt` is 108 in some runs and 109 in others.
+  A mismatch in the tables is a reason to look at the names, not a verdict.
 - **The LLVM binding is a different LLVM from the command-line tools.** It defaults to
   LLVM 21; `llvm-cxxfilt` and `llvm-undname` here are LLVM 18. `llvm-demangle-fxti` ships
   LLVM 11 to 21, and `--llvm 18` reads with the release the command-line tools were built
