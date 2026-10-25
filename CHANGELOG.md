@@ -31,6 +31,30 @@ the reference demanglers, and a **Performance** section.
 - A release-preparation command updates package and citation versions, release notes,
   and comparison links together, with metadata checks and rollback on failure.
 - Browser checks for theme persistence, keyboard shortcuts, and stalled-worker recovery.
+- IDA Pro, Binary Ninja and Ghidra scripts that label the symbols each tool leaves
+  mangled, in `integrations/`, with a "Disassembler integrations" page. They stay out of
+  the wheel.
+- `benchmarks/compare.py` and a "Comparison with other demanglers" page that measure this
+  package against LLVM's demangler, `cpp-demangle`, `itanium_demangler` and the `c++filt`
+  tools on the same names.
+- The weekly upstream drift job also reads every checked-in corpus with the newest LLVM,
+  through `llvm-demangle-fxti` pinned by hash, in a job that holds no token
+  (`tools/llvm_oracle.py`; `tools/upstream_drift.py --source llvm-*`, `--llvm-version`,
+  `--require-llvm` and `--no-llvm`).
+
+### Changed
+
+- An MSVC name nested deep enough to reach Python's own recursion limit before
+  `max_depth` can now be read, where 0.6.0 reported `LimitExceeded`. `max_depth` itself is
+  unchanged.
+
+### Performance
+
+- Swift names read about 1.3 times as fast cold: identifiers are split into words only
+  when a substitution needs them, and the commonest parser and printer steps make about
+  40% fewer calls.
+- Template-heavy MSVC names read about 1.5 times as fast cold: each template
+  instantiation is read once per name, and the control-character scan runs once.
 
 ## [0.6.0] - 2026-10-11
 
