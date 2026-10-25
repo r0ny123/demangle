@@ -11,19 +11,19 @@ walks that tree to produce the spelling. Two things force this shape:
   whether a class is being named as a type or as a declaration's parent -- which is not
   available where the type is read.
 
-The kind names are the compiler's own, transcribed from `DemangleNodes.def`, and the two
-predicates below come from the same file: `CONTEXT_NODE` marks the kinds that can be a
+The kind names are the compiler's own, transcribed from `DemangleNodes.def`, and the kind
+sets below come from the same file: `CONTEXT_NODE` marks the kinds that can be a
 parent for a nested declaration, which is what `popContext` looks for.
 """
 
 __all__ = [
+    "ANY_GENERIC_KINDS",
     "CONTEXT_KINDS",
+    "DECL_NAME_KINDS",
+    "ENTITY_KINDS",
     "FUNCTION_ATTR_KINDS",
+    "REQUIREMENT_KINDS",
     "Node",
-    "is_any_generic",
-    "is_decl_name",
-    "is_entity",
-    "is_requirement",
 ]
 
 ALL_KINDS = frozenset(
@@ -518,7 +518,8 @@ FUNCTION_ATTR_KINDS = frozenset(
     ]
 )
 
-_DECL_NAME_KINDS = frozenset(
+#: `isDeclName`.
+DECL_NAME_KINDS = frozenset(
     [
         "Identifier",
         "LocalDeclName",
@@ -532,7 +533,8 @@ _DECL_NAME_KINDS = frozenset(
     ]
 )
 
-_ANY_GENERIC_KINDS = frozenset(
+#: `isAnyGeneric`.
+ANY_GENERIC_KINDS = frozenset(
     [
         "Structure",
         "Class",
@@ -546,7 +548,8 @@ _ANY_GENERIC_KINDS = frozenset(
     ]
 )
 
-_REQUIREMENT_KINDS = frozenset(
+#: `isRequirement`.
+REQUIREMENT_KINDS = frozenset(
     [
         "DependentGenericParamPackMarker",
         "DependentGenericParamValueMarker",
@@ -564,21 +567,9 @@ _REQUIREMENT_KINDS = frozenset(
 CONTEXT_KINDS = CONTEXT_KINDS | {"BuiltinTupleType"}
 
 
-def is_decl_name(kind):
-    return kind in _DECL_NAME_KINDS
-
-
-def is_any_generic(kind):
-    return kind in _ANY_GENERIC_KINDS
-
-
-def is_requirement(kind):
-    return kind in _REQUIREMENT_KINDS
-
-
-def is_entity(kind):
-    """Deliberately loose, as in the reference: some kinds it accepts are not entities."""
-    return kind == "Type" or kind in CONTEXT_KINDS
+#: `isEntity`. Deliberately loose, as in the reference: some kinds it accepts are not
+#: entities.
+ENTITY_KINDS = CONTEXT_KINDS | {"Type"}
 
 
 class Node:

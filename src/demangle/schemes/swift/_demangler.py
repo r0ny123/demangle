@@ -26,7 +26,15 @@ cannot read its operands returns `None`, and every caller checks. The public ent
 turns that into an exception at the boundary.
 """
 
-from ._node import CONTEXT_KINDS, FUNCTION_ATTR_KINDS, Node, is_any_generic, is_decl_name, is_entity, is_requirement
+from ._node import (
+    ANY_GENERIC_KINDS,
+    CONTEXT_KINDS,
+    DECL_NAME_KINDS,
+    ENTITY_KINDS,
+    FUNCTION_ATTR_KINDS,
+    REQUIREMENT_KINDS,
+    Node,
+)
 from ._punycode import PunycodeError
 from ._punycode import decode as punycode_decode
 
@@ -152,6 +160,7 @@ _ANY_PROTOCOL_CONFORMANCE_KINDS = frozenset(
         "DependentProtocolConformanceOpaque",
     ]
 )
+_DEPENDENT_PROTOCOL_CONFORMANCE_KINDS = _ANY_PROTOCOL_CONFORMANCE_KINDS - {"ConcreteProtocolConformance"}
 
 
 def _is_digit(char):
@@ -232,10 +241,6 @@ def _is_protocol_node(node):
     return node is not None and node.kind in ("Protocol", "ProtocolSymbolicReference")
 
 
-def _is_any_protocol_conformance(kind):
-    return kind in _ANY_PROTOCOL_CONFORMANCE_KINDS
-
-
 class Demangler:
     """The reference's `Demangler`, one instance per name.
 
@@ -248,6 +253,7 @@ class Demangler:
     __slots__ = (
         "end",
         "has_non_ascii",
+        "has_opaque_return_type",
         "is_old_function_type_mangling",
         "nesting",
         "pos",
@@ -255,6 +261,7 @@ class Demangler:
         "stack",
         "substitutions",
         "text",
+        "unsplit",
         "words",
     )
 
@@ -277,7 +284,12 @@ class Demangler:
         self.substitutions = []
         #: The word table for identifier substitutions, capped as the reference caps it.
         self.words = []
+        #: Identifiers read but not yet split into `words`; see `_split_words`.
+        self.unsplit = []
         self.is_old_function_type_mangling = False
+        #: Whether any `OpaqueReturnType` has been read, so a declaration made without one
+        #: need not walk its type looking for one to point at it.
+        self.has_opaque_return_type = False
         #: How many resolved fragments this demangler stands inside.
         self.nesting = 0
 
@@ -315,16 +327,24 @@ class Demangler:
     def pop(self, want=None):
         """Pop, optionally only if the top matches.
 
-        `want` is a kind or a predicate. A mismatch is not an error: several callers pop
-        optional decorations, and a `None` there means "there was not one".
+        `want` is a kind or a set of kinds. A mismatch is not an error: several callers
+        pop optional decorations, and a `None` there means "there was not one".
+
+        A set rather than a predicate, because this is the demangler's most-called method
+        -- about thirty times a name -- and a predicate is a second call inside each one.
         """
-        if not self.stack:
+        stack = self.stack
+        if not stack:
             return None
         if want is not None:
-            kind = self.stack[-1].kind
-            if not (want(kind) if callable(want) else kind == want):
+            kind = stack[-1].kind
+            # Callers pass a plain `str` kind or a set/frozenset of kinds, and this tells
+            # them apart with one attribute read and an identity test, where `isinstance`
+            # is a call in the hottest method there is. So a `str` subclass would be taken
+            # for a set, and `in` on it is a substring test: nothing here passes one.
+            if kind != want if want.__class__ is str else kind not in want:
                 return None
-        return self.stack.pop()
+        return stack.pop()
 
     def add_substitution(self, node):
         if node is not None:
@@ -339,15 +359,19 @@ class Demangler:
     def with_child(self, kind, child):
         if child is None:
             return None
-        return Node(kind, children=[child])
+        return Node(kind, None, None, [child])
 
     def with_children(self, kind, *children):
-        if any(child is None for child in children):
+        # `in` compares by identity first, and `Node` defines no equality of its own.
+        if None in children:
             return None
-        return Node(kind, children=list(children))
+        return Node(kind, None, None, list(children))
 
     def make_type(self, child):
-        return self.with_child("Type", child)
+        # `with_child("Type", child)`, written out: a type is made for nearly every node.
+        if child is None:
+            return None
+        return Node("Type", None, None, [child])
 
     def with_popped_type(self, kind):
         return self.with_child(kind, self.pop("Type"))
@@ -358,7 +382,8 @@ class Demangler:
         return Node(kind, text=node.text, index=node.index, children=list(node.children))
 
     def swift_type(self, kind, name):
-        return self.make_type(self.with_children(kind, Node("Module", text=STDLIB_NAME), Node("Identifier", text=name)))
+        named = Node(kind, None, None, [Node("Module", STDLIB_NAME), Node("Identifier", name)])
+        return Node("Type", None, None, [named])
 
     def natural(self):
         """A run of digits, or `None` where the reference returns its -1000 sentinel.
@@ -427,7 +452,7 @@ class Demangler:
         suffix = self.pop("Suffix")
         parent = top
         while True:
-            attribute = self.pop(lambda kind: kind in FUNCTION_ATTR_KINDS)
+            attribute = self.pop(FUNCTION_ATTR_KINDS)
             if attribute is None:
                 break
             parent.add(attribute)
@@ -444,24 +469,32 @@ class Demangler:
         return top if top.children else None
 
     def parse_and_push(self):
+        stack = self.stack
         while self.pos < self.end:
             node = self.demangle_operator()
             if node is None:
                 return False
-            self.push(node)
+            stack.append(node)
         return True
 
     def demangle_operator(self):
         """One operator, dispatching on its first character.
 
         The reference writes this as a `switch` with a `goto recur` for the padding byte;
-        the loop here is that `goto`.
+        the loop here is that `goto`. `next_char` is written out, once per operator.
         """
+        text, end = self.text, self.end
         while True:
-            char = self.next_char()
+            pos = self.pos
+            self.pos = pos + 1
+            char = text[pos] if pos < end else ""
             if char == "\xff":
                 # Alignment padding in front of a symbolic reference.
                 continue
+            if "0" <= char <= "9":
+                # An identifier, a quarter of all operators: no operator is a digit.
+                self.pos = pos
+                return self.demangle_identifier()
             handler = _OPERATORS.get(char)
             if handler is not None:
                 return handler(self)
@@ -519,6 +552,8 @@ class Demangler:
         resolved = inner.demangle_fragment()
         if resolved is None:
             return None
+        if inner.has_opaque_return_type:
+            self.has_opaque_return_type = True
         # "Types register as substitutions even when symbolically referenced" -- except
         # for the two opaque-type kinds, which name a position rather than a type.
         if kind == CONTEXT and resolved.kind not in (
@@ -598,13 +633,21 @@ class Demangler:
             self.add_substitution(optional)
             return optional
 
-        self.push_back()
-        repeat = self.natural()
-        if repeat is not None and repeat > _MAX_REPEAT_COUNT:
-            return None
-        second_level = self.next_if("c")
-        table = CONCURRENCY_TYPES if second_level else STANDARD_TYPES
-        found = table.get(self.next_char())
+        if "0" <= char <= "9":
+            # A repeat count: `S2i` is two `Int`s.
+            self.push_back()
+            repeat = self.natural()
+            if repeat is not None and repeat > _MAX_REPEAT_COUNT:
+                return None
+            char = self.next_char()
+        else:
+            repeat = None
+        if char == "c":
+            table = CONCURRENCY_TYPES
+            char = self.next_char()
+        else:
+            table = STANDARD_TYPES
+        found = table.get(char)
         if found is None:
             return None
         node = self.swift_type(*found)
@@ -631,6 +674,19 @@ class Demangler:
         # `_is_digit`, `_is_letter` and `_is_lower` inlined: this runs for every identifier.
         if not ("0" <= char <= "9"):
             return None
+        if char != "0":
+            # The plain form, which is nearly every identifier: one piece, and the loop
+            # below run once. A first digit that is not `0` makes the length positive.
+            count = self.natural()
+            if count is None:
+                return None
+            start = self.pos
+            if start + count > self.end:
+                return None
+            identifier = self.text[start : start + count]
+            self.pos = start + count
+            self.unsplit.append(identifier)
+            return self._identifier_node(identifier, False)
         if char == "0":
             self.pos += 1
             if self.peek() == "0":
@@ -641,6 +697,8 @@ class Demangler:
 
         pieces = []
         while True:
+            if has_word_substitutions and self.unsplit:
+                self._split_words()
             while has_word_substitutions and ("a" <= (char := self.peek()) <= "z" or "A" <= char <= "Z"):
                 char = self.next_char()
                 if "a" <= char <= "z":
@@ -668,7 +726,7 @@ class Demangler:
                     return None
             else:
                 pieces.append(slice_)
-                self._record_words(slice_)
+                self.unsplit.append(slice_)
             self.pos += count
             if not has_word_substitutions:
                 break
@@ -676,14 +734,30 @@ class Demangler:
         identifier = "".join(pieces)
         if not identifier:
             return None
+        return self._identifier_node(identifier, punycoded)
+
+    def _identifier_node(self, identifier, punycoded):
         if not punycoded and self.has_non_ascii and not identifier.isascii():
             try:
                 identifier = identifier.encode("latin-1").decode("utf-8")
             except UnicodeError:
                 return None
-        node = Node("Identifier", text=identifier)
-        self.add_substitution(node)
+        node = Node("Identifier", identifier)
+        self.substitutions.append(node)
         return node
+
+    def _split_words(self):
+        """Add the words of every identifier read since the last call to the table.
+
+        Only a word substitution reads the table, and about seven names in ten have none,
+        so the splitting -- a step per character of every identifier, the largest single
+        item in the parser's profile -- waits until one asks. The identifiers are split in
+        the order they were read, and the table is append-only, so a substitution finds
+        exactly the words it would have found had each been split as it was read.
+        """
+        for slice_ in self.unsplit:
+            self._record_words(slice_)
+        self.unsplit.clear()
 
     def _record_words(self, slice_):
         """Split an identifier into the words a later one may refer back to.
@@ -739,7 +813,7 @@ class Demangler:
         """`L` -- a declaration not visible outside its file or function."""
         if self.next_if("L"):
             discriminator = self.pop("Identifier")
-            name = self.pop(is_decl_name)
+            name = self.pop(DECL_NAME_KINDS)
             return self.with_children("PrivateDeclName", discriminator, name)
         if self.next_if("l"):
             return self.with_child("PrivateDeclName", self.pop("Identifier"))
@@ -749,13 +823,18 @@ class Demangler:
             result = Node("RelatedEntityDeclName")
             self.add_child(result, Node("Identifier", text=char))
             return self.add_child(result, self.pop())
-        return self.with_children("LocalDeclName", self.index_as_node(), self.pop(is_decl_name))
+        return self.with_children("LocalDeclName", self.index_as_node(), self.pop(DECL_NAME_KINDS))
 
     def pop_module(self):
-        identifier = self.pop("Identifier")
-        if identifier is not None:
-            return self.change_kind(identifier, "Module")
-        return self.pop("Module")
+        # `pop("Identifier")` and then `pop("Module")`, reading the top once.
+        stack = self.stack
+        if stack:
+            kind = stack[-1].kind
+            if kind == "Identifier":
+                return self.change_kind(stack.pop(), "Module")
+            if kind == "Module":
+                return stack.pop()
+        return None
 
     def pop_context(self):
         module = self.pop_module()
@@ -767,7 +846,7 @@ class Demangler:
                 return None
             child = found.first
             return child if child.kind in CONTEXT_KINDS else None
-        return self.pop(lambda kind: kind in CONTEXT_KINDS)
+        return self.pop(CONTEXT_KINDS)
 
     def pop_type_and_get_child(self):
         found = self.pop("Type")
@@ -777,7 +856,7 @@ class Demangler:
 
     def pop_type_and_get_any_generic(self):
         child = self.pop_type_and_get_child()
-        return child if child is not None and is_any_generic(child.kind) else None
+        return child if child is not None and child.kind in ANY_GENERIC_KINDS else None
 
     def demangle_builtin_type(self):
         """`B` -- one of the primitives the compiler knows about directly."""
@@ -830,7 +909,7 @@ class Demangler:
         return None
 
     def demangle_any_generic_type(self, kind):
-        name = self.pop(is_decl_name)
+        name = self.pop(DECL_NAME_KINDS)
         context = self.pop_context()
         node = self.make_type(self.with_children(kind, context, name))
         self.add_substitution(node)
@@ -853,14 +932,14 @@ class Demangler:
         if signature is not None:
             found = self.make_type(self.with_children("DependentGenericType", signature, found))
 
-        name = self.pop(is_decl_name)
+        name = self.pop(DECL_NAME_KINDS)
         context = self.pop_context()
 
         if labels is not None:
             result = self.with_children("Function", context, name, labels, found)
         else:
             result = self.with_children("Function", context, name, found)
-        return _parent_opaque_return_types(result, found)
+        return _parent_opaque_return_types(result, found) if self.has_opaque_return_type else result
 
     def pop_function_type(self, kind, has_clang_type=False):
         """Assemble a function type from the annotations and the two parameter lists.
@@ -875,8 +954,11 @@ class Demangler:
             if clang is None:
                 return None
             self.add_child(found, clang)
-        for annotation in _FUNCTION_ANNOTATIONS:
-            self.add_child(found, self.pop(annotation.__contains__))
+        stack = self.stack
+        # Only the top is ever popped, so with no annotation on top there are none at all.
+        if stack and stack[-1].kind in _ANY_FUNCTION_ANNOTATION:
+            for annotation in _FUNCTION_ANNOTATIONS:
+                self.add_child(found, self.pop(annotation))
         found = self.add_child(found, self.pop_function_params("ArgumentTuple"))
         self.add_child(found, self.pop("YieldTypes"))
         found = self.add_child(found, self.pop_function_params("ReturnType"))
@@ -908,12 +990,15 @@ class Demangler:
             return None
 
         at = 0
-        for annotation in _FUNCTION_ANNOTATIONS:
-            if at < len(function.children) and function.child(at).kind in annotation:
-                at += 1
-        if at >= len(function.children):
+        children = function.children
+        # As in `pop_function_type`: annotations come first, so none first means none.
+        if children and children[0].kind in _ANY_FUNCTION_ANNOTATION:
+            for annotation in _FUNCTION_ANNOTATIONS:
+                if at < len(children) and children[at].kind in annotation:
+                    at += 1
+        if at >= len(children):
             return None
-        parameters = function.child(at)
+        parameters = children[at]
         if parameters.kind != "ArgumentTuple":
             return None
 
@@ -1018,7 +1103,7 @@ class Demangler:
         symbolic = self.pop("ProtocolSymbolicReference")
         if symbolic is not None:
             return symbolic
-        name = self.pop(is_decl_name)
+        name = self.pop(DECL_NAME_KINDS)
         context = self.pop_context()
         return self.make_type_or_none(self.with_children("Protocol", context, name))
 
@@ -1038,7 +1123,7 @@ class Demangler:
         return self.with_children("ConcreteProtocolConformance", found, reference, conditional)
 
     def pop_any_protocol_conformance(self):
-        return self.pop(_is_any_protocol_conformance)
+        return self.pop(_ANY_PROTOCOL_CONFORMANCE_KINDS)
 
     def pop_any_protocol_conformance_list(self):
         def element(root):
@@ -1051,7 +1136,7 @@ class Demangler:
         return self._pop_list(Node("AnyProtocolConformanceList"), element)
 
     def pop_dependent_protocol_conformance(self):
-        return self.pop(lambda kind: kind != "ConcreteProtocolConformance" and _is_any_protocol_conformance(kind))
+        return self.pop(_DEPENDENT_PROTOCOL_CONFORMANCE_KINDS)
 
     def demangle_pack_protocol_conformance(self):
         """`HX` -- one conformance per element of a parameter pack."""
@@ -1388,7 +1473,7 @@ class Demangler:
             return self.with_child("ProtocolConformanceDescriptor", self.pop_protocol_conformance())
         if char == "C":
             found = self.pop("Type")
-            if found is None or not found.children or not is_any_generic(found.first.kind):
+            if found is None or not found.children or found.first.kind not in ANY_GENERIC_KINDS:
                 return None
             return self.with_child("ReflectionMetadataSuperclassDescriptor", found.first)
         if char == "F":
@@ -1398,7 +1483,7 @@ class Demangler:
         if char == "S":
             return self.with_child("ProtocolSelfConformanceDescriptor", self.pop_protocol())
         if char == "V":
-            return self.with_child("PropertyDescriptor", self.pop(is_entity))
+            return self.with_child("PropertyDescriptor", self.pop(ENTITY_KINDS))
         if char == "X":
             return self.demangle_private_context_descriptor()
         return None
@@ -1461,11 +1546,13 @@ class Demangler:
             self.add_substitution(found)
             return found
         if char == "r":
+            self.has_opaque_return_type = True
             return self.make_type(Node("OpaqueReturnType"))
         if char == "R":
             ordinal = self.index()
             if ordinal is None:
                 return None
+            self.has_opaque_return_type = True
             return self.make_type(self.with_child("OpaqueReturnType", Node("OpaqueReturnTypeIndex", index=ordinal)))
         if char in ("x", "X", "y", "Y", "z", "Z"):
             base = None
@@ -1595,13 +1682,13 @@ class Demangler:
         if char == "T":
             if self.next_char() != "I":
                 return None
-            return self.with_child("SILThunkIdentity", self.pop(is_entity))
+            return self.with_child("SILThunkIdentity", self.pop(ENTITY_KINDS))
         plain = _THUNK_PLAIN.get(char)
         if plain is not None:
             return Node(plain)
         entity = _THUNK_OF_ENTITY.get(char)
         if entity is not None:
-            return self.with_child(entity, self.pop(is_entity))
+            return self.with_child(entity, self.pop(ENTITY_KINDS))
         specialization = _GENERIC_SPECIALIZATIONS.get(char)
         if specialization is not None:
             return self.demangle_generic_specialization(specialization)
@@ -1624,11 +1711,11 @@ class Demangler:
                 self.add_child(node, signature)
             return node
         if char == "V":
-            base = self.pop(is_entity)
-            derived = self.pop(is_entity)
+            base = self.pop(ENTITY_KINDS)
+            derived = self.pop(ENTITY_KINDS)
             return self.with_children("VTableThunk", derived, base)
         if char == "W":
-            witnessed = self.pop(is_entity)
+            witnessed = self.pop(ENTITY_KINDS)
             conformance = self.pop_protocol_conformance()
             return self.with_children("ProtocolWitness", conformance, witnessed)
         if char in ("R", "r", "y"):
@@ -2058,14 +2145,14 @@ class Demangler:
         if conformance_kind is not None:
             return self.with_child(conformance_kind, self.pop_protocol_conformance())
         if char == "C":
-            return self.with_child("EnumCase", self.pop(is_entity))
+            return self.with_child("EnumCase", self.pop(ENTITY_KINDS))
         if char == "V":
             return self.with_child("ValueWitnessTable", self.pop("Type"))
         if char == "v":
             directness = {"d": 0, "i": 1}.get(self.next_char())
             if directness is None:
                 return None
-            return self.with_children("FieldOffset", Node("Directness", index=directness), self.pop(is_entity))
+            return self.with_children("FieldOffset", Node("Directness", index=directness), self.pop(ENTITY_KINDS))
         if char == "S":
             return self.with_child("ProtocolSelfConformanceWitnessTable", self.pop_protocol())
         if char in ("l", "L"):
@@ -2074,7 +2161,7 @@ class Demangler:
             found = self.pop("Type")
             return self.with_children(kind, found, conformance)
         if char == "t":
-            name = self.pop(is_decl_name)
+            name = self.pop(DECL_NAME_KINDS)
             conformance = self.pop_protocol_conformance()
             return self.with_children("AssociatedTypeMetadataAccessor", conformance, name)
         if char == "T":
@@ -2113,7 +2200,7 @@ class Demangler:
             declarations = Node("GlobalVariableOnceDeclList")
             named = []
             while self.pop("FirstElementMarker") is not None:
-                identifier = self.pop(is_decl_name)
+                identifier = self.pop(DECL_NAME_KINDS)
                 if identifier is None:
                     return None
                 named.append(identifier)
@@ -2354,13 +2441,13 @@ class Demangler:
     def demangle_entity(self, kind):
         found = self.pop("Type")
         labels = self.pop_function_param_labels(found)
-        name = self.pop(is_decl_name)
+        name = self.pop(DECL_NAME_KINDS)
         context = self.pop_context()
         if labels is not None:
             result = self.with_children(kind, context, name, labels, found)
         else:
             result = self.with_children(kind, context, name, found)
-        return _parent_opaque_return_types(result, found)
+        return _parent_opaque_return_types(result, found) if self.has_opaque_return_type else result
 
     def demangle_variable(self):
         return self.demangle_accessor(self.demangle_entity("Variable"))
@@ -2377,7 +2464,8 @@ class Demangler:
         self.add_child(subscript_, labels)
         subscript_ = self.add_child(subscript_, found)
         self.add_child(subscript_, private_name)
-        subscript_ = _parent_opaque_return_types(subscript_, found)
+        if self.has_opaque_return_type:
+            subscript_ = _parent_opaque_return_types(subscript_, found)
         return self.demangle_accessor(subscript_)
 
     def demangle_protocol_list(self):
@@ -2400,7 +2488,7 @@ class Demangler:
         requirements = Node("ConstrainedExistentialRequirementList")
         while True:
             first = self.pop("FirstElementMarker") is not None
-            requirement = self.pop(is_requirement)
+            requirement = self.pop(REQUIREMENT_KINDS)
             if requirement is None:
                 return None
             requirements.add(requirement)
@@ -2430,7 +2518,7 @@ class Demangler:
             signature.add(Node("DependentGenericParamCount", index=1))
         counts = len(signature.children)
         while True:
-            requirement = self.pop(is_requirement)
+            requirement = self.pop(REQUIREMENT_KINDS)
             if requirement is None:
                 break
             signature.add(requirement)
@@ -2540,8 +2628,8 @@ class Demangler:
         kind, attached, freestanding = found
         name = self.pop("Identifier")
         private_discriminator = self.pop("PrivateDeclName") if freestanding else None
-        attached_name = self.pop(is_decl_name) if attached else None
-        context = self.pop(lambda kind_: kind_ in _MACRO_EXPANSION_KINDS)
+        attached_name = self.pop(DECL_NAME_KINDS) if attached else None
+        context = self.pop(_MACRO_EXPANSION_KINDS)
         if context is None:
             context = self.pop_context()
         discriminator = self.index_as_node()
@@ -2631,6 +2719,7 @@ _FUNCTION_ANNOTATIONS = (
     frozenset({"ConcurrentFunctionType"}),
     frozenset({"AsyncAnnotation"}),
 )
+_ANY_FUNCTION_ANNOTATION = frozenset().union(*_FUNCTION_ANNOTATIONS)
 
 #: Contexts that declare no generic parameters of their own, so a nested generic type's
 #: argument list belongs to something further out.
@@ -3136,7 +3225,7 @@ _OPERATORS = {
     "W": Demangler.demangle_witness,
     "X": Demangler.demangle_special_type,
     "Y": Demangler.demangle_type_annotation,
-    "Z": lambda self: self.with_child("Static", self.pop(is_entity)),
+    "Z": lambda self: self.with_child("Static", self.pop(ENTITY_KINDS)),
     "a": lambda self: self.demangle_any_generic_type("TypeAlias"),
     "c": lambda self: self.pop_function_type("FunctionType"),
     "d": lambda self: Node("VariadicMarker"),

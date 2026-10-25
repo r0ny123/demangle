@@ -253,19 +253,29 @@ def _c_int(number):
 class Printer:
     """The reference's `NodePrinter`, and the options it consults."""
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # `write` is an instance attribute bound in `__init__`, and an instance attribute
+        # shadows a method of the same name: a subclass's `write()` would be bypassed by
+        # every call this class makes, and its output would simply go missing. Refused
+        # where the class is made, whether it defines `write` itself or inherits one from
+        # a mixin, rather than left for someone to find that nothing calls it.
+        if hasattr(cls, "write"):
+            raise TypeError(
+                f"{cls.__name__} defines write(), which the instance attribute bound in Printer.__init__ "
+                "would shadow; assign self.write in __init__ instead, as nodes._TreePrinter does"
+            )
+
     def __init__(self, options=DEFAULT_OPTIONS):
         self.options = options
         #: Whether `specialized ` has been written; the reference latches it so nested
         #: specialisation layers say it once.
         self._said_specialized = False
         self.out = []
-        #: Characters written so far. `print_entity` writes a `.` only if the last call
-        #: produced characters, as the reference measures it.
-        self.length = 0
-
-    def write(self, text):
-        self.out.append(text)
-        self.length += len(text)
+        #: Append one piece of the spelling. The list's own `append`, not a method around
+        #: it: this is the printer's most frequent call, nearly thirty times a name. A
+        #: subclass that has to see every piece assigns its own, as `nodes` does.
+        self.write = self.out.append
 
     def result(self):
         return "".join(self.out)
@@ -441,37 +451,38 @@ class Printer:
                 self.write("@escaping ")
             convention_with_clang_type("block")
 
-        arguments_at = len(node.children) - 2
+        children = node.children
+        arguments_at = len(children) - 2
         at = 0
         sendable = asynchronous = sending_result = False
         thrown = nonisolated_caller = None
         differentiability = None
         # The reverse of the mangling's order: the order the demangler adds these.
-        if node.child(at).kind == "ClangType":
+        if children[at].kind == "ClangType":
             at += 1
-        if node.child(at).kind == "SendingResultFunctionType":
+        if children[at].kind == "SendingResultFunctionType":
             at += 1
             sending_result = True
-        if node.child(at).kind == "IsolatedAnyFunctionType":
-            self.print(node.child(at), depth + 1)
+        if children[at].kind == "IsolatedAnyFunctionType":
+            self.print(children[at], depth + 1)
             at += 1
-        if node.child(at).kind == "NonIsolatedCallerFunctionType":
+        if children[at].kind == "NonIsolatedCallerFunctionType":
             # Held back: it goes after the differentiability.
-            nonisolated_caller = node.child(at)
+            nonisolated_caller = children[at]
             at += 1
-        if node.child(at).kind == "GlobalActorFunctionType":
-            self.print(node.child(at), depth + 1)
+        if children[at].kind == "GlobalActorFunctionType":
+            self.print(children[at], depth + 1)
             at += 1
-        if node.child(at).kind == "DifferentiableFunctionType":
-            differentiability = node.child(at).index
+        if children[at].kind == "DifferentiableFunctionType":
+            differentiability = children[at].index
             at += 1
-        if node.child(at).kind in ("ThrowsAnnotation", "TypedThrowsAnnotation"):
-            thrown = node.child(at)
+        if children[at].kind in ("ThrowsAnnotation", "TypedThrowsAnnotation"):
+            thrown = children[at]
             at += 1
-        if node.child(at).kind == "ConcurrentFunctionType":
+        if children[at].kind == "ConcurrentFunctionType":
             at += 1
             sendable = True
-        if node.child(at).kind == "AsyncAnnotation":
+        if children[at].kind == "AsyncAnnotation":
             at += 1
             asynchronous = True
 
@@ -483,7 +494,7 @@ class Printer:
             self.write("@Sendable ")
 
         show_types = self.options.show_function_argument_types
-        self.print_function_parameters(labels, node.child(arguments_at), depth, show_types)
+        self.print_function_parameters(labels, children[arguments_at], depth, show_types)
         if not show_types:
             # Everything after the parameter list belongs to the *type*; the reference
             # returns here.
@@ -494,7 +505,7 @@ class Printer:
             self.print(thrown, depth + 1)
         # Written here, not by `ReturnType`: a sending result puts a word between
         # (`-> sending T`).
-        returns = node.child(arguments_at + 1)
+        returns = children[arguments_at + 1]
         self.write(" -> ")
         if sending_result:
             self.write("sending ")
@@ -825,21 +836,17 @@ class Printer:
             return None
 
         kind = node.kind
-
-        prefix = _PREFIX_THEN_FIRST_CHILD.get(kind)
-        if prefix is not None:
-            self.write(prefix)
-            self.print(node.first, depth + 1)
+        if kind == "Type":
+            # The commonest kind printed, and only a wrapper: `_PREFIX_THEN_FIRST_CHILD`
+            # spells it as nothing and then its child.
+            self.print(node.children[0], depth + 1)
             return None
 
-        literal = _JUST_TEXT.get(kind)
-        if literal is not None:
-            if kind in _THUNK_LEADS and not self.options.shorten_thunk:
-                # The short form of a wrapper is nothing: what it leads is the symbol it
-                # wraps.
-                return None
-            self.write(literal)
-            return None
+        # Every kind with a spelling of its own, `_PREFIX_THEN_FIRST_CHILD` and `_JUST_TEXT`
+        # folded in (see the end of this module), so most nodes cost one lookup.
+        handler = _HANDLERS.get(kind)
+        if handler is not None:
+            return handler(self, node, depth, as_prefix_context)
 
         entity = _ENTITY_KINDS.get(kind)
         if entity is not None:
@@ -853,10 +860,6 @@ class Printer:
                 extra_name,
                 overwrite_name=overwrite,
             )
-
-        handler = _HANDLERS.get(kind)
-        if handler is not None:
-            return handler(self, node, depth, as_prefix_context)
 
         # Anything left has no spelling; the reference asserts.
         raise _Invalid
@@ -892,9 +895,10 @@ class Printer:
         if entity.kind == "BoundGenericFunction":
             generic_arguments = entity.child(1)
             entity = entity.first
+        children = entity.children
 
         multi_word = " " in extra_name
-        local_name = has_name and entity.child(1).kind == "LocalDeclName"
+        local_name = has_name and children[1].kind == "LocalDeclName"
         if local_name:
             multi_word = True
 
@@ -903,14 +907,16 @@ class Printer:
             return entity
 
         postfix_context = None
-        context = entity.first
+        context = children[0]
         if self.print_context(context):
             if multi_word:
                 postfix_context = context
             else:
-                before = self.length
+                # A `.` only if the context produced characters, as the reference measures
+                # it; a piece written empty is not one.
+                before = len(self.out)
                 postfix_context = self.print(context, depth + 1, True)
-                if self.length != before:
+                if any(self.out[before:]):
                     self.write(".")
 
         if has_name or overwrite_name:
@@ -921,17 +927,17 @@ class Printer:
                 self.write(" of ")
                 extra_name = ""
                 extra_index = -1
-            before = self.length
+            before = len(self.out)
             if overwrite_name:
                 self.write(overwrite_name)
             else:
-                name = entity.child(1)
+                name = children[1]
                 if name.kind != "PrivateDeclName":
                     self.print(name, depth + 1)
                 private = _child_of_kind(entity, "PrivateDeclName")
                 if private is not None:
                     self.print(private, depth + 1)
-            if self.length != before and extra_name:
+            if extra_name and any(self.out[before:]):
                 self.write(".")
 
         if extra_name:
@@ -1310,13 +1316,25 @@ _simple("Global", lambda self, node, depth: self.print_children(node, depth))
 _simple("TypeList", lambda self, node, depth: self.print_children(node, depth))
 _simple("AnyProtocolConformanceList", lambda self, node, depth: _print_conformance_list(self, node, depth))
 _simple("ConstrainedExistentialRequirementList", lambda self, node, depth: self.print_children(node, depth, ", "))
-# The `.` after a context is written only if it produced output, so writing nothing
-# (not even "") turns `Monads.Either` into `Either`.
-_simple(
-    "Module",
-    lambda self, node, depth: self.write(node.text) if self.options.display_module_names else None,
-)
-_simple("Identifier", lambda self, node, depth: self.write(node.text))
+
+
+# The two commonest kinds after `Type`, so each is a handler of its own rather than a
+# `_simple` one, which is a call more.
+@_handler("Module")
+def _print_module(self, node, depth, as_prefix_context):
+    # The `.` after a context is written only if it produced output, so writing nothing
+    # (not even "") turns `Monads.Either` into `Either`.
+    if self.options.display_module_names:
+        self.write(node.text)
+    return None
+
+
+@_handler("Identifier")
+def _print_identifier(self, node, depth, as_prefix_context):
+    self.write(node.text)
+    return None
+
+
 _simple("ClangType", lambda self, node, depth: self.write(node.text))
 _simple("BuiltinTypeName", lambda self, node, depth: self.write(node.text))
 _simple("MetatypeRepresentation", lambda self, node, depth: self.write(node.text))
@@ -2696,3 +2714,50 @@ for _kind, _lead in (
         return None
 
     _HANDLERS[_kind] = _print_outlined_enum_operation
+
+
+def _print_prefix_then_first_child(prefix):
+    def run(self, node, depth, as_prefix_context):
+        self.write(prefix)
+        self.print(node.first, depth + 1)
+        return None
+
+    return run
+
+
+def _print_just_text(kind, literal):
+    if kind in _THUNK_LEADS:
+
+        def run(self, node, depth, as_prefix_context):
+            # The short form of a wrapper is nothing: what it leads is the symbol it wraps.
+            if self.options.shorten_thunk:
+                self.write(literal)
+            return None
+
+        return run
+
+    def run(self, node, depth, as_prefix_context):
+        self.write(literal)
+        return None
+
+    return run
+
+
+# `print` used to look a kind up in `_PREFIX_THEN_FIRST_CHILD`, `_JUST_TEXT`,
+# `_ENTITY_KINDS` and `_HANDLERS` in turn. The first two are folded into the last here,
+# so most kinds cost one lookup and an entity two. No kind is in more than one of the
+# four tables, which is what lets the order change; a kind that was would be spelled by
+# whichever table `print` now asks first and not by the one a reader of the old order
+# expects, so the folds refuse it at import. The second fold also catches a kind in both
+# folded tables, since the first has put it in `_HANDLERS` by then.
+# `_OWN_HANDLER_KINDS` is what `_HANDLERS` held before them, so that
+# `tests/test_swift_fast_paths.py` can check all four against each other.
+_OWN_HANDLER_KINDS = frozenset(_HANDLERS)
+for _kind, _text in _JUST_TEXT.items():
+    if _kind in _HANDLERS or _kind in _ENTITY_KINDS:
+        raise AssertionError(f"{_kind!r} is in _JUST_TEXT and also has a handler or an entity entry")
+    _HANDLERS[_kind] = _print_just_text(_kind, _text)
+for _kind, _text in _PREFIX_THEN_FIRST_CHILD.items():
+    if _kind in _HANDLERS or _kind in _ENTITY_KINDS:
+        raise AssertionError(f"{_kind!r} is in _PREFIX_THEN_FIRST_CHILD and also in another printer table")
+    _HANDLERS[_kind] = _print_prefix_then_first_child(_text)
