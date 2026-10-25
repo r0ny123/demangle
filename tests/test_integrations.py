@@ -213,6 +213,11 @@ class TestLength:
         assert label.short == "std::vector<int, std::allocator<int>>::push_back"
         assert len(label.full) <= limit and label.full.endswith(ELLIPSIS)
 
+    def test_a_cut_label_the_host_already_shows_is_not_applied_again(self):
+        label = label_for((1, self.LONG), Options(max_length=50))
+        assert label is not None
+        assert label_for((1, self.LONG, label.full), Options(max_length=50, only_left_mangled=False)) is None
+
     def test_no_limit_returns_it_whole(self):
         label = label_for((1, self.LONG), Options(max_length=None))
         assert label is not None

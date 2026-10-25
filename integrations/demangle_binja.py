@@ -10,8 +10,9 @@ Each symbol read keeps its raw name and gains a full name and a short name, as t
 Binary Ninja's own demanglers read have. Change the settings below before the plugin
 loads.
 
-Written against the Binary Ninja Python API reference and not run inside Binary Ninja.
-If a call here is not what your version has, the Log window names it.
+Run headless in Binary Ninja 6.0; the documentation page has the results. Not yet run
+from the Plugins menu. If a call here is not what your version has, the Log window names
+it.
 """
 
 import os
@@ -67,16 +68,26 @@ import demangle_labels  # noqa: E402
 
 def collect(bv):
     """The entries for `bv`'s symbols, and the symbols by `(address, raw name)`."""
-    symbols = {}
-    entries = []
+    by_address = {}
     for symbol in bv.get_symbols():
-        if symbol.type not in LABELLED_TYPES:
-            continue
-        # Binary Ninja's demanglers leave `full_name` as `raw_name` for a name they
-        # cannot read, and the plugin's own labels differ from it for the same reason.
-        shown = symbol.full_name if symbol.full_name != symbol.raw_name else None
-        symbols[symbol.address, symbol.raw_name] = symbol
-        entries.append(demangle_labels.Entry(symbol.address, symbol.raw_name, shown))
+        if symbol.type in LABELLED_TYPES:
+            by_address.setdefault(symbol.address, []).append(symbol)
+    # Binary Ninja holds one user symbol per address, so a second alias defined there
+    # displaces the first and the two would trade places on every run. One symbol is read
+    # per address: the user symbol, which stands beside the auto symbol it was defined
+    # for and is the one the views show, else one Binary Ninja left mangled.
+    symbols = {}
+    for group in by_address.values():
+        chosen = next((s for s in group if not s.auto), None)
+        if chosen is None:
+            chosen = next((s for s in group if s.full_name == s.raw_name), group[0])
+        symbols[chosen.address, chosen.raw_name] = chosen
+    # Binary Ninja's demanglers leave `full_name` as `raw_name` for a name they cannot
+    # read, and the plugin's own labels differ from it for the same reason.
+    entries = [
+        demangle_labels.Entry(address, raw_name, symbol.full_name if symbol.full_name != raw_name else None)
+        for (address, raw_name), symbol in symbols.items()
+    ]
     return entries, symbols
 
 

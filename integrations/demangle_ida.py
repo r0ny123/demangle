@@ -8,7 +8,8 @@ Change the settings below first. The default writes a repeatable comment with th
 readable name at each address IDA left mangled, which changes no name and so cannot
 break anything IDA does with the one it has.
 
-Written against the IDAPython reference and not run inside IDA. If a call here is not
+Run headless in IDA 9.4 through idalib, in both modes; the documentation page has the
+results. Not yet run from IDA's window, where Cancel and Undo are. If a call here is not
 what your IDA has, the traceback names it.
 """
 

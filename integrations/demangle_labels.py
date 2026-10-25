@@ -167,7 +167,9 @@ def label_for(entry: EntryLike, options: Options = DEFAULT_OPTIONS) -> Label | N
         return None
 
     spelling = _tidy(full, options.max_length)
-    if not spelling:
+    # Compared again once cut: with `max_length` set, what the host shows is the cut
+    # spelling a run before this one applied, and applying it again changes nothing.
+    if not spelling or spelling == host_reading:
         return None
     # A phrase such as `vtable for Foo` is already as short as it gets; cutting it down to
     # `Foo` would label the vtable as the class.

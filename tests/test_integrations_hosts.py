@@ -425,6 +425,28 @@ class TestBinaryNinja:
         define = next(i for i, event in enumerate(view.events) if isinstance(event, tuple) and event[0] == "define")
         assert undefine < define
 
+    def test_a_user_symbol_beside_its_auto_symbol_is_the_one_read(self, binja):
+        auto = binja.symbol("function", 0x1000, SWIFT)
+        earlier = binja.symbol("function", 0x1000, SWIFT, full=SWIFT_READING, auto=False)
+        for symbols in ([auto, earlier], [earlier, auto]):
+            view = FakeView(symbols)
+            binja.script.label_symbols(view, Task())
+            assert view.events == []
+            assert "1 symbols read, 0 readable" in binja.host.log[-1][1]
+
+    def test_aliases_at_one_address_are_labelled_once_and_then_left_alone(self, binja, monkeypatch):
+        monkeypatch.setattr(binja.script, "ONLY_LEFT_MANGLED", False)
+        first = binja.symbol("function", 0x1000, ITANIUM, full="std::vector<int>::push_back(int const&)")
+        second = binja.symbol("function", 0x1000, RUST, full="core::fmt::Formatter::pad::h9b2b3a0e5b4d1b31()")
+        view = FakeView([first, second])
+        binja.script.label_symbols(view, Task())
+        assert [symbol.raw_name for symbol in view.defined()] == [ITANIUM]
+        (defined,) = view.defined()
+        defined.auto = False
+        view = FakeView([first, second, defined])
+        binja.script.label_symbols(view, Task())
+        assert view.events == []
+
     def test_it_is_one_undoable_step_with_the_symbol_table_rebuilt_once(self, binja):
         view = FakeView([binja.symbol("function", 0x1000, SWIFT), binja.symbol("function", 0x2000, RUST)])
         binja.script.label_symbols(view, Task())

@@ -8,16 +8,16 @@ to add: IDA's documentation lists Microsoft, Borland, Watcom, Visual Age and GNU
 demanglers, and Ghidra's change history lists GNU, Microsoft and Rust. Swift, Go, D, Nim,
 Free Pascal, Delphi, Ada, JNI and legacy Rust are not on either list.
 
-!!! warning "IDA and Binary Ninja: not tested inside the hosts"
-    The IDA and Binary Ninja scripts have never been run in IDA Pro or Binary Ninja. They
-    are written against each tool's published API documentation, and
-    [the calls they make](#the-calls-each-script-makes) are listed so they can be checked
-    against the version you have. What is tested is the part that needs no host: the core
-    that decides what a label is, and each script's logic against stand-ins for its host
-    that were written from the same documentation. That shows a script does what it means
-    to when the host behaves as documented, and nothing about whether it does.
-
-    The Ghidra script has been [run in Ghidra](#run-in-ghidra), headless, in one version.
+!!! warning "Run headless, in one version of each tool"
+    Each script has been run in its host without the host's window: the IDA script in
+    IDA 9.4 through idalib, the Binary Ninja script in Binary Ninja 6.0 headless, and the
+    Ghidra script in Ghidra 12.1.4 and 12.2 through PyGhidra. The results are under
+    [Run in IDA](#run-in-ida), [Run in Binary Ninja](#run-in-binary-ninja) and
+    [Run in Ghidra](#run-in-ghidra). What has not been tried is what needs the window:
+    IDA's Cancel button and Edit > Undo, and Binary Ninja's menu command. Other versions
+    have not been tried either, so [the calls each script makes](#the-calls-each-script-makes)
+    are listed to check against the version you have. The repository's own tests run each
+    script against stand-ins for its host, written from the same documentation.
 
     Try a script first on a copy of the database or project, with `DRY_RUN = True`, which
     prints what would change and changes nothing. A call that is not what your version has
@@ -101,10 +101,10 @@ cancel while it is reading leaves the database or program as it was. A cancel on
 started writing is seen at the next check, every 500 labels, and stops it there: what it
 wrote before then stays written.
 
-- IDA: the script makes no undo point of its own, so count on the labels written before
-  the cancel staying.
-- Binary Ninja: the run is one undo step, cancelled or not, so Undo should take back all
-  of it.
+- IDA: the script makes no undo point of its own, and whether Edit > Undo takes a run
+  back has not been tried, so count on the labels written before the cancel staying.
+- Binary Ninja: the run is one undo step, cancelled or not, and Undo takes back all of it
+  ([tried](#run-in-binary-ninja) in 6.0).
 - Ghidra: the run is one transaction, cancelled or not, so Undo should take back all of
   it.
 
@@ -124,6 +124,24 @@ does not accept in a name with `_`, and gives a name that is already taken a num
 `ONLY_LEFT_MANGLED = False` is for names IDA reads wrongly. Its C++ reading of a legacy
 Rust symbol keeps the hash as a function name.
 
+### Run in IDA
+
+The script has been run in IDA 9.4 through idalib, headless, on a Mach-O arm64 program
+holding C++, Swift, Rust v0, legacy Rust, MSVC and D names.
+
+- Comment mode: a dry run changed nothing; a run set 209 comments; a second run set none
+  and kept the 209.
+- Name mode: it renamed 209 addresses, and a second run found nothing left to read. Names
+  came out with IDA's replacement characters and its numbered suffix for a name already
+  taken, as described above.
+- Of the 20 imports `enum_import_names` listed, the 4 with mangled names were in the
+  segment IDA keeps undefined symbols in, and were skipped.
+- A cancel while writing, with `user_cancelled` made to answer yes, left the labels written
+  before it.
+- On `crashpad_handler` for arm64, 4,460 symbols of which about 2,900 are C++: comment mode
+  set 2,048 comments and a second run set none, keeping 2,217; name mode renamed 2,217
+  addresses and a second run found nothing left to read. Each run took about 0.1 s.
+
 ## Binary Ninja
 
 Each symbol gets a user symbol with the label as its short name and full name, and the
@@ -133,7 +151,30 @@ change is one undo step. Only functions and data are touched; imports and extern
 not.
 
 A symbol counts as left mangled when its full name is still its raw name, so a second run
-finds nothing to do.
+finds nothing to do. Where an earlier run defined a user symbol beside Binary Ninja's own,
+the user symbol is the one read and replaced. Binary Ninja keeps one user symbol per
+address, so where several names share an address (aliases) only one of them gets the
+label.
+
+### Run in Binary Ninja
+
+The script has been run in Binary Ninja 6.0 Ultimate, headless, on the same Mach-O arm64
+program as in IDA.
+
+- `Symbol(...)` with a full name, a raw name, a binding, a namespace and an ordinal, inside
+  `bulk_modify_symbols()`, defined every symbol with none failed, and the binding,
+  namespace and ordinal came through unchanged.
+- A dry run changed nothing, and nor did a cancel before the run or while it was reading.
+- A cancel while writing left part of the change, and one `undo()` took all of it back. A
+  whole run followed by `undo()` left the symbols exactly as they were, and `redo()` put
+  the run back.
+- A second run changes nothing. Before two fixes in the same change as this page, it
+  relabelled the names Binary Ninja cannot read itself (D and Nim here) on every run,
+  because the symbol an earlier run defined was not the one read; and with
+  `ONLY_LEFT_MANGLED = False`, aliases sharing an address took turns holding the label.
+- On `crashpad_handler` for arm64, 4,460 symbols of which about 2,900 are C++, a second run
+  changed nothing in either setting of `ONLY_LEFT_MANGLED`, and four undos restored the
+  original exactly.
 
 ## Ghidra
 
