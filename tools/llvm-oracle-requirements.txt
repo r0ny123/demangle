@@ -1,0 +1,18 @@
+# The newest-LLVM reference (tools/llvm_oracle.py), pinned by hash. The `llvm` job of
+# .github/workflows/upstream.yml installs exactly this, with
+# `uv pip install --require-hashes --only-binary :all: -r`, so a wheel that is not the one
+# named here -- a file re-uploaded under the same version, a build that was not reviewed --
+# is refused, and nothing is ever built from source on the runner.
+#
+# The package has no place in pyproject.toml: that keeps the library free of runtime
+# dependencies. Dependabot reads only the repository root, so a bump is made by hand: move
+# the version here and `PIN` (and `BUNDLED`, if the releases it holds change) in
+# tools/llvm_oracle.py, and take the hash from
+# https://pypi.org/pypi/llvm-demangle-fxti/<version>/json.
+#
+# One hash, for the one wheel the runner takes: `cp36-abi3-manylinux_2_28_x86_64`, for
+# CPython 3.13 on x86-64 Linux (ubuntu-latest). The package depends on nothing; a release
+# that did would need its dependencies pinned here too, since --require-hashes asks for a
+# hash from every package it installs.
+llvm-demangle-fxti==1.0.0 \
+    --hash=sha256:c5f7b682277439935524849fef16234ecb983c08ef47c930287650b64ec61b31

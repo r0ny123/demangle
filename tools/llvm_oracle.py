@@ -62,9 +62,17 @@ import demangle  # noqa: E402
 
 #: The package that carries LLVM, and the version the weekly workflow installs. Its import
 #: name is `llvmdemangle`. It is optional: nothing in `pyproject.toml` asks for it, and
-#: `.github/workflows/upstream.yml` installs it in the one job that uses it.
+#: `.github/workflows/upstream.yml` installs it in the one job that uses it, from
+#: `tools/llvm-oracle-requirements.txt`, which holds this pin again with the wheel's hash.
 PACKAGE = "llvm-demangle-fxti"
 PIN = f"{PACKAGE}==1.0.0"
+
+#: The LLVM releases `PIN` bundles. `run` holds a requested release to these before it looks
+#: for the package, so that a release nobody could ask for is the same error whether or not
+#: the package is installed. Once it is imported its own `SUPPORTED_VERSIONS` is the
+#: authority and `readers` holds the release to that; this is what the pin is known to hold,
+#: and moves with it.
+BUNDLED = range(11, 22)
 
 #: `isItaniumEncoding`, `isRustEncoding`, `isDLangEncoding` and `isMicrosoft`: how
 #: `llvm::demangle` and `llvm-cxxfilt` choose a reader. The Itanium prefix is one to four
@@ -134,6 +142,10 @@ def newest(package):
     return max(package.SUPPORTED_VERSIONS)
 
 
+def _not_bundled(version, bundled):
+    return ValueError(f"LLVM {version} is not bundled; {PACKAGE} has {sorted(bundled)}")
+
+
 def readers(package, version):
     """`{scheme: read}` for LLVM `version`, each `read(name)` the text or None for a refusal.
 
@@ -144,7 +156,7 @@ def readers(package, version):
     has no Rust reader and before 14 no D reader; those schemes are left out.
     """
     if version not in package.SUPPORTED_VERSIONS:
-        raise ValueError(f"LLVM {version} is not bundled; {PACKAGE} has {sorted(package.SUPPORTED_VERSIONS)}")
+        raise _not_bundled(version, package.SUPPORTED_VERSIONS)
     backend = package.backend(version)
 
     def itanium(name):
@@ -267,9 +279,11 @@ def score(scheme, names, read, defects=frozenset(), opinion=None):
 def run(schemes, version=None):
     """The results for `schemes`, one per scheme LLVM `version` can read (the newest if None).
 
-    Raises `Unavailable` when the package is not installed and `ValueError` when it does
-    not bundle `version`.
+    Raises `ValueError` when the package does not bundle `version`, which is settled first
+    and without the package, and `Unavailable` when the package is not installed.
     """
+    if version is not None and version not in BUNDLED:
+        raise _not_bundled(version, BUNDLED)
     package = binding()
     if package is None:
         raise Unavailable(f"the {PACKAGE} package is not installed (pip install {PIN})")

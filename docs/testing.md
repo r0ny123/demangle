@@ -216,18 +216,31 @@ a user with a current toolchain sees. An older one is a flag away, and `tests/co
 already records what 18 said; the `cross-reference` job in `ci.yml` is where LLVM 16, 18
 and 20 are held against each other.
 
-The package is a third party's native wheel, so the weekly workflow keeps it away from the
-token. The fetched sources are scored first, in the one step that holds `GITHUB_TOKEN`,
-under `--no-llvm`, which never loads the binding. Only then is the package installed,
-pinned exactly, and the `llvm-*` sources scored in a step with no environment at all and
-with `--require-llvm`, so that a broken install is an error and not a clean week. A further
-step joins the two reports into the one the issue carries and combines the two exit
-statuses into the one the issue logic reads: 1 opens or updates the issue, 2 fails the
-run, and 2 outranks 1. A status other than 0, 1 or 2 from either step -- 139 when the
-native code segfaults, nothing at all when it is killed -- did not score the week, so it
-is reported as an error annotation and fails the run, and is not mistaken for a clean one.
+The package is a third party's native wheel, so the weekly workflow keeps it out of the job
+that holds the token. A step with no `env:` would not be enough: every step of a job shares
+`GITHUB_ENV`, `GITHUB_OUTPUT` and `GITHUB_PATH`, and code that ran in one could set `PATH`
+or `LD_PRELOAD` for the next, which could be the step that files the issue. So the `llvm`
+job does it alone, with `permissions: contents: read`, no secret and a checkout that leaves
+no credential behind. It installs the package from `tools/llvm-oracle-requirements.txt`
+with `--require-hashes --only-binary :all:`, so only the wheel whose sha256 is named there
+is installed and nothing is built on the runner, and scores the `llvm-*` sources with
+`--require-llvm`, so that a broken install is an error and not a clean week. What it
+uploads is a report and an exit status. The `drift` job, which alone has `issues: write`,
+scores the fetched sources under `--no-llvm`, which never loads the binding, downloads that
+artifact and reads it as data. The report is only ever copied into the issue body. The
+status counts only if it is exactly 0, 1 or 2, and the two exit statuses become the one the
+issue logic reads: 1 opens or updates the issue, 2 fails the run, and 2 outranks 1.
+Anything else -- 139 when the native code segfaults, a status file that is empty or
+garbled, no artifact at all because the job was killed or timed out -- did not score the
+week, so it is reported as an error annotation and fails the run, and is not mistaken for a
+clean one. `drift` runs whatever became of `llvm`, so the fetched vectors still get their
+issue in a week the other half crashed. A wheel that lies can misreport the `llvm-*`
+half; it cannot reach the token. The hash is for the one wheel the runner takes (CPython
+3.13 on x86-64 Linux), and Dependabot does not read `tools/`, so a new release is a change
+made by hand: the version in that file and `PIN` in `tools/llvm_oracle.py`, and the hash
+from `https://pypi.org/pypi/llvm-demangle-fxti/<version>/json`.
 `tests/test_upstream_workflow.py` pins that shape and runs the combining script over every
-pair of statuses.
+pair of statuses, a missing artifact and a hostile one.
 
 Each name falls in one of five places:
 

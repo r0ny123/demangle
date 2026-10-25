@@ -20,8 +20,9 @@ the newest LLVM *does*, over every name the checked-in corpora already hold (see
 `tools/llvm_oracle.py`). They need the optional `llvm-demangle-fxti` package, which
 nothing installs; where it is missing they are skipped with a note on stderr, or fail
 the run under `--require-llvm`. That package is a native wheel from a third party, so
-the weekly workflow scores the two halves in separate steps: the fetching half, which
-holds a token, under `--no-llvm`, and the `llvm-*` half in a step that holds none.
+the weekly workflow scores the two halves in separate jobs: the fetching half, which
+holds a token, under `--no-llvm`, and the `llvm-*` half in a job that holds none and
+hands its report and its exit status over as an artifact.
 
 Usage
 -----
@@ -474,7 +475,7 @@ def main(argv=None):
         "--no-llvm",
         action="store_true",
         help="leave the llvm-* sources out, so that this run never loads the LLVM binding;"
-        " for a step that holds a token",
+        " for a job that holds a token",
     )
     parser.add_argument("--cache", type=Path, help="directory to keep the fetched files in")
     parser.add_argument("--show", type=int, default=15, help="examples per table")

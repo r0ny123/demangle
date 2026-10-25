@@ -188,6 +188,34 @@ class TestRun:
         with pytest.raises(oracle.Unavailable, match=r"pip install llvm-demangle-fxti==1\.0\.0"):
             oracle.run(["itanium"])
 
+    def test_a_version_nothing_bundles_is_the_version_error_whether_or_not_the_package_is_there(self, monkeypatch):
+        """The version is settled first, and without the package: absent, 7 used to read as a skip."""
+
+        def looked_for_the_package():
+            raise AssertionError("the package was looked for before the version was checked")
+
+        monkeypatch.setattr(oracle, "binding", looked_for_the_package)
+        for version in (7, 10, 22, 0, -1):
+            with pytest.raises(ValueError, match=rf"LLVM {version} is not bundled; llvm-demangle-fxti has \[11, 12,"):
+                oracle.run(["itanium"], version)
+        monkeypatch.setattr(oracle, "binding", lambda: None)
+        with pytest.raises(ValueError, match="LLVM 7 is not bundled"):
+            oracle.run(["itanium"], 7)
+        monkeypatch.setattr(oracle, "binding", lambda: _package())
+        with pytest.raises(ValueError, match="LLVM 7 is not bundled"):
+            oracle.run(["itanium"], 7)
+
+    def test_a_bundled_version_with_no_package_is_still_unavailable(self, monkeypatch):
+        monkeypatch.setattr(oracle, "binding", lambda: None)
+        for version in (None, 11, 18, 21):
+            with pytest.raises(oracle.Unavailable):
+                oracle.run(["itanium"], version)
+
+    def test_the_releases_held_to_before_the_import_are_the_ones_the_package_has(self):
+        """`BUNDLED` moves with the pin; where the package is installed, this says when it has not."""
+        package = pytest.importorskip("llvmdemangle")
+        assert list(oracle.BUNDLED) == sorted(package.SUPPORTED_VERSIONS)
+
     def test_the_newest_version_is_asked_unless_one_is_named(self, monkeypatch):
         monkeypatch.setattr(oracle, "binding", lambda: _package())
         monkeypatch.setattr(oracle, "corpus_names", lambda: {"itanium": ["_Z1fv"], "msvc": [], "rust": [], "d": []})

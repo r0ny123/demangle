@@ -333,6 +333,16 @@ class TestLlvmSources:
         assert drift.main(["--source", "llvm-d", "--require-llvm"]) == 2
         assert "could not be scored" in capsys.readouterr().err
 
+    def test_a_version_nothing_bundles_is_exit_status_two_where_the_package_is_absent_too(self, monkeypatch, capsys):
+        monkeypatch.setitem(sys.modules, "llvmdemangle", None)
+        for args in (["--llvm-version", "7"], ["--llvm-version", "7", "--require-llvm"]):
+            assert drift.main(["--source", "llvm-d", *args]) == 2
+            err = capsys.readouterr().err
+            assert "llvm-*: LLVM 7 is not bundled; llvm-demangle-fxti has [11, 12," in err
+            assert "skipped" not in err
+        assert drift.main(["--source", "llvm-d", "--llvm-version", "18"]) == 0
+        assert "skipped: the llvm-demangle-fxti package is not installed" in capsys.readouterr().err
+
     def test_every_source_is_the_default_and_the_llvm_ones_are_among_them(self):
         assert drift.LLVM_SOURCES == {
             "llvm-itanium": "itanium",
@@ -343,7 +353,7 @@ class TestLlvmSources:
 
 
 class TestNoLlvm:
-    """`--no-llvm` is how the step that holds a token runs: the binding is a third party's
+    """`--no-llvm` is how the job that holds a token runs: the binding is a third party's
     native code, and nothing in that process may so much as ask for it."""
 
     @pytest.fixture
