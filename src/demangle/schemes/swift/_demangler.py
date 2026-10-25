@@ -338,6 +338,10 @@ class Demangler:
             return None
         if want is not None:
             kind = stack[-1].kind
+            # Callers pass a plain `str` kind or a set/frozenset of kinds, and this tells
+            # them apart with one attribute read and an identity test, where `isinstance`
+            # is a call in the hottest method there is. So a `str` subclass would be taken
+            # for a set, and `in` on it is a substring test: nothing here passes one.
             if kind != want if want.__class__ is str else kind not in want:
                 return None
         return stack.pop()

@@ -253,6 +253,19 @@ def _c_int(number):
 class Printer:
     """The reference's `NodePrinter`, and the options it consults."""
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # `write` is an instance attribute bound in `__init__`, and an instance attribute
+        # shadows a method of the same name: a subclass's `write()` would be bypassed by
+        # every call this class makes, and its output would simply go missing. Refused
+        # where the class is made, whether it defines `write` itself or inherits one from
+        # a mixin, rather than left for someone to find that nothing calls it.
+        if hasattr(cls, "write"):
+            raise TypeError(
+                f"{cls.__name__} defines write(), which the instance attribute bound in Printer.__init__ "
+                "would shadow; assign self.write in __init__ instead, as nodes._TreePrinter does"
+            )
+
     def __init__(self, options=DEFAULT_OPTIONS):
         self.options = options
         #: Whether `specialized ` has been written; the reference latches it so nested
@@ -2733,8 +2746,18 @@ def _print_just_text(kind, literal):
 # `print` used to look a kind up in `_PREFIX_THEN_FIRST_CHILD`, `_JUST_TEXT`,
 # `_ENTITY_KINDS` and `_HANDLERS` in turn. The first two are folded into the last here,
 # so most kinds cost one lookup and an entity two. No kind is in more than one of the
-# four tables, which is what lets the order change.
+# four tables, which is what lets the order change; a kind that was would be spelled by
+# whichever table `print` now asks first and not by the one a reader of the old order
+# expects, so the folds refuse it at import. The second fold also catches a kind in both
+# folded tables, since the first has put it in `_HANDLERS` by then.
+# `_OWN_HANDLER_KINDS` is what `_HANDLERS` held before them, so that
+# `tests/test_swift_fast_paths.py` can check all four against each other.
+_OWN_HANDLER_KINDS = frozenset(_HANDLERS)
 for _kind, _text in _JUST_TEXT.items():
+    if _kind in _HANDLERS or _kind in _ENTITY_KINDS:
+        raise AssertionError(f"{_kind!r} is in _JUST_TEXT and also has a handler or an entity entry")
     _HANDLERS[_kind] = _print_just_text(_kind, _text)
 for _kind, _text in _PREFIX_THEN_FIRST_CHILD.items():
+    if _kind in _HANDLERS or _kind in _ENTITY_KINDS:
+        raise AssertionError(f"{_kind!r} is in _PREFIX_THEN_FIRST_CHILD and also in another printer table")
     _HANDLERS[_kind] = _print_prefix_then_first_child(_text)
