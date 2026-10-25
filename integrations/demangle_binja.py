@@ -55,7 +55,7 @@ REPORT_LIMIT = 50
 #: binary's own functions and data are relabelled.
 LABELLED_TYPES = (SymbolType.FunctionSymbol, SymbolType.DataSymbol)
 
-#: The task is checked for a cancel and its progress line updated after this many symbols.
+#: The progress line is updated after this many symbols.
 STRIDE = 500
 
 # A plugin is not always imported with its own folder on `sys.path`.
@@ -125,8 +125,8 @@ def label_symbols(bv, task):
         for index, item in enumerate(items):
             if index % STRIDE == 0:
                 task.progress = f"Demangle: {what} {index} of {total}"
-                if task.cancelled:
-                    return
+            if task.cancelled:
+                return
             yield item
 
     labels = list(demangle_labels.plan_labels(counted(entries, "reading"), options))

@@ -502,6 +502,22 @@ class TestBinaryNinja:
         binja.script.label_symbols(view, Task(cancelled=True))
         assert view.events == []
 
+    def test_a_cancel_between_progress_updates_stops_the_writing(self, binja):
+        view = FakeView([binja.symbol("function", 0x1000, SWIFT), binja.symbol("function", 0x2000, SWIFT)])
+
+        class CancelAfterFirstWrite(Task):
+            @property
+            def cancelled(self):
+                return bool(view.defined())
+
+            @cancelled.setter
+            def cancelled(self, value):
+                pass
+
+        binja.script.label_symbols(view, CancelAfterFirstWrite())
+        assert len(view.defined()) == 1
+        assert "1 changed" in binja.host.log[-1][1] and "cancelled" in binja.host.log[-1][1]
+
     def test_a_setting_that_means_nothing_is_refused(self, binja, monkeypatch):
         monkeypatch.setattr(binja.script, "FORM", "long")
         with pytest.raises(ValueError, match="FORM"):
