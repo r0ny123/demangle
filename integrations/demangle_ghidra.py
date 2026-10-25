@@ -27,8 +27,9 @@ from ghidra.program.model.symbol import SourceType, SymbolType, SymbolUtilities
 # Settings
 
 #: "short" names the symbol `std::vector<int>::push_back`, "full" adds the parameters.
-#: Ghidra replaces the characters it does not accept in a name, spaces among them, with
-#: `_`. A name another symbol already has gets the address after it.
+#: Ghidra replaces the characters it does not accept in a name -- spaces, other
+#: whitespace, control and invisible characters -- with `_`, as `SymbolUtilities.replaceInvalidChars`
+#: does. A name another symbol already has gets the address after it.
 FORM = "short"
 
 #: Leave the mangled name behind as a second label at the address. Off, it is gone.

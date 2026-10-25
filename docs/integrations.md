@@ -8,13 +8,14 @@ to add: IDA's documentation lists Microsoft, Borland, Watcom, Visual Age and GNU
 demanglers, and Ghidra's change history lists GNU, Microsoft and Rust. Swift, Go, D, Nim,
 Free Pascal, Delphi, Ada, JNI and legacy Rust are not on either list.
 
-!!! warning "Run headless, in one version of each tool"
-    Each script has been run in its host without the host's window: the IDA script in
-    IDA 9.4 through idalib, the Binary Ninja script in Binary Ninja 6.0 headless, and the
-    Ghidra script in Ghidra 12.1.4 and 12.2 through PyGhidra. The results are under
+!!! warning "Run in one version of each tool"
+    Each script has been run in its host: the IDA script in IDA 9.4, headless through
+    idalib and from IDA's window (File > Script file, the wait box's Cancel button, Edit >
+    Undo and Redo); the Binary Ninja script in Binary Ninja 6.0, headless; and the Ghidra
+    script in Ghidra 12.1.4 and 12.2, headless through PyGhidra. The results are under
     [Run in IDA](#run-in-ida), [Run in Binary Ninja](#run-in-binary-ninja) and
-    [Run in Ghidra](#run-in-ghidra). What has not been tried is what needs the window:
-    IDA's Cancel button and Edit > Undo, and Binary Ninja's menu command. Other versions
+    [Run in Ghidra](#run-in-ghidra). What has not been tried is Binary Ninja's Plugins
+    menu and Ghidra's Script Manager, which need the window. Other versions
     have not been tried either, so [the calls each script makes](#the-calls-each-script-makes)
     are listed to check against the version you have. The repository's own tests run each
     script against stand-ins for its host, written from the same documentation.
@@ -99,14 +100,16 @@ both are the phrase. A suffix the symbol table added, `.cold` or `@@GLIBCXX_3.4`
 Each script reads every symbol and decides every label before it changes anything, so a
 cancel while it is reading leaves the database or program as it was. A cancel once it has
 started writing is seen at the next check, every 500 labels, and stops it there: what it
-wrote before then stays written.
+wrote before then stays written, unless the tool's Undo takes it back, as below.
 
-- IDA: the script makes no undo point of its own, and whether Edit > Undo takes a run
-  back has not been tried, so count on the labels written before the cancel staying.
+- IDA: File > Script file makes an undo point for the run, and one Edit > Undo took back
+  all of it, a run that was cancelled included ([tried](#run-in-ida) in 9.4). Run any
+  other way -- `-S` on the command line, idalib -- the script makes no undo point of its
+  own, so count on the labels written before the cancel staying.
 - Binary Ninja: the run is one undo step, cancelled or not, and Undo takes back all of it
   ([tried](#run-in-binary-ninja) in 6.0).
 - Ghidra: the run is one transaction, cancelled or not, so Undo should take back all of
-  it.
+  it. That has not been tried.
 
 To try a run without that risk, use `DRY_RUN = True` first, or a copy.
 
@@ -141,6 +144,24 @@ holding C++, Swift, Rust v0, legacy Rust, MSVC and D names.
 - On `crashpad_handler` for arm64, 4,460 symbols of which about 2,900 are C++: comment mode
   set 2,048 comments and a second run set none, keeping 2,217; name mode renamed 2,217
   addresses and a second run found nothing left to read. Each run took about 0.1 s.
+
+The same script was then run from IDA 9.4's window with File > Script file, on a freshly
+built program of the same kind (203 names to label) and on the arm64 slice of Binary
+Ninja's QtGui framework (36,994 names, 17,497 of them readable, about 20,000 C++ symbols):
+
+- Comment mode set 203 comments and printed the summary line in the Output window. The
+  Edit menu then read "Undo Script file...", and one Undo removed all 203. Redo put them
+  back.
+- Name mode renamed 203 functions, and one Undo gave each its mangled name back, with
+  IDA's own demangled view of it.
+- A second run after a completed run changed nothing (0 changed, 203 kept).
+- On QtGui, a run to the end set 17,004 comments in about 13 s, behind a wait box that
+  read "Reading symbols" and then "Labelling symbols". With Cancel clicked at
+  "Labelling symbols: 9969 of 17497", the Output window printed `demangle: cancelled` and
+  the summary line, 11,303 labels were written, and one Undo removed all 11,303. The
+  wait box's counter runs behind the labels written.
+- A command typed in IDA's console between the run and the Undo is an undo step of its
+  own: Undo then takes that back first, and a new step ends the Redo of the run.
 
 ## Binary Ninja
 
@@ -185,7 +206,8 @@ the script tells: a mangled name that is not the primary one at its address has 
 read, and is skipped. For that reason there is no `ONLY_LEFT_MANGLED` here.
 
 Overloads share a short name, so a name another symbol has gets the address after it.
-Ghidra replaces the characters it does not accept in a name, spaces among them, with `_`.
+Ghidra replaces the characters it does not accept in a name -- spaces, other whitespace,
+control and invisible characters -- with `_`, as `SymbolUtilities.replaceInvalidChars` does.
 Ghidra runs a script's changes in one transaction, so Undo should take back a run whole.
 
 ### Run in Ghidra
@@ -241,6 +263,6 @@ For checking against the version you have.
 
 | Script | Reads | Writes | Reports |
 |---|---|---|---|
-| IDA | `idautils.Names`, `ida_name.demangle_name`, `ida_nalt.get_import_module_qty`, `ida_nalt.enum_import_names`, `ida_segment.getseg` | `ida_bytes.get_cmt` and `set_cmt` (repeatable); `ida_name.set_name` with `SN_NOCHECK`, `SN_NOWARN` and `SN_FORCE` | `ida_kernwin.show_wait_box`, `replace_wait_box`, `user_cancelled`, `hide_wait_box` |
+| IDA | `idautils.Names`, `ida_name.demangle_name`, `ida_nalt.get_import_module_qty`, `ida_nalt.enum_import_names`, `ida_segment.get_segment_info` and `segment_info_t` (`ida_segment.getseg` where the first is missing) | `ida_bytes.get_cmt` and `set_cmt` (repeatable); `ida_name.set_name` with `SN_NOCHECK`, `SN_NOWARN` and `SN_FORCE` | `ida_kernwin.show_wait_box`, `replace_wait_box`, `user_cancelled`, `hide_wait_box` |
 | Binary Ninja | `BinaryView.get_symbols`; `Symbol.type`, `address`, `raw_name`, `full_name`, `auto`, `binding`, `namespace`, `ordinal` | `BinaryView.undefine_user_symbol`, `define_user_symbol`, inside `undoable_transaction` and `bulk_modify_symbols`; `Symbol(...)` | `BackgroundTaskThread` (`progress`, `cancelled`, `finish`); `PluginCommand.register`; `log_info`, `log_error` |
 | Ghidra | `SymbolTable.getAllSymbols(False)`, `getPrimarySymbol`; `Symbol.isExternal`, `getSource`, `getSymbolType`, `isPrimary`, `getAddress`, `getName` | `Symbol.setName`; `SymbolTable.createLabel`; `SymbolUtilities.replaceInvalidChars` | `TaskMonitor.initialize`, `setMessage`, `setProgress`, `isCancelled` |

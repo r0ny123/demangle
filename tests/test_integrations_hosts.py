@@ -51,8 +51,9 @@ class FakeIda:
     SN_NOCHECK, SN_NOWARN, SN_FORCE = 0x1, 0x100, 0x800
     SEG_XTRN = 7
 
-    def __init__(self, names, *, reads=None, imports=(), external=(), comments=None):
+    def __init__(self, names, *, reads=None, imports=(), external=(), comments=None, segment_info=False):
         self.names = names
+        self.segment_info = segment_info
         self.reads = reads or {}
         self.imports = set(imports)
         self.external = set(external)
@@ -81,9 +82,15 @@ class FakeIda:
                 demangle_name=lambda name, mask, request: self.reads.get(name),
                 set_name=self.set_name,
             ),
-            "ida_segment": stand_in("ida_segment", SEG_XTRN=self.SEG_XTRN, getseg=self.getseg),
+            "ida_segment": stand_in("ida_segment", SEG_XTRN=self.SEG_XTRN, **self.segment_calls()),
             "idautils": stand_in("idautils", Names=lambda: iter(self.names)),
         }
+
+    def segment_calls(self):
+        """`getseg` alone, as before IDA 9.4, or the 9.4 pair that replaces it and warns of it."""
+        if not self.segment_info:
+            return {"getseg": self.getseg}
+        return {"segment_info_t": types.SimpleNamespace, "get_segment_info": self.get_segment_info}
 
     def get_cmt(self, address, repeatable):
         assert repeatable is True
@@ -107,6 +114,13 @@ class FakeIda:
 
     def getseg(self, address):
         return types.SimpleNamespace(type=self.SEG_XTRN) if address in self.external else None
+
+    def get_segment_info(self, info, address):
+        """IDA 9.4's replacement for `getseg`: fills `info` and says whether a segment is there."""
+        if address not in self.external:
+            return False
+        info.get_type = lambda: self.SEG_XTRN
+        return True
 
     def user_cancelled(self):
         if self.cancel_at is None:
@@ -185,6 +199,13 @@ class TestIda:
 
     def test_name_mode_leaves_the_import_table_and_the_external_segment_alone(self, ida, monkeypatch):
         session = ida([(0x1000, SWIFT), (0x2000, SWIFT), (0x3000, SWIFT)], imports={0x1000}, external={0x2000})
+        monkeypatch.setattr(session.script, "MODE", "name")
+        session.script.run()
+        assert set(session.host.renames) == {0x3000}
+
+    @pytest.mark.parametrize("segment_info", [False, True], ids=["getseg", "get_segment_info"])
+    def test_the_external_segment_is_found_with_either_segment_call(self, ida, monkeypatch, segment_info):
+        session = ida([(0x2000, SWIFT), (0x3000, SWIFT)], external={0x2000}, segment_info=segment_info)
         monkeypatch.setattr(session.script, "MODE", "name")
         session.script.run()
         assert set(session.host.renames) == {0x3000}

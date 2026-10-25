@@ -8,9 +8,9 @@ Change the settings below first. The default writes a repeatable comment with th
 readable name at each address IDA left mangled, which changes no name and so cannot
 break anything IDA does with the one it has.
 
-Run headless in IDA 9.4 through idalib, in both modes; the documentation page has the
-results. Not yet run from IDA's window, where Cancel and Undo are. If a call here is not
-what your IDA has, the traceback names it.
+Run in IDA 9.4, in both modes, headless through idalib and from IDA's window, where one
+Edit > Undo takes back a whole run; the documentation page has the results. If a call
+here is not what your IDA has, the traceback names it.
 """
 
 import os
@@ -101,6 +101,9 @@ def import_addresses():
 
 def is_external(address):
     """Whether `address` is in the segment IDA keeps undefined (imported) symbols in."""
+    if hasattr(ida_segment, "get_segment_info"):  # IDA 9.4 deprecates getseg for this
+        info = ida_segment.segment_info_t()
+        return bool(ida_segment.get_segment_info(info, address)) and info.get_type() == ida_segment.SEG_XTRN
     segment = ida_segment.getseg(address)
     return segment is not None and segment.type == ida_segment.SEG_XTRN
 
