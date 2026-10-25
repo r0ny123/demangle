@@ -505,9 +505,9 @@ class _Demangler:
         same text read again under the same `in_pointee_return` spells the same. And a name
         repeats whole instantiations: every argument list `std::basic_string<char, ...>`
         appears in spells it out again, since a back-reference cannot reach into a scope
-        that has closed. Re-reading them was 37% of the name and type productions over
-        msvc-boost.txt. One that does more than this is read every time; see
-        `unrepeatable`.
+        that has closed. Re-reading them was 43% of the `type` and `qualifiedName` calls
+        over msvc-boost.txt, a count no interpreter changes. One that does more than this is
+        read every time; see `unrepeatable`.
         """
         text, length = self.text, self.length
         start = self.pos
@@ -580,19 +580,25 @@ class _Demangler:
         finally:
             self.template_depth -= 1
             self.name_backrefs, self.arg_backrefs = saved_names, saved_args
-        if operator is None:
-            simple = self.simple
-            if simple is None:
-                self.simple = saved_simple
-            reach = self.peak - self.depth
-            if saved_peak > self.peak:
-                self.peak = saved_peak
-            if self.unrepeatable == unrepeatable:
-                entry = (text[start : self.pos], self.in_pointee_return, reach, spelled, simple)
-                if known is None:
-                    self.instantiations[base] = [entry]
-                else:
-                    known.append(entry)
+            if operator is None:
+                # Here rather than after, so that an exception leaves both as a completed
+                # read does: `simple` never stranded at the None that means "not yet
+                # written", and `peak` never below what the enclosing read had reached.
+                # Every `_Bail` and `_LimitHit` ends the whole parse today, so nothing yet
+                # reads them after one; a caller that caught one and read on would. Only
+                # a completed read records `reach`.
+                simple = self.simple
+                if simple is None:
+                    self.simple = saved_simple
+                reach = self.peak - self.depth
+                if saved_peak > self.peak:
+                    self.peak = saved_peak
+        if operator is None and self.unrepeatable == unrepeatable:
+            entry = (text[start : self.pos], self.in_pointee_return, reach, spelled, simple)
+            if known is None:
+                self.instantiations[base] = [entry]
+            else:
+                known.append(entry)
         return spelled
 
     def nameFragment(self, is_leading):
@@ -989,12 +995,14 @@ class _Demangler:
 
     def qualifiedName(self):
         depth = self.depth = self.depth + 1
-        if depth > self.peak:
-            # Only a new peak can be past the bound: `peak` never is.
-            if depth > self.max_depth:
-                raise _LimitHit("recursion depth", self.max_depth)
-            self.peak = depth
+        # The bound is tested inside the `try`, so that `depth` is put back on the way out
+        # whichever way that is, refusing this level included.
         try:
+            if depth > self.peak:
+                # Only a new peak can be past the bound: `peak` never is.
+                if depth > self.max_depth:
+                    raise _LimitHit("recursion depth", self.max_depth)
+                self.peak = depth
             first, special_form = self.nameFragment(True)
             if special_form == "descriptor":
                 # a type descriptor has read the whole name, the type it describes included
@@ -1048,13 +1056,13 @@ class _Demangler:
         reading one would invent a spelling for it.
         """
         depth = self.depth = self.depth + 1
-        if depth > self.peak:
-            # as in `qualifiedName`
-            if depth > self.max_depth:
-                raise _LimitHit("recursion depth", self.max_depth)
-            self.peak = depth
-        at_argument, self.at_argument = self.at_argument, False
         try:
+            # as in `qualifiedName`
+            if depth > self.peak:
+                if depth > self.max_depth:
+                    raise _LimitHit("recursion depth", self.max_depth)
+                self.peak = depth
+            at_argument, self.at_argument = self.at_argument, False
             # `take`, inlined: this is the commonest production after a name fragment.
             pos = self.pos
             if pos >= self.length:
