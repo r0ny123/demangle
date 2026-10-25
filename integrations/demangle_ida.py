@@ -28,7 +28,8 @@ import idautils
 
 #: "comment" writes a repeatable comment and changes no name. "name" renames the address:
 #: IDA keeps no record of the name it had, so the mangled form is gone and IDA's own
-#: demangler can no longer read the symbol. A rename skips imports and external symbols.
+#: demangler can no longer read the symbol. Both modes skip external symbols (the segment
+#: IDA keeps undefined symbols in); a rename also skips the import table's addresses.
 MODE = "comment"
 
 #: With MODE = "name": "short" names the symbol `std::vector<int>::push_back`, "full"

@@ -203,6 +203,11 @@ class TestIda:
         session.script.run()
         assert set(session.host.renames) == {0x3000}
 
+    def test_comment_mode_leaves_the_external_segment_alone_but_not_the_import_table(self, ida):
+        session = ida([(0x1000, SWIFT), (0x2000, SWIFT), (0x3000, SWIFT)], imports={0x1000}, external={0x2000})
+        session.script.run()
+        assert set(session.host.comments) == {0x1000, 0x3000}
+
     @pytest.mark.parametrize("segment_info", [False, True], ids=["getseg", "get_segment_info"])
     def test_the_external_segment_is_found_with_either_segment_call(self, ida, monkeypatch, segment_info):
         session = ida([(0x2000, SWIFT), (0x3000, SWIFT)], external={0x2000}, segment_info=segment_info)

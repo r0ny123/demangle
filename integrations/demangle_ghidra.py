@@ -13,9 +13,10 @@ Each symbol read is renamed to the readable name, and the mangled name is kept a
 second label at the same address, which is how Ghidra's own demangler leaves a symbol it
 has read. Change the settings below before running.
 
-Run headless in Ghidra 12.1.4 and 12.2, through PyGhidra 3.1.0 and 3.2.0, on Rust, C++ and
-Go programs; the documentation page has the results. Other versions are untested. If a call here is not
-what your Ghidra has, the script's console names it.
+Run headless through PyGhidra: in Ghidra 12.1.4 (PyGhidra 3.1.0) on Rust, C++ and Go
+programs, and in Ghidra 12.2 (PyGhidra 3.2.0) on Rust v0 and C++. The documentation page
+has the results. Not run from the Script Manager, and Undo is untried. Other versions are
+untested. If a call here is not what your Ghidra has, the script's console names it.
 """
 
 import os

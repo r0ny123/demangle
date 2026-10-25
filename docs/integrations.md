@@ -6,7 +6,9 @@ the readable name back as a comment or a name. By default each touches only the
 symbols the tool's own demanglers left alone, which is where this library has something
 to add: IDA's documentation lists Microsoft, Borland, Watcom, Visual Age and GNU C++
 demanglers, and Ghidra's change history lists GNU, Microsoft and Rust. Swift, Go, D, Nim,
-Free Pascal, Delphi, Ada, JNI and legacy Rust are not on either list.
+Free Pascal, Delphi, Ada and JNI are on neither list, and Rust is not on IDA's. Ghidra's
+own Rust demangler read the Rust symbols in the program it was [run on](#run-in-ghidra),
+so the script has little to add there.
 
 !!! warning "Run in one version of each tool"
     Each script has been run in its host: the IDA script in IDA 9.4, headless through
@@ -14,8 +16,8 @@ Free Pascal, Delphi, Ada, JNI and legacy Rust are not on either list.
     Undo and Redo); the Binary Ninja script in Binary Ninja 6.0, headless; and the Ghidra
     script in Ghidra 12.1.4 and 12.2, headless through PyGhidra. The results are under
     [Run in IDA](#run-in-ida), [Run in Binary Ninja](#run-in-binary-ninja) and
-    [Run in Ghidra](#run-in-ghidra). What has not been tried is Binary Ninja's Plugins
-    menu and Ghidra's Script Manager, which need the window. Other versions
+    [Run in Ghidra](#run-in-ghidra). What has not been tried is what needs the window:
+    Binary Ninja's Plugins menu, and Ghidra's Script Manager and Undo. Other versions
     have not been tried either, so [the calls each script makes](#the-calls-each-script-makes)
     are listed to check against the version you have. The repository's own tests run each
     script against stand-ins for its host, written from the same documentation.
@@ -83,6 +85,7 @@ Each script has its settings as constants at the top. Edit the file; there is no
 | `OVERWRITE_COMMENTS` | IDA | Replace a repeatable comment that is already there. Off by default. |
 | `KEEP_ORIGINAL` | Ghidra | Keep the mangled name as a second label. On by default. |
 | `DRY_RUN` | all | Report what would change; change nothing. |
+| `REPORT_LIMIT` | all | How many changes to list; the count at the end is always the whole of them. Default 50. |
 
 `LANGUAGES` is an allow-list in the sense of
 [Labelling a symbol table](labelling-a-symbol-table.md#say-which-schemes-the-table-can-hold):
@@ -120,8 +123,9 @@ demangler read nothing from, and changes no name. A repeatable comment is shown 
 reference to the address, so a call site shows what it calls.
 
 `MODE = "name"` renames instead. IDA does not keep the old name, so the mangled form is
-gone and IDA's own demangler can no longer read the symbol; names in the import table and
-in the segment IDA keeps undefined symbols in are skipped. IDA replaces the characters it
+gone and IDA's own demangler can no longer read the symbol. Both modes skip names in the
+segment IDA keeps undefined symbols in; name mode also skips the addresses in the import
+table, which a rename would detach from it. IDA replaces the characters it
 does not accept in a name with `_`, and gives a name that is already taken a number.
 
 `ONLY_LEFT_MANGLED = False` is for names IDA reads wrongly. Its C++ reading of a legacy
@@ -189,10 +193,10 @@ program as in IDA.
 - A cancel while writing left part of the change, and one `undo()` took all of it back. A
   whole run followed by `undo()` left the symbols exactly as they were, and `redo()` put
   the run back.
-- A second run changes nothing. Before two fixes in the same change as this page, it
-  relabelled the names Binary Ninja cannot read itself (D and Nim here) on every run,
-  because the symbol an earlier run defined was not the one read; and with
-  `ONLY_LEFT_MANGLED = False`, aliases sharing an address took turns holding the label.
+- A second run changes nothing. The first version of the script relabelled the names
+  Binary Ninja cannot read itself (D and Nim here) on every run, because the symbol an
+  earlier run defined was not the one read; and with `ONLY_LEFT_MANGLED = False`, aliases
+  sharing an address took turns holding the label. Both are fixed.
 - On `crashpad_handler` for arm64, 4,460 symbols of which about 2,900 are C++, a second run
   changed nothing in either setting of `ONLY_LEFT_MANGLED`, and four undos restored the
   original exactly.
