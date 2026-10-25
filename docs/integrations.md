@@ -94,6 +94,22 @@ the whole spelling. Where a symbol is a phrase rather than a name -- `vtable for
 both are the phrase. A suffix the symbol table added, `.cold` or `@@GLIBCXX_3.4`, stays on
 `short`, because it is what tells two copies of one function apart.
 
+## Cancelling
+
+Each script reads every symbol and decides every label before it changes anything, so a
+cancel while it is reading leaves the database or program as it was. A cancel once it has
+started writing is seen at the next check, every 500 labels, and stops it there: what it
+wrote before then stays written.
+
+- IDA: the script makes no undo point of its own, so count on the labels written before
+  the cancel staying.
+- Binary Ninja: the run is one undo step, cancelled or not, so Undo should take back all
+  of it.
+- Ghidra: the run is one transaction, cancelled or not, so Undo should take back all of
+  it.
+
+To try a run without that risk, use `DRY_RUN = True` first, or a copy.
+
 ## IDA Pro
 
 The default writes the readable name as a **repeatable comment** at each address IDA's

@@ -267,12 +267,18 @@ class FakeBinaryNinja:
                 self.finished = True
 
         class Symbol:
-            def __init__(self, sym_type, addr, short_name, full_name=None, raw_name=None, **rest):
+            # The constructor's signature as the API documents it
+            # (https://api.binary.ninja/binaryninja.types-module.html), with no `**kwargs`:
+            # a keyword the real one does not take is a TypeError here too, and a keyword
+            # left out is seen in what reaches `define_user_symbol`.
+            def __init__(
+                self, sym_type, addr, short_name, full_name=None, raw_name=None, binding=None, namespace=None, ordinal=0
+            ):
                 self.type, self.address = sym_type, addr
                 self.short_name = short_name
                 self.full_name = full_name or short_name
                 self.raw_name = raw_name or self.full_name
-                self.rest = rest
+                self.binding, self.namespace, self.ordinal = binding, namespace, ordinal
 
         class PluginCommand:
             @staticmethod
@@ -383,7 +389,7 @@ class TestBinaryNinja:
         assert defined.short_name == "Foundation.Data.count.getter"
         assert defined.full_name == SWIFT_READING
         assert defined.raw_name == SWIFT
-        assert defined.rest == {"binding": "global", "namespace": "ns", "ordinal": 7}
+        assert (defined.binding, defined.namespace, defined.ordinal) == ("global", "ns", 7)
 
     def test_the_short_name_can_be_the_full_one(self, binja, monkeypatch):
         monkeypatch.setattr(binja.script, "FORM", "full")
