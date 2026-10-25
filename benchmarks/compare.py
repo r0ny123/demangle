@@ -80,8 +80,9 @@ CORPORA = (
 )
 
 #: Which tools are references for a scheme, in column order, by `Tool.key`. `llvm-cxxfilt`
-#: is the reference the Itanium conformance corpora are recorded from, and GNU `c++filt`
-#: the other one: they disagree on spacing and on a few spellings, so both are shown.
+#: is the reference the Itanium conformance corpora are recorded from, and `c++filt` the
+#: other one (GNU's on Linux; on macOS it is LLVM's, and is labelled so): they disagree on
+#: spacing and on a few spellings, so both are shown.
 #: The LLVM binding and `llvm-undname` read MSVC names with the same code.
 REFERENCES = {
     "itanium": ("llvm-cxxfilt", "c++filt"),
@@ -154,14 +155,32 @@ def package_version(distribution):
         return "?"
 
 
-def command_version(command):
-    """The first dotted number in `command --version`, which is how each of them says it."""
+def version_text(command):
+    """What `command --version` prints, or nothing if it cannot be run."""
     try:
         completed = subprocess.run([command, "--version"], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
-        return "?"
-    found = re.search(r"\d+(?:\.\d+)+", completed.stdout + completed.stderr)
+        return ""
+    return completed.stdout + completed.stderr
+
+
+def command_version(text):
+    """The first dotted number in a `--version` text, which is how each of them says it."""
+    found = re.search(r"\d+(?:\.\d+)+", text)
     return found.group(0) if found else "?"
+
+
+def cxxfilt_label(text):
+    """Whose `c++filt` this is, by its `--version` text.
+
+    The name is GNU's on Linux, but on macOS `c++filt` is LLVM's, and its number is an LLVM
+    release: calling it "GNU c++filt 21.0.0" would name a binutils that does not exist.
+    """
+    if "GNU" in text:
+        return "GNU c++filt"
+    if "LLVM" in text:
+        return "LLVM c++filt"
+    return "c++filt"
 
 
 def lines(text, expected):
@@ -268,16 +287,17 @@ def in_process_tools(notes, llvm_version=None):
 def command_line_tools(notes):
     """Every command-line demangler on PATH, each run over the whole list in one process."""
     candidates = (
-        ("llvm-cxxfilt", "llvm-cxxfilt", ("itanium",), lines),
-        ("c++filt", "GNU c++filt", ("itanium",), lines),
-        ("llvm-undname", "llvm-undname", ("msvc",), undname_groups),
+        ("llvm-cxxfilt", lambda _text: "llvm-cxxfilt", ("itanium",), lines),
+        ("c++filt", cxxfilt_label, ("itanium",), lines),
+        ("llvm-undname", lambda _text: "llvm-undname", ("msvc",), undname_groups),
     )
     tools = []
     for command, label, schemes, split in candidates:
         if shutil.which(command) is None:
             notes.append(f"{command}: not on PATH")
             continue
-        tools.append(Filter(command, f"{label} {command_version(command)} (one process)", schemes, command, split))
+        text = version_text(command)
+        tools.append(Filter(command, f"{label(text)} {command_version(text)} (one process)", schemes, command, split))
     return tools
 
 

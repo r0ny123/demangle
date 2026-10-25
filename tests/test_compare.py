@@ -149,6 +149,22 @@ class TestSkipping:
         assert compare.command_line_tools(notes) == []
         assert len(notes) == 3
 
+    @pytest.mark.parametrize(
+        ("text", "label"),
+        [
+            ("GNU c++filt (GNU Binutils for Ubuntu) 2.42\nCopyright (C) 2024", "GNU c++filt 2.42"),
+            ("Apple LLVM version 17.0.0 (clang-1700.0.13.3)\n  Optimized build.", "LLVM c++filt 17.0.0"),
+            ("LLVM (http://llvm.org/):\n  LLVM version 21.0.0\n", "LLVM c++filt 21.0.0"),
+            ("c++filt 1.0", "c++filt 1.0"),
+            ("", "c++filt ?"),
+        ],
+    )
+    def test_cxxfilt_is_labelled_by_whose_it_says_it_is(self, monkeypatch, text, label):
+        monkeypatch.setattr(compare.shutil, "which", lambda command: command if command == "c++filt" else None)
+        monkeypatch.setattr(compare, "version_text", lambda command: text)
+        (tool,) = compare.command_line_tools([])
+        assert tool.label == f"{label} (one process)"
+
     def test_the_report_still_runs_with_only_this_package(self, without_competitors, monkeypatch, capsys):
         monkeypatch.setattr(compare.shutil, "which", lambda command: None)
         assert compare.main(["--limit", "8", "--repeats", "1"]) == 0
