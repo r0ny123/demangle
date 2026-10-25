@@ -11,8 +11,8 @@ walks that tree to produce the spelling. Two things force this shape:
   whether a class is being named as a type or as a declaration's parent -- which is not
   available where the type is read.
 
-The kind names are the compiler's own, transcribed from `DemangleNodes.def`, and the two
-predicates below come from the same file: `CONTEXT_NODE` marks the kinds that can be a
+The kind names are the compiler's own, transcribed from `DemangleNodes.def`, and the kind
+sets below come from the same file: `CONTEXT_NODE` marks the kinds that can be a
 parent for a nested declaration, which is what `popContext` looks for.
 """
 
