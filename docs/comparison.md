@@ -6,7 +6,7 @@ against: what each one covers, what a run of
 measured, and what that measurement cannot say.
 
 The result is mixed, so it comes first. On names it has not seen, `demangle` is slower
-than every native demangler measured here: about 55 times slower than LLVM's on
+than every native demangler measured here: about 50 times slower than LLVM's on
 Itanium names and 9 times on MSVC names, both read through `llvm-demangle-fxti`, and about
 15 times slower than the Rust `cpp_demangle` crate on Itanium names. It is level with the
 one other pure-Python reader, `itanium_demangler`. What it has instead is breadth, a parse
