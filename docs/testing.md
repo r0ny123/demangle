@@ -213,8 +213,8 @@ python tools/upstream_drift.py --no-llvm                              # the fetc
 The package is not a dependency of anything: without it the sources are skipped with a
 note on stderr. Only the newest LLVM is reported by default, because the question is what
 a user with a current toolchain sees. An older one is a flag away, and `tests/conformance/`
-already records what 18 said; the `cross-reference` job in `ci.yml` is where LLVM 16, 18
-and 20 are held against each other.
+already records what 18 said; the `cross-reference` job in `ci.yml` is where LLVM 16 and
+18 are held against each other and GNU `c++filt` for Itanium, and 16, 18 and 20 for MSVC.
 
 The package is a third party's native wheel, so the weekly workflow keeps it out of the job
 that holds the token. A step with no `env:` would not be enough: every step of a job shares
