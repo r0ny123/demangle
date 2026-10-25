@@ -22,6 +22,7 @@ from .nodes import (
 )
 from .options import DEFAULT_OPTIONS
 
+_DIGITS = frozenset(string.digits)
 _BASIC_TYPES = {
     "X": "void",
     "D": "char",
@@ -191,9 +192,29 @@ _LITERAL_MAX_BYTES = 64
 #: Most bytes a literal decodes to: the documented 32, times four as the reference allows.
 _LITERAL_MAX_DECODED = 32 * 4
 
+#: The most instantiations of one template a name's reading remembers. Each repeat is
+#: tried against every one remembered, so without a bound a name that instantiates one
+#: template with many different arguments costs time quadratic in their number; past it
+#: they are read as before. No name in the corpora has more than eight.
+_REMEMBERED_PER_TEMPLATE = 16
 
-#: See the note in `schemes/msvc/__init__.py`.
+
+#: See `has_control_character`.
 _CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def has_control_character(text):
+    """Whether `text` holds a C0 control character or DEL, as no decorated name can.
+
+    Over ASCII text, which nearly every name is, that is exactly what `str.isprintable`
+    refuses, and it answers in a third of the time a regex search takes: 0.87us against
+    2.31us over 366 characters. Anything else goes to the regex, since `isprintable`
+    refuses far more than a control character there. A regex is in turn 7.8x cheaper
+    than a per-character generator.
+    """
+    if text.isascii():
+        return not text.isprintable()
+    return _CONTROL_CHARACTER.search(text) is not None
 
 
 def _escaped_literal_character(value):
@@ -388,7 +409,18 @@ class _Demangler:
         self.last_nested_symbol_template = None
         self.requires_signature = False
         self.nested = False
-        self.pointee_depth = 0
+        #: Template instantiations already read, by name: the text each one spans, the
+        #: `in_pointee_return` it was read under, how many levels below its own it
+        #: reached -- so that a replay deeper down still stops at `max_depth` where
+        #: reading it again would -- and what reading it left behind, its spelling and
+        #: `simple`. See `templateInstantiation`.
+        self.instantiations = {}
+        #: Productions read so far that an instantiation's replay would not reproduce: an
+        #: operator name, which can set `requires_signature` and `conversion_arguments`
+        #: and look past what it reads, and a nested symbol, whose own cursor may read
+        #: one where this count cannot see it. An instantiation holding either is read
+        #: every time.
+        self.unrepeatable = 0
         #: Return types of pointed-to functions the cursor is inside. The reference's
         #: `OF_NoCallingConvention` reaches template arguments there, so
         #: `std::function<void (void)>` loses its `__cdecl` in a callback's return type.
@@ -398,6 +430,10 @@ class _Demangler:
         self.at_argument = False
         self.member_cv = ""
         self.depth = 0
+        #: The deepest `depth` since the innermost instantiation being read began, or
+        #: since this cursor began. Never past `max_depth`, so only a new peak is tested
+        #: against it.
+        self.peak = 0
         self.max_depth = limits.max_depth
         # Bounded relative to the name too: a two-character back-reference can double the
         # spelling per level. Over 1,025,085 real names the widest is 12x; 32x is clear.
@@ -468,20 +504,59 @@ class _Demangler:
         inside it and the arguments are numbered from 1 - which is what a back-reference
         written inside the argument list resolves against. The rendered result belongs to
         the enclosing scope instead, and the caller records it there.
+
+        Being its own scope is also what makes one worth remembering. Nothing read before
+        it changes how it reads, nothing after its closing "@" decides anything in it, and
+        what it does to this cursor is its position, its spelling and `simple` -- so the
+        same text read again under the same `in_pointee_return` spells the same. And a name
+        repeats whole instantiations: each argument list that holds
+        `std::basic_string<char, ...>` spells it out again, since a back-reference cannot
+        reach into a scope that has closed. Re-reading them was 43% of the `type` and
+        `qualifiedName` calls over msvc-boost.txt, a count no interpreter changes. One that
+        does more than this is read every time; see `unrepeatable`. At most
+        `_REMEMBERED_PER_TEMPLATE` are remembered for one template's name, which keeps a
+        repeat's lookup bounded.
         """
+        text, length = self.text, self.length
+        start = self.pos
+        if operator is None:
+            # `identifier`, inlined
+            end = text.find("@", start)
+            if end <= start:
+                raise _Bail
+            base = text[start:end]
+            known = self.instantiations.get(base)
+            if known is not None:
+                for span, in_pointee_return, reach, spelled, simple in known:
+                    if (
+                        in_pointee_return == self.in_pointee_return
+                        and self.depth + reach <= self.max_depth
+                        and text.startswith(span, start)
+                    ):
+                        self.pos = start + len(span)
+                        if self.depth + reach > self.peak:
+                            self.peak = self.depth + reach
+                        if simple is not None:
+                            self.simple = simple
+                        return spelled
+            unrepeatable = self.unrepeatable
+            # None until something inside writes it, so that a replay knows whether to.
+            saved_simple, self.simple = self.simple, None
+            # How deep reading it goes, from here.
+            saved_peak, self.peak = self.peak, self.depth
         saved_names, saved_args = self.name_backrefs, self.arg_backrefs
-        self.name_backrefs, self.arg_backrefs = [], []
+        # `rememberName`, inlined: the name is the new scope's first entry.
+        self.name_backrefs, self.arg_backrefs = [base] if operator is None else [], []
         self.template_depth += 1
         try:
             if operator is None:
-                base = self.identifier()
-                self.rememberName(base)
-                if self.eof() or self.peek() == "@":
+                self.pos = end + 1
+                if end + 1 >= length or text[end + 1] == "@":
                     raise _Bail
             else:
                 base = operator
             args = []
-            text, length = self.text, self.length
+            options, max_render = self.options, self.max_render
             while True:
                 pos = self.pos
                 if pos >= length:
@@ -503,11 +578,36 @@ class _Demangler:
                         self.pos = pos + 3
                         continue
                 self.at_argument = True
-                args.append(self.rendered(self.type()))
-            return f"{base}<{', '.join(args)}>"
+                node = self.type()
+                # `rendered`, inlined: most arguments are a named type, already text.
+                spelled = node.text if node.kind == "raw" else render(node, options=options)
+                if len(spelled) > max_render:
+                    raise _LimitHit("output length", max_render)
+                args.append(spelled)
+            spelled = f"{base}<{', '.join(args)}>"
         finally:
             self.template_depth -= 1
             self.name_backrefs, self.arg_backrefs = saved_names, saved_args
+            if operator is None:
+                # Here rather than after, so that an exception leaves both as a completed
+                # read does: `simple` never stranded at the None that means "not yet
+                # written", and `peak` never below what the enclosing read had reached.
+                # Every `_Bail` and `_LimitHit` ends the whole parse today, so nothing yet
+                # reads them after one; a caller that caught one and read on would. Only
+                # a completed read records `reach`.
+                simple = self.simple
+                if simple is None:
+                    self.simple = saved_simple
+                reach = self.peak - self.depth
+                if saved_peak > self.peak:
+                    self.peak = saved_peak
+        if operator is None and self.unrepeatable == unrepeatable:
+            entry = (text[start : self.pos], self.in_pointee_return, reach, spelled, simple)
+            if known is None:
+                self.instantiations[base] = [entry]
+            elif len(known) < _REMEMBERED_PER_TEMPLATE:
+                known.append(entry)
+        return spelled
 
     def nameFragment(self, is_leading):
         """One fragment, paired with which spelling its special-name code takes, if any.
@@ -520,9 +620,12 @@ class _Demangler:
         is_symbol_name = is_leading and self.at_symbol_name
         if is_leading:
             self.at_symbol_name = False
-        char = self.peek()
-        if char in string.digits:
-            self.pos += 1
+        text, pos = self.text, self.pos
+        if pos >= self.length:
+            raise _Bail
+        char = text[pos]
+        if char in _DIGITS:
+            self.pos = pos + 1
             index = int(char)
             if index >= len(self.name_backrefs):
                 raise _Bail
@@ -530,7 +633,7 @@ class _Demangler:
         if char == "?":
             self.pos += 1
             if self.eat("$"):
-                if self.peek() in string.digits:
+                if self.peek() in _DIGITS:
                     raise _Bail
                 operator = None
                 if self.peek() == "?":
@@ -550,15 +653,18 @@ class _Demangler:
                         raise _Bail
                 base = self.in_pointee_return
                 rendered = self.templateInstantiation(operator=operator)
+                # Few names carry a mark, and one without has nothing to resolve.
+                marked = _CONVENTION_MARK in rendered
+                recorded = self._conventionsResolved(rendered, base=base) if marked else rendered
                 if is_symbol_name:
                     # Kept for `$1??$x@H@@3HA`, whose `x<int>` the reference memorises
                     # after the symbol is read -- see `dollarType`.
-                    self.symbol_template_name = self._conventionsResolved(rendered, base=base)
+                    self.symbol_template_name = recorded
                 if not is_symbol_name:
                     # The symbol's own template name is not recorded: "??$f@H@N@@YAXV0@@Z"
                     # resolves 0 to N. `memorizeIdentifier` records the `OF_Default` string.
-                    self.rememberName(self._conventionsResolved(rendered, base=base))
-                if self.template_depth:
+                    self.rememberName(recorded)
+                if self.template_depth or not marked:
                     # Inside another template's arguments the outermost name resolves marks.
                     return rendered, "func" if operator else None
                 return self._conventionsResolved(rendered), "func" if operator else None
@@ -573,8 +679,16 @@ class _Demangler:
                     return self.localScope(), None
             # No code claims it: `demangleSimpleName` reads it as a plain name, "?" and all.
             return self.questionName(), None
-        name = self.identifier()
-        self.rememberName(name)
+        # A plain identifier, the commonest fragment by far: `identifier` and
+        # `rememberName`, inlined.
+        end = text.find("@", pos)
+        if end <= pos:
+            raise _Bail
+        name = text[pos:end]
+        self.pos = end + 1
+        backrefs = self.name_backrefs
+        if len(backrefs) < 10 and name not in backrefs:
+            backrefs.append(name)
         return name, None
 
     def questionName(self):
@@ -611,7 +725,7 @@ class _Demangler:
         if not spelled:
             return False
         if len(spelled) == 1:
-            return spelled == "@" or spelled in string.digits
+            return spelled == "@" or spelled in _DIGITS
         if spelled[-1] != "@":
             return False
         spelled = spelled[:-1]
@@ -659,6 +773,7 @@ class _Demangler:
         ends rather than at the end of the text.
         """
         options = self.options if options is None else options
+        self.unrepeatable += 1
         if leading_question:
             inner = _Demangler(self.text, options=options)
             inner.pos = self.pos
@@ -777,6 +892,7 @@ class _Demangler:
 
     def operatorName(self):
         """The operator or special name, paired with which spelling it takes."""
+        self.unrepeatable += 1
         if self.eat("_"):
             if self.eat("_"):
                 code = self.peek()
@@ -886,53 +1002,60 @@ class _Demangler:
         return name, "func"
 
     def qualifiedName(self):
-        self.depth += 1
-        if self.depth > self.max_depth:
-            raise _LimitHit("recursion depth", self.max_depth)
+        depth = self.depth = self.depth + 1
+        # The bound is tested inside the `try`, so that `depth` is put back on the way out
+        # whichever way that is, refusing this level included.
         try:
-            return self.qualifiedNameBody()
-        finally:
-            self.depth -= 1
-
-    def qualifiedNameBody(self):
-        first, special_form = self.nameFragment(True)
-        if special_form == "descriptor":
-            # a type descriptor has read the whole name, the type it describes included
-            return first, False, special_form
-        scopes = []
-        text, length = self.text, self.length
-        while True:
-            pos = self.pos
-            if pos >= length:
-                raise _Bail
-            if text[pos] == "@":
-                self.pos = pos + 1
-                break
-            scopes.append(self.nameFragment(False)[0])
-        scopes.reverse()
-        if isinstance(first, _Conversion):
-            self.conversion_arguments = first.arguments
-            return "::".join([*scopes, "\0conversion\0"]), False, special_form
-        if isinstance(first, _Structor):
+            if depth > self.peak:
+                # Only a new peak can be past the bound: `peak` never is.
+                if depth > self.max_depth:
+                    raise _LimitHit("recursion depth", self.max_depth)
+                self.peak = depth
+            first, special_form = self.nameFragment(True)
+            if special_form == "descriptor":
+                # a type descriptor has read the whole name, the type it describes included
+                return first, False, special_form
+            scopes = []
+            text, length = self.text, self.length
+            while True:
+                pos = self.pos
+                if pos >= length:
+                    raise _Bail
+                char = text[pos]
+                if char == "@":
+                    self.pos = pos + 1
+                    break
+                if char == "?" or char in _DIGITS:
+                    scopes.append(self.nameFragment(False)[0])
+                    continue
+                # A plain identifier, as in `nameFragment`.
+                end = text.find("@", pos)
+                if end <= pos:
+                    raise _Bail
+                name = text[pos:end]
+                self.pos = end + 1
+                backrefs = self.name_backrefs
+                if len(backrefs) < 10 and name not in backrefs:
+                    backrefs.append(name)
+                scopes.append(name)
+            scopes.reverse()
+            if isinstance(first, str):
+                scopes.append(first)
+                return "::".join(scopes), False, special_form
+            if isinstance(first, _Conversion):
+                self.conversion_arguments = first.arguments
+                return "::".join([*scopes, "\0conversion\0"]), False, special_form
             if not scopes:
                 raise _Bail
+            # a structor, named for its class
             klass = scopes[-1]
             spelled = klass + first.arguments
             first = "~" + spelled if first.is_destructor else spelled
             return "::".join([*scopes, first]), True, special_form
-        return "::".join([*scopes, first]), False, special_form
-
-    def type(self, quals=()):
-        self.depth += 1
-        if self.depth > self.max_depth:
-            raise _LimitHit("recursion depth", self.max_depth)
-        at_argument, self.at_argument = self.at_argument, False
-        try:
-            return self.typeBody(quals, at_argument)
         finally:
             self.depth -= 1
 
-    def typeBody(self, quals, at_argument=False):
+    def type(self, quals=()):
         """One type, qualified by `quals`.
 
         A digit is a back-reference standing for a whole argument type, so it is only a type
@@ -940,50 +1063,66 @@ class _Demangler:
         around it - "?h@@YAXPAHPA0@Z" - is a name the mangler cannot have produced, and
         reading one would invent a spelling for it.
         """
-        char = self.take()
-        if char in _BASIC_TYPES:
-            return apply_qualifiers(_BASIC_TYPE_NODES[char], quals)
-        if char == "_":
-            node = _EXTENDED_TYPE_NODES.get(self.take())
-            if node is None:
+        depth = self.depth = self.depth + 1
+        try:
+            # as in `qualifiedName`
+            if depth > self.peak:
+                if depth > self.max_depth:
+                    raise _LimitHit("recursion depth", self.max_depth)
+                self.peak = depth
+            at_argument, self.at_argument = self.at_argument, False
+            # `take`, inlined: this is the commonest production after a name fragment.
+            pos = self.pos
+            if pos >= self.length:
                 raise _Bail
-            self.simple = False
-            return apply_qualifiers(node, quals)
-        if char in _TAGGED_TYPES:
-            kind = _TAGGED_TYPES[char]
-            if kind == "enum":
-                self.expect("4")
-            name, _, special_form = self.qualifiedName()
-            if special_form is not None:
+            self.pos = pos + 1
+            char = self.text[pos]
+            node = _BASIC_TYPE_NODES.get(char)
+            if node is not None:
+                return apply_qualifiers(node, quals) if quals else node
+            kind = _TAGGED_TYPES.get(char)
+            if kind is not None:
+                if kind == "enum":
+                    self.expect("4")
+                name, _, special_form = self.qualifiedName()
+                if special_form is not None:
+                    raise _Bail
+                self.simple = False
+                # `tag_kind` off: `S const *`, not `struct S const *`
+                node = Raw(f"{kind} {name}" if self.options.tag_kind else name)
+                return apply_qualifiers(node, quals) if quals else node
+            if char in _POINTER_KINDS:
+                return self.indirection(merge_qualifiers(_POINTER_KINDS[char], quals), "*")
+            if char == "_":
+                node = _EXTENDED_TYPE_NODES.get(self.take())
+                if node is None:
+                    raise _Bail
+                self.simple = False
+                return apply_qualifiers(node, quals)
+            if char == "Y":
+                return self.arrayType(quals)
+            if char == "A":
+                if quals:
+                    raise _Bail
+                # only "A" introduces a reference; "B" (volatile reference) is not C++:
+                # "?f2@@YAXBDPAD@Z"
+                return self.indirection((), "&")
+            if char == "$":
+                return self.dollarType(quals, at_argument)
+            if char in _DIGITS:
+                # an argument back-reference stands only where a whole argument does; see
+                # parameters()
                 raise _Bail
-            self.simple = False
-            # `tag_kind` off: `S const *`, not `struct S const *`
-            spelled = f"{kind} {name}" if self.options.tag_kind else name
-            return apply_qualifiers(Raw(spelled), quals)
-        if char == "Y":
-            return self.arrayType(quals)
-        if char in _POINTER_KINDS:
-            return self.indirection(merge_qualifiers(_POINTER_KINDS[char], quals), "*")
-        if char == "A":
-            if quals:
-                raise _Bail
-            # only "A" introduces a reference; "B" (volatile reference) is not C++:
-            # "?f2@@YAXBDPAD@Z"
-            return self.indirection((), "&")
-        if char == "$":
-            return self.dollarType(quals, at_argument)
-        if char in string.digits:
-            # an argument back-reference stands only where a whole argument does; see
-            # parameters()
+            if char == "?" and (self.peek() == "<" or self.peek() in _DIGITS):
+                # A named placeholder type, `?A?<decltype-auto>@@`. Through `nameFragment`
+                # so it is remembered: a nested lambda's deduced return is the
+                # back-reference `?A?4@`.
+                placeholder = self.nameFragment(False)[0]
+                self.expect("@")
+                return apply_qualifiers(Raw(placeholder), quals)
             raise _Bail
-        if char == "?" and (self.peek() == "<" or self.peek() in string.digits):
-            # A named placeholder type, `?A?<decltype-auto>@@`. Through `nameFragment`
-            # so it is remembered: a nested lambda's deduced return is the
-            # back-reference `?A?4@`.
-            placeholder = self.nameFragment(False)[0]
-            self.expect("@")
-            return apply_qualifiers(Raw(placeholder), quals)
-        raise _Bail
+        finally:
+            self.depth -= 1
 
     def rendered(self, node, declarator="", member_cv=""):
         text = render(node, declarator, options=self.options, member_cv=member_cv)
@@ -1014,8 +1153,11 @@ class _Demangler:
         count = self.dimension()
         if count == 0:
             raise _Bail
-        if self.depth + count > self.max_depth:
-            raise _LimitHit("recursion depth", self.max_depth)
+        reach = self.depth + count
+        if reach > self.peak:
+            if reach > self.max_depth:
+                raise _LimitHit("recursion depth", self.max_depth)
+            self.peak = reach
         # an extent of nothing is spelled with nothing: "$$BY0A@H" is "int[]"
         extents = [self.dimension() for _ in range(count)]
         self.array_element_depth += 1
@@ -1042,7 +1184,7 @@ class _Demangler:
         """
         negative = self.eat("?")
         char = self.peek()
-        if char in string.digits:
+        if char in _DIGITS:
             value = int(self.take()) + 1
         else:
             value = 0
@@ -1174,13 +1316,7 @@ class _Demangler:
                 returns = self.returnType()
             finally:
                 self.in_pointee_return -= 1
-            # parameters are whole-argument positions again, even inside a pointee
-            saved_pointee_depth = self.pointee_depth
-            self.pointee_depth = 0
-            try:
-                params = self.parameters()
-            finally:
-                self.pointee_depth = saved_pointee_depth
+            params = self.parameters()
             noexcept_ = self.throwSpecification()
             self.simple = False
             return Indirection(token, own_quals, FunctionType(convention, params, returns, noexcept_))
@@ -1195,11 +1331,7 @@ class _Demangler:
         if pointee_quals is None:
             raise _Bail
         pointee_quals = pointee_quals + unaligned
-        self.pointee_depth += 1
-        try:
-            pointee = self.type(pointee_quals)
-        finally:
-            self.pointee_depth -= 1
+        pointee = self.type(pointee_quals)
         self.simple = False
         return Indirection(token, own_quals, pointee, pointer_auth)
 
@@ -1235,12 +1367,7 @@ class _Demangler:
             returns = self.returnType()
         finally:
             self.in_pointee_return -= 1
-        saved_pointee_depth = self.pointee_depth
-        self.pointee_depth = 0
-        try:
-            params = self.parameters()
-        finally:
-            self.pointee_depth = saved_pointee_depth
+        params = self.parameters()
         member_cv += self.throwSpecification()
         self.simple = False
         return Indirection(f"{owner}::{token}", own_quals, FunctionType(convention, params, returns, member_cv))
@@ -1382,18 +1509,23 @@ class _Demangler:
         if self.eat("X"):
             return _VOID_PARAMETERS
         params = []
+        text, length = self.text, self.length
         while True:
-            if self.eof():
+            pos = self.pos
+            if pos >= length:
                 raise _Bail
-            if self.eat("@"):
+            char = text[pos]
+            if char == "@":
+                self.pos = pos + 1
                 break
-            if self.peek() == "Z":
+            if char == "Z":
                 # `void f(...)`: clang writes `?f@@YAXZZ`.
-                self.take()
+                self.pos = pos + 1
                 params.append(_ELLIPSIS)
                 break
-            if self.peek() in string.digits:
-                index = int(self.take())
+            if char in _DIGITS:
+                self.pos = pos + 1
+                index = int(char)
                 if index >= len(self.arg_backrefs):
                     raise _Bail
                 node = self.arg_backrefs[index]
@@ -1405,7 +1537,11 @@ class _Demangler:
             node = self.type()
             if not self.simple and len(self.arg_backrefs) < 10:
                 self.arg_backrefs.append(node)
-            self.rendered(node)
+            # `rendered`, inlined for a named type, which is already text
+            if node.kind != "raw":
+                self.rendered(node)
+            elif len(node.text) > self.max_render:
+                raise _LimitHit("output length", self.max_render)
             params.append(node)
         return tuple(params)
 
@@ -1781,14 +1917,23 @@ def parse_msvc_symbol(name, limits=DEFAULT_LIMITS):
 def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """As `parse_msvc_symbol`, but raises `_LimitHit` when a bound stopped the parse.
 
-    The plugin uses this one, so that `demangle_strict()` can report `LimitExceeded`
-    rather than claiming the name is unreadable -- it may be perfectly well formed and
-    merely larger than this caller allowed.
+    It makes the checks the plugin makes before it calls `read_msvc_symbol` itself, so
+    that `demangle_strict()` can report `LimitExceeded` rather than claiming the name is
+    unreadable -- it may be perfectly well formed and merely larger than this caller
+    allowed.
     """
     if not name or not name.startswith("?"):
         return None
-    if _CONTROL_CHARACTER.search(name) is not None:
+    if has_control_character(name):
         return None
+    return read_msvc_symbol(name, limits, options)
+
+
+def read_msvc_symbol(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
+    """As `parse_msvc_symbol_strict`, for a name already known to open with `?` and to
+    hold no control character -- which the plugin has established before it gets here,
+    so it does not pay for the scan twice.
+    """
     try:
         return _Demangler(name, limits, options).parse()
     except _Bail:
@@ -1808,8 +1953,16 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """
     if not name:
         return None
-    if _CONTROL_CHARACTER.search(name) is not None:
+    if has_control_character(name):
         return None
+    return read_msvc_type(name, limits, options)
+
+
+def read_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
+    """As `parse_msvc_type`, for a name already known to hold no control character --
+    which the plugin has established for a type descriptor's symbol before it gets here,
+    as it has for a decorated name before `read_msvc_symbol`.
+    """
     if name.startswith("."):
         name = name[1:]
     if not name:

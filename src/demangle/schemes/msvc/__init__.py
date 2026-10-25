@@ -18,8 +18,6 @@ hands back text, exactly as they do for the other schemes -- the seam is which o
 this module produces, rather than which builder the parser wrote to.
 """
 
-import re
-
 from ...core.ast import Node
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
@@ -32,8 +30,10 @@ from ._parser import (
     _POINTER_KINDS,
     _TAGGED_TYPES,
     _LimitHit,
-    parse_msvc_symbol_strict,
+    has_control_character,
     parse_msvc_type,
+    read_msvc_symbol,
+    read_msvc_type,
 )
 from ._parser import render as _render
 from .options import DEFAULT_OPTIONS, MsvcOptions
@@ -174,10 +174,6 @@ def _wants_structure(builder):
     return answer
 
 
-#: A regex rather than a per-character generator: 7.8x cheaper on every MSVC symbol.
-_CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
-
-
 def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """Parse an MSVC decorated name into `builder`."""
     options = options or DEFAULT_OPTIONS
@@ -186,12 +182,13 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
     # Refused rather than copied into the output and on into a caller's report.
-    if _CONTROL_CHARACTER.search(mangled) is not None:
+    if has_control_character(mangled):
         raise ParseError(mangled, None, "decorated name contains a control character")
     if mangled.startswith(_TYPE_DESCRIPTOR_NAME):
         # Not a declaration: the reference spells the type and appends what it is.
         try:
-            tree = parse_msvc_type(mangled, limits, options)
+            # The scan above is the one `parse_msvc_type` would repeat.
+            tree = read_msvc_type(mangled, limits, options)
             if tree is None:
                 raise ParseError(mangled, None, "not a type descriptor name this demangler can read")
             # The marker goes where a declarator goes:
@@ -213,15 +210,16 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
             _check_length(mangled, len(hashed), limits)
             return builder.raw(hashed)
         try:
-            if _wants_structure(builder):
-                tree = parse_msvc_symbol_strict(mangled, limits, options)
-                if tree is None:
-                    raise ParseError(mangled, None, "not a decorated name this demangler can read")
-                # No output check: `_Demangler.rendered` has already bounded it.
-                return tree
-            tree = parse_msvc_symbol_strict(mangled, limits, options)
+            # Asked before the read, as it was when each answer read the name itself:
+            # it calls `raw` on a builder class not met before, and one whose `raw`
+            # raises still does so whatever the name.
+            structured = _wants_structure(builder)
+            tree = read_msvc_symbol(mangled, limits, options)
             if tree is None:
                 raise ParseError(mangled, None, "not a decorated name this demangler can read")
+            if structured:
+                # No output check: `_Demangler.rendered` has already bounded it.
+                return tree
             expanded = _render(tree, options=options)
             _check_length(mangled, len(expanded), limits)
             return builder.raw(expanded)
