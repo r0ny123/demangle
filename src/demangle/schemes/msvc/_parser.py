@@ -1946,6 +1946,14 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         return None
     if has_control_character(name):
         return None
+    return read_msvc_type(name, limits, options)
+
+
+def read_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
+    """As `parse_msvc_type`, for a name already known to hold no control character --
+    which the plugin has established for a type descriptor's symbol before it gets here,
+    as it has for a decorated name before `read_msvc_symbol`.
+    """
     if name.startswith("."):
         name = name[1:]
     if not name:
