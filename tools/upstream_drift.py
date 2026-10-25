@@ -15,15 +15,29 @@ corpus carries documented deviations (tests/test_conformance.py names them), so 
 is reported for a person to read, and not a failure. A name the corpus does not hold
 is *new*, and a new vector this library misreads is what the exit status reports.
 
+The `llvm-*` sources are the other half: not what the references' tests say but what
+the newest LLVM *does*, over every name the checked-in corpora already hold (see
+`tools/llvm_oracle.py`). They need the optional `llvm-demangle-fxti` package, which
+nothing installs; where it is missing they are skipped with a note on stderr, or fail
+the run under `--require-llvm`. That package is a native wheel from a third party, so
+the weekly workflow scores the two halves in separate jobs: the fetching half, which
+holds a token, under `--no-llvm`, and the `llvm-*` half in a job that holds none and
+hands its report and its exit status over as an artifact.
+
 Usage
 -----
     tools/upstream_drift.py                       every source
     tools/upstream_drift.py --source rustc swift  some of them
+    tools/upstream_drift.py --source llvm-d       the newest LLVM's D reader on the corpora
+    tools/upstream_drift.py --llvm-version 18     an older LLVM, to reproduce a corpus
+    tools/upstream_drift.py --no-llvm             the fetched sources only; loads no binding
     tools/upstream_drift.py --cache DIR           keep the downloads for the next run
     tools/upstream_drift.py --show 40             more examples per table
 
-Exit status: 0 when every new vector reads as the reference says, 1 when one does not,
-2 when a source could not be fetched or read.
+Exit status: 0 when every new vector reads as the reference says, 1 when one does not
+or when a corpus name is read differently by the newest LLVM and nothing accounts for
+it, 2 when a source could not be fetched or read. Any other status is a crash of the
+interpreter or of the binding under it, and the workflow fails the run on it.
 """
 
 import argparse
@@ -38,8 +52,15 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+TOOLS = Path(__file__).resolve().parent
+ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT / "src"))
+# A script run from `tools/` has its siblings already; only a caller that loaded this file
+# by path needs the entry, and last, so that nothing here shadows an installed module.
+if str(TOOLS) not in sys.path:
+    sys.path.append(str(TOOLS))
+
+import llvm_oracle  # noqa: E402
 
 import demangle  # noqa: E402
 
@@ -292,6 +313,11 @@ SOURCES = {
 }
 
 
+#: The newest LLVM's readers over the checked-in corpora, one source per scheme; see
+#: `tools/llvm_oracle.py`. They need an optional package and fetch nothing.
+LLVM_SOURCES = {f"llvm-{scheme}": scheme for scheme in llvm_oracle.ROUTES}
+
+
 #: Upstream vectors this library answers differently on purpose, with the test that
 #: says so.
 EXPECTED_MISREADS = {
@@ -368,23 +394,65 @@ def _table(rows, show, columns):
     return lines
 
 
+def _llvm_report(results, show):
+    """The `llvm-*` rows: a summary, then the names nothing accounts for, then what either
+    side declines. Only the first of those fails the run."""
+    reference = results[0]["reference"]
+    lines = [
+        "| source | names offered | agree | known | unaccounted | LLVM declines | this library declines |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in results:
+        cells = (
+            r["source"],
+            r["offered"],
+            r["agree"],
+            r["known"],
+            *(len(r[k]) for k in ("unaccounted", "declined", "refused")),
+        )
+        lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
+    lines += [
+        "",
+        f"`llvm-*`: every name the checked-in corpora hold, read by {reference} and by this library."
+        " *known* differences are in a reference-defects corpus or covered by an `ACCEPTED` rule in"
+        " `tools/enumerate.py`; names either side declines are listed and never fail the run.",
+    ]
+    for r in results:
+        if r["unaccounted"]:
+            lines += ["", f"### {r['source']}: read differently by {reference}, and nothing accounts for it", ""]
+            lines += _table(r["unaccounted"], show, ("mangled", reference, "this"))
+        if r["refused"]:
+            lines += ["", f"### {r['source']}: read by {reference}, declined by this library", ""]
+            lines += _table(r["refused"], show, ("mangled", reference))
+        if r["declined"]:
+            lines += ["", f"### {r['source']}: read by this library, declined by {reference}", ""]
+            lines += _table(r["declined"], show, ("mangled", "this"))
+    return lines
+
+
 def report(results, show, limit=None):
     """The summary and the tables, cut at `limit` characters on a line boundary so an
     issue body can hold it."""
-    lines = [
-        "| source | distinct upstream vectors | unchanged | recorded differently | new, read | new, misread |",
-        "|---|---|---|---|---|---|",
-    ]
-    for r in results:
+    fetched = [r for r in results if "reference" not in r]
+    llvm = [r for r in results if "reference" in r]
+    lines = []
+    if fetched or not llvm:
+        lines += [
+            "| source | distinct upstream vectors | unchanged | recorded differently | new, read | new, misread |",
+            "|---|---|---|---|---|---|",
+        ]
+    for r in fetched:
         cells = (r["source"], r["fetched"], r["unchanged"], len(r["differently"]), r["new_pass"], len(r["new_fail"]))
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
-    for r in results:
+    for r in fetched:
         if r["new_fail"]:
             lines += ["", f"### {r['source']}: new vectors this library misreads", ""]
             lines += _table(r["new_fail"], show, ("mangled", "reference", "this"))
         if r["differently"]:
             lines += ["", f"### {r['source']}: recorded with a different expectation", ""]
             lines += _table(r["differently"], show, ("mangled", "recorded", "upstream now"))
+    if llvm:
+        lines += ["", *_llvm_report(llvm, show)] if lines else _llvm_report(llvm, show)
     text = "\n".join(lines)
     if limit is not None and len(text) > limit:
         text = text[: text.rfind("\n", 0, limit)] + f"\n\n… cut at {limit} characters."
@@ -393,14 +461,38 @@ def report(results, show, limit=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--source", nargs="+", choices=sorted(SOURCES), default=sorted(SOURCES))
+    every = sorted([*SOURCES, *LLVM_SOURCES])
+    parser.add_argument("--source", nargs="+", choices=every, help="default: every source")
+    parser.add_argument(
+        "--llvm-version", type=int, help="the LLVM release the llvm-* sources ask (default: the newest)"
+    )
+    parser.add_argument(
+        "--require-llvm",
+        action="store_true",
+        help=f"exit 2, rather than skip the llvm-* sources, when {llvm_oracle.PACKAGE} is not installed",
+    )
+    parser.add_argument(
+        "--no-llvm",
+        action="store_true",
+        help="leave the llvm-* sources out, so that this run never loads the LLVM binding;"
+        " for a job that holds a token",
+    )
     parser.add_argument("--cache", type=Path, help="directory to keep the fetched files in")
     parser.add_argument("--show", type=int, default=15, help="examples per table")
     parser.add_argument("--limit", type=int, help="cut the report at this many characters")
     args = parser.parse_args(argv)
+    if args.no_llvm:
+        if args.require_llvm or args.llvm_version is not None:
+            parser.error("--no-llvm leaves the llvm-* sources out; --require-llvm and --llvm-version ask for them")
+        if args.source and any(name in LLVM_SOURCES for name in args.source):
+            parser.error("--no-llvm leaves the llvm-* sources out, and --source names one")
+    if args.source is None:
+        args.source = sorted(SOURCES) if args.no_llvm else every
     fetch = Fetcher(args.cache)
     results = []
     for name in args.source:
+        if name in LLVM_SOURCES:
+            continue
         try:
             results.append(score(name, fetch))
         except (urllib.error.URLError, http.client.HTTPException, OSError) as exc:
@@ -411,8 +503,26 @@ def main(argv=None):
             print(f"{name}: could not read the reference's file", file=sys.stderr)
             traceback.print_exc()
             return 2
+    wanted = [LLVM_SOURCES[name] for name in args.source if name in LLVM_SOURCES]
+    if wanted:
+        try:
+            results += llvm_oracle.run(wanted, args.llvm_version)
+        except llvm_oracle.Unavailable as exc:
+            print(f"llvm-*: {'could not be scored' if args.require_llvm else 'skipped'}: {exc}", file=sys.stderr)
+            if args.require_llvm:
+                return 2
+        except ValueError as exc:
+            print(f"llvm-*: {exc}", file=sys.stderr)
+            return 2
+        except Exception:
+            print("llvm-*: could not be scored", file=sys.stderr)
+            traceback.print_exc()
+            return 2
+    if not results:
+        print("nothing was scored", file=sys.stderr)
+        return 0
     print(report(results, args.show, args.limit))
-    return 1 if any(r["new_fail"] for r in results) else 0
+    return 1 if any(r.get("new_fail") or r.get("unaccounted") for r in results) else 0
 
 
 if __name__ == "__main__":

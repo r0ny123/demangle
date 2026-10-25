@@ -195,8 +195,10 @@ while before any checks appear. The easiest first contribution is a
 ## CI and workflows
 
 Workflows run with `permissions: contents: read` and grant more only where a job needs
-it: the weekly `upstream.yml` has `issues: write`, because its one job files the issue
-that says a reference's vectors moved ahead of a scheme. Checkout uses
+it: the weekly `upstream.yml` gives `issues: write` to its `drift` job alone, because that
+job files the issue that says a reference's vectors moved ahead of a scheme; its `llvm`
+job, which runs a third party's native wheel, has `contents: read` and no secret, and its
+wheel is pinned by hash. Checkout uses
 `persist-credentials: false`, because nothing in CI pushes and a token left in
 `.git/config` is readable by every later step. `tag-release.yml` cuts a release after
 push CI succeeds on `main` for the exact commit, through the API with `contents: write`

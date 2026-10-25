@@ -4,8 +4,9 @@ The checked-in corpora are real symbols, so they cover the shapes compilers *emi
 These tools cover the shapes a grammar *permits*, which is where the worst defects
 live -- an encoding no compiler writes, read as something that looks like a
 declaration a person would believe -- and they build the three references that have to
-be built here because no distribution ships one. The last section covers the other way
-a corpus falls behind: the reference's own vectors moving on after the transcription.
+be built here because no distribution ships one. The last two sections cover the other
+way a corpus falls behind: the reference's own vectors moving on after the transcription,
+and the reference's own behaviour doing the same.
 
 ## Enumeration
 
@@ -192,3 +193,76 @@ library misreads is what the exit status says: 1, against 2 for a file that coul
 be fetched or read. `--show` sets how many examples each table prints.
 `.github/workflows/upstream.yml` runs it weekly and opens an issue, or adds to the open
 one, when something new is misread.
+
+## The newest LLVM over the corpora
+
+The vectors above are what a reference *asserts*. This is what the newest LLVM *does*,
+over every name the checked-in corpora hold. The corpora were recorded against LLVM 18,
+which is what a CI runner ships; the PyPI package `llvm-demangle-fxti` bundles LLVM 11
+through 21 behind one import. `tools/upstream_drift.py` offers each name to the reader
+LLVM would pick for it -- `_Z` Itanium, `_R` Rust v0, `_D` D, `?` MSVC -- as four more
+sources, `llvm-itanium`, `llvm-msvc`, `llvm-rust` and `llvm-d`.
+
+```console
+uv pip install "llvm-demangle-fxti==1.0.0"        # optional: nothing else needs it
+python tools/upstream_drift.py --source llvm-itanium llvm-msvc llvm-rust llvm-d
+python tools/upstream_drift.py --source llvm-msvc --llvm-version 18   # an older LLVM
+python tools/upstream_drift.py --no-llvm                              # the fetched sources only
+```
+
+The package is not a dependency of anything: without it the sources are skipped with a
+note on stderr. Only the newest LLVM is reported by default, because the question is what
+a user with a current toolchain sees. An older one is a flag away, and `tests/conformance/`
+already records what 18 said; the `cross-reference` job in `ci.yml` is where LLVM 16 and
+18 are held against each other and GNU `c++filt` for Itanium, and 16, 18 and 20 for MSVC.
+
+The package is a third party's native wheel, so the weekly workflow keeps it out of the job
+that holds the token. A step with no `env:` would not be enough: every step of a job shares
+`GITHUB_ENV`, `GITHUB_OUTPUT` and `GITHUB_PATH`, and code that ran in one could set `PATH`
+or `LD_PRELOAD` for the next, which could be the step that files the issue. So the `llvm`
+job does it alone, with `permissions: contents: read`, no secret and a checkout that leaves
+no credential behind. It installs the package from `tools/llvm-oracle-requirements.txt`
+with `--require-hashes --only-binary :all:`, so only the wheel whose sha256 is named there
+is installed and nothing is built on the runner, and scores the `llvm-*` sources with
+`--require-llvm`, so that a broken install is an error and not a clean week. What it
+uploads is a report and an exit status. The `drift` job, which alone has `issues: write`,
+scores the fetched sources under `--no-llvm`, which never loads the binding, downloads that
+artifact and reads it as data. The report is only ever copied into the issue body. The
+status counts only if it is exactly 0, 1 or 2, and the two exit statuses become the one the
+issue logic reads: 1 opens or updates the issue, 2 fails the run, and 2 outranks 1.
+Anything else -- 139 when the native code segfaults, a status file that is empty or
+garbled, no artifact at all because the job was killed or timed out -- did not score the
+week, so it is reported as an error annotation and fails the run, and is not mistaken for a
+clean one. `drift` runs whatever became of `llvm`, so the fetched vectors still get their
+issue in a week the other half crashed. A wheel that lies can misreport the `llvm-*`
+half; it cannot reach the token. The hash is for the one wheel the runner takes (CPython
+3.13 on x86-64 Linux), and Dependabot does not read `tools/`, so a new release is a change
+made by hand: the version in that file and `PIN` in `tools/llvm_oracle.py`, and the hash
+from `https://pypi.org/pypi/llvm-demangle-fxti/<version>/json`.
+`tests/test_upstream_workflow.py` pins that shape and runs the combining script over every
+pair of statuses, a missing artifact and a hostile one.
+
+Each name falls in one of five places:
+
+- **agree** -- the two spell it alike, or both decline it.
+- **known** -- both read it, the spellings differ, and the repository already says why:
+  the name is in `itanium-reference-defects.txt` or `msvc-reference-defects.txt`, whose
+  expected column is the declaration; or the scheme's `ACCEPTED` rule in
+  `tools/enumerate.py` covers it, with `c++filt`'s vote asked for Itanium as `mutate.py`
+  does; or `tools/llvm_oracle.py` names it, for the three ways LLVM's Rust and D readers
+  spell a symbol where the ports they differ from do not (a suffix set in parentheses,
+  `\u{..}` for a non-ASCII `char`, a D template instance left as written).
+- **unaccounted** -- both read it, the spellings differ, and nothing says why. This is
+  the one that sets exit status 1 and opens the issue.
+- **LLVM declines** and **this library declines** -- one side reads a name the other
+  hands back. Listed, and never a failure, the way `tools/mutate.py --refusals` lists
+  what a reference reads that this library refuses. LLVM's D reader reads qualified
+  names and a few data symbols (`__init`, `__moduleRef`) but no function type, and its
+  Rust reader stops short of some of v0's newer forms (aggregate constants, punycode),
+  so most of what it declines is a reference that has not caught up; the C++26 pack
+  indexing manglings `Dy` and `sy` are another. A name LLVM reads and this library
+  declines is a gap here or LLVM reading junk, and a person settles which with LLVM's
+  source open.
+
+`ARM64EC` names are asked as `tools/mutate.py` asks them: no LLVM through 21 reads the
+`$$h` marker, so a name carrying it is asked again without it.
