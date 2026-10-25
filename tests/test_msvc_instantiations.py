@@ -1,8 +1,8 @@
 """Template instantiations the MSVC reader remembers, and what a replay has to keep.
 
 A template's argument list is its own back-reference scope, so a heavy name spells whole
-instantiations out again and again: every argument list `std::basic_string<char, ...>`
-appears in writes it in full. `_Demangler.templateInstantiation` therefore remembers each
+instantiations out again and again: each argument list that holds
+`std::basic_string<char, ...>` writes it in full. `_Demangler.templateInstantiation` therefore remembers each
 one it reads, by its name and the text it spans, and replays the spelling when the same
 text comes round again. A replay is right only where reading the text again would give
 the same answer, and three things decide that which no name in the corpora puts to the
@@ -27,7 +27,7 @@ ignored.
 import pytest
 
 import demangle
-from demangle.schemes.msvc._parser import _Bail, _Demangler, _LimitHit
+from demangle.schemes.msvc._parser import _REMEMBERED_PER_TEMPLATE, _Bail, _Demangler, _LimitHit
 
 #: (mangled, spelled), each holding one instantiation twice under different
 #: `in_pointee_return`.
@@ -390,3 +390,37 @@ class TestAReadThatFailsLeavesTheCursorAsOneThatCompletes:
         assert cursor.simple is True
         assert cursor.peak == 3
         assert cursor.depth == 0
+
+
+def _number(n):
+    """`n` as a template's integer argument writes it: 1 to 10 a digit, more in hex."""
+    if 1 <= n <= 10:
+        return str(n - 1)
+    digits = ""
+    while n:
+        digits = "ABCDEFGHIJKLMNOP"[n % 16] + digits
+        n //= 16
+    return digits + "@"
+
+
+class TestOneTemplateWithManyArgumentsStaysLinear:
+    """A repeat is tried against every instantiation of its template remembered so far,
+    so with no bound a name instantiating one template with thousands of different
+    arguments cost time quadratic in their number -- about 1.6 s at the 64K input bound,
+    where `main` took 50 ms. Past `_REMEMBERED_PER_TEMPLATE` they are read as before."""
+
+    def test_only_so_many_are_remembered(self):
+        text = "".join(f"A@$0{_number(i)}@" for i in range(1, 41)) + "A@$00@"
+        cursor = _Demangler(text)
+        spelled = [cursor.templateInstantiation() for _ in range(41)]
+        assert spelled == [f"A<{i}>" for i in range(1, 41)] + ["A<1>"]
+        assert cursor.pos == len(text)
+        assert len(cursor.instantiations["A"]) == _REMEMBERED_PER_TEMPLATE
+
+    def test_repeats_past_the_bound_still_read(self):
+        # 20 distinct, then a repeat of one remembered and of two that are not.
+        arguments = [*range(1, 21), 1, 19, 20]
+        mangled = "?f@@YAX" + "".join(f"V?$A@$0{_number(i)}@@" for i in arguments) + "@Z"
+        assert demangle.demangle_strict(mangled) == (
+            "void __cdecl f(" + ", ".join(f"class A<{i}>" for i in arguments) + ")"
+        )

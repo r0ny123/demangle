@@ -192,6 +192,12 @@ _LITERAL_MAX_BYTES = 64
 #: Most bytes a literal decodes to: the documented 32, times four as the reference allows.
 _LITERAL_MAX_DECODED = 32 * 4
 
+#: The most instantiations of one template a name's reading remembers. Each repeat is
+#: tried against every one remembered, so without a bound a name that instantiates one
+#: template with many different arguments costs time quadratic in their number; past it
+#: they are read as before. No name in the corpora has more than eight.
+_REMEMBERED_PER_TEMPLATE = 16
+
 
 #: See `has_control_character`.
 _CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
@@ -503,11 +509,13 @@ class _Demangler:
         it changes how it reads, nothing after its closing "@" decides anything in it, and
         what it does to this cursor is its position, its spelling and `simple` -- so the
         same text read again under the same `in_pointee_return` spells the same. And a name
-        repeats whole instantiations: every argument list `std::basic_string<char, ...>`
-        appears in spells it out again, since a back-reference cannot reach into a scope
-        that has closed. Re-reading them was 43% of the `type` and `qualifiedName` calls
-        over msvc-boost.txt, a count no interpreter changes. One that does more than this is
-        read every time; see `unrepeatable`.
+        repeats whole instantiations: each argument list that holds
+        `std::basic_string<char, ...>` spells it out again, since a back-reference cannot
+        reach into a scope that has closed. Re-reading them was 43% of the `type` and
+        `qualifiedName` calls over msvc-boost.txt, a count no interpreter changes. One that
+        does more than this is read every time; see `unrepeatable`. At most
+        `_REMEMBERED_PER_TEMPLATE` are remembered for one template's name, which keeps a
+        repeat's lookup bounded.
         """
         text, length = self.text, self.length
         start = self.pos
@@ -597,7 +605,7 @@ class _Demangler:
             entry = (text[start : self.pos], self.in_pointee_return, reach, spelled, simple)
             if known is None:
                 self.instantiations[base] = [entry]
-            else:
+            elif len(known) < _REMEMBERED_PER_TEMPLATE:
                 known.append(entry)
         return spelled
 
@@ -1909,9 +1917,10 @@ def parse_msvc_symbol(name, limits=DEFAULT_LIMITS):
 def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     """As `parse_msvc_symbol`, but raises `_LimitHit` when a bound stopped the parse.
 
-    The plugin uses this one, so that `demangle_strict()` can report `LimitExceeded`
-    rather than claiming the name is unreadable -- it may be perfectly well formed and
-    merely larger than this caller allowed.
+    It makes the checks the plugin makes before it calls `read_msvc_symbol` itself, so
+    that `demangle_strict()` can report `LimitExceeded` rather than claiming the name is
+    unreadable -- it may be perfectly well formed and merely larger than this caller
+    allowed.
     """
     if not name or not name.startswith("?"):
         return None
