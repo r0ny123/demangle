@@ -60,7 +60,7 @@ test = [
 # ruff and ty are pinned exactly: they add rules in patch releases. `format` is its own
 # group so the ruff pin has one home (docs also needs ruff to format signatures).
 format = [
-    "ruff==0.17.1",
+    "ruff==0.17.2",
 ]
 # `test` and `browser` are included so ty can resolve imports under `tests/` and `benchmarks/`.
 lint = [
