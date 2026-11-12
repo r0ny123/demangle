@@ -1428,9 +1428,9 @@ class Printer:
             self._peak_depth = self.recursion
         try:
             p = self.parser
-            # `w` marks a splat argument: `fn(#[splat] (u8, u32))`.
+            # `w` marks a splat argument: `fn(#[rustc_splat] (u8, u32))`.
             if self.eat("w"):
-                self.emit("#[splat] ")
+                self.emit("#[rustc_splat] ")
             at = p.next_val
             if at >= p.end:
                 raise UnableTov0Demangle(p.inn)

@@ -43,11 +43,16 @@ the row exists in `manglings.txt` at all. This library refuses it, as `main` doe
 5.10.1's other 74 misses and 6.4.0's other 17 are not defects in them. They are names
 for constructs that did not exist yet -- `sending`, typed `throws`, `@isolated(any)`,
 `~Copyable`, `Builtin.ImplicitActor`, `nonisolated(nonsending)`,
-`yielding_borrow`/`yielding_mutate`, `@called(exactlyOnce)` and `@called(atMostOnce)`,
+`yielding_borrow`/`yielding_mutate`, `@once` and `@callable(once)`,
 `@convention(com_method)`, the `async_Main` entry point -- which upstream added to
 `manglings.txt` afterwards. Counting the rows in that file at each tag says the same
 thing: 446 at 5.10.1, 470 at 6.0.3, 481 at 6.1.3, 495 at 6.2.4, 500 at 6.3.3, 512 at
 6.4.0, and 531 on `main`. The corpus needs all 531, so no tag reaches it.
+
+Upstream renamed two spellings after that commit, and the library follows: `XO` is now
+`@once` (it was `@called(exactlyOnce)`) and `XOo` is `@callable(once)` (it was
+`@called(atMostOnce)`). The eleven rows of `swift-upstream.txt` that carry them were
+edited to match `manglings.txt` as it stands, not re-measured with a rebuilt reference.
 
 The corpora were recorded with a `main` build, not with `swift-demangle` 5.10.1, which
 spells `$s4main3fooyySiFyyXEfU_TA.1` as

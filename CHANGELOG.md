@@ -10,6 +10,18 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
+- **Follows upstream's renames (weekly drift report #70).** Rust v0 spells a splat
+  argument `#[rustc_splat]` (it was `#[splat]`). Swift spells the called-once function
+  conventions `@once` (`XO`) and `@callable(once)` (`XOo`), where they were
+  `@called(exactlyOnce)` and `@called(atMostOnce)`. Swift's `Twa` after a type metadata
+  accessor reads as `back deployment copy of type metadata accessor for ...`, where it
+  was refused.
+- **MSVC: a conversion operator used as an alias template's argument is declined
+  cleanly.** `?f@@YAXV?$A@$$Y?$?BH@@@@V?$A@$$Y?$?BH@@@@@Z` failed on an internal
+  `ValueError`, because the placeholder for a conversion operator's name and the mark
+  for a function type's calling convention shared a delimiter. They are now distinct,
+  and the name is refused as `llvm-undname` refuses it.
+
 - Playground navigation, presets, and cards share centered page gutters and a bounded
   content width. Inner padding, control sizing, and responsive option rows stay aligned
   on desktop, narrow screens, and with enlarged text; overflow is contained locally.
