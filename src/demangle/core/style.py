@@ -54,7 +54,7 @@ class Style:
         return self.language_options.get(language)
 
     def with_options(self, **languages: Any) -> "Style":
-        """This style with some language's options changed, as a new style.
+        """Return a new style: this one with some language's options changed.
 
         Each keyword is a language name and each value is either that language's whole
         options object or a mapping of the fields to change in the one already in force:

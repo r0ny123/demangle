@@ -1,4 +1,4 @@
-"""The `demangle` command.
+r"""The `demangle` command.
 
 Reads names from arguments or standard input and writes their expansions, so it drops
 into a pipeline the way `c++filt` does:
@@ -17,7 +17,7 @@ input is a candidate and everything around it is copied through untouched. That 
 the first example above works. `nm` writes an address and a type letter before the name,
 so treating the whole line as one symbol would demangle nothing at all:
 
-    $ printf '0000000000001139 T _ZN3foo3barEv\\n' | demangle
+    $ printf '0000000000001139 T _ZN3foo3barEv\n' | demangle
     0000000000001139 T _ZN3foo3barEv        # every line, unchanged
 
 Encoding
@@ -96,8 +96,9 @@ issues: https://github.com/r0ny123/demangle/issues"""
 
 
 class _Formatter(argparse.HelpFormatter):
-    """Wraps a paragraph of prose to the terminal, and leaves one written as several
-    lines -- the examples, the exit statuses -- as it is written.
+    """Wraps a paragraph of prose to the terminal, and leaves the rest as it is written.
+
+    The rest is what is written as several lines: the examples, the exit statuses.
 
     Never at a hyphen: `--no-leading-underscores` is one flag, and split across two lines
     it is two words that are neither.
@@ -153,6 +154,7 @@ class _ShortHelp(argparse.Action):
 
 
 def build_parser():
+    """The command's argument parser."""
     parser = _Parser(
         prog="demangle",
         usage="%(prog)s [options] [NAME ...]",
@@ -409,6 +411,7 @@ def _parse(parser, argv):
 
 
 def main(argv=None):
+    """Run the command and return its exit status."""
     try:
         return _main(argv)
     except KeyboardInterrupt:
@@ -812,8 +815,10 @@ _REMEMBERED_BYTES = 16 << 20
 
 
 def _answerer(arguments, limits):
-    """What this run says about a name: its expansion, or under `--json-lines` the scheme
-    that read it and its record, as JSON."""
+    """What this run says about a name: its expansion, or under `--json-lines` its record.
+
+    The record is the scheme that read the name and its fields, as JSON.
+    """
     if not arguments.json_lines:
         if not (
             arguments.strip_underscore
@@ -879,16 +884,16 @@ def _batches(stream, separator):
 
 
 def _chunks(stream, lines):
-    """The text of `stream`, as it arrives.
+    r"""The text of `stream`, as it arrives.
 
     Read from the bytes beneath the text stream with `read1`, which returns what is
     there rather than waiting to fill a buffer: a line typed at a terminal, or written
     by a slow producer, is answered before the next one comes. Undecodable bytes are
     carried as lone surrogates and written back as the same bytes.
 
-    On Windows a line's `\\r\\n` is read as `\\n`, as the text stream would have read it,
-    because standard output writes every `\\n` as `\\r\\n`: kept, it would come out
-    `\\r\\r\\n`.
+    On Windows a line's `\r\n` is read as `\n`, as the text stream would have read it,
+    because standard output writes every `\n` as `\r\n`: kept, it would come out
+    `\r\r\n`.
     """
     binary = getattr(stream, "buffer", None)
     if not hasattr(binary, "read1"):
@@ -921,8 +926,10 @@ def _complaint(name, exc):
 
 
 def _run_names(batches, arguments, answer):
-    """One whole name per item: an argument, a line of standard input under `--types`,
-    or a record of it under `--null`.
+    """One whole name per item.
+
+    An item is an argument, a line of standard input under `--types`, or a record of it
+    under `--null`.
 
     No word-splitting here. A caller who typed a name meant that name, and an
     Objective-C method or a Go symbol has spaces and slashes in it. Under `--types` it

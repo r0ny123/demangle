@@ -105,7 +105,7 @@ SPECIAL_FUNCTIONS = {
 
 
 class DemangleFailure(Exception):
-    """This name is not a CodeWarrior symbol."""
+    """The name is not a CodeWarrior symbol."""
 
 
 class _Options:

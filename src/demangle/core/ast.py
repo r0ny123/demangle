@@ -109,7 +109,7 @@ class Node:
         return ()
 
     def to_dict(self) -> dict[str, Any]:
-        """This subtree as plain data -- dicts, lists and strings -- for `json.dumps`.
+        """The subtree as plain data -- dicts, lists and strings -- for `json.dumps`.
 
         Every node becomes a dict with a `kind` and the fields that node kind has, so the
         *role* of each child survives: a `function` has `returns`, `parameters` and

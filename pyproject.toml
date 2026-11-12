@@ -167,10 +167,21 @@ target-version = "py311"
 src = ["src", "tests", "integrations"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+# D404 is named because the Google convention leaves it off.
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "D", "D404"]
+# A method that overrides a documented one, `build` or `children` on a node, would only
+# repeat it.
+ignore = ["D102", "D105", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
+# Docstrings are linted where they are the package's documentation.
+"!src/**" = ["D"]
+# Its summaries quote the ABI's grammar, a production to a method.
+"src/demangle/schemes/itanium/parser.py" = ["D205", "D415"]
 
 [tool.ty.environment]
 python-version = "3.11"

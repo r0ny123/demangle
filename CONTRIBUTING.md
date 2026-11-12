@@ -74,6 +74,10 @@ Linting and formatting are **ruff**, type checking is **ty**. Both run over the 
 tree in a few seconds, and both are pinned exactly, because they add rules in patch
 releases; Dependabot proposes the bumps.
 
+Docstrings under `src/` follow the Google convention, which ruff's `D` rules check: a
+one-line summary ending in a full stop, a blank line, then the rest, with `Args:`,
+`Returns:` and `Raises:` sections where they say something the summary does not.
+
 The reference demanglers are optional but useful. On Debian or Ubuntu:
 
 ```console

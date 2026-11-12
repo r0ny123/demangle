@@ -56,7 +56,7 @@ class Spelling:
         self.members = members
 
     def spell(self, declarator=""):
-        """This type with `declarator` -- a name -- written where a declarator goes.
+        """The type with `declarator` -- a name -- written where a declarator goes.
 
         Both references space the name off the type unless the type has a *right* part
         to put after it, which is what `NonTypeTemplateParamDecl::printLeft` asks

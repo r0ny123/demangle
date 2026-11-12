@@ -145,8 +145,10 @@ class Generics(_Rust):
 
 
 class Type(_Rust):
-    """A type. `form` says which shape: `reference`, `pointer`, `array`, `slice`,
-    `tuple`, `dyn`, `fn`, `basic`, `path`.
+    """A type.
+
+    `form` says which shape: `reference`, `pointer`, `array`, `slice`, `tuple`, `dyn`,
+    `fn`, `basic`, `path`.
 
     One class rather than nine because nothing walks these structurally -- a caller
     asking "is this a reference" wants a field to test, and `kind` stays `type` so the

@@ -146,9 +146,9 @@ def _printable(code):
 
 
 def _escaped(code, digits):
-    """One character of a string literal, as the reference spells it.
+    r"""One character of a string literal, as the reference spells it.
 
-    An unprintable byte is written `\\x` and *the two digits the name carried*:
+    An unprintable byte is written `\x` and *the two digits the name carried*:
     `dlang_parse_string` copies them out of the input rather than formatting the value,
     so `B2` stays upper-case and `b2` stays lower. Formatting the value instead would
     lower-case every one of them, which no compiler makes visible -- dmd writes its hex
@@ -161,13 +161,13 @@ def _escaped(code, digits):
 
 
 def _character(kind, code):
-    """A character *literal*, which the reference spells differently from a string.
+    r"""A character *literal*, which the reference spells differently from a string.
 
-    None of the named escapes appear here -- a newline in a `char` literal is `'\\x0a'`,
-    not `'\\n'` -- and only a `char` is ever written as itself: a printable `wchar` is
-    still `'\\u0041'`.
+    None of the named escapes appear here -- a newline in a `char` literal is `'\x0a'`,
+    not `'\n'` -- and only a `char` is ever written as itself: a printable `wchar` is
+    still `'\u0041'`.
 
-    The width is a minimum and not a cap: the reference writes `'\\x100'` for a `char`
+    The width is a minimum and not a cap: the reference writes `'\x100'` for a `char`
     mangled as 256, and refuses a value that will not fit in 32 bits. Integer literals
     carry no such limit -- `Vmi18446744073709551616` is answered -- so this is the
     character path's own.
@@ -193,7 +193,7 @@ class _Exhausted(Exception):
 
 
 class DemangleFailure(Exception):
-    """This name is not one this parser can read."""
+    """The name is not one this parser can read."""
 
 
 class _Reader:
@@ -1054,13 +1054,13 @@ class _Parser:
 
     @staticmethod
     def _integer_literal(kind, value, digits, negative=False, suffix=True):
-        """A numeric literal, spelled as the type it belongs to is spelled.
+        r"""A numeric literal, spelled as the type it belongs to is spelled.
 
         A `bool` reads `false`/`true` and a `char` reads as a quoted character; both are
         mangled as integers, so the type has to be consulted rather than the value. Every
         other kind is written with the digits the name carried -- see `_Reader.digits`.
 
-        The `N` sign is written for every kind; the reference writes `-'\x11'`, `-true`.
+        The `N` sign is written for every kind; the reference writes `-''`, `-true`.
         """
         sign = "-" if negative else ""
         if kind == "bool":

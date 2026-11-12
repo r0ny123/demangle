@@ -394,8 +394,11 @@ class OldDemangler:
         return protocol
 
     def demangle_protocol_name_impl(self, depth):
-        """`S` is ambiguous here: it may substitute the protocol or its context, so the
-        two readings have to be told apart by what comes back."""
+        """Read a protocol, or the context `S` substitutes for one.
+
+        `S` is ambiguous here: it may substitute the protocol or its context, so the two
+        readings have to be told apart by what comes back.
+        """
         if depth > MAX_DEPTH:
             return None
         reader = self.reader
@@ -693,8 +696,11 @@ class OldDemangler:
         return self.demangle_generic_param_index(depth + 1)
 
     def demangle_constrained_type(self, depth):
-        """A constrained type is always a parameter or one of its associated types, so
-        the `q` that would introduce a generic parameter elsewhere is left off."""
+        """Read the type a generic requirement constrains.
+
+        It is always a parameter or one of its associated types, so the `q` that would
+        introduce a generic parameter elsewhere is left off.
+        """
         reader = self.reader
         if reader.next_if("w"):
             found = self.demangle_associated_type_simple(depth + 1)

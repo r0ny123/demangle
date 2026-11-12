@@ -194,7 +194,8 @@ def _c_hex_float(kind, value):
 
 def _c_hex_binary(bits, exponent_bits, fraction_bits):
     """`%a` for an IEEE binary format with a hidden integer bit: a sign bit, then
-    `exponent_bits` of biased exponent, then `fraction_bits` of fraction."""
+    `exponent_bits` of biased exponent, then `fraction_bits` of fraction.
+    """
     sign = "-" if bits >> (exponent_bits + fraction_bits) else ""
     exponent = (bits >> fraction_bits) & ((1 << exponent_bits) - 1)
     mantissa = bits & ((1 << fraction_bits) - 1)
@@ -3963,10 +3964,10 @@ class ItaniumParser:
         return self.unresolved_type()
 
     def expression_name(self):
-        """A name appearing in an expression -- the callee of a call, most often.
+        r"""A name appearing in an expression -- the callee of a call, most often.
 
         Records nothing for the name itself. Section 5.1.10 excludes "function and
-        operator names other than extern \"C\" functions" from the candidate set, and
+        operator names other than extern "C" functions" from the candidate set, and
         adds that "we do not substitute for expressions, though names appearing in them
         might be substituted": a name in an expression may *refer* to an existing entry,
         but it does not create one.

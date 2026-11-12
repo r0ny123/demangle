@@ -115,8 +115,7 @@ _POINTER_POINTEE = frozenset("ABCD68QRST")
 
 
 def _opens_a_type(name):
-    """Whether what follows the dot in `name` opens as a type encoding can, and ends as
-    a one-character type must.
+    """Whether what follows the dot in `name` opens as a type can and ends as a one-character type must.
 
     What `_parser.parse_msvc_type` reads first, with nothing it could go on to accept
     left out: a qualifier group (`?A`, as in `.?AVFoo@@`), a builtin standing alone

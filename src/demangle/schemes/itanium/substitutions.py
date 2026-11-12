@@ -19,19 +19,23 @@ from ...core.errors import LimitExceeded, ParseError
 
 
 class SubstitutionOverrun(ParseError):
-    """A `S<n>_` past the end of the table: the name was numbered by a rule this reading
-    did not apply, or it is not a name. `parse` retries the one rule that is known to
-    differ between compilers before giving up; see
-    `ItaniumOptions.undeduced_auto_substitution`."""
+    """A `S<n>_` past the end of the table.
+
+    The name was numbered by a rule this reading did not apply, or it is not a name.
+    `parse` retries the one rule that is known to differ between compilers before giving
+    up; see `ItaniumOptions.undeduced_auto_substitution`.
+    """
 
 
 class SubstitutionMisuse(ParseError):
-    """A `S<n>_` naming an entry that cannot stand where it was read: a closure prefix,
-    or a template name with no arguments after it, used as a type. Neither is a type --
-    the one is a variable's name and the other a template's -- so the name was numbered
-    by a rule this reading did not apply, or it is not a name. `parse` retries the one
-    rule known to move a closure prefix's neighbours before giving up; see
-    `ItaniumOptions.closure_prefix_substitution`."""
+    """A `S<n>_` naming an entry that cannot stand where it was read.
+
+    A closure prefix, or a template name with no arguments after it, used as a type.
+    Neither is a type -- the one is a variable's name and the other a template's -- so
+    the name was numbered by a rule this reading did not apply, or it is not a name.
+    `parse` retries the one rule known to move a closure prefix's neighbours before
+    giving up; see `ItaniumOptions.closure_prefix_substitution`.
+    """
 
 
 #: 5.1.10: every non-terminal with <substitution> on its right-hand side, the set the

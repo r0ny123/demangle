@@ -70,9 +70,12 @@ def detect(name):
 
 
 def _is_absolute(name):
-    """An import path is never absolute -- Go refuses `/x`, and `C:` is no host -- so a
-    leading `/` or `\\`, or a drive letter, is a file, which a symbol table carries for
-    a debugging stab or an object's own name (`/Users/me/build/foo.o`)."""
+    r"""Whether `name` is a file's path rather than an import path.
+
+    An import path is never absolute -- Go refuses `/x`, and `C:` is no host -- so a
+    leading `/` or `\`, or a drive letter, is a file, which a symbol table carries for
+    a debugging stab or an object's own name (`/Users/me/build/foo.o`).
+    """
     return name[0] in "/\\" or (name[1:2] == ":" and name[2:3] in ("/", "\\"))
 
 

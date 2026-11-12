@@ -119,7 +119,7 @@ FIRST_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
 
 
 class DemangleFailure(Exception):
-    """This name is not one this parser reads."""
+    """The name is not one this parser reads."""
 
 
 class PascalSymbol:
