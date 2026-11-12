@@ -17,6 +17,9 @@ class Limits:
 
     Frozen so a limit set can be shared between threads and cached without defensive
     copying.
+
+    Raises:
+        ValueError: a bound is not a non-negative `int`.
     """
 
     max_depth: int = 256
@@ -40,6 +43,14 @@ class Limits:
 
     max_input: int = 1 << 16
     """Characters of mangled input considered at all."""
+
+    def __post_init__(self):
+        # A bound that is not a count fails inside every parse, which `demangle()`
+        # reports as every name coming back unread.
+        for name in self.__slots__:
+            value = getattr(self, name)
+            if not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative int, got {value!r}")
 
 
 DEFAULT_LIMITS = Limits()
