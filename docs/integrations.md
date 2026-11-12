@@ -15,12 +15,13 @@ MSVC and Rust v0 on ELF, so on those the scripts mostly confirm what the tool sh
 !!! warning "Run in one version of each tool"
     Each script has been run in its host: the IDA script in IDA 9.4, headless through
     idalib and from IDA's window (File > Script file, the wait box's Cancel button, Edit >
-    Undo and Redo), and in IDA 9.5 through idalib and `idat -S`; the Binary Ninja script
-    in Binary Ninja 6.0, headless, through the command it registers; and the Ghidra
-    script in Ghidra 12.1.4 and 12.2, headless through PyGhidra. The results are under
+    Undo and Redo), and in IDA 9.5 through idalib, `idat -S` and the same window steps;
+    the Binary Ninja script in Binary Ninja 6.0, headless through the command it
+    registers and from the Plugins menu in its window (Cancel, Edit > Undo and Redo); and
+    the Ghidra script in Ghidra 12.1.4 and 12.2, headless through PyGhidra. The results are under
     [Run in IDA](#run-in-ida), [Run in Binary Ninja](#run-in-binary-ninja) and
-    [Run in Ghidra](#run-in-ghidra). What has not been tried is what needs the window:
-    Binary Ninja's Plugins menu, and Ghidra's Script Manager and Undo. Other versions
+    [Run in Ghidra](#run-in-ghidra). What has not been tried is what needs Ghidra's
+    window: its Script Manager and Undo. Other versions
     have not been tried either, so [the calls each script makes](#the-calls-each-script-makes)
     are listed to check against the version you have. The repository's own tests run each
     script against stand-ins for its host, written from the same documentation.
@@ -109,7 +110,7 @@ started writing is seen at the next check, every 500 labels, and stops it there:
 wrote before then stays written, unless the tool's Undo takes it back, as below.
 
 - IDA: File > Script file makes an undo point for the run, and one Edit > Undo took back
-  all of it, a run that was cancelled included ([tried](#run-in-ida) in 9.4). Run any
+  all of it, a run that was cancelled included ([tried](#run-in-ida) in 9.4 and 9.5). Run any
   other way -- `-S` on the command line, idalib -- the script makes no undo point of its
   own, so count on the labels written before the cancel staying.
 - Binary Ninja: the run is one undo step, cancelled or not, and Undo takes back all of it
@@ -169,6 +170,17 @@ Ninja's QtGui framework (36,994 names, 17,497 of them readable, about 20,000 C++
   wait box's counter runs behind the labels written.
 - A command typed in IDA's console between the run and the Undo is an undo step of its
   own: Undo then takes that back first, and a new step ends the Redo of the run.
+
+The window steps were repeated in IDA 9.5 (Professional, macOS) with File > Script file,
+on ELF x86-64 programs built for the run:
+
+- On a program of 35 names, comment mode set 16 comments and printed the summary line.
+  One Edit > Undo removed all 16, Redo put them back, and a second run changed nothing
+  (0 changed, 16 kept).
+- Name mode renamed the same 16, and one Undo gave each its mangled name back.
+- On a program of 91,717 names with `ONLY_LEFT_MANGLED = False`, Cancel clicked in the
+  wait box at "Labelling symbols: 20000 of 81351" printed `demangle: cancelled`, 20,000
+  comments were written, and one Undo removed all 20,000.
 
 In IDA 9.5 (Ultimate, Linux x86-64), through idalib and through `idat -A -S` (text mode,
 with IDA's own wait box calls), on ELF x86-64 programs built for the run:
@@ -252,6 +264,16 @@ is what the Plugins menu calls), on the same ELF x86-64 programs as IDA 9.5:
   relabelled 41,485 symbols in about 6.5 s; a cancel at 10,000 written stopped it 32
   later, and one Undo restored the symbols exactly. A cancel while reading changed
   nothing.
+
+It was then run from the window of Binary Ninja 6.0.10905 (Ultimate, macOS) with Plugins >
+Demangle > Label mangled symbols, on the ELF x86-64 programs used in IDA 9.5's window:
+
+- On the small program, the run labelled 14 of 36 symbols. Edit > Undo restored the
+  symbols exactly, Redo put the run back, and a second run changed nothing.
+- On the large one with `ONLY_LEFT_MANGLED = False`, a run to the end relabelled 83,047
+  symbols and one Undo restored them exactly. With Cancel clicked in the status bar
+  while it was writing, the run stopped at 22,234 written, and one Undo restored the
+  symbols exactly.
 
 ## Ghidra
 
