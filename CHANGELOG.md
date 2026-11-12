@@ -8,6 +8,18 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Changed
+
+- **The README is a page, not the manual.** What the library does, how to install it, a
+  quick start and where to read on; the tour of every entry point and the command line
+  moved, nearly word for word, to a new [Using the library](https://r0ny123.github.io/demangle/usage/)
+  page. The two playground descriptions, `docs/playground.md` and `playground/README.md`,
+  said the same thing twice; the page keeps what the playground does and the folder's
+  README what its files are and how to run it.
+- **Every `>>>` example on every page is run.** `tests/test_docs.py` runs them with
+  `doctest`, page by page, where before only a hand-kept list of the README's outputs was
+  checked and the other pages' examples were only compiled.
+
 ### Removed
 
 - **The October audit and performance-pass reports**, `AUDIT.md` and

@@ -1,6 +1,6 @@
 ## What this changes
 
-<!-- One or two sentences. If it closes an issue, say "Fixes #N". -->
+<!-- One or two sentences. If it closes an issue, say "Closes #N". -->
 
 ## Checklist
 

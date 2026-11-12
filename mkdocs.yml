@@ -10,6 +10,7 @@ hooks:
 
 nav:
   - Home: index.md
+  - Using the library: usage.md
   - Playground: playground.md
   - Working with the tree: analysing-a-binary.md
   - Labelling a symbol table: labelling-a-symbol-table.md
