@@ -27,6 +27,12 @@ the reference demanglers, and a **Performance** section.
   `ValueError`, because the placeholder for a conversion operator's name and the mark
   for a function type's calling convention shared a delimiter. They are now distinct,
   and the name is refused as `llvm-undname` refuses it.
+- **Swift reads a propagated `@differentiable` function argument.** A function
+  signature specialization parameter `a` (`...Tf1na_n`) carries the original function
+  and its JVP and VJP, each as a name and a type, and prints as `[Differentiable
+  Function Propagated, Components : [...]]`; it was refused. That was the last vector of
+  the drift report this library did not read. `swift-upstream.txt` now holds it and the
+  three `Twa` rows: 535 / 535 against the reference build at `4f010677`.
 
 - Playground navigation, presets, and cards share centered page gutters and a bounded
   content width. Inner padding, control sizing, and responsive option rows stay aligned

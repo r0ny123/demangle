@@ -142,6 +142,7 @@ _PARAM_CONSTANT_PROP_KEY_PATH = 9
 _PARAM_CONSTANT_PROP_STRUCT = 10
 _PARAM_CLOSURE_PROP_PREVIOUS_ARG = 11
 _PARAM_ESCAPING_CLOSURE_PROP = 12
+_PARAM_DIFFERENTIABLE_FUNCTION_PROP = 13
 
 
 class _Invalid(Exception):
@@ -746,6 +747,23 @@ class Printer:
                     if at < end and node.child(at).text is not None:
                         self.write(", ")
                 self.write("]")
+            elif kind == _PARAM_DIFFERENTIABLE_FUNCTION_PROP:
+                # The kind, then original, JVP and VJP, each a name and its type.
+                if at + 7 > end:
+                    return
+                self.write("[")
+                self.print(node.child(at), depth + 1)
+                at += 1
+                self.write(", Components : [")
+                for component in range(3):
+                    if component:
+                        self.write(", ")
+                    self.print(node.child(at), depth + 1)
+                    at += 1
+                    self.write(" : ")
+                    self.print(node.child(at), depth + 1)
+                    at += 1
+                self.write("]]")
             elif kind == _PARAM_CLOSURE_PROP_PREVIOUS_ARG:
                 if at + 2 > end:
                     return
@@ -1693,6 +1711,7 @@ _PARAM_KIND_NAMES = {
     _PARAM_CONSTANT_PROP_STRUCT: "Constant Propagated Struct",
     _PARAM_CLOSURE_PROP_PREVIOUS_ARG: "Same As Argument",
     _PARAM_ESCAPING_CLOSURE_PROP: "Escaping Closure Propagated",
+    _PARAM_DIFFERENTIABLE_FUNCTION_PROP: "Differentiable Function Propagated",
 }
 
 
