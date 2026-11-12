@@ -456,21 +456,31 @@ class TestGrammarFacts:
     def test_a_generic_signature_names_its_parameters_by_position(self):
         assert spell("$s4main1fyyxlF") == "main.f<A>(A) -> ()"
 
+    def test_a_back_deployed_copy_of_a_type_metadata_accessor(self):
+        """`Twa` after a metadata accessor (`Ma`) marks the copy a back-deployed module
+        carries of it; upstream added the three vectors below to `manglings.txt` after the
+        pinned reference commit."""
+        assert spell("$s5MyKit5PointVMaTwa") == "back deployment copy of type metadata accessor for MyKit.Point"
+        assert spell("$s5MyKit3BoxVMaTwa") == "back deployment copy of type metadata accessor for MyKit.Box"
+        assert spell("$s5MyKit5OuterV5InnerVMaTwa") == (
+            "back deployment copy of type metadata accessor for MyKit.Outer.Inner"
+        )
+
     def test_called_once_comes_in_two_strengths(self):
-        """`XO` is `@called(exactlyOnce)` and `XOo` `@called(atMostOnce)`, and a lowered
+        """`XO` is `@once` and `XOo` `@callable(once)`, and a lowered
         function type carries them as `O` and `Oo`. Either one is a function type that
         `printEntity` writes without a colon, as it writes a plain one."""
-        assert spell("$syyXOD") == "@called(exactlyOnce) () -> ()"
-        assert spell("$syyXOoD") == "@called(atMostOnce) () -> ()"
-        assert spell("$sSiIeOogd_D") == "@escaping @called(atMostOnce) @callee_guaranteed () -> (@unowned Swift.Int)"
+        assert spell("$syyXOD") == "@once () -> ()"
+        assert spell("$syyXOoD") == "@callable(once) () -> ()"
+        assert spell("$sSiIeOogd_D") == "@escaping @callable(once) @callee_guaranteed () -> (@unowned Swift.Int)"
         assert spell("$s4main14makeAtMostOnceyyXOoyFyyXOofU_") == (
-            "closure #1 @called(atMostOnce) () -> () in main.makeAtMostOnce() -> @called(atMostOnce) () -> ()"
+            "closure #1 @callable(once) () -> () in main.makeAtMostOnce() -> @callable(once) () -> ()"
         )
         # Its parameter labels are read, and no space separates it from a generic
         # signature; both as for a plain function type.
-        assert spell("$s1a1bySi_SitXOoD") == "@called(atMostOnce) (a: Swift.Int, b: Swift.Int) -> ()"
-        assert spell("$s4main1x1a1bySi_SitXOovp") == "main.x : @called(atMostOnce) (a: Swift.Int, b: Swift.Int) -> ()"
-        assert spell("$syxXOoluD") == "<A>@called(atMostOnce) (A) -> ()"
+        assert spell("$s1a1bySi_SitXOoD") == "@callable(once) (a: Swift.Int, b: Swift.Int) -> ()"
+        assert spell("$s4main1x1a1bySi_SitXOovp") == "main.x : @callable(once) (a: Swift.Int, b: Swift.Int) -> ()"
+        assert spell("$syxXOoluD") == "<A>@callable(once) (A) -> ()"
 
     def test_a_com_method_is_a_function_convention(self):
         """`V`, beside `M` for `method`; like the others it follows the callee convention."""

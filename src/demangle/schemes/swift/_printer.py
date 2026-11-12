@@ -441,9 +441,9 @@ class Printer:
         elif kind == "ThinFunctionType":
             self.write("@convention(thin) ")
         elif kind == "CalledOnceFunctionType":
-            self.write("@called(exactlyOnce) ")
+            self.write("@once ")
         elif kind == "CalledAtMostOnceFunctionType":
-            self.write("@called(atMostOnce) ")
+            self.write("@callable(once) ")
         elif kind == "CFunctionPointer":
             convention_with_clang_type("c")
         elif kind in ("EscapingObjCBlock", "ObjCBlock"):
@@ -1124,8 +1124,8 @@ _JUST_TEXT = {
     "ImplEscaping": "@escaping",
     "ImplErasedIsolation": "@isolated(any)",
     "ImplNonisolatedNonsendingIsolation": "@caller_isolated",
-    "ImplCalledOnceFunction": "@called(exactlyOnce)",
-    "ImplCalledAtMostOnceFunction": "@called(atMostOnce)",
+    "ImplCalledOnceFunction": "@once",
+    "ImplCalledAtMostOnceFunction": "@callable(once)",
     "ConcurrentFunctionType": "@Sendable ",
     "IsolatedAnyFunctionType": "@isolated(any) ",
     "NonIsolatedCallerFunctionType": "nonisolated(nonsending) ",
@@ -1151,6 +1151,7 @@ _JUST_TEXT = {
     "DynamicallyReplaceableFunctionVar": "dynamically replaceable variable for ",
     "BackDeploymentThunk": "back deployment thunk for ",
     "BackDeploymentFallback": "back deployment fallback for ",
+    "BackDeploymentTypeMetadataAccessor": "back deployment copy of ",
     # Printed nowhere: the association is carried, not spelled.
     "AssociatedType": "",
     "LabelList": "",

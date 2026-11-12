@@ -156,6 +156,11 @@ _DOUBLE_UNDERSCORE_OPERATORS = {"L": "operator co_await", "M": "operator<=>"}
 #: Brackets a bare function type's calling convention inside a rendered template name
 #: until the name is used; see `_Demangler._conventionsResolved`.
 _CONVENTION_MARK = "\x00"
+#: Stands for a conversion operator's name until its return type is known. A different
+#: character from `_CONVENTION_MARK`, which splits a rendered name on its own: sharing one
+#: made `_conventionsResolved` read "conversion" as a depth. Input holding any control
+#: character is refused before parsing, so neither can occur in a name.
+_CONVERSION_MARK = "\x01conversion\x01"
 
 _LITERAL_ESCAPES = {
     "0": ",",
@@ -653,6 +658,10 @@ class _Demangler:
                         raise _Bail
                 base = self.in_pointee_return
                 rendered = self.templateInstantiation(operator=operator)
+                if _CONVERSION_MARK in rendered:
+                    # A conversion operator's name used as a template argument has no
+                    # return type to spell it with; `llvm-undname` refuses it too.
+                    raise _Bail
                 # Few names carry a mark, and one without has nothing to resolve.
                 marked = _CONVENTION_MARK in rendered
                 recorded = self._conventionsResolved(rendered, base=base) if marked else rendered
@@ -1044,7 +1053,7 @@ class _Demangler:
                 return "::".join(scopes), False, special_form
             if isinstance(first, _Conversion):
                 self.conversion_arguments = first.arguments
-                return "::".join([*scopes, "\0conversion\0"]), False, special_form
+                return "::".join([*scopes, _CONVERSION_MARK]), False, special_form
             if not scopes:
                 raise _Bail
             # a structor, named for its class
@@ -1809,13 +1818,13 @@ class _Demangler:
         if not self.nested and not self.eof():
             raise _Bail
         written = ", ".join(str(value) for value in displacements)
-        if "\0conversion\0" in name:
+        if _CONVERSION_MARK in name:
             # A conversion operator's name is its return type:
             # `??BEDerived@@$4PPPPPPPM@A@EAAPEAXI@Z` is
             # `EDerived::operator void *`vtordisp{-4, 0}'`.
             if returns is None:
                 raise _Bail
-            name = name.replace("\0conversion\0", f"operator{self.conversion_arguments} {self.rendered(returns)}")
+            name = name.replace(_CONVERSION_MARK, f"operator{self.conversion_arguments} {self.rendered(returns)}")
         spelled = f"{name}`{kind}{{{written}}}'"
         signature = FunctionType(convention, params, returns)
         if returns is not None:
@@ -1875,10 +1884,10 @@ class _Demangler:
                 storage = "static "
             if is_virtual:
                 storage = "virtual "
-        if "\0conversion\0" in name:
+        if _CONVERSION_MARK in name:
             if returns is None:
                 raise _Bail
-            name = name.replace("\0conversion\0", f"operator{self.conversion_arguments} {self.rendered(returns)}")
+            name = name.replace(_CONVERSION_MARK, f"operator{self.conversion_arguments} {self.rendered(returns)}")
         signature = FunctionType(convention, params, returns)
         # A free or static function carries no member qualifiers, but a `noexcept` is
         # not one of those: `?f@@YAXX_E` is `void __cdecl f(void) noexcept` to the
