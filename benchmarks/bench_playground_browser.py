@@ -214,6 +214,14 @@ def _measure_run(
     if worker_marker not in worker_source:
         raise RuntimeError(f"Worker version marker not found: {worker_marker}")
     worker_source = worker_source.replace(worker_marker, f'const PYODIDE_VERSION = "{pyodide_version}";')
+    if pyodide_version != VERSION:
+        # The site serves only the pinned runtime; any other comes from the CDN, for this run.
+        local_runtime = 'new URL("assets/pyodide/", self.location.href).href'
+        if local_runtime not in worker_source:
+            raise RuntimeError("Worker runtime URL not found")
+        worker_source = worker_source.replace(
+            local_runtime, f'"https://cdn.jsdelivr.net/pyodide/v{pyodide_version}/full/"'
+        )
     runtime_marker = '        pyodide.FS.writeFile("/demangle.zip", new Uint8Array(archive));'
     if runtime_marker not in worker_source:
         raise RuntimeError("Worker runtime marker not found for benchmark-only memory instrumentation")

@@ -44,7 +44,7 @@ linter is not a feature of a demangler. The groups are `test`, `format`, `lint`,
 
 The browser suite is opt-in: it needs the browser dependency group, a built docs site,
 and Chromium. It uses a deterministic fake worker for UI regressions; the real Pyodide
-CDN smoke test is separately opt-in.
+smoke test is separately opt-in.
 
 ```console
 uv pip install -e . --group browser --group docs --group test
@@ -52,7 +52,7 @@ python -m playwright install chromium
 mkdocs build --strict
 DEMANGLE_BROWSER_TESTS=1 python -m pytest -q tests/browser/test_playground_browser.py
 
-# Also exercise Pyodide from its CDN, as the browser CI job does.
+# Also start the real Pyodide runtime the build fetched, as the browser CI job does.
 DEMANGLE_BROWSER_TESTS=1 DEMANGLE_PYODIDE_SMOKE=1 \
   python -m pytest -q tests/browser/test_playground_browser.py
 ```

@@ -1,7 +1,7 @@
 """Opt-in browser regressions for the built playground site.
 
 Run `mkdocs build --strict` first, then set DEMANGLE_BROWSER_TESTS=1. The normal suite
-stays independent of Chromium and the Pyodide CDN; the real-runtime smoke is separately
+stays independent of Chromium and the Pyodide runtime; the real-runtime smoke is separately
 opt-in through DEMANGLE_PYODIDE_SMOKE=1.
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -666,8 +667,10 @@ def test_layout_fits_viewport_with_enlarged_root_font(context, site_server, widt
     assert all(not overlaps for overlaps in metrics["segmentOverlaps"])
 
 
-@pytest.mark.skipif(os.environ.get("DEMANGLE_PYODIDE_SMOKE") != "1", reason="real CDN runtime is opt-in")
+@pytest.mark.skipif(os.environ.get("DEMANGLE_PYODIDE_SMOKE") != "1", reason="the real runtime is opt-in")
 def test_real_pyodide_runtime_version_presets_invalid_symbol_and_default_auto(context, site_server):
+    requested = []
+    context.on("request", lambda request: requested.append(request.url))
     page = context.new_page()
     page.goto(site_server + PLAYGROUND, wait_until="domcontentloaded")
     page.wait_for_function(
@@ -678,6 +681,9 @@ def test_real_pyodide_runtime_version_presets_invalid_symbol_and_default_auto(co
     assert "Pyodide 0.26.4" in page.locator("#playground-engine-version").inner_text(), page.locator(
         "#playground-status-text"
     ).inner_text()
+    # The runtime comes from the site itself: starting Python asks no other host for anything.
+    assert any(url.endswith("/assets/pyodide/pyodide.asm.wasm") for url in requested)
+    assert [url for url in requested if not url.startswith((site_server, "data:", "blob:"))] == []
     assert page.locator("#playground-select-scheme").input_value() == "auto"
 
     page.locator("#playground-input-symbol").fill("_ZNSt6vectorIiSaIiEE9push_backERKi")
@@ -799,3 +805,18 @@ def test_every_documentation_page_keeps_its_content_gutters_and_contains_overflo
         )
         assert metrics["scrollWidth"] <= metrics["width"], str(path.relative_to(SITE))
         assert metrics["left"] > 0 and metrics["right"] < width, str(path.relative_to(SITE))
+
+
+def test_no_page_of_the_built_site_loads_anything_from_another_host():
+    """A script, stylesheet, image or frame from a third party is that party's to change. The
+    site serves its own: no font stylesheet, no badge image, no CDN runtime."""
+    loads = re.compile(
+        r"""<(?:script|img|iframe|source|video|audio|object|embed)\b[^>]*?\bsrc=["']((?:https?:)?//[^"']+)"""
+        r"""|<link\b(?=[^>]*\brel=["'](?:stylesheet|preconnect|preload|modulepreload|icon)["'])[^>]*?\bhref=["']((?:https?:)?//[^"']+)"""
+    )
+    pages = sorted(SITE.rglob("*.html"))
+    assert pages, "run `mkdocs build --strict` first"
+    found = {
+        (page.relative_to(SITE).as_posix(), a or b) for page in pages for a, b in loads.findall(page.read_text("utf-8"))
+    }
+    assert found == set()

@@ -115,6 +115,9 @@ name that caused it rather than being killed.
 - Every GitHub Action is pinned to a commit, workflows are given a read-only token unless
   a job says otherwise, and no workflow runs code from a fork with a secret or a
   writable token.
+- The documentation site and its playground load no script, stylesheet, image or frame
+  from another host. The Pyodide runtime the playground runs on is served by the site,
+  each file checked against a pinned SHA-256 when the site is built; tests hold both.
 
 ## Supported versions
 

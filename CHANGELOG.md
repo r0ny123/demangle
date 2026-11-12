@@ -47,6 +47,15 @@ the reference demanglers, and a **Performance** section.
   no longer installs twine; CI runs `twine check` on every commit instead. Dependabot
   now updates `uv.lock` and the files under `tools/`, and waits a week before proposing a
   release. `SECURITY.md` says how a release is built and how to check one.
+- **The documentation site and the playground load nothing from a third party.** The
+  playground took its Pyodide runtime from jsDelivr, in a worker where a script cannot
+  carry an integrity hash, every page took a stylesheet from Google Fonts, and the home
+  page took badge images from shields.io. The site now serves Pyodide itself:
+  `docs/hooks.py` fetches the five runtime files when the site is built and refuses any
+  whose SHA-256 is not the pinned one. The theme uses the system's fonts and the home
+  page leaves the badges out. A browser test starts the real runtime and fails if any
+  request leaves the site, and another reads every built page for a script, stylesheet,
+  image or frame from another host.
 
 ## [0.7.0] - 2026-11-12
 
