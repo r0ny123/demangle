@@ -643,6 +643,7 @@ def _from_prefix(name, rest, label, shape):
                     if stop is None:
                         stop = candidate
                     else:
+                        # Only whether a second reading exists is exposed to callers.
                         break
             if stop is None:
                 return None

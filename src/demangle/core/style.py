@@ -187,7 +187,8 @@ _STYLES = None
 #: Guards the lazy build and every mutation of `_STYLES`.
 _lock = threading.RLock()
 
-#: Called when the set of styles changes; `api` registers its cache's `clear` here.
+#: Called when the set of styles changes; `api` registers its cache's `clear` here. A
+#: hook rather than a counter in the cache key, which would slow the hottest path.
 _on_change = []
 
 
