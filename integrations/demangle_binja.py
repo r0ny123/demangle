@@ -10,9 +10,10 @@ Each symbol read keeps its raw name and gains a full name and a short name, as t
 Binary Ninja's own demanglers read have. Change the settings below before the plugin
 loads.
 
-Run headless in Binary Ninja 6.0; the documentation page has the results. Not yet run
-from the Plugins menu. If a call here is not what your version has, the Log window names
-it.
+Run headless in Binary Ninja 6.0 on Mach-O and ELF programs, through the registered
+command as the Plugins menu calls it; the documentation page has the results. Not yet run
+by clicking the menu in Binary Ninja's window. If a call here is not what your version
+has, the Log window names it.
 """
 
 import os
@@ -67,20 +68,30 @@ import demangle_labels  # noqa: E402
 
 
 def collect(bv):
-    """The entries for `bv`'s symbols, and the symbols by `(address, raw name)`."""
+    """The entries for `bv`'s symbols, the symbols by `(address, raw name)`, and how many
+    addresses were passed over for holding more than one user symbol."""
     by_address = {}
     for symbol in bv.get_symbols():
         if symbol.type in LABELLED_TYPES:
             by_address.setdefault(symbol.address, []).append(symbol)
-    # Binary Ninja holds one user symbol per address, so a second alias defined there
-    # displaces the first and the two would trade places on every run. One symbol is read
-    # per address: the user symbol, which stands beside the auto symbol it was defined
-    # for and is the one the views show, else one Binary Ninja left mangled.
+    # Defining a user symbol at an address replaces the one user symbol there, so a second
+    # alias defined there displaces the first and the two would trade places on every
+    # run. One symbol is read per address: the user symbol, which stands beside the auto
+    # symbol it was defined for and is the one the views show, else one Binary Ninja left
+    # mangled.
+    #
+    # An address can hold many user symbols all the same: Binary Ninja's DWARF import
+    # defines one for each function the linker discarded, all at the image base, beside
+    # `__elf_header`. Defining a symbol there drops one of the others, and undoing either
+    # that or an undefine drops one more (seen in 6.0), so such an address is left alone.
     symbols = {}
+    crowded = 0
     for group in by_address.values():
-        chosen = next((s for s in group if not s.auto), None)
-        if chosen is None:
-            chosen = next((s for s in group if s.full_name == s.raw_name), group[0])
+        users = [s for s in group if not s.auto]
+        if len(users) > 1:
+            crowded += 1
+            continue
+        chosen = users[0] if users else next((s for s in group if s.full_name == s.raw_name), group[0])
         symbols[chosen.address, chosen.raw_name] = chosen
     # Binary Ninja's demanglers leave `full_name` as `raw_name` for a name they cannot
     # read, and the plugin's own labels differ from it for the same reason.
@@ -88,7 +99,7 @@ def collect(bv):
         demangle_labels.Entry(address, raw_name, symbol.full_name if symbol.full_name != raw_name else None)
         for (address, raw_name), symbol in symbols.items()
     ]
-    return entries, symbols
+    return entries, symbols, crowded
 
 
 def relabel(bv, symbol, label):
@@ -118,7 +129,7 @@ def label_symbols(bv, task):
     options = demangle_labels.Options(
         languages=LANGUAGES, only_left_mangled=ONLY_LEFT_MANGLED, style=STYLE, max_length=MAX_LENGTH
     )
-    entries, symbols = collect(bv)
+    entries, symbols, crowded = collect(bv)
 
     def counted(items, what):
         total = len(items)
@@ -158,6 +169,11 @@ def label_symbols(bv, task):
         f"Demangle: {len(entries)} symbols read, {len(labels)} readable, "
         f"{changed} {'would change' if DRY_RUN else 'changed'}, {failed} failed"
         + ("" if changed <= REPORT_LIMIT else f"; {changed - REPORT_LIMIT} more not listed")
+        + (
+            f"; {crowded} {'address' if crowded == 1 else 'addresses'} with several user symbols left alone"
+            if crowded
+            else ""
+        )
         + ("; cancelled" if task.cancelled else "")
     )
 

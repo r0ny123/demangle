@@ -10,6 +10,14 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
+- **The Binary Ninja plugin leaves alone an address holding several user symbols.**
+  Binary Ninja's DWARF import defines a user symbol for each function the linker
+  discarded, all at the image base beside `__elf_header`. With
+  `ONLY_LEFT_MANGLED = False` on a Rust program the plugin relabelled one of them, which
+  dropped `__elf_header`, and Undo did not bring it back. Such an address is now skipped
+  and counted in the summary line. Found running the plugin live in Binary Ninja 6.0 on
+  Linux; the IDA script was run live in IDA 9.5, through idalib and `idat -S`, with
+  nothing to fix.
 - **An MSVC name holding `_$$_` or a `/` is no longer read as Free Pascal or Go.**
   `?A_$$_B@@3HA` read as a Free Pascal routine `B@@3HA` in a unit `?A`, where it is
   MSVC's `int A_$$_B`, and an MSVC string literal with a `/` in it was claimed by Go and

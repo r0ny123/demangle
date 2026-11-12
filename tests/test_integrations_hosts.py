@@ -473,6 +473,23 @@ class TestBinaryNinja:
         binja.script.label_symbols(view, Task())
         assert view.events == []
 
+    def test_an_address_holding_several_user_symbols_is_left_alone(self, binja, monkeypatch):
+        # Binary Ninja's DWARF import puts a user symbol for each discarded function at the
+        # image base. Defining one more there drops another, and Undo does not restore it.
+        monkeypatch.setattr(binja.script, "ONLY_LEFT_MANGLED", False)
+        crowded = [
+            binja.symbol("function", 0x400000, "__elf_header", auto=False),
+            binja.symbol("function", 0x400000, SWIFT, auto=False),
+            binja.symbol("function", 0x400000, RUST, auto=False),
+        ]
+        view = FakeView([*crowded, binja.symbol("function", 0x1000, SWIFT)])
+        binja.script.label_symbols(view, Task())
+        assert view.undefined() == []
+        assert [(symbol.address, symbol.raw_name) for symbol in view.defined()] == [(0x1000, SWIFT)]
+        summary = binja.host.log[-1][1]
+        assert "1 symbols read" in summary
+        assert "1 address with several user symbols left alone" in summary
+
     def test_it_is_one_undoable_step_with_the_symbol_table_rebuilt_once(self, binja):
         view = FakeView([binja.symbol("function", 0x1000, SWIFT), binja.symbol("function", 0x2000, RUST)])
         binja.script.label_symbols(view, Task())

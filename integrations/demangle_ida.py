@@ -9,7 +9,8 @@ readable name at each address IDA left mangled, which changes no name and so can
 break anything IDA does with the one it has.
 
 Run in IDA 9.4, in both modes, headless through idalib and from IDA's window, where one
-Edit > Undo takes back a whole run; the documentation page has the results. If a call
+Edit > Undo takes back a whole run, and in IDA 9.5 through idalib and `idat -S`; the
+documentation page has the results. If a call
 here is not what your IDA has, the traceback names it.
 """
 
