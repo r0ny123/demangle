@@ -11,6 +11,7 @@ The tests here are written per *plugin* rather than per scheme name, so a scheme
 later has to keep the promise too rather than quietly not being covered.
 """
 
+import sys
 import time
 from dataclasses import replace
 
@@ -234,6 +235,15 @@ def _on_a_deep_stack(work):
     return seen[0]
 
 
+def _ran_the_stack_out(error):
+    """Whether a `RecursionError` is anywhere in what led to `error`."""
+    while error is not None:
+        if isinstance(error, RecursionError):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
 class TestMsvcNestingFollowsMaxDepth:
     """MSVC reads as deep as `max_depth` says, as Itanium does.
 
@@ -310,6 +320,51 @@ class TestMsvcNestingFollowsMaxDepth:
         for mangled, call in ((encoding, demangle.demangle_type), ("." + encoding, demangle.demangle_strict)):
             with pytest.raises(demangle.LimitExceeded):
                 call(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
+
+    @pytest.mark.parametrize(
+        "mangled",
+        ["?f@@YAX" + "PA" * 4000 + "H@Z", "??$f@$1" * 4000 + "?x@@3HA" + "@@YAXXZ" * 4000],
+        ids=["through-a-type", "through-a-name"],
+    )
+    def test_a_stack_nearly_out_is_refused_as_the_bound(self, monkeypatch, mangled):
+        """Where the interpreter says its stack is nearly out, the parse stops there.
+
+        PyPy says so, and is the interpreter that needs it: out of stack while a nested
+        name copies the rest of itself, it can abort the process rather than raise. The
+        check is made at each new depth, and is reported as the bound in force.
+        """
+        from demangle.schemes.msvc import _parser
+
+        asked = []
+
+        def nearly_out():
+            asked.append(1)
+            return len(asked) > 20
+
+        monkeypatch.setattr(_parser, "_stack_almost_full", nearly_out)
+        demangle.cache_clear()
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
+        assert caught.value.limit_name == "recursion depth"
+        assert caught.value.limit_value == demangle.RELAXED_LIMITS.max_depth
+        assert not _ran_the_stack_out(caught.value)
+        assert len(asked) == 21
+
+    @pytest.mark.skipif(sys.implementation.name != "pypy", reason="the stack check is PyPy's")
+    @pytest.mark.parametrize(
+        "mangled",
+        [
+            "?f@@YAX" + "PA" * 4000 + "H@Z",
+            "?f@@YAX" + "V?$A@" * 4000 + "H" + "@@" * 4000 + "@Z",
+            "??$f@$1" * 4000 + "?x@@3HA" + "@@YAXXZ" * 4000,
+            "?g@?1?" * 4000 + "?f@@YAXXZ" + "@YAXXZ" * 4000,
+        ],
+        ids=["pointer", "template", "address-argument", "local-scope"],
+    )
+    def test_on_pypy_the_stack_is_never_run_out(self, mangled):
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(mangled, language="msvc", limits=demangle.RELAXED_LIMITS)
+        assert not _ran_the_stack_out(caught.value)
 
 
 class TestDepthExhaustionIsReportedAsABound:

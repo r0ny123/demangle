@@ -18,7 +18,7 @@ import sys
 from typing import ClassVar
 
 from .builder import Builder
-from .errors import LimitExceeded
+from .errors import LimitExceeded, recursion_error_lost
 from .style import Style, get_style
 
 __all__ = [
@@ -64,6 +64,10 @@ def rendered(produce):
     try:
         return produce()
     except RecursionError as error:
+        raise LimitExceeded("", "recursion depth", sys.getrecursionlimit()) from error
+    except TypeError as error:
+        if not recursion_error_lost(error):
+            raise
         raise LimitExceeded("", "recursion depth", sys.getrecursionlimit()) from error
 
 

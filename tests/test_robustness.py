@@ -14,7 +14,7 @@ import pytest
 
 import demangle
 from demangle.core.ast import rendered
-from demangle.core.errors import DemanglingError, LimitExceeded
+from demangle.core.errors import DemanglingError, LimitExceeded, ParseError, recursion_error_lost
 from demangle.core.limits import Limits
 
 from .conftest import corpus_files, load_corpus
@@ -480,6 +480,104 @@ class TestResourceBounds:
 
     def test_rendering_returns_its_value_when_it_does_not_overflow(self):
         assert rendered(lambda: "std::vector<int>") == "std::vector<int>"
+
+    #: What PyPy raises in place of a `RecursionError` it ran out of stack to raise, word
+    #: for word as PyPy 8.0.1 gave it from `test_a_name_too_deep_to_follow_says_so`.
+    PYPY_LOST_RECURSION = (
+        "couldn't record exception context for exception 'RecursionError', "
+        "got: RecursionError('maximum recursion depth exceeded')"
+    )
+
+    def test_pypys_lost_recursion_error_is_recognised(self):
+        assert recursion_error_lost(TypeError(self.PYPY_LOST_RECURSION))
+        # The first error need not be the recursion: a `finally` raising at the edge of
+        # the stack leaves PyPy short of stack just the same.
+        assert recursion_error_lost(
+            TypeError(
+                "couldn't record exception context for exception '_LimitHit', "
+                "got: RecursionError('maximum recursion depth exceeded')"
+            )
+        )
+        assert not recursion_error_lost(TypeError("unsupported operand type(s) for +: 'int' and 'str'"))
+        assert not recursion_error_lost(
+            TypeError("couldn't record exception context for exception 'KeyError', got: ValueError('x')")
+        )
+        assert not recursion_error_lost(RuntimeError(self.PYPY_LOST_RECURSION))
+
+    def test_pypys_lost_recursion_error_while_parsing_is_reported_as_a_bound(self):
+        """On PyPy a name nested past the interpreter's stack can surface as a `TypeError`
+        rather than a `RecursionError`: the error overflows the stack again while it
+        unwinds, and PyPy cannot attach the second to the first. It is the same bound and
+        is reported as one, not as a parser defect, on every path a `RecursionError` is.
+        """
+        from demangle.core import registry
+        from demangle.core.plugin import LanguagePlugin
+
+        message = self.PYPY_LOST_RECURSION
+
+        def detect(name):
+            return name.startswith("@@deep@@")
+
+        def parse(mangled, builder, limits=None, options=None):
+            raise TypeError(message)
+
+        demangle.register_language(
+            LanguagePlugin(name="deep", detect=detect, parse=parse, parse_type=parse, description="test", priority=1)
+        )
+        try:
+            demangle.cache_clear()
+            assert demangle.demangle("@@deep@@x") == "@@deep@@x"
+            for language in (None, "deep", ["deep"]):
+                for call in (demangle.demangle_strict, demangle.parse):
+                    with pytest.raises(LimitExceeded) as caught:
+                        call("@@deep@@x", language=language)
+                    assert caught.value.limit_name == "recursion depth"
+            with pytest.raises(LimitExceeded) as caught:
+                demangle.demangle_type("@@deep@@x", language="deep")
+            assert caught.value.limit_name == "recursion depth"
+        finally:
+            registry._plugins.pop("deep", None)
+            registry._ordered = None
+            registry._by_first = None
+            demangle.cache_clear()
+
+    def test_an_ordinary_type_error_is_still_a_defect(self):
+        from demangle.core import registry
+        from demangle.core.plugin import LanguagePlugin
+
+        def detect(name):
+            return name.startswith("@@typo@@")
+
+        def parse(mangled, builder, limits=None, options=None):
+            raise TypeError("unsupported operand type(s) for +: 'int' and 'str'")
+
+        demangle.register_language(
+            LanguagePlugin(name="typo", detect=detect, parse=parse, description="test", priority=1)
+        )
+        try:
+            demangle.cache_clear()
+            with pytest.raises(ParseError) as caught:
+                demangle.demangle_strict("@@typo@@x", language="typo")
+            assert not isinstance(caught.value, LimitExceeded)
+        finally:
+            registry._plugins.pop("typo", None)
+            registry._ordered = None
+            registry._by_first = None
+            demangle.cache_clear()
+
+    def test_pypys_lost_recursion_error_while_rendering_is_reported_as_a_bound(self):
+        def overflows():
+            raise TypeError(self.PYPY_LOST_RECURSION)
+
+        with pytest.raises(LimitExceeded) as caught:
+            rendered(overflows)
+        assert caught.value.limit_name == "recursion depth"
+
+        def mistyped():
+            raise TypeError("not this one")
+
+        with pytest.raises(TypeError, match="not this one"):
+            rendered(mistyped)
 
     @pytest.mark.parametrize(
         "mangled",

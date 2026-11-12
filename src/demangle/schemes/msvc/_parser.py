@@ -2,6 +2,7 @@
 
 import re
 import string
+import sys
 from functools import lru_cache
 
 from ...core.limits import DEFAULT_LIMITS
@@ -21,6 +22,13 @@ from .nodes import (
     render,
 )
 from .options import DEFAULT_OPTIONS
+
+# PyPy can abort the process, rather than raise `RecursionError`, when a parse that
+# copies the rest of the name at every level -- a nested symbol, a local scope -- runs
+# the stack out. Stopping a little short of the edge reports the same bound without going
+# there; see `_Demangler.qualifiedName`. `__pypy__` is PyPy's own builtin module, loaded
+# before any user code, and is absent everywhere else.
+_stack_almost_full = getattr(sys.modules.get("__pypy__"), "stack_almost_full", None)
 
 _DIGITS = frozenset(string.digits)
 _BASIC_TYPES = {
@@ -1016,8 +1024,11 @@ class _Demangler:
         # whichever way that is, refusing this level included.
         try:
             if depth > self.peak:
-                # Only a new peak can be past the bound: `peak` never is.
-                if depth > self.max_depth:
+                # Only a new peak can be past the bound: `peak` never is. On PyPy a new
+                # peak is also where the stack grows, so it is where the interpreter's
+                # own bound is asked about too, while there is still stack to unwind with:
+                # PyPy, out of stack mid-copy, can abort where CPython would raise.
+                if depth > self.max_depth or (_stack_almost_full is not None and _stack_almost_full()):
                     raise _LimitHit("recursion depth", self.max_depth)
                 self.peak = depth
             first, special_form = self.nameFragment(True)
@@ -1076,7 +1087,7 @@ class _Demangler:
         try:
             # as in `qualifiedName`
             if depth > self.peak:
-                if depth > self.max_depth:
+                if depth > self.max_depth or (_stack_almost_full is not None and _stack_almost_full()):
                     raise _LimitHit("recursion depth", self.max_depth)
                 self.peak = depth
             at_argument, self.at_argument = self.at_argument, False

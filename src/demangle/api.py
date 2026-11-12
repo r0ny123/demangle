@@ -45,6 +45,7 @@ from .core.errors import (
     LimitExceeded,
     NotMangledError,
     ParseError,
+    recursion_error_lost,
     reraise_if_operational,
 )
 from .core.limits import DEFAULT_LIMITS, Limits
@@ -183,10 +184,17 @@ def _parse_with(plugin, mangled, builder, limits, style):
     if plugin.symbol_table_decorations:
         mangled, decoration = split_decorations(mangled)
 
-    if options is None:
-        handle = plugin.parse(mangled, builder, limits)
-    else:
-        handle = plugin.parse(mangled, builder, limits, options)
+    try:
+        if options is None:
+            handle = plugin.parse(mangled, builder, limits)
+        else:
+            handle = plugin.parse(mangled, builder, limits, options)
+    except TypeError as exc:
+        # PyPy's stand-in for a `RecursionError` it could not raise: given back as the
+        # error it stands for, so every caller here reports it as the bound it is.
+        if recursion_error_lost(exc):
+            raise RecursionError("maximum recursion depth exceeded") from exc
+        raise
 
     return builder.decorated(handle, decoration) if decoration else handle
 
@@ -518,6 +526,8 @@ def _parse_type_handle(mangled, builder, language, style, limits):
         raise
     except Exception as exc:
         reraise_if_operational(exc)
+        if recursion_error_lost(exc):
+            raise _depth_exceeded(mangled, limits) from exc
         # These entry points raise only `DemanglingError`; a plugin defect is wrapped.
         raise ParseError(mangled, None, f"{plugin.name} type parser failed: {exc!r}") from exc
 
