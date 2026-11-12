@@ -31,7 +31,7 @@ guessed at.
 
 import re
 
-__all__ = ["DemangleFailure", "PascalSymbol", "detect", "parse_pascal_symbol"]
+__all__ = ["FIRST_CHARACTERS", "DemangleFailure", "PascalSymbol", "detect", "parse_pascal_symbol"]
 
 #: Markers in front of a unit name, from `rtti_mangledname`, `tstaticvarsym.mangledname`,
 #: `TVMTWriter` and the interface-table writers.
@@ -107,6 +107,15 @@ CLASS_ROUTINES = {"class_constructor": "class constructor", "class_destructor": 
 _TABLES = {"_o2s": "ordinal-to-string table", "_s2o": "string-to-ordinal table"}
 
 _INDIRECT = "$indirect"
+
+#: What a symbol opens with. Every form above starts with a kind marker, a unit's or a
+#: program's identifier (`P$` for a program), `INIT$_$`/`FINALIZE$_$` or a label's `_$`,
+#: and a Pascal identifier starts with a letter or `_` (`&begin` declares `BEGIN`; the `&`
+#: is not part of the name). So nothing else can begin one -- in particular not MSVC's
+#: `?` or Swift's `$s`, which carry the `$` this scheme screens on. The parser itself
+#: takes any unit text, so `detect` checks this too: without it `?A_$$_B@@3HA`, MSVC's
+#: `int A_$$_B`, was read as a routine `B@@3HA` in a unit `?A`.
+FIRST_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
 
 
 class DemangleFailure(Exception):
@@ -401,7 +410,7 @@ def detect(name):
     parses anyway, because the parse is what establishes that the parts rejoin to the
     input.
     """
-    if not name or "$" not in name:
+    if not name or name[0] not in FIRST_CHARACTERS or "$" not in name:
         return False
     try:
         parse_pascal_symbol(name)

@@ -29,6 +29,15 @@ from ._parser import GENERATED_PREFIXES, GoSymbol, escape_path, parse_go_symbol,
 DETECT_SCREEN = (("/", "(*"), GENERATED_PREFIXES)
 
 
+#: Characters no Go symbol this claims starts with. A symbol opens with an import path or a
+#: linker prefix, and the compiler refuses an import path holding either
+#: (`checkImportPath` in `cmd/compile/internal/noder/import.go`). Go's own `$` symbols are
+#: rodata constants (`$f64.3ff0000000000000`, from `cmd/internal/obj/sym.go`), which have
+#: no path and were never claimed. Checked first so an MSVC `?` name or a Swift `$s` one
+#: that happens to hold a `/` (a string literal's) is not read as Go.
+_NEVER_FIRST = "?$"
+
+
 def detect(name):
     """Whether `name` is Go-shaped beyond reasonable doubt.
 
@@ -45,7 +54,7 @@ def detect(name):
     would mean rewriting names this library was not sure about. They demangle when asked
     for by language.
     """
-    if not name:
+    if not name or name[0] in _NEVER_FIRST:
         return False
     if name.startswith(GENERATED_PREFIXES):
         return True

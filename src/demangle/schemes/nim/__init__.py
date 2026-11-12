@@ -26,7 +26,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import _COMPILER_PREFIXES, DemangleFailure, NimSymbol, detect, parse_nim_symbol
+from ._parser import _COMPILER_PREFIXES, FIRST_CHARACTERS, DemangleFailure, NimSymbol, detect, parse_nim_symbol
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -73,6 +73,8 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Nim symbol mangling",
     aliases=(),
+    # A letter or `_`: see `_parser.FIRST_CHARACTERS`.
+    first_characters=FIRST_CHARACTERS,
     # Lower is offered first. With no prefix of its own, `detect` is what keeps this
     # off other schemes' symbols. tests/test_core.py pins the order.
     priority=10,

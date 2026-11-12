@@ -87,11 +87,13 @@ class LanguagePlugin:
     """
 
     first_characters: str = ""
-    """The characters a name of this scheme may begin with, if the set is small.
+    """The characters a name of this scheme may begin with, if they are not all of them.
 
     An optimisation, and one the registry checks rather than trusts: a name whose first
     character is not in here is never offered to `detect`. Leave it empty -- the default
-    -- for a scheme whose names have no fixed start, which costs nothing but a call.
+    -- for a scheme whose names have no fixed start, which costs nothing but a call. A
+    wide set still pays where it leaves out another scheme's opening: Nim and Free Pascal
+    declare the letters and `_`, so neither is asked about an MSVC `?` name.
 
     Getting it wrong loses symbols silently, so the rule is narrow: put a character here
     only if `detect` returns False for *every* name that does not begin with one of
