@@ -28,7 +28,7 @@ _DIGITS.update({chr(ord("A") + n): n + 26 for n in range(10)})
 
 
 class PunycodeError(ValueError):
-    """This is not a well-formed punycoded identifier."""
+    """The identifier is not well-formed punycode."""
 
 
 def _adapt(delta, points, first):

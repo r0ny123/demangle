@@ -1428,8 +1428,7 @@ class _Demangler:
         return "".join(out)
 
     def functionTypeArgument(self):
-        """A function type written as a template argument: "$$A6", or "$$A8" with a
-        qualifier.
+        """A function type written as a template argument: "$$A6", or "$$A8" with a qualifier.
 
         The "8" form is the one a member function's type takes, but it names no class - the
         reference refuses "$$A8S@@AEHXZ" - so it reads as an ordinary function type carrying
@@ -1777,8 +1776,9 @@ class _Demangler:
         return value - (1 << 32) if value >= (1 << 31) else value
 
     def thunkFunction(self, name, is_vcall):
-        """A thunk whose access slot begins with "$": a vcall, or an adjustment through a
-        virtual base.
+        """A thunk whose access slot begins with "$".
+
+        A vcall, or an adjustment through a virtual base.
 
         A vcall names no access and carries no parameters - the whole of it is the slot it
         dispatches through - while the vtordisp forms are ordinary virtual member functions
@@ -1818,8 +1818,7 @@ class _Demangler:
         return self.thunkBody(name, access, "vtordisp", [first, second])
 
     def thunkBody(self, name, access, kind, displacements):
-        """The signature a vtordisp or vtordispex thunk carries, once its numbers are
-        read."""
+        """The signature a vtordisp or vtordispex thunk carries, once its numbers are read."""
         self.member_cv = self.memberQualifiers()
         convention = self.callingConvention()
         returns = None if self.peek() == "@" and self.take() else self.returnType()
@@ -1949,9 +1948,10 @@ def parse_msvc_symbol_strict(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTION
 
 
 def read_msvc_symbol(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
-    """As `parse_msvc_symbol_strict`, for a name already known to open with `?` and to
-    hold no control character -- which the plugin has established before it gets here,
-    so it does not pay for the scan twice.
+    """As `parse_msvc_symbol_strict`, for a name the plugin has already screened.
+
+    It is known to open with `?` and to hold no control character, so the scan is not
+    paid for twice.
     """
     try:
         return _Demangler(name, limits, options).parse()
@@ -1978,9 +1978,10 @@ def parse_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
 
 
 def read_msvc_type(name, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
-    """As `parse_msvc_type`, for a name already known to hold no control character --
-    which the plugin has established for a type descriptor's symbol before it gets here,
-    as it has for a decorated name before `read_msvc_symbol`.
+    """As `parse_msvc_type`, for a name the plugin has already screened.
+
+    It is known to hold no control character: the plugin has established that for a
+    type descriptor's symbol, as it has for a decorated name before `read_msvc_symbol`.
     """
     if name.startswith("."):
         name = name[1:]

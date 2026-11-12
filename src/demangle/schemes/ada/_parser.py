@@ -34,7 +34,7 @@ __all__ = ["AdaSymbol", "DemangleFailure", "demangle_ada"]
 
 
 class DemangleFailure(Exception):
-    """This is not a name GNAT wrote, or not one this can read.
+    """The name is not one GNAT wrote, or not one this can read.
 
     The reference's `goto unknown`. Every path that reaches it corresponds to one there.
     """

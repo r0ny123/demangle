@@ -1,4 +1,4 @@
-"""Reading Go symbol names.
+r"""Reading Go symbol names.
 
 Go does not mangle in the sense the other schemes do -- there is no grammar compressing
 a declaration into an encoded string. What it does is build a symbol name by joining a
@@ -32,7 +32,7 @@ writes each named type with its package path escaped the same way: the linker em
 `main..dict.Gen[example.com/tag/v2%2e5.K]` and `type:.eq.main.Box[example.com/tag/v2%2e5.K]`
 for a package directory called `v2.5`. The one place a `%` is not an escape is inside
 a struct tag, which a type string quotes verbatim: `type:.eq.struct { S string
-"json:\\"50%\\""; K example.com/tag/v2%2e5.K }` is a real symbol (all of these are
+"json:\"50%\""; K example.com/tag/v2%2e5.K }` is a real symbol (all of these are
 go1.24.7 output) and decoding the tag's `%` would either rewrite it or refuse the name.
 So escapes decode everywhere outside double quotes, and nowhere inside them.
 """
@@ -153,11 +153,11 @@ def _is_text(decoded):
 
 
 def _unescape_outside_quotes(text):
-    """Decode every escape in `text` that is not inside a double-quoted string.
+    r"""Decode every escape in `text` that is not inside a double-quoted string.
 
     A symbol's package paths -- the leading one, and any inside a type string -- were
     escaped by `PathToPrefix`, and a struct tag inside a type string was written with
-    `strconv.Quote`, which escapes `"` and `\\` and leaves `%` alone. So a `%` outside
+    `strconv.Quote`, which escapes `"` and `\` and leaves `%` alone. So a `%` outside
     quotes is always an escape and a `%` inside them never is. An unterminated quote
     runs to the end of the text, which is also what a Go reader of it would do.
 

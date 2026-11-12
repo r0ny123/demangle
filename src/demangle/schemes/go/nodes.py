@@ -16,6 +16,7 @@ __all__ = ["Generic", "GoName", "Package", "Receiver", "Symbol", "build", "rende
 
 
 def render(part):
+    """The text of a fragment, which is a string or a node."""
     return part if isinstance(part, str) else part.render()
 
 

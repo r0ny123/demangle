@@ -308,8 +308,7 @@ def _spaced_off_the_sigil(node, declarator, declarator_is_function, options):
 
 
 def spelled_after(convention, text):
-    """Join a calling convention to what follows it, skipping the ones spelled with
-    nothing."""
+    """Join a calling convention to what follows it, skipping one spelled with nothing."""
     return f"{convention} {text}" if convention else text
 
 
@@ -334,7 +333,7 @@ def prefixed(text, node):
 
 
 def merge_qualifiers(left, right):
-    # "int __unaligned *__unaligned *"
+    """Two qualifier lists as one, in the reference's order: `int __unaligned *__unaligned *`."""
     return ordered_qualifiers(tuple(left) + tuple(right))
 
 
@@ -386,6 +385,7 @@ def apply_qualifiers(node, quals):
 
 
 def is_member_function_pointer(node):
+    """Whether `node` is a pointer to a member function."""
     return node.kind == "indirection" and node.points_into_class and node.inner.kind == "function"
 
 

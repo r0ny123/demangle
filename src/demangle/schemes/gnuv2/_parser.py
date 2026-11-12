@@ -188,7 +188,7 @@ MAX_NESTED = 16
 
 
 class DemangleFailure(Exception):
-    """This name is not one of these five manglings."""
+    """The name is not one of these five manglings."""
 
 
 class _Overflow(DemangleFailure):

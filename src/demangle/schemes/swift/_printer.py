@@ -172,9 +172,12 @@ _PAYLOAD_OPTIONS = SwiftOptions(synthesize_sugar_on_types=False)
 
 
 def _demangle_either(text):
-    """A specialisation's payload is itself a mangled name, and not always a current one:
-    a Swift 3 symbol's payload is Swift 3 too. The reference reaches both through one
-    entry point, so this tries each."""
+    """Read a specialisation's payload under either Swift mangling.
+
+    The payload is itself a mangled name, and not always a current one: a Swift 3
+    symbol's payload is Swift 3 too. The reference reaches both through one entry point,
+    so this tries each.
+    """
     found = demangle_symbol(text)
     if found is None:
         found = demangle_old_symbol(text)
@@ -182,8 +185,7 @@ def _demangle_either(text):
 
 
 def _spell_payload(text):
-    """`demangleSymbolAsString(text)`, falling back to the text itself as the reference
-    does."""
+    """`demangleSymbolAsString(text)`, falling back to the text itself as the reference does."""
     return print_root(_demangle_either(text), _PAYLOAD_OPTIONS) or text
 
 
@@ -1659,8 +1661,11 @@ def _print_generic_specialization_param(self, node, depth, as_prefix_context):
 
 @_handler("FunctionSignatureSpecializationParamPayload")
 def _print_param_payload(self, node, depth, as_prefix_context):
-    """What the mangling wrote inline: an integer's digits, a string's encoding, or the
-    index of the argument a closure was propagated from."""
+    """What the mangling wrote inline.
+
+    An integer's digits, a string's encoding, or the index of the argument a closure was
+    propagated from.
+    """
     if node.text is None:
         self.write(str(node.index))
         return None
@@ -2724,8 +2729,11 @@ for _kind, _lead in (
 ):
 
     def _print_outlined_enum_operation(self, node, depth, as_prefix_context, _l=_lead):
-        """The operand only. A generic signature, and for two of the three the enum case
-        index, are read and kept on the node; the reference spells neither."""
+        """The operand only.
+
+        A generic signature, and for two of the three the enum case index, are read and kept
+        on the node; the reference spells neither.
+        """
         self.write(_l)
         self.print(node.first, depth + 1)
         return None

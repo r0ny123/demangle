@@ -145,7 +145,7 @@ CONVENTIONS = frozenset({spelled.strip() for spelled in CALLING.values()} | {"__
 
 
 class DemangleFailure(Exception):
-    """This name is not one this parser reads."""
+    """The name is not one this parser reads."""
 
 
 class DelphiSymbol:

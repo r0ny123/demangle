@@ -62,7 +62,7 @@ _UNESCAPED = {"1": "_", "2": ";", "3": "["}
 
 
 class DemangleFailure(Exception):
-    """This name is not one this parser can read."""
+    """The name is not one this parser can read."""
 
 
 class JniSymbol:

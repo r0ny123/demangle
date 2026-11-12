@@ -90,7 +90,7 @@ _PLAUSIBLE_IN_A_PATH = frozenset(range(65, 91)) | {ord(c) for c in "-_+.~#$"}
 
 
 class DemangleFailure(Exception):
-    """This name is not one this parser reads."""
+    """The name is not one this parser reads."""
 
 
 class NimSymbol:
@@ -392,8 +392,10 @@ def _marker(name):
 
 
 def _module_temporary(name):
-    """`TM__<hash>_<n>`: a module-level temporary. The hash names the module and is a
-    digest, so which module it is does not come back."""
+    """`TM__<hash>_<n>`: a module-level temporary.
+
+    The hash names the module and is a digest, so which module it is does not come back.
+    """
     found = _MODULE_TEMPORARY.match(name)
     if found is None:
         return None

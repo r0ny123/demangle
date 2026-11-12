@@ -106,8 +106,10 @@ _DEFAULT_LIMITS_KEY = object()
 
 
 def _refuse_non_string(mangled):
-    """Report a non-`str` argument as the caller's mistake it is; bytes are pointed
-    at `demangleb()`, since a symbol table holds bytes."""
+    """Report a non-`str` argument as the caller's mistake it is.
+
+    Bytes are pointed at `demangleb()`, since a symbol table holds bytes.
+    """
     if isinstance(mangled, _BYTES_LIKE):
         raise TypeError(f"expected str, got {type(mangled).__name__}; symbol tables hold bytes, so use demangleb()")
     raise TypeError(f"expected str, got {type(mangled).__name__}")
@@ -208,8 +210,7 @@ def _refuse_unhashable_limits(limits) -> NoReturn:
 
 
 def _check_limits(limits):
-    """Refuse a `limits` that is not a hashable `Limits`, before it can reach a parser
-    or a key.
+    """Refuse a `limits` that is not a hashable `Limits`, before a parser or a key sees it.
 
     The default is tested by identity first, so the common call pays for nothing else.
     """
@@ -593,8 +594,10 @@ def _type_languages():
 
 
 def _read(mangled, builder, language, style, limits):
-    """The plugin that reads `mangled`, and what it built; or the error saying why none
-    does. What `demangle()` does, raising where it would hand the name back."""
+    """The plugin that reads `mangled`, and what it built; or the error saying why none does.
+
+    What `demangle()` does, raising where it would hand the name back.
+    """
     if not isinstance(mangled, str):
         _refuse_non_string(mangled)
     _check_limits(limits)

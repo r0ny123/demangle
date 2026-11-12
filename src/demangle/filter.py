@@ -1,4 +1,4 @@
-"""Demangling the symbols out of text that is not only symbols.
+r"""Demangling the symbols out of text that is not only symbols.
 
 `nm` writes an address and a type letter before a name; a crash log writes a frame
 number; an objdump listing writes a whole disassembly around one. So the useful operation
@@ -11,8 +11,8 @@ rustc-demangle ships `demangle_stream` as a crate function rather than only insi
 command nor re-implement its tokeniser:
 
     >>> import demangle
-    >>> demangle.demangle_text("0000000000001139 T _ZN3foo3barEv\\n")
-    '0000000000001139 T foo::bar()\\n'
+    >>> demangle.demangle_text("0000000000001139 T _ZN3foo3barEv\n")
+    '0000000000001139 T foo::bar()\n'
 
 `find_symbols` is the same scan without the substitution, for a caller who needs to know
 *where* in a line a symbol was -- which is the question `microsoftDemangle`'s `n_read`

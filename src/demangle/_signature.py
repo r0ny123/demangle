@@ -261,8 +261,10 @@ class _Reading:
 
     @property
     def closing(self):
-        """What closes a backtick span: MSVC's `` `anonymous namespace' ``, Delphi's
-        `` `class constructor` ``. None where a backtick is not a quote."""
+        """What closes a backtick span, or None where a backtick is not a quote.
+
+        MSVC's `` `anonymous namespace' ``, Delphi's `` `class constructor` ``.
+        """
         return _CLOSING.get(self.scheme)
 
     def spell(self, node):
@@ -340,8 +342,7 @@ def _blank(reading, tree):
 
 
 def _parts_of(reading, tree):
-    """Read what the tree says, by the shape it has rather than by the scheme that built
-    it."""
+    """Read what the tree says, by its shape rather than by the scheme that built it."""
     found = _blank(reading, tree)
     kind = tree.kind
 
@@ -859,8 +860,9 @@ def _words(text, closing=None):
 
 
 def _top_level(text, closing, wanted):
-    """Where `text` holds one of `wanted` outside every bracket and, with `closing`, every
-    quoted span.
+    """Where `text` holds one of `wanted` outside every bracket and quoted span.
+
+    A quoted span is skipped only where `closing` is given.
 
     A span opens at a backtick and closes at `closing`: MSVC writes `'` and nests one
     span in another, `` `void f(void)'::`2'::x ``, and Delphi writes a second backtick,
