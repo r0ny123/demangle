@@ -2,6 +2,7 @@
 
 import re
 import string
+import sys
 from functools import lru_cache
 
 from ...core.limits import DEFAULT_LIMITS
@@ -22,14 +23,12 @@ from .nodes import (
 )
 from .options import DEFAULT_OPTIONS
 
-try:
-    # PyPy can abort the process, rather than raise `RecursionError`, when a parse that
-    # copies the rest of the name at every level -- a nested symbol, a local scope --
-    # runs the stack out. Stopping a little short of the edge reports the same bound
-    # without going there; see `_Demangler.qualifiedName`.
-    from __pypy__ import stack_almost_full as _stack_almost_full  # ty: ignore[import-not-found]
-except ImportError:
-    _stack_almost_full = None
+# PyPy can abort the process, rather than raise `RecursionError`, when a parse that
+# copies the rest of the name at every level -- a nested symbol, a local scope -- runs
+# the stack out. Stopping a little short of the edge reports the same bound without going
+# there; see `_Demangler.qualifiedName`. `__pypy__` is PyPy's own builtin module, loaded
+# before any user code, and is absent everywhere else.
+_stack_almost_full = getattr(sys.modules.get("__pypy__"), "stack_almost_full", None)
 
 _DIGITS = frozenset(string.digits)
 _BASIC_TYPES = {
