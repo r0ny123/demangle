@@ -149,6 +149,11 @@ has why and what the build needs; without it the fuzzers use `llvm-cxxfilt`.
 cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
 ```
 
+With it built, `tools/sweep_rust_chars.py` puts every Unicode scalar value to both as a
+`char` const. Whether one prints bare or escaped follows the Unicode tables, and
+CPython's and the crate's are not always the same version; the sweep counts where they
+part, in about a minute.
+
 ## The Swift reference
 
 Nothing a distribution ships reads a Swift name, so `tools/swift-demangle-reference/`

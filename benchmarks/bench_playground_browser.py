@@ -436,7 +436,6 @@ def main() -> int:
     print(
         json.dumps(
             {
-                "baseline_revision": "03bd234",
                 "measured_revision": revision,
                 "worktree_changed": worktree_changed,
                 "source_label": args.source_label,

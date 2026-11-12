@@ -8,6 +8,19 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Removed
+
+- **The October audit and performance-pass reports**, `AUDIT.md` and
+  `benchmarks/performance.md`, with the paired before-and-after scripts and result files
+  they cited (`benchmarks/audit_*.py`, `benchmarks/bench_playground_bridge.py` and
+  `benchmarks/results/`). Each compared against one fixed older revision, so none
+  measures anything today; what they found is in the 0.5.2 and later entries below.
+  `bench.py`, `compare.py`, `end_to_end.py` and `bench_playground_browser.py` stay, and
+  CONTRIBUTING.md now says what the last two are for.
+- **The second copy of the playground archive** under `docs/assets/`, and the worker's
+  fallback to it. The playground has loaded `playground/assets/demangle.zip` since it
+  became a page of its own.
+
 ## [0.7.0] - 2026-11-12
 
 ### Fixed

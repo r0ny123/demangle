@@ -152,6 +152,12 @@ there with `check` passing.
 `tools/differential.py` with no arguments replays every checked-in corpus under the
 style and language it was recorded with, and exits non-zero if anything disagrees.
 
+`benchmarks/bench.py --check` is the gate. Two more scripts measure what it does not,
+and neither runs in CI: `benchmarks/end_to_end.py` times start-up, batches, tree
+serialisation and the command in a pipe, with `--source` to point it at another
+checkout, and `benchmarks/bench_playground_browser.py` times the built playground in
+Chromium, with `--pyodide-version` to try a different runtime.
+
 The [pull request template](https://github.com/r0ny123/demangle/blob/main/.github/pull_request_template.md)
 has the checklist. What its items ask for, and why:
 

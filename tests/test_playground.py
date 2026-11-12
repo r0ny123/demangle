@@ -33,7 +33,7 @@ PRESETS = (
 def _load_module(name: str, path: Path):
     """Load a docs-only module, or skip cleanly in a wheel-only checkout."""
     if not path.is_file():
-        pytest.skip("docs assets are not part of this distribution")
+        pytest.skip("the playground is not part of this distribution")
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -43,10 +43,7 @@ def _load_module(name: str, path: Path):
 
 @pytest.fixture
 def bridge():
-    bridge_path = ROOT / "playground" / "playground_bridge.py"
-    if not bridge_path.is_file():
-        bridge_path = ROOT / "docs" / "assets" / "playground_bridge.py"
-    return _load_module("playground_bridge_for_tests", bridge_path)
+    return _load_module("playground_bridge_for_tests", ROOT / "playground" / "playground_bridge.py")
 
 
 @pytest.fixture
