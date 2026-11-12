@@ -10,6 +10,20 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
+- **Swift follows upstream's renames (weekly drift report #70).** The called-once
+  function conventions are `@once` (`XO`) and `@callable(once)` (`XOo`), where they were
+  `@called(exactlyOnce)` and `@called(atMostOnce)`, and `Twa` after a type metadata
+  accessor reads as `back deployment copy of type metadata accessor for ...`, where it
+  was refused. The Swift reference build moves to swiftlang/swift `main` @ `4f010677`
+  (2026-11-12), which reproduces the corpora: 531 / 531, 217 / 217, 71 / 71. Rust's
+  `#[rustc_splat]` is not followed yet: it is on rustc-demangle's `main` only, and the
+  released 0.1.28 that the reference builds still prints `#[splat]`.
+- **MSVC: a conversion operator used as an alias template's argument is declined
+  cleanly.** `?f@@YAXV?$A@$$Y?$?BH@@@@V?$A@$$Y?$?BH@@@@@Z` failed on an internal
+  `ValueError`, because the placeholder for a conversion operator's name and the mark
+  for a function type's calling convention shared a delimiter. They are now distinct,
+  and the name is refused as `llvm-undname` refuses it.
+
 - Playground navigation, presets, and cards share centered page gutters and a bounded
   content width. Inner padding, control sizing, and responsive option rows stay aligned
   on desktop, narrow screens, and with enlarged text; overflow is contained locally.

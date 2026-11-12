@@ -1814,3 +1814,23 @@ class TestPointerAuthenticationQualifiers(unittest.TestCase):
         self.assertEqual(indirection.pointer_auth.render(), "__ptrauth(2, 0, 1234)")
         self.assertEqual(list(parsed.find("pointer_auth")), [indirection.pointer_auth])
         self.assertIn("pointer_auth", demangle.node_kinds("msvc"))
+
+
+class MsvcConversionInTemplateArgumentTestSuite(unittest.TestCase):
+    """A conversion operator's name has no return type to spell it with inside an alias
+    template's argument. `llvm-undname` refuses such a name; this library used to fail on
+    an internal `ValueError` where the two placeholders it keeps in rendered text shared a
+    delimiter, and now declines it as it does any name it cannot read."""
+
+    NAME = "?f@@YAXV?$A@$$Y?$?BH@@@@V?$A@$$Y?$?BH@@@@@Z"
+
+    def test_it_is_declined_as_a_parse_error(self):
+        with self.assertRaises(demangle.ParseError) as raised:
+            demangle.demangle_strict(self.NAME)
+        self.assertNotIsInstance(raised.exception.__cause__, ValueError)
+
+    def test_the_lenient_call_returns_the_name_unchanged(self):
+        self.assertEqual(demangle.demangle(self.NAME), self.NAME)
+
+    def test_a_conversion_operator_in_a_signature_still_reads(self):
+        self.assertEqual(demangle.demangle("??BA@@QAEHXZ"), "public: int __thiscall A::operator int(void)")

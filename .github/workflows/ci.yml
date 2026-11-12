@@ -133,7 +133,9 @@ jobs:
 
   cross-reference:
     name: cross-version reference check
-    runs-on: ubuntu-latest
+    # Pinned: `ubuntu-latest` is now 26.04, which does not package llvm-16, and the job
+    # compares exactly these LLVM releases.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read

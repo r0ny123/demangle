@@ -4,7 +4,7 @@
 set -eu
 
 # Not a release tag on purpose: every release through 6.4.0 refuses names the corpora contain.
-REVISION=8305a5023a3174493ab8cae462452e2d6baa6a9a
+REVISION=4f010677715a8396aac64d0742be7c15a8d4ed8a
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source=$here/swift

@@ -1791,6 +1791,7 @@ class Demangler:
             return {
                 "b": lambda: Node("BackDeploymentThunk"),
                 "B": lambda: Node("BackDeploymentFallback"),
+                "a": lambda: Node("BackDeploymentTypeMetadataAccessor"),
                 "c": lambda: Node("CoroFunctionPointer"),
                 "d": lambda: Node("DefaultOverride"),
                 "S": lambda: Node("HasSymbolQuery"),
