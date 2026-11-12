@@ -27,6 +27,12 @@ ITANIUM = "_ZNSt6vectorIiSaIiEE9push_backERKi"
 OVERLOAD_INT = "_ZN3Foo3barEi"
 OVERLOAD_CHAR = "_ZN3Foo3barEc"
 
+#: A Mach-O table: each name with the underscore Mach-O puts in front of the compiler's.
+MACHO_NIM = "_area__mymod_u10"
+MACHO_JNI = "_Java_com_example_Foo_bar"
+MACHO_ITANIUM = "_" + ITANIUM
+MACHO_SWIFT = "_" + SWIFT
+
 
 def stand_in(name, **attributes):
     module = types.ModuleType(name)
@@ -50,9 +56,13 @@ class FakeIda:
 
     SN_NOCHECK, SN_NOWARN, SN_FORCE = 0x1, 0x100, 0x800
     SEG_XTRN = 7
+    f_ELF, f_MACHO = 18, 25
 
-    def __init__(self, names, *, reads=None, imports=(), external=(), comments=None, segment_info=False):
+    def __init__(
+        self, names, *, reads=None, imports=(), external=(), comments=None, segment_info=False, filetype=f_ELF
+    ):
         self.names = names
+        self.filetype = filetype
         self.segment_info = segment_info
         self.reads = reads or {}
         self.imports = set(imports)
@@ -65,6 +75,9 @@ class FakeIda:
     def modules(self):
         return {
             "ida_bytes": stand_in("ida_bytes", get_cmt=self.get_cmt, set_cmt=self.set_cmt),
+            "ida_ida": stand_in(
+                "ida_ida", f_ELF=self.f_ELF, f_MACHO=self.f_MACHO, inf_get_filetype=lambda: self.filetype
+            ),
             "ida_kernwin": stand_in(
                 "ida_kernwin",
                 show_wait_box=lambda text: self.wait_box.append(("show", text)),
@@ -256,6 +269,28 @@ class TestIda:
             session.script.run()
         assert session.host.wait_box[0][0] == "show" and session.host.wait_box[-1] == ("hide", None)
 
+    def test_a_mach_o_name_is_read_without_its_leading_underscore(self, ida):
+        table = [(0x1000, MACHO_NIM), (0x2000, MACHO_JNI), (0x3000, MACHO_SWIFT), (0x4000, "_main")]
+        session = ida(table, filetype=FakeIda.f_MACHO)
+        session.script.run()
+        assert session.host.comments == {
+            0x1000: "mymod.area",
+            0x2000: "com.example.Foo.bar",
+            0x3000: SWIFT_READING,
+        }
+
+    def test_an_elf_name_keeps_its_leading_underscore(self, ida):
+        session = ida([(0x1000, MACHO_NIM), (0x2000, MACHO_JNI)])
+        session.script.run()
+        assert session.host.comments == {0x1000: "mymod._area"}
+
+    @pytest.mark.parametrize(("setting", "comment"), [(True, "mymod.area"), (False, "mymod._area")])
+    def test_the_setting_overrides_the_file_type(self, ida, monkeypatch, setting, comment):
+        session = ida([(0x1000, MACHO_NIM)], filetype=FakeIda.f_MACHO if not setting else FakeIda.f_ELF)
+        monkeypatch.setattr(session.script, "LEADING_UNDERSCORE", setting)
+        session.script.run()
+        assert session.host.comments == {0x1000: comment}
+
     @pytest.mark.parametrize(("setting", "value"), [("MODE", "rename"), ("FORM", "long")])
     def test_a_setting_that_means_nothing_is_refused_before_ida_is_touched(self, ida, monkeypatch, setting, value):
         session = ida(IDA_TABLE)
@@ -330,9 +365,10 @@ class FakeBinaryNinja:
 class FakeView:
     """A `BinaryView`: symbols, and a record of what was done to them in what order."""
 
-    def __init__(self, symbols, fail_on=()):
+    def __init__(self, symbols, fail_on=(), view_type="ELF"):
         self.symbols = symbols
         self.fail_on = set(fail_on)
+        self.view_type = view_type
         self.events = []
 
     def get_symbols(self):
@@ -534,6 +570,33 @@ class TestBinaryNinja:
         binja.script.label_symbols(view, CancelAfterFirstWrite())
         assert len(view.defined()) == 1
         assert "1 changed" in binja.host.log[-1][1] and "cancelled" in binja.host.log[-1][1]
+
+    def test_a_mach_o_name_is_read_without_its_leading_underscore(self, binja):
+        symbols = [
+            binja.symbol("function", 0x1000, MACHO_NIM),
+            binja.symbol("function", 0x2000, MACHO_JNI),
+            binja.symbol("function", 0x3000, MACHO_SWIFT),
+            binja.symbol("data", 0x4000, "_main"),
+        ]
+        view = FakeView(symbols, view_type="Mach-O")
+        binja.script.label_symbols(view, Task())
+        assert [(symbol.raw_name, symbol.full_name) for symbol in view.defined()] == [
+            (MACHO_NIM, "mymod.area"),
+            (MACHO_JNI, "com.example.Foo.bar"),
+            (MACHO_SWIFT, SWIFT_READING),
+        ]
+
+    def test_an_elf_name_keeps_its_leading_underscore(self, binja):
+        view = FakeView([binja.symbol("function", 0x1000, MACHO_NIM), binja.symbol("function", 0x2000, MACHO_JNI)])
+        binja.script.label_symbols(view, Task())
+        assert [symbol.full_name for symbol in view.defined()] == ["mymod._area"]
+
+    @pytest.mark.parametrize(("setting", "full"), [(True, "mymod.area"), (False, "mymod._area")])
+    def test_the_setting_overrides_the_view_type(self, binja, monkeypatch, setting, full):
+        monkeypatch.setattr(binja.script, "LEADING_UNDERSCORE", setting)
+        view = FakeView([binja.symbol("function", 0x1000, MACHO_NIM)], view_type="ELF" if setting else "Mach-O")
+        binja.script.label_symbols(view, Task())
+        assert [symbol.full_name for symbol in view.defined()] == [full]
 
     def test_a_setting_that_means_nothing_is_refused(self, binja, monkeypatch):
         monkeypatch.setattr(binja.script, "FORM", "long")

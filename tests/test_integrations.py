@@ -18,7 +18,9 @@ import pytest
 
 import demangle
 import demangle_labels
-from demangle_labels import ELLIPSIS, Entry, Label, Options, label_for, plan_labels
+from demangle_labels import ELLIPSIS, READ_WITH_THE_UNDERSCORE, Entry, Label, Options, label_for, plan_labels
+
+from .conftest import load_corpus
 
 ROOT = Path(__file__).parent.parent
 
@@ -259,6 +261,134 @@ class TestWhatTheHostCouldNotTake:
         options = Options()
         monkeypatch.setattr(demangle, "signature", refuse)
         assert label_for((1, ITANIUM), options) is None
+
+
+MACHO = Options(leading_underscore=True)
+
+#: Where `READ_WITH_THE_UNDERSCORE` comes from: one corpus per scheme, a Mach-O table being
+#: the ELF names each with an underscore in front. Objective-C's corpus is Mach-O's already.
+SCHEME_CORPORA = {
+    "ada": "ada-real-world.txt",
+    "d": "d-real-world.txt",
+    "gnuv2": "gnuv2-real-world.txt",
+    "go": "go-real-world.txt",
+    "itanium": "itanium-real-world.txt",
+    "jni": "jni-real-world.txt",
+    "nim": "nim-real-world.txt",
+    "pascal": "pascal-real-world.txt",
+    "rust": "rust-real-world.txt",
+    "swift": "swift-real-world.txt",
+}
+
+
+def readable(corpus, limit=400):
+    """The first `limit` names of `corpus` that get a label from an ELF table."""
+    names = [name for name, _ in load_corpus(corpus) if label_for((1, name)) is not None]
+    assert names, corpus
+    return names[:limit]
+
+
+class TestLeadingUnderscore:
+    def test_it_is_off_unless_asked_for(self):
+        """On ELF an underscore is part of the name, and a C name `_area__mymod_u10` is one."""
+        assert Options().leading_underscore is False
+        label = label_for((1, "_area__mymod_u10"))
+        assert label is not None and label.full == "mymod._area"
+        assert label_for((1, "_Java_com_example_Foo_bar")) is None
+
+    @pytest.mark.parametrize(
+        ("name", "language", "full"),
+        [
+            ("_area__mymod_u10", "nim", "mymod.area"),
+            ("_eqdestroy___systemZassertions_23", "nim", "system/assertions.=destroy"),
+            ("_Java_com_example_Foo_bar", "jni", "com.example.Foo.bar"),
+            ("_P$PROGRAM_$$_FOO", "pascal", "program PROGRAM.FOO"),
+            ("__ada_ada__strings__unbounded__hash", "ada", "ada.strings.unbounded.hash"),
+            ("_Bbase__9streambuf", "gnuv2", "streambuf::Bbase(void)"),
+        ],
+    )
+    def test_a_mach_o_name_is_read_without_it(self, name, language, full):
+        label = label_for((1, name), MACHO)
+        assert label is not None
+        assert (label.language, label.full) == (language, full)
+        assert label.name == name
+
+    @pytest.mark.parametrize(
+        ("name", "language"),
+        [
+            ("__ZNSt6vectorIiSaIiEE9push_backERKi", "itanium"),
+            ("___Z3foov_block_invoke", "itanium"),
+            ("_$s10Foundation4DataV5countSivg", "swift"),
+            ("__ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E", "rust"),
+            ("__RNvCs1234_7mycrate3foo", "rust"),
+            ("__D4test3fooFZv", "d"),
+            ("_OBJC_CLASS_$_NSData", "objc"),
+        ],
+    )
+    def test_a_scheme_that_takes_it_off_itself_reads_the_name_as_given(self, name, language):
+        """Read without the underscore, `___Z3foov_block_invoke` is Objective-C's block in `Z3foov`."""
+        label = label_for((1, name), MACHO)
+        assert label is not None
+        assert (label.language, label.full) == (language, demangle.demangle(name))
+
+    def test_the_itanium_reading_stays_apples(self):
+        """The Mach-O underscore is what tells the C++ scheme the name is from Apple's clang."""
+        name = "__Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE"
+        assert demangle.demangle(name) != demangle.demangle(name[1:])
+        label = label_for((1, name), MACHO)
+        assert label is not None and label.full == demangle.demangle(name)
+
+    def test_a_name_without_one_is_read_as_given(self):
+        for name in (SWIFT, "l_OBJC_CATEGORY_A_B209_Store247"):
+            assert label_for((1, name), MACHO) == label_for((1, name)) is not None
+
+    @pytest.mark.parametrize("name", ["_main", "_memcpy", "_", "__", "_Z", "_$s"])
+    def test_a_c_name_still_gets_nothing(self, name):
+        assert label_for((1, name), MACHO) is None
+
+    def test_a_name_that_reads_only_as_given_keeps_that_reading(self):
+        """Nim reads `___open_2` and not `__open_2`: no worse than with the setting off."""
+        assert label_for((1, "___open_2"), MACHO) == label_for((1, "___open_2"))
+
+    def test_the_allow_list_applies_to_the_name_without_it(self):
+        assert label_for((1, "_area__mymod_u10"), Options(languages=("itanium",), leading_underscore=True)) is None
+        options = Options(languages=("nim",), leading_underscore=True)
+        label = label_for((1, "_area__mymod_u10"), options)
+        assert label is not None and label.full == "mymod.area"
+
+    def test_the_host_reading_is_compared_with_the_label(self):
+        options = Options(only_left_mangled=False, leading_underscore=True)
+        assert label_for((1, "_Java_com_example_Foo_bar", "com.example.Foo.bar"), options) is None
+
+    @pytest.mark.parametrize("language", sorted(SCHEME_CORPORA))
+    def test_a_mach_o_table_reads_as_the_elf_one_does(self, language):
+        """Every scheme: `_` and an ELF name, on Mach-O, is labelled as the ELF name is.
+
+        Itanium is held to what the library makes of the Mach-O name, which is Apple's
+        reading where Apple's clang mangles differently.
+        """
+        for name in readable(SCHEME_CORPORA[language]):
+            elf = label_for((1, name))
+            macho = label_for((1, "_" + name), MACHO)
+            assert elf is not None and macho is not None, name
+            expected = demangle.demangle("_" + name) if language == "itanium" else elf.full
+            assert macho.full == expected, name
+
+    def test_objective_c_names_from_a_mach_o_read_as_they_did(self):
+        for name in readable("objc-real-world.txt", limit=3000):
+            assert label_for((1, name), MACHO) == label_for((1, name)), name
+
+    def test_the_schemes_that_read_it_are_the_ones_the_library_reads_it_in(self):
+        """Each scheme in the set reads its own Mach-O names, and no other scheme does."""
+        assert set(demangle.languages()) >= READ_WITH_THE_UNDERSCORE
+        assert READ_WITH_THE_UNDERSCORE - set(SCHEME_CORPORA) == {"objc"}
+        for language, corpus in SCHEME_CORPORA.items():
+            names = readable(corpus, limit=100)
+            as_given = sum(demangle.demangle("_" + name) == demangle.demangle(name) for name in names)
+            if language in READ_WITH_THE_UNDERSCORE:
+                assert as_given > len(names) // 2, language
+            else:
+                assert as_given < len(names) // 10, language
 
 
 class TestPlanLabels:

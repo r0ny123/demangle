@@ -18,6 +18,7 @@ import os
 import sys
 
 import ida_bytes
+import ida_ida
 import ida_kernwin
 import ida_nalt
 import ida_name
@@ -50,6 +51,11 @@ ONLY_LEFT_MANGLED = True
 
 #: "llvm" or "gnu", the spelling of types and templates; None is the default, "llvm".
 STYLE = None
+
+#: Whether each name has one underscore in front of the one the compiler wrote, as a
+#: Mach-O symbol does: `_area__mymod_u10` for Nim's `area__mymod_u10`. None decides from
+#: the file: on for Mach-O, off otherwise. `__Z` C++ and `_$s` Swift names read either way.
+LEADING_UNDERSCORE = None
 
 #: Longest label in characters; longer ones are cut. IDA limits the length of a name.
 MAX_LENGTH = 255
@@ -86,6 +92,11 @@ def host_reading(name):
     # A mask of 0 turns none of the parts of the output off; only whether IDA reads the
     # name matters here. `idc.demangle_name` makes the same call.
     return ida_name.demangle_name(name, 0, ida_name.DQT_FULL) or None
+
+
+def is_macho():
+    """Whether the database was loaded from a Mach-O file."""
+    return ida_ida.inf_get_filetype() == ida_ida.f_MACHO
 
 
 def import_addresses():
@@ -158,7 +169,11 @@ def run():
     if FORM not in ("short", "full"):
         raise ValueError(f'FORM is "short" or "full", not {FORM!r}')
     options = demangle_labels.Options(
-        languages=LANGUAGES, only_left_mangled=ONLY_LEFT_MANGLED, style=STYLE, max_length=MAX_LENGTH
+        languages=LANGUAGES,
+        only_left_mangled=ONLY_LEFT_MANGLED,
+        style=STYLE,
+        max_length=MAX_LENGTH,
+        leading_underscore=is_macho() if LEADING_UNDERSCORE is None else bool(LEADING_UNDERSCORE),
     )
     apply = apply_comment if MODE == "comment" else apply_name
     counts = {"set": 0, "kept": 0, "failed": 0}

@@ -33,7 +33,16 @@ except ImportError as error:
         "install it with the pip of the interpreter the disassembler runs"
     ) from error
 
-__all__ = ["DEFAULT_OPTIONS", "ELLIPSIS", "Entry", "Label", "Options", "label_for", "plan_labels"]
+__all__ = [
+    "DEFAULT_OPTIONS",
+    "ELLIPSIS",
+    "READ_WITH_THE_UNDERSCORE",
+    "Entry",
+    "Label",
+    "Options",
+    "label_for",
+    "plan_labels",
+]
 
 #: What a cut label ends in. ASCII, because a host's name and comment fields are not all
 #: Unicode-clean.
@@ -116,6 +125,18 @@ class Options:
     name or fit badly into a view. `None` returns them whole.
     """
 
+    leading_underscore: bool = False
+    """The table puts one underscore in front of the name the compiler wrote, as Mach-O does.
+
+    A Mach-O symbol is `_` and then the name in the object code, so Nim's `area__mymod_u10`
+    is `_area__mymod_u10` there and JNI's `Java_...` is `_Java_...`. Set, a name that
+    begins with `_` is read without it, unless it reads as given in one of the schemes
+    that already take the Mach-O underscore off themselves (`READ_WITH_THE_UNDERSCORE`):
+    the Itanium reading of `__Z` names is Apple's, and `___Z..._block_invoke` is a C++
+    block only with all three. A name that does not read without the underscore keeps its
+    reading as given, if it has one.
+    """
+
     def __post_init__(self) -> None:
         if isinstance(self.languages, str):
             raise TypeError(
@@ -133,6 +154,13 @@ class Options:
 
 
 DEFAULT_OPTIONS = Options()
+
+#: The schemes whose Mach-O names already read as the symbol table holds them: each takes
+#: the extra underscore off itself (`__Z`, `_$s`, `__D`, `__R`, `_OBJC_CLASS_$_`). Read
+#: without it, `__Z` loses Apple's rules and `___Z3foov_block_invoke` is not a C++ block.
+#: Every other scheme reads the underscore as part of the name: Nim's `_area__mymod_u10`
+#: as `mymod._area`, an Ada name as GCC 2's C++, or not at all.
+READ_WITH_THE_UNDERSCORE = frozenset({"itanium", "swift", "rust", "d", "objc"})
 
 EntryLike = Entry | tuple[int, str] | tuple[int, str, str | None]
 
@@ -154,16 +182,19 @@ def label_for(entry: EntryLike, options: Options = DEFAULT_OPTIONS) -> Label | N
     if host_reading is not None and options.only_left_mangled:
         return None
 
-    full = demangle.demangle(name, language=options.languages, style=options.style)
-    if full in (name, host_reading):
+    reading = _read(name, options)
+    # On Mach-O, a scheme outside the set read the underscore as part of the name, if it
+    # read anything; the name without it is the one the compiler wrote.
+    if (
+        options.leading_underscore
+        and name.startswith("_")
+        and (reading is None or reading[1].language not in READ_WITH_THE_UNDERSCORE)
+    ):
+        reading = _read(name[1:], options) or reading
+    if reading is None:
         return None
-
-    try:
-        parts = demangle.signature(name, language=options.languages, style=options.style)
-    except demangle.DemanglingError:
-        # `demangle()` has just read this name, and `signature()` reads it the same way, so
-        # this is a defect in a scheme and not something about the name. The table has
-        # other names, and a label that cannot say which scheme made it is not one to apply.
+    full, parts = reading
+    if full == host_reading:
         return None
 
     spelling = _tidy(full, options.max_length)
@@ -189,6 +220,21 @@ def plan_labels(entries: Iterable[EntryLike], options: Options = DEFAULT_OPTIONS
         label = label_for(entry, options)
         if label is not None:
             yield label
+
+
+def _read(name: str, options: Options) -> tuple[str, demangle.Signature] | None:
+    """The spelling of `name` and its parts, or `None` where no allowed scheme reads it."""
+    full = demangle.demangle(name, language=options.languages, style=options.style)
+    if full == name:
+        return None
+    try:
+        parts = demangle.signature(name, language=options.languages, style=options.style)
+    except demangle.DemanglingError:
+        # `demangle()` has just read this name, and `signature()` reads it the same way, so
+        # this is a defect in a scheme and not something about the name. The table has
+        # other names, and a label that cannot say which scheme made it is not one to apply.
+        return None
+    return full, parts
 
 
 def _tidy(text: str, limit: int | None) -> str:

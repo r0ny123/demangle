@@ -41,6 +41,11 @@ ONLY_LEFT_MANGLED = True
 #: "llvm" or "gnu", the spelling of types and templates; None is the default, "llvm".
 STYLE = None
 
+#: Whether each name has one underscore in front of the one the compiler wrote, as a
+#: Mach-O symbol does: `_area__mymod_u10` for Nim's `area__mymod_u10`. None decides from
+#: the view: on for Mach-O, off otherwise. `__Z` C++ and `_$s` Swift names read either way.
+LEADING_UNDERSCORE = None
+
 #: Longest label in characters; longer ones are cut.
 MAX_LENGTH = 1024
 
@@ -127,7 +132,11 @@ def label_symbols(bv, task):
     if FORM not in ("short", "full"):
         raise ValueError(f'FORM is "short" or "full", not {FORM!r}')
     options = demangle_labels.Options(
-        languages=LANGUAGES, only_left_mangled=ONLY_LEFT_MANGLED, style=STYLE, max_length=MAX_LENGTH
+        languages=LANGUAGES,
+        only_left_mangled=ONLY_LEFT_MANGLED,
+        style=STYLE,
+        max_length=MAX_LENGTH,
+        leading_underscore=bv.view_type == "Mach-O" if LEADING_UNDERSCORE is None else bool(LEADING_UNDERSCORE),
     )
     entries, symbols, crowded = collect(bv)
 
