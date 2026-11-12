@@ -10,16 +10,17 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
-- **The IDA and Binary Ninja scripts read Mach-O names without their leading underscore.**
-  Mach-O puts one underscore in front of every symbol, and both tools keep it, so Nim's
-  `_area__mymod_u10` came out as `mymod._area`, JNI's `_Java_...` was not read, and Free
-  Pascal, Ada and GCC 2 names were read with the underscore as part of the name. On a
+- **The IDA, Binary Ninja and Ghidra scripts read Mach-O names without their leading
+  underscore.** Mach-O puts one underscore in front of every symbol, and the tools keep
+  it, so Nim's `_area__mymod_u10` came out as `mymod._area`, JNI's `_Java_...` was not
+  read, and Free Pascal, Ada and GCC 2 names were read with the underscore as part of the
+  name. On a
   Mach-O file a name is now read without it, except where C++, Swift, Rust, D or
   Objective-C reads it as it stands (`__Z`, `_$s`, `__D`, ...), which those schemes do
   already and which keeps Apple's C++ rules. `demangle_labels.Options` has a
   `leading_underscore` field for it, and each script a `LEADING_UNDERSCORE` setting that
-  overrides the file type. Checked in IDA 9.5 and Binary Ninja 6.0 on a Mach-O arm64
-  dylib.
+  overrides the file type. Checked in IDA 9.5, Binary Ninja 6.0 and Ghidra 12.2 on a
+  Mach-O arm64 dylib.
 - **The Binary Ninja plugin leaves alone an address holding several user symbols.**
   Binary Ninja's DWARF import defines a user symbol for each function the linker
   discarded, all at the image base beside `__elf_header`. With

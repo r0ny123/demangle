@@ -84,7 +84,7 @@ Each script has its settings as constants at the top. Edit the file; there is no
 | `ONLY_LEFT_MANGLED` | IDA, Binary Ninja | `True`: only names the tool's own demangler did not read. `False`: every name the library reads. |
 | `STYLE` | all | `"llvm"` or `"gnu"`, or `None` for the default. |
 | `MAX_LENGTH` | all | Longest label in characters; longer ones end in `...`. |
-| `LEADING_UNDERSCORE` | IDA, Binary Ninja | Read each name without the one leading underscore a Mach-O symbol carries. `None` (default): on for a Mach-O file, off otherwise. |
+| `LEADING_UNDERSCORE` | all | Read each name without the one leading underscore a Mach-O symbol carries. `None` (default): on for a Mach-O file, off otherwise. |
 | `MODE` | IDA | `"comment"` (default) or `"name"`. |
 | `FORM` | all | `"short"` (default) or `"full"`: which spelling a name is made from. |
 | `OVERWRITE_COMMENTS` | IDA | Replace a repeatable comment that is already there. Off by default. |
@@ -98,16 +98,16 @@ detection as usual among those schemes, not a scheme forced on every name. A tab
 origin you know should say so. On a Mach-O image, leave Objective-C out, since all three
 tools label its metadata themselves.
 
-A Mach-O symbol is the compiler's name with one underscore in front, and IDA and Binary
-Ninja keep it: Nim's `area__mymod_u10` is `_area__mymod_u10` there, and JNI's `Java_...`
+A Mach-O symbol is the compiler's name with one underscore in front, and all three tools
+keep it: Nim's `area__mymod_u10` is `_area__mymod_u10` there, and JNI's `Java_...`
 is `_Java_...`. Read as it stands, the first comes out as `mymod._area` and the second not
 at all, and Free Pascal, Ada and GCC 2 names go wrong the same way. So on a Mach-O file
-the two scripts read a name without that underscore. The exceptions are the schemes that
+the scripts read a name without that underscore. The exceptions are the schemes that
 take it off themselves -- C++ (`__Z`, and `___Z..._block_invoke`), Swift (`_$s`), Rust, D
 and Objective-C -- whose names are read as they stand, which keeps Apple's C++ rules for
 `__Z` names. A name that reads only with the underscore keeps that reading.
-`LEADING_UNDERSCORE` turns this on or off whatever the file is. The Ghidra script does not
-do this yet.
+`LEADING_UNDERSCORE` turns this on or off whatever the file is. The Ghidra script tells a
+Mach-O program by its executable format, which Ghidra names `Mac OS X Mach-O`.
 
 `short` is the name without its parameters, `std::vector<int>::push_back`, and `full` is
 the whole spelling. Where a symbol is a phrase rather than a name -- `vtable for Foo` --
@@ -324,6 +324,11 @@ with the same results. Other versions have not been tried.
 - On a g++ program with analysis off it renamed 4 of 46 symbols.
 - On a Go program with `LANGUAGES = ("go",)`, in a dry run, it found nothing to label in
   16216 symbols: Ghidra's names for Go were already readable.
+- In Ghidra 12.2, on the Mach-O arm64 dylib from the IDA run (format `Mac OS X Mach-O`,
+  analysis off), it renamed 12 of 14 symbols, each read without the underscore where the
+  scheme needs it: `_area__mymod_u10` became `mymod.area` and `_Java_...` was read, with
+  the mangled names kept as second labels. A second run changed nothing. On the ELF build
+  it renamed 10, read with the underscore, as before.
 
 `tests/test_integrations_ghidra_live.py` repeats the C++ case against your own Ghidra. It
 is skipped unless asked for; [Contributing](CONTRIBUTING.md#getting-set-up) has the
