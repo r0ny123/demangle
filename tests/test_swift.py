@@ -558,7 +558,6 @@ class TestGrammarFacts:
             "protocol conformance descriptor for < where A: ~<bit 3>> UnsafeBufferPointer<A> : AtomicRepresentable in "
         )
 
-        # AST inspection
         tree = demangle.parse(sym_deinitable, language="swift")
         assert "Deinitable" in tree.spell()
 

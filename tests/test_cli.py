@@ -1103,7 +1103,6 @@ class TestStripUnderscore:
         [
             ("__Z1fv", "f()"),
             ("__ZN3foo3barEv", "foo::bar()"),
-            # The one that needs it.
             ("_?f@@YAXH@Z", "void __cdecl f(int)"),
             # When the stripped form does not read, both references print the name as given;
             # `_Z1fv` loses its reading under `c++filt --strip-underscore` too.
