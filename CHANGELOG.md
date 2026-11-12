@@ -10,6 +10,14 @@ the reference demanglers, and a **Performance** section.
 
 ### Fixed
 
+- **The Binary Ninja plugin leaves alone an address holding several user symbols.**
+  Binary Ninja's DWARF import defines a user symbol for each function the linker
+  discarded, all at the image base beside `__elf_header`. With
+  `ONLY_LEFT_MANGLED = False` on a Rust program the plugin relabelled one of them, which
+  dropped `__elf_header`, and Undo did not bring it back. Such an address is now skipped
+  and counted in the summary line. Found running the plugin live in Binary Ninja 6.0 on
+  Linux; the IDA script was run live in IDA 9.5, through idalib and `idat -S`, with
+  nothing to fix.
 - **Swift follows upstream's renames (weekly drift report #70).** The called-once
   function conventions are `@once` (`XO`) and `@callable(once)` (`XOo`), where they were
   `@called(exactlyOnce)` and `@called(atMostOnce)`, and `Twa` after a type metadata

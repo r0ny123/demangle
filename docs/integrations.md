@@ -8,12 +8,15 @@ to add: IDA's documentation lists Microsoft, Borland, Watcom, Visual Age and GNU
 demanglers, and Ghidra's change history lists GNU, Microsoft and Rust. Swift, Go, D, Nim,
 Free Pascal, Delphi, Ada and JNI are on neither list, and Rust is not on IDA's. Ghidra's
 own Rust demangler read the Rust symbols in the program it was [run on](#run-in-ghidra),
-so the script has little to add there.
+so the script has little to add there. Lists go out of date: IDA 9.5 read D and nearly
+every Rust v0 name itself in [its run](#run-in-ida), and Binary Ninja 6.0 read Swift,
+MSVC and Rust v0 on ELF, so on those the scripts mostly confirm what the tool shows.
 
 !!! warning "Run in one version of each tool"
     Each script has been run in its host: the IDA script in IDA 9.4, headless through
     idalib and from IDA's window (File > Script file, the wait box's Cancel button, Edit >
-    Undo and Redo); the Binary Ninja script in Binary Ninja 6.0, headless; and the Ghidra
+    Undo and Redo), and in IDA 9.5 through idalib and `idat -S`; the Binary Ninja script
+    in Binary Ninja 6.0, headless, through the command it registers; and the Ghidra
     script in Ghidra 12.1.4 and 12.2, headless through PyGhidra. The results are under
     [Run in IDA](#run-in-ida), [Run in Binary Ninja](#run-in-binary-ninja) and
     [Run in Ghidra](#run-in-ghidra). What has not been tried is what needs the window:
@@ -110,7 +113,7 @@ wrote before then stays written, unless the tool's Undo takes it back, as below.
   other way -- `-S` on the command line, idalib -- the script makes no undo point of its
   own, so count on the labels written before the cancel staying.
 - Binary Ninja: the run is one undo step, cancelled or not, and Undo takes back all of it
-  ([tried](#run-in-binary-ninja) in 6.0).
+  ([tried](#run-in-binary-ninja) in 6.0), cancelled while writing included.
 - Ghidra: the run is one transaction, cancelled or not, so Undo should take back all of
   it. That has not been tried.
 
@@ -167,6 +170,29 @@ Ninja's QtGui framework (36,994 names, 17,497 of them readable, about 20,000 C++
 - A command typed in IDA's console between the run and the Undo is an undo step of its
   own: Undo then takes that back first, and a new step ends the Redo of the run.
 
+In IDA 9.5 (Ultimate, Linux x86-64), through idalib and through `idat -A -S` (text mode,
+with IDA's own wait box calls), on ELF x86-64 programs built for the run:
+
+- A g++ program carrying Swift, D, MSVC, Rust (legacy and v0), Nim, Free Pascal, Delphi
+  and JNI names: IDA read the C++, D, MSVC, Rust v0 (with the crate hash in brackets) and
+  Delphi names itself, and its C++ reading of the legacy Rust name kept the hash. Comment
+  mode set 5 comments (Swift twice, Nim, Free Pascal, JNI); a second run set none and kept
+  the 5. Name mode renamed the same 5, and a second run found nothing left to read. With
+  `ONLY_LEFT_MANGLED = False` it set 22 comments, and a second run kept them all. `idat -S`
+  gave the same 5 comments.
+- A rustc 1.97 program (v0 mangling, 1,571 names): IDA left 5 Rust v0 names unread, among
+  them `_RNvCs..._7___rustc35___rust_no_alloc_shim_is_unstable_v2`, and the script set those
+  5; with `ONLY_LEFT_MANGLED = False` it set 561 more.
+- A Go program (9,703 names): nothing to label in either setting. Go's names are already
+  readable.
+- `libLLVM.so` from LLVM 18 (103,772 names, opened with auto-analysis off): IDA's demangler
+  left 800 C++ names unread that this library reads, such as the `llvm::yaml::yamlize`
+  templates with `enable_if` in their return type, and the script set those 800 in under
+  a second; a second run kept them. With
+  `ONLY_LEFT_MANGLED = False` it set 33,511 comments in about 5 s.
+- A cancel while reading changed nothing; a cancel while writing, at 10,000 of 37,432,
+  left exactly 10,000 comments written.
+
 ## Binary Ninja
 
 Each symbol gets a user symbol with the label as its short name and full name, and the
@@ -177,9 +203,16 @@ not.
 
 A symbol counts as left mangled when its full name is still its raw name, so a second run
 finds nothing to do. Where an earlier run defined a user symbol beside Binary Ninja's own,
-the user symbol is the one read and replaced. Binary Ninja keeps one user symbol per
-address, so where several names share an address (aliases) only one of them gets the
+the user symbol is the one read and replaced. Defining a user symbol replaces the one at
+its address, so where several names share an address (aliases) only one of them gets the
 label.
+
+An address that already holds more than one user symbol is left alone, and the summary
+line counts it. Binary Ninja's DWARF import makes such an address: it defines a user
+symbol for each function the linker discarded, all at the image base beside
+`__elf_header` (1,468 of them in a small Rust program built with the standard library's
+debug information). Defining a symbol there drops one of the others, and Undo does not
+bring it back.
 
 ### Run in Binary Ninja
 
@@ -200,6 +233,25 @@ program as in IDA.
 - On `crashpad_handler` for arm64, 4,460 symbols of which about 2,900 are C++, a second run
   changed nothing in either setting of `ONLY_LEFT_MANGLED`, and four undos restored the
   original exactly.
+
+It was then run in Binary Ninja 6.0 Headless on Linux, as a user plugin in
+`~/.binaryninja/plugins`, through the command it registers (`PluginCommand.execute`, which
+is what the Plugins menu calls), on the same ELF x86-64 programs as IDA 9.5:
+
+- On the g++ program with the other schemes' names, Binary Ninja read the C++, Swift,
+  MSVC and Rust v0 names itself, and kept the hash in its reading of the legacy Rust
+  name. The script labelled the 6 it left: D (2), Nim, Free Pascal, JNI and Delphi. A
+  second run changed nothing, Undo restored the symbols exactly, and Redo put the run
+  back.
+- On the Rust program, the first version of this script relabelled, with
+  `ONLY_LEFT_MANGLED = False`, a symbol at the image base where the DWARF import had put
+  1,468 user symbols; `__elf_header` was lost, and Undo did not restore it. Such an
+  address is now left alone, as above, and Undo then restores the symbols exactly.
+- On `libLLVM.so` (49,496 functions and data, loaded with analysis off), Binary Ninja had
+  read every name and the script changed nothing. With `ONLY_LEFT_MANGLED = False` it
+  relabelled 41,485 symbols in about 6.5 s; a cancel at 10,000 written stopped it 32
+  later, and one Undo restored the symbols exactly. A cancel while reading changed
+  nothing.
 
 ## Ghidra
 
