@@ -49,11 +49,11 @@ class Style:
     language_options: Mapping[str, Any] = field(default_factory=dict)
     """Per-language option objects, keyed by language name."""
 
-    def options_for(self, language):
+    def options_for(self, language: str) -> Any:
         """The option object this style specifies for `language`, or None."""
         return self.language_options.get(language)
 
-    def with_options(self, **languages) -> "Style":
+    def with_options(self, **languages: Any) -> "Style":
         """This style with some language's options changed, as a new style.
 
         Each keyword is a language name and each value is either that language's whole
@@ -213,7 +213,7 @@ def _table():
         return _STYLES
 
 
-def get_style(name):
+def get_style(name: str | Style | None) -> Style:
     """Look up a style by name. `None` gives the default, and a `Style` is returned as is.
 
     Raises:
@@ -233,7 +233,7 @@ def get_style(name):
         raise ValueError(f"unknown style {name!r}; known styles are {sorted(styles)}") from None
 
 
-def register_style(style):
+def register_style(style: Style) -> Style:
     """Add a style, so a downstream project can define its own house spelling."""
     table = _table()
     with _lock:
@@ -243,7 +243,7 @@ def register_style(style):
     return style
 
 
-def available_styles():
+def available_styles() -> list[str]:
     """The registered style names, sorted. `demangle.styles()` is this."""
     return sorted(_table())
 

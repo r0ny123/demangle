@@ -126,7 +126,7 @@ def notify_on_change(callback):
     _on_change.append(callback)
 
 
-def register(plugin):
+def register(plugin: LanguagePlugin) -> LanguagePlugin:
     """Add a plugin to the registry, replacing any earlier one of the same name."""
     global _by_first, _ordered
     if not isinstance(plugin, LanguagePlugin):
@@ -275,7 +275,7 @@ def _offer_builtin_aliases(name, aliases):
             _aliases.setdefault(alias, name)
 
 
-def load_plugins():
+def load_plugins() -> None:
     """Register the plugins installed distributions advertise, once.
 
     Third-party languages are opt-in: a distribution advertising the `demangle.languages`
@@ -358,7 +358,7 @@ def _may_advertise_plugins():
     return False
 
 
-def get(name):
+def get(name: str) -> LanguagePlugin:
     """Look up a plugin by name or alias. Raises KeyError if unknown."""
     _load()
     try:
@@ -537,14 +537,14 @@ def _screened(plugin):
     return None
 
 
-def names():
+def names() -> list[str]:
     """Registered language names, sorted."""
     _load()
     with _lock:
         return sorted(_plugins)
 
 
-def aliases():
+def aliases() -> dict[str, str]:
     """Every alias, mapped to the plugin name it resolves to."""
     _load()
     with _lock:

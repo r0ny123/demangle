@@ -20,8 +20,8 @@ out-parameter and `llvm-undname --warn-trailing` are asked in C.
 """
 
 import re
-from collections.abc import Iterator, Sequence
-from typing import NamedTuple
+from collections.abc import Iterable, Iterator, Sequence
+from typing import NamedTuple, Protocol
 
 from .api import _check_language, _check_limits
 from .api import demangle as _demangle
@@ -165,9 +165,13 @@ def _demangle_text(
     return token.sub(replace, text)
 
 
+class _Writer(Protocol):
+    def write(self, text: str, /) -> object: ...
+
+
 def demangle_stream(
-    fin,
-    fout,
+    fin: Iterable[str],
+    fout: _Writer,
     *,
     language: str | Sequence[str] | None = None,
     style: str | Style | None = DEFAULT_STYLE,
