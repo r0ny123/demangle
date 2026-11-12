@@ -42,6 +42,9 @@ validation:
 
 theme:
   name: material
+  # The system's own fonts: Material's default is a stylesheet from Google Fonts on every page,
+  # and this site loads nothing from a third party.
+  font: false
   features:
     - navigation.sections
     - navigation.top

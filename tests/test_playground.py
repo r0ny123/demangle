@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -49,6 +50,11 @@ def bridge():
 @pytest.fixture
 def build_assets():
     return _load_module("playground_hooks_for_tests", ROOT / "docs/hooks.py").build_assets
+
+
+@pytest.fixture
+def hooks():
+    return _load_module("playground_hooks_for_runtime_tests", ROOT / "docs/hooks.py")
 
 
 @pytest.mark.parametrize(("symbol", "language"), PRESETS or [(None, None)])
@@ -268,3 +274,52 @@ def test_source_archive_is_deterministic_and_importable(tmp_path, build_assets):
         check=True,
     )
     assert imported.stdout.strip() == f"{demangle.__version__} foo::bar(int)"
+
+
+class TestPyodideRuntime:
+    """The runtime is served by the site, and only as the files whose digests are pinned."""
+
+    def test_the_worker_loads_the_runtime_from_the_site_and_nothing_from_another_host(self):
+        worker = (ROOT / "playground" / "playground-worker.js").read_text(encoding="utf-8")
+        assert 'new URL("assets/pyodide/", self.location.href)' in worker
+        for name in ("playground-worker.js", "playground.js", "index.html", "playground_bridge.py"):
+            text = (ROOT / "playground" / name).read_text(encoding="utf-8")
+            loaded = re.findall(
+                r"""(?:src|href)=["'](https?://[^"']+)|(?:importScripts|fetch|import)\(\s*[`"'](https?://[^`"']+)""",
+                text,
+            )
+            links = [a or b for a, b in loaded if not (a or b).startswith("https://github.com/r0ny123/demangle")]
+            assert links == [], name
+
+    def test_the_worker_and_the_hook_name_the_same_release(self, hooks):
+        worker = (ROOT / "playground" / "playground-worker.js").read_text(encoding="utf-8")
+        assert f'const PYODIDE_VERSION = "{hooks.PYODIDE_VERSION}";' in worker
+        assert f"https://cdn.jsdelivr.net/pyodide/v{hooks.PYODIDE_VERSION}/full/" == hooks.PYODIDE_SOURCE
+        assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in hooks.PYODIDE_FILES.values())
+        assert {"pyodide.js", "pyodide.asm.js", "pyodide.asm.wasm", "python_stdlib.zip"} <= set(hooks.PYODIDE_FILES)
+
+    def test_a_file_is_fetched_once_and_kept_while_its_digest_holds(self, tmp_path, hooks, monkeypatch):
+        files = {"a.js": b"first", "b.wasm": b"second"}
+        monkeypatch.setattr(hooks, "PYODIDE_FILES", {n: hashlib.sha256(c).hexdigest() for n, c in files.items()})
+        asked = []
+
+        def download(url):
+            asked.append(url)
+            return files[url.rsplit("/", 1)[1]]
+
+        runtime = hooks.fetch_pyodide(tmp_path, download)
+        assert runtime == tmp_path / "playground" / "assets" / "pyodide"
+        assert {path.name: path.read_bytes() for path in runtime.iterdir()} == files
+        assert asked == [hooks.PYODIDE_SOURCE + name for name in files]
+        hooks.fetch_pyodide(tmp_path, download)
+        assert len(asked) == 2, "nothing is fetched again"
+        (runtime / "a.js").write_bytes(b"changed on disk")
+        hooks.fetch_pyodide(tmp_path, download)
+        assert asked[2:] == [hooks.PYODIDE_SOURCE + "a.js"]
+        assert (runtime / "a.js").read_bytes() == b"first"
+
+    def test_a_download_with_another_digest_fails_the_build_and_is_never_written(self, tmp_path, hooks, monkeypatch):
+        monkeypatch.setattr(hooks, "PYODIDE_FILES", {"a.js": hashlib.sha256(b"reviewed").hexdigest()})
+        with pytest.raises(ValueError, match="not the pinned"):
+            hooks.fetch_pyodide(tmp_path, lambda url: b"served instead")
+        assert list((tmp_path / "playground" / "assets" / "pyodide").iterdir()) == []

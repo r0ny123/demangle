@@ -5,7 +5,10 @@ let runner, batchRunner;
 
 async function initialize() {
     try {
-        const runtimeURL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+        // Served by this site, not a CDN: docs/hooks.py fetches the runtime when the site is
+        // built and checks every file against a pinned SHA-256, so this page loads nothing
+        // from a third party.
+        const runtimeURL = new URL("assets/pyodide/", self.location.href).href;
         importScripts(`${runtimeURL}pyodide.js`);
         const assetBase = new URL(".", self.location.href);
         const [pyodide, archive, bridge] = await Promise.all([

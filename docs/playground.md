@@ -3,8 +3,9 @@
 **[Open the playground](https://r0ny123.github.io/demangle/playground/)**
 
 The playground is this library running in the browser, on [Pyodide](https://pyodide.org/)
-in a Web Worker. The runtime comes from a CDN on first load; after that nothing is sent
-anywhere, and the symbols you paste stay on the page.
+in a Web Worker. The runtime is served by this site, each file checked against a pinned
+SHA-256 when the site is built, so the page loads nothing from a third party; nothing is
+sent anywhere, and the symbols you paste stay on the page.
 
 Paste a name and it is read as you type, by whichever of the fourteen schemes claims it,
 or by the one you pick. Beside the spelling it shows:
