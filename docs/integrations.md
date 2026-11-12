@@ -18,11 +18,11 @@ MSVC and Rust v0 on ELF, so on those the scripts mostly confirm what the tool sh
     Undo and Redo), and in IDA 9.5 through idalib, `idat -S` and the same window steps;
     the Binary Ninja script in Binary Ninja 6.0, headless through the command it
     registers and from the Plugins menu in its window (Cancel, Edit > Undo and Redo); and
-    the Ghidra script in Ghidra 12.1.4 and 12.2, headless through PyGhidra. The results are under
-    [Run in IDA](#run-in-ida), [Run in Binary Ninja](#run-in-binary-ninja) and
-    [Run in Ghidra](#run-in-ghidra). What has not been tried is what needs Ghidra's
-    window: its Script Manager and Undo. Other versions
-    have not been tried either, so [the calls each script makes](#the-calls-each-script-makes)
+    the Ghidra script in Ghidra 12.1.4 and 12.2, headless through PyGhidra, and in Ghidra
+    12.1.2 through the Script Manager of its window (Cancel, Undo and Redo). The results
+    are under [Run in IDA](#run-in-ida), [Run in Binary Ninja](#run-in-binary-ninja) and
+    [Run in Ghidra](#run-in-ghidra). Other versions have not been tried, so
+    [the calls each script makes](#the-calls-each-script-makes)
     are listed to check against the version you have. The repository's own tests run each
     script against stand-ins for its host, written from the same documentation.
 
@@ -127,8 +127,9 @@ wrote before then stays written, unless the tool's Undo takes it back, as below.
   own, so count on the labels written before the cancel staying.
 - Binary Ninja: the run is one undo step, cancelled or not, and Undo takes back all of it
   ([tried](#run-in-binary-ninja) in 6.0), cancelled while writing included.
-- Ghidra: the run is one transaction, cancelled or not, so Undo should take back all of
-  it. That has not been tried.
+- Ghidra: the run is one undo step, cancelled or not, and one Edit > Undo took back all
+  of it ([tried](#run-in-ghidra) in 12.1.2), cancelled while writing included. Ghidra
+  asks to confirm a Cancel, and the script keeps writing until you answer.
 
 To try a run without that risk, use `DRY_RUN = True` first, or a copy.
 
@@ -307,7 +308,7 @@ read, and is skipped. For that reason there is no `ONLY_LEFT_MANGLED` here.
 Overloads share a short name, so a name another symbol has gets the address after it.
 Ghidra replaces the characters it does not accept in a name -- spaces, other whitespace,
 control and invisible characters -- with `_`, as `SymbolUtilities.replaceInvalidChars` does.
-Ghidra runs a script's changes in one transaction, so Undo should take back a run whole.
+Ghidra runs a script's changes in one transaction, so one Undo takes back a run whole.
 
 ### Run in Ghidra
 
@@ -329,6 +330,20 @@ with the same results. Other versions have not been tried.
   scheme needs it: `_area__mymod_u10` became `mymod.area` and `_Java_...` was read, with
   the mangled names kept as second labels. A second run changed nothing. On the ELF build
   it renamed 10, read with the underscore, as before.
+
+It was then run from the window of Ghidra 12.1.2 (macOS, PyGhidra 3.1.0), through the
+CodeBrowser's Script Manager, on the ELF x86-64 programs used in the IDA and Binary Ninja
+windows, both imported with auto-analysis. The steps were driven from a thread inside
+Ghidra rather than by mouse, through the same Script Manager run, task dialog and Edit
+menu actions a click reaches:
+
+- On the small program, the run renamed 24 of 47 symbols (Swift, D, MSVC and Ada names),
+  each keeping its mangled name as a second label. Edit > Undo restored the symbols
+  exactly, Redo put the run back, and a second run changed nothing. The Edit menu names
+  the undo step after PyGhidra's script class, not the script.
+- On the large one (126,896 symbols, 56,873 readable), Cancel in the task dialog at
+  20,000 written stopped the run at 26,000, once its confirmation was answered. One Undo
+  restored the symbols exactly.
 
 `tests/test_integrations_ghidra_live.py` repeats the C++ case against your own Ghidra. It
 is skipped unless asked for; [Contributing](CONTRIBUTING.md#getting-set-up) has the
