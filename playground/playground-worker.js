@@ -11,11 +11,8 @@ async function initialize() {
         const [pyodide, archive, bridge] = await Promise.all([
             loadPyodide({ indexURL: runtimeURL }),
             fetch(new URL("assets/demangle.zip", assetBase)).then(response => {
-                if (response.ok) return response.arrayBuffer();
-                return fetch(new URL("demangle.zip", assetBase)).then(r2 => {
-                    if (!r2.ok) throw new Error(`Package download failed: HTTP ${r2.status}`);
-                    return r2.arrayBuffer();
-                });
+                if (!response.ok) throw new Error(`Package download failed: HTTP ${response.status}`);
+                return response.arrayBuffer();
             }),
             fetch(new URL("playground_bridge.py", assetBase)).then(response => {
                 if (!response.ok) throw new Error(`Bridge download failed: HTTP ${response.status}`);
