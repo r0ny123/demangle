@@ -11,8 +11,8 @@ Binary Ninja's own demanglers read have. Change the settings below before the pl
 loads.
 
 Run headless in Binary Ninja 6.0 on Mach-O and ELF programs, through the registered
-command as the Plugins menu calls it; the documentation page has the results. Not yet run
-by clicking the menu in Binary Ninja's window. If a call here is not what your version
+command as the Plugins menu calls it, and from that menu in Binary Ninja 6.0.10905's
+window; the documentation page has the results. If a call here is not what your version
 has, the Log window names it.
 """
 

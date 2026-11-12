@@ -17,7 +17,9 @@ the reference demanglers, and a **Performance** section.
   dropped `__elf_header`, and Undo did not bring it back. Such an address is now skipped
   and counted in the summary line. Found running the plugin live in Binary Ninja 6.0 on
   Linux; the IDA script was run live in IDA 9.5, through idalib and `idat -S`, with
-  nothing to fix.
+  nothing to fix. Both were then run from their windows, the Plugins menu of Binary Ninja
+  6.0.10905 and File > Script file in IDA 9.5, with Cancel, Undo and Redo behaving as
+  documented.
 - **An MSVC name holding `_$$_` or a `/` is no longer read as Free Pascal or Go.**
   `?A_$$_B@@3HA` read as a Free Pascal routine `B@@3HA` in a unit `?A`, where it is
   MSVC's `int A_$$_B`, and an MSVC string literal with a `/` in it was claimed by Go and
