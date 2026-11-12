@@ -2031,6 +2031,13 @@ class Demangler:
                         if found is None:
                             break
                         filled = self.add_child(filled, found)
+                elif kind == _PARAM_DIFFERENTIABLE_FUNCTION_PROP:
+                    # Exactly three (identifier, type) pairs, popped type first; the
+                    # reversal below puts them back as original, JVP, VJP.
+                    for _ in range(3):
+                        filled = self.add_child(filled, self.pop("Type"))
+                        filled = self.add_child(filled, self.pop("Identifier"))
+                    continue
                 elif kind == _PARAM_CONSTANT_PROP_KEY_PATH:
                     filled = self.add_child(filled, self.pop("Type"))
                     filled = self.add_child(filled, self.pop("Type"))
@@ -2058,6 +2065,10 @@ class Demangler:
             return self.add_child(parameter, _param_kind(_PARAM_CLOSURE_PROP))
         if char == "E":
             return self.add_child(parameter, _param_kind(_PARAM_ESCAPING_CLOSURE_PROP))
+        if char == "a":
+            # A `@differentiable` function value: its three components -- original, JVP,
+            # VJP -- each a name and a type on the stack, filled in below.
+            return self.add_child(parameter, _param_kind(_PARAM_DIFFERENTIABLE_FUNCTION_PROP))
         if char == "C":
             self.add_child(parameter, _param_kind(_PARAM_CLOSURE_PROP_PREVIOUS_ARG))
             previous = self.natural()
@@ -3090,6 +3101,7 @@ _PARAM_CONSTANT_PROP_KEY_PATH = 9
 _PARAM_CONSTANT_PROP_STRUCT = 10
 _PARAM_CLOSURE_PROP_PREVIOUS_ARG = 11
 _PARAM_ESCAPING_CLOSURE_PROP = 12
+_PARAM_DIFFERENTIABLE_FUNCTION_PROP = 13
 _PARAM_DEAD = 1 << 6
 _PARAM_OWNED_TO_GUARANTEED = 1 << 7
 _PARAM_SROA = 1 << 8

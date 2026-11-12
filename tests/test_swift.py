@@ -83,6 +83,21 @@ class TestVectorsTranscribedFromTheReference:
                 "function signature specialization <Arg[0] = [Escaping Closure Propagated : closure, "
                 "Argument Types : [Swift.String], Arg[1] = [Same As Argument 0]> of foo",
             ),
+            # `a` is a `@differentiable` function value: the original, its JVP and its
+            # VJP, each a name and a type.
+            (
+                "$s3src13test3EvaluateyS2d_S2dYjrXEtF18$s3src6squareyS2dFS2dIgyd_0dE8FTJfSpSr"
+                "S4dIegyd_Igydo_0de4FTJrgH0S4dIegyd_Igydo_Tf1na_n",
+                "function signature specialization <Arg[1] = [Differentiable Function Propagated, "
+                "Components : [$s3src6squareyS2dF : @callee_guaranteed (@unowned Swift.Double) -> "
+                "(@unowned Swift.Double), $s3src6squareyS2dFTJfSpSr : @callee_guaranteed (@unowned "
+                "Swift.Double) -> (@unowned Swift.Double, @owned @escaping @callee_guaranteed "
+                "(@unowned Swift.Double) -> (@unowned Swift.Double)), $s3src6squareyS2dFTJrSpSr : "
+                "@callee_guaranteed (@unowned Swift.Double) -> (@unowned Swift.Double, @owned "
+                "@escaping @callee_guaranteed (@unowned Swift.Double) -> (@unowned Swift.Double))]]> "
+                "of src.test3Evaluate(Swift.Double, @differentiable(reverse) (Swift.Double) -> "
+                "Swift.Double) -> Swift.Double",
+            ),
             # `p` is a *run*: one argument, five propagated constants.
             (
                 "$s3foo4main1SVs5Int32VSbTf3npSSi3Si0_n",
@@ -94,6 +109,12 @@ class TestVectorsTranscribedFromTheReference:
     )
     def test_function_signature_specialization_kinds(self, mangled, expected):
         assert demangle.demangle(mangled, language="swift") == expected
+
+    def test_a_differentiable_function_needs_all_three_components(self):
+        """`a` pops exactly three (name, type) pairs; with only two on the stack the
+        reference refuses the name, and so does this library."""
+        name = "$s3src13test3EvaluateyS2d_S2dYjrXEtF18$s3src6squareyS2dFS2dIgyd_0dE8FTJfSpSrS4dIegyd_Igydo_Tf1na_n"
+        assert demangle.demangle(name, language="swift") == name
 
     def test_arguments_the_optimiser_dropped(self):
         """`Ttt1g5`: a `t` per dropped argument, then the specialisation's own letter.
