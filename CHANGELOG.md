@@ -8,15 +8,16 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-12
+
 ### Fixed
 
 - **The IDA, Binary Ninja and Ghidra scripts read Mach-O names without their leading
   underscore.** Mach-O puts one underscore in front of every symbol, and the tools keep
   it, so Nim's `_area__mymod_u10` came out as `mymod._area`, JNI's `_Java_...` was not
   read, and Free Pascal, Ada and GCC 2 names were read with the underscore as part of the
-  name. On a
-  Mach-O file a name is now read without it, except where C++, Swift, Rust, D or
-  Objective-C reads it as it stands (`__Z`, `_$s`, `__D`, ...), which those schemes do
+  name. On a Mach-O file a name is now read without it, except where C++, Swift, Rust, D
+  or Objective-C reads it as it stands (`__Z`, `_$s`, `__D`, ...), which those schemes do
   already and which keeps Apple's C++ rules. `demangle_labels.Options` has a
   `leading_underscore` field for it, and each script a `LEADING_UNDERSCORE` setting that
   overrides the file type. Checked in IDA 9.5, Binary Ninja 6.0 and Ghidra 12.2 on a
@@ -54,11 +55,9 @@ the reference demanglers, and a **Performance** section.
   Function Propagated, Components : [...]]`; it was refused. That was the last vector of
   the drift report this library did not read. `swift-upstream.txt` now holds it and the
   three `Twa` rows: 535 / 535 against the reference build at `4f010677`.
-
 - Playground navigation, presets, and cards share centered page gutters and a bounded
   content width. Inner padding, control sizing, and responsive option rows stay aligned
   on desktop, narrow screens, and with enlarged text; overflow is contained locally.
-
 - Release recovery resumes publishing when a tag and release already exist. Active
   or successful publishing runs are preserved; failed runs retry only failed jobs.
 - Playground theme settings no longer prevent startup when browser storage is blocked.
@@ -72,7 +71,6 @@ the reference demanglers, and a **Performance** section.
 - Share links restore batch mode and validate options, with a size limit and explicit
   clipboard feedback. Result states distinguish unrecognized, invalid, and unchanged
   symbols; keyboard focus and live announcements cover batch controls and results.
-
 - A release-preparation command updates package and citation versions, release notes,
   and comparison links together, with metadata checks and rollback on failure.
 - Browser checks for theme persistence, keyboard shortcuts, and stalled-worker recovery.
@@ -4163,7 +4161,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/r0ny123/demangle/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/r0ny123/demangle/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/r0ny123/demangle/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/r0ny123/demangle/compare/v0.5.0...v0.5.1
