@@ -86,7 +86,7 @@ SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 
 #: Not scored here: 72 rows are reference refusals, which `_misses` counts as misses.
 #: tests/test_swift.py scores it; it lives here for tests/test_readme.py.
-SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 531, 531
+SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 535, 535
 SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT = 5, 5
 OBJC_TOTAL, OBJC_EXACT = 2665, 2665
 
@@ -446,9 +446,11 @@ def test_a_style_does_not_decide_whether_a_name_parses(corpus):
     assert differ == []
 
 
-#: Not zero because a demangled name can contain a genuinely symbol-shaped word: all
-#: seven are pre-Itanium names libiberty spells with a mangled component still in them.
-FILTER_REWRITES_AGAIN = 7
+#: Not zero because a demangled name can contain a genuinely symbol-shaped word: the
+#: seven in libiberty's corpus are pre-Itanium names it spells with a mangled component
+#: still in them, and Swift's propagated `@differentiable` function prints its three
+#: components by their mangled names, as the reference does.
+FILTER_REWRITES_AGAIN = {"gnuv2-libiberty.txt": 7, "swift-upstream.txt": 1}
 
 
 @pytest.mark.sweep
@@ -471,10 +473,7 @@ def test_the_filter_does_not_rewrite_what_this_library_printed(corpus):
             continue
         if demangle.demangle_text(spelled) != spelled:
             rewritten.append(mangled)
-    if corpus == "gnuv2-libiberty.txt":
-        assert len(rewritten) == FILTER_REWRITES_AGAIN, rewritten
-    else:
-        assert rewritten == []
+    assert len(rewritten) == FILTER_REWRITES_AGAIN.get(corpus, 0), rewritten
 
 
 #: Names the filter's token alphabet cannot hold whole: angle brackets are excluded on
