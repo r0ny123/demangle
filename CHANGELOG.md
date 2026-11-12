@@ -33,6 +33,21 @@ the reference demanglers, and a **Performance** section.
   fallback to it. The playground has loaded `playground/assets/demangle.zip` since it
   became a page of its own.
 
+### Security
+
+- **CI and the release build install every tool by hash, from files in the repository.**
+  The workflows ran `pip install --upgrade pip uv`, resolved the test, lint and docs
+  dependencies afresh on each run and, in the job that builds what is published, installed
+  the newest `build`, `twine` and `hatchling` with everything those depend on: a hijacked
+  release of any of them would have run there within the hour, and could have changed the
+  wheel before it was signed. uv is now pinned by hash in `tools/uv-requirements.txt`,
+  everything else is installed from `uv.lock` with `--require-hashes`
+  (`tools/ci-install.sh`), hatchling is locked there too as a `build` dependency group,
+  and distributions are built without isolation and without a network. The release job
+  no longer installs twine; CI runs `twine check` on every commit instead. Dependabot
+  now updates `uv.lock` and the files under `tools/`, and waits a week before proposing a
+  release. `SECURITY.md` says how a release is built and how to check one.
+
 ## [0.7.0] - 2026-11-12
 
 ### Fixed

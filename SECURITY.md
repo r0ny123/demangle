@@ -87,6 +87,35 @@ path spelled in both styles, and that no substitution-table sentinel reaches a b
 The mutation runs are under an address-space cap, so a runaway allocation reports the
 name that caused it rather than being killed.
 
+## How a release is built, and how to check one
+
+- Releases are published from GitHub Actions through PyPI
+  [Trusted Publishing](https://docs.pypi.org/trusted-publishers/). There is no PyPI API
+  token, in the repository or anywhere else, for anyone to steal; the upload is authorised
+  by a short-lived OIDC token that only `release.yml`, running in the `pypi` environment of
+  this repository, can obtain, and that environment waits for a maintainer's approval.
+- Every file on PyPI carries an attestation that names this repository and that workflow.
+  PyPI shows it under *Verified details*, and it can be checked from a shell:
+
+  ```console
+  $ python -m pip install pypi-attestations
+  $ python -m pypi_attestations verify pypi --repository https://github.com/r0ny123/demangle \
+        pypi:demangle-0.7.0-py3-none-any.whl
+  OK: demangle-0.7.0-py3-none-any.whl
+  ```
+
+- The wheel is reproducible: `uv build` at the release tag, with the hatchling that
+  `uv.lock` pins, gives the file on PyPI byte for byte, so its SHA-256 can be compared
+  with the one PyPI lists.
+- Nothing is resolved while a release is built, or anywhere in CI. uv is installed from
+  `tools/uv-requirements.txt` and everything else from `uv.lock`, each file checked against
+  a hash that is in the repository, and the build runs without a network. A new release
+  of a build or test dependency reaches a workflow only through a reviewed change to those
+  files, which Dependabot proposes once the release has been public for a week.
+- Every GitHub Action is pinned to a commit, workflows are given a read-only token unless
+  a job says otherwise, and no workflow runs code from a fork with a secret or a
+  writable token.
+
 ## Supported versions
 
 | Version | Supported |
