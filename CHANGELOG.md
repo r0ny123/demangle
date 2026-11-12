@@ -8,6 +8,15 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A name nested past the interpreter's stack is a `LimitExceeded` on PyPy too.** On
+  PyPy the `RecursionError` can overflow the stack a second time while it unwinds, and
+  PyPy then raises `TypeError("couldn't record exception context ...")` in its place.
+  `demangle_strict()`, `parse()` and `demangle_type()` reported that as
+  `ParseError: ... parser failed`; they now report the recursion bound it stands for, as
+  they do on CPython, which is unaffected.
+
 ### Changed
 
 - **The README is a page, not the manual.** What the library does, how to install it, a

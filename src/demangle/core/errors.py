@@ -14,6 +14,7 @@ __all__ = [
     "NotMangledError",
     "ParseError",
     "TruncatedError",
+    "recursion_error_lost",
     "reraise_if_operational",
 ]
 
@@ -82,3 +83,25 @@ def reraise_if_operational(exc):
     """Re-raise `exc` if it is an interpreter-level failure rather than a parse failure."""
     if isinstance(exc, OPERATIONAL_EXCEPTIONS):
         raise exc
+
+
+def recursion_error_lost(exc):
+    """Whether `exc` is PyPy's stand-in for a `RecursionError` it could not raise.
+
+    When a name nests past the interpreter's stack, the `RecursionError` unwinds through
+    `finally` blocks that are still at the edge of the stack. On PyPy one of them can
+    overflow again, and attaching that second error to the first needs more stack still;
+    PyPy then raises `TypeError("couldn't record exception context for exception ...,
+    got: RecursionError(...)")` in their place. It is the same fact -- the name nests
+    further than this process will follow -- so every boundary that reports a
+    `RecursionError` as `LimitExceeded` reports this too, rather than as a parser defect.
+    CPython never raises it.
+    """
+    if type(exc) is not TypeError:
+        return False
+    message = str(exc)
+    return message.startswith(_LOST_CONTEXT) and _GOT_RECURSION in message
+
+
+_LOST_CONTEXT = "couldn't record exception context for exception "
+_GOT_RECURSION = ", got: RecursionError("
