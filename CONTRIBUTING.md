@@ -70,11 +70,9 @@ GHIDRA_INSTALL_DIR=/path/to/ghidra DEMANGLE_GHIDRA_TESTS=1 \
   python -m pytest -q tests/test_integrations_ghidra_live.py
 ```
 
-The toolchain is deliberately the fast one: **ruff** for linting and formatting (it
-replaces black, isort, flake8 and pyupgrade), **ty** for type checking (it replaces
-mypy), **uv** for installing. Both checkers are written in Rust: ruff covers the whole
-tree in under a second and ty in a couple of seconds, which is what makes it reasonable
-to gate every commit on them. Both are pinned exactly; Dependabot proposes the bumps.
+Linting and formatting are **ruff**, type checking is **ty**. Both run over the whole
+tree in a few seconds, and both are pinned exactly, because they add rules in patch
+releases; Dependabot proposes the bumps.
 
 The reference demanglers are optional but useful. On Debian or Ubuntu:
 
@@ -192,15 +190,15 @@ After the Unreleased section has notes ready to publish, prepare the release met
 its stable semantic version. The command defaults the date to today; pass `--date` for a
 specific `YYYY-MM-DD` date. It updates the package and citation versions, moves the notes
 under the dated changelog heading, refreshes comparison links, then runs the documentation
-metadata checks. If those checks fail, it restores the original files. Commit and push
-that change to `main`; `tag-release.yml` creates the tag and release only after push CI
-passes for that exact commit. It then starts the PyPI publishing workflow. If starting
+metadata checks. If those checks fail, it restores the original files. Merge that change
+to `main` through a pull request; `tag-release.yml` creates the tag and release only after
+push CI passes for that exact commit. It then starts the PyPI publishing workflow. If starting
 publishing fails, rerun the tag-release job: an existing release no longer stops recovery.
 Active or successful publishing runs are left alone; failed runs retry only failed jobs.
 Cancelled runs require an explicit manual restart.
 
 ```console
-python tools/prepare_release.py 0.7.0 --date 2026-10-12
+python tools/prepare_release.py 0.8.0 --date 2026-12-01
 ```
 
 ## How changes get merged

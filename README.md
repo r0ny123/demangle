@@ -6,10 +6,10 @@
 [![Docs](https://img.shields.io/badge/docs-r0ny123.github.io-blue)](https://r0ny123.github.io/demangle/)
 [![Open Playground](https://img.shields.io/badge/Open%20Playground-r0ny123.github.io-2ea44f?logo=googlechrome&logoColor=white)](https://r0ny123.github.io/demangle/playground/)
 
-**Read mangled symbol names in pure Python** — Itanium C++ (GCC/Clang), MSVC, Rust,
-Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI, and the pre-Itanium
-C++ families (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior). No dependencies, no
-native code, no compiler required.
+**Read mangled symbol names in pure Python.** Itanium C++ (GCC, Clang), MSVC, Rust,
+Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi and C++Builder, Ada/GNAT, JNI, and
+the pre-Itanium C++ families (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior), with no
+dependencies and no native code.
 
 ```python
 >>> import demangle
@@ -21,32 +21,24 @@ native code, no compiler required.
 'core::fmt::Formatter::pad'
 >>> demangle.demangle("$s10Foundation4DataV5countSivg")
 'Foundation.Data.count.getter : Swift.Int'
->>> demangle.demangle("example.com/m/v2%2e5.(*T).Method", language="go")
-'example.com/m/v2.5.(*T).Method'
->>> demangle.demangle("eqdestroy___systemZassertions_23")
-'system/assertions.=destroy'
->>> demangle.demangle("MYUNIT$_$TWIDGET_$__$$_AREA$$LONGINT")
-'MYUNIT.TWIDGET.AREA: LONGINT'
 >>> demangle.demangle("@Unit@Class@Method$qqrv")
 '__fastcall Unit::Class::Method()'
->>> demangle.demangle("AddAlignment__9ivTSolverUiP12ivInteractorP7ivTGlue")
-'ivTSolver::AddAlignment(unsigned int, ivInteractor *, ivTGlue *)'
->>> demangle.demangle("__dt__6CActorFv")
-'CActor::~CActor()'
+>>> demangle.demangle("CreateFileW")    # not mangled, so returned as it is
+'CreateFileW'
 ```
 
-- **No toolchain.** No C compiler at install time, no platform-specific wheel, no
-  native library to find at run time: one pure-Python wheel that runs wherever Python
-  does.
-- **A tree, not just a string.** `parse()` answers with nodes to walk, so the namespace,
-  the template arguments and the parameter types are fields rather than a regular
-  expression against C++ declaration syntax, which nests and so cannot be parsed that
-  way.
-- **Measured, not asserted.** Every scheme is scored against a reference or, where none
-  exists, a property the mangling must satisfy; see Correctness, below.
-- **Safe on untrusted input.** Recursion depth, output size, substitution count and
-  input length are all bounded, and every bound is configurable per call; see Safety,
-  below.
+- **One wheel, everywhere.** Pure Python on CPython 3.11+ and PyPy, and in the browser
+  through Pyodide. Nothing to compile at install time and no native library to find at
+  run time.
+- **A tree, not just a string.** `parse()` returns nodes to walk and `signature()` the
+  parts of a name, so nothing has to take a C++ declaration apart with a regular
+  expression.
+- **Measured against the references.** Every scheme is scored against its reference
+  demangler (`llvm-cxxfilt`, GNU `c++filt`, `llvm-undname`, `rustc-demangle`,
+  `swift-demangle` and others) or, where there is none, against what the compiler
+  recorded, over checked-in corpora and about 2,500,000 real symbols.
+- **Safe on hostile input.** Recursion depth, output size, substitution count and input
+  length are bounded while a name is read, and `demangle()` never raises over a name.
 
 ## Install
 
@@ -54,352 +46,69 @@ native code, no compiler required.
 pip install demangle
 ```
 
-Python 3.11 or newer, on CPython or PyPy. That is the whole dependency list.
+## Quick start
 
-The documentation, API reference included, is published at
-<https://r0ny123.github.io/demangle/>. An interactive in-browser playground is available
-at <https://r0ny123.github.io/demangle/playground/>.
-
-## Use
-
-### The string you probably want
+`demangle()` returns the spelling, or the name unchanged when nothing reads it, so it
+is safe to run over every symbol in a binary. When you need more than the string:
 
 ```python
-demangle.demangle(name)  # the spelling, or `name` itself
-demangle.demangle_strict(name)  # raises DemanglingError instead
-```
-
-`demangle()` is built for the case where you are labelling every symbol in a binary and
-most of them are not mangled at all. It never raises: a name it cannot read comes back
-exactly as it went in, because a wrong expansion is worse than a mangled one — it
-matches neither the symbol nor the declaration.
-
-### The structure, when you need it
-
-```python
->>> tree = demangle.parse("_ZNK3Foo3barIiEEvPKc")
->>> tree.spell()
+>>> demangle.parse("_ZNK3Foo3barIiEEvPKc").spell()           # a tree; raises if unreadable
 'void Foo::bar<int>(char const*) const'
->>> [node.text for node in tree.find("name")]
-['Foo', 'bar']
->>> function = next(tree.find("function"))
->>> len(function.parameters)
-1
-```
-
-All schemes return full trees. A Rust symbol comes back as a `symbol` holding a
-`path` of `name` components, with `impl`, `template`, `type` and `literal` nodes for
-what the path carries:
-
-```python
->>> tree = demangle.parse("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E")
->>> [node.text for node in tree.find("name")]
-['core', 'fmt', 'Formatter', 'pad']
-```
-
-[Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) works
-one real task through `parse()` end to end — finding every function in libstdc++ that
-takes a string by const reference, and measuring what the regular-expression version of
-the same question gets wrong. [Labelling a symbol
-table](https://r0ny123.github.io/demangle/labelling-a-symbol-table/) is the other
-task a tool has: one label per address, the same whichever compiler built the binary,
-with the calls chosen for it.
-
-### The parts, when the spelling is not what you want
-
-`signature()` gives the pieces rather than the string — the base name without its
-scope, the scope without the base name, the parameter types on their own:
-
-```python
->>> parts = demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi")
->>> parts.namespace, parts.base_name
-('std::vector<int, std::allocator<int>>', 'push_back')
->>> parts.parameters
-('int const&',)
->>> demangle.signature("$s4main3FooV3baryS2i_SStF").return_type
-'Swift.Int'
-```
-
-`namespace`, the scheme's separator and `base_name` spell `qualified_name` exactly, so
-the three recombine. Splitting the *string* would not give that: `::` and `.` and `,`
-occur inside template arguments and inside operator names as well as between components.
-
-What each scheme records differs, and the fields say so rather than guessing. A C++ or
-Swift name carries a signature; a Rust or Go path does not, and its `parameters` is
-`None` — which is not `()`. `is_function` is `False` where the name does not say.
-
-### A type on its own, not a whole symbol
-
-A `typeinfo` name, an RTTI type descriptor and a Swift metadata typeref all carry a
-*type* rather than a symbol. `demangle_type()` reads one, and `parse_type()` gives its
-tree:
-
-```python
->>> demangle.demangle_type("PKFvRiE", language="itanium")
-'void (*)(int&) const'
->>> demangle.demangle_type("PEAX", language="msvc")
-'void *'
->>> demangle.demangle_type("SaySiG", language="swift")
-'[Swift.Int]'
-```
-
-`language` is required, and that is not an oversight: a whole symbol announces its
-scheme — `_Z`, `?`, `$s` — and a type encoding announces nothing at all, so `Si` is
-`std::istream` to the Itanium reader and `Swift.Int` to the Swift one. Every reference
-tool puts this behind a flag for the same reason. On the command line it is
-`demangle --types -l itanium`, one encoding per argument rather than a filter over mixed
-text — `Pi` is an ordinary word, and `I like Pi` should stay as it is.
-
-### A file, not a name
-
-`nm` writes an address and a type letter before a name; a crash log writes a frame
-number. So the useful operation over a file is "substitute every symbol-shaped word and
-copy the rest through", which is what the command does with no arguments, and what the
-library does too:
-
-```python
->>> demangle.demangle_text("0000000000001139 T _ZN3foo3barEv")
+>>> demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi").base_name
+'push_back'
+>>> demangle.demangle_text("0000000000001139 T _ZN3foo3barEv")   # every symbol in a line
 '0000000000001139 T foo::bar()'
->>> [f.mangled for f in demangle.find_symbols("a _ZN3foo3barEv b")]
-['_ZN3foo3barEv']
-```
-
-`find_symbols` gives the span as well as the spelling, for a caller that needs to know
-*where* in a line a symbol was. `demangle_stream(sys.stdin, sys.stdout)` does the same
-a line at a time, for pipes.
-
-### Detection and batches
-
-```python
->>> demangle.detect("?f@@YAXH@Z")
-'msvc'
->>> list(demangle.demangle_all(["_Z1fv", "main"]))    # shares the cache
-['f()', 'main']
-```
-
-`detect()` reports what a name looks like, which is cheap; `strict=True` reports which
-scheme actually reads it, which costs a parse:
-
-```python
->>> demangle.detect("_ZN3Foo"), demangle.detect("_ZN3Foo", strict=True)
-('itanium', None)
-```
-
-`language` forces one scheme by name. A sequence of names is an allow-list instead:
-detection as usual, among those schemes alone, so a tool that knows a Mach-O image holds
-C++ and Swift leaves its Objective-C metadata as the linker wrote it:
-
-```python
->>> demangle.demangle("_OBJC_CLASS_$_NSData", language=("itanium", "swift"))
-'_OBJC_CLASS_$_NSData'
->>> demangle.detect("?f@@YAXH@Z", language=("itanium", "swift")) is None
-True
-```
-
-### Bytes, when the names came from a symbol table
-
-An ELF or Mach-O string table holds bytes, and they are not reliably UTF-8 — a truncated
-table cuts a name mid-character. Every single-name entry point has a bytes form, so
-reading one does not mean guessing an encoding first:
-
-```python
->>> demangle.demangleb(b"_ZN3foo3barEv")
-b'foo::bar()'
-```
-
-`demangleb_strict`, `detectb`, `parseb`, `signatureb`, `demangleb_type` and
-`parseb_type` go with it. Undecodable bytes survive the round trip: `demangleb` hands
-back exactly what it was given, byte for byte, rather than raising.
-
-### Paying for imports at start-up
-
-Each scheme is imported the first time a name needs it, so a script reading one MSVC
-name never loads the Swift reader. A long-running service would rather pay that once,
-before its first request:
-
-```python
->>> demangle.preload("itanium", "msvc")    # or preload() for every scheme
-```
-
-### The tree as data
-
-`parse()` returns a walkable tree; `to_dict()` turns it into plain data, `--json` prints
-it, and `node_kinds()` is the vocabulary to switch on rather than something to read out
-of our source:
-
-```python
->>> demangle.parse("_Z1fPi").to_dict()
-{'kind': 'function', 'name': {'kind': 'name', 'text': 'f'}, 'parameters': [{'kind': 'pointer', 'inner': {'kind': 'builtin', 'spelling': 'int'}}], 'returns': None, 'suffix': ''}
->>> demangle.node_kinds("d")
-('name', 'path', 'symbol')
-```
-
-The nodes carry `__match_args__`, so a `match` statement can test the shape of a
-subtree; [the tree's
-reference](https://r0ny123.github.io/demangle/reference/core/#the-tree) has an example.
-
-A node reached more than once — an Itanium substitution, a Rust node named both by
-position and by role — is written once with an `id` and afterwards as `{"$ref": id}`.
-The structure is a graph, and expanding it in full does not always terminate in useful
-time.
-
-### Styles
-
-The two Itanium reference demanglers, `llvm-cxxfilt` and GNU `c++filt`, legitimately
-disagree on some spellings. Both are available, and neither is wrong:
-
-```python
->>> demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi", style="llvm")   # default
-'std::vector<int, std::allocator<int>>::push_back(int const&)'
 >>> demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi", style="gnu")
 'std::vector<int, std::allocator<int> >::push_back(int const&)'
 ```
 
-### Printing less of a name
-
-A decorated name expands to a great deal more than the name. `style()` composes what to
-leave out, at the call site rather than by registering anything globally:
-
-```python
->>> demangle.demangle("?g@C@@UEAAXXZ")
-'public: virtual void __cdecl C::g(void)'
->>> narrow = demangle.style("llvm", msvc={"calling_convention": False, "access_specifier": False})
->>> demangle.demangle("?g@C@@UEAAXXZ", style=narrow)
-'virtual void C::g(void)'
-```
-
-The MSVC scheme has nine such options, five from `llvm-undname` and four from
-`UnDecorateSymbolName`, each with a command-line flag;
-[`MsvcOptions`](https://r0ny123.github.io/demangle/reference/schemes/#demangle.schemes.msvc.options.MsvcOptions)
-says which is which and how far each reaches.
-
-Swift has the bundle Xcode and LLDB show instead of the full spelling — `Either` for
-`Monads.Either`, `(_:)` for `(Swift.Int) -> Swift.UInt`, `specialized f()` for a page of
-specialisation arguments. It is `--simplified` on the command line, and exact against
-Swift's own 217 vectors:
-
-```python
->>> from demangle.schemes.swift import SIMPLIFIED_OPTIONS
->>> demangle.demangle("_TtFSiSu", style=demangle.style("llvm", swift=SIMPLIFIED_OPTIONS))
-'(_:)'
-```
-
-### Command line
+The command is a filter like `c++filt`, over any mix of schemes:
 
 ```console
-$ nm -a libfoo.so | demangle
-$ demangle _ZNSt6vectorIiSaIiEE9push_backERKi
-$ demangle -b _ZN3foo3barEv                         # `mangled ==> demangled`
-$ demangle -m _ZN3foo3barEv                         # only print successfully demangled symbols
-$ demangle -s gnu _ZNSt6vectorIiSaIiEE9push_backERKi # choose output style (llvm, gnu)
-$ demangle --tree _Z1fPKc
-$ demangle --detect _RNvC6_123foo3bar
-$ demangle --detect --strict _ZN3Foo               # the scheme that reads it, or an error
-$ nm -a Foo.dylib | demangle -l itanium,swift      # detect among these schemes alone
-$ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi    # the name, without the signature
-$ demangle --base-name _ZSt4sortIPiEvT_S1_         # `sort<int*>`
-$ demangle --no-return-type _ZSt4sortIPiEvT_S1_    # the declaration, minus `void `
-$ demangle --ret-postfix _Z1fIiET_S0_              # `f<int>(int)int`, as `DMGL_RET_POSTFIX`
-$ demangle --strip-underscore '_?f@@YAXH@Z'        # ignore one leading underscore
-$ demangle --keep-hash _ZN4core3fmt5write17h05af221e174051e9E   # keep Rust's hash
-$ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t`
-$ demangle --no-calling-convention '?f@@YAXH@Z'    # `void f(int)`
-$ demangle --no-tag-kind '?g3@@YAXVV@@@Z'          # `void __cdecl g3(V)`
-$ demangle --simplified _TtFSiSu                   # Swift, the way Xcode shows it
-$ demangle --json _Z1fPi                           # the parse tree as JSON
-$ nm -a libfoo.so | demangle --json-lines          # a JSON object per symbol
-$ demangle --json-lines --signature _Z1fPi         # ... with the parts of the name
-$ printf '%s\0' "$name" | demangle -0              # whole names ended by NUL, in and out
-$ demangle --list-languages                        # list supported schemes and aliases
+$ nm -D libfoo.so | demangle
+$ demangle '?f@@YAXH@Z' _RNvC6_123foo3bar
+$ nm -D libfoo.so | demangle --json-lines       # one JSON object per symbol
 ```
 
-`--json-lines` writes one object per name, `{"mangled": ..., "demangled": ...,
-"language": ...}`, where `language` is the scheme that read the name, or `null` where
-it came back unchanged; `--signature` adds the fields of `signature()`, `null` for a
-name nothing reads, so every record has the same keys. A name whose bytes are not UTF-8
-has one more, `mangled_bytes`, the bytes in base64: `mangled` carries each such byte as
-a lone surrogate, `"_Z3foo\udcff"`, which most JSON readers turn into U+FFFD; where the
-spelling carries them on, `demangled_bytes` does the same for it. Over a stream it
-writes one per symbol the filter rewrites. `--json` is the other question, the parse
-tree.
+Scripts for [IDA Pro, Binary Ninja and
+Ghidra](https://r0ny123.github.io/demangle/integrations/) relabel a database with it,
+and the [playground](https://r0ny123.github.io/demangle/playground/) runs it in the
+browser.
 
-`demangle -h` lists the options most runs use and `demangle --help` all of them, with
-the exit statuses: 0 when every name was read or printed unchanged, 1 when one was
-refused — under `--strict`, or with no tree to print for `--tree` or `--json` — 2 for
-a usage error, and 130 after Ctrl-C. `python -m demangle` is the same command, where
-the script is not on `PATH`.
+## Documentation
 
-## Correctness
+The full documentation is at <https://r0ny123.github.io/demangle/>.
 
-Correctness here is a measurement rather than a claim. Every scheme is scored against
-the reference implementation for its mangling — `llvm-cxxfilt`, GNU `c++filt`,
-`llvm-undname`, `rustfilt`, `swift-demangle`, `cwdemangle`, Embarcadero's own unmangler
-— and, where no reference exists, against what the compiler itself recorded or a
-property the mangling has to satisfy: re-mangling what was read must reproduce the
-symbol the compiler wrote.
-
-The checked-in corpora are replayed by the test suite with no compiler and no reference
-demangler present. Beyond them, whole symbol tables are run live against the references:
-about 2,500,000 real symbols from shipped libraries, and every name that differs is
-accounted for one by one.
-
-**[CONFORMANCE.md](https://r0ny123.github.io/demangle/CONFORMANCE/) is the whole
-picture** — what each corpus is measured against, the notes behind every number, the
-live runs, and the places where following a reference would itself be the defect.
-
-## Safety
-
-A mangled name is untrusted input in any tool that opens files it did not produce, so
-the bounds are the design rather than a hardening pass.
-[SECURITY.md](https://r0ny123.github.io/demangle/SECURITY/) has the threat
-model, how the bounds are enforced and tested, and how to report privately.
+| Page | What it covers |
+| --- | --- |
+| [Using the library](https://r0ny123.github.io/demangle/usage/) | Every entry point, styles and options, and the command line |
+| [Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) | One real task through `parse()`, against the regular-expression version |
+| [Labelling a symbol table](https://r0ny123.github.io/demangle/labelling-a-symbol-table/) | One label per address, the same whichever compiler built the binary |
+| [API reference](https://r0ny123.github.io/demangle/reference/api/) | Signatures and docstrings |
+| [Conformance](https://r0ny123.github.io/demangle/CONFORMANCE/) | What each scheme is measured against, and every number |
+| [Comparison](https://r0ny123.github.io/demangle/comparison/) | Coverage and speed beside LLVM, `cpp_demangle` and `itanium_demangler` |
+| [Security policy](https://r0ny123.github.io/demangle/SECURITY/) | The threat model, the bounds, and how to report privately |
+| [Architecture](https://r0ny123.github.io/demangle/ARCHITECTURE/) | How the parsers, builders and schemes fit together |
 
 ## Performance
 
-Pure Python, measured on the conformance corpora (`benchmarks/bench.py`):
+Measured on the conformance corpora by `benchmarks/bench.py`, whose `--check` gates CI
+against `benchmarks/baseline.json`:
 
 | Workload | Throughput |
-|---|---|
-| Cold — every name distinct | ~22,000 names/sec |
-| Warm — names repeat, as in a real symbol table | ~2,700,000 names/sec |
-| Non-mangled names rejected | ~1,200,000 names/sec |
-| Full AST construction | ~18,000 names/sec |
+| --- | --- |
+| Cold, every name distinct | ~22,000 names/s |
+| Warm, names repeat as in a real symbol table | ~2,700,000 names/s |
+| Names that are not mangled | ~1,200,000 names/s |
+| Full tree construction | ~18,000 names/s |
 
-Taken from `benchmarks/baseline.json`; treat them as ratios rather than absolutes. The
-gap between cold and warm is the point: symbol tables repeat themselves relentlessly, and
-results are cached.
-
-On names it has not seen, a native demangler is faster than this one by an order of
-magnitude or more: LLVM's, through its Python binding `llvm-demangle-fxti`, reads the
-Itanium names libstdc++ exports about 50 times as fast as this package does cold. This
-package is fast enough in practice because a symbol table repeats its names, and a name
-read once costs a dictionary lookup afterwards. [Comparison with other
-demanglers](https://r0ny123.github.io/demangle/comparison/) has the measurements against it
-and other tools, what each one covers, and what this one offers instead;
-`benchmarks/compare.py` reproduces them.
-
-`bench.py --check` gates CI against the committed baseline. It compares figures
-normalised against a calibration workload measured in the same run, so the gate reports
-a slower *demangler* rather than a slower *machine*.
-
-## Architecture
-
-The short version: **parsers never build their own output** — each reports the grammar
-productions it recognises to a builder, so one parser serves both `demangle()` and
-`parse()`.
-
-Schemes are plugins: a separate distribution can add a language through the
-`demangle.languages` entry-point group without patching this package. Installed plugins
-are not loaded on their own -- call `demangle.load_plugins()` to accept them (the
-`demangle` command does), so an install cannot replace a built-in scheme unnoticed.
-
-See [ARCHITECTURE.md](https://r0ny123.github.io/demangle/ARCHITECTURE/) for the full
-picture and [Adding a scheme](https://r0ny123.github.io/demangle/adding-a-scheme/) to
-add a language of your own.
+On names it has not seen, a native demangler is an order of magnitude or more faster:
+LLVM's reads libstdc++'s Itanium names about 50 times as fast. A symbol table repeats
+its names, though, and a name read once costs a dictionary lookup afterwards.
 
 ## Contributing
 
-New schemes, corpus contributions, and conformance bug reports are all welcome — see
+New schemes, corpus entries and conformance reports are welcome; see
 [CONTRIBUTING.md](https://r0ny123.github.io/demangle/CONTRIBUTING/), or [report a wrong
 spelling](https://github.com/r0ny123/demangle/issues/new?template=conformance-bug.yml).
 

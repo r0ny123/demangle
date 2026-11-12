@@ -1,7 +1,7 @@
 """The documentation's claims about the code, checked mechanically.
 
-`tests/test_readme.py` covers the README: its counts, its version, and the output of
-every example it prints. This covers the rest of `docs/`: every public export is
+`tests/test_readme.py` covers the conformance counts and the version the prose states.
+This covers the rest: every example prints what its page says, every public export is
 reachable in the API reference, every registered scheme has a section, and every page
 renders the members it asks for.
 
@@ -14,12 +14,15 @@ warning, which `--strict` fails on.
 
 import doctest
 import importlib
+import io
 import re
 from pathlib import Path
 
 import pytest
 
 import demangle
+
+from .test_parity import STYLE_SAMPLES
 
 ROOT = Path(__file__).parent.parent
 DOCS = ROOT / "docs"
@@ -130,11 +133,37 @@ class TestEveryPublicNameIsDocumented:
 
 
 class TestEveryExampleInTheDocsIsWhatTheCodeDoes:
-    """The README's examples are run by `tests/test_readme.py`; these are the others.
+    """Every example that prints a result, run.
 
-    `docs/reference/api.md` prints what a call returns, in the same `call` then
-    `# result` shape, and this checks those.
+    An example that has quietly stopped working is the first thing a new reader meets.
+    Most pages use `>>>` prompts, which `doctest` runs; `docs/reference/api.md` prints
+    what a call returns in a `call` then `# result` shape instead.
     """
+
+    def test_every_prompt_prints_what_the_page_says(self, subtests):
+        """The blocks of one page share their names, as they do for a reader of the page."""
+        parser = doctest.DocTestParser()
+        attempted = 0
+        for page in prose_pages():
+            blocks = re.findall(r"```python\n(.*?)```", page.read_text(encoding="utf-8"), re.S)
+            names = {"demangle": demangle}
+            for index, block in enumerate(blocks):
+                if ">>>" not in block:
+                    continue
+                test = parser.get_doctest(block, names, f"{page.name}[{index}]", str(page), 0)
+                runner = doctest.DocTestRunner()
+                report = io.StringIO()
+                results = runner.run(test, out=report.write, clear_globs=False)
+                attempted += results.attempted
+                with subtests.test(page=page.name, block=index):
+                    assert not results.failed, report.getvalue()
+        assert attempted, "no >>> examples were found to run; has the shape of the examples changed?"
+
+    @pytest.mark.parametrize("language", sorted(STYLE_SAMPLES))
+    def test_every_scheme_returns_a_tree_as_the_usage_page_says(self, language):
+        assert "All schemes return full trees" in (DOCS / "usage.md").read_text(encoding="utf-8")
+        tree = demangle.parse(STYLE_SAMPLES[language], language=language)
+        assert len(list(tree.walk())) > 1
 
     def test_every_documented_result_is_the_result(self, subtests):
         pattern = re.compile(r"^(demangle\.[^\n#]+?)\n# (.+)$", re.M)

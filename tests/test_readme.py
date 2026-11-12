@@ -1,10 +1,8 @@
-"""The README's factual claims, checked against the code.
+"""The README's and the conformance page's factual claims, checked against the code.
 
 A figure a human has to remember to update drifts from the pinned conformance numbers.
-These tests make that drift a test failure.
-
-The conformance tables live in `CONFORMANCE.md` and the examples in the README, so the
-count checks read both files and the example checks read the README.
+These tests make that drift a test failure. The examples on every page are run by
+`tests/test_docs.py`.
 """
 
 import pathlib
@@ -16,7 +14,6 @@ import pytest
 import demangle
 
 from . import test_conformance as pins
-from .test_parity import STYLE_SAMPLES
 
 README = Path(__file__).parent.parent / "README.md"
 CONFORMANCE = Path(__file__).parent.parent / "CONFORMANCE.md"
@@ -113,69 +110,6 @@ def test_the_version_is_stated_once(readme):
     except PackageNotFoundError:
         pytest.skip("demangle is not installed; no metadata to compare against")
     assert installed == demangle.__version__
-
-
-class TestExamples:
-    """Every output printed in the README, run.
-
-    A README example that has quietly stopped working is the first thing a new reader
-    meets, and nothing else in the suite covers them.
-    """
-
-    @pytest.mark.parametrize(
-        "call,expected",
-        [
-            (
-                lambda: demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi"),
-                "std::vector<int, std::allocator<int>>::push_back(int const&)",
-            ),
-            (lambda: demangle.demangle("?f@@YAXH@Z"), "void __cdecl f(int)"),
-            (
-                lambda: demangle.demangle("_ZN4core3fmt9Formatter3pad17h9b2b3a0e5b4d1b31E"),
-                "core::fmt::Formatter::pad",
-            ),
-            (lambda: demangle.detect("?f@@YAXH@Z"), "msvc"),
-            (lambda: demangle.parse("_ZNK3Foo3barIiEEvPKc").spell(), "void Foo::bar<int>(char const*) const"),
-            (
-                lambda: demangle.demangle("_ZNSt6vectorIiSaIiEE9push_backERKi", style="gnu"),
-                "std::vector<int, std::allocator<int> >::push_back(int const&)",
-            ),
-            (
-                lambda: demangle.demangle("@Unit@Class@Method$qqrv"),
-                "__fastcall Unit::Class::Method()",
-            ),
-        ],
-    )
-    def test_example_output_is_what_the_readme_prints(self, readme, call, expected):
-        assert call() == expected
-        assert expected in readme, f"README no longer shows {expected!r}"
-
-    def test_the_bytes_example(self, readme):
-        assert demangle.demangleb(b"_ZN3foo3barEv") == b"foo::bar()"
-        assert "b'foo::bar()'" in readme
-        for name in ("demangleb_strict", "detectb", "parseb", "signatureb"):
-            assert hasattr(demangle, name), name
-            assert name in readme, name
-
-    def test_the_signature_example(self, readme):
-        parts = demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi")
-        assert (parts.namespace, parts.base_name) == ("std::vector<int, std::allocator<int>>", "push_back")
-        assert parts.parameters == ("int const&",)
-        assert demangle.signature("$s4main3FooV3baryS2i_SStF").return_type == "Swift.Int"
-        for shown in ("('std::vector<int, std::allocator<int>>', 'push_back')", "('int const&',)", "'Swift.Int'"):
-            assert shown in readme, f"README no longer shows {shown}"
-
-    def test_the_tree_example(self, readme):
-        tree = demangle.parse("_ZNK3Foo3barIiEEvPKc")
-        assert [node.text for node in tree.find("name")] == ["Foo", "bar"]
-        function = next(tree.find("function"))
-        assert len(function.parameters) == 1
-
-    @pytest.mark.parametrize("language", sorted(STYLE_SAMPLES))
-    def test_every_scheme_returns_a_tree_as_the_readme_says(self, readme, language):
-        assert "All schemes return full trees" in readme
-        tree = demangle.parse(STYLE_SAMPLES[language], language=language)
-        assert len(list(tree.walk())) > 1
 
 
 class TestWorkedExample:
