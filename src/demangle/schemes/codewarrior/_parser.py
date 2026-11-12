@@ -256,7 +256,6 @@ def demangle_arg(text, options):
 
 def _demangle_arg(text, options):
     if text.startswith("-"):
-        # A negative template argument literal.
         value, rest = parse_digits(text[1:])
         return f"-{value}", "", rest
 
@@ -270,7 +269,6 @@ def _demangle_arg(text, options):
             if options.mw_extensions and value in MW_EXTENSIONS:
                 return result + MW_EXTENSIONS[value], post, rest
             return result + str(value) + post, "", rest
-        # Otherwise they were the length of a class name.
         _bare, qualified, rest = demangle_name(text, options)
         return result + qualified + post, "", rest
 

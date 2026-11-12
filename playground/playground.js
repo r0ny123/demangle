@@ -6,13 +6,11 @@
 (function () {
     "use strict";
 
-    // Guard: Only initialize if the playground container exists on this page
     const elApp = document.getElementById("playground-app");
     if (!elApp) {
         return;
     }
 
-    // Prevent duplicate initializations
     if (window.__DEMANGLE_PLAYGROUND_INITIALIZED__) {
         return;
     }
@@ -38,7 +36,6 @@
     let renderedBatch = null;
     let debounceTimer = null;
 
-    // DOM Elements
     let elStatusBadge, elInput, elScheme, elStyleRadios, elFormatRadios;
     let elDetectedTag, elOutputDisplay, elOutputStatus, elErrorBanner, elErrorMessage;
     let elSigQualified, elSigBase, elSigNamespace, elSigParams, elSigReturn, elSigCallingConv, elSigQualifiers, elSigSpecial;
@@ -354,12 +351,10 @@
             return;
         }
 
-        // Scheme tag
         if (elDetectedTag) {
             elDetectedTag.textContent = res.detected_language || res.language || "none";
         }
 
-        // Demangle failure / error state
         if (!res.success) {
             if (elOutputStatus) {
                 elOutputStatus.className = "output-status-pill pill-invalid";
@@ -385,7 +380,6 @@
             return;
         }
 
-        // Success state
         if (elOutputStatus) {
             elOutputStatus.className = "output-status-pill pill-valid";
             elOutputStatus.textContent = stateLabel(res);
@@ -393,7 +387,6 @@
         if (elErrorBanner) elErrorBanner.style.display = "none";
         renderOutput(res);
 
-        // Structured signature panel
         if (elSigQualified) elSigQualified.textContent = res.qualified_name || "—";
         if (elSigBase) elSigBase.textContent = res.base_name || "—";
         if (elSigNamespace) elSigNamespace.textContent = res.namespace || "—";
@@ -418,7 +411,6 @@
         if (elSigQualifiers) elSigQualifiers.textContent = res.qualifiers && res.qualifiers.length ? res.qualifiers.join(", ") : "—";
         if (elSigSpecial) elSigSpecial.textContent = res.special || "—";
 
-        // AST Visualizer
         if (res.ast) {
             if (elTreeContainer) {
                 elTreeContainer.innerHTML = "";
@@ -519,7 +511,6 @@
             });
         }
 
-        // Preset buttons
         document.querySelectorAll(".preset-btn").forEach((btn) => {
             btn.addEventListener("click", () => {
                 clearPresetSelection();
@@ -564,7 +555,6 @@
             });
         });
 
-        // Tree Expansion / Collapse
         if (btnExpandAll && elTreeContainer) {
             btnExpandAll.addEventListener("click", () => {
                 const queue = [elTreeContainer.querySelector("details")];

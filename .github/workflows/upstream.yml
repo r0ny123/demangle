@@ -14,13 +14,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # The newest LLVM, as a reference for the checked-in corpora (tools/llvm_oracle.py), in a job
-  # of its own. The binding is a third party's native code, and every step of a job shares
-  # GITHUB_ENV, GITHUB_OUTPUT and GITHUB_PATH: code that ran in one step could set PATH or
-  # LD_PRELOAD for the next, and the next could be the one holding a token. So nothing that
-  # imports it shares a job with `drift`. This one is given `contents: read` and no secret,
-  # and checks out without leaving a credential behind; what leaves it is a report and an exit
-  # status, as an artifact, which `drift` reads as data and never runs.
+  # The newest LLVM as a reference for the corpora (tools/llvm_oracle.py). Its binding is
+  # third-party native code, and steps of one job share GITHUB_ENV and GITHUB_PATH, so it
+  # runs in a job of its own with no token. Only a report and an exit status leave it, as an
+  # artifact that `drift` reads as data.
   llvm:
     name: corpora against the newest LLVM
     runs-on: ubuntu-latest
@@ -35,10 +32,8 @@ jobs:
         with:
           python-version: "3.13"
       - run: tools/ci-install.sh
-      # Installed here and nowhere else, pinned exactly and by hash: the package has no place in
-      # pyproject.toml, which keeps the library free of runtime dependencies, so the pin is a
-      # requirements file of its own. --require-hashes refuses a wheel that is not the one named
-      # there, and --only-binary that anything be built from source on the runner.
+      # Pinned by hash in a requirements file of its own, so pyproject.toml keeps no runtime
+      # dependency; --only-binary stops anything being built on the runner.
       - name: Install the LLVM reference
         run: |
           uv pip install --system --require-hashes --only-binary :all: -r tools/llvm-oracle-requirements.txt
@@ -64,9 +59,8 @@ jobs:
   drift:
     name: references' vectors at main
     needs: llvm
-    # Whatever became of `llvm`. A job that crashed, was killed or timed out leaves no artifact,
-    # which the combining step below reads as a failed week; skipping this job instead would
-    # fail the run too, but lose the issue the fetched vectors may call for.
+    # Runs whatever became of `llvm`: a missing artifact counts as a failed week below, and the
+    # fetched vectors may still call for an issue.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -87,17 +81,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
-          # --no-llvm: this job holds a token, and the LLVM binding is a third party's native
-          # code. It is installed and run in the `llvm` job, which holds none; this process
-          # never loads it.
+          # --no-llvm: this job holds a token, so the binding never loads here.
           python tools/upstream_drift.py --no-llvm --show 25 --limit 40000 > fetched.md
           echo "status=$?" >> "$GITHUB_OUTPUT"
           cat fetched.md >> "$GITHUB_STEP_SUMMARY"
           cat fetched.md
-      # The one thing taken from the `llvm` job, and taken as data. `continue-on-error`: where
-      # there is no artifact (that job crashed or was killed) a failed download would skip every
-      # step after it, the issue the fetched vectors call for among them, and the step below,
-      # which finds nothing and says why the week failed, would never run.
+      # `continue-on-error`: with no artifact, a failed download would skip every step below,
+      # including the issue and the step that says why the week failed.
       - name: Download the LLVM report
         continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -109,20 +99,15 @@ jobs:
         env:
           FETCHED_STATUS: ${{ steps.fetched.outputs.status }}
         run: |
-          # One report for the issue, and one status in the terms the steps below read:
-          # 0 clean, 1 something is misread, 2 the run failed. The artifact comes from a job that
-          # ran a third party's native code, so it is only ever read: the report is concatenated
-          # and the status is 16 bytes of text, which counts as exactly 0, 1 or 2 and as nothing
-          # else. A status that is anything else (139 when the binding segfaults, a file that is
-          # empty or garbled) and an artifact that is not there at all (the job was killed) did
-          # not score the week, so each is a failure and not a clean one.
+          # One report for the issue and one status: 0 clean, 1 something is misread, 2 the run
+          # failed. The artifact comes from a job that ran native third-party code, so it is only
+          # read, and anything but exactly 0, 1 or 2 (139 on a segfault, a garbled or missing file)
+          # is a failure, not a clean week.
           llvm_md=llvm-report/llvm.md
           [ -f "$llvm_md" ] || llvm_md=/dev/null
           llvm_status=
           if [ -f llvm-report/status ]; then
-            # Through tr, which keeps letters, digits and . _ - (and a newline, for the
-            # substitution to drop the last of): the status is echoed below when it is not
-            # one of the three, and a line of the job's own making that starts with `::` is a
+            # Sanitised because it is echoed below, where a line starting with `::` would be a
             # workflow command.
             llvm_status=$(head -c 16 llvm-report/status | LC_ALL=C tr -c '[:alnum:]._\n-' '?')
           fi

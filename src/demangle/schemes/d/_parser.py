@@ -1205,7 +1205,6 @@ class _Parser:
         at = reader.pos
         reader.pos += 1
         distance = _back_reference_number(reader)
-        # Measured from the `Q`, and a zero distance would point at the `Q` itself.
         target = at - distance
         if distance <= 0 or target < 0 or target >= at:
             raise DemangleFailure("type back reference outside the name")

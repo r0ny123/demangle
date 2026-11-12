@@ -54,7 +54,6 @@ def detect(name):
     if not name:
         return False
     if name.startswith("__"):
-        # Mach-O adds one underscore, which `swift-demangle` takes off.
         name = name[1:]
     if name.startswith(_ALL_SWIFT_PREFIXES):
         return True

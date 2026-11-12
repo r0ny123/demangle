@@ -31,11 +31,9 @@ jobs:
         run: |
           version=$(PYTHONPATH=src python -c 'import demangle; print(demangle.__version__)')
           test "$GITHUB_REF_NAME" = "v$version"
-      # What runs in this job decides what is published, so nothing in it is resolved here: uv
-      # is installed by hash, uv installs the build backend from uv.lock by hash, and the build
-      # runs without isolation and without a network, on that backend and nothing newer. The
-      # `build` job of ci.yml does the same on every commit, and checks the result with twine
-      # there, which keeps twine and what it depends on out of this job.
+      # This job decides what is published, so it resolves nothing: uv and the build backend
+      # install by hash from uv.lock, and the build runs offline without isolation. ci.yml's
+      # `build` job does the same on every commit and runs twine there, keeping it out of here.
       - name: Install uv and the build backend, by hash
         run: |
           python -m pip install --disable-pip-version-check --require-hashes --only-binary :all: -r tools/uv-requirements.txt
