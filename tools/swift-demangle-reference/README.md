@@ -30,9 +30,9 @@ than guessed. `tests/conformance/swift-upstream.txt` is a transcription of
 
 | revision built | swift-upstream | swift-simplified | swift-refusals | swift-real-world |
 |---|---|---|---|---|
-| `swift-5.10.1-RELEASE` | 456 / 531 | 215 / 217 | 70 / 71 | 8493 / 8494 |
-| `swift-6.4.0-RELEASE` | 513 / 531 | 217 / 217 | 70 / 71 | 8493 / 8494 |
-| `main` @ `4f010677` | **531 / 531** | **217 / 217** | **71 / 71** | 8493 / 8494 |
+| `swift-5.10.1-RELEASE` | 456 / 535 | 215 / 217 | 70 / 71 | 8493 / 8494 |
+| `swift-6.4.0-RELEASE` | 512 / 535 | 217 / 217 | 70 / 71 | 8493 / 8494 |
+| `main` @ `4f010677` | **535 / 535** | **217 / 217** | **71 / 71** | 8493 / 8494 |
 
 One miss in each release is not a miss but an abort: `$sTJSdSSSpSrSUSP` takes the
 printer of both 5.10.1 and 6.4.0 down with `std::bad_alloc`, so scoring them needs one
@@ -40,19 +40,20 @@ process per name. That name is a malformed autodiff subset-parameters thunk, and
 upstream made for it -- a `getNumChildren() < 5` guard in `NodePrinter` -- is the reason
 the row exists in `manglings.txt` at all. This library refuses it, as `main` does.
 
-5.10.1's other 74 misses and 6.4.0's other 17 are not defects in them. They are names
+5.10.1's other 78 misses and 6.4.0's other 22 are not defects in them. They are names
 for constructs that did not exist yet -- `sending`, typed `throws`, `@isolated(any)`,
-`~Copyable`, `Builtin.ImplicitActor`, `nonisolated(nonsending)`,
+`~Copyable`, `~Deinitable`, `Builtin.ImplicitActor`, `nonisolated(nonsending)`,
 `yielding_borrow`/`yielding_mutate`, `@once` and `@callable(once)`,
-`@convention(com_method)`, the `async_Main` entry point -- which upstream added to
-`manglings.txt` afterwards. Counting the rows in that file at each tag says the same
+`@convention(com_method)`, the `async_Main` entry point, back-deployed metadata
+accessors (`Twa`), a propagated `@differentiable` function argument (`Tf...a`) --
+which upstream added to `manglings.txt` afterwards. Counting the rows in that file at each tag says the same
 thing: 446 at 5.10.1, 470 at 6.0.3, 481 at 6.1.3, 495 at 6.2.4, 500 at 6.3.3, 512 at
-6.4.0, and 531 on `main`. The corpus needs all 531, so no tag reaches it.
+6.4.0, and 535 on `main`. The corpus needs all 535, so no tag reaches it.
 
 Upstream renamed two spellings after `8305a502`, and the pin moved with them: `XO` is
 now `@once` (it was `@called(exactlyOnce)`) and `XOo` is `@callable(once)` (it was
 `@called(atMostOnce)`). The eleven rows of `swift-upstream.txt` that carry them were
-edited to match, and the build at `4f010677` reproduces all 531 rows as edited.
+edited to match, and the build at `4f010677` reproduces all 535 rows as edited.
 
 The corpora were recorded with a `main` build, not with `swift-demangle` 5.10.1, which
 spells `$s4main3fooyySiFyyXEfU_TA.1` as

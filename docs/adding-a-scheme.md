@@ -68,12 +68,13 @@ of them are done:
    then imported as soon as the registry loads, and four tests that assert a name
    imports only the schemes it reaches fail: three in `tests/test_api.py`
    (`TestStylesImportOnlyWhatIsUsed`) and one in `TestLazyBuiltIns`.
-2. **`DETECT_SCREEN`, only if the scheme has no fixed first character.** Leave
-   `first_characters` empty, and declare in the scheme module a pair `(markers,
-   openings)` such that `detect` is False for every name containing none of the
-   markers and starting with none of the openings, as `schemes/nim/__init__.py` does.
-   Repeat it as the last field of the registry entry. Without it, the scheme is
-   offered every name in a binary.
+2. **`DETECT_SCREEN`, only if the scheme has no fixed first character.** Declare in
+   the scheme module a pair `(markers, openings)` such that `detect` is False for every
+   name containing none of the markers and starting with none of the openings, as
+   `schemes/nim/__init__.py` does. Repeat it as the last field of the registry entry.
+   Without it, the scheme is offered every name in a binary. `first_characters` can
+   still narrow it: Nim's names open with a letter or `_`, so it declares those, and an
+   MSVC `?` name is not offered to it however many `__` it holds.
 3. **`tests/test_core.py`.** Insert the name into `TestDetectionOrderIsPinned.EXPECTED`
    at the position its `priority` gives (lowest first, then by name). Here, `demo` sits
    between `rust` (50) and `msvc` (100).

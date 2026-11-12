@@ -18,6 +18,10 @@ the reference demanglers, and a **Performance** section.
   and counted in the summary line. Found running the plugin live in Binary Ninja 6.0 on
   Linux; the IDA script was run live in IDA 9.5, through idalib and `idat -S`, with
   nothing to fix.
+- **An MSVC name holding `_$$_` or a `/` is no longer read as Free Pascal or Go.**
+  `?A_$$_B@@3HA` read as a Free Pascal routine `B@@3HA` in a unit `?A`, where it is
+  MSVC's `int A_$$_B`, and an MSVC string literal with a `/` in it was claimed by Go and
+  left as it was. Neither scheme writes a name opening `?`.
 - **Swift follows upstream's renames (weekly drift report #70).** The called-once
   function conventions are `@once` (`XO`) and `@callable(once)` (`XOo`), where they were
   `@called(exactlyOnce)` and `@called(atMostOnce)`, and `Twa` after a type metadata
@@ -31,6 +35,12 @@ the reference demanglers, and a **Performance** section.
   `ValueError`, because the placeholder for a conversion operator's name and the mark
   for a function type's calling convention shared a delimiter. They are now distinct,
   and the name is refused as `llvm-undname` refuses it.
+- **Swift reads a propagated `@differentiable` function argument.** A function
+  signature specialization parameter `a` (`...Tf1na_n`) carries the original function
+  and its JVP and VJP, each as a name and a type, and prints as `[Differentiable
+  Function Propagated, Components : [...]]`; it was refused. That was the last vector of
+  the drift report this library did not read. `swift-upstream.txt` now holds it and the
+  three `Twa` rows: 535 / 535 against the reference build at `4f010677`.
 
 - Playground navigation, presets, and cards share centered page gutters and a bounded
   content width. Inner padding, control sizing, and responsive option rows stay aligned
@@ -72,6 +82,13 @@ the reference demanglers, and a **Performance** section.
 
 ### Performance
 
+- MSVC names read about 7% faster cold, Swift names about 5% and Delphi names about
+  12%. Go, Nim and Free Pascal are asked about a name before these schemes, and the
+  `$`, `__` and `/` they look for are in most such names. Nim and Free Pascal names
+  open with a letter or `_`, which both now declare as their first characters, and Go's
+  `detect` turns away a name opening `?` or `$` before looking for a path: no import
+  path holds either, and Go's own `$` constants were never claimed. Output over every
+  corpus is unchanged.
 - Swift names read about 1.3 times as fast cold: identifiers are split into words only
   when a substitution needs them, and the commonest parser and printer steps make about
   40% fewer calls.

@@ -32,6 +32,10 @@ __all__ = [
     "register",
 ]
 
+#: Nim's and Free Pascal's first characters: their names are identifiers, so never open
+#: with MSVC's `?` or Swift's `$`. See each scheme's `FIRST_CHARACTERS`.
+_IDENTIFIER_START = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+
 #: Built-in schemes, imported on first use. A two-field entry, `(name, import path)`, is
 #: imported when the registry loads. The longer form also carries what detection needs --
 #: priority, first characters, symbol-table decorations and aliases, as the scheme's
@@ -45,9 +49,9 @@ _BUILTIN_MODULES = (
     ("swift", "demangle.schemes.swift", 45, "$_@a", False, (), None),
     ("d", "demangle.schemes.d", 40, "_", False, ("dlang",), None),
     ("go", "demangle.schemes.go", 10, "", False, ("golang",), (("/", "(*"), ("go:", "type:", "go.", "type."))),
-    ("pascal", "demangle.schemes.pascal", 20, "", False, ("fpc", "freepascal"), (("$",), ())),
+    ("pascal", "demangle.schemes.pascal", 20, _IDENTIFIER_START, False, ("fpc", "freepascal"), (("$",), ())),
     ("delphi", "demangle.schemes.delphi", 35, "@", False, ("borland", "bcc", "c++builder", "embarcadero"), None),
-    ("nim", "demangle.schemes.nim", 10, "", False, (), (("__",), ("NTI", "Marker_", "TM_", "ty"))),
+    ("nim", "demangle.schemes.nim", 10, _IDENTIFIER_START, False, (), (("__",), ("NTI", "Marker_", "TM_", "ty"))),
     (
         "objc",
         "demangle.schemes.objc",
@@ -415,12 +419,13 @@ def candidates(mangled):
     handful, and a name starting with anything else is not offered to them.
 
     Then on what the name contains. Six schemes -- Go, Nim, Free Pascal, Ada and the two
-    pre-Itanium C++ ones -- have no first character, because their names are ordinary C
-    identifiers. But each asks for evidence no ordinary identifier has: a `__`, a `$`,
-    a `/`. A built-in declares that as its `DETECT_SCREEN`, and a name holding none of
-    the markers any scheme in its list asks for is offered only to the schemes that
-    declared none. One pass over the name replaces a call into each scheme, and each
-    marker is a single C-level scan.
+    pre-Itanium C++ ones -- have no fixed first character, because their names are
+    ordinary C identifiers; Nim and Free Pascal declare only that theirs open with a
+    letter or `_`, which keeps them off MSVC's `?` and Swift's `$s` names. But each asks
+    for evidence no ordinary identifier has: a `__`, a `$`, a `/`. A built-in declares
+    that as its `DETECT_SCREEN`, and a name holding none of the markers any scheme in its
+    list asks for is offered only to the schemes that declared none. One pass over the
+    name replaces a call into each scheme, and each marker is a single C-level scan.
 
     The order is `available()`'s, filtered; a scheme that declares neither first
     characters nor a screen is always offered, so adding one changes nothing for a scheme

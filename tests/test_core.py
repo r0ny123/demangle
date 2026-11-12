@@ -414,6 +414,31 @@ class TestDetectScreen:
         assert registry.candidates("g_object_ref@@GLIB_2.0") == ()
         assert [plugin.name for plugin in registry.candidates("?f@@YAXH@Z")] == ["msvc"]
 
+    def test_an_msvc_or_swift_name_is_not_asked_of_go_nim_or_free_pascal(self):
+        """The three are offered names first, and the `$`, `__` and `/` they screen on are
+        in most MSVC and Swift names. No name of theirs opens `?` or `$s`: Nim and Free
+        Pascal names open with a letter or `_` and are not offered one, and Go's `detect`
+        turns one away before looking for a path."""
+        names = (
+            "?$f@H@@YAXH@Z",
+            "?__Ef@@YAXXZ",
+            "??_C@_0BA@ABCDEFGH@foo/bar.h?$AA@",
+            "?A_$$_B@@3HA",
+            "$s4main3fooyyF",
+            "$sSo__x/y.zSg",
+        )
+        for name in names:
+            offered = {plugin.name for plugin in registry.candidates(name)}
+            assert not offered & {"nim", "pascal"}, name
+            assert not registry.get("go").detect(name), name
+        # Both were read by the scheme asked first, wrongly: as Go, and as a Free Pascal
+        # routine `B@@3HA` in a unit `?A`.
+        assert demangle.detect("??_C@_0BA@ABCDEFGH@foo/bar.h?$AA@") == "msvc"
+        assert demangle.demangle("?A_$$_B@@3HA") == "int A_$$_B"
+        # Go's own `$` names are rodata constants, never claimed and still read by name.
+        assert demangle.detect("$f64.3ff0000000000000") is None
+        assert demangle.demangle("$f64.3ff0000000000000", language="go") == "$f64.3ff0000000000000"
+
     def test_a_marker_offers_the_name_to_every_scheme_in_the_list(self):
         """All or nothing: the markers are one pass, and each scheme still decides."""
         offered = [plugin.name for plugin in registry.candidates("f__Fv")]
@@ -571,7 +596,11 @@ class TestLazyBuiltIns:
         order = _fresh(
             "from demangle.core import registry\nprint(*(plugin.name for plugin in registry.candidates('x__$/')))\n"
         )
-        expected = [name for name in TestDetectionOrderIsPinned.EXPECTED if not registry.get(name).first_characters]
+        expected = [
+            name
+            for name in TestDetectionOrderIsPinned.EXPECTED
+            if not registry.get(name).first_characters or "x" in registry.get(name).first_characters
+        ]
         assert order == expected
 
     def test_a_replacement_survives_the_built_in_being_imported_later(self):
