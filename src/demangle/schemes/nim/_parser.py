@@ -34,7 +34,7 @@ re-mangles to the input.
 
 import re
 
-__all__ = ["DemangleFailure", "NimSymbol", "detect", "mangle", "mangle_module", "parse_nim_symbol"]
+__all__ = ["FIRST_CHARACTERS", "DemangleFailure", "NimSymbol", "detect", "mangle", "mangle_module", "parse_nim_symbol"]
 
 #: Characters `mangle` spells as words, from the compiler's own table.
 SPECIALS = {
@@ -421,6 +421,15 @@ def parse_nim_symbol(name):
 
 
 _COMPILER_PREFIXES = ("NTI", "Marker_", "TM_", "ty")
+
+#: What a symbol this reads opens with, which follows from the readers rather than being
+#: imposed on them. The compiler's own forms open with the letters of `_COMPILER_PREFIXES`.
+#: A routine opens with its identifier as `mangle` wrote it, and `mangle` starts its
+#: output with a letter, an `_`, the `X` it puts before a leading digit, or a word from
+#: `SPECIALS` -- never anything else, since everything it writes is `[A-Za-z0-9_]` -- and
+#: `_routine` accepts only an identifier that re-mangles to itself. So an MSVC `?` name or
+#: a Swift `$s` one, however many `__` it holds, is never offered here.
+FIRST_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
 
 #: Other languages' prefixes, declined whatever the name looks like. OCaml's
 #: `camlStdlib__Int__compare_296` fits `<name>__<module>_<id>` and even re-mangles to

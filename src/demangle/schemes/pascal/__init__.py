@@ -30,7 +30,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import DemangleFailure, PascalSymbol, detect, parse_pascal_symbol
+from ._parser import FIRST_CHARACTERS, DemangleFailure, PascalSymbol, detect, parse_pascal_symbol
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -75,6 +75,9 @@ PLUGIN = LanguagePlugin(
     parse=parse,
     description="Free Pascal symbol mangling",
     aliases=("fpc", "freepascal"),
+    # A letter or `_`, so a `?` or `$s` name with a `$` in it goes straight to MSVC or
+    # Swift. See `_parser.FIRST_CHARACTERS`.
+    first_characters=FIRST_CHARACTERS,
     # Lower is offered first: after Go and Nim, before prefixed schemes. Some Free Pascal
     # symbols (`_$SDL_MIXER$_Ld1`) also pass Swift's `_$S` test and are won only by
     # being asked first.

@@ -169,7 +169,9 @@ scheme with a fixed first character declares it (`first_characters`), and a name
 starting with anything else never reaches it. A scheme whose names are ordinary C
 identifiers has none, so it declares a `DETECT_SCREEN`: the markers and openings that a
 name must hold for its `detect` to say yes, and a name with none of them is not offered
-to it. The schemes whose names carry no marker at all -- Ada and the two pre-Itanium
+to it. Both can apply: Nim and Free Pascal names are identifiers, so they also declare
+the letters and `_` as first characters, which keeps them off MSVC's `?` and Swift's
+`$s` names even though those hold the `__` and `$` they screen on. The schemes whose names carry no marker at all -- Ada and the two pre-Itanium
 C++ manglings, whose `detect` has to parse -- are offered last, behind everything a
 prefix settles.
 
