@@ -712,7 +712,6 @@ class _Parser:
                     reader.pos += 1
                 else:
                     self.trailing_type()
-            # Unprefixed: a qualified name and nothing more.
             return reader.pos == end
         except (DemangleFailure, _Exhausted):
             return False

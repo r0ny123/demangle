@@ -4745,7 +4745,6 @@ class ItaniumParser:
             # `((9)+...+(1, 2))` there and `(9 + ... + (1, 2))` here.
             try:
                 if marker == "L":
-                    # First for a left fold, second for a right one.
                     initialiser = self._operand(UNARY_PRECEDENCE, subexpression=True)
                     pack = self._fold_pack()
                 elif marker == "R":

@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- App Header Navbar -->
     <header class="playground-standalone-nav">
       <div class="playground-nav-inner playground-shell">
         <div class="nav-brand-group">
@@ -36,9 +35,7 @@
       </div>
     </header>
 
-    <!-- Main Playground Container -->
 <main id="playground-app" class="playground-root playground-shell">
-  <!-- Top Status & Runtime Banner -->
   <div class="playground-header">
     <div class="playground-header-info">
       <span class="playground-title-badge">⚡ In-Browser WebAssembly Engine</span>
@@ -52,7 +49,6 @@
     <p id="playground-feedback" class="action-feedback" role="status" aria-atomic="true"></p>
   </div>
 
-  <!-- Presets Toolbar -->
   <div class="playground-presets-section">
     <div class="presets-label">
       <span>Preset Examples:</span>
@@ -89,7 +85,6 @@
     </div>
   </div>
 
-  <!-- Input Card -->
   <div class="playground-card playground-input-card">
     <div class="card-header">
       <label for="playground-input-symbol" class="card-title">Mangled Symbol Input</label>
@@ -105,9 +100,7 @@
     </div>
   </div>
 
-  <!-- Controls Bar: Scheme, Style, Format -->
   <div class="playground-controls-grid">
-    <!-- Scheme Selector -->
     <div class="control-group">
       <label for="playground-select-scheme" class="control-label">Scheme / Language</label>
       <div class="select-wrapper">
@@ -135,7 +128,6 @@
       </div>
     </div>
 
-    <!-- Style Selector -->
     <div class="control-group">
       <span class="control-label">Formatting Style</span>
       <div class="segmented-control" id="control-group-style" role="radiogroup" aria-label="Formatting style">
@@ -151,7 +143,6 @@
       <div class="control-subtext">Scheme-specific spelling</div>
     </div>
 
-    <!-- Output Format Selector -->
     <div class="control-group">
       <span class="control-label">Output View</span>
       <div class="segmented-control" id="control-group-format" role="radiogroup" aria-label="Output view">
@@ -176,7 +167,6 @@
     </div>
   </div>
 
-  <!-- Demangled Output Card -->
   <div class="playground-card playground-output-card">
     <div class="card-header">
       <div class="card-title-group">
@@ -202,7 +192,6 @@
     </div>
   </div>
 
-  <!-- Structured Signature Panel -->
   <div class="playground-card playground-sig-card" id="playground-signature-panel">
     <div class="card-header">
       <span class="card-title">Structured Signature Decomposition</span>
@@ -244,7 +233,6 @@
     </div>
   </div>
 
-  <!-- Interactive AST Visualizer Section -->
   <div class="playground-card playground-ast-card" id="playground-ast-section">
     <div class="card-header">
       <div class="ast-tab-bar" role="tablist" aria-label="AST view">
@@ -264,7 +252,6 @@
       </div>
     </div>
 
-    <!-- Tree View Panel -->
     <div id="ast-tree-panel" class="ast-panel active" role="tabpanel" aria-labelledby="tab-btn-tree" tabindex="0">
       <p id="ast-render-notice" class="ast-render-notice" role="status" hidden></p>
       <div id="ast-tree-container" class="ast-tree-root">
@@ -272,7 +259,6 @@
       </div>
     </div>
 
-    <!-- Raw JSON Panel -->
     <div id="ast-json-panel" class="ast-panel" role="tabpanel" aria-labelledby="tab-btn-json" tabindex="0" hidden>
       <pre class="ast-json-pre"><code id="ast-json-content" class="language-json">{}</code></pre>
     </div>

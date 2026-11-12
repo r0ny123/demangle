@@ -953,7 +953,6 @@ class _Demangler:
                     return _DOUBLE_UNDERSCORE_OPERATORS[code], "func"
                 if self.take() != "K":
                     raise _Bail
-                # user-defined literal: operator ""suffix
                 return f'operator ""{self.identifier()}', "func"
             code = self.take()
             if code == "C":

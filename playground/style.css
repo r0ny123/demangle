@@ -73,7 +73,6 @@ button, input, select, textarea {
   min-width: 0;
 }
 
-/* Standalone App Navbar */
 .playground-nav-inner {
   display: flex;
   justify-content: space-between;
@@ -183,7 +182,6 @@ button, input, select, textarea {
   color: var(--md-default-fg-color);
 }
 
-/* Header & Status Banner */
 .playground-header {
   display: flex;
   justify-content: space-between;
@@ -281,7 +279,6 @@ button, input, select, textarea {
   to { transform: rotate(360deg); }
 }
 
-/* Presets Toolbar */
 .playground-presets-section {
   display: flex;
   flex-direction: column;
@@ -357,7 +354,6 @@ button, input, select, textarea {
   color: #c7d2fe;
 }
 
-/* Cards & Containers */
 .playground-card {
   display: flex;
   flex-direction: column;
@@ -397,7 +393,6 @@ button, input, select, textarea {
   color: var(--md-default-fg-color--light);
 }
 
-/* Textarea Input */
 .input-wrapper {
   padding: 0.75rem var(--pg-panel-padding);
 }
@@ -421,7 +416,6 @@ button, input, select, textarea {
   box-shadow: 0 0 0 2px rgba(63, 81, 181, 0.2);
 }
 
-/* Controls Grid */
 .playground-controls-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -470,7 +464,6 @@ button, input, select, textarea {
   color: var(--md-primary-fg-color);
 }
 
-/* Segmented Control */
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -523,7 +516,6 @@ button, input, select, textarea {
   }
 }
 
-/* Demangled Output Display */
 .output-container {
   padding: var(--pg-panel-padding);
 }
@@ -604,7 +596,6 @@ button, input, select, textarea {
   color: #fca5a5;
 }
 
-/* Action & Copy Buttons */
 .btn-action-small, .btn-copy {
   min-height: var(--pg-control-height);
   display: inline-flex;
@@ -625,7 +616,6 @@ button, input, select, textarea {
   border-color: var(--md-primary-fg-color);
 }
 
-/* Signature Grid */
 .sig-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
@@ -677,7 +667,6 @@ button, input, select, textarea {
   color: var(--md-default-fg-color--light);
 }
 
-/* AST Visualizer Tabs & Panels */
 .ast-tab-bar {
   display: flex;
   gap: 0.35rem;
@@ -729,7 +718,6 @@ button, input, select, textarea {
   overflow-x: auto;
 }
 
-/* AST Tree View Styling */
 .ast-tree-root {
   font-family: var(--md-code-font-family, monospace);
   font-size: 0.85rem;
