@@ -84,7 +84,7 @@ Each script has its settings as constants at the top. Edit the file; there is no
 | `ONLY_LEFT_MANGLED` | IDA, Binary Ninja | `True`: only names the tool's own demangler did not read. `False`: every name the library reads. |
 | `STYLE` | all | `"llvm"` or `"gnu"`, or `None` for the default. |
 | `MAX_LENGTH` | all | Longest label in characters; longer ones end in `...`. |
-| `LEADING_UNDERSCORE` | IDA, Binary Ninja | Read each name without the one leading underscore a Mach-O symbol carries. `None` (default): on for a Mach-O file, off otherwise. |
+| `LEADING_UNDERSCORE` | all | Read each name without the one leading underscore a Mach-O symbol carries. `None` (default): on for a Mach-O file, off otherwise. |
 | `MODE` | IDA | `"comment"` (default) or `"name"`. |
 | `FORM` | all | `"short"` (default) or `"full"`: which spelling a name is made from. |
 | `OVERWRITE_COMMENTS` | IDA | Replace a repeatable comment that is already there. Off by default. |
@@ -102,12 +102,13 @@ A Mach-O symbol is the compiler's name with one underscore in front, and IDA and
 Ninja keep it: Nim's `area__mymod_u10` is `_area__mymod_u10` there, and JNI's `Java_...`
 is `_Java_...`. Read as it stands, the first comes out as `mymod._area` and the second not
 at all, and Free Pascal, Ada and GCC 2 names go wrong the same way. So on a Mach-O file
-the two scripts read a name without that underscore. The exceptions are the schemes that
+the scripts read a name without that underscore. The exceptions are the schemes that
 take it off themselves -- C++ (`__Z`, and `___Z..._block_invoke`), Swift (`_$s`), Rust, D
 and Objective-C -- whose names are read as they stand, which keeps Apple's C++ rules for
 `__Z` names. A name that reads only with the underscore keeps that reading.
-`LEADING_UNDERSCORE` turns this on or off whatever the file is. The Ghidra script does not
-do this yet.
+`LEADING_UNDERSCORE` turns this on or off whatever the file is. The Ghidra script tells a
+Mach-O program by its executable format, `Mac OS X Mach-O`; unlike the other two, it has
+not been run on one in Ghidra.
 
 `short` is the name without its parameters, `std::vector<int>::push_back`, and `full` is
 the whole spelling. Where a symbol is a phrase rather than a name -- `vtable for Foo` --

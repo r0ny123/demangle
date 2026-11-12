@@ -717,8 +717,25 @@ def ghidra(monkeypatch):
     return types.SimpleNamespace(
         script=load("demangle_ghidra", monkeypatch, modules),
         table=table,
-        program=types.SimpleNamespace(getSymbolTable=lambda: table),
+        program=FakeProgram(table),
     )
+
+
+class FakeProgram:
+    """A `Program`: its symbol table, and the format Ghidra's loader names, as `getExecutableFormat` does."""
+
+    ELF = "Executable and Linking Format (ELF)"
+    MACHO = "Mac OS X Mach-O"
+
+    def __init__(self, table):
+        self.table = table
+        self.executable_format = self.ELF
+
+    def getSymbolTable(self):
+        return self.table
+
+    def getExecutableFormat(self):
+        return self.executable_format
 
 
 class TestGhidra:
@@ -745,6 +762,38 @@ class TestGhidra:
         ghidra.table.add(0x4000, "main")
         ghidra.script.main(ghidra.program, FakeMonitor())
         assert ghidra.table.renamed == []
+
+    def test_a_mach_o_name_is_read_without_its_leading_underscore(self, ghidra):
+        ghidra.program.executable_format = FakeProgram.MACHO
+        ghidra.table.add(0x1000, MACHO_NIM)
+        ghidra.table.add(0x2000, MACHO_JNI)
+        ghidra.table.add(0x3000, MACHO_SWIFT)
+        ghidra.table.add(0x4000, "_main")
+        ghidra.script.main(ghidra.program, FakeMonitor())
+        assert ghidra.table.renamed == [
+            (0x1000, "mymod.area", "user"),
+            (0x2000, "com.example.Foo.bar", "user"),
+            (0x3000, "Foundation.Data.count.getter", "user"),
+        ]
+        assert [name for _, name, _ in ghidra.table.created] == [MACHO_NIM, MACHO_JNI, MACHO_SWIFT]
+
+    def test_an_elf_name_keeps_its_leading_underscore(self, ghidra):
+        ghidra.table.add(0x1000, MACHO_NIM)
+        ghidra.table.add(0x2000, MACHO_JNI)
+        ghidra.script.main(ghidra.program, FakeMonitor())
+        assert ghidra.table.renamed == [(0x1000, "mymod._area", "user")]
+
+    @pytest.mark.parametrize(("setting", "name"), [(True, "mymod.area"), (False, "mymod._area")])
+    def test_the_setting_overrides_the_executable_format(self, ghidra, monkeypatch, setting, name):
+        monkeypatch.setattr(ghidra.script, "LEADING_UNDERSCORE", setting)
+        ghidra.program.executable_format = FakeProgram.ELF if setting else FakeProgram.MACHO
+        ghidra.table.add(0x1000, MACHO_NIM)
+        ghidra.script.main(ghidra.program, FakeMonitor())
+        assert ghidra.table.renamed == [(0x1000, name, "user")]
+
+    def test_a_program_with_no_format_is_not_mach_o(self, ghidra):
+        ghidra.program.executable_format = None
+        assert ghidra.script.is_macho(ghidra.program) is False
 
     def test_a_name_ghidra_has_already_put_a_readable_one_in_front_of_is_left_alone(self, ghidra):
         """Its demangler leaves the mangled name behind as a second label; that is not work to do."""

@@ -15,8 +15,9 @@ has read. Change the settings below before running.
 
 Run headless through PyGhidra: in Ghidra 12.1.4 (PyGhidra 3.1.0) on Rust, C++ and Go
 programs, and in Ghidra 12.2 (PyGhidra 3.2.0) on Rust v0 and C++. The documentation page
-has the results. Not run from the Script Manager, and Undo is untried. Other versions are
-untested. If a call here is not what your Ghidra has, the script's console names it.
+has the results. Not run from the Script Manager, and Undo and a Mach-O program are
+untried. Other versions are untested. If a call here is not what your Ghidra has, the
+script's console names it.
 """
 
 import os
@@ -42,6 +43,11 @@ LANGUAGES = None
 
 #: "llvm" or "gnu", the spelling of types and templates; None is the default, "llvm".
 STYLE = None
+
+#: Whether each name has one underscore in front of the one the compiler wrote, as a
+#: Mach-O symbol does: `_area__mymod_u10` for Nim's `area__mymod_u10`. None decides from
+#: the program: on for Mach-O, off otherwise. `__Z` C++ and `_$s` Swift names read either way.
+LEADING_UNDERSCORE = None
 
 #: Longest label in characters; longer ones are cut. Ghidra limits a name to 2000.
 MAX_LENGTH = 255
@@ -128,11 +134,26 @@ def relabel(table, symbol, label):
             print(f"demangle: renamed {address} but could not keep {label.name}: {error}")
 
 
+def is_macho(program):
+    """Whether the program was imported from a Mach-O file.
+
+    Ghidra's Mach-O loader names the format "Mac OS X Mach-O"; the test is for the part
+    of that which says what the file is.
+    """
+    return "Mach-O" in str(program.getExecutableFormat() or "")
+
+
 def main(program, monitor):
     if FORM not in ("short", "full"):
         raise ValueError(f'FORM is "short" or "full", not {FORM!r}')
     # Only the names Ghidra left mangled: see `collect` for how one it has read is told.
-    options = demangle_labels.Options(languages=LANGUAGES, only_left_mangled=True, style=STYLE, max_length=MAX_LENGTH)
+    options = demangle_labels.Options(
+        languages=LANGUAGES,
+        only_left_mangled=True,
+        style=STYLE,
+        max_length=MAX_LENGTH,
+        leading_underscore=is_macho(program) if LEADING_UNDERSCORE is None else bool(LEADING_UNDERSCORE),
+    )
     table = program.getSymbolTable()
     entries = labels = ()
     changed = failed = 0
