@@ -14,10 +14,10 @@ second label at the same address, which is how Ghidra's own demangler leaves a s
 has read. Change the settings below before running.
 
 Run headless through PyGhidra: in Ghidra 12.1.4 (PyGhidra 3.1.0) on Rust, C++ and Go
-programs, and in Ghidra 12.2 (PyGhidra 3.2.0) on Rust v0 and C++. The documentation page
-has the results. Not run from the Script Manager, and Undo and a Mach-O program are
-untried. Other versions are untested. If a call here is not what your Ghidra has, the
-script's console names it.
+programs, and in Ghidra 12.2 (PyGhidra 3.2.0) on Rust v0, C++ and a Mach-O dylib. The
+documentation page has the results. Not run from the Script Manager, and Undo is untried.
+Other versions are untested. If a call here is not what your Ghidra has, the script's
+console names it.
 """
 
 import os

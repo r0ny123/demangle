@@ -19,9 +19,8 @@ the reference demanglers, and a **Performance** section.
   Objective-C reads it as it stands (`__Z`, `_$s`, `__D`, ...), which those schemes do
   already and which keeps Apple's C++ rules. `demangle_labels.Options` has a
   `leading_underscore` field for it, and each script a `LEADING_UNDERSCORE` setting that
-  overrides the file type. Checked in IDA 9.5 and Binary Ninja 6.0 on a Mach-O arm64
-  dylib; the Ghidra script, which goes by the program's executable format, has not been
-  run on a Mach-O program in Ghidra.
+  overrides the file type. Checked in IDA 9.5, Binary Ninja 6.0 and Ghidra 12.2 on a
+  Mach-O arm64 dylib.
 - **The Binary Ninja plugin leaves alone an address holding several user symbols.**
   Binary Ninja's DWARF import defines a user symbol for each function the linker
   discarded, all at the image base beside `__elf_header`. With
