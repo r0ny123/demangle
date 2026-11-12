@@ -256,7 +256,6 @@ def demangle_arg(text, options):
 
 def _demangle_arg(text, options):
     if text.startswith("-"):
-        # A negative template argument literal.
         value, rest = parse_digits(text[1:])
         return f"-{value}", "", rest
 

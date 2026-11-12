@@ -529,7 +529,6 @@ class TestGrammarFacts:
         sym_deinitable = "$sSRyxG15Synchronization19AtomicRepresentableABRi1_zrlMc"
         sym_bit3 = "$sSRyxG15Synchronization19AtomicRepresentableABRi2_zrlMc"
 
-        # Default: display_module_names=True
         assert demangle.demangle(sym_copyable) == (
             "protocol conformance descriptor for < where A: ~Swift.Copyable> Swift.UnsafeBufferPointer<A> : Synchronization.AtomicRepresentable in Synchronization"
         )
@@ -543,7 +542,6 @@ class TestGrammarFacts:
             "protocol conformance descriptor for < where A: ~Swift.<bit 3>> Swift.UnsafeBufferPointer<A> : Synchronization.AtomicRepresentable in Synchronization"
         )
 
-        # display_module_names=False suppresses "Swift." prefix
         no_modules = demangle.style("llvm", swift={"display_module_names": False})
         assert demangle.demangle(sym_copyable, style=no_modules) == (
             "protocol conformance descriptor for < where A: ~Copyable> UnsafeBufferPointer<A> : AtomicRepresentable in "
@@ -558,7 +556,6 @@ class TestGrammarFacts:
             "protocol conformance descriptor for < where A: ~<bit 3>> UnsafeBufferPointer<A> : AtomicRepresentable in "
         )
 
-        # AST inspection
         tree = demangle.parse(sym_deinitable, language="swift")
         assert "Deinitable" in tree.spell()
 

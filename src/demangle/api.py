@@ -645,8 +645,7 @@ def _read(mangled, builder, language, style, limits):
                 first_error = exc
         except Exception as exc:
             reraise_if_operational(exc)
-            # A plugin defect: wrapped, since these entry points raise only
-            # `DemanglingError`; the original is chained.
+            # A plugin defect, wrapped as in `demangle_type`.
             if first_error is None:
                 first_error = ParseError(mangled, None, f"{candidate.name} parser failed: {exc!r}")
                 first_error.__cause__ = exc
