@@ -25,6 +25,11 @@ the reference demanglers, and a **Performance** section.
 
 ### Changed
 
+- **The rest of the public surface is annotated.** `Node`'s methods, the exceptions'
+  constructors, `register_language`, `register_style`, `load_plugins` and
+  `demangle_stream` had no annotations, so `parse(name).spell()` or `error.position`
+  reached a caller's type checker as `Unknown`. `walk()`, `find()` and `children()`
+  yield `Any`: which fields a node has depends on its `kind`.
 - **The README is a page, not the manual.** What the library does, how to install it, a
   quick start and where to read on; the tour of every entry point and the command line
   moved, nearly word for word, to a new [Using the library](https://r0ny123.github.io/demangle/usage/)

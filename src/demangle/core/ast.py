@@ -15,7 +15,8 @@ JSON, HTML, a token stream -- is a builder, not a second traversal to keep in sy
 
 import inspect
 import sys
-from typing import ClassVar
+from collections.abc import Iterator
+from typing import Any, ClassVar
 
 from .builder import Builder
 from .errors import LimitExceeded, recursion_error_lost
@@ -80,7 +81,10 @@ class Node:
 
     __slots__ = ("size",)
     _arity = 1
-    kind = "node"
+    kind: ClassVar[str] = "node"
+    """What the node is, as a string to switch on: `"function"`, `"pointer"`, `"name"`.
+
+    `demangle.node_kinds()` lists every value a tree can hold."""
     _node_fields: ClassVar[tuple[type | None, tuple[str, ...]]] = (None, ())
 
     #: The fields a positional `match` sees, in constructor order. Written out on every
@@ -100,11 +104,11 @@ class Node:
         if "__match_args__" not in cls.__dict__:
             cls.__match_args__ = _match_args(cls)
 
-    def children(self):
+    def children(self) -> tuple[Any, ...]:
         """Direct children, in source order. Leaves return an empty tuple."""
         return ()
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """This subtree as plain data -- dicts, lists and strings -- for `json.dumps`.
 
         Every node becomes a dict with a `kind` and the fields that node kind has, so the
@@ -126,11 +130,11 @@ class Node:
         """
         return rendered(lambda: _emit(self, _shared_nodes(self), {}))
 
-    def build(self, builder):
+    def build(self, builder: Builder) -> Any:
         """Re-emit this subtree into `builder`, returning its handle."""
         raise NotImplementedError
 
-    def walk(self):
+    def walk(self) -> Iterator[Any]:
         """Yield this node and every descendant, depth first.
 
         Iterative rather than recursive, and not for speed: a `yield from` per level
@@ -146,11 +150,11 @@ class Node:
             if children:
                 stack.extend(reversed(children))
 
-    def find(self, kind):
+    def find(self, kind: str) -> Iterator[Any]:
         """Yield every descendant of the given `kind`, including this node."""
         return (node for node in self.walk() if node.kind == kind)
 
-    def render(self):
+    def render(self) -> str:
         """The text of this subtree, under the default spelling policy.
 
         `spell()` is the method to reach for -- it takes the `style` the tree was parsed
@@ -167,7 +171,7 @@ class Node:
         """
         return self.spell()
 
-    def spell(self, declarator="", style=None):
+    def spell(self, declarator: str = "", style: str | Style | None = None) -> str:
         """Render as declaration text.
 
         `style` selects the spelling policy, and should be the style the tree was parsed
@@ -178,7 +182,7 @@ class Node:
         builder = get_style(style).spelling_builder
         return rendered(lambda: builder.spell(self.build(builder), declarator))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.spell()
 
     def _fields(self):
@@ -829,14 +833,14 @@ class Decorated(Node):
     kind = "decorated"
     __match_args__ = ("inner", "decoration")
 
-    def __init__(self, inner, decoration):
+    def __init__(self, inner: Node, decoration: str) -> None:
         self.inner = inner
         self.decoration = decoration
 
-    def children(self):
+    def children(self) -> tuple[Any, ...]:
         return (self.inner,)
 
-    def build(self, builder):
+    def build(self, builder: Builder) -> Any:
         return builder.decorated(self.inner.build(builder), self.decoration)
 
 

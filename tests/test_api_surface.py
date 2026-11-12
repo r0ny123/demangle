@@ -16,6 +16,7 @@ with a CLI stapled on.
   here, and answers it for every scheme at once.
 """
 
+import inspect
 import io
 import itertools
 import json
@@ -470,3 +471,28 @@ class TestThePublishedVocabulary:
     def test_an_unknown_scheme_says_so(self):
         with pytest.raises(ValueError, match="unknown language"):
             demangle.node_kinds("klingon")
+
+
+class TestThePublicSurfaceIsAnnotated:
+    """`py.typed` promises a typed package; an unannotated export reaches a caller's type
+    checker as `Unknown`."""
+
+    @staticmethod
+    def _callables():
+        for name in demangle.__all__:
+            exported = getattr(demangle, name)
+            if inspect.isfunction(exported):
+                yield name, exported
+            elif inspect.isclass(exported):
+                for member, function in vars(exported).items():
+                    if inspect.isfunction(function) and (member == "__init__" or not member.startswith("_")):
+                        yield f"{name}.{member}", function
+
+    def test_every_parameter_and_return_is_annotated(self):
+        unannotated = []
+        for name, function in self._callables():
+            signature = inspect.signature(function)
+            parameters = [p for p in signature.parameters.values() if p.name != "self"]
+            if any(p.annotation is p.empty for p in parameters) or signature.return_annotation is signature.empty:
+                unannotated.append(name)
+        assert not unannotated

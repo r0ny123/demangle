@@ -30,7 +30,7 @@ class NotMangledError(DemanglingError):
     C symbol like `memcpy` is not an error, it is simply not a mangled name.
     """
 
-    def __init__(self, mangled, message="not a mangled name"):
+    def __init__(self, mangled: str, message: str = "not a mangled name") -> None:
         self.mangled = mangled
         super().__init__(f"{message}: {mangled!r}")
 
@@ -42,7 +42,7 @@ class ParseError(DemanglingError):
     report and a shrug.
     """
 
-    def __init__(self, mangled, position=None, message="malformed mangled name"):
+    def __init__(self, mangled: str, position: int | None = None, message: str = "malformed mangled name") -> None:
         self.mangled = mangled
         self.position = position
         where = f" at offset {position}" if position is not None else ""
@@ -56,7 +56,7 @@ class TruncatedError(ParseError):
     tools that assume a length limit -- to be worth telling apart from other malformations.
     """
 
-    def __init__(self, mangled, position=None):
+    def __init__(self, mangled: str, position: int | None = None) -> None:
         super().__init__(mangled, position, "mangled name ends mid-production")
 
 
@@ -68,7 +68,7 @@ class LimitExceeded(ParseError):
     hitting a cap is reported rather than being allowed to exhaust the process.
     """
 
-    def __init__(self, mangled, limit_name, limit_value):
+    def __init__(self, mangled: str, limit_name: str, limit_value: int) -> None:
         self.limit_name = limit_name
         self.limit_value = limit_value
         super().__init__(mangled, None, f"exceeded {limit_name} limit of {limit_value}")
