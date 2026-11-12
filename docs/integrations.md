@@ -83,6 +83,7 @@ Each script has its settings as constants at the top. Edit the file; there is no
 | `ONLY_LEFT_MANGLED` | IDA, Binary Ninja | `True`: only names the tool's own demangler did not read. `False`: every name the library reads. |
 | `STYLE` | all | `"llvm"` or `"gnu"`, or `None` for the default. |
 | `MAX_LENGTH` | all | Longest label in characters; longer ones end in `...`. |
+| `LEADING_UNDERSCORE` | IDA, Binary Ninja | Read each name without the one leading underscore a Mach-O symbol carries. `None` (default): on for a Mach-O file, off otherwise. |
 | `MODE` | IDA | `"comment"` (default) or `"name"`. |
 | `FORM` | all | `"short"` (default) or `"full"`: which spelling a name is made from. |
 | `OVERWRITE_COMMENTS` | IDA | Replace a repeatable comment that is already there. Off by default. |
@@ -95,6 +96,17 @@ Each script has its settings as constants at the top. Edit the file; there is no
 detection as usual among those schemes, not a scheme forced on every name. A table whose
 origin you know should say so. On a Mach-O image, leave Objective-C out, since all three
 tools label its metadata themselves.
+
+A Mach-O symbol is the compiler's name with one underscore in front, and IDA and Binary
+Ninja keep it: Nim's `area__mymod_u10` is `_area__mymod_u10` there, and JNI's `Java_...`
+is `_Java_...`. Read as it stands, the first comes out as `mymod._area` and the second not
+at all, and Free Pascal, Ada and GCC 2 names go wrong the same way. So on a Mach-O file
+the two scripts read a name without that underscore. The exceptions are the schemes that
+take it off themselves -- C++ (`__Z`, and `___Z..._block_invoke`), Swift (`_$s`), Rust, D
+and Objective-C -- whose names are read as they stand, which keeps Apple's C++ rules for
+`__Z` names. A name that reads only with the underscore keeps that reading.
+`LEADING_UNDERSCORE` turns this on or off whatever the file is. The Ghidra script does not
+do this yet.
 
 `short` is the name without its parameters, `std::vector<int>::push_back`, and `full` is
 the whole spelling. Where a symbol is a phrase rather than a name -- `vtable for Foo` --
@@ -192,6 +204,11 @@ with IDA's own wait box calls), on ELF x86-64 programs built for the run:
   `ONLY_LEFT_MANGLED = False` it set 33,511 comments in about 5 s.
 - A cancel while reading changed nothing; a cancel while writing, at 10,000 of 37,432,
   left exactly 10,000 comments written.
+- A Mach-O arm64 dylib linked by `ld64.lld` with Nim, JNI, Free Pascal, Ada, GCC 2, C++
+  (`__Z`, Apple's lambda rule, a block), Swift, legacy Rust and D names: IDA reported it
+  as `f_MACHO`, and comment mode set 10 comments, Nim's reading `mymod.area` and JNI's
+  `com.example.Foo.bar` among them; a second run kept the 10. Name mode renamed the same
+  10. The same names in an ELF file gave 8 comments, read with the underscore, as before.
 
 ## Binary Ninja
 
@@ -252,6 +269,10 @@ is what the Plugins menu calls), on the same ELF x86-64 programs as IDA 9.5:
   relabelled 41,485 symbols in about 6.5 s; a cancel at 10,000 written stopped it 32
   later, and one Undo restored the symbols exactly. A cancel while reading changed
   nothing.
+- On the Mach-O dylib from the IDA run, the view type was `Mach-O`, and the script
+  labelled the 7 names Binary Ninja left: Nim, JNI, Free Pascal, Ada, GCC 2, D and a
+  second Nim name, each read without the underscore. A second run changed nothing. On the
+  ELF build it labelled 5, read with the underscore, as before.
 
 ## Ghidra
 
