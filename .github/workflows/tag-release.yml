@@ -27,8 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write
-      actions: write
+      contents: write # creates the tag and the GitHub release
+      actions: write # starts release.yml, which a GITHUB_TOKEN release event does not
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:

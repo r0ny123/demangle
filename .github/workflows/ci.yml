@@ -44,11 +44,11 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
-      - name: Install uv
-        run: python -m pip install --upgrade pip uv
       - name: Install
+        # By hash, from uv.lock; the script says why.
+        shell: bash
+        run: tools/ci-install.sh test
         # Prevent uv from selecting the system interpreter instead of free-threaded Python.
-        run: uv pip install --system -e . --group test
         env:
           UV_PYTHON: ${{ steps.python.outputs.python-path }}
       - name: The tests run on the interpreter the package was installed into
@@ -76,8 +76,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip uv
-      - run: uv pip install --system -e . --group lint
+      - run: tools/ci-install.sh lint
       - name: Ruff lint
         run: ruff check --output-format=github .
       - name: Ruff format
@@ -102,8 +101,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y llvm clang g++ binutils llvm-dev
-      - run: python -m pip install --upgrade pip uv
-      - run: uv pip install --system -e . --group test
+      - run: tools/ci-install.sh test
       - name: Replay the committed corpora
         run: python tools/differential.py
       - name: Regenerate and compare live
@@ -118,7 +116,7 @@ jobs:
             --defects tests/conformance/msvc-reference-defects.txt
           python tools/differential.py --corpus /tmp/fresh/msvc-clang.txt --language msvc
       - name: Build the rustc-demangle reference
-        run: cargo build --release --manifest-path tools/rustc-demangle-reference/Cargo.toml
+        run: cargo build --release --locked --manifest-path tools/rustc-demangle-reference/Cargo.toml
       - name: Build the Swift reference
         run: tools/swift-demangle-reference/build.sh
       - name: Build the pre-Itanium C++ reference
@@ -150,8 +148,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y llvm-16 llvm-18 llvm-20 binutils
-      - run: python -m pip install --upgrade pip uv
-      - run: uv pip install --system -e . --group test
+      - run: tools/ci-install.sh test
       # GNU provides an independent vote because LLVM versions can share bugs.
       - name: Itanium across llvm-cxxfilt versions and GNU
         run: python tools/differential.py --cross llvm-cxxfilt-16 llvm-cxxfilt-18 c++filt
@@ -173,8 +170,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip uv
-      - run: uv pip install --system -e . --group docs
+      - run: tools/ci-install.sh docs
       - run: mkdocs build --strict
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -194,9 +190,8 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip uv
       - name: Install browser test and documentation dependencies
-        run: uv pip install --system -e . --group browser --group docs --group test
+        run: tools/ci-install.sh browser docs test
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
       - name: Build the site served by browser tests
@@ -220,8 +215,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip uv
-      - run: uv pip install --system -e .
+      - run: tools/ci-install.sh
       - run: python benchmarks/bench.py --check
 
   build:
@@ -237,13 +231,14 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip build twine
-      - run: python -m build
+      - run: tools/ci-install.sh dev
+      # As the release builds: with the hatchling uv.lock pins, and no network to fetch another.
+      - run: uv build --offline --no-build-isolation --python "$(command -v python)"
       - run: python -m twine check --strict dist/*
       - name: Install the built wheel in a clean environment
         run: |
           python -m venv /tmp/clean
-          /tmp/clean/bin/pip install dist/*.whl
+          /tmp/clean/bin/pip install --no-index dist/*.whl
           /tmp/clean/bin/demangle _ZNSt6vectorIiSaIiEE9push_backERKi
       - name: The wheel really has no dependencies
         run: |
@@ -255,7 +250,9 @@ jobs:
       - name: An sdist ships a suite that can actually be collected
         run: |
           python -m venv /tmp/sdist
-          /tmp/sdist/bin/pip install "$(ls dist/*.tar.gz)" pytest hypothesis
+          uv export --locked --only-group build --only-group test --output-file "$RUNNER_TEMP/sdist.txt" > /dev/null
+          uv pip install --python /tmp/sdist/bin/python --require-hashes -r "$RUNNER_TEMP/sdist.txt"
+          uv pip install --python /tmp/sdist/bin/python --offline --no-deps --no-build-isolation dist/*.tar.gz
           mkdir -p /tmp/unpacked && tar xzf dist/*.tar.gz -C /tmp/unpacked --strip-components=1
           cd /tmp/unpacked && /tmp/sdist/bin/python -m pytest -q
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
