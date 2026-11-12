@@ -23,8 +23,8 @@ against a full clone of swiftlang/swift.
 
 ## Why a commit and not a release tag
 
-The pinned revision is `8305a5023a3174493ab8cae462452e2d6baa6a9a`, swiftlang/swift
-`main` as of 2026-10-07. That is deliberate, and the alternative was measured rather
+The pinned revision is `4f010677715a8396aac64d0742be7c15a8d4ed8a`, swiftlang/swift
+`main` as of 2026-11-12 (it was `8305a502`, of 2026-10-07, until upstream renamed two spellings). That is deliberate, and the alternative was measured rather
 than guessed. `tests/conformance/swift-upstream.txt` is a transcription of
 `test/Demangle/Inputs/manglings.txt`, and every shipped release refuses part of it:
 
@@ -32,7 +32,7 @@ than guessed. `tests/conformance/swift-upstream.txt` is a transcription of
 |---|---|---|---|---|
 | `swift-5.10.1-RELEASE` | 456 / 531 | 215 / 217 | 70 / 71 | 8493 / 8494 |
 | `swift-6.4.0-RELEASE` | 513 / 531 | 217 / 217 | 70 / 71 | 8493 / 8494 |
-| `main` @ `8305a502` | **531 / 531** | **217 / 217** | **71 / 71** | 8493 / 8494 |
+| `main` @ `4f010677` | **531 / 531** | **217 / 217** | **71 / 71** | 8493 / 8494 |
 
 One miss in each release is not a miss but an abort: `$sTJSdSSSpSrSUSP` takes the
 printer of both 5.10.1 and 6.4.0 down with `std::bad_alloc`, so scoring them needs one
@@ -49,10 +49,10 @@ for constructs that did not exist yet -- `sending`, typed `throws`, `@isolated(a
 thing: 446 at 5.10.1, 470 at 6.0.3, 481 at 6.1.3, 495 at 6.2.4, 500 at 6.3.3, 512 at
 6.4.0, and 531 on `main`. The corpus needs all 531, so no tag reaches it.
 
-Upstream renamed two spellings after that commit, and the library follows: `XO` is now
-`@once` (it was `@called(exactlyOnce)`) and `XOo` is `@callable(once)` (it was
+Upstream renamed two spellings after `8305a502`, and the pin moved with them: `XO` is
+now `@once` (it was `@called(exactlyOnce)`) and `XOo` is `@callable(once)` (it was
 `@called(atMostOnce)`). The eleven rows of `swift-upstream.txt` that carry them were
-edited to match `manglings.txt` as it stands, not re-measured with a rebuilt reference.
+edited to match, and the build at `4f010677` reproduces all 531 rows as edited.
 
 The corpora were recorded with a `main` build, not with `swift-demangle` 5.10.1, which
 spells `$s4main3fooyySiFyyXEfU_TA.1` as

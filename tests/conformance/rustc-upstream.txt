@@ -15,11 +15,11 @@ _RINbNbCskIICzLVDPPb_5alloc5alloc8box_freeDINbNiB4_5boxed5FnBoxuEp6OutputuEL_ECs
 _RMC0DNtC5krate5Traitp1NKj0_EL_	<dyn krate::Trait<N = 0>>
 _RMC0WmRm1_m9_	<u32 is 1..=9>
 _RMC0WmORm1_m2_Rm5_m6_E	<u32 is 1..=2 | 5..=6>
-_RNvMNtCs5CcWRJzwAYz_4core6optionINtB2_6OptionFwTlEEuE6unwrapCsiksvdpJ6Jnj_14splat_mangling	<core::option::Option<fn(#[rustc_splat] (i32,))>>::unwrap
-_RMNvCsiksvdpJ6Jnj_14splat_mangling4mainINtB0_4TypeFwThmEEuE	<splat_mangling::main::Type<fn(#[rustc_splat] (u8, u32))>>
-_RMs0_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTThmEEEuE	<splat_mangling::main::Type<fn(#[rustc_splat] ((u8, u32),))>>
-_RMs2_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypePFwTmaEEuE	<splat_mangling::main::Type<*const fn(#[rustc_splat] (u32, i8))>>
-_RMs4_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTmaEdEuE	<splat_mangling::main::Type<fn(#[rustc_splat] (u32, i8), f64)>>
+_RNvMNtCs5CcWRJzwAYz_4core6optionINtB2_6OptionFwTlEEuE6unwrapCsiksvdpJ6Jnj_14splat_mangling	<core::option::Option<fn(#[splat] (i32,))>>::unwrap
+_RMNvCsiksvdpJ6Jnj_14splat_mangling4mainINtB0_4TypeFwThmEEuE	<splat_mangling::main::Type<fn(#[splat] (u8, u32))>>
+_RMs0_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTThmEEEuE	<splat_mangling::main::Type<fn(#[splat] ((u8, u32),))>>
+_RMs2_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypePFwTmaEEuE	<splat_mangling::main::Type<*const fn(#[splat] (u32, i8))>>
+_RMs4_NvCsiksvdpJ6Jnj_14splat_mangling4mainINtB3_4TypeFwTmaEdEuE	<splat_mangling::main::Type<fn(#[splat] (u32, i8), f64)>>
 _RMC0INtC8arrayvec8ArrayVechKj7b_E	<arrayvec::ArrayVec<u8, 123>>
 _RC3foo.llvm.9D1C9369	foo
 _RC3foo.llvm.9D1C9369@@16	foo
