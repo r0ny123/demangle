@@ -25,6 +25,10 @@ the reference demanglers, and a **Performance** section.
 
 ### Changed
 
+- **The API reference shows types.** Signatures on the site carry their annotations and
+  return types, the Public API page's contents list the functions rather than the
+  modules they live in, and the navigation is grouped into guide, reference,
+  conformance and development.
 - **The rest of the public surface is annotated.** `Node`'s methods, the exceptions'
   constructors, `register_language`, `register_style`, `load_plugins` and
   `demangle_stream` had no annotations, so `parse(name).spell()` or `error.position`

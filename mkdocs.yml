@@ -10,23 +10,26 @@ hooks:
 
 nav:
   - Home: index.md
-  - Using the library: usage.md
   - Playground: playground.md
-  - Working with the tree: analysing-a-binary.md
-  - Labelling a symbol table: labelling-a-symbol-table.md
-  - Disassembler integrations: integrations.md
+  - Guide:
+      - Using the library: usage.md
+      - Working with the tree: analysing-a-binary.md
+      - Labelling a symbol table: labelling-a-symbol-table.md
+      - Disassembler integrations: integrations.md
   - API reference:
       - Public API: reference/api.md
       - Core: reference/core.md
       - Schemes: reference/schemes.md
-  - Conformance: CONFORMANCE.md
-  - Comparison with other demanglers: comparison.md
-  - Architecture: ARCHITECTURE.md
-  - Security policy: SECURITY.md
-  - Adding a mangling scheme: adding-a-scheme.md
-  - Contributing: CONTRIBUTING.md
-  - Fuzzing and the reference demanglers: testing.md
-  - Changelog: CHANGELOG.md
+  - Conformance and security:
+      - Conformance: CONFORMANCE.md
+      - Comparison with other demanglers: comparison.md
+      - Security policy: SECURITY.md
+  - Development:
+      - Architecture: ARCHITECTURE.md
+      - Adding a mangling scheme: adding-a-scheme.md
+      - Fuzzing and the reference demanglers: testing.md
+      - Contributing: CONTRIBUTING.md
+      - Changelog: CHANGELOG.md
 
 # Promoted from INFO so `--strict` fails on them.
 validation:
@@ -61,6 +64,8 @@ theme:
 
 markdown_extensions:
   - admonition
+  # The prose writes a dash as `--`; only that is converted, quotes are left alone.
+  - smarty: { smart_quotes: false, smart_angled_quotes: false, smart_ellipses: false }
   - toc: { permalink: true }
   - pymdownx.highlight
   - pymdownx.superfences
@@ -83,6 +88,7 @@ plugins:
             show_symbol_type_heading: true
             show_symbol_type_toc: true
             separate_signature: true
+            show_signature_annotations: true
             signature_crossrefs: true
             merge_init_into_class: true
             members_order: source

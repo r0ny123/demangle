@@ -20,6 +20,9 @@ demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi").base_name
 
 ::: demangle.api
     options:
+      show_root_heading: false
+      show_root_toc_entry: false
+      heading_level: 3
       members:
         - demangle
         - demangle_strict
@@ -46,12 +49,17 @@ demangle.signature("_ZNSt6vectorIiSaIiEE9push_backERKi").base_name
 ## A file, not a name
 
 ::: demangle.filter
+    options:
+      show_root_heading: false
+      show_root_toc_entry: false
+      heading_level: 3
 
 ## The parts of a name
 
 ::: demangle._signature
     options:
       show_root_heading: false
+      show_root_toc_entry: false
       heading_level: 3
 
 ## Errors
@@ -62,6 +70,9 @@ says.
 
 ::: demangle.core.errors
     options:
+      show_root_heading: false
+      show_root_toc_entry: false
+      heading_level: 3
       members:
         - DemanglingError
         - NotMangledError
@@ -72,6 +83,10 @@ says.
 ## Limits
 
 ::: demangle.core.limits
+    options:
+      show_root_heading: false
+      show_root_toc_entry: false
+      heading_level: 3
 
 ## Documented elsewhere
 

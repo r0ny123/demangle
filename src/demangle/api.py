@@ -961,7 +961,7 @@ def cache_clear() -> None:
 def cache_stats() -> dict[str, Any]:
     """Hit rate and occupancy of the result cache.
 
-    A name no scheme is offered is looked up but never stored, so it counts as a miss on
-    every call.
+    The keys are `size`, `max_size`, `hits`, `misses` and `hit_rate`. A name no scheme is
+    offered is looked up but never stored, so it counts as a miss on every call.
     """
     return _CACHE.stats
