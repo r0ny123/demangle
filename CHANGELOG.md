@@ -8,6 +8,8 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-12
+
 ### Fixed
 
 - **A name nested past the interpreter's stack is a `LimitExceeded` on PyPy too.** On
@@ -28,7 +30,8 @@ the reference demanglers, and a **Performance** section.
   unread with no error. Both are a `ValueError` now, as is an options object for a scheme
   that takes none. A misspelt option, `msvc={"caling_convention": False}`, was a
   `TypeError` from `dataclasses.replace`; it is the `ValueError` `style()` documents, and
-  names the scheme's options.
+  names the scheme's options. Code that caught `TypeError` there has to catch
+  `ValueError` now.
 
 ### Changed
 
@@ -4241,7 +4244,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/r0ny123/demangle/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/r0ny123/demangle/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/r0ny123/demangle/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/r0ny123/demangle/compare/v0.5.1...v0.5.2
