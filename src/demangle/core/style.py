@@ -21,7 +21,7 @@ returns a new style rather than changing the shared default, and a style object 
 
 import threading
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from importlib import import_module
 from typing import Any
 
@@ -74,27 +74,45 @@ class Style:
         options = self.language_options
         changed = {}
         for language, value in languages.items():
+            current = options.get(language)
             if isinstance(value, Mapping):
-                current = options.get(language)
                 if current is None:
                     raise ValueError(
                         f"style {self.name!r} carries no options for {language!r} to change; "
                         f"pass that language's options object instead of a mapping"
                     )
+                known = [option.name for option in fields(current)]
+                unknown = sorted(set(value).difference(known))
+                if unknown:
+                    raise ValueError(f"{language} has no option {unknown[0]!r}; its options are {known}")
                 value = replace(current, **value)
-            elif language not in options:
-                # The object form adds rather than changes, so a typo must be caught
-                # here. Imported lazily: no import-time dependency on any scheme.
-                from .registry import names as _known_languages
-
-                known = _known_languages()
-                if language not in known:
-                    raise ValueError(f"unknown language {language!r}; known languages are {known}")
+            else:
+                expected = _options_type(language) if current is None else type(current)
+                # A parser handed something else fails on every name, which `demangle()`
+                # reports as every name coming back unread.
+                if not isinstance(value, expected):
+                    raise ValueError(f"{language} options must be a {expected.__name__}, got {type(value).__name__}")
             changed[language] = value
         if isinstance(options, _LazyOptions):
             # Only the languages changed are imported, not every one the style names.
             return replace(self, language_options=options.with_values(changed))
         return replace(self, language_options={**options, **changed})
+
+
+def _options_type(language):
+    """The options class of a language no style here carries options for.
+
+    Imported lazily: no import-time dependency on any scheme.
+    """
+    from .registry import get, names
+
+    known = names()
+    if language not in known:
+        raise ValueError(f"unknown language {language!r}; known languages are {known}")
+    expected = get(language).options_type
+    if expected is None:
+        raise ValueError(f"{language} takes no options")
+    return expected
 
 
 class _LazyOptions(Mapping):

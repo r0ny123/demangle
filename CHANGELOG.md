@@ -22,6 +22,13 @@ the reference demanglers, and a **Performance** section.
   On PyPy it now asks the interpreter at each new depth whether its stack is nearly
   full, and stops there with the same `LimitExceeded("recursion depth")`. CPython makes
   no extra call.
+- **`style()` and `Limits` refuse values no parser can use.** `style("llvm", msvc=False)`
+  and `Limits(max_depth="64")` were accepted, and every name then failed inside the
+  parser, which `demangle()` reports by handing the name back: the whole table came back
+  unread with no error. Both are a `ValueError` now, as is an options object for a scheme
+  that takes none. A misspelt option, `msvc={"caling_convention": False}`, was a
+  `TypeError` from `dataclasses.replace`; it is the `ValueError` `style()` documents, and
+  names the scheme's options.
 
 ### Changed
 

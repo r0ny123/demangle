@@ -556,7 +556,8 @@ def style(base: str | Style | None = DEFAULT_STYLE, /, **languages: Any) -> Styl
     narrower spelling asked for here is never served to a caller asking for the default.
 
     Raises:
-        ValueError: `base` is not a known style, or a language named has no options.
+        ValueError: `base` is not a known style, a language named takes no options, or
+            a value is not that language's options or names an option it does not have.
     """
     return get_style(base).with_options(**languages)
 

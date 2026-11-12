@@ -95,6 +95,15 @@ HOSTILE_NAMES = [
 ]
 
 
+@pytest.mark.parametrize(
+    "bound", [{"max_depth": -1}, {"max_input": "64"}, {"max_output": None}, {"max_substitutions": 1.5}]
+)
+def test_a_bound_that_is_not_a_count_is_refused(bound):
+    """It failed inside every parse instead, so `demangle()` handed every name back."""
+    with pytest.raises(ValueError, match=f"{next(iter(bound))} must be a non-negative int"):
+        Limits(**bound)
+
+
 class TestBoundsAreEnforcedWhileWorking:
     """A bound stops the work rather than describing it afterwards.
 

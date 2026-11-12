@@ -457,6 +457,20 @@ class TestStyleRegistration:
             base.with_options(mscv=MSVC_OPTIONS)
         assert base.with_options(msvc=MSVC_OPTIONS).options_for("msvc") is MSVC_OPTIONS
 
+    @pytest.mark.parametrize(
+        ("options", "message"),
+        [
+            ({"msvc": {"caling_convention": False}}, "msvc has no option 'caling_convention'"),
+            ({"msvc": False}, "msvc options must be a MsvcOptions, got bool"),
+            ({"go": object()}, "go takes no options"),
+        ],
+    )
+    def test_with_options_refuses_what_a_parser_could_not_use(self, options, message):
+        """Each was accepted, or was a `TypeError` from `dataclasses.replace`, and the
+        accepted ones made `demangle()` hand every name of that scheme back unread."""
+        with pytest.raises(ValueError, match=message):
+            demangle.style("llvm", **options)
+
 
 class TestBatchOptions:
     def test_demangle_all_honours_language_and_style(self):
