@@ -23,7 +23,7 @@ if os.environ.get("DEMANGLE_BROWSER_TESTS") != "1":
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / "site"
 PLAYGROUND = "/playground/"
-PYODIDE_VERSION = re.search(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[1]
+PYODIDE_VERSION = re.findall(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[0]
 pytestmark = pytest.mark.browser
 
 FAKE_WORKER = r"""

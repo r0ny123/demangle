@@ -38,7 +38,7 @@ from playwright.sync_api import sync_playwright  # type: ignore[import-not-found
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 PLAYGROUND = "/playground/"
-VERSION = re.search(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[1]
+VERSION = re.findall(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[0]
 
 WORKER_INSTRUMENTATION = """
 (() => {
