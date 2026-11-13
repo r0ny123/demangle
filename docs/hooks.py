@@ -18,8 +18,8 @@ from typing import Any
 
 _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 #: The Python inside the pinned runtime (`info.python` in its `pyodide-lock.json`). A build
-#: run on the same version ships bytecode, which spares the browser compiling the package on
-#: every visit: about half a second before the first name is read.
+#: run on the same CPython version ships bytecode, which spares the browser compiling the
+#: package on every visit: about half a second before the first name is read.
 PYODIDE_PYTHON = (3, 13)
 
 #: The Pyodide release the playground runs on.
@@ -90,7 +90,7 @@ def build_assets(root_dir: Path | None = None) -> Path:
     if not (src / "__init__.py").is_file():
         raise FileNotFoundError(f"demangle source package missing: {src}")
 
-    bytecode = sys.version_info[:2] == PYODIDE_PYTHON
+    bytecode = sys.implementation.name == "cpython" and sys.version_info[:2] == PYODIDE_PYTHON
     buf = io.BytesIO()
     notices = [root_dir / name for name in ("LICENSE", "NOTICE")]
     with zipfile.ZipFile(buf, "w") as archive:

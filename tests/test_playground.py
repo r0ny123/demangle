@@ -233,7 +233,17 @@ def test_batch_encoded_row_cache_preserves_json_and_exact_output_budget(bridge, 
     assert result_text == json.dumps({"batch": True, "rows": result["rows"]})
 
 
-@pytest.mark.parametrize("bytecode", [True, False], ids=["bytecode", "source"])
+@pytest.mark.parametrize(
+    "bytecode",
+    [
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(sys.implementation.name != "cpython", reason="Pyodide runs CPython bytecode"),
+        ),
+        False,
+    ],
+    ids=["bytecode", "source"],
+)
 def test_source_archive_is_deterministic_and_importable(tmp_path, hooks, monkeypatch, bytecode):
     runtime_python = sys.version_info[:2] if bytecode else (2, 7)
     monkeypatch.setattr(hooks, "PYODIDE_PYTHON", runtime_python)
