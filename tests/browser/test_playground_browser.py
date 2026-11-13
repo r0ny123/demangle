@@ -459,9 +459,9 @@ def test_theme_storage_cannot_prevent_runtime_startup(context, site_server, stor
     wait_ready(page)
     button = page.locator("#btn-theme-toggle")
     assert button.inner_text() == "☀️ Light"
-    assert page.locator("html").get_attribute("data-theme") is None
+    assert page.locator('meta[name="color-scheme"]').get_attribute("content") == "light dark"
     button.click()
-    assert page.locator("html").get_attribute("data-theme") == "light"
+    assert page.locator('meta[name="color-scheme"]').get_attribute("content") == "light"
     assert button.inner_text() == "🌙 Dark"
     page.locator("#playground-input-symbol").fill("usable")
     page.wait_for_function("document.querySelector('#output-status-indicator').textContent === 'Valid'")
@@ -475,11 +475,14 @@ def test_theme_follows_system_until_overridden_and_persists(context, site_server
     assert button.inner_text() == "🌙 Dark"
     page.emulate_media(color_scheme="dark")
     page.wait_for_function("document.querySelector('#btn-theme-toggle').textContent === '☀️ Light'")
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(26, 27, 30)"
     button.click()
     assert page.evaluate("localStorage.getItem('demangle-theme')") == "light"
     page.reload(wait_until="domcontentloaded")
+    assert page.locator('meta[name="color-scheme"]').get_attribute("content") == "light"
+    assert page.evaluate("getComputedStyle(document.documentElement).colorScheme") == "light"
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(255, 255, 255)"
     wait_ready(page)
-    assert page.locator("html").get_attribute("data-theme") == "light"
     assert button.inner_text() == "🌙 Dark"
 
 

@@ -6,6 +6,7 @@ The static page behind <https://r0ny123.github.io/demangle/playground/>;
 | File | Role |
 | --- | --- |
 | `index.html`, `style.css`, `playground.js` | The page and its interface |
+| `theme.js` | Applies the saved light or dark theme before the page is drawn |
 | `playground-worker.js` | Loads Pyodide and the library in a Web Worker |
 | `playground_bridge.py` | The Python the worker calls: one symbol, or a batch, as JSON |
 
