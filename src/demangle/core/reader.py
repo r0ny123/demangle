@@ -12,6 +12,7 @@ its methods are the innermost loop in the package.
 """
 
 import string
+from typing import NoReturn
 
 from .errors import ParseError, TruncatedError
 
@@ -51,7 +52,7 @@ class Reader:
 
     __slots__ = ("length", "padded_length", "pos", "text")
 
-    def __init__(self, text):
+    def __init__(self, text: str) -> None:
         self.text = text
         self.pos = 0
         self.length = len(text)
@@ -61,14 +62,14 @@ class Reader:
         self.padded_length = False
 
     @property
-    def eof(self):
+    def eof(self) -> bool:
         return self.pos >= self.length
 
     @property
-    def remaining(self):
+    def remaining(self) -> str:
         return self.text[self.pos : self.length]
 
-    def peek(self):
+    def peek(self) -> str:
         """The character at the cursor, or `""` past the end.
 
         Returning a string rather than raising is what lets a parser write
@@ -90,19 +91,19 @@ class Reader:
         pos = self.pos
         return self.text[pos] if pos < self.length else ""
 
-    def ahead(self, offset):
+    def ahead(self, offset: int) -> str:
         """The character `offset` past the cursor, or `""` past the end."""
         index = self.pos + offset
         return self.text[index] if index < self.length else ""
 
-    def peek2(self):
+    def peek2(self) -> str:
         """The next two characters, for the many two-letter codes in these grammars."""
         pos = self.pos
         end = pos + 2
         length = self.length
         return self.text[pos : end if end < length else length]
 
-    def ahead2(self, offset):
+    def ahead2(self, offset: int) -> str:
         """The two characters `offset` past the cursor, bounded like `peek2`.
 
         For the lookaheads that decide a branch without consuming anything -- whether an
@@ -115,10 +116,10 @@ class Reader:
         length = self.length
         return self.text[start : end if end < length else length]
 
-    def startswith(self, literal):
+    def startswith(self, literal: str) -> bool:
         return self.pos + len(literal) <= self.length and self.text.startswith(literal, self.pos)
 
-    def take(self):
+    def take(self) -> str:
         """Consume and return one character. Raises at the end of input."""
         if self.pos >= self.length:
             raise TruncatedError(self.text, self.pos)
@@ -126,7 +127,7 @@ class Reader:
         self.pos += 1
         return char
 
-    def take_exactly(self, count):
+    def take_exactly(self, count: int) -> str:
         """Consume exactly `count` characters, or raise if they are not all there."""
         end = self.pos + count
         if count < 0 or end > self.length:
@@ -135,7 +136,7 @@ class Reader:
         self.pos = end
         return chunk
 
-    def eat(self, literal):
+    def eat(self, literal: str) -> bool:
         """Consume `literal` if it is next, reporting whether it was."""
         pos = self.pos
         if len(literal) == 1:
@@ -149,7 +150,7 @@ class Reader:
             return True
         return False
 
-    def expect(self, literal):
+    def expect(self, literal: str) -> None:
         """Consume `literal`, or raise."""
         # `eat` inlined: this is on the path of every fixed-opening production.
         pos = self.pos
@@ -164,7 +165,7 @@ class Reader:
             return
         raise ParseError(self.text, pos, f"expected {literal!r}")
 
-    def digits(self):
+    def digits(self) -> str:
         """Consume a run of decimal digits and return it, or raise if there are none.
 
         Bounded: an unbounded run would reach `int()`, which CPython refuses above 4300
@@ -183,7 +184,7 @@ class Reader:
         self.pos = pos
         return text[start:pos]
 
-    def length_prefixed(self):
+    def length_prefixed(self) -> tuple[int, str]:
         """A decimal length and the characters it counts, as one production.
 
         `<source-name>` is the commonest production in these grammars -- every component
@@ -209,16 +210,16 @@ class Reader:
         self.pos = end
         return count, text[pos:end]
 
-    def number(self, allow_negative=True):
+    def number(self, allow_negative: bool = True) -> str:
         """A <number>: an optional leading `n` meaning negative, then digits."""
         negative = allow_negative and self.eat("n")
         digits = self.digits()
         return "-" + digits if negative else digits
 
-    def integer(self, allow_negative=True):
+    def integer(self, allow_negative: bool = True) -> int:
         return int(self.number(allow_negative))
 
-    def seq_id(self):
+    def seq_id(self) -> int:
         """A <seq-id> followed by `_`, returned as a zero-based index.
 
         The encoding is offset by one so that the empty sequence can mean something:
@@ -244,7 +245,7 @@ class Reader:
             value = value * 36 + _SEQ_ID_VALUES[char]
         return value + 1
 
-    def fail(self, message):
+    def fail(self, message: str) -> NoReturn:
         raise ParseError(self.text, self.pos, message)
 
     def __repr__(self):  # pragma: no cover - debugging aid

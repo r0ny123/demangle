@@ -15,6 +15,7 @@ importing a plugin module twice is harmless.
 
 import sys
 import threading
+from collections.abc import Callable
 from importlib import import_module
 
 from .plugin import LanguagePlugin
@@ -121,7 +122,7 @@ _stand_ins = {}
 _self_registered = set()
 
 
-def notify_on_change(callback):
+def notify_on_change(callback: Callable[[], object]) -> None:
     """Call `callback` whenever a plugin is registered."""
     _on_change.append(callback)
 
@@ -371,7 +372,7 @@ def get(name: str) -> LanguagePlugin:
     return plugin
 
 
-def canonical(name):
+def canonical(name: str) -> str:
     """The name a plugin is registered under, given that name or an alias of it.
 
     `get` without the import: naming a scheme is not using it, so a built-in stays
@@ -389,7 +390,7 @@ def _module_of(name):
     return next(entry[1] for entry in _BUILTIN_MODULES if entry[0] == name)
 
 
-def available():
+def available() -> tuple[LanguagePlugin, ...]:
     """Every registered plugin, in detection order."""
     _load()
     with _lock:
@@ -408,7 +409,7 @@ def _order():
         return _ordered
 
 
-def candidates(mangled):
+def candidates(mangled: str) -> tuple[LanguagePlugin, ...]:
     """The plugins worth offering `mangled` to, in detection order.
 
     A caller labelling a symbol table offers this every symbol in it -- the great

@@ -92,6 +92,7 @@ says.
 
 - [`Node`][demangle.core.ast.Node] and [`Decorated`][demangle.core.ast.Decorated]:
   [the tree](core.md#the-tree).
+- [`CacheStats`][demangle.core.cache.CacheStats]: [caching](core.md#caching).
 - [`Style`][demangle.core.style.Style] and
   [`register_style`][demangle.core.style.register_style]: [styles](core.md#styles).
 - [`LanguagePlugin`][demangle.core.plugin.LanguagePlugin] and `register_language`,

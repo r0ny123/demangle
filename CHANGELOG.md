@@ -8,6 +8,29 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Changed
+
+- **`LimitExceeded` is no longer a `ParseError`.** It derives from `DemanglingError`
+  directly, so `except ParseError` stops taking "too large to read under these limits"
+  for "malformed". Code that caught `ParseError` to cover both should catch
+  `DemanglingError`. It has no `position` any more; it never had one to give.
+- **`demangle_all()` refuses a single name.** A `str` is an iterable of `str`, so
+  `demangle_all("_Z1fv")` came back as `['_', 'Z', '1', 'f', 'v']`. One `str` or bytes
+  object is a `TypeError` now.
+- **`demangle_text()` and `find_symbols()` say what was wrong with a `text` that is not
+  a `str`.** It was a `TypeError` out of `re`, and `find_symbols()` raised it at the
+  first `next()` rather than at the call.
+
+### Added
+
+- **`Node.find()` takes a node class** as well as a `kind` string: `tree.find(Name)`
+  yields `Name` nodes, subclasses included, and a type checker then knows their fields.
+- **`CacheStats`**, the `TypedDict` that `cache_stats()` returns, in place of
+  `dict[str, Any]`.
+- **Annotations on the rest of the core**: the node constructors, `Reader`, the registry
+  and the fields of `LanguagePlugin` and `Style`, so a scheme written against them is
+  type-checked. `DemanglingError` declares the `mangled` every subclass sets.
+
 ### Performance
 
 - MSVC names read about 1.4x faster cold over a symbol table (msvc-boost.txt: 64 to

@@ -38,7 +38,7 @@ from typing import Any, NoReturn, TypeGuard
 from .core import registry as _registry
 from .core import style as _style_module
 from .core.ast import Node, builder_for
-from .core.cache import MISSING, BoundedCache, clear_memos
+from .core.cache import MISSING, BoundedCache, CacheStats, clear_memos
 from .core.decorations import VERSION_SEPARATOR, split_decorations
 from .core.errors import (
     DemanglingError,
@@ -103,6 +103,12 @@ _registry.notify_on_change(_CACHE.clear)
 #: The default limits' slot in a cache key. Private, so nothing a caller passes can
 #: share it.
 _DEFAULT_LIMITS_KEY = object()
+
+
+def _require_text(text):
+    """Refuse a `text` that is not a `str`, for the entry points that scan one."""
+    if not isinstance(text, str):
+        raise TypeError(f"expected str, got {type(text).__name__}")
 
 
 def _refuse_non_string(mangled):
@@ -906,7 +912,14 @@ def demangle_all(
 
     Arguments are validated before the generator is created, so a bad `language`,
     `style` or `limits` is reported at the call rather than at the first `next()`.
+
+    Raises:
+        TypeError: `names_` is one `str` or bytes object rather than an iterable of names.
+        ValueError: as `demangle()`.
     """
+    if isinstance(names_, (str, *_BYTES_LIKE)):
+        # A `str` is an iterable of `str`, so it would come back a character at a time.
+        raise TypeError(f"expected an iterable of names, got one {type(names_).__name__}; use demangle() for one name")
     language = _check_language(language)
     get_style(style)
     _check_limits(limits)
@@ -962,10 +975,10 @@ def cache_clear() -> None:
     clear_memos()
 
 
-def cache_stats() -> dict[str, Any]:
+def cache_stats() -> CacheStats:
     """Hit rate and occupancy of the result cache.
 
-    The keys are `size`, `max_size`, `hits`, `misses` and `hit_rate`. A name no scheme is
-    offered is looked up but never stored, so it counts as a miss on every call.
+    A name no scheme is offered is looked up but never stored, so it counts as a miss on
+    every call.
     """
     return _CACHE.stats

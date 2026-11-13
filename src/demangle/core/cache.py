@@ -9,10 +9,30 @@ accumulate an entry per distinct symbol ever seen, and there is no natural end t
 """
 
 import threading
+from typing import TypedDict
 
-__all__ = ["MISSING", "BoundedCache", "clear_memos", "memo"]
+__all__ = ["MISSING", "BoundedCache", "CacheStats", "clear_memos", "memo"]
 
 _MISSING = object()
+
+
+class CacheStats(TypedDict):
+    """What `demangle.cache_stats()` returns."""
+
+    size: int
+    """Entries held now."""
+
+    max_size: int
+    """Entries it holds at most."""
+
+    hits: int
+    """Lookups answered from the cache since it was last cleared."""
+
+    misses: int
+    """Lookups that were not."""
+
+    hit_rate: float
+    """`hits` over all lookups, or 0.0 before the first."""
 
 
 class BoundedCache:
@@ -136,7 +156,7 @@ class BoundedCache:
             self.misses = 0
 
     @property
-    def stats(self):
+    def stats(self) -> CacheStats:
         total = self.hits + self.misses
         return {
             "size": len(self),
