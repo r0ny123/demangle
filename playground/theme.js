@@ -13,7 +13,9 @@
     function apply() {
         meta.content = theme ?? "light dark";
         const button = document.getElementById("btn-theme-toggle");
-        if (button) button.textContent = dark() ? "☀️ Light" : "🌙 Dark";
+        if (!button) return;
+        button.querySelector(".theme-icon").textContent = dark() ? "☀️" : "🌙";
+        button.querySelector(".theme-label").textContent = dark() ? "Light" : "Dark";
     }
 
     apply();
