@@ -43,6 +43,15 @@ mistake in the call itself, such as a `language` that does not exist.
 1
 ```
 
+`find()` also takes a node class, which is the form a type checker can follow: it
+knows a `Name` has `text` and a `Function` has `parameters`.
+
+```python
+>>> from demangle.core.ast import Name
+>>> [name.text for name in demangle.parse("_ZNK3Foo3barIiEEvPKc").find(Name)]
+['Foo', 'bar']
+```
+
 All schemes return full trees. A Rust symbol comes back as a `symbol` holding a
 `path` of `name` components, with `impl`, `template`, `type` and `literal` nodes for
 what the path carries:
@@ -96,6 +105,47 @@ occur inside template arguments and inside operator names as well as between com
 What each scheme records differs, and the fields say so rather than guessing. A C++ or
 Swift name carries a signature; a Rust or Go path does not, and its `parameters` is
 `None` -- which is not `()`. `is_function` is `False` where the name does not say.
+
+## When a name cannot be read
+
+The strict entry points -- `demangle_strict()`, `parse()`, `signature()` and the type
+readers -- raise a `DemanglingError`, and which one says what went wrong:
+
+```python
+>>> demangle.demangle_strict("main")
+Traceback (most recent call last):
+    ...
+demangle.core.errors.NotMangledError: not a mangled name: 'main'
+>>> try:
+...     demangle.demangle_strict("_ZN3Foo")
+... except demangle.ParseError as error:
+...     print(error.position, error)
+7 unterminated nested name at offset 7: '_ZN3Foo'
+```
+
+`NotMangledError` is a name no scheme claims, `ParseError` one that breaks its scheme's
+grammar, with the offset where it did, and `TruncatedError` a `ParseError` for a name
+that stops partway. `LimitExceeded` is none of those: the name may be well formed, and
+is larger than this call was allowed to read.
+
+A mangled name is untrusted input, and a few dozen bytes can describe a type nested
+deeply enough to exhaust the stack. [`Limits`][demangle.core.limits.Limits] bounds the
+depth, the output, the substitutions and the input, on every call:
+
+```python
+>>> deep = "_Z1f" + "P" * 300 + "i"
+>>> demangle.demangle(deep) == deep
+True
+>>> try:
+...     demangle.demangle_strict(deep)
+... except demangle.LimitExceeded as error:
+...     print(error.limit_name, error.limit_value)
+recursion depth 256
+>>> demangle.demangle(deep, limits=demangle.RELAXED_LIMITS)[:12]
+'f(int*******'
+```
+
+The [security policy](SECURITY.md) has the threat model behind the defaults.
 
 ## A type on its own
 

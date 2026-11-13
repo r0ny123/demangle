@@ -45,6 +45,7 @@ from .api import (
     styles,
 )
 from .core.ast import Decorated, Node
+from .core.cache import CacheStats
 from .core.errors import (
     DemanglingError,
     LimitExceeded,
@@ -63,6 +64,7 @@ __version__ = "0.7.1"
 __all__ = [
     "DEFAULT_LIMITS",
     "RELAXED_LIMITS",
+    "CacheStats",
     "Decorated",
     "DemanglingError",
     "Found",

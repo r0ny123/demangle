@@ -1011,9 +1011,9 @@ assert hash(left) == hash(right)
         assert calls == [1]
 
     def test_cycles_compare_but_do_not_have_a_finite_structural_hash(self):
-        from demangle.core.ast import Pointer
+        from demangle.core.ast import Name, Pointer
 
-        left, right = Pointer(None), Pointer(None)
+        left, right = Pointer(Name("x")), Pointer(Name("x"))
         left.inner, right.inner = left, right
         assert left == right
         with pytest.raises(TypeError, match="cyclic"):

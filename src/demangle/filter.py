@@ -23,7 +23,7 @@ import re
 from collections.abc import Iterable, Iterator, Sequence
 from typing import NamedTuple, Protocol
 
-from .api import _check_language, _check_limits
+from .api import _check_language, _check_limits, _require_text
 from .api import demangle as _demangle
 from .core.limits import DEFAULT_LIMITS, Limits
 from .core.style import DEFAULT_STYLE, Style, get_style
@@ -95,8 +95,13 @@ def find_symbols(
 
     The spans do not overlap and are in increasing order, so a caller can rebuild the
     string around them -- which is all `demangle_text` does.
+
+    Raises:
+        TypeError: `text` is not a `str`.
+        ValueError: as `demangle()`.
     """
     # Validated here: a text with no symbols would never reach `demangle`.
+    _require_text(text)
     language = _check_language(language)
     get_style(style)
     _check_limits(limits)
@@ -135,8 +140,9 @@ def demangle_text(
     Never raises over the text, for the reason `demangle()` does not: this is run over
     whole files, and one unreadable word must not end the run. Like `demangle()`, it
     raises `ValueError` when `language` or `style` is not a registered name, or `limits`
-    is not a `Limits`.
+    is not a `Limits`, and `TypeError` when `text` is not a `str`.
     """
+    _require_text(text)
     language = _check_language(language)
     get_style(style)
     _check_limits(limits)

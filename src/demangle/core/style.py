@@ -20,11 +20,12 @@ returns a new style rather than changing the shared default, and a style object 
 """
 
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields, replace
 from importlib import import_module
 from typing import Any
 
+from .builder import Builder
 from .spelling import LEGACY_SPELLING_BUILDER, SPELLING_BUILDER
 
 __all__ = [
@@ -43,7 +44,7 @@ class Style:
     name: str
     """What the style is registered and looked up under -- `"llvm"`, `"gnu"`."""
 
-    spelling_builder: Any
+    spelling_builder: Builder
     """The builder used when a caller asks for text. Must be a `Builder`."""
 
     language_options: Mapping[str, Any] = field(default_factory=dict)
@@ -210,7 +211,7 @@ _lock = threading.RLock()
 _on_change = []
 
 
-def notify_on_change(callback):
+def notify_on_change(callback: Callable[[], object]) -> None:
     """Call `callback` whenever a style is registered."""
     _on_change.append(callback)
 

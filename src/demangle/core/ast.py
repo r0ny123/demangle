@@ -15,8 +15,8 @@ JSON, HTML, a token stream -- is a builder, not a second traversal to keep in sy
 
 import inspect
 import sys
-from collections.abc import Iterator
-from typing import Any, ClassVar
+from collections.abc import Iterable, Iterator
+from typing import Any, ClassVar, TypeVar, overload
 
 from .builder import Builder
 from .errors import LimitExceeded, recursion_error_lost
@@ -70,6 +70,9 @@ def rendered(produce):
         if not recursion_error_lost(error):
             raise
         raise LimitExceeded("", "recursion depth", sys.getrecursionlimit()) from error
+
+
+_N = TypeVar("_N", bound="Node")
 
 
 class Node:
@@ -150,8 +153,23 @@ class Node:
             if children:
                 stack.extend(reversed(children))
 
-    def find(self, kind: str) -> Iterator[Any]:
-        """Yield every descendant of the given `kind`, including this node."""
+    @overload
+    def find(self, kind: type[_N]) -> Iterator[_N]: ...
+    @overload
+    def find(self, kind: str) -> Iterator[Any]: ...
+    def find(self, kind: "str | type[Node]") -> Iterator[Any]:
+        """Yield every descendant of the given kind, including this node.
+
+        `kind` is a `kind` string or a node class. A class also matches its subclasses,
+        and tells a type checker which fields the nodes have:
+
+            >>> import demangle
+            >>> from demangle.core.ast import Name
+            >>> [name.text for name in demangle.parse("_ZN3foo3barEv").find(Name)]
+            ['foo', 'bar']
+        """
+        if isinstance(kind, type):
+            return (node for node in self.walk() if isinstance(node, kind))
         return (node for node in self.walk() if node.kind == kind)
 
     def render(self) -> str:
@@ -513,7 +531,7 @@ class Builtin(Node):
     kind = "builtin"
     __match_args__ = ("spelling",)
 
-    def __init__(self, spelling):
+    def __init__(self, spelling: str) -> None:
         self.spelling = spelling
 
     def build(self, builder):
@@ -527,7 +545,7 @@ class Name(Node):
     kind = "name"
     __match_args__ = ("text",)
 
-    def __init__(self, text):
+    def __init__(self, text: str) -> None:
         self.text = text
 
     def build(self, builder):
@@ -541,7 +559,7 @@ class Raw(Node):
     kind = "raw"
     __match_args__ = ("text",)
 
-    def __init__(self, text):
+    def __init__(self, text: str) -> None:
         self.text = text
 
     def build(self, builder):
@@ -555,7 +573,7 @@ class Literal(Node):
     kind = "literal"
     __match_args__ = ("type", "value")
 
-    def __init__(self, type_, value):
+    def __init__(self, type_: Node | None, value: str) -> None:
         self.type = type_
         self.value = value
 
@@ -583,7 +601,7 @@ class Expression(Node):
     kind = "expression"
     __match_args__ = ("form", "parts")
 
-    def __init__(self, form, parts):
+    def __init__(self, form: str, parts: Iterable[Node | str]) -> None:
         self.form = form
         self.parts = tuple(parts)
 
@@ -606,7 +624,7 @@ class Qualified(Node):
     kind = "qualified"
     __match_args__ = ("parts",)
 
-    def __init__(self, parts):
+    def __init__(self, parts: Iterable[Node]) -> None:
         self.parts = tuple(parts)
 
     def children(self):
@@ -623,7 +641,7 @@ class Template(Node):
     kind = "template"
     __match_args__ = ("base", "arguments", "angle_space")
 
-    def __init__(self, base, arguments, angle_space=True):
+    def __init__(self, base: Node, arguments: Iterable[Node], angle_space: bool = True) -> None:
         self.base = base
         self.arguments = tuple(arguments)
         #: Whether a style separating consecutive `>` should do so here. False after an
@@ -650,7 +668,7 @@ class Qualify(Node):
     kind = "qualify"
     __match_args__ = ("inner", "qualifiers", "cv")
 
-    def __init__(self, inner, qualifiers, cv=True):
+    def __init__(self, inner: Node, qualifiers: Iterable[str], cv: bool = True) -> None:
         self.inner = inner
         self.qualifiers = tuple(qualifiers)
         self.cv = cv
@@ -669,7 +687,7 @@ class _Unary(Node):
     )
     __match_args__ = ("inner",)
 
-    def __init__(self, inner):
+    def __init__(self, inner: Node) -> None:
         self.inner = inner
 
     def children(self):
@@ -730,7 +748,7 @@ class ParameterPack(Node):
     kind = "parameter_pack"
     __match_args__ = ("members",)
 
-    def __init__(self, members):
+    def __init__(self, members: Iterable[Node]) -> None:
         self.members = tuple(members)
 
     def children(self):
@@ -747,7 +765,7 @@ class MemberPointer(Node):
     kind = "member_pointer"
     __match_args__ = ("owner", "inner")
 
-    def __init__(self, owner, inner):
+    def __init__(self, owner: Node, inner: Node) -> None:
         self.owner = owner
         self.inner = inner
 
@@ -765,7 +783,7 @@ class Array(Node):
     kind = "array"
     __match_args__ = ("inner", "dimension")
 
-    def __init__(self, inner, dimension):
+    def __init__(self, inner: Node, dimension: str) -> None:
         self.inner = inner
         self.dimension = dimension
 
@@ -783,7 +801,7 @@ class VendorQualify(Node):
     kind = "vendor_qualify"
     __match_args__ = ("inner", "qualifier")
 
-    def __init__(self, inner, qualifier):
+    def __init__(self, inner: Node, qualifier: str) -> None:
         self.inner = inner
         self.qualifier = qualifier
 
@@ -801,7 +819,9 @@ class Function(Node):
     kind = "function"
     __match_args__ = ("returns", "parameters", "suffix", "name")
 
-    def __init__(self, returns, parameters, suffix="", name=None):
+    def __init__(
+        self, returns: Node | None, parameters: Iterable[Node], suffix: str = "", name: Node | None = None
+    ) -> None:
         self.returns = returns
         self.parameters = tuple(parameters)
         self.suffix = suffix
@@ -851,7 +871,7 @@ class Special(Node):
     kind = "special"
     __match_args__ = ("label", "inner")
 
-    def __init__(self, label, inner):
+    def __init__(self, label: str, inner: Node) -> None:
         self.label = label
         self.inner = inner
 

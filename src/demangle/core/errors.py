@@ -22,6 +22,9 @@ __all__ = [
 class DemanglingError(Exception):
     """Base class for every failure this package reports."""
 
+    mangled: str
+    """The name that could not be read."""
+
 
 class NotMangledError(DemanglingError):
     """The name carries no recognised mangling prefix.
@@ -60,8 +63,11 @@ class TruncatedError(ParseError):
         super().__init__(mangled, position, "mangled name ends mid-production")
 
 
-class LimitExceeded(ParseError):
+class LimitExceeded(DemanglingError):
     """A bound protecting against pathological input was hit.
+
+    Not a `ParseError`: the name may be well formed, and `except ParseError` should not
+    take "too large to read here" for "malformed".
 
     A mangled name is attacker-controlled input in any tool that opens files it did not
     produce. Recursion depth, output size and substitution count are all capped, and
@@ -69,9 +75,10 @@ class LimitExceeded(ParseError):
     """
 
     def __init__(self, mangled: str, limit_name: str, limit_value: int) -> None:
+        self.mangled = mangled
         self.limit_name = limit_name
         self.limit_value = limit_value
-        super().__init__(mangled, None, f"exceeded {limit_name} limit of {limit_value}")
+        super().__init__(f"exceeded {limit_name} limit of {limit_value}: {mangled!r}")
 
 
 # Never mean "malformed name": a best-effort `except Exception` must let these through,
@@ -79,13 +86,13 @@ class LimitExceeded(ParseError):
 OPERATIONAL_EXCEPTIONS = (KeyboardInterrupt, SystemExit, MemoryError, GeneratorExit)
 
 
-def reraise_if_operational(exc):
+def reraise_if_operational(exc: BaseException) -> None:
     """Re-raise `exc` if it is an interpreter-level failure rather than a parse failure."""
     if isinstance(exc, OPERATIONAL_EXCEPTIONS):
         raise exc
 
 
-def recursion_error_lost(exc):
+def recursion_error_lost(exc: BaseException) -> bool:
     """Whether `exc` is PyPy's stand-in for a `RecursionError` it could not raise.
 
     When a name nests past the interpreter's stack, the `RecursionError` unwinds through

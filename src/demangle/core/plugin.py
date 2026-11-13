@@ -44,7 +44,7 @@ class LanguagePlugin:
     Raises `NotMangledError` or `ParseError` on failure; never returns a partial result.
     """
 
-    parse_type: Any = None
+    parse_type: Callable[..., Any] | None = None
     """`parse_type(mangled, builder, limits=..., options=...) -> handle`, or None.
 
     A *type* encoding rather than a whole symbol -- `Pi` for `int*`, an MSVC `.PEAX`, a
@@ -57,7 +57,7 @@ class LanguagePlugin:
     Free Pascal and JNI names carry types only as text they already spell.
     """
 
-    node_kinds: tuple = ()
+    node_kinds: tuple[str, ...] = ()
     """Every `kind` string a tree from this scheme can hold.
 
     The published vocabulary. `parse()` returns a walkable tree, and without this a
@@ -74,7 +74,7 @@ class LanguagePlugin:
     aliases: Sequence[str] = field(default_factory=tuple)
     """Other names callers may use: `gnu` and `gcc` both mean `itanium`."""
 
-    options_type: Any = None
+    options_type: type | None = None
     """The dataclass this language accepts as `options`, if it takes any."""
 
     symbol_table_decorations: bool = False

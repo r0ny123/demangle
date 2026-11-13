@@ -4957,8 +4957,6 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     try:
         return parser.parse()
     except ParseError as error:
-        if isinstance(error, LimitExceeded):
-            raise
         # Numbering rules a second reading may apply, in order: each is one a compiler
         # is known to apply, tried only where the caller left it open and the name can
         # carry it.
@@ -4989,7 +4987,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
                 setattr(retry, attribute, value)
             try:
                 return retry.parse()
-            except ParseError:
+            except (ParseError, LimitExceeded):
                 continue
         if not parser._ambiguous_unresolved_name:
             raise
@@ -4997,7 +4995,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
         retry._old_unresolved_names = True
         try:
             return retry.parse()
-        except ParseError:
+        except (ParseError, LimitExceeded):
             raise error from None
 
 

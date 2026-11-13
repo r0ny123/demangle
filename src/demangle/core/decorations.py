@@ -32,7 +32,7 @@ VERSION_SEPARATOR = "@"
 CLONE_SEPARATOR = "."
 
 
-def split_decorations(name):
+def split_decorations(name: str) -> tuple[str, str]:
     """Split `name` into (mangled, version-suffix).
 
     Only the ELF version suffix is split here, because only it can be recognised
@@ -56,7 +56,7 @@ def split_decorations(name):
     return name[:version], name[version:]
 
 
-def describe(decoration, gnu_clone_suffix=False):
+def describe(decoration: str, gnu_clone_suffix: bool = False) -> str:
     """A readable spelling of a decoration.
 
     ELF version suffixes are passed through as written by both references. Clone

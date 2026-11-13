@@ -473,6 +473,47 @@ class TestThePublishedVocabulary:
             demangle.node_kinds("klingon")
 
 
+class TestFindingNodesByClass:
+    def test_a_class_finds_what_its_kind_does(self):
+        tree = demangle.parse("_ZNK3Foo3barIiEEvPKc")
+        assert list(tree.find(Name)) == list(tree.find("name"))
+        assert [name.text for name in tree.find(Name)] == ["Foo", "bar"]
+
+    def test_a_base_class_finds_its_subclasses(self):
+        tree = demangle.parse("_Z1fPi")
+        assert list(tree.find(demangle.Node)) == list(tree.walk())
+
+
+class TestALimitIsNotAMalformedName:
+    def test_except_parse_error_does_not_take_a_limit(self):
+        assert not issubclass(demangle.LimitExceeded, demangle.ParseError)
+        assert issubclass(demangle.LimitExceeded, DemanglingError)
+
+    def test_it_still_says_which_name_and_which_bound(self):
+        deep = "_Z1f" + "P" * 300 + "i"
+        with pytest.raises(demangle.LimitExceeded) as caught:
+            demangle.demangle_strict(deep)
+        error = caught.value
+        assert (error.mangled, error.limit_name, error.limit_value) == (deep, "recursion depth", 256)
+
+
+class TestOneNameWhereSeveralAreExpected:
+    @pytest.mark.parametrize("name", ["_Z1fv", b"_Z1fv"])
+    def test_demangle_all_refuses_a_single_name(self, name):
+        """A `str` iterates as its characters, so this came back as `['_', 'Z', ...]`."""
+        with pytest.raises(TypeError, match="iterable of names"):
+            demangle.demangle_all(name)
+
+    @pytest.mark.parametrize("scan", [demangle.demangle_text, demangle.find_symbols])
+    def test_the_filter_refuses_bytes_at_the_call(self, scan):
+        with pytest.raises(TypeError, match="expected str, got bytes"):
+            scan(b"_Z1fv")
+
+
+def test_cache_stats_has_the_keys_it_declares():
+    assert set(demangle.cache_stats()) == set(demangle.CacheStats.__annotations__)
+
+
 class TestThePublicSurfaceIsAnnotated:
     """`py.typed` promises a typed package; an unannotated export reaches a caller's type
     checker as `Unknown`."""
