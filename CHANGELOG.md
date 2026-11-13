@@ -15,6 +15,11 @@ the reference demanglers, and a **Performance** section.
   names now, not just within one, so a table that writes out the same
   `std::basic_string<...>` thousands of times reads it once. The memo is bounded at
   about 8M characters and `cache_clear()` empties it. Output is unchanged.
+- Swift names read about 8% faster cold (swift-real-world.txt: 53 to 49 us a name, 17%
+  fewer instructions). Identifiers are split into words by a regular expression rather
+  than a loop over characters, and the commonest productions, nominal types, tuples and
+  function types, pop the stack directly instead of through helpers. Output is
+  unchanged.
 
 ## [0.7.1] - 2026-11-12
 

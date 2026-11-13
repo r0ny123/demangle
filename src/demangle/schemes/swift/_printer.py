@@ -225,8 +225,20 @@ def _needs_space_before_type(node):
     while node.kind == "Type":
         if not node.children:
             return True
-        node = node.first
+        node = node.children[0]
     return node.kind not in _NO_SPACE_BEFORE
+
+
+#: Entities whose context follows them as ` of <context>` rather than ` in <context>`.
+_CONTEXT_FOLLOWS_OF = frozenset(
+    (
+        "DefaultArgumentInitializer",
+        "Initializer",
+        "PropertyWrapperBackingInitializer",
+        "PropertyWrappedFieldInitAccessor",
+        "PropertyWrapperInitFromProjectedValue",
+    )
+)
 
 
 def _child_of_kind(node, kind):
@@ -283,11 +295,11 @@ class Printer:
     def is_simple_type(self, node):
         kind = node.kind
         if kind == "Type":
-            return self.is_simple_type(node.first)
+            return self.is_simple_type(node.children[0])
         if kind == "ProtocolList":
-            return len(node.first.children) <= 1
+            return len(node.children[0].children) <= 1
         if kind == "ProtocolListWithAnyObject":
-            return len(node.first.first.children) == 0
+            return len(node.children[0].children[0].children) == 0
         return kind in _SIMPLE_TYPES
 
     def print_children(self, node, depth, separator=None):
@@ -323,16 +335,16 @@ class Printer:
     def find_sugar(self, node):
         """Which of the four sugared spellings, if any, a bound generic type has."""
         if len(node.children) == 1 and node.kind == "Type":
-            return self.find_sugar(node.first)
+            return self.find_sugar(node.children[0])
         if len(node.children) != 2:
             return None
         if node.kind not in ("BoundGenericEnum", "BoundGenericStructure"):
             return None
-        unbound = node.first.first
-        arguments = node.child(1)
-        if len(unbound.children) < 2 or not _is_swift_module(unbound.first):
+        unbound = node.children[0].children[0]
+        arguments = node.children[1]
+        if len(unbound.children) < 2 or not _is_swift_module(unbound.children[0]):
             return None
-        name = unbound.child(1)
+        name = unbound.children[1]
         if node.kind == "BoundGenericEnum":
             if _is_identifier(name, "Optional") and len(arguments.children) == 1:
                 return "optional"
@@ -348,9 +360,9 @@ class Printer:
     def print_bound_generic_no_sugar(self, node, depth):
         if len(node.children) < 2:
             return
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write("<")
-        self.print_children(node.child(1), depth, ", ")
+        self.print_children(node.children[1], depth, ", ")
         self.write(">")
 
     def print_bound_generic(self, node, depth):
@@ -361,26 +373,26 @@ class Printer:
             return
         if node.kind == "BoundGenericProtocol":
             # `T as P`: the conforming type, then the protocol it is being seen as.
-            self.print_children(node.child(1), depth)
+            self.print_children(node.children[1], depth)
             self.write(" as ")
-            self.print(node.first, depth + 1)
+            self.print(node.children[0], depth + 1)
             return
 
         sugar = self.find_sugar(node)
         if sugar is None:
             self.print_bound_generic_no_sugar(node, depth)
         elif sugar in ("optional", "unwrapped-optional"):
-            self.print_with_parens(node.child(1).first, depth)
+            self.print_with_parens(node.children[1].children[0], depth)
             self.write("?" if sugar == "optional" else "!")
         elif sugar == "array":
             self.write("[")
-            self.print(node.child(1).first, depth + 1)
+            self.print(node.children[1].children[0], depth + 1)
             self.write("]")
         else:
             self.write("[")
-            self.print(node.child(1).first, depth + 1)
+            self.print(node.children[1].children[0], depth + 1)
             self.write(" : ")
-            self.print(node.child(1).child(1), depth + 1)
+            self.print(node.children[1].children[1], depth + 1)
             self.write("]")
 
     def print_function_parameters(self, labels, parameters, depth, show_types=True):
@@ -394,7 +406,7 @@ class Printer:
         """
         if parameters.kind not in ("ArgumentTuple", "YieldTypes"):
             raise _Invalid
-        found = parameters.first.first
+        found = parameters.children[0].children[0]
         if found.kind != "Tuple":
             # One unnamed parameter, which is not written as a tuple.
             if not show_types:
@@ -411,7 +423,7 @@ class Printer:
             if at and show_types:
                 self.write(", ")
             if has_labels:
-                label = labels.child(at)
+                label = labels.children[at]
                 self.write(label.text if label.kind == "Identifier" else "_")
                 self.write(":")
                 if show_types:
@@ -429,9 +441,9 @@ class Printer:
 
         def convention_with_clang_type(name):
             self.write(f"@convention({name}")
-            if node.first.kind == "ClangType":
+            if node.children[0].kind == "ClangType":
                 self.write(', mangledCType: "')
-                self.print(node.first, depth + 1)
+                self.print(node.children[0], depth + 1)
                 self.write('"')
             self.write(") ")
 
@@ -527,7 +539,7 @@ class Printer:
                 if state == 0:
                     if pattern_substitutions is not None:
                         self.write("@substituted ")
-                        self.print(pattern_substitutions.first, depth + 1)
+                        self.print(pattern_substitutions.children[0], depth + 1)
                         self.write(" ")
                     self.write("(")
                 elif state == 1:
@@ -563,11 +575,11 @@ class Printer:
 
         if pattern_substitutions is not None:
             self.write(" for <")
-            self.print_children(pattern_substitutions.child(1), depth)
+            self.print_children(pattern_substitutions.children[1], depth)
             self.write(">")
         if invocation_substitutions is not None:
             self.write(" for <")
-            self.print_children(invocation_substitutions.first, depth)
+            self.print_children(invocation_substitutions.children[0], depth)
             self.write(">")
 
     def print_generic_signature(self, node, depth):
@@ -576,31 +588,31 @@ class Printer:
         count = len(node.children)
 
         parameters = 0
-        while parameters < count and node.child(parameters).kind == "DependentGenericParamCount":
+        while parameters < count and node.children[parameters].kind == "DependentGenericParamCount":
             parameters += 1
 
         first_requirement = parameters
         while first_requirement < count:
-            child = node.child(first_requirement)
+            child = node.children[first_requirement]
             if child.kind == "Type":
-                child = child.first
+                child = child.children[0]
             if child.kind not in ("DependentGenericParamPackMarker", "DependentGenericParamValueMarker"):
                 break
             first_requirement += 1
 
         def is_pack(at_depth, at_index):
             for pack_at in range(parameters, first_requirement):
-                child = node.child(pack_at)
+                child = node.children[pack_at]
                 if child.kind != "DependentGenericParamPackMarker":
                     continue
-                child = child.first
+                child = child.children[0]
                 if child.kind != "Type":
                     continue
-                child = child.first
+                child = child.children[0]
                 if child.kind != "DependentGenericParamType":
                     continue
                 # The reference compares index against child 0.
-                if at_index == child.first.index and at_depth == child.child(1).index:
+                if at_index == child.children[0].index and at_depth == child.children[1].index:
                     return True
             return False
 
@@ -614,23 +626,23 @@ class Printer:
             would refuse the whole name; the two are the same answer and this says so.
             """
             for value_at in range(parameters, first_requirement):
-                child = node.child(value_at)
+                child = node.children[value_at]
                 if child.kind != "DependentGenericParamValueMarker":
                     continue
-                child = child.first
+                child = child.children[0]
                 if child.kind != "Type":
                     continue
-                parameter = child.first
+                parameter = child.children[0]
                 if parameter.kind != "DependentGenericParamType":
                     continue
-                if at_index == parameter.first.index and at_depth == parameter.child(1).index:
-                    return True, (child.child(1) if len(child.children) > 1 else None)
+                if at_index == parameter.children[0].index and at_depth == parameter.children[1].index:
+                    return True, (child.children[1] if len(child.children) > 1 else None)
             return False, None
 
         for at_depth in range(parameters):
             if at_depth:
                 self.write("><")
-            for index in range(node.child(at_depth).index):
+            for index in range(node.children[at_depth].index):
                 if index:
                     self.write(", ")
                 if index >= 128:
@@ -652,7 +664,7 @@ class Printer:
             for at in range(first_requirement, count):
                 if at > first_requirement:
                     self.write(", ")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
         self.write(">")
 
     def print_function_sig_specialization_params(self, node, depth):
@@ -672,16 +684,16 @@ class Printer:
         argument = 0
         end = len(node.children)
         while at < end:
-            child = node.child(at)
+            child = node.children[at]
             if child.index is None:
                 return
             kind = child.index
             if kind in (_PARAM_BOX_TO_VALUE, _PARAM_BOX_TO_STACK, _PARAM_IN_OUT_TO_OUT):
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
             elif kind in (_PARAM_CONSTANT_PROP_FUNCTION, _PARAM_CONSTANT_PROP_GLOBAL):
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(" : ")
                 argument = self.print_next_param_child(node, argument, kind, depth)
@@ -690,20 +702,20 @@ class Printer:
                 if at + 2 > end:
                     return
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(" : ")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write("]")
             elif kind == _PARAM_CONSTANT_PROP_STRING:
                 if at + 2 > end:
                     return
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(" : ")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write("'")
                 argument = self.print_next_param_child(node, argument, kind, depth)
@@ -711,7 +723,7 @@ class Printer:
                 self.write("]")
             elif kind == _PARAM_CONSTANT_PROP_KEY_PATH:
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(" : ")
                 argument = self.print_next_param_child(node, argument, kind, depth)
@@ -722,7 +734,7 @@ class Printer:
                 self.write(">]")
             elif kind == _PARAM_CONSTANT_PROP_STRUCT:
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(" : ")
                 argument = self.print_next_param_child(node, argument, kind, depth)
@@ -731,19 +743,19 @@ class Printer:
                 if at + 2 > end:
                     return
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(" : ")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(", Argument Types : [")
                 while at < end:
-                    following = node.child(at)
+                    following = node.children[at]
                     if following.kind != "Type":
                         break
                     self.print(following, depth + 1)
                     at += 1
-                    if at < end and node.child(at).text is not None:
+                    if at < end and node.children[at].text is not None:
                         self.write(", ")
                 self.write("]")
             elif kind == _PARAM_DIFFERENTIABLE_FUNCTION_PROP:
@@ -751,30 +763,30 @@ class Printer:
                 if at + 7 > end:
                     return
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(", Components : [")
                 for component in range(3):
                     if component:
                         self.write(", ")
-                    self.print(node.child(at), depth + 1)
+                    self.print(node.children[at], depth + 1)
                     at += 1
                     self.write(" : ")
-                    self.print(node.child(at), depth + 1)
+                    self.print(node.children[at], depth + 1)
                     at += 1
                 self.write("]]")
             elif kind == _PARAM_CLOSURE_PROP_PREVIOUS_ARG:
                 if at + 2 > end:
                     return
                 self.write("[")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write(" ")
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
                 self.write("]")
             else:
-                self.print(node.child(at), depth + 1)
+                self.print(node.children[at], depth + 1)
                 at += 1
 
     def print_next_param_child(self, node, argument, kind, depth):
@@ -785,7 +797,7 @@ class Printer:
         """
         end = len(node.children)
         while argument < end:
-            child = node.child(argument)
+            child = node.children[argument]
             argument += 1
             if child.kind in (
                 "FunctionSignatureSpecializationParamKind",
@@ -809,7 +821,7 @@ class Printer:
                 self.write("specialized ")
                 self._said_specialized = True
             return
-        if node.first is not None and node.first.kind == "RepresentationChanged":
+        if node.children[0] is not None and node.children[0].kind == "RepresentationChanged":
             self.write("representation changed of ")
             return
         self.write(description)
@@ -857,6 +869,14 @@ class Printer:
             # The commonest kind printed, and only a wrapper: `_PREFIX_THEN_FIRST_CHILD`
             # spells it as nothing and then its child.
             self.print(node.children[0], depth + 1)
+            return None
+        # The next two commonest, `_print_identifier` and `_print_module` written out.
+        if kind == "Identifier":
+            self.write(node.text)
+            return None
+        if kind == "Module":
+            if self.options.display_module_names:
+                self.write(node.text)
             return None
 
         # Every kind with a spelling of its own, `_PREFIX_THEN_FIRST_CHILD` and `_JUST_TEXT`
@@ -908,11 +928,34 @@ class Printer:
         in it (`closure #1 in ...` reads wrongly the other way round) or when the context
         is itself something that needs a type printed.
         """
+        children = entity.children
+        if (
+            style == "none"
+            and has_name
+            and not extra_name
+            and not overwrite_name
+            and len(children) == 2
+            and children[1].kind == "Identifier"
+            and children[0].kind != "PrivateDeclName"
+        ):
+            # A nominal type's context and name, what most entities are: the general path
+            # below with every branch this case cannot take left out.
+            before = len(self.out)
+            postfix_context = self.print(children[0], depth + 1, True)
+            if any(self.out[before:]):
+                self.write(".")
+            self.print(children[1], depth + 1)
+            if as_prefix_context or postfix_context is None:
+                return postfix_context
+            self.write(" of " if entity.kind in _CONTEXT_FOLLOWS_OF else " in ")
+            self.print(postfix_context, depth + 1)
+            return None
+
         generic_arguments = None
         if entity.kind == "BoundGenericFunction":
-            generic_arguments = entity.child(1)
-            entity = entity.first
-        children = entity.children
+            generic_arguments = entity.children[1]
+            entity = entity.children[0]
+            children = entity.children
 
         multi_word = " " in extra_name
         local_name = has_name and children[1].kind == "LocalDeclName"
@@ -966,12 +1009,12 @@ class Printer:
             found = _child_of_kind(entity, "Type")
             if found is None:
                 raise _Invalid
-            found = found.first
+            found = found.children[0]
             if style == "function":
                 # If what is there is not actually a function type, fall back to a colon.
                 inner = found
                 while inner.kind == "DependentGenericType":
-                    inner = inner.child(1).first
+                    inner = inner.children[1].children[0]
                 if inner.kind not in (
                     "FunctionType",
                     "NoEscapeFunctionType",
@@ -992,16 +1035,7 @@ class Printer:
                 self.print_entity_type(entity, found, generic_arguments, depth)
 
         if not as_prefix_context and postfix_context is not None:
-            if entity.kind in (
-                "DefaultArgumentInitializer",
-                "Initializer",
-                "PropertyWrapperBackingInitializer",
-                "PropertyWrappedFieldInitAccessor",
-                "PropertyWrapperInitFromProjectedValue",
-            ):
-                self.write(" of ")
-            else:
-                self.write(" in ")
+            self.write(" of " if entity.kind in _CONTEXT_FOLLOWS_OF else " in ")
             self.print(postfix_context, depth + 1)
             postfix_context = None
         return postfix_context
@@ -1017,11 +1051,11 @@ class Printer:
             self.write(">")
         if found.kind == "DependentGenericType":
             if generic_arguments is None:
-                self.print(found.first, depth + 1)
-            dependent = found.child(1)
+                self.print(found.children[0], depth + 1)
+            dependent = found.children[1]
             if _needs_space_before_type(dependent):
                 self.write(" ")
-            found = dependent.first
+            found = dependent.children[0]
         self.print_function_type(labels, found, depth)
 
 
@@ -1299,7 +1333,7 @@ def _simple(kind, spell):
 
 for _kind, _text in _ABSTRACT_STORAGE.items():
     _HANDLERS[_kind] = lambda self, node, depth, as_prefix_context, _name=_text: self.print_abstract_storage(
-        node.first, depth, as_prefix_context, _name
+        node.children[0], depth, as_prefix_context, _name
     )
 
 for _kind, (_description, _prefix) in _SPECIALIZATION_PREFIXES.items():
@@ -1315,8 +1349,8 @@ for _kind, _lead in _MACRO_EXPANSION_NAMES.items():
         as_prefix_context,
         "none",
         True,
-        _lead + _node_to_string(node.child(2)) + " expansion #",
-        _c_int(_c_int(node.child(3).index) + 1),
+        _lead + _node_to_string(node.children[2]) + " expansion #",
+        _c_int(_c_int(node.children[3].index) + 1),
     )
 
 
@@ -1337,7 +1371,7 @@ _simple("ConstrainedExistentialRequirementList", lambda self, node, depth: self.
 
 
 # The two commonest kinds after `Type`, so each is a handler of its own rather than a
-# `_simple` one, which is a call more.
+# `_simple` one, which is a call more; `Printer.print` also writes both out.
 @_handler("Module")
 def _print_module(self, node, depth, as_prefix_context):
     # The `.` after a context is written only if it produced output, so writing nothing
@@ -1401,13 +1435,13 @@ def _print_suffix(self, node, depth, as_prefix_context):
 def _print_anonymous_context(self, node, depth, as_prefix_context):
     if not self.options.display_extension_contexts:
         return None
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(".(unknown context at ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(")")
-    if len(node.children) >= 3 and node.child(2).children:
+    if len(node.children) >= 3 and node.children[2].children:
         self.write("<")
-        self.print(node.child(2), depth + 1)
+        self.print(node.children[2], depth + 1)
         self.write(">")
     return None
 
@@ -1416,11 +1450,11 @@ def _print_anonymous_context(self, node, depth, as_prefix_context):
 def _print_extension(self, node, depth, as_prefix_context):
     if self.options.display_extension_contexts:
         self.write("(extension in ")
-        self.print(node.first, depth + 1, True)
+        self.print(node.children[0], depth + 1, True)
         self.write("):")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     if len(node.children) == 3:
-        self.print(node.child(2), depth + 1)
+        self.print(node.children[2], depth + 1)
     return None
 
 
@@ -1439,14 +1473,14 @@ def _print_freestanding_macro(self, node, depth, as_prefix_context):
         "none",
         True,
         "freestanding macro expansion #",
-        _c_int(_c_int(node.child(2).index) + 1),
+        _c_int(_c_int(node.children[2].index) + 1),
     )
 
 
 @_handler("MacroExpansionUniqueName")
 def _print_macro_unique_name(self, node, depth, as_prefix_context):
     return self.print_entity(
-        node, depth, as_prefix_context, "none", True, "unique name #", _c_int(_c_int(node.child(2).index) + 1)
+        node, depth, as_prefix_context, "none", True, "unique name #", _c_int(_c_int(node.children[2].index) + 1)
     )
 
 
@@ -1455,7 +1489,7 @@ def _print_explicit_closure(self, node, depth, as_prefix_context):
     # The flag that hides a function's parameters hides a closure's signature too.
     style = "function" if self.options.show_function_argument_types else "none"
     return self.print_entity(
-        node, depth, as_prefix_context, style, False, "closure #", _c_int(_c_int(node.child(1).index) + 1)
+        node, depth, as_prefix_context, style, False, "closure #", _c_int(_c_int(node.children[1].index) + 1)
     )
 
 
@@ -1463,20 +1497,20 @@ def _print_explicit_closure(self, node, depth, as_prefix_context):
 def _print_implicit_closure(self, node, depth, as_prefix_context):
     style = "function" if self.options.show_function_argument_types else "none"
     return self.print_entity(
-        node, depth, as_prefix_context, style, False, "implicit closure #", _c_int(_c_int(node.child(1).index) + 1)
+        node, depth, as_prefix_context, style, False, "implicit closure #", _c_int(_c_int(node.children[1].index) + 1)
     )
 
 
 @_handler("DefaultArgumentInitializer")
 def _print_default_argument(self, node, depth, as_prefix_context):
     return self.print_entity(
-        node, depth, as_prefix_context, "none", False, "default argument ", _c_int(node.child(1).index)
+        node, depth, as_prefix_context, "none", False, "default argument ", _c_int(node.children[1].index)
     )
 
 
 @_handler("Allocator")
 def _print_allocator(self, node, depth, as_prefix_context):
-    name = "__allocating_init" if _is_class_type(node.first) else "init"
+    name = "__allocating_init" if _is_class_type(node.children[0]) else "init"
     return self.print_entity(node, depth, as_prefix_context, "function", False, name)
 
 
@@ -1487,30 +1521,30 @@ def _print_constructor(self, node, depth, as_prefix_context):
 
 @_handler("Deallocator")
 def _print_deallocator(self, node, depth, as_prefix_context):
-    name = "__deallocating_deinit" if _is_class_type(node.first) else "deinit"
+    name = "__deallocating_deinit" if _is_class_type(node.children[0]) else "deinit"
     return self.print_entity(node, depth, as_prefix_context, "none", False, name)
 
 
 @_handler("IsolatedDeallocator")
 def _print_isolated_deallocator(self, node, depth, as_prefix_context):
     """The deinit of an actor-isolated type, which hops to its executor first."""
-    name = "__isolated_deallocating_deinit" if _is_class_type(node.first) else "deinit"
+    name = "__isolated_deallocating_deinit" if _is_class_type(node.children[0]) else "deinit"
     return self.print_entity(node, depth, as_prefix_context, "none", False, name)
 
 
 @_handler("TypeMangling")
 def _print_type_mangling(self, node, depth, as_prefix_context):
-    if node.first.kind == "LabelList":
-        self.print_function_type(node.first, node.child(1).first, depth)
+    if node.children[0].kind == "LabelList":
+        self.print_function_type(node.children[0], node.children[1].children[0], depth)
     else:
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
     return None
 
 
 @_handler("LocalDeclName")
 def _print_local_decl_name(self, node, depth, as_prefix_context):
-    self.print(node.child(1), depth + 1)
-    self.write(f" #{node.first.index + 1}")
+    self.print(node.children[1], depth + 1)
+    self.write(f" #{node.children[0].index + 1}")
     return None
 
 
@@ -1520,18 +1554,18 @@ def _print_private_decl_name(self, node, depth, as_prefix_context):
     if len(node.children) > 1:
         if show:
             self.write("(")
-        self.print(node.child(1), depth + 1)
+        self.print(node.children[1], depth + 1)
         if show:
-            self.write(f" in {node.first.text})")
+            self.write(f" in {node.children[0].text})")
     elif show:
-        self.write(f"(in {node.first.text})")
+        self.write(f"(in {node.children[0].text})")
     return None
 
 
 @_handler("RelatedEntityDeclName")
 def _print_related_entity(self, node, depth, as_prefix_context):
-    self.write(f"related decl '{node.first.text}' for ")
-    self.print(node.child(1), depth + 1)
+    self.write(f"related decl '{node.children[0].text}' for ")
+    self.print(node.children[1], depth + 1)
     return None
 
 
@@ -1619,14 +1653,14 @@ for _kind, _mark in (("SILPackDirect", "@direct"), ("SILPackIndirect", "@indirec
 @_handler("PackExpansion")
 def _print_pack_expansion(self, node, depth, as_prefix_context):
     self.write("repeat ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     return None
 
 
 @_handler("PackElement")
 def _print_pack_element(self, node, depth, as_prefix_context):
-    self.write(f"/* level: {node.child(1).index} */ each ")
-    self.print(node.first, depth + 1)
+    self.write(f"/* level: {node.children[1].index} */ each ")
+    self.print(node.children[0], depth + 1)
     return None
 
 
@@ -1645,17 +1679,17 @@ def _print_retroactive_conformance(self, node, depth, as_prefix_context):
     if len(node.children) != 2:
         return None
     self.write("retroactive @ ")
-    self.print(node.first, depth + 1)
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[0], depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
 @_handler("GenericSpecializationParam")
 def _print_generic_specialization_param(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     for at in range(1, len(node.children)):
         self.write(" with " if at == 1 else " and ")
-        self.print(node.child(at), depth + 1)
+        self.print(node.children[at], depth + 1)
     return None
 
 
@@ -1724,9 +1758,9 @@ for _kind, _lead in (
 
     def _print_lazy_witness_table(self, node, depth, as_prefix_context, _l=_lead):
         self.write(_l)
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" and conformance ")
-        self.print(node.child(1), depth + 1)
+        self.print(node.children[1], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_lazy_witness_table
@@ -1751,9 +1785,9 @@ def _print_pack_protocol_conformance(self, node, depth, as_prefix_context):
 @_handler("DependentProtocolConformanceOpaque")
 def _print_dependent_protocol_conformance_opaque(self, node, depth, as_prefix_context):
     self.write("opaque result conformance ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(" of ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
@@ -1764,25 +1798,25 @@ def _print_macro_expansion_loc(self, node, depth, as_prefix_context):
         if at >= len(node.children):
             break
         self.write(lead)
-        self.print(node.child(at), depth + 1)
+        self.print(node.children[at], depth + 1)
     return None
 
 
 @_handler("VTableThunk")
 def _print_vtable_thunk(self, node, depth, as_prefix_context):
     self.write("vtable thunk for ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(" dispatching to ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     return None
 
 
 @_handler("ProtocolWitness")
 def _print_protocol_witness(self, node, depth, as_prefix_context):
     self.write("protocol witness for ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(" in conformance ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     return None
 
 
@@ -1811,10 +1845,10 @@ for _kind, _lead in (
 
     def _print_key_path_accessor(self, node, depth, as_prefix_context, _l=_lead):
         self.write(_l)
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" : ")
         for at in range(1, len(node.children)):
-            child = node.child(at)
+            child = node.children[at]
             if child.kind == "IsSerialized":
                 self.write(", ")
             self.print(child, depth + 1)
@@ -1828,16 +1862,16 @@ for _kind, _word in (("KeyPathEqualsThunkHelper", "equality"), ("KeyPathHashThun
     def _print_key_path_index(self, node, depth, as_prefix_context, _w=_word):
         self.write(f"key path index {_w} operator for ")
         last = len(node.children)
-        if node.child(last - 1).kind == "IsSerialized":
+        if node.children[last - 1].kind == "IsSerialized":
             last -= 1
-        if node.child(last - 1).kind == "DependentGenericSignature":
-            self.print(node.child(last - 1), depth + 1)
+        if node.children[last - 1].kind == "DependentGenericSignature":
+            self.print(node.children[last - 1], depth + 1)
             last -= 1
         self.write("(")
         for at in range(last):
             if at:
                 self.write(", ")
-            self.print(node.child(at), depth + 1)
+            self.print(node.children[at], depth + 1)
         self.write(")")
         return None
 
@@ -1846,16 +1880,16 @@ for _kind, _word in (("KeyPathEqualsThunkHelper", "equality"), ("KeyPathHashThun
 
 @_handler("FieldOffset")
 def _print_field_offset(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write("field offset for ")
-    self.print(node.child(1), depth + 1, False)
+    self.print(node.children[1], depth + 1, False)
     return None
 
 
 @_handler("EnumCase")
 def _print_enum_case(self, node, depth, as_prefix_context):
     self.write("enum case for ")
-    self.print(node.first, depth + 1, False)
+    self.print(node.children[0], depth + 1, False)
     return None
 
 
@@ -1864,7 +1898,7 @@ for _kind, _helper in (("ReabstractionThunk", False), ("ReabstractionThunkHelper
     def _print_reabstraction_thunk(self, node, depth, as_prefix_context, _h=_helper):
         if not self.options.shorten_thunk:
             self.write("thunk for ")
-            self.print(node.last, depth + 1)
+            self.print(node.children[-1], depth + 1)
             return None
         self.write("reabstraction thunk ")
         if _h:
@@ -1872,12 +1906,12 @@ for _kind, _helper in (("ReabstractionThunk", False), ("ReabstractionThunkHelper
         at = 0
         if len(node.children) == 3:
             at = 1
-            self.print(node.first, depth + 1)
+            self.print(node.children[0], depth + 1)
             self.write(" ")
         self.write("from ")
-        self.print(node.child(at + 1), depth + 1)
+        self.print(node.children[at + 1], depth + 1)
         self.write(" to ")
-        self.print(node.child(at), depth + 1)
+        self.print(node.children[at], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_reabstraction_thunk
@@ -1885,9 +1919,9 @@ for _kind, _helper in (("ReabstractionThunk", False), ("ReabstractionThunkHelper
 
 @_handler("ReabstractionThunkHelperWithGlobalActor")
 def _print_thunk_with_global_actor(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(" with global actor constraint ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
@@ -1897,14 +1931,14 @@ def _print_thunk_with_self(self, node, depth, as_prefix_context):
     at = 0
     if len(node.children) == 4:
         at = 1
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" ")
     self.write("from ")
-    self.print(node.child(at + 2), depth + 1)
+    self.print(node.children[at + 2], depth + 1)
     self.write(" to ")
-    self.print(node.child(at + 1), depth + 1)
+    self.print(node.children[at + 1], depth + 1)
     self.write(" self ")
-    self.print(node.child(at), depth + 1)
+    self.print(node.children[at], depth + 1)
     return None
 
 
@@ -1912,20 +1946,20 @@ for _kind, _lead in (("AutoDiffFunction", ""), ("AutoDiffDerivativeVTableThunk",
 
     def _print_auto_diff_function(self, node, depth, as_prefix_context, _l=_lead):
         end = 0
-        while end != len(node.children) and node.child(end).kind != "AutoDiffFunctionKind":
+        while end != len(node.children) and node.children[end].kind != "AutoDiffFunctionKind":
             end += 1
-        function_kind = node.child(end)
-        parameters = node.child(end + 1)
-        results = node.child(end + 2)
+        function_kind = node.children[end]
+        parameters = node.children[end + 1]
+        results = node.children[end + 2]
         self.write(_l)
         self.print(function_kind, depth + 1)
         self.write(" of ")
         signature = None
         for at in range(end):
-            if at == end - 1 and node.child(at).kind == "DependentGenericSignature":
-                signature = node.child(at)
+            if at == end - 1 and node.children[at].kind == "DependentGenericSignature":
+                signature = node.children[at]
                 break
-            self.print(node.child(at), depth + 1)
+            self.print(node.children[at], depth + 1)
         if not self.options.shorten_thunk:
             return None
         self.write(" with respect to parameters ")
@@ -1944,20 +1978,20 @@ for _kind, _lead in (("AutoDiffFunction", ""), ("AutoDiffDerivativeVTableThunk",
 def _print_auto_diff_self_reordering(self, node, depth, as_prefix_context):
     self.write("autodiff self-reordering reabstraction thunk ")
     at = 0
-    from_type = node.child(at)
+    from_type = node.children[at]
     at += 1
-    to_type = node.child(at)
+    to_type = node.children[at]
     at += 1
     if not self.options.shorten_thunk:
         self.write("for ")
         self.print(from_type, depth + 1)
         return None
     signature = None
-    if node.child(at).kind == "DependentGenericSignature":
-        signature = node.child(at)
+    if node.children[at].kind == "DependentGenericSignature":
+        signature = node.children[at]
         at += 1
     self.write("for ")
-    self.print(node.child(at), depth + 1)
+    self.print(node.children[at], depth + 1)
     if signature is not None:
         self.print(signature, depth + 1)
         self.write(" ")
@@ -1976,20 +2010,20 @@ def _print_auto_diff_subset(self, node, depth, as_prefix_context):
         raise _Invalid
     self.write("autodiff subset parameters thunk for ")
     at = len(node.children) - 1
-    to_parameters = node.child(at)
+    to_parameters = node.children[at]
     at -= 1
-    results = node.child(at)
+    results = node.children[at]
     at -= 1
-    parameters = node.child(at)
+    parameters = node.children[at]
     at -= 1
-    self.print(node.child(at), depth + 1)
+    self.print(node.children[at], depth + 1)
     at -= 1
     self.write(" from ")
     if at == 0:
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
     else:
         for each in range(at):
-            self.print(node.child(each), depth + 1)
+            self.print(node.children[each], depth + 1)
     if not self.options.shorten_thunk:
         return None
     self.write(" with respect to parameters ")
@@ -2000,7 +2034,7 @@ def _print_auto_diff_subset(self, node, depth, as_prefix_context):
     self.print(to_parameters, depth + 1)
     if at > 0:
         self.write(" of type ")
-        self.print(node.child(at), depth + 1)
+        self.print(node.children[at], depth + 1)
     return None
 
 
@@ -2009,24 +2043,24 @@ _simple("AutoDiffFunctionKind", lambda self, node, depth: self.write(_AUTO_DIFF_
 
 @_handler("DifferentiabilityWitness")
 def _print_differentiability_witness(self, node, depth, as_prefix_context):
-    back = 4 if node.last.kind == "DependentGenericSignature" else 3
+    back = 4 if node.children[-1].kind == "DependentGenericSignature" else 3
     at = len(node.children) - back
-    self.write(_DIFFERENTIABILITY_WITNESS_KINDS[node.child(at).index])
+    self.write(_DIFFERENTIABILITY_WITNESS_KINDS[node.children[at].index])
     self.write(" differentiability witness for ")
     at = 0
-    while at < len(node.children) and node.child(at).kind != "Index":
-        self.print(node.child(at), depth + 1)
+    while at < len(node.children) and node.children[at].kind != "Index":
+        self.print(node.children[at], depth + 1)
         at += 1
     at += 1
     self.write(" with respect to parameters ")
-    self.print(node.child(at), depth + 1)
+    self.print(node.children[at], depth + 1)
     at += 1
     self.write(" and results ")
-    self.print(node.child(at), depth + 1)
+    self.print(node.children[at], depth + 1)
     at += 1
     if at < len(node.children):
         self.write(" with ")
-        self.print(node.child(at), depth + 1)
+        self.print(node.children[at], depth + 1)
     return None
 
 
@@ -2065,57 +2099,57 @@ def _print_default_associated_conformance(self, node, depth, as_prefix_context):
 
 def _associated_conformance(self, node, depth, lead):
     self.write(lead)
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(".")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(": ")
-    self.print(node.child(2), depth + 1)
+    self.print(node.children[2], depth + 1)
     return None
 
 
 @_handler("AssociatedTypeMetadataAccessor")
 def _print_associated_type_metadata_accessor(self, node, depth, as_prefix_context):
     self.write("associated type metadata accessor for ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(" in ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     return None
 
 
 @_handler("BaseConformanceDescriptor")
 def _print_base_conformance_descriptor(self, node, depth, as_prefix_context):
     self.write("base conformance descriptor for ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(": ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
 @_handler("AssociatedTypeWitnessTableAccessor")
 def _print_associated_type_witness_table(self, node, depth, as_prefix_context):
     self.write("associated type witness table accessor for ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(" : ")
-    self.print(node.child(2), depth + 1)
+    self.print(node.children[2], depth + 1)
     self.write(" in ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     return None
 
 
 @_handler("BaseWitnessTableAccessor")
 def _print_base_witness_table_accessor(self, node, depth, as_prefix_context):
     self.write("base witness table accessor for ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(" in ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     return None
 
 
 @_handler("ValueWitness")
 def _print_value_witness(self, node, depth, as_prefix_context):
-    self.write(_VALUE_WITNESS_SPELLINGS[node.first.index])
+    self.write(_VALUE_WITNESS_SPELLINGS[node.children[0].index])
     self.write(" value witness for " if self.options.shorten_value_witness else " for ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
@@ -2123,10 +2157,10 @@ def _print_value_witness(self, node, depth, as_prefix_context):
 def _print_metatype(self, node, depth, as_prefix_context):
     at = 0
     if len(node.children) == 2:
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" ")
         at = 1
-    found = node.child(at).first
+    found = node.children[at].children[0]
     self.print_with_parens(found, depth)
     self.write(".Protocol" if found.kind in _EXISTENTIAL_TYPES else ".Type")
     return None
@@ -2136,10 +2170,10 @@ def _print_metatype(self, node, depth, as_prefix_context):
 def _print_existential_metatype(self, node, depth, as_prefix_context):
     at = 0
     if len(node.children) == 2:
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" ")
         at = 1
-    self.print(node.child(at), depth + 1)
+    self.print(node.children[at], depth + 1)
     self.write(".Type")
     return None
 
@@ -2147,23 +2181,23 @@ def _print_existential_metatype(self, node, depth, as_prefix_context):
 @_handler("ConstrainedExistential")
 def _print_constrained_existential(self, node, depth, as_prefix_context):
     self.write("any ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write("<")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(">")
     return None
 
 
 @_handler("AssociatedTypeRef")
 def _print_associated_type_ref(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
-    self.write("." + node.child(1).text)
+    self.print(node.children[0], depth + 1)
+    self.write("." + node.children[1].text)
     return None
 
 
 @_handler("ProtocolList")
 def _print_protocol_list(self, node, depth, as_prefix_context):
-    types = node.first if node.children else None
+    types = node.children[0] if node.children else None
     if types is None:
         return None
     if not types.children:
@@ -2177,12 +2211,12 @@ def _print_protocol_list(self, node, depth, as_prefix_context):
 def _print_protocol_list_with_class(self, node, depth, as_prefix_context):
     if len(node.children) < 2:
         return None
-    protocols = node.first
-    self.print(node.child(1), depth + 1)
+    protocols = node.children[0]
+    self.print(node.children[1], depth + 1)
     self.write(" & ")
     if not protocols.children:
         return None
-    self.print_children(protocols.first, depth, " & ")
+    self.print_children(protocols.children[0], depth, " & ")
     return None
 
 
@@ -2190,10 +2224,10 @@ def _print_protocol_list_with_class(self, node, depth, as_prefix_context):
 def _print_protocol_list_with_any_object(self, node, depth, as_prefix_context):
     if not node.children:
         return None
-    protocols = node.first
+    protocols = node.children[0]
     if not protocols.children:
         return None
-    types = protocols.first
+    types = protocols.children[0]
     if types.children:
         self.print_children(types, depth, " & ")
         self.write(" & ")
@@ -2205,18 +2239,18 @@ def _print_protocol_list_with_any_object(self, node, depth, as_prefix_context):
 def _print_protocol_conformance(self, node, depth, as_prefix_context):
     if len(node.children) == 4:
         self.write("property behavior storage of ")
-        self.print(node.child(2), depth + 1)
+        self.print(node.children[2], depth + 1)
         self.write(" in ")
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" : ")
-        self.print(node.child(1), depth + 1)
+        self.print(node.children[1], depth + 1)
     else:
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         if self.options.display_protocol_conformances:
             self.write(" : ")
-            self.print(node.child(1), depth + 1)
+            self.print(node.children[1], depth + 1)
             self.write(" in ")
-            self.print(node.child(2), depth + 1)
+            self.print(node.children[2], depth + 1)
     return None
 
 
@@ -2251,10 +2285,10 @@ def _print_impl_coroutine_kind(self, node, depth, as_prefix_context):
 @_handler("ImplFunctionConvention")
 def _print_impl_function_convention(self, node, depth, as_prefix_context):
     self.write("@convention(")
-    self.write(node.first.text)
+    self.write(node.children[0].text)
     if len(node.children) == 2:
         self.write(', mangledCType: "')
-        self.print(node.child(1), depth + 1)
+        self.print(node.children[1], depth + 1)
         self.write('"')
     self.write(")")
     return None
@@ -2276,12 +2310,12 @@ for _kind in ("ImplParameter", "ImplResult"):
         # `convention, marker*, type`; differentiability is always a marker. The
         # reference spells the markers at three and four children and none at five or
         # more (`$sBAIgHgIL_BAIegHgIL_TR`), so this follows the count, not each marker.
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" ")
         if len(node.children) in (3, 4):
             for child in node.children[1:-1]:
                 self.print(child, depth + 1)
-        self.print(node.last, depth + 1)
+        self.print(node.children[-1], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_impl_parameter
@@ -2290,7 +2324,7 @@ for _kind in ("ImplParameter", "ImplResult"):
 @_handler("ImplInvocationSubstitutions")
 def _print_impl_invocation_substitutions(self, node, depth, as_prefix_context):
     self.write("for <")
-    self.print_children(node.first, depth, ", ")
+    self.print_children(node.children[0], depth, ", ")
     self.write(">")
     return None
 
@@ -2298,82 +2332,82 @@ def _print_impl_invocation_substitutions(self, node, depth, as_prefix_context):
 @_handler("ImplPatternSubstitutions")
 def _print_impl_pattern_substitutions(self, node, depth, as_prefix_context):
     self.write("@substituted ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(" for <")
-    self.print_children(node.child(1), depth, ", ")
+    self.print_children(node.children[1], depth, ", ")
     self.write(">")
     return None
 
 
 @_handler("DependentGenericConformanceRequirement")
 def _print_conformance_requirement(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(": ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
 @_handler("DependentGenericLayoutRequirement")
 def _print_layout_requirement(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(": ")
-    self.write(_LAYOUT_CONSTRAINT_NAMES.get(node.child(1).text, ""))
+    self.write(_LAYOUT_CONSTRAINT_NAMES.get(node.children[1].text, ""))
     if len(node.children) > 2:
         self.write("(")
-        self.print(node.child(2), depth + 1)
+        self.print(node.children[2], depth + 1)
         if len(node.children) > 3:
             self.write(", ")
-            self.print(node.child(3), depth + 1)
+            self.print(node.children[3], depth + 1)
         self.write(")")
     return None
 
 
 @_handler("DependentGenericSameTypeRequirement")
 def _print_same_type_requirement(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(" == ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
 @_handler("DependentGenericSameShapeRequirement")
 def _print_same_shape_requirement(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(".shape == ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(".shape")
     return None
 
 
 @_handler("DependentGenericParamType")
 def _print_generic_param_type(self, node, depth, as_prefix_context):
-    self.write(generic_parameter_name(node.first.index, node.child(1).index))
+    self.write(generic_parameter_name(node.children[0].index, node.children[1].index))
     return None
 
 
 @_handler("DependentGenericType")
 def _print_dependent_generic_type(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
-    if _needs_space_before_type(node.child(1)):
+    self.print(node.children[0], depth + 1)
+    if _needs_space_before_type(node.children[1]):
         self.write(" ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
 @_handler("DependentMemberType")
 def _print_dependent_member_type(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(".")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
 @_handler("DependentAssociatedTypeRef")
 def _print_dependent_associated_type_ref(self, node, depth, as_prefix_context):
     if len(node.children) > 1:
-        self.print(node.child(1), depth + 1)
+        self.print(node.children[1], depth + 1)
         self.write(".")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     return None
 
 
@@ -2396,9 +2430,9 @@ def _print_inverse_conformance(self, node, depth, as_prefix_context):
     The protocol is written as a bit index rather than a name, so one this reader has
     never heard of still prints as the bit it is, which is what the reference does.
     """
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(": ~")
-    bit = node.child(1).index
+    bit = node.children[1].index
     name = _INVERTIBLE_PROTOCOLS.get(bit, f"Swift.<bit {bit}>")
     if not self.options.display_module_names and name.startswith("Swift."):
         name = name[len("Swift.") :]
@@ -2409,9 +2443,9 @@ def _print_inverse_conformance(self, node, depth, as_prefix_context):
 @_handler("BuiltinFixedArray")
 def _print_builtin_fixed_array(self, node, depth, as_prefix_context):
     self.write("Builtin.FixedArray<")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(", ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write(">")
     return None
 
@@ -2419,7 +2453,7 @@ def _print_builtin_fixed_array(self, node, depth, as_prefix_context):
 @_handler("BuiltinBorrow")
 def _print_builtin_borrow(self, node, depth, as_prefix_context):
     self.write("Builtin.Borrow<")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(">")
     return None
 
@@ -2429,7 +2463,7 @@ def _print_typed_throws_annotation(self, node, depth, as_prefix_context):
     """Swift 6 typed throws: the error type is named rather than implied."""
     self.write(" throws(")
     if len(node.children) == 1:
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
     self.write(")")
     return None
 
@@ -2438,7 +2472,7 @@ def _print_typed_throws_annotation(self, node, depth, as_prefix_context):
 def _print_global_actor_function_type(self, node, depth, as_prefix_context):
     if node.children:
         self.write("@")
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" ")
     return None
 
@@ -2447,10 +2481,10 @@ def _print_global_actor_function_type(self, node, depth, as_prefix_context):
 def _print_sil_box_with_layout(self, node, depth, as_prefix_context):
     arguments = None
     if len(node.children) == 3:
-        arguments = node.child(2)
-        self.print(node.child(1), depth + 1)
+        arguments = node.children[2]
+        self.print(node.children[1], depth + 1)
         self.write(" ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     if arguments is not None:
         self.write(" <")
         for at, child in enumerate(arguments.children):
@@ -2477,7 +2511,7 @@ for _kind, _word in (("SILBoxImmutableField", "let "), ("SILBoxMutableField", "v
 
     def _print_sil_box_field(self, node, depth, as_prefix_context, _w=_word):
         self.write(_w)
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_sil_box_field
@@ -2495,10 +2529,10 @@ def _print_concrete_protocol_conformance(self, node, depth, as_prefix_context):
     self.write("concrete protocol conformance ")
     if node.index is not None:
         self.write(f"#{node.index} ")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(" to ")
-    self.print(node.child(1), depth + 1)
-    conditional = node.child(2)
+    self.print(node.children[1], depth + 1)
+    conditional = node.children[2]
     if conditional is not None and conditional.children:
         self.write(" with conditional requirements: ")
         self.print(conditional, depth + 1)
@@ -2520,11 +2554,11 @@ for _kind, _lead in (
 
     def _print_dependent_conformance(self, node, depth, as_prefix_context, _l=_lead):
         self.write(_l)
-        self.print_optional_index(node.child(2))
-        self.print(node.first, depth + 1)
+        self.print_optional_index(node.children[2])
+        self.print(node.children[0], depth + 1)
         # The reference writes " to " between conforming type and protocol.
         self.write(" to ")
-        self.print(node.child(1), depth + 1)
+        self.print(node.children[1], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_dependent_conformance
@@ -2546,7 +2580,7 @@ for _kind, _lead in (
 
 @_handler("SugaredOptional")
 def _print_sugared_optional(self, node, depth, as_prefix_context):
-    self.print_with_parens(node.first, depth)
+    self.print_with_parens(node.children[0], depth)
     self.write("?")
     return None
 
@@ -2554,7 +2588,7 @@ def _print_sugared_optional(self, node, depth, as_prefix_context):
 @_handler("SugaredArray")
 def _print_sugared_array(self, node, depth, as_prefix_context):
     self.write("[")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write("]")
     return None
 
@@ -2563,9 +2597,9 @@ def _print_sugared_array(self, node, depth, as_prefix_context):
 def _print_sugared_inline_array(self, node, depth, as_prefix_context):
     """`XSA` -- `[3 of Swift.Int]`, the count first."""
     self.write("[")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(" of ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write("]")
     return None
 
@@ -2573,9 +2607,9 @@ def _print_sugared_inline_array(self, node, depth, as_prefix_context):
 @_handler("SugaredDictionary")
 def _print_sugared_dictionary(self, node, depth, as_prefix_context):
     self.write("[")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(" : ")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     self.write("]")
     return None
 
@@ -2583,7 +2617,7 @@ def _print_sugared_dictionary(self, node, depth, as_prefix_context):
 @_handler("SugaredParen")
 def _print_sugared_paren(self, node, depth, as_prefix_context):
     self.write("(")
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(")")
     return None
 
@@ -2598,9 +2632,9 @@ def _print_opaque_return_type_of(self, node, depth, as_prefix_context):
 
 @_handler("OpaqueType")
 def _print_opaque_type(self, node, depth, as_prefix_context):
-    self.print(node.first, depth + 1)
+    self.print(node.children[0], depth + 1)
     self.write(".")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     return None
 
 
@@ -2611,7 +2645,7 @@ for _kind, _lead in (
 
     def _print_global_variable_once(self, node, depth, as_prefix_context, _l=_lead):
         self.write(_l)
-        self.print(node.child(1), depth + 1)
+        self.print(node.children[1], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_global_variable_once
@@ -2620,7 +2654,7 @@ for _kind, _lead in (
 @_handler("GlobalVariableOnceDeclList")
 def _print_once_decl_list(self, node, depth, as_prefix_context):
     if len(node.children) == 1:
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
     else:
         self.write("(")
         for at, child in enumerate(node.children):
@@ -2640,11 +2674,11 @@ for _kind, _lead in (
         self.write(_l)
         self.write("@objc completion handler block implementation for ")
         if len(node.children) >= 4:
-            self.print(node.child(3), depth + 1)
-        self.print(node.first, depth + 1)
+            self.print(node.children[3], depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(" with result type ")
-        self.print(node.child(1), depth + 1)
-        self.write(_ERROR_FLAG_SPELLINGS.get(node.child(2).index, " <invalid error flag>"))
+        self.print(node.children[1], depth + 1)
+        self.write(_ERROR_FLAG_SPELLINGS.get(node.children[2].index, " <invalid error flag>"))
         return None
 
     _HANDLERS[_kind] = _print_objc_completion_handler
@@ -2662,7 +2696,7 @@ for _kind, _lead in (
         if not self.options.show_async_resume_partial:
             return None
         self.write("(")
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         self.write(")")
         self.write(_l)
         return None
@@ -2672,8 +2706,8 @@ for _kind, _lead in (
 
 @_handler("ExtendedExistentialTypeShape")
 def _print_extended_existential_shape(self, node, depth, as_prefix_context):
-    signature = node.first if len(node.children) == 2 else None
-    found = node.last
+    signature = node.children[0] if len(node.children) == 2 else None
+    found = node.children[-1]
     self.write("existential shape for ")
     if signature is not None:
         self.print(signature, depth + 1)
@@ -2685,13 +2719,13 @@ def _print_extended_existential_shape(self, node, depth, as_prefix_context):
 
 @_handler("SymbolicExtendedExistentialType")
 def _print_symbolic_existential(self, node, depth, as_prefix_context):
-    shape = node.first
+    shape = node.children[0]
     unique = shape.kind == "UniqueExtendedExistentialTypeShapeSymbolicReference"
     self.write(f"symbolic existential type ({'' if unique else 'non-'}unique) 0x{shape.index:X} <")
-    self.print(node.child(1), depth + 1)
+    self.print(node.children[1], depth + 1)
     if len(node.children) > 2:
         self.write(", ")
-        self.print(node.child(2), depth + 1)
+        self.print(node.children[2], depth + 1)
     self.write(">")
     return None
 
@@ -2714,9 +2748,9 @@ for _kind, _lead in (("OutlinedCopy", "outlined copy of "), ("OutlinedConsume", 
     def _print_outlined_copy(self, node, depth, as_prefix_context, _l=_lead):
         # Alone among the outlined value operations, these may carry a generic signature.
         self.write(_l)
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         if len(node.children) > 1:
-            self.print(node.child(1), depth + 1)
+            self.print(node.children[1], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_outlined_copy
@@ -2735,7 +2769,7 @@ for _kind, _lead in (
         on the node; the reference spells neither.
         """
         self.write(_l)
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         return None
 
     _HANDLERS[_kind] = _print_outlined_enum_operation
@@ -2744,7 +2778,7 @@ for _kind, _lead in (
 def _print_prefix_then_first_child(prefix):
     def run(self, node, depth, as_prefix_context):
         self.write(prefix)
-        self.print(node.first, depth + 1)
+        self.print(node.children[0], depth + 1)
         return None
 
     return run

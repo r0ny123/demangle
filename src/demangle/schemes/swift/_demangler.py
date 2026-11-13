@@ -26,6 +26,8 @@ cannot read its operands returns `None`, and every caller checks. The public ent
 turns that into an exception at the boundary.
 """
 
+import re
+
 from ._node import (
     ANY_GENERIC_KINDS,
     CONTEXT_KINDS,
@@ -177,6 +179,11 @@ def _is_upper(char):
 
 def _is_letter(char):
     return _is_lower(char) or _is_upper(char)
+
+
+#: Where `_is_word_end` ends a word: at a `_`, which belongs to neither side, and before
+#: a capital that does not follow one.
+_WORD_BREAK = re.compile(r"_|(?<![A-Z])(?=[A-Z])")
 
 
 def _is_word_start(char):
@@ -459,7 +466,7 @@ class Demangler:
 
         for node in self.stack:
             # `Global` holds what the type is, not a `Type` wrapper.
-            parent.add(node.first if node.kind == "Type" and node.children else node)
+            parent.add(node.children[0] if node.kind == "Type" and node.children else node)
 
         if suffix is not None:
             top.add(suffix)
@@ -467,9 +474,20 @@ class Demangler:
         return top if top.children else None
 
     def parse_and_push(self):
-        stack = self.stack
-        while self.pos < self.end:
-            node = self.demangle_operator()
+        # `demangle_operator`'s dispatch, written out for the operators this loop reads
+        # one after another: an identifier or a single-character handler.
+        stack, text, end, operators = self.stack, self.text, self.end, _OPERATORS
+        while self.pos < end:
+            char = text[self.pos]
+            if "0" <= char <= "9":
+                node = self.demangle_identifier()
+            else:
+                handler = operators.get(char)
+                if handler is not None:
+                    self.pos += 1
+                    node = handler(self)
+                else:
+                    node = self.demangle_operator()
             if node is None:
                 return False
             stack.append(node)
@@ -684,7 +702,12 @@ class Demangler:
             identifier = self.text[start : start + count]
             self.pos = start + count
             self.unsplit.append(identifier)
-            return self._identifier_node(identifier, False)
+            if self.has_non_ascii:
+                return self._identifier_node(identifier, False)
+            # `_identifier_node`, without the re-decoding no ASCII name needs.
+            node = Node("Identifier", identifier)
+            self.substitutions.append(node)
+            return node
         if char == "0":
             self.pos += 1
             if self.peek() == "0":
@@ -764,26 +787,18 @@ class Demangler:
         must be at least two characters. The table is capped at 26 because a reference to
         one is a single letter.
 
-        The tests `_is_word_start` and `_is_word_end` name are written out here rather
-        than called. This runs once per character of every identifier in every Swift
-        name -- 322,000 calls to `_is_word_end` alone over the Swift corpus, which is
-        the largest single item in its profile -- and each of them is an interpreter
-        frame around one comparison. The conditions are the same ones, in the same
-        order; the two functions stay for the other callers and for the definition.
+        `_is_word_start` and `_is_word_end` are the definition, one character at a time.
+        Split by `_WORD_BREAK` instead, with the digits no word starts with stripped off
+        the front: this runs for every identifier before a word substitution, and the
+        loop over characters was the largest single item in the parser's profile.
         """
         words = self.words
-        start = -1
-        previous = ""
-        length = len(slice_)
-        for at in range(length + 1):
-            char = slice_[at] if at < length else ""
-            if start >= 0 and (char == "_" or char == "" or (not ("A" <= previous <= "Z") and "A" <= char <= "Z")):
-                if at - start >= 2 and len(words) < _MAX_NUM_WORDS:
-                    words.append(slice_[start:at])
-                start = -1
-            if start < 0 and char != "" and char != "_" and not ("0" <= char <= "9"):
-                start = at
-            previous = char
+        for piece in _WORD_BREAK.split(slice_):
+            piece = piece.lstrip("0123456789")
+            if len(piece) >= 2:
+                if len(words) >= _MAX_NUM_WORDS:
+                    return
+                words.append(piece)
 
     #: `a`-`z` to the operator characters an identifier may encode; a space refuses.
     _OPERATOR_CHARS = "& @/= >    <*!|+?%-~   ^ ."
@@ -835,22 +850,28 @@ class Demangler:
         return None
 
     def pop_context(self):
-        module = self.pop_module()
-        if module is not None:
-            return module
-        found = self.pop("Type")
-        if found is not None:
+        # `pop_module`, then `pop("Type")`, then `pop(CONTEXT_KINDS)`, reading the top once.
+        stack = self.stack
+        if not stack:
+            return None
+        kind = stack[-1].kind
+        if kind == "Identifier":
+            return self.change_kind(stack.pop(), "Module")
+        if kind == "Module":
+            return stack.pop()
+        if kind == "Type":
+            found = stack.pop()
             if len(found.children) != 1:
                 return None
-            child = found.first
+            child = found.children[0]
             return child if child.kind in CONTEXT_KINDS else None
-        return self.pop(CONTEXT_KINDS)
+        return stack.pop() if kind in CONTEXT_KINDS else None
 
     def pop_type_and_get_child(self):
         found = self.pop("Type")
         if found is None or len(found.children) != 1:
             return None
-        return found.first
+        return found.children[0]
 
     def pop_type_and_get_any_generic(self):
         child = self.pop_type_and_get_child()
@@ -907,10 +928,15 @@ class Demangler:
         return None
 
     def demangle_any_generic_type(self, kind):
-        name = self.pop(DECL_NAME_KINDS)
+        # `pop`, `with_children`, `make_type` and `add_substitution`, written out: every
+        # nominal type a name mentions comes through here.
+        stack = self.stack
+        name = stack.pop() if stack and stack[-1].kind in DECL_NAME_KINDS else None
         context = self.pop_context()
-        node = self.make_type(self.with_children(kind, context, name))
-        self.add_substitution(node)
+        if name is None or context is None:
+            return None
+        node = Node("Type", None, None, [Node(kind, None, None, [context, name])])
+        self.substitutions.append(node)
         return node
 
     def demangle_extension_context(self):
@@ -957,16 +983,33 @@ class Demangler:
         if stack and stack[-1].kind in _ANY_FUNCTION_ANNOTATION:
             for annotation in _FUNCTION_ANNOTATIONS:
                 self.add_child(found, self.pop(annotation))
-        found = self.add_child(found, self.pop_function_params("ArgumentTuple"))
-        self.add_child(found, self.pop("YieldTypes"))
-        found = self.add_child(found, self.pop_function_params("ReturnType"))
-        return self.make_type(found)
+        # `add_child`, `pop` and `make_type` written out, popping in the same order
+        # whether or not an earlier piece was missing.
+        arguments = self.pop_function_params("ArgumentTuple")
+        yields = stack.pop() if stack and stack[-1].kind == "YieldTypes" else None
+        result = self.pop_function_params("ReturnType")
+        if arguments is None or result is None:
+            return None
+        children = found.children
+        children.append(arguments)
+        if yields is not None:
+            children.append(yields)
+        children.append(result)
+        return Node("Type", None, None, [found])
 
     def pop_function_params(self, kind):
         # `y` -- the empty list -- means no parameters, which is spelled as an empty tuple.
-        empty = self.pop("EmptyList") is not None
-        params = self.make_type(Node("Tuple")) if empty else self.pop("Type")
-        return self.with_child(kind, params)
+        # Each `pop`, `make_type` and `with_child` written out.
+        stack = self.stack
+        if not stack:
+            return None
+        top = stack[-1].kind
+        if top == "EmptyList":
+            stack.pop()
+            return Node(kind, None, None, [Node("Type", None, None, [Node("Tuple")])])
+        if top == "Type":
+            return Node(kind, None, None, [stack.pop()])
+        return None
 
     def pop_function_param_labels(self, found):
         """The argument labels, which are mangled *after* the type rather than with it.
@@ -981,9 +1024,9 @@ class Demangler:
         if found is None or found.kind != "Type":
             return None
 
-        function = found.first
+        function = found.children[0]
         if function.kind == "DependentGenericType":
-            function = function.child(1).first
+            function = function.children[1].children[0]
         if function.kind not in _LABELLED_FUNCTION_TYPES:
             return None
 
@@ -1000,13 +1043,13 @@ class Demangler:
         if parameters.kind != "ArgumentTuple":
             return None
 
-        params = parameters.first.first
+        params = parameters.children[0].children[0]
         count = len(params.children) if params.kind == "Tuple" else 1
         if count == 0:
             return None
 
         labels = Node("LabelList")
-        tuple_ = parameters.first.first
+        tuple_ = parameters.children[0].children[0]
 
         if self.is_old_function_type_mangling and (tuple_ is None or tuple_.kind != "Tuple"):
             return labels
@@ -1031,7 +1074,7 @@ class Demangler:
         if not self.is_old_function_type_mangling:
             return self.pop()
         # Swift 4 put the label inside the tuple element; move it out.
-        param = params.child(at)
+        param = params.children[at]
         for index, child in enumerate(param.children):
             if child.kind == "TupleElementName":
                 param.children.pop(index)
@@ -1055,20 +1098,30 @@ class Demangler:
         return root
 
     def pop_tuple(self):
-        def element(root):
-            item = Node("TupleElement")
-            self.add_child(item, self.pop("VariadicMarker"))
-            identifier = self.pop("Identifier")
-            if identifier is not None:
-                item.add(Node("TupleElementName", text=identifier.text))
-            found = self.pop("Type")
-            if found is None:
-                return False
-            item.add(found)
-            root.add(item)
-            return True
-
-        return self.make_type_or_none(self._pop_list(Node("Tuple"), element))
+        # `_pop_list` with its element and each `pop` written out: every function type's
+        # parameters are a tuple, so this is one of the commonest productions.
+        stack = self.stack
+        root = Node("Tuple")
+        if stack and stack[-1].kind == "EmptyList":
+            stack.pop()
+        else:
+            while True:
+                first = bool(stack) and stack[-1].kind == "FirstElementMarker"
+                if first:
+                    stack.pop()
+                item = Node("TupleElement")
+                if stack and stack[-1].kind == "VariadicMarker":
+                    item.children.append(stack.pop())
+                if stack and stack[-1].kind == "Identifier":
+                    item.children.append(Node("TupleElementName", text=stack.pop().text))
+                if not stack or stack[-1].kind != "Type":
+                    return None
+                item.children.append(stack.pop())
+                root.children.append(item)
+                if first:
+                    break
+            root.children.reverse()
+        return Node("Type", None, None, [root])
 
     def pop_pack(self):
         return self.make_type_or_none(self._pop_list(Node("Pack"), self._type_element))
@@ -1203,21 +1256,26 @@ class Demangler:
         `Outer<A>.Inner<B>` carries two. They come back innermost first, which is why
         `demangle_bound_generic_args` walks the list backwards.
         """
-        conformances = self.pop_retroactive_conformances()
+        stack = self.stack
+        conformances = (
+            self.pop_retroactive_conformances() if stack and stack[-1].kind == "RetroactiveConformance" else None
+        )
         lists = []
+        # Each `pop` written out, testing the top of the stack once.
         while True:
             found = Node("TypeList")
             lists.append(found)
-            while True:
-                item = self.pop("Type")
-                if item is None:
-                    break
-                found.add(item)
-            found.children.reverse()
-            if self.pop("EmptyList") is not None:
+            items = found.children
+            while stack and stack[-1].kind == "Type":
+                items.append(stack.pop())
+            items.reverse()
+            top = stack[-1].kind if stack else None
+            if top == "EmptyList":
+                stack.pop()
                 break
-            if self.pop("FirstElementMarker") is None:
+            if top != "FirstElementMarker":
                 return None, None
+            stack.pop()
         return lists, conformances
 
     def demangle_bound_generic_type(self):
@@ -1257,11 +1315,11 @@ class Demangler:
             # An anonymous context. The reference refuses here; like the runtime's
             # `_buildDemanglingForContext`, the arguments pass through to the real
             # parent (the second child).
-            bound_parent = self.demangle_bound_generic_args(nominal.child(1), lists, at)
+            bound_parent = self.demangle_bound_generic_args(nominal.children[1], lists, at)
             if bound_parent is None:
                 return None
-            return self.with_children(nominal.kind, nominal.first, bound_parent, *nominal.children[2:])
-        context = nominal.first
+            return self.with_children(nominal.kind, nominal.children[0], bound_parent, *nominal.children[2:])
+        context = nominal.children[0]
         consumes = nominal.kind not in _DOES_NOT_CONSUME_GENERIC_ARGS
         args = lists[at]
         if consumes:
@@ -1269,10 +1327,10 @@ class Demangler:
 
         if at < len(lists):
             if context.kind == "Extension":
-                bound_parent = self.demangle_bound_generic_args(context.child(1), lists, at)
-                bound_parent = self.with_children("Extension", context.first, bound_parent)
+                bound_parent = self.demangle_bound_generic_args(context.children[1], lists, at)
+                bound_parent = self.with_children("Extension", context.children[0], bound_parent)
                 if len(context.children) == 3:
-                    self.add_child(bound_parent, context.child(2))
+                    self.add_child(bound_parent, context.children[2])
             else:
                 bound_parent = self.demangle_bound_generic_args(context, lists, at)
             rebuilt = self.with_child(nominal.kind, bound_parent)
@@ -1471,9 +1529,9 @@ class Demangler:
             return self.with_child("ProtocolConformanceDescriptor", self.pop_protocol_conformance())
         if char == "C":
             found = self.pop("Type")
-            if found is None or not found.children or found.first.kind not in ANY_GENERIC_KINDS:
+            if found is None or not found.children or found.children[0].kind not in ANY_GENERIC_KINDS:
                 return None
-            return self.with_child("ReflectionMetadataSuperclassDescriptor", found.first)
+            return self.with_child("ReflectionMetadataSuperclassDescriptor", found.children[0])
         if char == "F":
             return self.with_child("ReflectionMetadataFieldDescriptor", self.pop("Type"))
         if char == "p":
@@ -1998,7 +2056,7 @@ class Demangler:
         backwards and fills each one in from what is left.
         """
         specialized = self.demangle_spec_attributes("FunctionSignatureSpecialization")
-        if specialized is not None and specialized.first.kind == "RepresentationChanged":
+        if specialized is not None and specialized.children[0].kind == "RepresentationChanged":
             # Nothing about the arguments changed, only how the function is represented,
             # so there are no parameters to read.
             return specialized
@@ -2315,10 +2373,10 @@ class Demangler:
             return None
         layout = Node("SILBoxLayout")
         for field in fields.children:
-            mutable = bool(field.children) and field.first.kind == "InOut"
+            mutable = bool(field.children) and field.children[0].kind == "InOut"
             if mutable:
                 # An `inout` field in the type list is how a mutable field is written.
-                field = self.make_type(field.first.first)
+                field = self.make_type(field.children[0].children[0])
             layout.add(Node("SILBoxMutableField" if mutable else "SILBoxImmutableField", children=[field]))
         box = Node("SILBoxTypeWithLayout", children=[layout])
         if signature is not None:
@@ -2364,7 +2422,7 @@ class Demangler:
     @staticmethod
     def _is_generic_param_type(node):
         while node is not None and node.kind == "Type":
-            node = node.first if node.children else None
+            node = node.children[0] if node.children else None
         return node is not None and node.kind == "DependentGenericParamType"
 
     def pop_associated_conformance_subject(self):
@@ -3156,7 +3214,7 @@ def _parent_opaque_return_types(parent, visited):
     if parent is None or visited is None:
         return None
     if visited.kind == "OpaqueReturnType":
-        if visited.children and visited.last.kind == "OpaqueReturnTypeParent":
+        if visited.children and visited.children[-1].kind == "OpaqueReturnTypeParent":
             return parent
         visited.add(Node("OpaqueReturnTypeParent", index=id(parent)))
         return parent
