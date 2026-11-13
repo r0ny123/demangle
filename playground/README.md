@@ -9,8 +9,9 @@ The static page behind <https://r0ny123.github.io/demangle/playground/>;
 | `playground-worker.js` | Loads Pyodide and the library in a Web Worker |
 | `playground_bridge.py` | The Python the worker calls: one symbol, or a batch, as JSON |
 
-`mkdocs build` zips `src/demangle` into `playground/assets/demangle.zip` (see
-`docs/hooks.py`) and copies this folder into the site, so to run it locally:
+`mkdocs build` zips `src/demangle` into `playground/assets/demangle.zip`, as bytecode
+when it runs on the runtime's Python (see `docs/hooks.py`), and copies this folder into
+the site, so to run it locally:
 
 ```console
 uv run --group docs mkdocs build --strict

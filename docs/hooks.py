@@ -4,9 +4,12 @@ runs on, and copy the playground into the site."""
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import io
+import marshal
 import shutil
 import stat
+import sys
 import urllib.request
 import zipfile
 from collections.abc import Callable
@@ -14,6 +17,10 @@ from pathlib import Path
 from typing import Any
 
 _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+#: The Python inside the pinned runtime (`info.python` in its `pyodide-lock.json`). A build
+#: run on the same version ships bytecode, which spares the browser compiling the package on
+#: every visit: about half a second before the first name is read.
+PYODIDE_PYTHON = (3, 13)
 
 #: The Pyodide release the playground runs on.
 PYODIDE_VERSION = "0.29.5"
@@ -64,8 +71,18 @@ def fetch_pyodide(root_dir: Path | None = None, download: Callable[[str], bytes]
     return runtime
 
 
+def _bytecode(source: bytes, name: str) -> bytes:
+    """An unchecked hash-based ``.pyc`` (PEP 552): the archive never changes once built."""
+    code = compile(source, name, "exec", dont_inherit=True)
+    flags = (1).to_bytes(4, "little")
+    return importlib.util.MAGIC_NUMBER + flags + importlib.util.source_hash(source) + marshal.dumps(code)
+
+
 def build_assets(root_dir: Path | None = None) -> Path:
-    """Build a deterministic zipimportable archive of ``src/demangle``."""
+    """Build a deterministic zipimportable archive of ``src/demangle``.
+
+    Modules go in as bytecode when this Python is the runtime's, and as source otherwise.
+    """
     if root_dir is None:
         root_dir = Path(__file__).resolve().parent.parent
 
@@ -73,6 +90,7 @@ def build_assets(root_dir: Path | None = None) -> Path:
     if not (src / "__init__.py").is_file():
         raise FileNotFoundError(f"demangle source package missing: {src}")
 
+    bytecode = sys.version_info[:2] == PYODIDE_PYTHON
     buf = io.BytesIO()
     notices = [root_dir / name for name in ("LICENSE", "NOTICE")]
     with zipfile.ZipFile(buf, "w") as archive:
@@ -80,11 +98,15 @@ def build_assets(root_dir: Path | None = None) -> Path:
             if not path.is_file() or path.suffix == ".pyc" or "__pycache__" in path.parts:
                 continue
             name = path.name if path in notices else path.relative_to(src.parent).as_posix()
+            content = path.read_bytes()
+            if bytecode and path.suffix == ".py":
+                content = _bytecode(content, name)
+                name += "c"
             info = zipfile.ZipInfo(name, _ZIP_EPOCH)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | 0o644) << 16
-            archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            archive.writestr(info, content, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
     playground_assets = root_dir / "playground" / "assets"
     playground_assets.mkdir(parents=True, exist_ok=True)
