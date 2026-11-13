@@ -13,7 +13,6 @@ import re
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.request import urlopen
 
 import pytest
 
@@ -108,11 +107,15 @@ def browser():
         instance.close()
 
 
-@pytest.fixture
-def context(browser):
-    context = browser.new_context(viewport={"width": 1280, "height": 1100})
+def _new_context(browser, *, enforce_csp: bool):
+    # Playwright evaluates some string predicates with eval(), which the page's policy
+    # forbids, so only the tests that check the policy run under it.
+    context = browser.new_context(viewport={"width": 1280, "height": 1100}, bypass_csp=not enforce_csp)
     context.add_init_script(
-        """window.__demangleWorkerEvents = [];
+        """window.__cspViolations = [];
+        document.addEventListener('securitypolicyviolation', event =>
+          window.__cspViolations.push(`${event.effectiveDirective} ${event.blockedURI}`));
+        window.__demangleWorkerEvents = [];
         const channel = new BroadcastChannel("demangle-playground-browser-test");
         channel.onmessage = event => window.__demangleWorkerEvents.push(event.data);
         window.__clipboardWrites = [];
@@ -120,21 +123,19 @@ def context(browser):
           writeText: async text => window.__clipboardWrites.push(text)
         }});"""
     )
-    if os.environ.get("DEMANGLE_CDN_PROXY_FETCH") == "1":
+    return context
 
-        def fetch_cdn(route):
-            try:
-                with urlopen(route.request.url) as response:
-                    headers = {
-                        key: value
-                        for key, value in response.headers.items()
-                        if key.lower() not in {"content-encoding", "content-length", "transfer-encoding", "connection"}
-                    }
-                    route.fulfill(status=response.status, headers=headers, body=response.read())
-            except Exception:
-                route.abort()
 
-        context.route("https://cdn.jsdelivr.net/**", fetch_cdn)
+@pytest.fixture
+def context(browser):
+    context = _new_context(browser, enforce_csp=False)
+    yield context
+    context.close()
+
+
+@pytest.fixture
+def strict_context(browser):
+    context = _new_context(browser, enforce_csp=True)
     yield context
     context.close()
 
@@ -508,6 +509,34 @@ def test_landmarks_headings_and_groups_are_exposed_and_emoji_are_not(context, si
         }"""
     )
     assert spoken == []
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        "fake",
+        pytest.param(
+            "real",
+            marks=pytest.mark.skipif(
+                os.environ.get("DEMANGLE_PYODIDE_SMOKE") != "1", reason="the real runtime is opt-in"
+            ),
+        ),
+    ],
+)
+def test_the_page_runs_under_its_content_security_policy(strict_context, site_server, runtime):
+    if runtime == "fake":
+        page = open_playground(strict_context, site_server)
+    else:
+        page = strict_context.new_page()
+        page.goto(site_server + PLAYGROUND)
+    page.locator("#playground-status-badge.status-ready").wait_for(timeout=120_000)
+    page.locator("#playground-input-symbol").fill("_ZNSt6vectorIiSaIiEE9push_backERKi")
+    page.locator("#output-status-indicator", has_text="Valid").wait_for(timeout=30_000)
+    page.locator("#tab-btn-json").click()
+    page.locator("#btn-theme-toggle").click()
+    page.locator('.preset-btn[data-scheme="rust"]').click()
+    page.locator("#detected-scheme-tag", has_text="rust").wait_for(timeout=30_000)
+    assert page.evaluate("window.__cspViolations") == []
 
 
 @pytest.mark.parametrize("modifier", ["Control", "Meta"])
