@@ -279,9 +279,12 @@ def test_source_archive_is_deterministic_and_importable(tmp_path, hooks, monkeyp
 
 
 def test_the_site_is_built_on_the_runtimes_python_so_it_ships_bytecode(hooks):
+    workflows = ROOT / ".github" / "workflows"
+    if not workflows.is_dir():
+        pytest.skip("the workflows are not part of this distribution")
     version = "{}.{}".format(*hooks.PYODIDE_PYTHON)
     for workflow in ("docs.yml", "ci.yml"):
-        text = (ROOT / ".github" / "workflows" / workflow).read_text(encoding="utf-8")
+        text = (workflows / workflow).read_text(encoding="utf-8")
         assert f'python-version: "{version}"' in text, workflow
     lock = ROOT / "playground" / "assets" / "pyodide" / "pyodide-lock.json"
     if not lock.is_file() or hashlib.sha256(lock.read_bytes()).hexdigest() != hooks.PYODIDE_FILES[lock.name]:
