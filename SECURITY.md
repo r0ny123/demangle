@@ -123,8 +123,8 @@ name that caused it rather than being killed.
 
 | Version | Supported |
 | --- | --- |
-| 0.7.x | yes |
-| < 0.7 | no |
+| 0.8.x | yes |
+| < 0.8 | no |
 
 Until 1.0, security fixes land on the latest released minor version only. There is no
 long-term support branch and no backporting; upgrading to the current minor version is
