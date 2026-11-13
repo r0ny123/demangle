@@ -14,6 +14,12 @@ the reference demanglers, and a **Performance** section.
   worker. The page downloads 1.5 MB less to start, and a build removes runtime files the
   pin no longer names, so an old release's loader is never served next to the new one.
 
+### Performance
+
+- **The playground reads its first name about half a second sooner.** A site built on
+  Python 3.13, the runtime's own, ships the package as bytecode, so the browser no longer
+  compiles it on every visit.
+
 ## [0.8.0] - 2026-11-13
 
 ### Changed

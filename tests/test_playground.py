@@ -48,11 +48,6 @@ def bridge():
 
 
 @pytest.fixture
-def build_assets():
-    return _load_module("playground_hooks_for_tests", ROOT / "docs/hooks.py").build_assets
-
-
-@pytest.fixture
 def hooks():
     return _load_module("playground_hooks_for_runtime_tests", ROOT / "docs/hooks.py")
 
@@ -238,7 +233,20 @@ def test_batch_encoded_row_cache_preserves_json_and_exact_output_budget(bridge, 
     assert result_text == json.dumps({"batch": True, "rows": result["rows"]})
 
 
-def test_source_archive_is_deterministic_and_importable(tmp_path, build_assets):
+@pytest.mark.parametrize(
+    "bytecode",
+    [
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(sys.implementation.name != "cpython", reason="Pyodide runs CPython bytecode"),
+        ),
+        False,
+    ],
+    ids=["bytecode", "source"],
+)
+def test_source_archive_is_deterministic_and_importable(tmp_path, hooks, monkeypatch, bytecode):
+    runtime_python = sys.version_info[:2] if bytecode else (2, 7)
+    monkeypatch.setattr(hooks, "PYODIDE_PYTHON", runtime_python)
     package = tmp_path / "src" / "demangle"
     package.parent.mkdir()
     shutil.copytree(ROOT / "src" / "demangle", package)
@@ -249,19 +257,23 @@ def test_source_archive_is_deterministic_and_importable(tmp_path, build_assets):
     cache.mkdir(exist_ok=True)
     (cache / "stale.pyc").write_bytes(b"stale bytecode")
 
-    archive_path = build_assets(tmp_path)
+    archive_path = hooks.build_assets(tmp_path)
     first_bytes = archive_path.read_bytes()
     (package / "__init__.py").touch()
-    assert build_assets(tmp_path).read_bytes() == first_bytes
+    assert hooks.build_assets(tmp_path).read_bytes() == first_bytes
 
+    suffix = ".pyc" if bytecode else ".py"
     with zipfile.ZipFile(archive_path) as archive:
         names = archive.namelist()
-        assert "demangle/__init__.py" in names
-        assert "demangle/_signature.py" in names
+        assert "demangle/__init__" + suffix in names
+        assert "demangle/_signature" + suffix in names
         for name in ("LICENSE", "NOTICE"):
             assert archive.read(name) == (ROOT / name).read_bytes()
-        assert all("__pycache__" not in name and not name.endswith(".pyc") for name in names)
-        assert archive.read("demangle/__init__.py") == (package / "__init__.py").read_bytes()
+        assert "__pycache__" not in "".join(names)
+        modules = [name for name in names if name.endswith((".py", ".pyc"))]
+        assert all(name.endswith(suffix) for name in modules)
+        if not bytecode:
+            assert archive.read("demangle/__init__.py") == (package / "__init__.py").read_bytes()
 
     script = "import demangle; print(demangle.__version__, demangle.demangle('_ZN3foo3barEi'))"
     env = {**os.environ, "PYTHONPATH": str(archive_path)}
@@ -274,6 +286,20 @@ def test_source_archive_is_deterministic_and_importable(tmp_path, build_assets):
         check=True,
     )
     assert imported.stdout.strip() == f"{demangle.__version__} foo::bar(int)"
+
+
+def test_the_site_is_built_on_the_runtimes_python_so_it_ships_bytecode(hooks):
+    workflows = ROOT / ".github" / "workflows"
+    if not workflows.is_dir():
+        pytest.skip("the workflows are not part of this distribution")
+    version = "{}.{}".format(*hooks.PYODIDE_PYTHON)
+    for workflow in ("docs.yml", "ci.yml"):
+        text = (workflows / workflow).read_text(encoding="utf-8")
+        assert f'python-version: "{version}"' in text, workflow
+    lock = ROOT / "playground" / "assets" / "pyodide" / "pyodide-lock.json"
+    if not lock.is_file() or hashlib.sha256(lock.read_bytes()).hexdigest() != hooks.PYODIDE_FILES[lock.name]:
+        pytest.skip("the pinned runtime has not been fetched")
+    assert json.loads(lock.read_text())["info"]["python"].startswith(version + ".")
 
 
 class TestPyodideRuntime:
