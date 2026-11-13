@@ -5,6 +5,7 @@ import string
 import sys
 from functools import lru_cache
 
+from ...core.cache import memo
 from ...core.limits import DEFAULT_LIMITS
 from .nodes import (
     Array,
@@ -205,11 +206,22 @@ _LITERAL_MAX_BYTES = 64
 #: Most bytes a literal decodes to: the documented 32, times four as the reference allows.
 _LITERAL_MAX_DECODED = 32 * 4
 
-#: The most instantiations of one template a name's reading remembers. Each repeat is
-#: tried against every one remembered, so without a bound a name that instantiates one
-#: template with many different arguments costs time quadratic in their number; past it
-#: they are read as before. No name in the corpora has more than eight.
-_REMEMBERED_PER_TEMPLATE = 16
+#: The most instantiations remembered under one key. Each repeat is tried against every
+#: one remembered, so without a bound a template instantiated with many different
+#: arguments costs time quadratic in their number; past it they are read as before.
+_REMEMBERED_PER_KEY = 16
+
+#: Template instantiations already read, by their first `_KEY` characters; see
+#: `templateInstantiation`. Shared by every name, because a symbol table repeats them
+#: across names far more than within one: Boost's names spell out the same
+#: `std::basic_string<...>` thousands of times. A shorter one is cheap enough to read
+#: again. Emptied whole once what it holds weighs `_BUDGET`, in characters plus a
+#: per-entry overhead: about ten megabytes, four times that for non-ASCII text at worst.
+#: msvc-boost.txt fills half of it.
+_INSTANTIATIONS = memo()
+_KEY = 32
+_BUDGET = 1 << 23
+_held = 0
 
 
 #: See `has_control_character`.
@@ -395,6 +407,22 @@ class _Bail(Exception):
     """The name is not one this demangler fully understands."""
 
 
+def _remember(key, known, entry):
+    global _held
+    if not _INSTANTIATIONS:
+        # `cache_clear()` empties it without knowing about this count.
+        _held = 0
+    _held += len(entry[0]) + len(entry[5]) + 128
+    if _held > _BUDGET:
+        _INSTANTIATIONS.clear()
+        _held = 0
+        known = None
+    if known is None:
+        _INSTANTIATIONS[key] = [entry]
+    else:
+        known.append(entry)
+
+
 class _Demangler:
     """A cursor over one decorated name.
 
@@ -422,12 +450,6 @@ class _Demangler:
         self.last_nested_symbol_template = None
         self.requires_signature = False
         self.nested = False
-        #: Template instantiations already read, by name: the text each one spans, the
-        #: `in_pointee_return` it was read under, how many levels below its own it
-        #: reached -- so that a replay deeper down still stops at `max_depth` where
-        #: reading it again would -- and what reading it left behind, its spelling and
-        #: `simple`. See `templateInstantiation`.
-        self.instantiations = {}
         #: Productions read so far that an instantiation's replay would not reproduce: an
         #: operator name, which can set `requires_signature` and `conversion_arguments`
         #: and look past what it reads, and a nested symbol, whose own cursor may read
@@ -451,6 +473,9 @@ class _Demangler:
         # Bounded relative to the name too: a two-character back-reference can double the
         # spelling per level. Over 1,025,085 real names the widest is 12x; 32x is clear.
         self.max_render = min(limits.max_output, 32 * len(mangled) + 256)
+        #: The longest spelling held against `max_render` since the innermost
+        #: instantiation being read began, kept as `peak` is.
+        self.widest = 0
 
     def eof(self):
         return self.pos >= self.length
@@ -526,9 +551,13 @@ class _Demangler:
         `std::basic_string<char, ...>` spells it out again, since a back-reference cannot
         reach into a scope that has closed. Re-reading them was 43% of the `type` and
         `qualifiedName` calls over msvc-boost.txt, a count no interpreter changes. One that
-        does more than this is read every time; see `unrepeatable`. At most
-        `_REMEMBERED_PER_TEMPLATE` are remembered for one template's name, which keeps a
-        repeat's lookup bounded.
+        does more than this is read every time; see `unrepeatable`.
+
+        Each one is remembered with the text it spans and what it was read under: the
+        options and `in_pointee_return`, how many levels below its own it reached and the
+        longest spelling it held against `max_render` -- so that a replay stops at either
+        bound wherever reading it again would -- and what reading it left behind, its
+        spelling and `simple`.
         """
         text, length = self.text, self.length
         start = self.pos
@@ -538,17 +567,22 @@ class _Demangler:
             if end <= start:
                 raise _Bail
             base = text[start:end]
-            known = self.instantiations.get(base)
+            key = text[start : start + _KEY]
+            known = _INSTANTIATIONS.get(key)
             if known is not None:
-                for span, in_pointee_return, reach, spelled, simple in known:
+                for span, options, in_pointee_return, reach, widest, spelled, simple in known:
                     if (
-                        in_pointee_return == self.in_pointee_return
+                        options is self.options
+                        and in_pointee_return == self.in_pointee_return
                         and self.depth + reach <= self.max_depth
+                        and widest <= self.max_render
                         and text.startswith(span, start)
                     ):
                         self.pos = start + len(span)
                         if self.depth + reach > self.peak:
                             self.peak = self.depth + reach
+                        if widest > self.widest:
+                            self.widest = widest
                         if simple is not None:
                             self.simple = simple
                         return spelled
@@ -557,6 +591,7 @@ class _Demangler:
             saved_simple, self.simple = self.simple, None
             # How deep reading it goes, from here.
             saved_peak, self.peak = self.peak, self.depth
+            saved_widest, self.widest = self.widest, 0
         saved_names, saved_args = self.name_backrefs, self.arg_backrefs
         # `rememberName`, inlined: the name is the new scope's first entry.
         self.name_backrefs, self.arg_backrefs = [base] if operator is None else [], []
@@ -594,8 +629,10 @@ class _Demangler:
                 node = self.type()
                 # `rendered`, inlined: most arguments are a named type, already text.
                 spelled = node.text if node.kind == "raw" else render(node, options=options)
-                if len(spelled) > max_render:
-                    raise _LimitHit("output length", max_render)
+                if len(spelled) > self.widest:
+                    if len(spelled) > max_render:
+                        raise _LimitHit("output length", max_render)
+                    self.widest = len(spelled)
                 args.append(spelled)
             spelled = f"{base}<{', '.join(args)}>"
         finally:
@@ -614,12 +651,13 @@ class _Demangler:
                 reach = self.peak - self.depth
                 if saved_peak > self.peak:
                     self.peak = saved_peak
+                widest = self.widest
+                if saved_widest > widest:
+                    self.widest = saved_widest
         if operator is None and self.unrepeatable == unrepeatable:
-            entry = (text[start : self.pos], self.in_pointee_return, reach, spelled, simple)
-            if known is None:
-                self.instantiations[base] = [entry]
-            elif len(known) < _REMEMBERED_PER_TEMPLATE:
-                known.append(entry)
+            entry = (text[start : self.pos], self.options, self.in_pointee_return, reach, widest, spelled, simple)
+            if len(entry[0]) >= _KEY and (known is None or len(known) < _REMEMBERED_PER_KEY):
+                _remember(key, known, entry)
         return spelled
 
     def nameFragment(self, is_leading):
@@ -1145,8 +1183,10 @@ class _Demangler:
 
     def rendered(self, node, declarator="", member_cv=""):
         text = render(node, declarator, options=self.options, member_cv=member_cv)
-        if len(text) > self.max_render:
-            raise _LimitHit("output length", self.max_render)
+        if len(text) > self.widest:
+            if len(text) > self.max_render:
+                raise _LimitHit("output length", self.max_render)
+            self.widest = len(text)
         return text
 
     def dimension(self):
@@ -1558,8 +1598,10 @@ class _Demangler:
             # `rendered`, inlined for a named type, which is already text
             if node.kind != "raw":
                 self.rendered(node)
-            elif len(node.text) > self.max_render:
-                raise _LimitHit("output length", self.max_render)
+            elif len(node.text) > self.widest:
+                if len(node.text) > self.max_render:
+                    raise _LimitHit("output length", self.max_render)
+                self.widest = len(node.text)
             params.append(node)
         return tuple(params)
 

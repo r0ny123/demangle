@@ -38,7 +38,7 @@ from typing import Any, NoReturn, TypeGuard
 from .core import registry as _registry
 from .core import style as _style_module
 from .core.ast import Node, builder_for
-from .core.cache import MISSING, BoundedCache
+from .core.cache import MISSING, BoundedCache, clear_memos
 from .core.decorations import VERSION_SEPARATOR, split_decorations
 from .core.errors import (
     DemanglingError,
@@ -957,8 +957,9 @@ def styles() -> list[str]:
 
 
 def cache_clear() -> None:
-    """Empty the module-level result cache."""
+    """Empty the module-level result cache, and what the schemes remember across names."""
     _CACHE.clear()
+    clear_memos()
 
 
 def cache_stats() -> dict[str, Any]:

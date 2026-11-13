@@ -8,6 +8,14 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Performance
+
+- MSVC names read about 1.4x faster cold over a symbol table (msvc-boost.txt: 64 to
+  46 us a name). The template instantiations a name spells out are remembered across
+  names now, not just within one, so a table that writes out the same
+  `std::basic_string<...>` thousands of times reads it once. The memo is bounded at
+  about 8M characters and `cache_clear()` empties it. Output is unchanged.
+
 ## [0.7.1] - 2026-11-12
 
 ### Fixed

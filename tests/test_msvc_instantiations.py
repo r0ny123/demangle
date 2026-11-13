@@ -2,17 +2,20 @@
 
 A template's argument list is its own back-reference scope, so a heavy name spells whole
 instantiations out again and again: each argument list that holds
-`std::basic_string<char, ...>` writes it in full. `_Demangler.templateInstantiation` therefore remembers each
-one it reads, by its name and the text it spans, and replays the spelling when the same
-text comes round again. A replay is right only where reading the text again would give
-the same answer, and three things decide that which no name in the corpora puts to the
-test:
+`std::basic_string<char, ...>` writes it in full, and so does every other name in the
+same symbol table. `_Demangler.templateInstantiation` therefore remembers each one it
+reads, by its first characters and the text it spans, and replays the spelling when the
+same text comes round again, in that name or a later one. A replay is right only where
+reading the text again would give the same answer, and four things decide that which no
+name in the corpora puts to the test:
 
 - the `in_pointee_return` it was read under, which a function type among its arguments
   writes into the spelling: `std::function<void (void)>` inside a pointed-to function's
   return type, `std::function<void __cdecl(void)>` anywhere else;
 - how deep reading it went, so that a replay further down the name stops at `max_depth`
   exactly where reading it again would;
+- the longest spelling it held against the output bound, which a shorter name, or a
+  caller's `max_output`, can set lower than where it was read;
 - whether it holds something that reads deeper than the cursor can see -- a nested
   symbol, which has a cursor of its own, or an operator name, whose dynamic-initializer
   form looks ahead with another -- which makes it `unrepeatable`, read every time.
@@ -22,12 +25,25 @@ each table says what reading every instantiation afresh spells, or which bound i
 at. Each was checked to fail with its invariant broken: with `in_pointee_return` left out
 of the key, with the `max_depth` test left out of a replay, and with `unrepeatable`
 ignored.
+
+Every name here is far shorter than the instantiations worth remembering in use (see
+`_KEY`), so the fixture below has every one of them remembered.
 """
 
 import pytest
 
 import demangle
-from demangle.schemes.msvc._parser import _REMEMBERED_PER_TEMPLATE, _Bail, _Demangler, _LimitHit
+from demangle.schemes.msvc import _parser
+from demangle.schemes.msvc._parser import _INSTANTIATIONS, _REMEMBERED_PER_KEY, _Bail, _Demangler, _LimitHit
+
+
+@pytest.fixture(autouse=True)
+def every_instantiation_remembered(monkeypatch):
+    monkeypatch.setattr(_parser, "_KEY", 1)
+    demangle.cache_clear()
+    yield
+    demangle.cache_clear()
+
 
 #: (mangled, spelled), each holding one instantiation twice under different
 #: `in_pointee_return`.
@@ -404,10 +420,10 @@ def _number(n):
 
 
 class TestOneTemplateWithManyArgumentsStaysLinear:
-    """A repeat is tried against every instantiation of its template remembered so far,
-    so with no bound a name instantiating one template with thousands of different
-    arguments cost time quadratic in their number -- about 1.6 s at the 64K input bound,
-    where `main` took 50 ms. Past `_REMEMBERED_PER_TEMPLATE` they are read as before."""
+    """A repeat is tried against every instantiation remembered under its key, so with no
+    bound a name instantiating one template with thousands of different arguments cost
+    time quadratic in their number -- about 1.6 s at the 64K input bound, where `main`
+    took 50 ms. Past `_REMEMBERED_PER_KEY` they are read as before."""
 
     def test_only_so_many_are_remembered(self):
         text = "".join(f"A@$0{_number(i)}@" for i in range(1, 41)) + "A@$00@"
@@ -415,7 +431,7 @@ class TestOneTemplateWithManyArgumentsStaysLinear:
         spelled = [cursor.templateInstantiation() for _ in range(41)]
         assert spelled == [f"A<{i}>" for i in range(1, 41)] + ["A<1>"]
         assert cursor.pos == len(text)
-        assert len(cursor.instantiations["A"]) == _REMEMBERED_PER_TEMPLATE
+        assert len(_INSTANTIATIONS["A"]) == _REMEMBERED_PER_KEY
 
     def test_repeats_past_the_bound_still_read(self):
         # 20 distinct, then a repeat of one remembered and of two that are not.
@@ -424,3 +440,58 @@ class TestOneTemplateWithManyArgumentsStaysLinear:
         assert demangle.demangle_strict(mangled) == (
             "void __cdecl f(" + ", ".join(f"class A<{i}>" for i in arguments) + ")"
         )
+
+
+#: Every name above, for reading one after another.
+EVERY_NAME = [mangled for mangled, _ in POINTEE_RETURN_CASES] + [*DEPTH_BOUNDARIES, *UNREPEATABLE_BOUNDARIES]
+
+
+class TestWhatOneNameRemembersStandsInTheNext:
+    """The instantiations remembered are shared by every name read, so each name above,
+    read after all the others, under several depth bounds and with options that change
+    how an argument is spelled, reads as it does alone."""
+
+    BOUNDS = (None, 3, 5, 8, 12)
+    NARROW = demangle.style("llvm", msvc={"tag_kind": False})
+
+    def readings(self, mangled, *, alone=False):
+        spelled = []
+        for bound in (*self.BOUNDS, "narrow"):
+            if alone:
+                demangle.cache_clear()
+            if bound == "narrow":
+                spelled.append(demangle.demangle(mangled, language="msvc", style=self.NARROW))
+            else:
+                spelled.append(read(mangled, bound))
+        return spelled
+
+    def test_in_either_order(self):
+        alone = {mangled: self.readings(mangled, alone=True) for mangled in EVERY_NAME}
+        for order in (EVERY_NAME, EVERY_NAME[::-1]):
+            demangle.cache_clear()
+            for mangled in order:
+                assert self.readings(mangled) == alone[mangled], mangled
+
+    def test_a_replay_stops_at_the_output_bound_where_reading_again_would(self):
+        text = "A@V?$B@H@@@"
+        first = _Demangler(text)
+        assert first.templateInstantiation() == "A<class B<int>>"
+        again = _Demangler(text)
+        again.max_render = len("class B<int>") - 1
+        with pytest.raises(_LimitHit):
+            again.templateInstantiation()
+
+    def test_cache_clear_forgets_them(self):
+        demangle.demangle("?f@@YAXV?$A@H@@@Z")
+        assert _INSTANTIATIONS
+        demangle.cache_clear()
+        assert not _INSTANTIATIONS
+
+    def test_what_is_held_stays_bounded(self, monkeypatch):
+        monkeypatch.setattr(_parser, "_BUDGET", 1000)
+        for i in range(1, 200):
+            demangle.demangle(f"?f@@YAXV?$A{i}@H@@@Z")
+        held = sum(
+            len(span) + len(spelled) + 128 for entries in _INSTANTIATIONS.values() for span, *_, spelled, _ in entries
+        )
+        assert 0 < held <= 1000
