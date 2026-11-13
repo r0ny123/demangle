@@ -281,22 +281,20 @@ class TestPyodideRuntime:
 
     def test_the_worker_loads_the_runtime_from_the_site_and_nothing_from_another_host(self):
         worker = (ROOT / "playground" / "playground-worker.js").read_text(encoding="utf-8")
-        assert 'new URL("assets/pyodide/", self.location.href)' in worker
+        assert 'from "./assets/pyodide/pyodide.mjs";' in worker
         for name in ("playground-worker.js", "playground.js", "index.html", "playground_bridge.py"):
             text = (ROOT / "playground" / name).read_text(encoding="utf-8")
             loaded = re.findall(
-                r"""(?:src|href)=["'](https?://[^"']+)|(?:importScripts|fetch|import)\(\s*[`"'](https?://[^`"']+)""",
+                r"""(?:src|href)=["'](https?://[^"']+)|(?:(?:importScripts|fetch|import)\(\s*|\bfrom\s+)[`"'](https?://[^`"']+)""",
                 text,
             )
             links = [a or b for a, b in loaded if not (a or b).startswith("https://github.com/r0ny123/demangle")]
             assert links == [], name
 
-    def test_the_worker_and_the_hook_name_the_same_release(self, hooks):
-        worker = (ROOT / "playground" / "playground-worker.js").read_text(encoding="utf-8")
-        assert f'const PYODIDE_VERSION = "{hooks.PYODIDE_VERSION}";' in worker
+    def test_the_hook_pins_every_file_the_worker_starts_python_with(self, hooks):
         assert f"https://cdn.jsdelivr.net/pyodide/v{hooks.PYODIDE_VERSION}/full/" == hooks.PYODIDE_SOURCE
         assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in hooks.PYODIDE_FILES.values())
-        assert {"pyodide.js", "pyodide.asm.js", "pyodide.asm.wasm", "python_stdlib.zip"} <= set(hooks.PYODIDE_FILES)
+        assert {"pyodide.mjs", "pyodide.asm.js", "pyodide.asm.wasm", "python_stdlib.zip"} <= set(hooks.PYODIDE_FILES)
 
     def test_a_file_is_fetched_once_and_kept_while_its_digest_holds(self, tmp_path, hooks, monkeypatch):
         files = {"a.js": b"first", "b.wasm": b"second"}
@@ -317,6 +315,14 @@ class TestPyodideRuntime:
         hooks.fetch_pyodide(tmp_path, download)
         assert asked[2:] == [hooks.PYODIDE_SOURCE + "a.js"]
         assert (runtime / "a.js").read_bytes() == b"first"
+
+    def test_a_file_the_pin_does_not_name_is_removed(self, tmp_path, hooks, monkeypatch):
+        monkeypatch.setattr(hooks, "PYODIDE_FILES", {"a.js": hashlib.sha256(b"pinned").hexdigest()})
+        runtime = tmp_path / "playground" / "assets" / "pyodide"
+        runtime.mkdir(parents=True)
+        (runtime / "pyodide.js").write_bytes(b"left by an older release")
+        hooks.fetch_pyodide(tmp_path, lambda url: b"pinned")
+        assert [path.name for path in runtime.iterdir()] == ["a.js"]
 
     def test_a_download_with_another_digest_fails_the_build_and_is_never_written(self, tmp_path, hooks, monkeypatch):
         monkeypatch.setattr(hooks, "PYODIDE_FILES", {"a.js": hashlib.sha256(b"reviewed").hexdigest()})

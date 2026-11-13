@@ -6,7 +6,7 @@ Build the docs first, then run with the repository's optional browser tools:
     DEMANGLE_CHROMIUM_PATH=/usr/bin/chromium \
       .venv/bin/python benchmarks/bench_playground_browser.py
 
-Use `--pyodide-version 0.29.3 --runs 2 --check-presets` for a bounded runtime
+Use `--pyodide-version 314.0.7 --runs 2 --check-presets` for a bounded runtime
 comparison. The requested version is injected into a temporary served worker;
 the checked-in runtime version and assets are left untouched.
 
@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import statistics
 import subprocess
 import threading
@@ -37,7 +38,7 @@ from playwright.sync_api import sync_playwright  # type: ignore[import-not-found
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 PLAYGROUND = "/playground/"
-VERSION = "0.26.4"
+VERSION = re.findall(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[0]
 
 WORKER_INSTRUMENTATION = """
 (() => {
@@ -210,24 +211,22 @@ def _measure_run(
     context = browser.new_context(viewport={"width": 1280, "height": 1000})
     context.add_init_script(WORKER_INSTRUMENTATION)
     worker_source = (SITE / "playground" / "playground-worker.js").read_text(encoding="utf-8")
-    worker_marker = f'const PYODIDE_VERSION = "{VERSION}";'
-    if worker_marker not in worker_source:
-        raise RuntimeError(f"Worker version marker not found: {worker_marker}")
-    worker_source = worker_source.replace(worker_marker, f'const PYODIDE_VERSION = "{pyodide_version}";')
     if pyodide_version != VERSION:
         # The site serves only the pinned runtime; any other comes from the CDN, for this run.
-        local_runtime = 'new URL("assets/pyodide/", self.location.href).href'
-        if local_runtime not in worker_source:
-            raise RuntimeError("Worker runtime URL not found")
-        worker_source = worker_source.replace(
-            local_runtime, f'"https://cdn.jsdelivr.net/pyodide/v{pyodide_version}/full/"'
-        )
-    runtime_marker = '        pyodide.FS.writeFile("/demangle.zip", new Uint8Array(archive));'
+        cdn = f"https://cdn.jsdelivr.net/pyodide/v{pyodide_version}/full/"
+        for local, remote in (
+            ('"./assets/pyodide/pyodide.mjs"', f'"{cdn}pyodide.mjs"'),
+            ('new URL("assets/pyodide/", import.meta.url).href', f'"{cdn}"'),
+        ):
+            if local not in worker_source:
+                raise RuntimeError(f"Worker runtime URL not found: {local}")
+            worker_source = worker_source.replace(local, remote)
+    runtime_marker = '    pyodide.FS.writeFile("/demangle.zip", new Uint8Array(archive));'
     if runtime_marker not in worker_source:
         raise RuntimeError("Worker runtime marker not found for benchmark-only memory instrumentation")
     worker_source = worker_source.replace(
         runtime_marker,
-        "        self.__demangleBenchmarkRuntime = pyodide;\n" + runtime_marker,
+        "    self.__demangleBenchmarkRuntime = pyodide;\n" + runtime_marker,
     )
 
     def fetch_cdn(route):
