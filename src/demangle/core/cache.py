@@ -10,7 +10,7 @@ accumulate an entry per distinct symbol ever seen, and there is no natural end t
 
 import threading
 
-__all__ = ["MISSING", "BoundedCache"]
+__all__ = ["MISSING", "BoundedCache", "clear_memos", "memo"]
 
 _MISSING = object()
 
@@ -154,3 +154,23 @@ class BoundedCache:
 
 
 MISSING = _MISSING
+
+
+_memos: list[dict] = []
+
+
+def memo() -> dict:
+    """A dict a scheme keeps sub-results in across names, emptied by `clear_memos`.
+
+    `cache_clear()` promises that the next call starts cold, and a scheme that remembers
+    pieces of earlier names would quietly break that promise without this.
+    """
+    held: dict = {}
+    _memos.append(held)
+    return held
+
+
+def clear_memos() -> None:
+    """Empty every dict `memo` has handed out."""
+    for held in _memos:
+        held.clear()
