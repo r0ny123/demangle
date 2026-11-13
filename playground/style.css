@@ -1,18 +1,14 @@
-/* ==========================================================================
-   demangle In-Browser Standalone Playground Stylesheet
-   Material Design Light & Slate Dark Palettes
-   ========================================================================== */
-
 :root {
-  --md-default-fg-color: #202124;
-  --md-default-bg-color: #ffffff;
-  --md-code-bg-color: #f8f9fa;
-  --md-code-fg-color: #202124;
-  --md-primary-fg-color: #1a73e8;
-  --md-primary-fg-color--light: #e8f0fe;
-  --md-default-fg-color--light: #5f6368;
-  --md-default-fg-color--lighter: #80868b;
-  --md-default-fg-color--lightest: rgba(0, 0, 0, 0.08);
+  color-scheme: light dark;
+  --md-default-fg-color: light-dark(#202124, #e8eaed);
+  --md-default-bg-color: light-dark(#ffffff, #1a1b1e);
+  --md-code-bg-color: light-dark(#f8f9fa, #24262b);
+  --md-code-fg-color: light-dark(#202124, #e8eaed);
+  --md-primary-fg-color: light-dark(#1a73e8, #8ab4f8);
+  --md-primary-fg-color--light: light-dark(#e8f0fe, rgba(138, 180, 248, 0.15));
+  --md-default-fg-color--light: light-dark(#5f6368, #9aa0a6);
+  --md-default-fg-color--lighter: light-dark(#80868b, #bdc1c6);
+  --md-default-fg-color--lightest: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12));
   --md-text-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --md-code-font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --pg-page-gutter: clamp(1rem, 3vw, 2rem);
@@ -20,32 +16,16 @@
   --pg-panel-padding: 1rem;
   --pg-section-gap: 1.25rem;
   --pg-control-height: 2.25rem;
+  accent-color: var(--md-primary-fg-color);
 }
 
-[data-theme="dark"] {
-  --md-default-fg-color: #e8eaed;
-  --md-default-bg-color: #1a1b1e;
-  --md-code-bg-color: #24262b;
-  --md-code-fg-color: #e8eaed;
-  --md-primary-fg-color: #8ab4f8;
-  --md-primary-fg-color--light: rgba(138, 180, 248, 0.15);
-  --md-default-fg-color--light: #9aa0a6;
-  --md-default-fg-color--lighter: #bdc1c6;
-  --md-default-fg-color--lightest: rgba(255, 255, 255, 0.12);
+/* theme.js pins a scheme through the meta tag; CSS would otherwise override the tag. */
+:root:has(meta[name="color-scheme"][content="light"]) {
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --md-default-fg-color: #e8eaed;
-    --md-default-bg-color: #1a1b1e;
-    --md-code-bg-color: #24262b;
-    --md-code-fg-color: #e8eaed;
-    --md-primary-fg-color: #8ab4f8;
-    --md-primary-fg-color--light: rgba(138, 180, 248, 0.15);
-    --md-default-fg-color--light: #9aa0a6;
-    --md-default-fg-color--lighter: #bdc1c6;
-    --md-default-fg-color--lightest: rgba(255, 255, 255, 0.12);
-  }
+:root:has(meta[name="color-scheme"][content="dark"]) {
+  color-scheme: dark;
 }
 
 *, *::before, *::after {
@@ -178,7 +158,7 @@ button, input, select, textarea {
   flex-direction: column;
   gap: var(--pg-section-gap);
   margin-block: 1.5rem 3rem;
-  font-family: var(--md-text-font-family, inherit);
+  font-family: var(--md-text-font-family);
   color: var(--md-default-fg-color);
 }
 
@@ -190,7 +170,7 @@ button, input, select, textarea {
   gap: 0.75rem;
   padding: 0.75rem var(--pg-panel-padding);
   background-color: var(--md-code-bg-color);
-  border: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 6px;
 }
 
@@ -211,7 +191,7 @@ button, input, select, textarea {
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
-  background-color: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.05));
+  background-color: var(--md-default-fg-color--lightest);
   color: var(--md-default-fg-color--light);
 }
 
@@ -227,43 +207,23 @@ button, input, select, textarea {
 }
 
 .status-loading {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-[data-md-color-scheme="slate"] .status-loading {
-  background-color: #78350f;
-  color: #fef3c7;
+  background-color: light-dark(#fef3c7, #78350f);
+  color: light-dark(#92400e, #fef3c7);
 }
 
 .status-ready {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-[data-md-color-scheme="slate"] .status-ready {
-  background-color: #064e3b;
-  color: #a7f3d0;
+  background-color: light-dark(#d1fae5, #064e3b);
+  color: light-dark(#065f46, #a7f3d0);
 }
 
 .status-busy {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-[data-md-color-scheme="slate"] .status-busy {
-  background-color: #1e3a8a;
-  color: #bfdbfe;
+  background-color: light-dark(#dbeafe, #1e3a8a);
+  color: light-dark(#1e40af, #bfdbfe);
 }
 
 .status-error {
-  background-color: #fee2e2;
-  color: #991b1b;
-}
-
-[data-md-color-scheme="slate"] .status-error {
-  background-color: #7f1d1d;
-  color: #fecaca;
+  background-color: light-dark(#fee2e2, #7f1d1d);
+  color: light-dark(#991b1b, #fecaca);
 }
 
 .status-spinner {
@@ -313,7 +273,7 @@ button, input, select, textarea {
   gap: 0.4rem;
   padding: 0.35rem 0.65rem;
   font-size: 0.8rem;
-  border: 1px solid var(--md-default-fg-color--lighter, #cbd5e1);
+  border: 1px solid var(--md-default-fg-color--lighter);
   background-color: var(--md-default-bg-color);
   color: var(--md-default-fg-color);
   border-radius: 6px;
@@ -329,7 +289,7 @@ button, input, select, textarea {
 .preset-btn.active {
   background-color: var(--md-primary-fg-color);
   border-color: var(--md-primary-fg-color);
-  color: #ffffff;
+  color: var(--md-default-bg-color);
 }
 
 .preset-badge {
@@ -337,7 +297,7 @@ button, input, select, textarea {
   font-weight: 700;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  background-color: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.08));
+  background-color: var(--md-default-fg-color--lightest);
 }
 
 .preset-bleeding {
@@ -345,23 +305,18 @@ button, input, select, textarea {
 }
 
 .preset-bleeding .preset-badge {
-  background-color: #e0e7ff;
-  color: #4338ca;
-}
-
-[data-md-color-scheme="slate"] .preset-bleeding .preset-badge {
-  background-color: #312e81;
-  color: #c7d2fe;
+  background-color: light-dark(#e0e7ff, #312e81);
+  color: light-dark(#4338ca, #c7d2fe);
 }
 
 .playground-card {
   display: flex;
   flex-direction: column;
   background-color: var(--md-default-bg-color);
-  border: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: var(--md-shadow-z1, 0 1px 3px rgba(0, 0, 0, 0.05));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .card-header {
@@ -370,7 +325,7 @@ button, input, select, textarea {
   align-items: center;
   padding: 0.65rem var(--pg-panel-padding);
   background-color: var(--md-code-bg-color);
-  border-bottom: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.08));
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
 }
 
 .card-title {
@@ -399,12 +354,12 @@ button, input, select, textarea {
 
 .playground-textarea {
   width: 100%;
-  font-family: var(--md-code-font-family, monospace);
+  font-family: var(--md-code-font-family);
   font-size: 0.9rem;
   padding: 0.6rem 0.75rem;
   background-color: var(--md-default-bg-color);
   color: var(--md-default-fg-color);
-  border: 1px solid var(--md-default-fg-color--lighter, #94a3b8);
+  border: 1px solid var(--md-default-fg-color--lighter);
   border-radius: 6px;
   box-sizing: border-box;
   resize: vertical;
@@ -422,7 +377,7 @@ button, input, select, textarea {
   gap: 1rem;
   padding: 0.75rem var(--pg-panel-padding);
   background-color: var(--md-code-bg-color);
-  border: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 8px;
 }
 
@@ -452,7 +407,7 @@ button, input, select, textarea {
   font-size: 0.85rem;
   background-color: var(--md-default-bg-color);
   color: var(--md-default-fg-color);
-  border: 1px solid var(--md-default-fg-color--lighter, #94a3b8);
+  border: 1px solid var(--md-default-fg-color--lighter);
   border-radius: 6px;
 }
 
@@ -487,7 +442,7 @@ button, input, select, textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
-  background-color: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.06));
+  background-color: var(--md-default-fg-color--lightest);
   padding: 0.2rem;
   border-radius: 6px;
   gap: 0.2rem;
@@ -540,12 +495,12 @@ button, input, select, textarea {
 }
 
 .output-code-display {
-  font-family: var(--md-code-font-family, monospace);
+  font-family: var(--md-code-font-family);
   font-size: 0.95rem;
   line-height: 1.5;
   padding: 0.85rem 1rem;
   background-color: var(--md-code-bg-color);
-  border: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--md-default-fg-color--lightest);
   border-left: 4px solid var(--md-primary-fg-color);
   border-radius: 6px;
   overflow-x: auto;
@@ -567,33 +522,18 @@ button, input, select, textarea {
 }
 
 .pill-idle {
-  background-color: #e2e8f0;
-  color: #475569;
-}
-
-[data-md-color-scheme="slate"] .pill-idle {
-  background-color: #334155;
-  color: #94a3b8;
+  background-color: light-dark(#e2e8f0, #334155);
+  color: light-dark(#475569, #94a3b8);
 }
 
 .pill-valid {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-[data-md-color-scheme="slate"] .pill-valid {
-  background-color: #064e3b;
-  color: #a7f3d0;
+  background-color: light-dark(#d1fae5, #064e3b);
+  color: light-dark(#065f46, #a7f3d0);
 }
 
 .pill-invalid {
-  background-color: #fee2e2;
-  color: #991b1b;
-}
-
-[data-md-color-scheme="slate"] .pill-invalid {
-  background-color: #7f1d1d;
-  color: #fecaca;
+  background-color: light-dark(#fee2e2, #7f1d1d);
+  color: light-dark(#991b1b, #fecaca);
 }
 
 .playground-error-banner {
@@ -602,17 +542,11 @@ button, input, select, textarea {
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.75rem;
-  background-color: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
+  background-color: light-dark(#fef2f2, #450a0a);
+  border: 1px solid light-dark(#fecaca, #7f1d1d);
+  color: light-dark(#b91c1c, #fca5a5);
   border-radius: 6px;
   font-size: 0.82rem;
-}
-
-[data-md-color-scheme="slate"] .playground-error-banner {
-  background-color: #450a0a;
-  border-color: #7f1d1d;
-  color: #fca5a5;
 }
 
 .btn-action-small, .btn-copy {
@@ -623,7 +557,7 @@ button, input, select, textarea {
   font-size: 0.75rem;
   padding: 0.25rem 0.55rem;
   border-radius: 4px;
-  border: 1px solid var(--md-default-fg-color--lighter, #cbd5e1);
+  border: 1px solid var(--md-default-fg-color--lighter);
   background-color: var(--md-default-bg-color);
   color: var(--md-default-fg-color);
   cursor: pointer;
@@ -649,7 +583,7 @@ button, input, select, textarea {
   padding: 0.5rem 0.75rem;
   background-color: var(--md-code-bg-color);
   border-radius: 6px;
-  border: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--md-default-fg-color--lightest);
 }
 
 .sig-label {
@@ -661,7 +595,7 @@ button, input, select, textarea {
 }
 
 .sig-val {
-  font-family: var(--md-code-font-family, monospace);
+  font-family: var(--md-code-font-family);
   font-size: 0.85rem;
   word-break: break-all;
 }
@@ -673,7 +607,7 @@ button, input, select, textarea {
 }
 
 .param-chip {
-  font-family: var(--md-code-font-family, monospace);
+  font-family: var(--md-code-font-family);
   font-size: 0.78rem;
   padding: 0.1rem 0.4rem;
   background-color: var(--md-default-bg-color);
@@ -731,14 +665,14 @@ button, input, select, textarea {
   padding: var(--pg-panel-padding);
   background-color: var(--md-code-bg-color);
   border-radius: 6px;
-  font-family: var(--md-code-font-family, monospace);
+  font-family: var(--md-code-font-family);
   font-size: 0.82rem;
   line-height: 1.45;
   overflow-x: auto;
 }
 
 .ast-tree-root {
-  font-family: var(--md-code-font-family, monospace);
+  font-family: var(--md-code-font-family);
   font-size: 0.85rem;
   line-height: 1.6;
 }
@@ -759,7 +693,7 @@ button, input, select, textarea {
 }
 
 .ast-summary:hover {
-  background-color: var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.04));
+  background-color: var(--md-default-fg-color--lightest);
 }
 
 .ast-role {
@@ -772,7 +706,7 @@ button, input, select, textarea {
   list-style: none;
   padding-left: 1.25rem;
   margin: 0.2rem 0;
-  border-left: 1px dashed var(--md-default-fg-color--lighter, #cbd5e1);
+  border-left: 1px dashed var(--md-default-fg-color--lighter);
 }
 
 .ast-list-item {
@@ -795,22 +729,16 @@ button, input, select, textarea {
   font-size: 0.75rem;
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
-  background-color: #ede9fe;
-  color: #6d28d9;
+  background-color: light-dark(#ede9fe, #2e1065);
+  color: light-dark(#6d28d9, #c4b5fd);
   cursor: pointer;
-  border: 1px solid #c4b5fd;
+  border: 1px solid light-dark(#c4b5fd, #5b21b6);
   transition: all 0.15s ease;
 }
 
 .ast-ref-badge:hover {
-  background-color: #ddd6fe;
+  background-color: light-dark(#ddd6fe, #4c1d95);
   border-color: #8b5cf6;
-}
-
-[data-md-color-scheme="slate"] .ast-ref-badge {
-  background-color: #2e1065;
-  color: #c4b5fd;
-  border-color: #5b21b6;
 }
 
 .ast-node-highlight {
@@ -949,7 +877,7 @@ button, input, select, textarea {
 }
 
 .batch-table td:nth-child(2), .batch-table td:nth-child(3) {
-  font-family: var(--md-code-font-family, monospace);
+  font-family: var(--md-code-font-family);
 }
 
 .ast-render-notice {

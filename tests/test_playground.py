@@ -282,7 +282,7 @@ class TestPyodideRuntime:
     def test_the_worker_loads_the_runtime_from_the_site_and_nothing_from_another_host(self):
         worker = (ROOT / "playground" / "playground-worker.js").read_text(encoding="utf-8")
         assert 'from "./assets/pyodide/pyodide.mjs";' in worker
-        for name in ("playground-worker.js", "playground.js", "index.html", "playground_bridge.py"):
+        for name in ("playground-worker.js", "playground.js", "theme.js", "index.html", "playground_bridge.py"):
             text = (ROOT / "playground" / name).read_text(encoding="utf-8")
             loaded = re.findall(
                 r"""(?:src|href)=["'](https?://[^"']+)|(?:(?:importScripts|fetch|import)\(\s*|\bfrom\s+)[`"'](https?://[^`"']+)""",
