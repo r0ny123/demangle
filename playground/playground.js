@@ -706,7 +706,7 @@
         document.getElementById("btn-retry-runtime").hidden = true;
         updateStatus("loading", "Loading WebAssembly runtime…");
         try {
-            worker = new Worker(new URL("playground-worker.js", assetBase));
+            worker = new Worker(new URL("playground-worker.js", assetBase), { type: "module" });
             worker.onmessage = ({ data }) => {
                 if (data.type === "ready") {
                     clearTimeout(runtimeTimer);

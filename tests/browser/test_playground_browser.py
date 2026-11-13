@@ -23,6 +23,7 @@ if os.environ.get("DEMANGLE_BROWSER_TESTS") != "1":
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / "site"
 PLAYGROUND = "/playground/"
+PYODIDE_VERSION = re.search(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[1]
 pytestmark = pytest.mark.browser
 
 FAKE_WORKER = r"""
@@ -674,11 +675,11 @@ def test_real_pyodide_runtime_version_presets_invalid_symbol_and_default_auto(co
     page = context.new_page()
     page.goto(site_server + PLAYGROUND, wait_until="domcontentloaded")
     page.wait_for_function(
-        "document.querySelector('#playground-engine-version').textContent.includes('Pyodide 0.26.4') || "
+        f"document.querySelector('#playground-engine-version').textContent.includes('Pyodide {PYODIDE_VERSION}') || "
         "document.querySelector('#playground-status-badge').classList.contains('status-error')",
         timeout=120_000,
     )
-    assert "Pyodide 0.26.4" in page.locator("#playground-engine-version").inner_text(), page.locator(
+    assert f"Pyodide {PYODIDE_VERSION}" in page.locator("#playground-engine-version").inner_text(), page.locator(
         "#playground-status-text"
     ).inner_text()
     # The runtime comes from the site itself: starting Python asks no other host for anything.

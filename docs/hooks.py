@@ -15,21 +15,20 @@ from typing import Any
 
 _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
-#: The Pyodide release the playground runs on; `playground/playground-worker.js` names the same
-#: one, and `tests/test_playground.py` holds the two together.
-PYODIDE_VERSION = "0.26.4"
+#: The Pyodide release the playground runs on.
+PYODIDE_VERSION = "0.29.5"
 PYODIDE_SOURCE = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full/"
 #: Everything the worker loads to start Python, with the SHA-256 of each file. The site serves
 #: these itself: a visitor's browser fetches nothing from a third party, and what it is served
 #: is what was checked here when the site was built. The digests were taken from jsDelivr and
 #: match the files in the `pyodide` npm package of the same version. To move to another
-#: release, change the version here and in the worker, and take the digests the same way.
+#: release, change the version here and take the digests the same way.
 PYODIDE_FILES = {
-    "pyodide.js": "c0069107621d5b942a659e737a12e774cc0451feaa2256f475d72e071d844ec7",
-    "pyodide.asm.js": "919560652ed3dad3707cb3a394785da1e046fb13dc0defa162058ff230cb7eed",
-    "pyodide.asm.wasm": "b7e66a19427a55010ac3367c1b6c64b893f9826f783412945fdf0c3337f3bc94",
-    "python_stdlib.zip": "72894522b791858b9d613ac786b951d8b5094035dcf376313ea24a466810f336",
-    "pyodide-lock.json": "cd50b49de944c579045e122fe8628b31f9ce446379f032f36c05e273d38766e0",
+    "pyodide.mjs": "510ca14305230018f50c40fb81be673afd68080e70ce7733fcce6600dd6a1714",
+    "pyodide.asm.js": "356c42f69e1695397e9d8670bd3c2e678248cde76e18bdae1731e848537b47d7",
+    "pyodide.asm.wasm": "54309a5a2cfd757b1f0fdbc9093c92503f7b341500110329d932487183912718",
+    "python_stdlib.zip": "831fd1e535084b972f87c6a35275de3d236efd5166f5e77ce89497710635e73c",
+    "pyodide-lock.json": "14d2c2dba101277999e17135e653d8f15389ad1437f53eae213bf0c3cdff723d",
 }
 
 
@@ -42,13 +41,17 @@ def fetch_pyodide(root_dir: Path | None = None, download: Callable[[str], bytes]
     """Put the pinned Pyodide runtime under ``playground/assets/pyodide``.
 
     A file already there with the right digest is kept, so only the first build needs a
-    network. A download whose digest is not the pinned one is never written, and fails the
+    network, and one the pin does not name, such as a previous release's, is removed so the
+    site never serves it. A download whose digest is not the pinned one is never written, and fails the
     build: a site without the runtime is better than a site serving one nobody checked.
     """
     if root_dir is None:
         root_dir = Path(__file__).resolve().parent.parent
     runtime = root_dir / "playground" / "assets" / "pyodide"
     runtime.mkdir(parents=True, exist_ok=True)
+    for path in runtime.iterdir():
+        if path.name not in PYODIDE_FILES:
+            path.unlink()
     for name, expected in PYODIDE_FILES.items():
         path = runtime / name
         if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == expected:
