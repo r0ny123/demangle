@@ -4,9 +4,9 @@
   --md-default-bg-color: light-dark(#ffffff, #1a1b1e);
   --md-code-bg-color: light-dark(#f8f9fa, #24262b);
   --md-code-fg-color: light-dark(#202124, #e8eaed);
-  --md-primary-fg-color: light-dark(#1a73e8, #8ab4f8);
+  --md-primary-fg-color: light-dark(#1967d2, #8ab4f8);
   --md-primary-fg-color--light: light-dark(#e8f0fe, rgba(138, 180, 248, 0.15));
-  --md-default-fg-color--light: light-dark(#5f6368, #9aa0a6);
+  --md-default-fg-color--light: light-dark(#5f6368, #adb2b8);
   --md-default-fg-color--lighter: light-dark(#80868b, #bdc1c6);
   --md-default-fg-color--lightest: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12));
   --md-text-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -46,6 +46,10 @@ button, input, select, textarea {
   font: inherit;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 /* Navigation and content share one centered shell at every viewport size. */
 .playground-shell {
   width: min(calc(100% - 2 * var(--pg-page-gutter)), var(--pg-content-width));
@@ -68,6 +72,9 @@ button, input, select, textarea {
 }
 
 .nav-brand-group {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -386,6 +393,15 @@ button, input, select, textarea {
   flex-direction: column;
   gap: 0.35rem;
   container-type: inline-size;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* A floated legend is laid out as an ordinary flex item, so the gap applies to it. */
+.control-group > legend {
+  float: left;
+  padding: 0;
 }
 
 @media (min-width: 60rem) {

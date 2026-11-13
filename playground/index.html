@@ -13,25 +13,26 @@
   <body>
     <header class="playground-standalone-nav">
       <div class="playground-nav-inner playground-shell">
-        <div class="nav-brand-group">
-          <a href="../" class="nav-brand" title="demangle Home">
-            <span class="brand-icon">⚡</span>
+        <h1 class="nav-brand-group">
+          <a href="../" class="nav-brand">
+            <span class="brand-icon" aria-hidden="true">⚡</span>
             <span class="brand-name">demangle</span>
           </a>
           <span class="nav-app-tag">Playground</span>
-        </div>
+        </h1>
 
         <div class="nav-links">
-          <a href="../" class="nav-link" title="Open Documentation">
-            <span>📖</span>
+          <a href="../" class="nav-link">
+            <span aria-hidden="true">📖</span>
             <span>Documentation</span>
           </a>
-          <a href="https://github.com/r0ny123/demangle" target="_blank" rel="noopener noreferrer" class="nav-link" title="GitHub Repository">
-            <span>⭐</span>
+          <a href="https://github.com/r0ny123/demangle" class="nav-link">
+            <span aria-hidden="true">⭐</span>
             <span>GitHub</span>
           </a>
-          <button type="button" id="btn-theme-toggle" class="nav-btn" title="Toggle Light / Dark theme" aria-label="Toggle theme">
-            🌙 Dark
+          <button type="button" id="btn-theme-toggle" class="nav-btn">
+            <span class="theme-icon" aria-hidden="true">🌙</span>
+            <span class="theme-label">Dark</span>
           </button>
         </div>
       </div>
@@ -40,7 +41,7 @@
 <main id="playground-app" class="playground-root playground-shell">
   <div class="playground-header">
     <div class="playground-header-info">
-      <span class="playground-title-badge">⚡ In-Browser WebAssembly Engine</span>
+      <span class="playground-title-badge"><span aria-hidden="true">⚡</span> In-Browser WebAssembly Engine</span>
       <span id="playground-engine-version" class="playground-engine-tag">Pyodide • Pure-Python demangle</span>
     </div>
     <div id="playground-status-badge" class="playground-status status-loading" role="status" aria-live="polite">
@@ -89,7 +90,7 @@
 
   <div class="playground-card playground-input-card">
     <div class="card-header">
-      <label for="playground-input-symbol" class="card-title">Mangled Symbol Input</label>
+      <h2 class="card-title"><label for="playground-input-symbol">Mangled Symbol Input</label></h2>
       <div class="card-actions">
         <button type="button" id="btn-share" class="btn-copy" data-label="Copy link" title="Copy a link containing this symbol and selected settings"><span class="copy-label">Copy link</span></button>
         <button type="button" id="btn-clear-input" class="btn-action-small" title="Clear input">Clear</button>
@@ -130,9 +131,9 @@
       </div>
     </div>
 
-    <div class="control-group">
-      <span class="control-label">Formatting Style</span>
-      <div class="segmented-control" id="control-group-style" role="radiogroup" aria-label="Formatting style">
+    <fieldset class="control-group">
+      <legend class="control-label">Formatting Style</legend>
+      <div class="segmented-control" id="control-group-style">
         <label class="segmented-option">
           <input type="radio" name="pg-style" value="llvm" checked>
           <span>LLVM</span>
@@ -143,11 +144,11 @@
         </label>
       </div>
       <div class="control-subtext">Scheme-specific spelling</div>
-    </div>
+    </fieldset>
 
-    <div class="control-group">
-      <span class="control-label">Output View</span>
-      <div class="segmented-control" id="control-group-format" role="radiogroup" aria-label="Output view">
+    <fieldset class="control-group">
+      <legend class="control-label">Output View</legend>
+      <div class="segmented-control" id="control-group-format">
         <label class="segmented-option">
           <input type="radio" name="pg-format" value="full" checked>
           <span>Full</span>
@@ -166,28 +167,28 @@
         </label>
       </div>
       <div class="control-subtext">Matches CLI display modes</div>
-    </div>
+    </fieldset>
   </div>
 
   <div class="playground-card playground-output-card">
     <div class="card-header">
       <div class="card-title-group">
-        <span class="card-title">Demangled Output</span>
+        <h2 class="card-title" id="output-title">Demangled Output</h2>
         <span id="output-status-indicator" class="output-status-pill pill-idle" role="status" aria-atomic="true">Idle</span>
       </div>
       <div class="card-actions">
         <button type="button" id="btn-download-output" class="btn-action-small" disabled hidden>Download .txt</button>
         <button type="button" id="btn-copy-output" class="btn-copy" data-label="Copy" disabled title="Copy demangled output">
-          <span class="copy-icon">📋</span> <span class="copy-label">Copy</span>
+          <span class="copy-icon" aria-hidden="true">📋</span> <span class="copy-label">Copy</span>
         </button>
       </div>
     </div>
     <div class="output-container">
-      <div id="output-error-banner" class="playground-error-banner" style="display: none;" role="alert">
-        <span class="error-icon">⚠️</span>
+      <div id="output-error-banner" class="playground-error-banner" role="alert" hidden>
+        <span class="error-icon" aria-hidden="true">⚠️</span>
         <span id="output-error-message" class="error-message"></span>
       </div>
-      <div id="output-display" class="output-code-display" tabindex="0">
+      <div id="output-display" class="output-code-display" tabindex="0" role="region" aria-labelledby="output-title">
         <span class="output-placeholder">Enter a symbol above to view demangled output...</span>
       </div>
       <div id="batch-results" hidden></div>
@@ -196,7 +197,7 @@
 
   <div class="playground-card playground-sig-card" id="playground-signature-panel">
     <div class="card-header">
-      <span class="card-title">Structured Signature Decomposition</span>
+      <h2 class="card-title">Structured Signature Decomposition</h2>
       <span class="card-badge">demangle.signature()</span>
     </div>
     <div class="sig-grid">
@@ -239,17 +240,17 @@
     <div class="card-header">
       <div class="ast-tab-bar" role="tablist" aria-label="AST view">
         <button type="button" id="tab-btn-tree" class="tab-btn active" role="tab" aria-selected="true" aria-controls="ast-tree-panel">
-          🌳 AST Tree View
+          <span aria-hidden="true">🌳</span> AST Tree View
         </button>
         <button type="button" id="tab-btn-json" class="tab-btn" role="tab" tabindex="-1" aria-selected="false" aria-controls="ast-json-panel">
-          { } Raw JSON
+          <span aria-hidden="true">{ }</span> Raw JSON
         </button>
       </div>
       <div class="ast-actions">
         <button type="button" id="btn-ast-expand" class="btn-action-small" disabled title="Expand all nodes">Expand All</button>
         <button type="button" id="btn-ast-collapse" class="btn-action-small" disabled title="Collapse all nodes">Collapse All</button>
         <button type="button" id="btn-copy-ast" class="btn-copy" data-label="Copy AST" disabled title="Copy complete AST JSON">
-          <span class="copy-icon">📋</span> <span class="copy-label">Copy AST</span>
+          <span class="copy-icon" aria-hidden="true">📋</span> <span class="copy-label">Copy AST</span>
         </button>
       </div>
     </div>

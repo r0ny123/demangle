@@ -458,11 +458,11 @@ def test_theme_storage_cannot_prevent_runtime_startup(context, site_server, stor
     page.emulate_media(color_scheme="dark")
     wait_ready(page)
     button = page.locator("#btn-theme-toggle")
-    assert button.inner_text() == "☀️ Light"
+    assert page.get_by_role("button", name="Light", exact=True).is_visible()
     assert page.locator('meta[name="color-scheme"]').get_attribute("content") == "light dark"
     button.click()
     assert page.locator('meta[name="color-scheme"]').get_attribute("content") == "light"
-    assert button.inner_text() == "🌙 Dark"
+    assert page.get_by_role("button", name="Dark", exact=True).is_visible()
     page.locator("#playground-input-symbol").fill("usable")
     page.wait_for_function("document.querySelector('#output-status-indicator').textContent === 'Valid'")
 
@@ -472,9 +472,9 @@ def test_theme_follows_system_until_overridden_and_persists(context, site_server
     page.emulate_media(color_scheme="light")
     wait_ready(page)
     button = page.locator("#btn-theme-toggle")
-    assert button.inner_text() == "🌙 Dark"
+    assert page.get_by_role("button", name="Dark", exact=True).is_visible()
     page.emulate_media(color_scheme="dark")
-    page.wait_for_function("document.querySelector('#btn-theme-toggle').textContent === '☀️ Light'")
+    page.get_by_role("button", name="Light", exact=True).wait_for()
     assert page.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(26, 27, 30)"
     button.click()
     assert page.evaluate("localStorage.getItem('demangle-theme')") == "light"
@@ -483,7 +483,31 @@ def test_theme_follows_system_until_overridden_and_persists(context, site_server
     assert page.evaluate("getComputedStyle(document.documentElement).colorScheme") == "light"
     assert page.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(255, 255, 255)"
     wait_ready(page)
-    assert button.inner_text() == "🌙 Dark"
+    assert page.get_by_role("button", name="Dark", exact=True).is_visible()
+
+
+def test_landmarks_headings_and_groups_are_exposed_and_emoji_are_not(context, site_server):
+    page = open_playground(context, site_server)
+    wait_ready(page)
+    assert page.get_by_role("heading", level=1, name="demangle Playground").is_visible()
+    for name in ("Mangled Symbol Input", "Demangled Output", "Structured Signature Decomposition"):
+        assert page.get_by_role("heading", level=2, name=name).is_visible()
+    for name in ("Formatting Style", "Output View"):
+        assert page.get_by_role("group", name=name).is_visible()
+    assert page.get_by_role("region", name="Demangled Output").is_visible()
+    spoken = page.evaluate(
+        """() => {
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          const found = [];
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (/\\p{Extended_Pictographic}/u.test(node.data) && !node.parentElement.closest('[aria-hidden="true"]'))
+              found.push(node.data.trim());
+          }
+          return found;
+        }"""
+    )
+    assert spoken == []
 
 
 @pytest.mark.parametrize("modifier", ["Control", "Meta"])

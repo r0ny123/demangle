@@ -309,7 +309,7 @@
         document.getElementById("playground-signature-panel").hidden = batch;
         document.getElementById("playground-ast-section").hidden = batch;
         if (batch) {
-            elErrorBanner.style.display = "none";
+            elErrorBanner.hidden = true;
             elDetectedTag.textContent = "per line";
             btnCopyAst.disabled = btnExpandAll.disabled = btnCollapseAll.disabled = true;
             renderBatch(res);
@@ -330,7 +330,7 @@
                 elOutputStatus.textContent = "Idle";
             }
             if (elDetectedTag) elDetectedTag.textContent = "—";
-            if (elErrorBanner) elErrorBanner.style.display = "none";
+            if (elErrorBanner) elErrorBanner.hidden = true;
             if (elOutputDisplay) {
                 elOutputDisplay.innerHTML = '<span class="output-placeholder">Enter a symbol above to view demangled output...</span>';
             }
@@ -360,7 +360,7 @@
                 elOutputStatus.className = "output-status-pill pill-invalid";
                 elOutputStatus.textContent = stateLabel(res);
             }
-            if (elErrorBanner) elErrorBanner.style.display = "flex";
+            if (elErrorBanner) elErrorBanner.hidden = false;
             if (elErrorMessage) elErrorMessage.textContent = errorMessage(res) || "Failed to demangle symbol";
             renderOutput(res);
 
@@ -384,7 +384,7 @@
             elOutputStatus.className = "output-status-pill pill-valid";
             elOutputStatus.textContent = stateLabel(res);
         }
-        if (elErrorBanner) elErrorBanner.style.display = "none";
+        if (elErrorBanner) elErrorBanner.hidden = true;
         renderOutput(res);
 
         if (elSigQualified) elSigQualified.textContent = res.qualified_name || "—";
