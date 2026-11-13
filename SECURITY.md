@@ -118,6 +118,9 @@ name that caused it rather than being killed.
 - The documentation site and its playground load no script, stylesheet, image or frame
   from another host. The Pyodide runtime the playground runs on is served by the site,
   each file checked against a pinned SHA-256 when the site is built; tests hold both.
+  The playground page also carries a Content Security Policy that allows only its own
+  scripts and styles, with no inline code, so a pasted or linked symbol can't run as
+  script even if a rendering bug let it into the page.
 
 ## Supported versions
 
