@@ -17,6 +17,7 @@ the shortcut is made of: `unsplit`, `words` and `has_opaque_return_type`.
 """
 
 import pathlib
+import random
 import string
 import types
 
@@ -26,7 +27,7 @@ import demangle
 from demangle.core.errors import DemanglingError
 from demangle.schemes.swift import _printer as printer_module
 from demangle.schemes.swift import demangle_symbolic, nodes
-from demangle.schemes.swift._demangler import Demangler, demangle_symbol
+from demangle.schemes.swift._demangler import Demangler, _is_word_end, _is_word_start, demangle_symbol
 from demangle.schemes.swift._node import Node
 
 from .conftest import load_corpus
@@ -269,6 +270,53 @@ class TestWordsAreSplitWhenASubstitutionAsks:
         read_it = b"$s" + reference + b"9AlphaBetaV0aB0VMn"
         assert demangle_symbolic(read_it, resolver) == "nominal type descriptor for demo.GammaDelta.AlphaBeta.AlphaBeta"
         assert demangle_symbolic(read_it.replace(b"0aB0", b"0cB0"), resolver) is None
+
+
+def words_by_character(slice_):
+    """The word table `slice_` adds, by `_is_word_start` and `_is_word_end`, one character
+    at a time: what `_record_words` did before it split by a regular expression."""
+    words = []
+    start = -1
+    previous = ""
+    for at in range(len(slice_) + 1):
+        char = slice_[at] if at < len(slice_) else ""
+        if start >= 0 and _is_word_end(char, previous):
+            if at - start >= 2 and len(words) < 26:
+                words.append(slice_[start:at])
+            start = -1
+        if start < 0 and _is_word_start(char):
+            start = at
+        previous = char
+    return words
+
+
+class TestWordsSplitAsTheDefinitionSays:
+    """`_record_words` splits on `_WORD_BREAK` and strips leading digits, where the
+    definition walks the identifier a character at a time. Every identifier in the corpus,
+    and strings drawn from the characters each rule turns on, split the same both ways."""
+
+    def split(self, slice_):
+        reader = Demangler("")
+        reader._record_words(slice_)
+        return reader.words
+
+    def test_over_every_identifier_in_the_corpus(self):
+        for line in load_corpus("swift-real-world.txt"):
+            reader = Demangler(line[0])
+            reader.demangle_symbol()
+            for slice_ in reader.unsplit:
+                assert self.split(slice_) == words_by_character(slice_), slice_
+
+    def test_over_strings_of_the_characters_that_decide(self):
+        rng = random.Random(0)
+        for _ in range(20000):
+            slice_ = "".join(rng.choice("aZB_09\u00e9\u00c9") for _ in range(rng.randrange(14)))
+            assert self.split(slice_) == words_by_character(slice_), slice_
+
+    def test_a_long_identifier_stops_at_twenty_six(self):
+        slice_ = "".join(f"W{letter}" for letter in string.ascii_lowercase * 2)
+        assert self.split(slice_) == words_by_character(slice_)
+        assert len(self.split(slice_)) == 26
 
 
 def link_report(root):
