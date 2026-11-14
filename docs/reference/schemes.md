@@ -1,12 +1,8 @@
 # Schemes
 
-Each mangling scheme is a plugin, so any of them can be developed, replaced or shipped
-separately -- see [Adding a scheme](../adding-a-scheme.md) and
-[Architecture](../ARCHITECTURE.md).
-
-Each section renders what the scheme's package exports, then the modules behind it: its
-options, its node kinds and, where it is worth reading, its parser. Each object appears
-once, with the module that says most about it -- an options class with its options.
+Each scheme is a plugin: what its package exports, then its options, its node kinds and,
+where it is worth reading, its parser. [Adding a scheme](../adding-a-scheme.md) is how
+one is written.
 
 ## Itanium C++ ABI
 
@@ -23,19 +19,19 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.itanium.options
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Substitutions
 
 ::: demangle.schemes.itanium.substitutions
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Parser
 
 ::: demangle.schemes.itanium.parser
     options:
-      heading_level: 3
+      heading_level: 4
       members: false
 
 ## Microsoft Visual C++
@@ -52,13 +48,13 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.msvc.options
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Nodes
 
 ::: demangle.schemes.msvc.nodes
     options:
-      heading_level: 3
+      heading_level: 4
       members:
         - Indirection
         - FunctionType
@@ -76,18 +72,25 @@ once, with the module that says most about it -- an options class with its optio
 ## Rust
 
 ::: demangle.schemes.rust
+    options:
+      members:
+        - PLUGIN
+        - detect
+        - parse
+        - ManglingType
+        - RustDemangler
 
 ### Options
 
 ::: demangle.schemes.rust.options
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Nodes
 
 ::: demangle.schemes.rust.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Swift
 
@@ -116,13 +119,12 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.swift.options
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Demangler
 
 ::: demangle.schemes.swift._demangler
     options:
-      show_root_heading: false
       heading_level: 4
       members:
         - Demangler
@@ -131,7 +133,6 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.swift._old_demangler
     options:
-      show_root_heading: false
       heading_level: 4
       members:
         - OldDemangler
@@ -140,7 +141,6 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.swift._printer
     options:
-      show_root_heading: false
       heading_level: 4
       members:
         - Printer
@@ -149,7 +149,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.swift.symbolic
     options:
-      heading_level: 3
+      heading_level: 4
       members:
         - read
         - names
@@ -158,7 +158,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.swift.resolve
     options:
-      heading_level: 3
+      heading_level: 4
       members:
         - MalformedImage
 
@@ -166,7 +166,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.swift.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## D
 
@@ -176,7 +176,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.d.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Go
 
@@ -186,7 +186,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.go.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Nim
 
@@ -196,7 +196,6 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.nim._parser
     options:
-      show_root_heading: false
       heading_level: 4
       members:
         - mangle
@@ -208,7 +207,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.nim.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Free Pascal
 
@@ -218,7 +217,6 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.pascal._parser
     options:
-      show_root_heading: false
       heading_level: 4
       members:
         - spell_routine_name
@@ -227,7 +225,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.pascal.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Pre-Itanium C++
 
@@ -245,13 +243,12 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.gnuv2.options
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Parser
 
 ::: demangle.schemes.gnuv2._parser
     options:
-      show_root_heading: false
       heading_level: 4
       members: false
 
@@ -259,7 +256,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.gnuv2.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## CodeWarrior
 
@@ -276,13 +273,12 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.codewarrior.options
     options:
-      heading_level: 3
+      heading_level: 4
 
 ### Parser
 
 ::: demangle.schemes.codewarrior._parser
     options:
-      show_root_heading: false
       heading_level: 4
       members: false
 
@@ -290,7 +286,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.codewarrior.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Delphi / C++Builder
 
@@ -300,7 +296,6 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.delphi._parser
     options:
-      show_root_heading: false
       heading_level: 4
       members: false
 
@@ -308,7 +303,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.delphi.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Ada / GNAT
 
@@ -318,7 +313,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.ada.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## JNI
 
@@ -328,7 +323,7 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.jni.nodes
     options:
-      heading_level: 3
+      heading_level: 4
 
 ## Objective-C
 
@@ -338,7 +333,6 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.objc._parser
     options:
-      show_root_heading: false
       heading_level: 4
       members:
         - decode_type_encoding
@@ -347,4 +341,4 @@ once, with the module that says most about it -- an options class with its optio
 
 ::: demangle.schemes.objc.nodes
     options:
-      heading_level: 3
+      heading_level: 4

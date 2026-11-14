@@ -66,7 +66,7 @@ markdown_extensions:
   - admonition
   # The prose writes a dash as `--`; only that is converted, quotes are left alone.
   - smarty: { smart_quotes: false, smart_angled_quotes: false, smart_ellipses: false }
-  - toc: { permalink: true }
+  - toc: { permalink: true, toc_depth: 3 }
   - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.inlinehilite
@@ -83,8 +83,11 @@ plugins:
           paths: [src]
           options:
             docstring_style: google
-            show_source: true
-            show_root_heading: true
+            show_source: false
+            # Each directive sits under a heading the page wrote, so the module's own is noise.
+            show_root_heading: false
+            show_root_toc_entry: false
+            heading_level: 3
             show_symbol_type_heading: true
             show_symbol_type_toc: true
             separate_signature: true
