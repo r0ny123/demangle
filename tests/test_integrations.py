@@ -447,7 +447,7 @@ class TestTheModule:
             "targets"
         ]
         assert "/integrations" in config["sdist"]["include"]
-        assert config["wheel"] == {"packages": ["src/demangle"]}
+        assert config["wheel"]["packages"] == ["src/demangle"]
 
     def test_the_package_does_not_depend_on_the_scripts(self):
         source = ROOT / "src" / "demangle"

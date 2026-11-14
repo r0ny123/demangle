@@ -216,7 +216,7 @@ class SubstitutionTable:
             del self._entries[-1]
 
     @property
-    def last(self):
+    def last(self) -> object:
         """The entry most recently recorded, or None."""
         return self._entries[-1] if self._entries else None
 

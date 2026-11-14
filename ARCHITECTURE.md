@@ -193,6 +193,13 @@ Design rules, in the order they matter:
    parsers advance by character dispatch; a regular expression appears there only to
    test a whole token or a suffix. The smaller schemes (JNI, Objective-C, Pascal,
    Delphi, CodeWarrior, Ada, Nim) use them over short names.
+6. **The Itanium hot path also ships compiled.** `tools/hatch_build.py` builds the
+   reader, the spelling builder and the Itanium parser with mypyc for CPython's
+   platform wheels. It is the same source, so the pure modules stay the reference, but
+   mypyc checks at run time the types mypy infers: an attribute or local has to keep
+   one type, and one that mypy would narrow to `None` across a call that sets it is
+   annotated `Any`. The build fails if those files do not pass
+   `mypy --check-untyped-defs`.
 
 `benchmarks/` measures all of this against real symbol corpora, and
 `benchmarks/bench.py --check` runs in CI on every pull request, so a regression fails

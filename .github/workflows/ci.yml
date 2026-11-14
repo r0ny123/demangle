@@ -129,6 +129,49 @@ jobs:
       - name: Check the invariants no reference can be asked about
         run: python tools/invariants.py --count 4000 --quiet
 
+  compiled:
+    name: compiled build against the references
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install reference toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y llvm binutils
+      - run: tools/ci-install.sh test compile
+      - name: Build the compiled wheel and install it over the editable one
+        run: |
+          HATCH_BUILD_HOOK_ENABLE_CUSTOM=true uv build --wheel --offline --no-build-isolation --python "$(command -v python)"
+          uv pip install --system --offline --no-deps --reinstall dist/*.whl
+      - name: Test
+        run: python -m pytest -q
+        env:
+          DEMANGLE_EXPECT_COMPILED: "1"
+      - name: Replay the committed corpora
+        # The tools put src/ first on sys.path; without it they import the wheel.
+        run: |
+          mv src src.pure
+          python tools/differential.py
+      - name: Mutate real symbols and compare against the references
+        run: python tools/mutate.py --scheme itanium --count 50000 --quiet
+      - name: Enumerate the shape space against the references
+        run: python tools/enumerate.py --scheme itanium --scheme types --length 4 --quiet
+      - name: Check the invariants no reference can be asked about
+        run: python tools/invariants.py --corpus itanium --count 20000 --quiet
+
+  wheels:
+    uses: ./.github/workflows/wheels.yml
+    permissions:
+      contents: read
+
   cross-reference:
     name: cross-version reference check
     # Pinned: `ubuntu-latest` is now 26.04, which does not package llvm-16, and the job

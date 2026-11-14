@@ -50,11 +50,11 @@ class Spelling:
     #: For a parameter pack, its members; None otherwise. Kept as a sequence because
     #: a declarator applies to every member: `Dp O T_` over three arguments is three
     #: rvalue references.
-    members = None
-    cv = ()
+    members: tuple["Spelling", ...] | None = None
+    cv: tuple[str, ...] = ()
     stem = ""
 
-    def __init__(self, left, right=""):
+    def __init__(self, left, right="") -> None:
         self.left = left
         self.right = right
 
@@ -110,7 +110,7 @@ _BY_REF_KIND = {"": Spelling, "&": _LvalueReferenceSpelling, "&&": _RvalueRefere
 class _PackSpelling(Spelling):
     __slots__ = ("members",)
 
-    def __init__(self, left, members):
+    def __init__(self, left, members) -> None:
         self.left = left
         self.right = ""
         self.members = members
@@ -125,7 +125,7 @@ class QualifiedSpelling(Spelling):
 
     __slots__ = ("cv", "is_array", "stem")
 
-    def __init__(self, left, right="", is_array=False, cv=(), stem=""):
+    def __init__(self, left, right="", is_array=False, cv=(), stem="") -> None:
         self.left = left
         self.right = right
         self.is_array = is_array
@@ -146,8 +146,8 @@ def pack_of(members):
             flattened.extend(member.members)
         else:
             flattened.append(member)
-    flattened = tuple(flattened)
-    return _PackSpelling(", ".join([member.left + member.right for member in flattened]), flattened)
+    packed = tuple(flattened)
+    return _PackSpelling(", ".join([member.left + member.right for member in packed]), packed)
 
 
 def _respace_bound(left, right):
@@ -300,9 +300,9 @@ class SpellingBuilder(Builder):
     # The class itself rather than a method calling it: a class attribute does not bind,
     # so `builder.name(text)` is `Spelling(text)`, and these are the builder's commonest
     # calls. Builtins are finite and immutable, so pre-created instances are returned directly.
-    builtin = _BUILTIN_SPELLINGS.__getitem__
-    name = Spelling
-    raw = Spelling
+    builtin = _BUILTIN_SPELLINGS.__getitem__  # type: ignore[assignment]
+    name = Spelling  # type: ignore[assignment]
+    raw = Spelling  # type: ignore[assignment]
 
     def literal(self, kind, value):
         return Spelling(value)
