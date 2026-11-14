@@ -13,6 +13,11 @@ the reference demanglers, and a **Performance** section.
 - **The playground runs on Pyodide 0.29.5** (Python 3.13), up from 0.26.4, in a module
   worker. The page downloads 1.5 MB less to start, and a build removes runtime files the
   pin no longer names, so an old release's loader is never served next to the new one.
+- **`Spelling()` takes only `left` and `right`.** `is_function`, `is_array`, `ref_kind`
+  and `members` come from the class now, through private subclasses the builder picks,
+  so a plain name costs two attribute stores rather than six and Itanium runs about 2%
+  fewer instructions. Code that passed those keywords should call `SPELLING_BUILDER`'s
+  methods instead.
 
 ### Performance
 
