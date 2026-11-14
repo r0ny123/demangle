@@ -7,25 +7,7 @@ parameter types and nothing else. All three can be had by splitting the spelling
 all three get it wrong the same way, because `::` and `,` and `(` occur inside template
 arguments and inside function types as well as between the parts a caller means.
 
-So the split is done on the tree the parser already built. Two shapes of tree, because
-the schemes come in two kinds:
-
-* Itanium and MSVC build a declaration -- a function node with its name inside its own
-  type, or a declarator standing beside one. The fields are read off it directly.
-* Swift, D, Go, Nim, Free Pascal, Delphi, Ada, JNI and the pre-Itanium C++ schemes
-  (`gnuv2`, `codewarrior`) build a node that *is* its own fragments, in output order:
-  `parts` interleaves the literal text the printer wrote with the subtrees it wrote
-  between them. That interleaving is the structure -- a `.` in `parts` separates two
-  components and a `.` inside a name does not -- so reading it gives the same answer
-  the printer gave, which splitting the printer's output could not.
-
-Rust's path and Objective-C's class and selector are read off their nodes as they stand,
-and an Objective-C runtime data symbol is split into the label it opens with and the
-class, category, instance variable or selector the label is about.
-
-Text is the last resort, for the places where a tree has already flattened the answer,
-and even there with a reader that counts brackets and that declines a spelling which is
-a phrase rather than a name.
+So the split is done on the tree the parser already built, and text is the last resort.
 
 What each scheme can say still differs, and the difference is real rather than a gap to
 be filled in later:
@@ -57,6 +39,25 @@ from .core.limits import DEFAULT_LIMITS, Limits
 from .core.style import DEFAULT_STYLE, Style, get_style
 
 __all__ = ["Signature", "signature", "signatureb"]
+
+# Two shapes of tree come in, because the schemes come in two kinds:
+#
+# * Itanium and MSVC build a declaration -- a function node with its name inside its own
+#   type, or a declarator standing beside one. The fields are read off it directly.
+# * Swift, D, Go, Nim, Free Pascal, Delphi, Ada, JNI and the pre-Itanium C++ schemes
+#   (`gnuv2`, `codewarrior`) build a node that *is* its own fragments, in output order:
+#   `parts` interleaves the literal text the printer wrote with the subtrees it wrote
+#   between them. That interleaving is the structure -- a `.` in `parts` separates two
+#   components and a `.` inside a name does not -- so reading it gives the same answer
+#   the printer gave, which splitting the printer's output could not.
+#
+# Rust's path and Objective-C's class and selector are read off their nodes as they stand,
+# and an Objective-C runtime data symbol is split into the label it opens with and the
+# class, category, instance variable or selector the label is about.
+#
+# Text is the last resort, for the places where a tree has already flattened the answer,
+# and even there with a reader that counts brackets and that declines a spelling which is
+# a phrase rather than a name.
 
 #: Component separators by scheme. Objective-C's is a space (class, selector); a category
 #: is not part of a method's name, so it stays out of `qualified_name`.

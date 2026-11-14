@@ -3,7 +3,7 @@
 Used by GCC, Clang, ICC and essentially every C++ toolchain outside the Microsoft
 ecosystem, on every platform they target. Rust's legacy scheme is a dialect of it.
 
-Reference: https://itanium-cxx-abi.github.io/cxx-abi/abi.html section 5.1.
+Reference: <https://itanium-cxx-abi.github.io/cxx-abi/abi.html>, section 5.1.
 """
 
 from ...core.plugin import LanguagePlugin
