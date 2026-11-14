@@ -1,33 +1,27 @@
 # Architecture
 
-`demangle` turns a mangled symbol name back into the declaration a programmer wrote.
-It supports several unrelated mangling schemes, is written in pure Python with no
-dependencies, and is meant to be embedded in tools that process millions of symbols.
+`demangle` turns a mangled symbol name back into the declaration a programmer wrote. It
+reads fourteen unrelated mangling schemes, is pure Python with no dependencies, and is
+meant to sit inside tools that process millions of symbols. Most of the design comes
+from wanting all three at once.
 
-Those three facts pull in different directions, and the architecture exists to resolve
-them.
+## The problem
 
-## The central problem
+A demangler can parse straight to a string. That's fast and small, and it's what
+nearly every demangler does, but the caller gets an opaque string. A tool that wants
+the namespace, the template arguments or the parameter types has to pull the output
+apart again, and C++ declarations can't be pulled apart with a regular expression.
 
-A demangler has two plausible shapes and each is wrong on its own.
+Or it can parse to a tree, which is structured but allocates an object per grammar
+node. In Python that costs: building the tree takes about a fifth longer than building
+the string, and most callers only wanted the string.
 
-**Shape one: parse straight to a string.** Fast, small, and what nearly every existing
-demangler does. But the caller gets an opaque string. A tool that wants the namespace,
-the template arguments, or the parameter types has to re-parse the output with a
-regular expression -- and C++ declaration syntax is not a language you can pull apart
-with regular expressions.
+## Parsers write to a builder
 
-**Shape two: parse to an abstract syntax tree.** Structured and inspectable, but it
-allocates an object per grammar node. In Python that cost is measurable: building the
-tree takes about a fifth longer than building the string, and most callers only ever
-wanted the string.
-
-## The resolution: parsers write to a builder
-
-No parser in this codebase constructs its own output. Each one is written against the
-`Builder` protocol in `core/builder.py` and calls methods like `builder.pointer(inner)`
-or `builder.template(name, args)` as it recognises grammar productions. What those
-calls *produce* is the builder's business, not the parser's.
+So no parser here builds its own output. Each is written against the `Builder`
+protocol in `core/builder.py` and calls methods like `builder.pointer(inner)` or
+`builder.template(name, args)` as it recognises grammar productions. What those calls
+produce is up to the builder.
 
 Two builders ship:
 
@@ -36,15 +30,14 @@ Two builders ship:
 | `SpellingBuilder` | `Spelling` pairs, immediately concatenable | `demangle()` -- the hot path |
 | `AstBuilder` | `Node` trees | `parse()` -- structured access |
 
-The parser is written once and stays honest about the grammar; the cost model is
-chosen by the caller. Adding a third backend -- emitting JSON, or a token stream for a
-syntax highlighter -- means writing one class and touching no parser.
+The parser is written once and the caller picks the cost. A third backend, say JSON or
+a token stream for a syntax highlighter, is one new class and no parser changes.
 
-This is the single most important thing to understand about the codebase. A change that
-makes a parser build strings directly, however locally convenient, breaks it. A test
-enforces the rule as far as a test can reach -- `tests/test_architecture.py` fails if a
-scheme imports `core.spelling` -- but a parser that concatenates strings itself and
-hands the result to `builder.name()` imports nothing, and only review catches that.
+This is the rule that matters most. A parser that builds strings itself,
+however convenient locally, breaks it. `tests/test_architecture.py` fails if a scheme
+imports `core.spelling`, which is as far as a test can reach: a parser that
+concatenates strings and hands the result to `builder.name()` imports nothing, and
+only review catches that.
 
 ### Expressions
 
@@ -53,37 +46,33 @@ reaches the tree as structure rather than one opaque node. `parts` interleaves t
 production's fixed text with its operands' handles and `form` names the shape --
 `binary`, `conditional`, `call`, `sizeof`.
 
-One method rather than one per operator. Fifteen methods would be fifteen things every
-future builder must implement, and would still not cover the next operator someone
-mangles. The parser already owns operator *spelling* -- it comes from `tables.py`, which
-exists to be checked against the ABI -- so what is left for the builder to decide is
-structure, and `form` plus operands is that.
+It's one method, not one per operator. Fifteen methods would be fifteen things
+every future builder has to implement, and still wouldn't cover the next operator
+someone mangles. The parser already owns operator spelling (it comes from `tables.py`,
+which exists to be checked against the ABI), so all that's left for the builder is
+structure.
 
 Brackets are parts like any other. Whether an operand needs them is a precedence
-question only the parser can answer, so it arrives settled; a consumer walking the tree
-sees a `paren` expression wrapping the operand rather than punctuation glued into a
-string.
+question only the parser can answer, so a consumer walking the tree sees a `paren`
+expression wrapping the operand.
 
-Rust reaches the same place by a different route, and the difference is worth knowing.
-Its printer emits one linear stream of fragments and a *sink* decides what to do with
-them: `TextSink` concatenates, `TreeSink` remembers where each production began and
-ended. So the tree is not a second traversal that has to be kept in step with the
-text -- it is the same traversal with its boundaries kept, and a tree renders to what
-`demangle()` returns by construction rather than by test. Rust can do this because its
-spelling is strictly left to right; a C-family declarator, which wraps the name it
-declares, cannot be recovered from a linear stream and needs the builder proper.
+Rust gets there differently. Its printer emits one linear stream of fragments and a
+sink decides what to do with them: `TextSink` concatenates, `TreeSink` remembers where
+each production began and ended. The tree is the same traversal with its boundaries
+kept, so it renders to what `demangle()` returns by construction. That works because
+Rust's spelling is strictly left to right. A C-family declarator wraps the name it
+declares and can't be recovered from a linear stream.
 
 ### When a scheme needs its own spelling
 
-`core/spelling.py` implements *C-family* declarator placement. A scheme whose output
-looks like a C declaration uses it and gets the hard part for free. A scheme whose
-output does not -- MSVC, where the calling convention sits inside the parentheses and
-the spacing rules differ -- supplies its own node kinds and renderer instead,
-subclassing `core.ast.Node` so `walk()`, `find()` and `spell()` keep working.
-`AstBuilder` is shared regardless.
+`core/spelling.py` implements C-family declarator placement. A scheme whose output
+looks like a C declaration uses it and gets the hard part for free. One whose output
+doesn't, like MSVC with its calling convention inside the parentheses and its own
+spacing, supplies its own node kinds and renderer, subclassing `core.ast.Node` so
+`walk()`, `find()` and `spell()` keep working. `AstBuilder` is shared either way.
 
-That is the extension point, not a workaround: forcing every scheme through one
-renderer would mean MSVC-shaped branches inside `core`.
+That's on purpose: one renderer for every scheme would mean MSVC-shaped branches
+inside `core`.
 
 ## Layout
 
@@ -132,48 +121,45 @@ and imports it on first use, so `core` stays free of `schemes` at import time.
 
 ## Why declarator placement is its own module
 
-C++ spells a type *around* the name it declares -- `int (*f)(char)` -- so a type under
-construction is a pair of strings with a hole between them, not a string. Keeping that
-hole in the right place through nested declarators is the part of a demangler most often
-subtly wrong, so `core/spelling.py` does it once, with its own tests, for every scheme
-whose output looks like a C declaration. Its
+C++ spells a type around the name it declares, `int (*f)(char)`, so a type under
+construction is two strings with a hole between them. Keeping that hole in the right
+place through nested declarators is where demanglers most often go subtly wrong, so
+`core/spelling.py` does it once, with its own tests, for every scheme whose output
+looks like a C declaration. Its
 [reference](https://r0ny123.github.io/demangle/reference/core/#spelling) has the
 mechanics.
 
-## Substitutions are load-bearing, not an optimisation
+## Substitutions
 
 The Itanium scheme compresses repeated components into back-references: `S_`, `S0_`,
-`S1_`. The numbering is implicit -- it depends entirely on which components the
-*encoder* considered substitutable, and in what order. Add one entry the specification
-does not, or miss one it does, and every later back-reference in the name resolves to
-the wrong component.
+`S1_`. The numbering is implicit. It depends on which components the encoder counted
+as substitutable, and in what order. Add one entry the specification doesn't, or miss
+one it does, and every later back-reference in the name points at the wrong thing.
 
-The rules are not folklore; they are ABI section 5.1.10, and
-`schemes/itanium/substitutions.py` implements them as a separate, directly testable
-component with the specification quoted at each decision. Rust v0 has its own
-back-reference scheme with different rules, kept in its own module for the same reason.
+The rules are ABI section 5.1.10, and `schemes/itanium/substitutions.py` implements
+them as a separate, directly testable component with the specification quoted at each
+decision. Rust v0 has its own back-reference rules, in its own module for the same
+reason.
 
 ## Adding a scheme
 
 A scheme is a directory under `schemes/` exposing a `LanguagePlugin` (`core/plugin.py`).
 Nothing in `core` knows the list of schemes at import time: `core/registry.py` finds the
-built-ins lazily and third-party plugins through the `demangle.languages` entry-point
-group, so a separate distribution can add a scheme without a patch to this one. Those
-are read only when a caller runs `load_plugins()`: a plugin may carry a built-in's name
-and replace it, so that is the caller's choice, never an install's.
+built-ins lazily, and third-party plugins through the `demangle.languages` entry-point
+group once a caller runs `load_plugins()`.
 
-Detection is the part with a cost model. It runs on every non-mangled symbol in a
-binary -- in a typical binary, most of them -- so `detect` is expected to be a prefix
-test, and the registry narrows what a name is offered to before any `detect` runs. A
+Detection is the part that has to be cheap. It runs on every symbol in a binary, and
+most of them aren't mangled, so `detect` is expected to be a prefix test, and the
+registry narrows what a name is offered to before any `detect` runs. A
 scheme with a fixed first character declares it (`first_characters`), and a name
 starting with anything else never reaches it. A scheme whose names are ordinary C
 identifiers has none, so it declares a `DETECT_SCREEN`: the markers and openings that a
 name must hold for its `detect` to say yes, and a name with none of them is not offered
 to it. Both can apply: Nim and Free Pascal names are identifiers, so they also declare
 the letters and `_` as first characters, which keeps them off MSVC's `?` and Swift's
-`$s` names even though those hold the `__` and `$` they screen on. The schemes whose names carry no marker at all -- Ada and the two pre-Itanium
-C++ manglings, whose `detect` has to parse -- are offered last, behind everything a
-prefix settles.
+`$s` names even though those hold the `__` and `$` they screen on. The schemes whose
+names carry no marker at all (Ada and the two pre-Itanium C++ manglings, whose `detect`
+has to parse) are offered last, behind everything a prefix settles.
 
 [Adding a scheme](https://github.com/r0ny123/demangle/blob/main/docs/adding-a-scheme.md)
 is the walk-through.
@@ -184,9 +170,9 @@ Design rules, in the order they matter:
 
 1. **The common call must not allocate an AST.** Hence the builder protocol.
 2. **Detection precedes parsing.** See [Adding a scheme](#adding-a-scheme).
-3. **Results are memoised.** Symbol tables repeat names heavily -- the same
+3. **Results are memoised.** Symbol tables repeat names heavily: the same
    `std::allocator<char>` appears thousands of times in one binary. Caches are bounded
-   so a long-running process cannot grow without limit.
+   so a long-running process can't grow without limit.
 4. **`__slots__` on every hot class.** Node and Spelling instances are created in the
    millions.
 5. **No regular expressions in the hot parse loops.** The Itanium, MSVC, Rust and Swift
@@ -201,31 +187,23 @@ Design rules, in the order they matter:
    annotated `Any`. The build fails if those files do not pass
    `mypy --check-untyped-defs`.
 
-`benchmarks/` measures all of this against real symbol corpora, and
-`benchmarks/bench.py --check` runs in CI on every pull request, so a regression fails
-the build rather than waiting for someone to complain.
+`benchmarks/bench.py --check` measures this against real symbol corpora in CI on every
+pull request, so a regression fails the build.
 
 ## Correctness
 
-Correctness is defined against the reference implementations, not against our own
-reading of the specifications. Most schemes have one: `llvm-cxxfilt` and GNU `c++filt`
-for Itanium, `llvm-undname` for MSVC, the `rustc-demangle` crate for Rust,
-`c++filt --format=dlang` for D and `--format=gnat` for Ada, Embarcadero's own unmangler
-for Delphi, and the third-party `cwdemangle` for CodeWarrior. Where no distribution
-ships one, it is built here -- Swift's and pre-Itanium C++'s from the compiler's own
-sources, and `rustc-demangle` behind a small front end, since the Rust readers inside
-the C++ demanglers are not it. Nim, Free Pascal and Objective-C are checked against what
-the compiler itself recorded for each symbol. Go and JNI have no reference anywhere, and
-are held to a property instead: re-mangling what was read has to reproduce the symbol.
-[CONFORMANCE.md](CONFORMANCE.md) records what each is measured against and what the
-measurement says.
+Correct means agreeing with the reference demangler, not with our reading of the
+specification. Where a scheme has no reference it's checked against what the compiler
+recorded for each symbol, and Go and JNI, which have neither, must re-mangle to the
+symbol they were read from. [CONFORMANCE.md](CONFORMANCE.md) says what each scheme is
+measured against and what the measurement says.
 
-`tests/conformance/` holds frozen corpora with the reference output recorded next to
-each name; [CONTRIBUTING.md](CONTRIBUTING.md#conformance-numbers) says how their pass
-counts are pinned. The harness in `tools/` regenerates those corpora and can run a live
-differential against the reference binaries when they are installed.
+`tests/conformance/` holds frozen corpora with the reference output next to each name;
+[CONTRIBUTING.md](CONTRIBUTING.md#conformance-numbers) says how their pass counts are
+pinned. The harness in `tools/` regenerates the corpora and can run a live differential
+against the reference binaries when they're installed.
 
-The contract at the boundary is deliberately narrow: `demangle()` never raises and
-returns its input unchanged when it cannot do better, because a wrong expansion is
-worse than a mangled name -- it matches neither spelling. Callers who need to know the
-difference use `parse()`, which raises.
+`demangle()` never raises over a name and returns its input unchanged when it can't do
+better, because a wrong expansion is worse than a mangled name: it matches neither the
+symbol nor the declaration. Callers who need to know the difference use `parse()`,
+which raises.
