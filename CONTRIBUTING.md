@@ -233,8 +233,11 @@ floor, so neither end of the range is only ever exercised on Linux. A further ro
 Ubuntu on the free-threaded 3.14t build, for `tests/test_concurrency.py`. This is a
 pure-Python library, and everything that has ever differed between platforms differed in
 the harness -- a glob, a subprocess, a console encoding -- which one row per operating
-system catches as well as a full cross product would. Each extra row has a comment in
-`ci.yml` saying why it is there. Add a row when a defect shows up that only that row
+system catches as well as a full cross product would. The compiled wheels are the
+exception, because they are platform code: `wheels.yml` builds and tests one for every
+platform and Python they ship for, and the `compiled` job runs the whole suite and the
+Itanium fuzzers against one. Each extra row has a comment in `ci.yml` saying why it is
+there. Add a row when a defect shows up that only that row
 would have caught, and say so in its comment.
 
 Two rules for anyone editing `.github/`:

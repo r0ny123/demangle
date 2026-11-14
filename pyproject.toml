@@ -86,6 +86,15 @@ build = [
     # What hatchling asks for to build an editable install, which is how CI installs.
     "editables",
 ]
+# What the compiled wheels are built with, beside `build`. mypy is pinned exactly: a
+# release can change what mypyc infers, and so what the extensions check at run time.
+compile = [
+    "mypy==2.4.1",
+    "setuptools>=80",
+]
+wheels = [
+    "cibuildwheel==4.3.5",
+]
 dev = [
     { include-group = "lint" },
     { include-group = "build" },
@@ -98,6 +107,11 @@ path = "src/demangle/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/demangle"]
+
+# The compiled Itanium path for CPython's platform wheels; see the hook's docstring.
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "tools/hatch_build.py"
+enable-by-default = false
 
 [tool.hatch.build.targets.sdist]
 # Packagers run the suite from the sdist, so it must ship the tests and their corpora.
@@ -149,6 +163,28 @@ dependency-groups = ["docs"]
 build = "mkdocs build --strict {args}"
 serve = "mkdocs serve {args}"
 
+# The compiled wheels; .github/workflows/wheels.yml exports the two requirements files
+# from uv.lock first, so each environment installs by hash and builds without isolation.
+# PyPy and free-threaded builds take the pure wheel.
+[tool.cibuildwheel]
+build = ["cp311-*", "cp312-*", "cp313-*", "cp314-*"]
+build-frontend = { name = "build", args = ["--no-isolation"] }
+before-build = "python -m pip install --require-hashes --only-binary :all: -r {project}/build-requirements.txt"
+environment = { HATCH_BUILD_HOOK_ENABLE_CUSTOM = "true" }
+before-test = "python -m pip install --require-hashes --only-binary :all: -r {project}/test-requirements.txt"
+test-environment = { DEMANGLE_EXPECT_COMPILED = "1" }
+test-command = "python -m pytest -q -p no:cacheprovider {project}/tests/test_compiled.py {project}/tests/test_conformance.py"
+
+[tool.cibuildwheel.linux]
+archs = ["native"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+
+[tool.cibuildwheel.macos]
+# Both from the Apple silicon runner, which cross-compiles the x86_64 ones.
+archs = ["arm64", "x86_64"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The disassembler scripts import their shared core by name, as a host would find it beside them.
@@ -189,6 +225,9 @@ python-version = "3.11"
 extra-paths = ["integrations"]
 
 # The disassembler scripts import modules that exist only inside IDA, Binary Ninja and
-# Ghidra. They are not installed here, and the scripts are not wheel contents.
+# Ghidra. They are not installed here, and the scripts are not wheel contents. Nor is
+# the `compile` group, which only the compiled build hook imports.
 [tool.ty.analysis]
-allowed-unresolved-imports = ["ida_*", "idautils", "binaryninja", "binaryninja.**", "ghidra.**"]
+allowed-unresolved-imports = [
+    "ida_*", "idautils", "binaryninja", "binaryninja.**", "ghidra.**", "mypyc.**", "setuptools",
+]

@@ -9,7 +9,7 @@
 **Read mangled symbol names in pure Python.** Itanium C++ (GCC, Clang), MSVC, Rust,
 Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi and C++Builder, Ada/GNAT, JNI, and
 the pre-Itanium C++ families (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior), with no
-dependencies and no native code.
+dependencies.
 
 ```python
 >>> import demangle
@@ -27,9 +27,11 @@ dependencies and no native code.
 'CreateFileW'
 ```
 
-- **One wheel, everywhere.** Pure Python on CPython 3.11+ and PyPy, and in the browser
-  through Pyodide. Nothing to compile at install time and no native library to find at
-  run time.
+- **Pure Python, everywhere.** CPython 3.11+, PyPy, and the browser through Pyodide.
+  On CPython for Linux, macOS and Windows, pip picks a wheel whose Itanium parser is
+  compiled by mypyc from the same source, about twice as fast; everything else gets the
+  pure wheel, as does `pip install --no-binary demangle demangle`. Nothing to compile at
+  install time.
 - **A tree, not just a string.** `parse()` returns nodes to walk and `signature()` the
   parts of a name, so nothing has to take a C++ declaration apart with a regular
   expression.

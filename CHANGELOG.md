@@ -21,6 +21,12 @@ the reference demanglers, and a **Performance** section.
 
 ### Performance
 
+- **Itanium names read about twice as fast on CPython.** The wheels for Linux, macOS
+  and Windows on CPython 3.11 to 3.14 now carry the reader, the spelling builder and the
+  Itanium parser compiled with mypyc, from the same source: 19 us a name cold over the
+  libstdc++ and real-world corpora, against 40 for 0.6.0 and for the pure code. The
+  output is the same byte for byte. PyPy, free-threaded builds, other platforms and
+  `--no-binary` installs get the pure wheel, which is unchanged.
 - **The playground reads its first name about half a second sooner.** A site built on
   Python 3.13, the runtime's own, ships the package as bytecode, so the browser no longer
   compiles it on every visit.

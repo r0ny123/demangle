@@ -47,9 +47,15 @@ jobs:
           name: distributions
           path: dist/
 
+  wheels:
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/wheels.yml
+    permissions:
+      contents: read
+
   publish:
     name: publish to PyPI
-    needs: build
+    needs: [build, wheels]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -60,10 +66,11 @@ jobs:
       # token, so no PyPI secret exists to steal. The job runs nothing but the two actions.
       id-token: write
     steps:
+      # The sdist and pure wheel from `build`, and every `wheels-*` artifact.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: distributions
           path: dist/
+          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           print-hash: true
