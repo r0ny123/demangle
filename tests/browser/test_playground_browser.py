@@ -877,3 +877,13 @@ def test_no_page_of_the_built_site_loads_anything_from_another_host():
         (page.relative_to(SITE).as_posix(), a or b) for page in pages for a, b in loads.findall(page.read_text("utf-8"))
     }
     assert found == set()
+
+
+def test_a_documentation_page_asks_no_other_host_for_anything(context, site_server):
+    """What the tags above cannot show: a script that fetches, as Material's own repository
+    link does for the star count."""
+    page = context.new_page()
+    asked = []
+    page.on("request", lambda request: asked.append(request.url))
+    page.goto(site_server + "/usage/", wait_until="networkidle")
+    assert asked and [url for url in asked if not url.startswith(site_server + "/")] == []
