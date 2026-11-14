@@ -34,26 +34,29 @@ _TIGHT_ENDINGS = (" ", "(")
 
 
 class Spelling:
-    """One type or name, split around its declarator position."""
+    """One type or name, split around its declarator position.
 
-    __slots__ = ("is_array", "is_function", "left", "members", "ref_kind", "right")
+    Only the two halves are stored. What else a declarator needs to know is a class
+    attribute here and is overridden by the subclasses below, which is what lets the
+    commonest construction in a parse, a plain name, cost two stores rather than six.
+    """
 
-    #: Set only on `QualifiedSpelling`; class attributes here so the common unqualified
-    #: case pays no extra stores.
+    __slots__ = ("left", "right")
+
+    is_function = False
+    is_array = False
+    #: "", "&" or "&&", for reference collapsing.
+    ref_kind = ""
+    #: For a parameter pack, its members; None otherwise. Kept as a sequence because
+    #: a declarator applies to every member: `Dp O T_` over three arguments is three
+    #: rvalue references.
+    members = None
     cv = ()
     stem = ""
 
-    def __init__(self, left, right="", is_function=False, is_array=False, ref_kind="", members=None):
+    def __init__(self, left, right=""):
         self.left = left
         self.right = right
-        self.is_function = is_function
-        self.is_array = is_array
-        #: "", "&" or "&&", for reference collapsing.
-        self.ref_kind = ref_kind
-        #: For a parameter pack, its members; None otherwise. Kept as a sequence because
-        #: a declarator applies to every member: `Dp O T_` over three arguments is three
-        #: rvalue references.
-        self.members = members
 
     def spell(self, declarator=""):
         """The type with `declarator` -- a name -- written where a declarator goes.
@@ -81,6 +84,38 @@ class Spelling:
         return f"Spelling({self.left!r}, {self.right!r})"
 
 
+class _FunctionSpelling(Spelling):
+    __slots__ = ()
+    is_function = True
+
+
+class _ArraySpelling(Spelling):
+    __slots__ = ()
+    is_array = True
+
+
+class _LvalueReferenceSpelling(Spelling):
+    __slots__ = ()
+    ref_kind = "&"
+
+
+class _RvalueReferenceSpelling(Spelling):
+    __slots__ = ()
+    ref_kind = "&&"
+
+
+_BY_REF_KIND = {"": Spelling, "&": _LvalueReferenceSpelling, "&&": _RvalueReferenceSpelling}
+
+
+class _PackSpelling(Spelling):
+    __slots__ = ("members",)
+
+    def __init__(self, left, members):
+        self.left = left
+        self.right = ""
+        self.members = members
+
+
 class QualifiedSpelling(Spelling):
     """A type that ends in cv-qualifiers, remembering which and what precedes them.
 
@@ -88,10 +123,12 @@ class QualifiedSpelling(Spelling):
     what `collapse_duplicate_qualifiers` needs and what nothing else does.
     """
 
-    __slots__ = ("cv", "stem")
+    __slots__ = ("cv", "is_array", "stem")
 
     def __init__(self, left, right="", is_array=False, cv=(), stem=""):
-        super().__init__(left, right, is_array=is_array)
+        self.left = left
+        self.right = right
+        self.is_array = is_array
         self.cv = cv
         self.stem = stem
 
@@ -110,7 +147,7 @@ def pack_of(members):
         else:
             flattened.append(member)
     flattened = tuple(flattened)
-    return Spelling(", ".join([member.left + member.right for member in flattened]), members=flattened)
+    return _PackSpelling(", ".join([member.left + member.right for member in flattened]), flattened)
 
 
 def _respace_bound(left, right):
@@ -161,8 +198,8 @@ def _wrap(inner, token, ref_kind="", tight_after_star=False, tight_before_group=
         spacer = "" if tight_before_group or not left or left.endswith(tight) else " "
         # The bound follows the `)`, so it is spaced against that: `int vector[4] (*) [3]`.
         right = ")" + _respace_bound(")", inner.right) if inner.is_array else ")" + inner.right
-        return Spelling(left + spacer + "(" + token, right, ref_kind=ref_kind)
-    return Spelling(inner.left + token, inner.right, ref_kind=ref_kind)
+        return _BY_REF_KIND[ref_kind](left + spacer + "(" + token, right)
+    return _BY_REF_KIND[ref_kind](inner.left + token, inner.right)
 
 
 class _BuiltinCache(dict):
@@ -322,12 +359,12 @@ class SpellingBuilder(Builder):
         if inner.is_function:
             # cv on a function type qualifies the implicit object parameter, so it
             # trails the parameter list rather than the return type.
-            return Spelling(inner.left, inner.right + " " + " ".join(qualifiers), is_function=True)
+            return _FunctionSpelling(inner.left, inner.right + " " + " ".join(qualifiers))
         if not (self.collapse_duplicate_qualifiers and cv):
             # Both `int const` and `int* const` are postfix in C++, as the references agree.
             left = inner.left + " " + " ".join(qualifiers)
             right = _respace_bound(left, inner.right) if inner.is_array else inner.right
-            return Spelling(left, right, is_array=inner.is_array)
+            return (_ArraySpelling if inner.is_array else Spelling)(left, right)
         # Repeated qualifiers move to the end: the outermost is the one c++filt prints last.
         stem = inner.stem if inner.cv else inner.left
         combined = tuple(q for q in inner.cv if q not in qualifiers) + tuple(qualifiers)
@@ -349,7 +386,7 @@ class SpellingBuilder(Builder):
         if inner.ref_kind == "&":
             return inner
         if inner.ref_kind == "&&":
-            return Spelling(inner.left[:-1], inner.right, ref_kind="&")
+            return _LvalueReferenceSpelling(inner.left[:-1], inner.right)
         return _wrap(inner, "&", ref_kind="&", tight_after_star=self.tight_after_star)
 
     def rvalue_reference(self, inner):
@@ -400,13 +437,13 @@ class SpellingBuilder(Builder):
         # `Libcall const (&) [5][4]`. Dimensions are built inside out.
         if inner.is_array:
             right = right.lstrip(" ")
-        return Spelling(inner.left, _respace_bound(inner.left, bound + right), is_array=True)
+        return _ArraySpelling(inner.left, _respace_bound(inner.left, bound + right))
 
     def function(self, returns, parameters, suffix="", name=None):
         rendered = ", ".join([parameter.left + parameter.right for parameter in parameters])
         params = "(" + rendered + ")"
         if returns is None:
-            result = Spelling("", params + suffix, is_function=True)
+            result = _FunctionSpelling("", params + suffix)
         else:
             # No space after a return type that wraps around the name (a pointer to a
             # function or array: `int (*f())()`), told apart by having a right half.
@@ -418,9 +455,9 @@ class SpellingBuilder(Builder):
             # declarator keeps it before: `int () const []`, `int (*f() const)()`.
             function_return = wraps and returns.right.lstrip().startswith("(")
             if function_return:
-                result = Spelling(left + joiner, params + returns.right + suffix, is_function=True)
+                result = _FunctionSpelling(left + joiner, params + returns.right + suffix)
             else:
-                result = Spelling(left + joiner, params + suffix + returns.right, is_function=True)
+                result = _FunctionSpelling(left + joiner, params + suffix + returns.right)
         if name is None:
             return result
         return Spelling(result.spell(str(name)))
