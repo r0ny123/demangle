@@ -665,7 +665,7 @@ class ItaniumParser:
     # because when the guard itself raises no `finally` has undone its increment.
 
     def parse(self):
-        """<mangled-name> ::= _Z <encoding> [. <vendor-specific suffix>]"""
+        """`<mangled-name> ::= _Z <encoding> [. <vendor-specific suffix>]`"""
         reader = self.reader
         mangled = reader.text
         if mangled.startswith("_Z"):
@@ -756,7 +756,7 @@ class ItaniumParser:
         return result
 
     def encoding(self):
-        """<encoding> ::= <function name> <bare-function-type> | <data name> | <special-name>
+        """`<encoding> ::= <function name> <bare-function-type> | <data name> | <special-name>`
 
         Every path out of here records what the entity *was* in `_entity_shape`, for
         `_entity_operand` to read back. An encoding nested inside this one -- a
@@ -788,7 +788,7 @@ class ItaniumParser:
         return self.bare_function_type(name, quals, ref_qualifier, is_template)
 
     def bare_function_type(self, name, quals=(), ref_qualifier="", is_template=False):
-        """<bare-function-type> ::= <signature type>+
+        """`<bare-function-type> ::= <signature type>+`
 
         The first type is the return type *only* for a template specialisation: a plain
         function does not encode its return type, because overloads cannot differ by it.
@@ -1010,7 +1010,7 @@ class ItaniumParser:
         return SPECIAL_ENCODING_NAMES[code]
 
     def call_offset(self):
-        """<call-offset> ::= h <nv-offset> _ | v <v-offset> _"""
+        """`<call-offset> ::= h <nv-offset> _ | v <v-offset> _`"""
         reader = self.reader
         kind = reader.take()
         if kind not in ("h", "v"):
@@ -1024,8 +1024,8 @@ class ItaniumParser:
     # -- 5.1.2 names -----------------------------------------------------------
 
     def name(self, as_type=False):
-        """<name> ::= <nested-name> | <unscoped-name>
-                    | <unscoped-template-name> <template-args> | <local-name>
+        """`<name> ::= <nested-name> | <unscoped-name>
+        | <unscoped-template-name> <template-args> | <local-name>`
 
         Returns (handle, cv-qualifiers, ref-qualifier, is-template-specialisation).
         The qualifiers belong to the *function* the name introduces rather than to the
@@ -1182,13 +1182,13 @@ class ItaniumParser:
         return pending
 
     def apply_template_args(self, base):
-        """Attach <template-args> to a name.
+        """Attach `<template-args>` to a name.
 
         Deliberately records nothing. A function template specialisation is not a
         substitution candidate: 5.1.10 excludes function names, and both reference
         demanglers reject `_Z1fIiEvS0_`, proving the table for `_Z1fIiEv...` holds only
         `f`. Where the specialisation is a *type* rather than a function, `_type()`
-        records it, because there the candidate is <type>.
+        records it, because there the candidate is `<type>`.
         """
         pending = self._conversion_pending()
         arguments = self.template_arguments(install_scope=True)
@@ -1385,15 +1385,15 @@ class ItaniumParser:
             raise ParseError(self._mangled, self.reader.pos, f"{what} after the start of a nested name")
 
     def prefix_component(self, parts, as_type=False, module=""):
-        """One component of a <prefix>, appended to `parts`.
+        """One component of a `<prefix>`, appended to `parts`.
 
         Returns `(is-template-specialisation, module)`. Only the first answer for the
         final component reaches the caller, and this is where it is known. The second is
         a C++20 module name this component turned out to be rather than contain, which
         decorates the component *after* it.
 
-        Every <prefix> is a substitution candidate (5.1.10) *except* the last, which is
-        an <unqualified-name> -- and function and operator names are explicitly excluded.
+        Every `<prefix>` is a substitution candidate (5.1.10) *except* the last, which is
+        an `<unqualified-name>` -- and function and operator names are explicitly excluded.
         We cannot tell we are on the last component until the closing `E` is in sight,
         so the check is "is the next character `E`".
         """
@@ -1551,7 +1551,7 @@ class ItaniumParser:
         return self._as_special_operand(self.type_)
 
     def _object_name(self):
-        """A special name's <object name>: a <name>, with nothing of a function about it.
+        """A special name's `<object name>`: a `<name>`, with nothing of a function about it.
 
         `GV`, `TH`, `TW` and `GR` name data. `parseSpecialName` reads the name and
         returns; both references refuse the leftover, so the name is read with no
@@ -1560,9 +1560,9 @@ class ItaniumParser:
         return self._as_special_operand(lambda: self.name()[0])
 
     def local_name(self, as_type=False):
-        """<local-name> ::= Z <function encoding> E <entity name> [<discriminator>]
+        """`<local-name> ::= Z <function encoding> E <entity name> [<discriminator>]
         | Z <function encoding> E s [<discriminator>]
-        | Z <function encoding> Ed [<parameter number>] _ <entity name>
+        | Z <function encoding> Ed [<parameter number>] _ <entity name>`
         """
         reader = self.reader
         builder = self.builder
@@ -1704,14 +1704,14 @@ class ItaniumParser:
     # -- 5.1.2 unqualified names -----------------------------------------------
 
     def unqualified_name(self, scope=None, module="", internal=False):
-        """<unqualified-name> ::= [<module-name>] <name body> [<abi-tags>]
+        """`<unqualified-name> ::= [<module-name>] <name body> [<abi-tags>]`
 
         ```
         <name body> ::= <operator-name> | <ctor-dtor-name> | <source-name>
                       | <unnamed-type-name> | DC <source-name>+ E
         ```
 
-        `module` is a C++20 module name the caller already read -- a <prefix> can reach
+        `module` is a C++20 module name the caller already read -- a `<prefix>` can reach
         one through a substitution -- and is spelled after the name: `Foo@MOD`.
         """
         reader = self.reader
@@ -1944,12 +1944,12 @@ class ItaniumParser:
         return stop
 
     def source_name(self):
-        """<source-name> ::= <positive length number> <identifier>"""
+        """`<source-name> ::= <positive length number> <identifier>`"""
         text = self.plain_source_name()
         return text + self.abi_tags() if self.reader.peek() == "B" else text
 
     def plain_source_name(self):
-        """A <source-name> without the ABI tags that may follow it.
+        """A `<source-name>` without the ABI tags that may follow it.
 
         Split out because a module name goes *between* the two: `3FooB3ABI` inside
         module `MOD` is `Foo@MOD[abi:ABI]`, not `Foo[abi:ABI]@MOD`.
@@ -1987,7 +1987,7 @@ class ItaniumParser:
         return text
 
     def _identifier(self):
-        """The <source-name> of an ABI tag: a length and an identifier, and no more.
+        """The `<source-name>` of an ABI tag: a length and an identifier, and no more.
 
         `source_name` reads any tags that follow the identifier, which is right
         everywhere but here: inside a tag, a following `B` opens the *next* tag of the
@@ -2182,7 +2182,7 @@ class ItaniumParser:
         return self.builder.raw(f"'lambda{index}'{signature}")
 
     def operator_name(self):
-        """<operator-name>, including conversions and literal operators."""
+        """`<operator-name>`, including conversions and literal operators."""
         reader = self.reader
         code = reader.peek2()
 
@@ -2393,7 +2393,7 @@ class ItaniumParser:
         return self.template_param_binding()[0]
 
     def template_param_binding(self):
-        """A <template-param>, as both what it resolves to and the reference itself.
+        """A `<template-param>`, as both what it resolves to and the reference itself.
 
         ```
         <template-param> ::= T_ | T <parameter-2 non-negative number> _
@@ -2511,7 +2511,7 @@ class ItaniumParser:
         return self.builder.raw("T" + ("" if index == 0 else str(index - 1)))
 
     def decltype_(self):
-        """<decltype> ::= Dt <expression> E | DT <expression> E"""
+        """`<decltype> ::= Dt <expression> E | DT <expression> E`"""
         reader = self.reader
         reader.expect("D")
         marker = reader.take()
@@ -2904,7 +2904,7 @@ class ItaniumParser:
         return None
 
     def fixed_point_type(self):
-        """<builtin-type> ::= [DS] DA <int-code> | [DS] DR <int-code>
+        """`<builtin-type> ::= [DS] DA <int-code> | [DS] DR <int-code>`
 
         Embedded C's saturating and non-saturating fixed-point types (N1169), added to
         the ABI in 2023. `DS` is the `_Sat` qualifier and comes first.
@@ -2922,7 +2922,7 @@ class ItaniumParser:
         return f"{prefix}{integer}{'_Accum' if kind == 'DA' else '_Fract'}"
 
     def vector_type(self):
-        """<type> ::= Dv <number> _ <type> | Dv _ <expression> _ <type>
+        """`<type> ::= Dv <number> _ <type> | Dv _ <expression> _ <type>`
 
         And two shapes the ABI text does not have. Clang writes a dependent size with
         no underscore before it, `Dv <expression> _ <type>` -- `mangleType` for a
@@ -2958,19 +2958,19 @@ class ItaniumParser:
         return self.builder.raw(f"{spelled} vector[{size}]")
 
     def class_enum_type(self):
-        """<class-enum-type> ::= <name> | Ts <name> | Tu <name> | Te <name>
+        """`<class-enum-type> ::= <name> | Ts <name> | Tu <name> | Te <name>`
 
-        `as_type` matters for a <local-name>: whether a signature follows the entity is
+        `as_type` matters for a `<local-name>`: whether a signature follows the entity is
         not decidable from the grammar alone, only from where the name sits.
-        `Z <encoding> E <entity>` reached as an <encoding> may be a local *function*, and
-        the types after it are its parameters; reached as a <type> it names a local class,
+        `Z <encoding> E <entity>` reached as an `<encoding>` may be a local *function*, and
+        the types after it are its parameters; reached as a `<type>` it names a local class,
         and what follows belongs to whatever mentioned it.
         """
         name, _, _, _ = self.name(as_type=True)
         return name
 
     def _at_function_type(self):
-        """Whether the cursor is on a <function-type>, cv-qualifiers and all.
+        """Whether the cursor is on a `<function-type>`, cv-qualifiers and all.
 
         The optional prefixes -- up to three cv-qualifiers, then one exception
         specification, then `Dx` -- belong to the production rather than wrapping it, so
@@ -2990,7 +2990,7 @@ class ItaniumParser:
         return char == "F"
 
     def qualified_type(self):
-        """<qualified-type>, as the reference reads it: one production, one candidate.
+        """`<qualified-type>`, as the reference reads it: one production, one candidate.
 
         A vendor qualifier and the cv-qualifiers underneath it are read together, so
         `U3AS1Ki` enters *one* substitution and not two. That matters for every later
@@ -3169,7 +3169,7 @@ class ItaniumParser:
         return self.builder.array(self._over_a_pack(self.type_()), dimension)
 
     def member_pointer_type(self):
-        """<pointer-to-member-type> ::= M <class type> <member type>"""
+        """`<pointer-to-member-type> ::= M <class type> <member type>`"""
         reader = self.reader
         reader.expect("M")
         owner = self._over_a_pack(self.type_())
@@ -3440,7 +3440,7 @@ class ItaniumParser:
         `J` alike, and `llvm-cxxfilt` refuses the older one.
 
         Returns `(handle, is_empty_pack)`. The handle is None for a
-        <template-param-decl>, which declares a parameter rather than supplying one.
+        `<template-param-decl>`, which declares a parameter rather than supplying one.
 
         Emptiness is returned rather than recorded on the parser because argument lists
         nest: an empty pack inside `AnalysisManager<Module, JE>` would otherwise still be
@@ -3787,8 +3787,8 @@ class ItaniumParser:
         heavily templated C++ and absent from simple test cases.
 
         The two `sr` forms without `N` are told apart by what follows: an
-        <unresolved-qualifier-level> is a <simple-id> and so begins with a digit, while
-        an <unresolved-type> begins with `T`, `D` or `S`.
+        `<unresolved-qualifier-level>` is a `<simple-id>` and so begins with a digit, while
+        an `<unresolved-type>` begins with `T`, `D` or `S`.
         """
         reader = self.reader
         prefix = "::" if reader.eat("gs") else ""
@@ -3839,7 +3839,7 @@ class ItaniumParser:
 
         `sr 1A 3baz IT_E ...` is ambiguous. Under the modern grammar it opens a list of
         qualifier levels, `A::baz<T>::...`, that runs to an `E`. Under the grammar the
-        ABI had before the <unresolved-name> productions it is `sr <type> <name>`, the
+        ABI had before the `<unresolved-name>` productions it is `sr <type> <name>`, the
         class `A` and the member `baz<T>`, with no `E` at all -- and that is what g++
         13 still writes for every member of a class that is not itself dependent:
         `decltype(A::baz<T> + t)` is `_Z1kIiEDTplsr1A3bazIT_Efp_ES1_`, where Clang
@@ -3931,8 +3931,8 @@ class ItaniumParser:
         return f"<{rendered}>"
 
     def base_unresolved_name(self, qualified=False):
-        """<base-unresolved-name> ::= <simple-id> | on <operator-name> [<template-args>]
-        | dn <destructor-name>
+        """`<base-unresolved-name> ::= <simple-id> | on <operator-name> [<template-args>]
+        | dn <destructor-name>`
 
         `qualified` says an `sr` scope precedes it, which is what decides whether an
         operator name is a plain operand -- see below.
@@ -3961,7 +3961,7 @@ class ItaniumParser:
         return text
 
     def destructor_name(self):
-        """<destructor-name> ::= <unresolved-type> | <simple-id>"""
+        """`<destructor-name> ::= <unresolved-type> | <simple-id>`"""
         if self.reader.peek() in DIGITS:
             return self.simple_id()
         return self.unresolved_type()
