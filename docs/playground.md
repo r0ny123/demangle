@@ -3,14 +3,16 @@
 **[Open the playground](https://r0ny123.github.io/demangle/playground/)**
 
 The playground is this library running in your browser, on
-[Pyodide](https://pyodide.org/) in a Web Worker. The site serves the runtime itself, so
-the page loads nothing from anyone else, and the symbols you paste never leave it.
+[Pyodide](https://pyodide.org/) in a Web Worker. The site serves the runtime itself,
+[checked against pinned hashes](SECURITY.md) when it's built, so the page loads nothing
+from anyone else, and the symbols you paste never leave it.
 
 Paste a name and it's read as you type, by whichever scheme claims it or the one you
 pick. Next to the spelling you get:
 
-- the output in either style, `llvm` or `gnu`, as the whole declaration, with the input
-  beside it, as the base name only, or without the parameters;
+- the output in either style, `llvm` or `gnu`, in one of four views: the whole
+  declaration, the input beside it, the base name only, or the name without its
+  parameters;
 - the parts `demangle.signature()` gives;
 - the parse tree, collapsible, and the same tree as JSON to copy. A shared node (`$ref`)
   links to where it was first written.

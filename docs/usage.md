@@ -29,6 +29,14 @@ exist.
 'example.com/m/v2.5.(*T).Method'
 ```
 
+`demangle_all()` is the same over an iterable, yielding results in order. Both share
+one result cache, and a symbol table repeats its names a lot:
+
+```python
+>>> list(demangle.demangle_all(["_Z1fv", "main"]))
+['f()', 'main']
+```
+
 ## The tree
 
 `parse()` gives you the tree the spelling is rendered from:
@@ -146,8 +154,9 @@ recursion depth 256
 'f(int*******'
 ```
 
-The defaults sit well above anything a compiler emits. `RELAXED_LIMITS` is for input
-you trust. The [security policy](SECURITY.md) has the reasoning.
+The defaults, `DEFAULT_LIMITS`, sit well above anything a compiler emits.
+`RELAXED_LIMITS` is for input you trust, and every call that reads a name takes
+`limits=`. The [security policy](SECURITY.md) has the reasoning.
 
 ## Bare types
 
@@ -188,8 +197,6 @@ line it was. `demangle_stream(sys.stdin, sys.stdout)` does the same a line at a 
 ```python
 >>> demangle.detect("?f@@YAXH@Z")
 'msvc'
->>> list(demangle.demangle_all(["_Z1fv", "main"]))    # shares the cache
-['f()', 'main']
 ```
 
 `detect()` says what a name looks like, which is cheap. `detect(name, strict=True)`
@@ -212,7 +219,8 @@ b'foo::bar()'
 ```
 
 The others are `demangleb_strict`, `detectb`, `parseb`, `signatureb`, `demangleb_type`
-and `parseb_type`. Bytes that don't decode come back exactly as given.
+and `parseb_type`. `demangleb()` hands back bytes it can't read exactly as given,
+undecodable ones included; the strict forms raise.
 
 ## Styles
 
@@ -226,8 +234,8 @@ wrong. Pick whichever you need to match:
 'std::vector<int, std::allocator<int> >::push_back(int const&)'
 ```
 
-`style()` builds a style that leaves things out, for one call, without registering
-anything globally:
+`style()` builds a style that leaves things out. You pass it to the calls that want
+it, and nothing is registered globally:
 
 ```python
 >>> demangle.demangle("?g@C@@UEAAXXZ")
@@ -291,7 +299,7 @@ $ demangle --types -l itanium PKFvRiE              # a bare type, as `c++filt -t
 $ demangle --list-languages                        # schemes and their aliases
 ```
 
-Printing less than the full declaration:
+Changing what's printed:
 
 ```console
 $ demangle -p _ZNSt6vectorIiSaIiEE9push_backERKi   # the name, without the signature

@@ -3,17 +3,17 @@
 `demangle()` gives you a string. `parse()` gives you the tree that string is rendered
 from, which is what you want once the question is about structure instead of text.
 This page takes one such question against a library you already have. The numbers are
-measured, and a test reruns the example.
+measured, and a test checks the count.
 
 ## The task
 
 Find every function `libstdc++.so.6` exports that takes a `std::basic_string` by const
 reference.
 
-It's easy to get nearly right. `basic_string` shows up inside other types, template
-arguments and return types. A `const&` in the spelling may belong to a different
-parameter. And the element types have `<`, `>` and `,` of their own, so counting
-brackets won't find you the argument list.
+It's easy to get nearly right and fiddly to get exactly right. `basic_string` shows up
+inside other types, template arguments and return types. A `const&` in the spelling may
+belong to a different parameter. And the element types have `<`, `>` and `,` of their
+own, so counting brackets won't find you the argument list.
 
 ## Reading the symbols
 
@@ -119,7 +119,7 @@ next(go.find("path")).text  # 'example.com/m/v2.5'
 next(go.find("receiver")).pointer  # True
 ```
 
-The Go one is a good example of why. You can't split
+The Go one is something string splitting can't do. You can't split
 `example.com/m/v2%2e5.(*T).Method` into a package and a name by looking for a `.`,
 because the package path has one of its own, written `%2e` so it isn't ambiguous. The
 tree hands it over already decoded.

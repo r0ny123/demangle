@@ -16,16 +16,16 @@ import demangle
 labels = {address: demangle.demangle(name) for address, name in table}
 ```
 
-`demangle_all()` does the same over an iterable, and `demangleb()` takes the bytes a
-string table really holds. [Using the library](usage.md#bytes) covers both.
+[`demangle_all()`](usage.md#demangling-a-name) does the same over an iterable, and
+[`demangleb()`](usage.md#bytes) takes the bytes a string table really holds.
 
 ## Say which schemes the table can hold
 
 A PE built by MSVC holds MSVC names and, through MinGW or Rust, Itanium and Rust ones.
 A Mach-O holds Itanium, Swift and Objective-C. Detecting among every scheme is right
-for a name you know nothing about and wrong for a table you do: a Go-looking path
-shouldn't be rewritten in a Windows binary, and Objective-C metadata should stay as
-the linker wrote it if your tool labels that some other way.
+for a name you know nothing about and wrong for a table whose origin you know: a
+Go-looking path shouldn't be rewritten in a Windows binary, and Objective-C metadata
+should stay as the linker wrote it if your tool labels that some other way.
 
 Pass `language=` a sequence and detection runs among those schemes only, in the usual
 order:
@@ -43,9 +43,8 @@ it is, a PDB record for instance.
 ## Which language is this binary?
 
 A tool that scores a binary's language wants to know which scheme read a name, not
-which one it looked like. `detect()` is the cheap answer, made on a prefix so it can
-run over every symbol. `strict=True` is the answer `demangle()` would act on, and
-costs a parse:
+which one it looked like. That's the difference between
+[`detect()` and `detect(strict=True)`](usage.md#choosing-the-scheme):
 
 ```python
 >>> demangle.detect("_ZN3Foo"), demangle.detect("_ZN3Foo", strict=True)
@@ -61,8 +60,9 @@ counting `detect(name) == "rust"`.
 ## A label that survives the compiler
 
 Compilers spell the same function differently. MSVC writes `int const &`, the access
-specifier and the calling convention. GCC writes `int const&` and neither. The
-qualified name doesn't change, which makes it the label to match on across builds:
+specifier and the calling convention, and puts `class` in front of a template argument.
+GCC writes `int const&` and none of those. Turn `tag_kind` off and the qualified name is
+the same on both sides, which makes it the label to match on across builds:
 
 ```python
 >>> plain = demangle.style("llvm", msvc={"tag_kind": False})
@@ -91,4 +91,5 @@ Two things from [Using the library](usage.md) matter more here than in a script.
 service should call [`preload()`](usage.md#start-up) at start-up so its first request
 doesn't pay for importing a scheme. And a symbol table is untrusted input, so keep the
 default [`limits`](usage.md#errors-and-limits) for any table from a binary you don't
-know.
+know: a few dozen bytes can describe a type nested deep enough to exhaust the stack, or
+a spelling larger than memory.
