@@ -79,6 +79,17 @@
   letter-spacing: -0.01em;
 }
 
+/* Colour alone does not mark a link for everyone. */
+.md-typeset :is(p, li, td, dd, h2) a:not(.headerlink) {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentcolor 35%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+.md-typeset :is(p, li, td, dd, h2) a:not(.headerlink):hover {
+  text-decoration-color: currentcolor;
+}
+
 .md-typeset pre > code,
 .md-typeset table:not([class]),
 .md-typeset .grid.cards > ul > li {
