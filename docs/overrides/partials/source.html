@@ -1,0 +1,9 @@
+{#- Material's partial without `data-md-component="source"`, which is what fetches the stars. -#}
+<a href="{{ config.repo_url }}" title="{{ lang.t('source') }}" class="md-source">
+  <div class="md-source__icon md-icon">
+    {% include ".icons/" ~ config.theme.icon.repo ~ ".svg" %}
+  </div>
+  <div class="md-source__repository">
+    {{ config.repo_name }}
+  </div>
+</a>

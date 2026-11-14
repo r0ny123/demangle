@@ -3,10 +3,15 @@ site_description: Read mangled symbol names -- Itanium C++, MSVC, Rust, Swift, O
 site_url: https://r0ny123.github.io/demangle/
 repo_url: https://github.com/r0ny123/demangle
 repo_name: r0ny123/demangle
-edit_uri: edit/main/
 
 hooks:
   - docs/hooks.py
+
+# Build inputs that live under docs/ and are not pages.
+exclude_docs: |
+  hooks.py
+  __pycache__/
+  overrides/
 
 nav:
   - Home: index.md
@@ -22,12 +27,12 @@ nav:
       - Schemes: reference/schemes.md
   - Conformance and security:
       - Conformance: CONFORMANCE.md
-      - Comparison with other demanglers: comparison.md
+      - Comparison: comparison.md
       - Security policy: SECURITY.md
   - Development:
       - Architecture: ARCHITECTURE.md
       - Adding a mangling scheme: adding-a-scheme.md
-      - Fuzzing and the reference demanglers: testing.md
+      - Fuzzing: testing.md
       - Contributing: CONTRIBUTING.md
       - Changelog: CHANGELOG.md
 
@@ -45,25 +50,48 @@ validation:
 
 theme:
   name: material
+  # Material's own source link asks api.github.com for stars on every page; this one does not.
+  custom_dir: docs/overrides
   # The system's own fonts: Material's default is a stylesheet from Google Fonts on every page,
   # and this site loads nothing from a third party.
   font: false
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  icon:
+    repo: fontawesome/brands/github
   features:
-    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.path
+    - navigation.footer
     - navigation.top
     - content.code.copy
     - search.suggest
+    - search.highlight
     - toc.follow
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: custom
+      accent: custom
       toggle: { icon: material/weather-night, name: Switch to dark mode }
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: custom
+      accent: custom
       toggle: { icon: material/weather-sunny, name: Switch to light mode }
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  generator: false
 
 markdown_extensions:
   - admonition
+  # The card grid on the home page.
+  - attr_list
+  - md_in_html
   # The prose writes a dash as `--`; only that is converted, quotes are left alone.
   - smarty: { smart_quotes: false, smart_angled_quotes: false, smart_ellipses: false }
   - toc: { permalink: true, toc_depth: 3 }

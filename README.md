@@ -6,6 +6,7 @@
 [![Docs](https://img.shields.io/badge/docs-r0ny123.github.io-blue)](https://r0ny123.github.io/demangle/)
 [![Open Playground](https://img.shields.io/badge/Open%20Playground-r0ny123.github.io-2ea44f?logo=googlechrome&logoColor=white)](https://r0ny123.github.io/demangle/playground/)
 
+<!-- --8<-- [start:home] -->
 **Read mangled symbol names in pure Python.** Itanium C++ (GCC, Clang), MSVC, Rust,
 Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi and C++Builder, Ada/GNAT, JNI, and
 the pre-Itanium C++ families (g++ 2.x, cfront/ARM, Lucid, HP aCC, CodeWarrior), with no
@@ -77,20 +78,15 @@ Ghidra](https://r0ny123.github.io/demangle/integrations/) relabel a database wit
 and the [playground](https://r0ny123.github.io/demangle/playground/) runs it in the
 browser.
 
+<!-- --8<-- [end:home] -->
 ## Documentation
 
-The full documentation is at <https://r0ny123.github.io/demangle/>.
-
-| Page | What it covers |
-| --- | --- |
-| [Using the library](https://r0ny123.github.io/demangle/usage/) | Every entry point, styles and options, and the command line |
-| [Working with the tree](https://r0ny123.github.io/demangle/analysing-a-binary/) | One real task through `parse()`, against the regular-expression version |
-| [Labelling a symbol table](https://r0ny123.github.io/demangle/labelling-a-symbol-table/) | One label per address, the same whichever compiler built the binary |
-| [API reference](https://r0ny123.github.io/demangle/reference/api/) | Signatures and docstrings |
-| [Conformance](https://r0ny123.github.io/demangle/CONFORMANCE/) | What each scheme is measured against, and every number |
-| [Comparison](https://r0ny123.github.io/demangle/comparison/) | Coverage and speed beside LLVM, `cpp_demangle` and `itanium_demangler` |
-| [Security policy](https://r0ny123.github.io/demangle/SECURITY/) | The threat model, the bounds, and how to report privately |
-| [Architecture](https://r0ny123.github.io/demangle/ARCHITECTURE/) | How the parsers, builders and schemes fit together |
+The [documentation](https://r0ny123.github.io/demangle/) has the
+[guide](https://r0ny123.github.io/demangle/usage/), the
+[API reference](https://r0ny123.github.io/demangle/reference/api/), the
+[conformance numbers](https://r0ny123.github.io/demangle/CONFORMANCE/), a
+[comparison](https://r0ny123.github.io/demangle/comparison/) with other demanglers and
+the [security policy](https://r0ny123.github.io/demangle/SECURITY/).
 
 ## Performance
 

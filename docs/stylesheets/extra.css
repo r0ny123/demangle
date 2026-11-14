@@ -1,0 +1,135 @@
+/* The playground's colours, so the docs and the playground read as one site. */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #1967d2;
+  --md-accent-fg-color: #174ea6;
+  --md-code-bg-color: #f8f9fa;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #1a1b1e;
+  --md-code-bg-color: #24262b;
+  --md-typeset-a-color: #8ab4f8;
+  --md-accent-fg-color: #aecbfa;
+}
+
+/* Header, tabs and footer take the page's own colours instead of a coloured bar. */
+[data-md-color-scheme] {
+  --md-primary-fg-color: var(--md-default-bg-color);
+  --md-primary-fg-color--dark: var(--md-code-bg-color);
+  --md-primary-bg-color: var(--md-default-fg-color);
+  --md-primary-bg-color--light: var(--md-default-fg-color--light);
+  --md-footer-bg-color: var(--md-default-bg-color);
+  --md-footer-fg-color: var(--md-default-fg-color);
+  --md-footer-fg-color--light: var(--md-default-fg-color--light);
+  --md-footer-fg-color--lighter: var(--md-default-fg-color--lighter);
+  --site-rule: 1px solid var(--md-default-fg-color--lightest);
+  --site-tint: color-mix(in srgb, var(--md-typeset-a-color) 10%, transparent);
+}
+
+.md-header,
+.md-header--shadow {
+  border-bottom: var(--site-rule);
+  box-shadow: none;
+}
+
+.md-tabs {
+  border-bottom: var(--site-rule);
+}
+
+.md-footer {
+  border-top: var(--site-rule);
+}
+
+/* Empty once `extra.generator` is off. */
+.md-footer-meta {
+  display: none;
+}
+
+.md-tabs__item {
+  padding-inline: 0.1rem;
+}
+
+.md-tabs__link {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 1rem;
+  opacity: 1;
+  color: var(--md-default-fg-color--light);
+}
+
+.md-tabs__link:hover,
+.md-tabs__item--active .md-tabs__link {
+  color: var(--md-default-fg-color);
+}
+
+.md-tabs__item--active .md-tabs__link {
+  background-color: var(--site-tint);
+  font-weight: 600;
+}
+
+.md-typeset h1 {
+  color: var(--md-default-fg-color);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h2,
+.md-typeset h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Colour alone does not mark a link for everyone. */
+.md-typeset :is(p, li, td, dd, h2) a:not(.headerlink) {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentcolor 35%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+.md-typeset :is(p, li, td, dd, h2) a:not(.headerlink):hover {
+  text-decoration-color: currentcolor;
+}
+
+.md-typeset pre > code,
+.md-typeset table:not([class]),
+.md-typeset .grid.cards > ul > li {
+  border: var(--site-rule);
+  border-radius: 0.4rem;
+}
+
+@media screen and (min-width: 60em) {
+  .md-search__form,
+  .md-search__form:hover {
+    border: var(--site-rule);
+    border-radius: 0.4rem;
+    background-color: var(--md-code-bg-color);
+  }
+}
+
+/* Below this width the sidebars fold into the drawer, which has a layout of its own. */
+@media screen and (min-width: 76.25em) {
+  .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link,
+  .md-nav--secondary .md-nav__title {
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .md-nav--primary .md-nav__link--active {
+    margin-inline: -0.4rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.3rem;
+    background-color: var(--site-tint);
+    font-weight: 600;
+  }
+
+  .md-nav--secondary .md-nav__link {
+    margin-top: 0;
+    padding: 0.25rem 0 0.25rem 0.7rem;
+    border-left: 2px solid var(--md-default-fg-color--lightest);
+  }
+
+  .md-nav--secondary .md-nav__link--active {
+    border-left-color: var(--md-typeset-a-color);
+  }
+}
