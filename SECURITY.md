@@ -93,7 +93,7 @@ name that caused it rather than being killed.
 
   ```console
   $ python -m pip install pypi-attestations
-    $ python -m pypi_attestations verify pypi --repository https://github.com/r0ny123/demangle \
+  $ python -m pypi_attestations verify pypi --repository https://github.com/r0ny123/demangle \
         pypi:demangle-0.7.0-py3-none-any.whl
   OK: demangle-0.7.0-py3-none-any.whl
   ```

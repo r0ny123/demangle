@@ -34,7 +34,7 @@ python tools/mutate.py --seed 7         # a different draw; the default draw is 
 python tools/mutate.py --scheme types   # bare <type> encodings, through demangle_type
 ```
 
-Enumeration only reaches short strings, and plenty only shows up once a name is long:
+Enumeration only reaches short strings, and some shapes need a long name:
 a substitution pointing back at an earlier component, a template argument list three
 deep, a return type that's itself a function pointer.
 
@@ -42,7 +42,7 @@ So `tools/mutate.py` starts from the checked-in corpora and damages them: trunca
 delete, duplicate, transpose, substitute a character from the scheme's own alphabet,
 or splice the head of one symbol onto the tail of another. A mutant keeps almost all
 of its parent's structure, so it lands near what compilers emit, where a substitution
-table gets corrupted and not just emptied. The draw is seeded, so a failure reproduces
+table gets corrupted, not just emptied. The draw is seeded, so a failure reproduces
 exactly.
 
 ```console
@@ -52,7 +52,7 @@ python tools/mutate.py --refusals --scheme d --count 20000 --show 40
 
 The gate only compares the mutants this library reads, so a name it refuses and the
 reference reads never reaches it. `--refusals` covers that: every refused mutant goes
-to the reference, and what it read comes back as a list. It's a list and not a gate on
+to the reference, and what it read comes back as a list. It's a list, not a gate, on
 purpose. Most of what it reports is a reference reading past its grammar (libiberty's
 D demangler accepts a static array whose bound has no digits), and the rest is a real
 bug: MSVC's ellipsis-only parameter list, Swift's six uncounted context kinds and two
@@ -99,10 +99,12 @@ can be asked: that a style decides a spelling and never whether a name parses, t
 `signature`, `demangleb` and `parse().to_dict()` raise nothing but a `DemanglingError`
 on a name `demangle` read.
 
-None of that needs a reference, so it seeds from every corpus and not just the seven
+None of that needs a reference, so it seeds from every corpus, not only the seven
 schemes `tools/mutate.py` can ask about, with each corpus's own characters as its
 alphabet. Nim, Free Pascal, Delphi, Go, Objective-C, JNI and CodeWarrior are fuzzed
-here and nowhere else.
+here and nowhere else. A quiet tool proves nothing by being quiet, so it was checked
+against its own target: `--seed 1 --count 20000 --corpus itanium-libcxxabi` reports the
+defect it was written for on the parser as it stood, and nothing on the parser as it is.
 
 ## The MSVC corpus a compiler wrote
 
@@ -123,7 +125,7 @@ no headers here.
 
 It has shapes LLVM's vectors lack. One is a member function's qualifiers written past
 what its return type wraps, as in `char const (& S::b7(void))[2] const`, which is a
-const array and not a const member function. Another is a dynamic initialiser for a
+const array, not a const member function. Another is a dynamic initialiser for a
 qualified variable, which is every namespace-scope object with a non-trivial
 constructor.
 
@@ -185,7 +187,7 @@ python tools/upstream_drift.py --source swift    # one of them
 python tools/upstream_drift.py --cache .drift    # keep the downloads between runs
 ```
 
-A name the corpus already holds with the same expectation is skipped. One it holds
+A name the corpus already holds with the same expectation is counted as unchanged. One it holds
 with a different expectation is reported for a person to read, since the corpora carry
 documented deviations. A name the corpus doesn't hold is new, and a new one this
 library misreads sets exit status 1 (2 means a file couldn't be fetched or read).
@@ -219,23 +221,24 @@ The package is a third party's native wheel, so the weekly workflow keeps it awa
 the token that files issues:
 
 - The `llvm` job runs it alone, with `contents: read`, no secret and no credential left
-  by checkout. A separate step wouldn't be enough, since steps of one job share
-  `GITHUB_ENV` and `GITHUB_PATH`.
+  by checkout. A separate step wouldn't be enough: steps of one job share `GITHUB_ENV`
+  and `GITHUB_PATH`, so code in one can set `PATH` or `LD_PRELOAD` for the next.
 - It installs from `tools/llvm-oracle-requirements.txt` with `--require-hashes
   --only-binary :all:`, and scores with `--require-llvm` so a broken install is an
-  error and not a clean week. It uploads a report and an exit status.
-- The `drift` job, the only one with `issues: write`, never loads the binding. It reads
-  that artifact as data and copies the report into the issue body, and it runs whatever
-  became of `llvm`, so the fetched vectors still get their issue in a week the other
-  half crashed.
-- A status of 1 opens or updates the issue and 2 fails the run. Anything else (a
-  segfault's 139, an empty file, no artifact because the job was killed) fails the run
-  too, so a crash is never mistaken for a clean week.
+  error, not a clean week. It uploads a report and an exit status.
+- The `drift` job, the only one with `issues: write`, scores the fetched sources under
+  `--no-llvm`, which never loads the binding. It reads that artifact as data and copies
+  the report into the issue body, and it runs whatever became of `llvm`, so the fetched
+  vectors are still scored in a week the other half crashed.
+- The two exit statuses are combined, 2 outranking 1: 1 opens or updates the issue and
+  2 fails the run. Anything else (a segfault's 139, an empty file, no artifact because
+  the job was killed) counts as 2, so a crash is never mistaken for a clean week.
 
 A wheel that lies can misreport the `llvm-*` half, but it can't reach the token.
-`tests/test_upstream_workflow.py` pins all of this.
+`tests/test_upstream_workflow.py` pins that shape and runs the combining script over
+every pair of statuses, a missing artifact and a hostile one.
 
-Dependabot doesn't read `tools/`, so a new release of the package is a change by hand:
+Dependabot is told to ignore this package, so a new release of it is a change by hand:
 the version in the requirements file, `PIN` in `tools/llvm_oracle.py`, and the hash
 from `https://pypi.org/pypi/llvm-demangle-fxti/<version>/json`. The hash is for the
 one wheel the runner takes, CPython 3.13 on x86-64 Linux.

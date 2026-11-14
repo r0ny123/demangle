@@ -134,7 +134,7 @@ Declarator placement, as in `int (*)(char)` or `int (*) [10]`, is already handle
 `parse_type` is optional and most schemes leave it None. Supply it only if your grammar
 has a type production that stands alone, the kind a `typeinfo` name or an RTTI
 descriptor carries, and it becomes `demangle_type(enc, language="yours")`. It's a
-separate entry point and not a fallback inside `parse` because a type encoding has no
+separate entry point, not a fallback inside `parse`, because a type encoding has no
 marker saying which scheme it belongs to, so it can only be read on request.
 
 ## Priority

@@ -36,8 +36,8 @@ uv pip install -e . --group dev     # or: pip install -e . --group dev  (pip 25.
 pytest
 ```
 
-Development requirements are [dependency groups](https://peps.python.org/pep-0735/)
-and not extras, so PyPI doesn't offer users a `demangle[dev]`. The groups are `test`,
+Development requirements are [dependency groups](https://peps.python.org/pep-0735/),
+not extras, so PyPI doesn't offer users a `demangle[dev]`. The groups are `test`,
 `format`, `lint`, `docs`, `browser`, and `dev`, which includes the first three.
 
 The browser suite is opt-in: it needs the browser dependency group, a built docs site,
@@ -179,7 +179,7 @@ number moved and why; so does one that moves a benchmark.
 
 ### The fuzzers
 
-A change to a parser's shape rules, meaning what it accepts and not how it spells it,
+A change to a parser's shape rules, meaning what it accepts, not how it spells it,
 has been through `tools/enumerate.py`, `tools/mutate.py` and `tools/invariants.py`.
 [Fuzzing and the reference demanglers](https://github.com/r0ny123/demangle/blob/main/docs/testing.md)
 has why, what each asks, and how to build the references for Rust, Swift and
@@ -195,7 +195,8 @@ python tools/prepare_release.py 0.8.0 --date 2026-12-01
 
 That updates the package and citation versions, moves the notes under a dated changelog
 heading, refreshes the comparison links and runs the documentation metadata checks,
-restoring the files if they fail. `--date` defaults to today.
+restoring the files if they fail. The version has to be a stable `X.Y.Z`, and `--date`
+defaults to today.
 
 Merge the change to `main` through a pull request. `tag-release.yml` creates the tag
 and the release once push CI passes for that exact commit, then starts the PyPI

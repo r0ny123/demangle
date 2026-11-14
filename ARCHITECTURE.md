@@ -33,7 +33,7 @@ Two builders ship:
 The parser is written once and the caller picks the cost. A third backend, say JSON or
 a token stream for a syntax highlighter, is one new class and no parser changes.
 
-This is the one rule the codebase rests on. A parser that builds strings itself,
+This is the rule that matters most. A parser that builds strings itself,
 however convenient locally, breaks it. `tests/test_architecture.py` fails if a scheme
 imports `core.spelling`, which is as far as a test can reach: a parser that
 concatenates strings and hands the result to `builder.name()` imports nothing, and
@@ -46,7 +46,7 @@ reaches the tree as structure rather than one opaque node. `parts` interleaves t
 production's fixed text with its operands' handles and `form` names the shape --
 `binary`, `conditional`, `call`, `sizeof`.
 
-It's one method and not one per operator. Fifteen methods would be fifteen things
+It's one method, not one per operator. Fifteen methods would be fifteen things
 every future builder has to implement, and still wouldn't cover the next operator
 someone mangles. The parser already owns operator spelling (it comes from `tables.py`,
 which exists to be checked against the ABI), so all that's left for the builder is
