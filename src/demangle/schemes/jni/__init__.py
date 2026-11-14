@@ -9,7 +9,7 @@ Method Names", which is unusually good fortune: every other scheme here had to b
 transcribed from a reference implementation, and this one is written down normatively.
 See `_parser.py` for what it says and for the one thing it does not preserve.
 
-Reference: https://docs.oracle.com/en/java/javase/17/docs/specs/jni/design.html
+Reference: <https://docs.oracle.com/en/java/javase/17/docs/specs/jni/design.html>
 """
 
 from ...core.ast import Node

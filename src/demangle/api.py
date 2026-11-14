@@ -1,21 +1,10 @@
 """The public API.
 
-Deliberately small. A handful of functions cover what callers actually do, and every
-one of them is stable ground that later versions can build on without breaking:
-
-    demangle(name)          the readable spelling, or the name unchanged   -- never raises
-    demangle_strict(name)   the readable spelling                          -- raises
-    parse(name)             a tree to inspect                              -- raises
-    detect(name)            which scheme, if any
-    demangle_all(names)     the batch form, cached
-    preload(*languages)     import schemes now, not on first use
-
-    demangle_type(enc, language=...)  a bare type encoding, spelled       -- raises
-    parse_type(enc, language=...)     a bare type encoding, as a tree     -- raises
-
-"Raises" means over an unreadable name. Each also raises `TypeError` or `ValueError` for
-an argument that is wrong rather than unreadable -- an unknown `language`, say; `detect`
-only the `ValueError`, since it answers None to any name, a `str` or not.
+Deliberately small. `demangle` hands back a name it cannot read and never raises over
+one; `demangle_strict`, `parse` and the two type readers raise. All of them also raise
+`TypeError` or `ValueError` for an argument that is wrong rather than unreadable -- an
+unknown `language`, say; `detect` only the `ValueError`, since it answers None to any
+name, a `str` or not.
 
 `language` is one scheme's name, which forces that scheme, or None, which detects among
 all of them -- or, everywhere but the two type readers, a sequence of names, which
