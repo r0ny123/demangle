@@ -92,10 +92,6 @@ button, input, select, textarea {
   font-size: 1.15rem;
 }
 
-.nav-brand .brand-icon {
-  font-size: 1.25rem;
-}
-
 .nav-app-tag {
   font-size: 0.75rem;
   font-weight: 600;
@@ -112,6 +108,8 @@ button, input, select, textarea {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  /* The links have no outline until hovered, so it is their text that lines up with the page. */
+  margin-inline: -0.75rem;
 }
 
 .nav-link, .nav-btn {
@@ -147,6 +145,9 @@ button, input, select, textarea {
   }
   .nav-brand {
     font-size: 1rem;
+  }
+  .nav-links {
+    margin-inline: -0.5rem;
   }
   .nav-link, .nav-btn {
     padding: 0.3rem 0.5rem;
