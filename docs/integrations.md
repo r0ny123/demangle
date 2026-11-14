@@ -8,16 +8,17 @@ By default a script only touches the symbols the tool's own demangler left alone
 because that's where this library adds something. How much that is depends on the tool
 and its version. In the [runs below](#what-they-were-run-on), IDA 9.5 read C++, MSVC, D,
 Delphi and nearly all Rust v0 names itself, and Binary Ninja 6.0 read C++, MSVC, Swift
-and Rust v0. Ghidra ships GNU, Microsoft and Rust demanglers. The rest is what the
-scripts label: Swift, D, Nim, Free Pascal, Ada, JNI and pre-Itanium C++, give or take
-what your tool reads.
+and Rust v0 on ELF. Ghidra's change history lists GNU, Microsoft and Rust demanglers.
+What's left for the scripts is usually some of Swift, D, Nim, Free Pascal, Delphi, Ada,
+JNI and GCC 2 names.
 
 !!! tip "Try it on a copy first"
-    Set `DRY_RUN = True` and a script prints what it would change and changes nothing.
-    Each script has only been run in the versions [listed below](#what-they-were-run-on).
-    If a call isn't what your version has, the script fails with a traceback naming it:
-    check it against [the calls each script makes](#the-calls-each-script-makes) and
-    [report it](https://github.com/r0ny123/demangle/issues).
+    Use a copy of the database or project, or set `DRY_RUN = True`, which prints what a
+    script would change and changes nothing. Each script has only been run in the
+    versions [listed below](#what-they-were-run-on). If a call isn't what your version
+    has, the script names it (a traceback in IDA and Ghidra, a line in Binary Ninja's
+    log): check it against [the calls each script makes](#the-calls-each-script-makes)
+    and [report it](https://github.com/r0ny123/demangle/issues).
 
 ## What is there
 
@@ -37,7 +38,7 @@ Copy the host's file and `demangle_labels.py` into the same folder.
 ## Install
 
 **The package.** `demangle` needs Python 3.11 or later in the Python the tool runs,
-which isn't always the one on your path.
+which isn't always the one on your path, and a tool's bundled Python may be older.
 
 - IDA runs the interpreter `idapyswitch` registers; install with that interpreter's pip.
   IDA 9.5's documentation describes a virtual environment, `~/.idapro/venv`, for this.
@@ -87,8 +88,9 @@ metadata themselves.
 
 A Mach-O symbol is the compiler's name with one underscore in front, and all three
 tools keep it: Nim's `area__mymod_u10` is `_area__mymod_u10` there. Read as it stands
-that comes out as `mymod._area`, and a JNI `_Java_...` name isn't read at all. So on a
-Mach-O file the scripts read each name without that underscore. C++, Swift, Rust, D
+that comes out as `mymod._area`, a JNI `_Java_...` name isn't read at all, and Free
+Pascal, Ada and GCC 2 names go wrong the same way. So on a Mach-O file the scripts read
+each name without that underscore. C++, Swift, Rust, D
 and Objective-C deal with the underscore themselves and are read as they stand, and a
 name that only reads with the underscore keeps that reading. `LEADING_UNDERSCORE`
 forces this on or off whatever the file is.
@@ -101,14 +103,21 @@ the phrase. A suffix the symbol table added, `.cold` or `@@GLIBCXX_3.4`, stays o
 ## Cancelling and undo
 
 A script reads every symbol and decides every label before it changes anything, so
-cancelling while it reads leaves the database as it was. Once it's writing, a cancel is
-noticed every 500 labels, and what was written before that stays unless you undo it:
+cancelling while it reads leaves the database as it was. Once it's writing, IDA and
+Ghidra check for a cancel every 500 labels and Binary Ninja before each one. What was
+written by then stays unless you undo it, and it can be more than the progress counter
+showed: in IDA 9.4 a Cancel clicked at 9,969 left 11,303 labels.
 
-- IDA: File > Script file makes one undo point for the run, cancelled or not. Run any
-  other way (`-S` on the command line, idalib) there's no undo point.
-- Binary Ninja: the run is one undo step, cancelled or not.
-- Ghidra: the run is one undo step, cancelled or not. Ghidra asks you to confirm a
+- IDA: File > Script file makes one undo point for the run, cancelled or not. The Edit
+  menu calls it "Undo Script file...", and in name mode it gives the mangled names
+  back. A command typed in the console between the run and the Undo is a step of its
+  own, so Undo takes that back first, and it ends the Redo of the run. Run any other way
+  (`-S` on the command line, idalib) there's no undo point.
+- Binary Ninja and Ghidra: the run is one undo step, cancelled or not. Ghidra names the
+  step after PyGhidra's script class, not the script. It also asks you to confirm a
   Cancel, and the script keeps writing until you answer.
+
+Redo puts a finished run back in all three.
 
 ## IDA Pro
 
@@ -128,7 +137,8 @@ Rust symbol keeps the hash as a function name.
 ## Binary Ninja
 
 Each symbol gets a user symbol with the label as its short name and full name, and the
-raw name unchanged, which is how Binary Ninja holds a symbol its own demangler read. The command runs as a background task with a progress line and a Cancel button. Only
+raw name unchanged, which is how Binary Ninja holds a symbol its own demangler read. The
+command runs as a background task with a progress line and a Cancel button. Only
 functions and data are touched; imports and externals are not.
 
 A symbol counts as left mangled when its full name is still its raw name, so a second run
@@ -160,35 +170,49 @@ invisible characters) with `_`, as `SymbolUtilities.replaceInvalidChars` does.
 
 | Script | Versions | How |
 |---|---|---|
-| IDA | 9.4 and 9.5 | Headless through idalib and `idat -A -S`, and from the window with File > Script file |
+| IDA | 9.4 | idalib, and the window with File > Script file |
+| IDA | 9.5 | idalib, `idat -A -S`, and the window |
 | Binary Ninja | 6.0 | Headless through the command the plugin registers, and from the Plugins menu |
-| Ghidra | 12.1.4 and 12.2 headless, 12.1.2 in the window | PyGhidra, and the CodeBrowser's Script Manager |
+| Ghidra | 12.1.4 and 12.2 | Headless through PyGhidra |
+| Ghidra | 12.1.2 | The CodeBrowser's Script Manager |
 
-Between them the runs checked that a dry run changes nothing, that a second run
-changes nothing, that a cancel while reading changes nothing, and, in each tool's
-window, that one Undo takes back a full run or a cancelled one. The inputs were small
-ELF and Mach-O programs carrying names from each scheme, plus a few big ones. The
-repository's own tests run each script against stand-ins for its host instead, written
-from the tools' documentation. Some numbers from the real runs:
+Every run was on macOS or Linux, none on Windows. Ghidra 12.2 was built from its
+release tag, and Ghidra's window steps were driven from a thread inside Ghidra, not by
+mouse.
 
-- **IDA 9.5, `libLLVM.so` from LLVM 18** (103,772 names). IDA left 800 C++ names
-  unread, such as templates with `enable_if` in the return type, and the script labelled
-them in under a second. With `ONLY_LEFT_MANGLED = False` it set 33,511 comments in
-  about 5 s.
+In each tool a second run changed nothing, and from its window one Undo took back a
+full run or a cancelled one. A dry run and a cancel while reading changed nothing in IDA
+and Binary Ninja. The inputs were small ELF and Mach-O programs built for the purpose,
+carrying C++, MSVC, Swift, Rust, D, Nim, Free Pascal, Delphi, Ada, JNI and GCC 2 names,
+plus a few big ones. The repository's own tests run each script against stand-ins for
+its host instead, written from the tools' documentation. Some numbers from the real
+runs:
+
+- **A g++ program with the other schemes' names** (ELF x86-64). IDA 9.5 read the C++,
+  D, MSVC, Rust v0 and Delphi names itself and the script labelled the 5 it left: Swift
+  twice, Nim, Free Pascal and JNI. Binary Ninja 6.0 read the C++, Swift, MSVC and Rust
+  v0 names and the script labelled 6: D twice, Nim, Free Pascal, JNI and Delphi. Both
+  tools kept the hash in their reading of the legacy Rust name.
+- **IDA 9.5, a rustc 1.97 program** (1,571 names). IDA left 5 Rust v0 names unread and
+  the script labelled those.
+- **IDA 9.5, `libLLVM.so` from LLVM 18** (103,772 names, auto-analysis off). IDA left
+  800 C++ names unread, such as templates with `enable_if` in the return type, and the
+  script labelled them in under a second. With `ONLY_LEFT_MANGLED = False` it set
+  33,511 comments in about 5 s.
 - **IDA 9.4 window, QtGui** (36,994 names). 17,004 comments in about 13 s. Cancelled
   partway, 11,303 labels had been written and one Undo removed them all.
-- **Binary Ninja 6.0, `libLLVM.so`**. Binary Ninja had read every name, so nothing
-  changed. With `ONLY_LEFT_MANGLED = False` it relabelled 41,485 symbols in about
-  6.5 s.
-- **Ghidra 12.1.4, a Rust v0 program**. With auto-analysis on, Ghidra's own Rust
-  demangler had read everything and the script changed none of 2,104 symbols. With
-  analysis off it renamed 577 of 988.
+- **Binary Ninja 6.0, `libLLVM.so`** (analysis off). Binary Ninja had read every name,
+  so nothing changed. With `ONLY_LEFT_MANGLED = False` it relabelled 41,485 symbols in
+  about 6.5 s.
+- **Ghidra 12.1.4, Rust programs**. With auto-analysis on, Ghidra's own Rust demangler
+  had read the Rust symbols and the script changed none of 2,104. With analysis off, on
+  a Rust v0 program, it renamed 577 of 988.
+- **Ghidra 12.1.2 window** (126,896 symbols). Cancel at 20,000 written stopped the run
+  at 26,000, once its confirmation was answered, and one Undo restored the symbols.
 - **Go programs**. Nothing to label in IDA or Ghidra: the names are already readable.
 - **A Mach-O arm64 dylib** with Nim, JNI, Free Pascal, Ada and GCC 2 names. All three
-  scripts recognised the format and read those names without the underscore.
-
-In IDA, a command typed in the console between a run and its Undo is an undo step of
-its own, so Undo takes that back first.
+  scripts recognised the format (IDA's `f_MACHO`, Binary Ninja's `Mach-O` view type,
+  Ghidra's `Mac OS X Mach-O`) and read those names without the underscore.
 
 `tests/test_integrations_ghidra_live.py` repeats a C++ case against your own Ghidra. It
 is skipped unless asked for; [Contributing](CONTRIBUTING.md#getting-set-up) has the
