@@ -1,15 +1,15 @@
 # Contributing
 
-The project is meant to be approachable one piece at a time. Adding a scheme, fixing a
-spelling, or contributing a corpus should not require understanding the whole codebase.
+You can work on this one piece at a time. Adding a scheme, fixing a spelling or
+contributing a corpus shouldn't need the whole codebase in your head.
 
 Everyone taking part follows the [Code of Conduct](https://github.com/r0ny123/demangle/blob/main/CODE_OF_CONDUCT.md).
 
 ## Getting set up
 
 The project builds with [Hatch](https://hatch.pypa.io/) and installs with
-[uv](https://docs.astral.sh/uv/). You need neither -- plain pip works -- but together
-they turn the local check into one command.
+[uv](https://docs.astral.sh/uv/). Plain pip works too, but with those two the local
+check is one command.
 
 ```console
 git clone https://github.com/r0ny123/demangle
@@ -24,9 +24,9 @@ The pieces are available on their own: `hatch run test`, `cover`, `lint`, `fmt`,
 `bench`, `differential`. `hatch run test:test` runs the suite on Python 3.11 to 3.14 and
 PyPy 3.11, and `hatch run docs:serve` previews the documentation site.
 
-`hatch run quick` while iterating (about a minute); `hatch run check` before pushing
-(about seven minutes on four cores). `quick` skips the tests marked `sweep` --
-properties checked over every corpus name, which are most of the suite's time -- and CI
+Use `hatch run quick` while iterating (about a minute) and `hatch run check` before
+pushing (about seven minutes on four cores). `quick` skips the tests marked `sweep`,
+the properties checked over every corpus name, which are most of the suite's time. CI
 runs everything.
 
 Without Hatch:
@@ -36,11 +36,9 @@ uv pip install -e . --group dev     # or: pip install -e . --group dev  (pip 25.
 pytest
 ```
 
-Development requirements are [dependency groups](https://peps.python.org/pep-0735/),
-not extras. An extra is a *published* feature of the distribution -- `pip install
-demangle[dev]` would appear on PyPI as something users are invited to install -- and a
-linter is not a feature of a demangler. The groups are `test`, `format`, `lint`, `docs`,
-`browser`, and `dev`, which includes the first three.
+Development requirements are [dependency groups](https://peps.python.org/pep-0735/)
+and not extras, so PyPI doesn't offer users a `demangle[dev]`. The groups are `test`,
+`format`, `lint`, `docs`, `browser`, and `dev`, which includes the first three.
 
 The browser suite is opt-in: it needs the browser dependency group, a built docs site,
 and Chromium. It uses a deterministic fake worker for UI regressions; the real Pyodide
@@ -104,28 +102,28 @@ picked up without an edit.
 
 ## The rules that matter
 
-Most of the codebase is ordinary Python. Three rules are not negotiable, because the
-design rests on them. Two are fully enforced by a test; the first is enforced as far as
-a test can reach, and [ARCHITECTURE.md](ARCHITECTURE.md) says where it does not:
+Most of the codebase is ordinary Python. Three rules aren't negotiable, because the
+design rests on them. Tests enforce the last two fully and the first as far as a test
+can reach:
 
 1. **Parsers never build their own output.** Write against the `Builder` protocol
-   (`core/builder.py`); ARCHITECTURE.md says why.
+   (`core/builder.py`); [ARCHITECTURE.md](ARCHITECTURE.md#parsers-write-to-a-builder)
+   says why, and what the test can't catch.
 2. **`core` never imports a scheme, and schemes never import each other**
    ([ARCHITECTURE.md](ARCHITECTURE.md#layout)).
-3. **No third-party dependencies.** The dependency-free promise is the reason a lot of
-   people can use this at all. CI asserts it against a clean install of the built wheel,
-   not just against the source tree.
+3. **No third-party dependencies.** It's why a lot of people can use this at all. CI
+   checks it against a clean install of the built wheel, not just the source tree.
 
 ## Working on the Itanium parser
 
-Substitution numbering is where correctness lives; [ARCHITECTURE.md](ARCHITECTURE.md)
-has the rules.
+Substitution numbering is the part to get right;
+[ARCHITECTURE.md](ARCHITECTURE.md#substitutions) has the rules.
 
-The specification's prose is genuinely ambiguous in places. Do not guess -- ask the
-reference implementation. `tools/probe_substitutions.py` appends `S_`, `S0_`, `S1_` to a
-name under construction, which makes the reference print its own substitution table
-back at you. Several decisions in the parser were settled that way, and each carries a
-comment naming the probe that settled it.
+The specification is ambiguous in places. Don't guess, ask the reference.
+`tools/probe_substitutions.py` appends `S_`, `S0_`, `S1_` to a name under construction,
+which makes the reference print its own substitution table back at you. Several
+decisions in the parser were settled that way, and each has a comment naming the probe
+that settled it.
 
 ## Adding a scheme
 
@@ -181,29 +179,29 @@ number moved and why; so does one that moves a benchmark.
 
 ### The fuzzers
 
-A change to a parser's *shape rules* -- what it accepts, rather than how it spells what
-it accepts -- has been through `tools/enumerate.py`, `tools/mutate.py` and
-`tools/invariants.py`.
+A change to a parser's shape rules, meaning what it accepts and not how it spells it,
+has been through `tools/enumerate.py`, `tools/mutate.py` and `tools/invariants.py`.
 [Fuzzing and the reference demanglers](https://github.com/r0ny123/demangle/blob/main/docs/testing.md)
 has why, what each asks, and how to build the references for Rust, Swift and
 pre-Itanium C++ that no distribution ships.
 
 ## Preparing a release
 
-After the Unreleased section has notes ready to publish, prepare the release metadata with
-its stable semantic version. The command defaults the date to today; pass `--date` for a
-specific `YYYY-MM-DD` date. It updates the package and citation versions, moves the notes
-under the dated changelog heading, refreshes comparison links, then runs the documentation
-metadata checks. If those checks fail, it restores the original files. Merge that change
-to `main` through a pull request; `tag-release.yml` creates the tag and release only after
-push CI passes for that exact commit. It then starts the PyPI publishing workflow. If starting
-publishing fails, rerun the tag-release job: an existing release no longer stops recovery.
-Active or successful publishing runs are left alone; failed runs retry only failed jobs.
-Cancelled runs require an explicit manual restart.
+Once the Unreleased section has notes worth publishing:
 
 ```console
 python tools/prepare_release.py 0.8.0 --date 2026-12-01
 ```
+
+That updates the package and citation versions, moves the notes under a dated changelog
+heading, refreshes the comparison links and runs the documentation metadata checks,
+restoring the files if they fail. `--date` defaults to today.
+
+Merge the change to `main` through a pull request. `tag-release.yml` creates the tag
+and the release once push CI passes for that exact commit, then starts the PyPI
+publishing workflow. If that start fails, rerun the tag-release job; an existing
+release doesn't stop it. Active or successful publishing runs are left alone, failed
+ones retry only their failed jobs, and a cancelled one needs a manual restart.
 
 ## How changes get merged
 
@@ -227,24 +225,25 @@ and `actions: write` on that one job; it starts `release.yml`, which publishes t
 PyPI Trusted Publishing, so there is no long-lived API token in repository secrets. The
 `pypi` environment still waits for a maintainer to approve.
 
-The test matrix is deliberately not a cross product. Every supported version runs on
-Linux, PyPy 3.11 included; macOS and Windows get one row each, the ceiling and the
-floor, so neither end of the range is only ever exercised on Linux. A further row runs
-Ubuntu on the free-threaded 3.14t build, for `tests/test_concurrency.py`. This is a
-pure-Python library, and everything that has ever differed between platforms differed in
-the harness -- a glob, a subprocess, a console encoding -- which one row per operating
-system catches as well as a full cross product would. The compiled wheels are the
-exception, because they are platform code: `wheels.yml` builds and tests one for every
-platform and Python they ship for, and the `compiled` job runs the whole suite and the
-Itanium fuzzers against one. Each extra row has a comment in `ci.yml` saying why it is
-there. Add a row when a defect shows up that only that row
-would have caught, and say so in its comment.
+The test matrix isn't a cross product. Every supported version runs on Linux, PyPy
+3.11 included. macOS and Windows get one row each, the newest and the oldest Python,
+and one more row runs the free-threaded 3.14t build for `tests/test_concurrency.py`.
+Everything that has ever differed between platforms differed in the harness (a glob, a
+subprocess, a console encoding), and one row per operating system catches that as well
+as a cross product would.
+
+The compiled wheels are the exception, because they are platform code: `wheels.yml`
+builds and tests one for every platform and Python they ship for, and the `compiled`
+job runs the whole suite and the Itanium fuzzers against one.
+
+Each extra row has a comment in `ci.yml` saying why it's there. Add a row when a
+defect shows up that only that row would have caught, and say so in its comment.
 
 Two rules for anyone editing `.github/`:
 
 - Never use `pull_request_target`. It runs with a writable token against the fork's
   code, which makes any pull request arbitrary code execution with our secrets.
-- Never interpolate untrusted values -- issue titles, branch names, PR bodies -- into a
+- Never interpolate untrusted values (issue titles, branch names, PR bodies) into a
   `run:` block. Pass them through `env:` and reference the variable.
 
 ## Style

@@ -1,10 +1,10 @@
 # Adding a mangling scheme
 
-A scheme is a directory under `src/demangle/schemes/` exposing a `LanguagePlugin`.
-No other scheme is affected by it; the registry learns of it from one line.
+A scheme is a directory under `src/demangle/schemes/` exposing a `LanguagePlugin`. It
+touches no other scheme, and the registry learns of it from one line.
 
-You do not need to read the rest of the codebase. You need `core/builder.py`, which is
-the contract, and `core/reader.py`, which is the input cursor.
+You don't need to read the rest of the codebase, only `core/builder.py`, which is the
+contract, and `core/reader.py`, which is the input cursor.
 
 ## The smallest possible scheme
 
@@ -47,9 +47,9 @@ PLUGIN = LanguagePlugin(
 register(PLUGIN)
 ```
 
-`node_kinds` is every `kind` a tree from the scheme can hold -- here, only the `name`
-that `builder.name()` makes -- and it is the vocabulary `demangle.node_kinds()`
-publishes to callers walking a tree. `first_characters` lists every character a name
+`node_kinds` is every `kind` a tree from the scheme can hold (here only the `name` that
+`builder.name()` makes), and it's what `demangle.node_kinds()` reports to callers
+walking a tree. `first_characters` lists every character a name
 the scheme detects can start with; the registry never offers the scheme a name that
 starts with any other, so it must hold for every name `detect` accepts. Avoid `toy` as
 a name: `tests/test_architecture.py` registers and removes one.
@@ -93,17 +93,17 @@ of them are done:
 
 ## Shipping one separately
 
-You do not have to contribute it here. Advertise it from your own distribution:
+You don't have to contribute it here. Advertise it from your own distribution:
 
 ```toml
 [project.entry-points."demangle.languages"]
 demo = "my_package.demo:PLUGIN"
 ```
 
-It is discovered when a program calls `demangle.load_plugins()`, which the `demangle`
-command does and a library does not: a plugin named for a built-in replaces it, so
+It's discovered when a program calls `demangle.load_plugins()`, which the `demangle`
+command does and a library doesn't: a plugin named for a built-in replaces it, so
 loading them is the caller's choice. A plugin that fails to import is skipped with a
-warning rather than taking the library down with it.
+warning.
 
 ## The builder
 
@@ -118,25 +118,24 @@ builder.template(base, arguments)
 builder.qualified([namespace, class_, method])
 ```
 
-What comes back is an opaque handle. Pass it to other builder methods; do not inspect
-it. Where a grammar genuinely needs the text of something already built,
-`builder.spell(handle)` is the one legal way to look.
+What comes back is an opaque handle. Pass it to other builder methods and don't
+inspect it. If a grammar really needs the text of something already built,
+`builder.spell(handle)` is the one way to look.
 
-This is what earns your scheme structured output for free: the same parser drives both
-the text path and the AST path.
+That's how your scheme gets a tree for free: the same parser drives both the text path
+and the AST path.
 
-Declarator placement -- `int (*)(char)`, `int (*) [10]` -- is already handled in
-`core/spelling.py`. If your scheme spells C-like declarations, you get it by calling
-`pointer()`, `array()` and `function()` rather than reimplementing it.
+Declarator placement, as in `int (*)(char)` or `int (*) [10]`, is already handled in
+`core/spelling.py`. If your scheme spells C-like declarations, call `pointer()`,
+`array()` and `function()` and you get it.
 
 ## Types, if your scheme has them
 
 `parse_type` is optional and most schemes leave it None. Supply it only if your grammar
-has a *type* production that stands alone -- what a `typeinfo` name or an RTTI
-descriptor carries -- and it becomes `demangle_type(enc, language="yours")`. It is a
-separate entry point rather than a fallback inside `parse` because a type encoding
-carries no marker saying which scheme it belongs to, so it can only ever be read on
-request.
+has a type production that stands alone, the kind a `typeinfo` name or an RTTI
+descriptor carries, and it becomes `demangle_type(enc, language="yours")`. It's a
+separate entry point and not a fallback inside `parse` because a type encoding has no
+marker saying which scheme it belongs to, so it can only be read on request.
 
 ## Priority
 
@@ -144,16 +143,15 @@ request.
 Rust's legacy mangling *is* Itanium mangling, so `rust` has priority 50 and `itanium`
 200. If your scheme overlaps with an existing one, say so in the pull request.
 
-A scheme whose names have **no marker at all** goes last, and owes a number rather than
-an argument. `gnuv2` -- pre-Itanium C++ -- is priority 290 for that reason, and
-`codewarrior`, the other pre-Itanium mangling, 300 behind it: their names are ordinary C
-identifiers with a `__` somewhere in them, so `detect` parses the whole name instead of
-testing a prefix, and what makes it safe to register is a measurement. `gnuv2` is
-scored over every other scheme's checked-in corpus, which `tests/test_gnuv2.py` asserts,
-and over 339,117 symbols from real shared libraries, which
-[CONFORMANCE.md](CONFORMANCE.md) records. If your scheme is in that position, do the
-same: a claim that "false positives are unlikely" is not a test, and the corpora are
-already there to run against.
+A scheme whose names have no marker at all goes last, and has to show a measurement.
+`gnuv2`, pre-Itanium C++, is priority 290 for that reason, and `codewarrior`, the other
+pre-Itanium mangling, is 300. Their names are ordinary C identifiers with a `__`
+somewhere in them, so `detect` parses the whole name instead of testing a prefix.
+What makes that safe to register is that `gnuv2` is scored over every other scheme's
+checked-in corpus, which `tests/test_gnuv2.py` asserts, and over 339,117 symbols from
+real shared libraries, which [CONFORMANCE.md](CONFORMANCE.md) records. If your scheme
+is in that position, do the same. "False positives are unlikely" isn't a test, and the
+corpora are already there to run against.
 
 ## What a scheme must guarantee
 
@@ -171,8 +169,8 @@ through `STYLE_SAMPLES` and `CORPUS_FOR`.
 
 ## Conformance
 
-If a reference implementation exists, do not treat your reading of the specification as
-the last word. Add a corpus under `tests/conformance/` with the reference output
-recorded next to each name, and pin its count as
+If a reference implementation exists, it wins over your reading of the specification.
+Add a corpus under `tests/conformance/` with the reference output recorded next to
+each name, and pin its count as
 [Contributing](CONTRIBUTING.md#conformance-numbers) describes. See
 `tools/generate_corpus.py` for how the Itanium corpus is produced.
