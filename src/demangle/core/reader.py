@@ -211,7 +211,7 @@ class Reader:
         return count, text[pos:end]
 
     def number(self, allow_negative: bool = True) -> str:
-        """A <number>: an optional leading `n` meaning negative, then digits."""
+        """A `<number>`: an optional leading `n` meaning negative, then digits."""
         negative = allow_negative and self.eat("n")
         digits = self.digits()
         return "-" + digits if negative else digits
@@ -220,7 +220,7 @@ class Reader:
         return int(self.number(allow_negative))
 
     def seq_id(self) -> int:
-        """A <seq-id> followed by `_`, returned as a zero-based index.
+        """A `<seq-id>` followed by `_`, returned as a zero-based index.
 
         The encoding is offset by one so that the empty sequence can mean something:
         `S_` is entry 0 and `S0_` is entry 1.

@@ -1,12 +1,14 @@
-"""MkDocs hook: zip the pure-Python source for the playground, fetch the Pyodide runtime it
-runs on, and copy the playground into the site."""
+"""MkDocs hooks: zip the pure-Python source for the playground, fetch the Pyodide runtime it
+runs on, copy the playground into the site, and warn about text a browser would read as a tag."""
 
 from __future__ import annotations
 
 import hashlib
 import importlib.util
 import io
+import logging
 import marshal
+import re
 import shutil
 import stat
 import sys
@@ -120,6 +122,27 @@ def on_pre_build(config: Any) -> None:
     """Build the archive and fetch the runtime before the site, so the copy below finds them."""
     build_assets()
     fetch_pyodide()
+
+
+#: What Markdown and mkdocstrings write into a page; `autoref` is a cross-reference not yet
+#: resolved. Any other tag is prose that put a name between angle brackets outside a code
+#: span, as a grammar's `<encoding>` does, and a browser shows none of it.
+_ELEMENTS = (
+    "a abbr autoref blockquote br code dd del details div dl dt em h1 h2 h3 h4 h5 h6 hr img kbd li ol"
+    " p pre small span strong sub summary sup table tbody td th thead tr ul"
+)
+
+
+def stray_tags(html: str) -> list[str]:
+    """The tags in a rendered page that are really swallowed text."""
+    return sorted(set(re.findall(r"<([a-zA-Z][\w-]*)", html)).difference(_ELEMENTS.split()))
+
+
+def on_page_content(html: str, page: Any, config: Any, files: Any) -> None:
+    """Warn about swallowed text, which fails a `--strict` build."""
+    if stray := stray_tags(html):
+        tags = ", ".join(f"<{tag}>" for tag in stray)
+        logging.getLogger("mkdocs.hooks").warning("%s: %s needs backticks", page.file.src_uri, tags)
 
 
 def on_post_build(config: Any) -> None:

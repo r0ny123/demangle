@@ -288,6 +288,11 @@ def test_source_archive_is_deterministic_and_importable(tmp_path, hooks, monkeyp
     assert imported.stdout.strip() == f"{demangle.__version__} foo::bar(int)"
 
 
+def test_the_docs_build_catches_text_a_browser_would_swallow_as_a_tag(hooks):
+    page = "<p>reads an <encoding>, not a <code>&lt;name&gt;</code></p>"
+    assert hooks.stray_tags(page) == ["encoding"]
+
+
 def test_the_site_is_built_on_the_runtimes_python_so_it_ships_bytecode(hooks):
     workflows = ROOT / ".github" / "workflows"
     if not workflows.is_dir():
