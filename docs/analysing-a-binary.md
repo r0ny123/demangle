@@ -1,23 +1,21 @@
 # Working with the tree
 
-`demangle()` gives you a string. `parse()` gives you the thing the string was rendered
-from, and the difference starts to matter as soon as the question is about *structure*
-rather than about text.
-
-This page works one real task end to end, against a library you already have, and every
-number in it was measured rather than estimated.
+`demangle()` gives you a string. `parse()` gives you the tree that string is rendered
+from, which is what you want once the question is about structure instead of text.
+This page takes one such question against a library you already have. The numbers are
+measured, and a test reruns the example.
 
 ## The task
 
-Given the symbols `libstdc++.so.6` exports, find every function that takes a
-**`std::basic_string` by const reference**.
+Find every function `libstdc++.so.6` exports that takes a `std::basic_string` by const
+reference.
 
-That is easy to get nearly right and awkward to get right. `basic_string` appears inside
-other types, inside template arguments, inside return types. A `const&` in the spelling
-may belong to a different parameter. And the element types contain `<`, `>` and `,` of
-their own, so counting brackets does not give you the argument list.
+It's easy to get nearly right. `basic_string` shows up inside other types, template
+arguments and return types. A `const&` in the spelling may belong to a different
+parameter. And the element types have `<`, `>` and `,` of their own, so counting
+brackets won't find you the argument list.
 
-## Reading and labelling the symbols
+## Reading the symbols
 
 ```python
 import subprocess
@@ -28,23 +26,10 @@ def symbols(library):
     return [line.split()[-1] for line in output.splitlines() if line.strip()]
 ```
 
-For a report, the string form is what you want; `demangle()` hands back a name it
-cannot read rather than raising, so it can label every symbol in the table.
+## Asking the question
 
-```python
-import demangle
-
-for name in symbols("/usr/lib/x86_64-linux-gnu/libstdc++.so.6"):
-    print(demangle.demangle(name))
-```
-
-`demangle_all()` is the same over an iterable, sharing one cache, which suits a whole
-table.
-
-## Asking the structural question
-
-`parse()` returns a `Node`. Every node supports `walk()`, `find(kind)`, `children()`
-and `spell()`.
+`parse()` returns a `Node`. Every node has `walk()`, `find(kind)`, `children()` and
+`spell()`.
 
 ```python
 def template_taken_by_const_reference(parameter):
@@ -63,8 +48,8 @@ def template_taken_by_const_reference(parameter):
     return referent if referent.kind == "template" else None
 ```
 
-Each test is a question about the node, not about characters — and that `qualified`
-step is the sort of thing you only find by looking at a real tree.
+Each test asks about a node, not about characters. The `qualified` step is the kind of
+thing you only find by printing a real tree.
 
 ```python
 import collections
@@ -85,14 +70,14 @@ for name in symbols("/usr/lib/x86_64-linux-gnu/libstdc++.so.6"):
                 element_types[template.arguments[0].spell()] += 1
 ```
 
-On the shipped libstdc++, `element_types` comes out as **170** `char` and **112**
-`wchar_t`: 282 parameters, in 278 functions. The name is compared whole rather than
-searched for, because `"basic_string" in ...` is a question about characters again, and
-would take the four `basic_stringbuf<...>::__xfer_bufptrs` constructors with it.
+On libstdc++ 6.0.33, `element_types` comes out as 170 `char` and
+112 `wchar_t`: 282 parameters, in 278 functions. The name is compared whole on purpose.
+`"basic_string" in ...` would also match the four
+`basic_stringbuf<...>::__xfer_bufptrs` constructors.
 
-## What the regular expression gets wrong
+## What a regular expression gets wrong
 
-The obvious approximation is to search the demangled string:
+The obvious shortcut is to search the demangled string:
 
 ```python
 import re
@@ -100,22 +85,18 @@ import re
 PATTERN = re.compile(r"basic_string<[^)]*const&")
 ```
 
-Measured on the same library against the same question:
+On the same library, for the same question:
 
-| | structural | regular expression |
+| | Tree | Regular expression |
 |---|---|---|
-| functions found | 278 | 384 |
-| false positives | — | **106** |
+| Functions found | 278 | 384 |
+| False positives | — | 106 |
 
-The false positives are mostly `basic_string`'s own constructors, where the `const&`
-belongs to a different parameter entirely:
-`basic_string(char const*, unsigned long, std::allocator<char> const&)` matches, because
-nothing in the pattern knows where one parameter ends and the next begins. Making it
-know means matching brackets, and the element types carry `<`, `>` and `,` of their own.
-
-That is the whole failure: C++ declaration syntax nests, and nesting is what regular
-expressions cannot parse. The nesting is not incidental — it is how the type system is
-written down.
+Most of the false positives are `basic_string`'s own constructors, where the `const&`
+belongs to another parameter:
+`basic_string(char const*, unsigned long, std::allocator<char> const&)` matches because
+the pattern has no idea where one parameter ends and the next begins. Teaching it that
+means matching nested brackets, which a regular expression can't do.
 
 ## Other things the tree answers
 
@@ -138,26 +119,21 @@ next(go.find("path")).text  # 'example.com/m/v2.5'
 next(go.find("receiver")).pointer  # True
 ```
 
-That last one is worth dwelling on. `example.com/m/v2%2e5.(*T).Method` cannot be split
-into a package and a name by looking for a `.`: the package path contains one of its
-own, written `%2e` precisely because it would otherwise be ambiguous. Reading it
-correctly means decoding it, and the tree hands it over already decoded.
+The Go one is a good example of why. You can't split
+`example.com/m/v2%2e5.(*T).Method` into a package and a name by looking for a `.`,
+because the package path has one of its own, written `%2e` so it isn't ambiguous. The
+tree hands it over already decoded.
 
 ## How the schemes differ
 
-Every scheme returns a tree, but the kinds differ with what each language has to say.
+Every scheme returns a tree, but the kinds depend on what the language has to say.
 
-- **C++ trees carry declarator shape** — pointers, references, parameter lists, return
-  types — because a C++ type wraps the name it declares. `int (*)(char)` is a pointer
-  to a function, and the tree says so rather than leaving you to read it out of the
-  brackets.
-- **Rust and Go trees carry path structure** — `symbol`, `path`, `impl`, `namespace`,
-  `receiver` — because neither language has declarator syntax, and what a caller wants
-  from one of their symbols is which crate or package it belongs to, whether it is a
-  method, and on what.
-- **`name`, `template` and `literal`** mean the same thing everywhere, so a tool walking
-  a mixed binary does not need to know which language produced a tree to ask for its
-  identifiers.
+- C++ trees carry declarator shape: pointers, references, parameter lists, return
+  types. `int (*)(char)` is a pointer to a function, and the tree says so.
+- Rust and Go trees carry path structure: `symbol`, `path`, `impl`, `namespace`,
+  `receiver`. Neither language has declarators, and what you usually want from their
+  symbols is the crate or package, and whether it's a method and on what.
+- `name`, `template` and `literal` mean the same thing everywhere, so a tool walking a
+  mixed binary can ask for identifiers without knowing which language made the tree.
 
-See [Architecture](ARCHITECTURE.md) for why the trees are built the way they are, and
-[Adding a scheme](adding-a-scheme.md) to add one of your own.
+[Architecture](ARCHITECTURE.md) explains why the trees are built this way.
