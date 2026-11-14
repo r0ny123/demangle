@@ -9,13 +9,6 @@ for D's), so an improvement cannot quietly mask a regression, and `tests/test_re
 checks this page against those pins. The [whole symbol tables](#whole-symbol-tables)
 are live runs, not pinned counts.
 
-**Contents** — [checked-in corpora](#checked-in-corpora) ·
-[notes on the corpora](#notes-on-the-corpora) ·
-[whole symbol tables](#whole-symbol-tables) ·
-[printing the name without its signature](#printing-the-name-without-its-signature) ·
-[on trusting the references](#on-trusting-the-references) ·
-[schemes not covered](#schemes-not-covered)
-
 ## Checked-in corpora
 
 Replayed by the test suite. No compiler and no reference demangler needed.
