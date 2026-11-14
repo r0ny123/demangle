@@ -175,6 +175,12 @@ before-test = "python -m pip install --require-hashes --only-binary :all: -r {pr
 test-environment = { DEMANGLE_EXPECT_COMPILED = "1" }
 test-command = "python -m pytest -q -p no:cacheprovider {project}/tests/test_compiled.py {project}/tests/test_conformance.py"
 
+[tool.cibuildwheel.linux]
+archs = ["native"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+
 [tool.cibuildwheel.macos]
 # Both from the Apple silicon runner, which cross-compiles the x86_64 ones.
 archs = ["arm64", "x86_64"]

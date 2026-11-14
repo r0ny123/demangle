@@ -31,7 +31,7 @@ class CompiledBuild(BuildHookInterface):
         work = Path(tempfile.mkdtemp(prefix="demangle-mypyc-"))
         os.chdir(root)
         extensions = mypycify(
-            ["--check-untyped-defs", "--cache-dir", str(work / "cache"), *COMPILED],
+            ["--check-untyped-defs", "--follow-imports=silent", "--cache-dir", str(work / "cache"), *COMPILED],
             group_name="demangle",
             target_dir=str(work / "c"),
         )
