@@ -1,35 +1,36 @@
 # Comparison with other demanglers
 
-`demangle` next to the demanglers a Python user is most likely to weigh it against:
-what each one covers, what a run of
+This page puts `demangle` beside the demanglers a Python user is most likely to weigh
+it against: what each one covers, what a run of
 [`benchmarks/compare.py`](https://github.com/r0ny123/demangle/blob/main/benchmarks/compare.py)
 measured, and what that measurement can't tell you.
 
 The short version: on names it hasn't seen, the pure-Python code is slower than every
-native demangler measured here. About 50 times slower than LLVM's on Itanium names and
+native demangler measured here: about 50 times slower than LLVM's on Itanium names and
 9 times on MSVC names (both through `llvm-demangle-fxti`), and about 15 times slower
 than the Rust `cpp_demangle` crate on Itanium names. It's level with the one other
 pure-Python reader, `itanium_demangler`. What you get instead is fourteen schemes, a
-parse tree, bounded input, a wheel that runs anywhere Python does, and a result cache
-that makes a repeated name cost under a microsecond.
+parse tree, bounded input, one pure wheel for every platform, and a result cache that
+makes a repeated name cost under a microsecond.
 
-!!! note "Measured before 0.9.0"
-    The run is from 2026-10-25. Since then the CPython wheels for Linux, macOS and
-    Windows ship the Itanium parser compiled, which about halves its cold cost, and MSVC
-    and Swift names read faster too (the [changelog](CHANGELOG.md) has the figures). The
-    tables below are the pure code as it was, so `demangle`'s rows are on the slow side
-    of what you'd see today.
+!!! note "Measured on 2026-10-25"
+    The run is of `main` as it stood between 0.6.0 and 0.7.0. Since then 0.8.0 made
+    MSVC names about 1.4 times as fast cold and Swift names about 8% faster, and from
+    0.9.0 the CPython wheels for Linux, macOS and Windows carry the Itanium parser
+    compiled, which about halves its cold cost. The [changelog](CHANGELOG.md) has the
+    figures. So the cold Itanium, MSVC and Swift rows below are slower than a CPython
+    install is today.
 
 ## What each one covers
 
 | | `demangle` | `llvm-demangle-fxti` | `cpp-demangle` | `itanium_demangler` |
 |---|---|---|---|---|
-| Version measured | `main` after 0.6.0; it reports 0.6.0 | 1.0.0 | 0.1.3 | 1.1 |
+| Version measured | `main` after 0.6.0, with the Swift and MSVC speed-ups 0.7.0 shipped; it reports 0.6.0 | 1.0.0 | 0.1.3 | 1.1 |
 | Written in | Python | C++: LLVM's Demangle library, vendored; LLVM 11 to 21 selectable | Rust: the [`cpp_demangle`](https://github.com/gimli-rs/cpp_demangle) crate, through PyO3 | Python |
 | Schemes | Fourteen: Itanium C++, MSVC, Rust (legacy and v0), Swift, Objective-C, Go, D, Nim, Free Pascal, Delphi, Ada/GNAT, JNI, g++ 2.x with cfront/ARM, Lucid and HP aCC, and CodeWarrior | Itanium, Microsoft, Rust v0 and D; a legacy Rust name is read as the Itanium name it also is | Itanium | Itanium |
 | What comes back | A string (`demangle`), a tree (`parse`), the parts of a signature (`signature`) | A string; for an Itanium function, `ItaniumPartialDemangler` answers for its base name, context, parameters and return type | A string | A tree of nodes, and a string rendering of it |
 | Bounds on hostile input | Recursion depth, output size, substitution count and input length, each configurable per call; see [SECURITY.md](SECURITY.md) | Not tested here | Not tested here | Not tested here |
-| Distribution | A `py3-none-any` wheel for Python 3.11 or newer, CPython, PyPy and [Pyodide](playground.md); since 0.9.0, compiled CPython wheels for Linux, macOS and Windows as well | `cp36-abi3` wheels for Linux x86-64 (glibc and musl), macOS x86-64 and arm64, and Windows 32- and 64-bit, and a source distribution; CPython only | `cp38-abi3` wheels for Linux x86-64 (glibc), macOS arm64 and Windows x86-64; 0.1.3 lists no source distribution; CPython only | One `py3-none-any` wheel |
+| Distribution | A `py3-none-any` wheel for Python 3.11 or newer, CPython, PyPy and [Pyodide](playground.md); since 0.9.0, compiled `cp311` to `cp314` wheels for Linux and macOS (x86-64 and arm64) and Windows x86-64 as well | `cp36-abi3` wheels for Linux x86-64 (glibc and musl), macOS x86-64 and arm64, and Windows 32- and 64-bit, and a source distribution; CPython only | `cp38-abi3` wheels for Linux x86-64 (glibc), macOS arm64 and Windows x86-64; 0.1.3 lists no source distribution; CPython only | One `py3-none-any` wheel |
 | Latest release on 2026-10-25 | 0.6.0, 2026-10-11 | 1.0.0, 2026-02-13, the only release | 0.1.3, 2026-04-28; the one before is 2023-05-01 | 1.1, 2022-08-20 |
 
 The distribution rows are the file lists on PyPI: [`llvm-demangle-fxti`](https://pypi.org/project/llvm-demangle-fxti/),
@@ -50,14 +51,16 @@ Disassemblers carry demanglers of their own. [Ghidra 12.1's change
 history](https://ghidradocs.com/12.1_PUBLIC/docs/ChangeHistory.html) lists a GNU, a
 Microsoft and a Rust demangler, and [IDA 9.4's demangled-names
 documentation](https://docs.hex-rays.com/9.4/ida-actions/setdemanglednames) lists
-Microsoft, Borland, Watcom, Visual Age and GNU. Neither was measured here.
-[Disassembler integrations](integrations.md) has what each read in practice.
+Microsoft, Borland, Watcom, Visual Age and GNU. Both lists are from the documentation
+and neither tool was measured here. The [integrations page](integrations.md) records
+what IDA and Ghidra read themselves when the scripts were run in them.
 
 ## Measured
 
 Run on 2026-10-25 under CPython 3.13.16 on Linux x86-64, on an Intel Xeon at 2.80 GHz
-with four virtual CPUs. The machine is shared, and the same workload has run up to half
-again as fast on it on other days, so read the ratios between rows and not the rates.
+with four virtual CPUs. The machine is shared: the one-minute load average read 0.83
+when the run began and 1.00 when it ended, and the same workload has run up to half
+again as fast on it on other days. So read the ratios between rows, not the rates.
 Each figure is the best of 15 passes.
 
 The report, as the script printed it ([Reproducing it](#reproducing-it) has the command):
@@ -136,7 +139,7 @@ How to read the tables:
   before each pass, so it is the parse and not a lookup. The other in-process tools keep no
   cache. The `warm cache` row is the same names again with the cache full.
 - **Read** is the number of names whose output differs from the input, because a
-  demangler hands back what it cannot read. It does not say the spelling is right.
+  demangler hands back what it can't read. It doesn't say the spelling is right.
 - **= X** is the number of names whose output is identical, byte for byte, to X's. A tool
   that declines a name agrees with a reference that declines it. Where no tool is a reference
   for the scheme, `= corpus` is the spelling recorded in the corpus file, from the
@@ -151,7 +154,7 @@ How to read the tables:
 
 ## Where `demangle` is slower
 
-Cold, on names it has not seen, `demangle` costs more per name than every native tool
+Cold, on names it hasn't seen, `demangle` costs more per name than every native tool
 measured. Each figure below is its cold `us/name` divided by the other tool's:
 
 | Names | `llvm-demangle-fxti` | `cpp-demangle` | `itanium_demangler` |
@@ -183,8 +186,8 @@ too. That wasn't measured.
 
 - **Breadth.** `demangle` reads fourteen schemes. Of the libraries compared, only it reads
   Swift, Objective-C, Go, Nim, Free Pascal, Delphi, Ada/GNAT, JNI and the pre-Itanium C++
-  styles. (GNU `c++filt` has a GNAT style as well, and is not a library.) A separate loop over
-  the checked-in corpora, which `compare.py` does not run, found `llvmdemangle.demangle()`
+  styles. (GNU `c++filt` has a GNAT style as well, and isn't a library.) A separate loop over
+  the checked-in corpora, which `compare.py` doesn't run, found `llvmdemangle.demangle()`
   changing none of the names in the Swift, Go, Nim, Objective-C, Free Pascal, Delphi, Ada,
   JNI, g++ 2.x and CodeWarrior corpora, and 256 of the 1,257 in the D one.
 - **Rust, where the schemes overlap.** The readings still differ. In the Rust corpus 3,002 of
@@ -209,22 +212,22 @@ too. That wasn't measured.
 - **Bounded input.** Recursion depth, output size, substitution count and input length are
   bounded and configurable per call, a bound ends the reading rather than guessing, and
   `demangle()` never raises. [SECURITY.md](SECURITY.md) has the threat model and how the
-  bounds are tested. The other tools were not tried on hostile input here, so this page
+  bounds are tested. The other tools weren't tried on hostile input here, so this page
   makes no claim about them.
-- **It runs anywhere Python does.** The pure wheel serves every platform, CPython and PyPy,
+- **A pure wheel.** It serves every platform, CPython and PyPy,
   and runs in a browser under Pyodide, which is how the [playground](playground.md) works. The
   two native packages publish CPython wheels for the platforms in the first table, and neither
   lists a PyPy or Pyodide wheel.
 - **A cache that comes with it.** `demangle()` keeps a result cache bounded in bytes as well
   as entries, so a loop over a symbol table needs no wrapper. The warm rows show what it
-  buys. It is a convenience and not a faster parser.
+  buys. It's a convenience and not a faster parser.
 
 ## What the numbers do not say
 
 - **Exact-string agreement counts style.** `llvm-cxxfilt` and GNU `c++filt` themselves agree
   on only 2,926 of the 5,963 libstdc++ names, most of the difference being spacing,
-  `> >` against `>>`. That is why there are two reference columns, and why `demangle` also
-  appears with `style="gnu"`, which matches `c++filt` on every one. The differences are not
+  `> >` against `>>`. That's why there are two reference columns, and why `demangle` also
+  appears with `style="gnu"`, which matches `c++filt` on every one. The differences aren't
   all spacing. Four names, with what each tool prints where they differ:
 
     ```text
@@ -253,7 +256,7 @@ too. That wasn't measured.
         std::codecvt<char16_t, char, __mbstate_t>::do_length const(__mbstate_t&, char const*, char const*, unsigned long)
     ```
 
-    `itanium_demangler` also writes constructors as `{ctor}` and does not read
+    `itanium_demangler` also writes constructors as `{ctor}` and doesn't read
     `_ZTIDF32_`, which every other tool reads as `typeinfo for _Float32`. It spells `VK` as
     `const volatile` or `volatile const` depending on Python's hash seed, so its
     `= llvm-cxxfilt` count on `itanium-real-world.txt` is 108 in some runs and 109 in others.
@@ -264,14 +267,17 @@ too. That wasn't measured.
   LLVM 11 to 21, and `--llvm 18` reads with the release the command-line tools were built
   from. It then agrees with `llvm-cxxfilt` on all 5,963 libstdc++ names, where LLVM 21
   agrees on 5,960: LLVM 21 reads the three `std::bfloat16_t` names that 18 leaves
-  mangled. The MSVC and Rust counts do not move. The speeds in the tables are LLVM 21's.
+  mangled. The MSVC and Rust counts don't move. The speeds in the tables are LLVM 21's.
+
 - **The corpora are this project's own conformance corpora.** `msvc-boost.txt` holds only
   names `llvm-undname` 18 reads, by its header, and every name of `itanium-libstdcxx.txt` is
-  read by `llvm-cxxfilt`, so the references' `Read` counts there are not a finding. Another
+  read by `llvm-cxxfilt`, so the references' `Read` counts there aren't a finding. Another
   set of names would give other counts, and other speeds: MSVC names cost more to read than
   Itanium ones in every tool measured.
+
 - **One machine, one Python, one run.** CPython 3.13 on a shared virtual machine. PyPy, other
-  CPython versions, memory, import time and threads were not measured.
+  CPython versions, memory, import time and threads weren't measured.
+
 - **The author is one of the competitors.** The project that publishes `demangle` wrote the
   script, the page and the corpora. They are in the repository, and the report prints the
   versions it measured.
@@ -285,7 +291,8 @@ python benchmarks/compare.py --repeats 15 --nm /usr/lib/x86_64-linux-gnu/libstdc
 python benchmarks/compare.py --llvm 18
 ```
 
-None of the other tools is a dependency of `demangle`. One that isn't installed is
+None of the other tools is a dependency of `demangle` or of any of its dependency
+groups. One that isn't installed is
 skipped with a note at the top of the report. `--llvm N` picks one of the LLVM releases
 `llvm-demangle-fxti` carries, `--limit N` uses the first N names of each corpus for a
 quick look, and `--repeats N` sets the number of passes.
