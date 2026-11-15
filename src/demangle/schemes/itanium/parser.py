@@ -3011,17 +3011,19 @@ class ItaniumParser:
             mark = self.subs.mark()
             start = reader.pos
             inner = self.qualified_type()
-            if qualifier.startswith(_OBJC_PROTOCOL) and self._mangled[start : reader.pos] in _OBJC_BUILTINS:
-                # Under protocols, clang writes `id` and `Class` as the builtin types they
-                # are, and a builtin is no candidate: only the qualified type enters.
-                # `_Z1pPU11objcproto1P11objc_objectS0_` is `p(id<P>, id<P>)`.
-                self.subs.drop_last(mark)
-            if qualifier.startswith(_OBJC_PROTOCOL) and not self.options.gnu_objc_protocol_spelling:
+            if qualifier.startswith(_OBJC_PROTOCOL):
+                if self._mangled[start : reader.pos] in _OBJC_BUILTINS:
+                    # Under protocols, clang writes `id` and `Class` as the builtin
+                    # types they are, and a builtin is no candidate: only the qualified
+                    # type enters. `_Z1pPU11objcproto1P11objc_objectS0_` is
+                    # `p(id<P>, id<P>)`.
+                    self.subs.drop_last(mark)
                 # `U <n>objcproto<protocol> <type>`: llvm-cxxfilt writes `NSArray<A>`,
                 # c++filt `NSArray objcproto1A` (see `gnu_objc_protocol_spelling`); a
                 # qualified `objc_object` becomes `id<A>` in the `P` branch. The
                 # protocol is length-prefixed within the qualifier, and
-                # `parseQualifiedType` refuses a short one, `objcproto15`.
+                # `parseQualifiedType` refuses a short one, `objcproto15`, under either
+                # style, so a style never decides whether a name parses.
                 protocol = qualifier[len(_OBJC_PROTOCOL) :]
                 digits = 0
                 while digits < len(protocol) and protocol[digits] in DIGITS:
@@ -3030,19 +3032,20 @@ class ItaniumParser:
                 if not length or digits + length > len(protocol):
                     raise ParseError(self._mangled, reader.pos, "an Objective-C protocol that is not a source name")
                 protocol = protocol[digits : digits + length]
-                spelled = builder.spell(inner)
-                handle = builder.raw(f"{spelled}<{protocol}>")
-                if spelled == _OBJC_OBJECT:
-                    # `objc_object<A>` alone; the first pointer makes it `id<A>`, and
-                    # further ones are ordinary: `id<A>*`.
-                    objc_ids = self._objc_ids
-                    objc_protocols = self._objc_protocols
-                    if objc_ids is None or objc_protocols is None:
-                        objc_ids = self._objc_ids = []
-                        objc_protocols = self._objc_protocols = {}
-                    objc_ids.append(handle)
-                    objc_protocols[id(handle)] = protocol
-                return handle
+                if not self.options.gnu_objc_protocol_spelling:
+                    spelled = builder.spell(inner)
+                    handle = builder.raw(f"{spelled}<{protocol}>")
+                    if spelled == _OBJC_OBJECT:
+                        # `objc_object<A>` alone; the first pointer makes it `id<A>`,
+                        # and further ones are ordinary: `id<A>*`.
+                        objc_ids = self._objc_ids
+                        objc_protocols = self._objc_protocols
+                        if objc_ids is None or objc_protocols is None:
+                            objc_ids = self._objc_ids = []
+                            objc_protocols = self._objc_protocols = {}
+                        objc_ids.append(handle)
+                        objc_protocols[id(handle)] = protocol
+                    return handle
             return builder.vendor_qualify(self._over_a_pack(inner), qualifier)
         if self._at_function_type():
             # A cv-qualified function type is its own production either way round.
