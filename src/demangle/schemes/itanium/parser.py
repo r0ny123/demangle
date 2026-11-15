@@ -254,6 +254,8 @@ _ABI_TAGS_AT_END = re.compile(r"(?:\[abi:[^]]*\])+\Z")
 
 _OBJC_PROTOCOL = "objcproto"
 _OBJC_OBJECT = "objc_object"
+#: `id` and `Class` as clang spells the builtins, which enter no substitution.
+_OBJC_BUILTINS = ("11objc_object", "10objc_class")
 
 
 #: Values below 7 have no escape and are written as one octal digit, as the reference does.
@@ -3006,7 +3008,14 @@ class ItaniumParser:
             if reader.peek() == "I":
                 arguments = self.template_arguments()
                 qualifier += self._angled(", ".join([builder.spell(argument) for argument in arguments]))
+            mark = self.subs.mark()
+            start = reader.pos
             inner = self.qualified_type()
+            if qualifier.startswith(_OBJC_PROTOCOL) and self._mangled[start : reader.pos] in _OBJC_BUILTINS:
+                # Under protocols, clang writes `id` and `Class` as the builtin types they
+                # are, and a builtin is no candidate: only the qualified type enters.
+                # `_Z1pPU11objcproto1P11objc_objectS0_` is `p(id<P>, id<P>)`.
+                self.subs.drop_last(mark)
             if qualifier.startswith(_OBJC_PROTOCOL) and not self.options.gnu_objc_protocol_spelling:
                 # `U <n>objcproto<protocol> <type>`: llvm-cxxfilt writes `NSArray<A>`,
                 # c++filt `NSArray objcproto1A` (see `gnu_objc_protocol_spelling`); a

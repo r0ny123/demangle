@@ -26,7 +26,7 @@ Replayed by the test suite. No compiler and no reference demangler needed.
 | Purpose-built C++, llvm style | `llvm-cxxfilt` 18.1.3 | **318 / 318** |
 | Purpose-built C++, gnu style | GNU `c++filt` 2.42 | **311 / 311** |
 | Reported names, one file per scheme in `tests/conformance/reported/` | the reference each report cites | **every entry** |
-| Names a reference reads wrongly <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | the declaration | **37 / 37** |
+| Names a reference reads wrongly <sup>[17](#17-where-following-a-reference-would-be-the-defect)</sup> | the declaration | **42 / 42** |
 | Bare `<type>` encodings, llvm style | `llvm-cxxfilt --types` 18.1.3 | **1076 / 1076** |
 | Bare `<type>` encodings, gnu style | GNU `c++filt -t` 2.42 | **1076 / 1076** <sup>[3](#3-bare-types-under-both-references)</sup> |
 | Swift runtime + the compiler's own test corpus | `swift-demangle`, built from source <sup>[6](#6-the-swift-reference-is-built-here)</sup> | **8494 / 8494** |
@@ -341,11 +341,11 @@ mentions a local entity. Freezing it prints a type the source disproves:
 `llvm::BasicBlock*`, a generic lambda's `operator()<int>` taking `auto`, or a closure
 declared `[](auto x)` taking `int`.
 
-Settled against eleven reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3 —
+Settled against twelve reduced sources compiled by g++ 13.3.0 and clang++ 18.1.3 —
 `insort`, `insort_composite`, `generic_lambda`, `member_template_lambda`,
 `prepare_execution`, `auto_marshall`, `value_init_new`, `division`, `closure_prefix`,
-`template_template_param` and `inheriting_constructor` — checked in under
-`tools/corpus_sources/reference_defects/`. They give 25 of the 37 names in
+`template_template_param`, `inheriting_constructor` and `objc_protocol_builtin` —
+checked in under `tools/corpus_sources/reference_defects/`. They give 30 of the 42 names in
 `tests/conformance/itanium-reference-defects.txt`; two more come from the general corpus
 sources and ten from shipped libraries and bottles. It is the Itanium corpus whose
 expected column comes from the declaration rather than from a demangler.

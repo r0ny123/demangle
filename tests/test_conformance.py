@@ -32,7 +32,7 @@ LIBSTDCXX_TOTAL, LIBSTDCXX_EXACT = 5913, 5913
 
 #: Expected column is derived from the declaration. `tools/generate_corpus.py` excludes
 #: these names, so a regeneration cannot re-record a reference's wrong answer.
-REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 37, 37
+REFERENCE_DEFECTS_TOTAL, REFERENCE_DEFECTS_EXACT = 42, 42
 
 #: Replayed and asserted by tests/test_types.py.
 TYPES_TOTAL, TYPES_LLVM_EXACT, TYPES_GNU_EXACT = 1076, 1076, 1076
