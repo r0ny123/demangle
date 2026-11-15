@@ -1,7 +1,7 @@
 # Conformance corpus: names a reference demangler reads wrongly.
 #
 # Every other corpus here records what a reference demangler printed. These cannot, so
-# the expected column is derived from the *declaration* instead. Twenty-five of the 37
+# the expected column is derived from the *declaration* instead. Thirty of the 42
 # entries have a source in tools/corpus_sources/reference_defects/: it is compiled with
 # the compiler named on the entry, the symbol is read out of the object file with `nm`,
 # and the spelling is what that source says the symbol's type is. Two more come from the
@@ -35,7 +35,7 @@
 #
 # style: llvm
 #
-# pairs: 37
+# pairs: 42
 #
 # tools/corpus_sources/reference_defects/insort.cpp, g++ 13.3.0.
 # `insort(I, I, C)`, so the first two parameters are `I` -- the first template argument,
@@ -267,3 +267,16 @@ _ZN1DCI21CENS0_4KindE	D::D(C::Kind)
 _ZN1DCI21CENS0_4KindES1_	D::D(C::Kind, C::Kind)
 _ZN1DCI21CEN1C4KindE	D::D(C::Kind)
 _ZN1DCI21CEN1C4KindES1_	D::D(C::Kind, C::Kind)
+#
+# tools/corpus_sources/reference_defects/objc_protocol_builtin.mm, clang++ 18.1.3.
+# A count defect again. Under protocols clang writes `id` and `Class` as the builtins
+# `11objc_object` and `10objc_class`, and a builtin is no candidate: `U <n>objcproto...
+# 11objc_object` enters one entry, the qualified type, where both references record two.
+# So every later index is one out. llvm-cxxfilt 18 and 21 read the second `id<P>` as
+# `objc_object<P>` and GNU c++filt 2.42 as `objc_object objcproto1P`; the last name, from
+# the SeaFlower macOS sample, loses its block parameter in both.
+_Z16RCTBridgingToVecIU8__strongPU18objcproto8NSObject11objc_objectEN2FB10LazyVectorIT_U8__strongP11objc_objectEES7_U13block_pointerFS5_S7_E	FB::LazyVector<id<NSObject> __strong, objc_object* __strong> RCTBridgingToVec<id<NSObject> __strong>(objc_object*, id<NSObject> __strong (objc_object*) block_pointer)
+_Z1pPU11objcproto1P11objc_objectS0_	p(id<P>, id<P>)
+_Z2a2P5NSArrIPU11objcproto1P11objc_objectES1_	a2(NSArr<id<P>>*, id<P>)
+_Z2c1PU11objcproto1P10objc_classS0_	c1(objc_class<P>*, objc_class<P>*)
+_Z2i3PU11objcproto1P11objc_objectP11objc_objectS2_	i3(id<P>, objc_object*, objc_object*)

@@ -8,6 +8,15 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Objective-C++ names with `id<P>` or `Class<P>` read every later back-reference
+  right.** Under protocols clang writes `id` and `Class` as builtins, which take no
+  substitution entry, and they were given one, so `_Z1pPU11objcproto1P11objc_objectS0_`
+  came out `p(id<P>, objc_object<P>)` instead of `p(id<P>, id<P>)`, and some names were
+  refused. llvm-cxxfilt and GNU c++filt have the same bug. Found in the symbol table of
+  the SeaFlower macOS sample.
+
 ## [0.9.0] - 2026-11-14
 
 ### Changed
