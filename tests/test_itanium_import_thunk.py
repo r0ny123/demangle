@@ -72,11 +72,31 @@ def test_three_underscores_is_not_a_thunk():
     assert demangle.demangle("__imp____Z3foov", language="itanium") == "__imp____Z3foov"
 
 
-def test_a_legacy_rust_name_behind_the_prefix_reads_as_the_reference_reads_it():
-    """Rust's scheme never sees the prefix, so the name is C++'s, hash and all -- which is
-    what llvm-cxxfilt prints for it."""
-    assert demangle.detect("__imp__ZN3foo17h0123456789abcdefE") == "itanium"
-    assert demangle.demangle("__imp__ZN3foo17h0123456789abcdefE") == "import thunk for foo::h0123456789abcdef"
+#: (mangled, spelling). A Rust name behind the prefix reads as it would alone. Neither
+#: rustc-demangle nor GNU c++filt knows the prefix; llvm-cxxfilt reads a legacy one as
+#: C++, `import thunk for foo::h0123456789abcdef`, with any `$LT$` escapes left in. The
+#: hyper name is one of 686 like it in a RustyStealer sample built for windows-gnu.
+RUST_IMPORT_THUNKS = [
+    ("__imp__ZN3foo17h0123456789abcdefE", "import thunk for foo"),
+    ("__imp___ZN3foo17h0123456789abcdefE", "import thunk for foo"),
+    ("__imp__ZN11encoding_rs3GBK17h4c22793200e3489fE", "import thunk for encoding_rs::GBK"),
+    (
+        "__imp__ZN100_$LT$hyper..client..service..Connect$LT$C$C$B$C$T$GT$$u20$as$u20$tower_service..Service$LT$T$GT$$GT$4call17h1234567890abcdefE",
+        "import thunk for <hyper::client::service::Connect<C,B,T> as tower_service::Service<T>>::call",
+    ),
+    ("__imp__RNvCs1_1a1f", "import thunk for a::f"),
+    ("__imp___RNvCs1_1a1f", "import thunk for a::f"),
+]
+
+
+@pytest.mark.parametrize(("mangled", "spelling"), RUST_IMPORT_THUNKS, ids=[row[0][:40] for row in RUST_IMPORT_THUNKS])
+def test_a_rust_name_behind_the_prefix_reads_as_rust(mangled, spelling):
+    assert demangle.detect(mangled) == "rust"
+    assert demangle.demangle_strict(mangled) == spelling
+    assert demangle.demangle_strict(mangled, style="gnu") == spelling
+    tree = demangle.parse(mangled)
+    assert isinstance(tree, Special)
+    assert tree.label == "import thunk for "
 
 
 @pytest.mark.parametrize("mangled", ["__imp_ReadFile", "__imp__ReadFile@20", "__imp_foo", "__imp_Z3foov", "__imp_"])
