@@ -49,6 +49,11 @@
   padding-inline: 0.1rem;
 }
 
+/* A column heading that is a name stays in one piece; the table scrolls instead. */
+.md-typeset th code {
+  white-space: nowrap;
+}
+
 .md-tabs__link {
   margin-top: 0.5rem;
   padding: 0.25rem 0.6rem;
@@ -113,10 +118,22 @@
     font-size: 0.6rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    /* Material's fade is sized for a taller title, and at this size it dims the first entry. */
+    box-shadow: 0 0 0.2rem 0.1rem var(--md-default-bg-color);
   }
 
+  /* The logo, the first tab and the page's text start on one line. */
+  [dir] .md-header__title {
+    margin-inline-start: 0;
+  }
+
+  [dir] .md-tabs__list {
+    margin-inline-start: 0.1rem;
+  }
+
+  /* The margins take back what the padding adds, so the active entry keeps the list's spacing. */
   .md-nav--primary .md-nav__link--active {
-    margin-inline: -0.4rem;
+    margin: calc(0.625em - 0.2rem) -0.4rem -0.2rem;
     padding: 0.2rem 0.4rem;
     border-radius: 0.3rem;
     background-color: var(--site-tint);
