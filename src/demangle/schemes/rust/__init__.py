@@ -42,6 +42,12 @@ _LEGACY_ESCAPE = re.compile(r"\$[A-Za-z0-9]{1,8}\$")
 #: left for the parser to refuse.
 _V0_PATH_START = frozenset(_PATH_TAGS | {"B"})
 
+#: A PE import thunk's prefix, as the windows-gnu toolchain writes it before a whole
+#: mangled name. The name behind it reads as it would alone, so a legacy Rust name is
+#: Rust's here too and not C++'s with its hash and `$LT$` escapes left in.
+_IMPORT_THUNK = "__imp_"
+_IMPORT_THUNK_OPENINGS = tuple(_IMPORT_THUNK + opening for opening in ("_ZN", "__ZN", "_R", "__R"))
+
 
 def detect(name):
     """Cheap test for a Rust mangled name.
@@ -88,6 +94,8 @@ def detect(name):
     """
     if not name:
         return False
+    if name.startswith(_IMPORT_THUNK_OPENINGS):
+        name = name[len(_IMPORT_THUNK) :]
     if name.startswith(("_R", "__R")):
         opening = name[3:4] if name[1] == "_" else name[2:3]
         return opening in _V0_PATH_START
@@ -155,6 +163,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     # includes `@`: `_RC3foo.llvm.9D1C9369@@16` is `foo`. Splitting the ELF version off
     # first, as `core` does for other schemes, would strand the `@@16` after the name.
     name = mangled
+    import_thunk = name.startswith(_IMPORT_THUNK_OPENINGS)
+    if import_thunk:
+        name = name[len(_IMPORT_THUNK) :]
     version = name.find("@")
     if version > 0 and name.find(_LLVM_MARKER, 0, version) >= 0:
         name = _strip_llvm_suffix(name)
@@ -170,7 +181,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         _check_length(name, len(expanded), limits)
         _refuse_empty(name, len(expanded))
         handle = builder.raw(expanded)
-    return builder.decorated(handle, decoration) if decoration else handle
+    if decoration:
+        handle = builder.decorated(handle, decoration)
+    return builder.special("import thunk for ", handle) if import_thunk else handle
 
 
 def _refuse_empty(mangled, length):

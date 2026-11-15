@@ -8,6 +8,14 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Changed
+
+- **A Rust name behind a PE import thunk reads as Rust.** `__imp__ZN...17h<hash>E` was
+  read as C++, the way llvm-cxxfilt reads it, which kept the hash and left escapes like
+  `$LT$` in. It is now `import thunk for` plus the same spelling the name gets on its
+  own, and v0 names behind the prefix are read too. Windows-gnu Rust binaries are full
+  of these: one RustyStealer sample has 686.
+
 ### Fixed
 
 - **Objective-C++ names with `id<P>` or `Class<P>` read every later back-reference
