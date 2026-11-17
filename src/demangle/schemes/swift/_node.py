@@ -309,6 +309,7 @@ ALL_KINDS = frozenset(
         "TypeMetadataInstantiationFunction",
         "TypeMetadataSingletonInitializationCache",
         "TypeMetadataDemanglingCache",
+        "TypeMetadataMangledNameRef",
         "TypeMetadataLazyCache",
         "UncurriedFunctionType",
         "UnknownIndex",

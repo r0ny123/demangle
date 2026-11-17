@@ -86,7 +86,7 @@ SWIFT_TOTAL, SWIFT_EXACT = 8494, 8494
 
 #: Not scored here: 72 rows are reference refusals, which `_misses` counts as misses.
 #: tests/test_swift.py scores it; it lives here for tests/test_readme.py.
-SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 535, 535
+SWIFT_UPSTREAM_TOTAL, SWIFT_UPSTREAM_EXACT = 538, 538
 SWIFT_REFERENCE_DEFECTS_TOTAL, SWIFT_REFERENCE_DEFECTS_EXACT = 5, 5
 OBJC_TOTAL, OBJC_EXACT = 2665, 2665
 

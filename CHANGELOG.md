@@ -24,6 +24,11 @@ the reference demanglers, and a **Performance** section.
   came out `p(id<P>, objc_object<P>)` instead of `p(id<P>, id<P>)`, and some names were
   refused. llvm-cxxfilt and GNU c++filt have the same bug. Found in the symbol table of
   the SeaFlower macOS sample.
+- **Swift reads the `Md` demangling cache variable.** Upstream's mangler now writes
+  `$s4main5KlassCACYTcMd` where it wrote `...MD`, and the name came back unchanged. Both
+  spellings read, and so does the new `MR` (`mangled name ref for type metadata for`).
+  The Swift reference build moves to swiftlang/swift `main` @ `251fbaad`, and
+  `swift-upstream.txt` takes the edited row and three `MnTwa` vectors: 538 / 538.
 
 ## [0.9.0] - 2026-11-14
 

@@ -2863,6 +2863,7 @@ _IMPL_FUNCTION_CONVENTIONS = {
 _METATYPE_POPPED_TYPE = {
     "a": "TypeMetadataAccessFunction",
     "b": "CanonicalSpecializedGenericTypeMetadataAccessFunction",
+    "d": "TypeMetadataDemanglingCache",
     "D": "TypeMetadataDemanglingCache",
     "f": "FullTypeMetadata",
     "i": "TypeMetadataInstantiationFunction",
@@ -2876,6 +2877,7 @@ _METATYPE_POPPED_TYPE = {
     "o": "ClassMetadataBaseOffset",
     "P": "GenericTypeMetadataPattern",
     "r": "TypeMetadataCompletionFunction",
+    "R": "TypeMetadataMangledNameRef",
     "s": "ObjCResilientClassStub",
     "t": "FullObjCResilientClassStub",
     "u": "MethodLookupFunction",

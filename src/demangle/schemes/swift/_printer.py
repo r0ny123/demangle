@@ -1121,6 +1121,7 @@ _PREFIX_THEN_FIRST_CHILD = {
     "TypeMetadataSingletonInitializationCache": ("type metadata singleton initialization cache for "),
     "TypeMetadataCompletionFunction": "type metadata completion function for ",
     "TypeMetadataDemanglingCache": "demangling cache variable for type metadata for ",
+    "TypeMetadataMangledNameRef": "mangled name ref for type metadata for ",
     "TypeMetadataLazyCache": "lazy cache variable for type metadata for ",
     "AssociatedTypeDescriptor": "associated type descriptor for ",
     "DefaultAssociatedTypeMetadataAccessor": "default associated type metadata accessor for ",

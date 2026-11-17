@@ -487,6 +487,15 @@ class TestGrammarFacts:
             "back deployment copy of type metadata accessor for MyKit.Outer.Inner"
         )
 
+    def test_metadata_cache_variables_have_a_lowercase_spelling(self):
+        """Upstream's mangler writes the demangling cache variable as `Md` now, and `MD`,
+        which older compilers wrote, still reads. `MR` came in with the same change."""
+        assert spell("$s4main5KlassCACYTcMd") == (
+            "demangling cache variable for type metadata for (main.Klass) -> sending main.Klass"
+        )
+        assert spell("$sSiMD") == "demangling cache variable for type metadata for Swift.Int"
+        assert spell("$sSiMR") == "mangled name ref for type metadata for Swift.Int"
+
     def test_called_once_comes_in_two_strengths(self):
         """`XO` is `@once` and `XOo` `@callable(once)`, and a lowered
         function type carries them as `O` and `Oo`. Either one is a function type that

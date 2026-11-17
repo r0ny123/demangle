@@ -453,6 +453,9 @@ $s21back_deploy_attribute0A12DeployedFuncyyFTwB	back deployment fallback for bac
 $s5MyKit5PointVMaTwa	back deployment copy of type metadata accessor for MyKit.Point
 $s5MyKit3BoxVMaTwa	back deployment copy of type metadata accessor for MyKit.Box
 $s5MyKit5OuterV5InnerVMaTwa	back deployment copy of type metadata accessor for MyKit.Outer.Inner
+$s5MyKit5PointVMnTwa	back deployment copy of nominal type descriptor for MyKit.Point
+$s5MyKit3BoxVMnTwa	back deployment copy of nominal type descriptor for MyKit.Box
+$s5MyKit5OuterV5InnerVMnTwa	back deployment copy of nominal type descriptor for MyKit.Outer.Inner
 $s4test3fooyyAA1P_px1TRts_XPlF	test.foo<A>(any test.P<Self.T == A>) -> ()
 $s4test3fooyyAA1P_pSS1TAaCPRts_Si1UAERtsXPF	test.foo(any test.P<Self.test.P.T == Swift.String, Self.test.P.U == Swift.Int>) -> ()
 $s4test3FooVAAyyAA1P_pF	test.Foo.test(test.P) -> ()
@@ -482,7 +485,7 @@ $s7ElementSTQzqd__s5Error_pIgnrzo_ABqd__sAC_pIegnrzr_SlRzr__lTR	reabstraction th
 $sS3fIedgyywTd_D	@escaping @differentiable @callee_guaranteed (@unowned Swift.Float, @unowned @noDerivative sending Swift.Float) -> (@unowned Swift.Float)
 $sS3fIedgyyTd_D	@escaping @differentiable @callee_guaranteed (@unowned Swift.Float, @unowned sending Swift.Float) -> (@unowned Swift.Float)
 $s4testA2A5KlassCyYTF	test.test() -> sending test.Klass
-$s4main5KlassCACYTcMD	demangling cache variable for type metadata for (main.Klass) -> sending main.Klass
+$s4main5KlassCACYTcMd	demangling cache variable for type metadata for (main.Klass) -> sending main.Klass
 $s4null19transferAsyncResultAA16NonSendableKlassCyYaYTF	null.transferAsyncResult() async -> sending null.NonSendableKlass
 $s4null16NonSendableKlassCIegHo_ACs5Error_pIegHTrzo_TR	reabstraction thunk helper from @escaping @callee_guaranteed @async () -> (@owned null.NonSendableKlass) to @escaping @callee_guaranteed @async () -> sending (@out null.NonSendableKlass, @error @owned Swift.Error)
 $sSRyxG15Synchronization19AtomicRepresentableABRi_zrlMc	protocol conformance descriptor for < where A: ~Swift.Copyable> Swift.UnsafeBufferPointer<A> : Synchronization.AtomicRepresentable in Synchronization
