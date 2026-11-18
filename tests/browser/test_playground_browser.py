@@ -881,7 +881,7 @@ def test_no_page_of_the_built_site_loads_anything_from_another_host():
 
 def test_every_page_of_the_built_site_refuses_other_hosts_by_policy():
     """The theme's bundle can still ask for one, a polyfill from unpkg.com in a browser
-    without `ResizeObserver`; the policy is what stops it there."""
+    without `ResizeObserver` among others; the policy is what stops it there."""
     pages = sorted(SITE.rglob("*.html"))
     assert pages, "run `mkdocs build --strict` first"
     policy = re.compile(r"""<meta http-equiv="Content-Security-Policy" content="default-src 'self';""")
