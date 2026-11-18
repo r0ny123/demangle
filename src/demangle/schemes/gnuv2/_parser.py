@@ -843,6 +843,8 @@ def demangle_template_template_parm(work, cur, tname):
         need_comma = False
         success = 1
         ok, count = get_count(cur)
+        if ok and count > len(cur.rest()):
+            return 0
         if ok:
             for _ in range(count):
                 if need_comma:
@@ -1070,7 +1072,8 @@ def _demangle_template(work, cur, tname, trawname, is_type, remember):
 
     tname.append("<")
     ok, count = get_count(cur)
-    if not ok:
+    # Each argument takes at least a character, and the vector below is `count` long.
+    if not ok or count > len(cur.rest()):
         return 0
     if not is_type:
         work.tmpl_argvec = [None] * count

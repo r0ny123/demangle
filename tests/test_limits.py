@@ -85,6 +85,8 @@ HOSTILE_NAMES = [
     ("gnuv2 repeated argument", "f__FiN99999999_0"),
     # And `n<count>_` the next one, under every `__` the reader tries as the separator.
     ("gnuv2 repeats under every separator", "__cdcln9867" * 80),
+    # A template that claims a thousand million arguments, which were allocated up front.
+    ("gnuv2 template argument count", "__ls__H999999999_1ZUl_R7ostreamRCt6smanip1ZX01_R7ostream"),
     # Itanium substitution reuse, which can double the output every few bytes.
     ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
     # A pack expansion's pattern is read once per member of the pack, so nested
