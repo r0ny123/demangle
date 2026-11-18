@@ -8,6 +8,8 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-18
+
 ### Fixed
 
 - **A short MSVC name can no longer take minutes.** A dynamic initialiser nested in
@@ -4342,7 +4344,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/r0ny123/demangle/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/r0ny123/demangle/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/r0ny123/demangle/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/r0ny123/demangle/compare/v0.7.1...v0.8.0
