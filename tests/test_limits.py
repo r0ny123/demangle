@@ -81,6 +81,10 @@ HOSTILE_NAMES = [
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # g++ 2.x's `N<count>_<index>` repeats an earlier argument: a hundred million times here.
+    ("gnuv2 repeated argument", "f__FiN99999999_0"),
+    # And `n<count>_` the next one, under every `__` the reader tries as the separator.
+    ("gnuv2 repeats under every separator", "__cdcln9867" * 80),
     # Itanium substitution reuse, which can double the output every few bytes.
     ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
     # A pack expansion's pattern is read once per member of the pack, so nested
