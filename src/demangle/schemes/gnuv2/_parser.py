@@ -186,13 +186,18 @@ MAX_DEPTH = 200
 #: Whole nested demanglings (HP template literal, EDG qualifier, `__thunk_` target).
 MAX_NESTED = 16
 
+#: Arguments one name may spell, over every guess `iterate_demangle_function` backtracks
+#: from. `N99999999_0` asks for the first argument a hundred million times in eleven
+#: characters; no real signature comes within sight of this.
+MAX_ARGUMENTS = 1 << 14
+
 
 class DemangleFailure(Exception):
     """The name is not one of these five manglings."""
 
 
 class _Overflow(DemangleFailure):
-    """A name that nests deeper than `MAX_DEPTH`, or recurses more than `MAX_NESTED`."""
+    """A name past `MAX_DEPTH`, `MAX_NESTED` or `MAX_ARGUMENTS`."""
 
 
 def _isdigit(character):
@@ -299,6 +304,7 @@ class _Work:
     __slots__ = (
         "ansi",
         "btypevec",
+        "budget",
         "capture",
         "constructor",
         "depth",
@@ -332,6 +338,8 @@ class _Work:
         self.ktypevec = []
         self.btypevec = []
         self.proctypevec = []
+        #: `MAX_ARGUMENTS`, counted down. A list so that `restore` leaves it alone.
+        self.budget = [MAX_ARGUMENTS]
         self.constructor = 0
         self.destructor = 0
         self.static_type = 0
@@ -835,6 +843,8 @@ def demangle_template_template_parm(work, cur, tname):
         need_comma = False
         success = 1
         ok, count = get_count(cur)
+        if ok and count > len(cur.rest()):
+            return 0
         if ok:
             for _ in range(count):
                 if need_comma:
@@ -1062,7 +1072,8 @@ def _demangle_template(work, cur, tname, trawname, is_type, remember):
 
     tname.append("<")
     ok, count = get_count(cur)
-    if not ok:
+    # Each argument takes at least a character, and the vector below is `count` long.
+    if not ok or count > len(cur.rest()):
         return 0
     if not is_type:
         work.tmpl_argvec = [None] * count
@@ -1545,7 +1556,12 @@ def demangle_args(work, cur, declp, capture=None):
         if cur.done():
             declp.append("void")
 
+    budget = work.budget
+
     while (cur.at() not in ("_", "", "e")) or work.nrepeats > 0:
+        budget[0] -= 1
+        if budget[0] < 0:
+            raise _Overflow("too many arguments")
         if cur.at() in ("N", "T"):
             temptype = cur.at()
             cur.advance()
@@ -1577,6 +1593,9 @@ def demangle_args(work, cur, declp, capture=None):
                     repeats -= 1
                     if repeats < 0:
                         break
+                budget[0] -= 1
+                if budget[0] < 0:
+                    raise _Overflow("too many arguments")
                 inner = _Cur(work.typevec[index])
                 if need_comma and work.params:
                     declp.append(", ")
@@ -2355,6 +2374,7 @@ def _demangle_fresh(work, name):
         raise _Overflow("nested demangling too deep")
     inner = _Work(work.style, params=work.params, ansi=work.ansi)
     inner.nested = work.nested + 1
+    inner.budget = work.budget
     inner.depth = work.depth
     return _internal_demangle(inner, name)
 

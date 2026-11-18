@@ -13,6 +13,11 @@ the reference demanglers, and a **Performance** section.
 - **A short MSVC name can no longer take minutes.** A dynamic initialiser nested in
   another was read twice at each level, so twenty of them in a 540-character name took ten
   seconds and every further one doubled it. It now takes milliseconds.
+- **A short g++ 2.x name can no longer hang `demangle()` or run it out of memory.**
+  `f__FiN99999999_0` repeats an argument a hundred million times and `H999999999_`
+  claims as many template arguments, and both are read by detection without being asked
+  for. A name now gets 16,384 arguments in all, and a template can't claim more arguments
+  than it has characters left.
 
 ## [0.9.1] - 2026-11-18
 

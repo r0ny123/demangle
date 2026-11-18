@@ -81,6 +81,12 @@ HOSTILE_NAMES = [
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # g++ 2.x's `N<count>_<index>` repeats an earlier argument: a hundred million times here.
+    ("gnuv2 repeated argument", "f__FiN99999999_0"),
+    # And `n<count>_` the next one, under every `__` the reader tries as the separator.
+    ("gnuv2 repeats under every separator", "__cdcln9867" * 80),
+    # A template that claims a thousand million arguments, which were allocated up front.
+    ("gnuv2 template argument count", "__ls__H999999999_1ZUl_R7ostreamRCt6smanip1ZX01_R7ostream"),
     # Each dynamic initialiser probes the rest of the name to see whether it names data,
     # and is then read: unremembered, a hundred of them is 2**100 readings.
     ("msvc nested dynamic initialisers", "?" + "dtor$0@?0???__Eclog@nowide@" * 100),
