@@ -81,6 +81,9 @@ HOSTILE_NAMES = [
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # Each dynamic initialiser probes the rest of the name to see whether it names data,
+    # and is then read: unremembered, a hundred of them is 2**100 readings.
+    ("msvc nested dynamic initialisers", "?" + "dtor$0@?0???__Eclog@nowide@" * 100),
     # Itanium substitution reuse, which can double the output every few bytes.
     ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
     # A pack expansion's pattern is read once per member of the pack, so nested
