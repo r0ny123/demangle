@@ -114,6 +114,9 @@ name that caused it rather than being killed.
 - The documentation site and its playground load no script, stylesheet, image or frame
   from another host. The Pyodide runtime the playground runs on is served by the site,
   each file checked against a pinned SHA-256 when the site is built; tests hold both.
+  Every page carries a Content Security Policy that refuses other hosts, for the scripts
+  the theme's bundle would still fetch: a polyfill in a browser too old for
+  `ResizeObserver`, and the loaders of features this site doesn't use.
   The playground page also carries a Content Security Policy that allows only its own
   scripts and styles, with no inline code, so a pasted or linked symbol can't run as
   script even if a rendering bug let it into the page.

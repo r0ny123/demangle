@@ -879,6 +879,15 @@ def test_no_page_of_the_built_site_loads_anything_from_another_host():
     assert found == set()
 
 
+def test_every_page_of_the_built_site_refuses_other_hosts_by_policy():
+    """The theme's bundle can still ask for one, a polyfill from unpkg.com in a browser
+    without `ResizeObserver` among others; the policy is what stops it there."""
+    pages = sorted(SITE.rglob("*.html"))
+    assert pages, "run `mkdocs build --strict` first"
+    policy = re.compile(r"""<meta http-equiv="Content-Security-Policy" content="default-src 'self';""")
+    assert [page.relative_to(SITE).as_posix() for page in pages if not policy.search(page.read_text("utf-8"))] == []
+
+
 def test_a_documentation_page_asks_no_other_host_for_anything(context, site_server):
     """What the tags above cannot show: a script that fetches, as Material's own repository
     link does for the star count."""
