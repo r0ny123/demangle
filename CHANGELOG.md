@@ -8,6 +8,8 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-18
+
 ### Changed
 
 - **A Rust name behind a PE import thunk reads as Rust.** `__imp__ZN...17h<hash>E` was
@@ -4329,7 +4331,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/r0ny123/demangle/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/r0ny123/demangle/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/r0ny123/demangle/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/r0ny123/demangle/compare/v0.7.0...v0.7.1
