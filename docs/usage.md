@@ -207,7 +207,7 @@ allow-list: detection runs as usual, but only among those.
 [Labelling a symbol table](labelling-a-symbol-table.md#say-which-schemes-the-table-can-hold)
 shows both on a real table.
 
-## Bytes
+## Bytes {#reading-bytes}
 
 A string table holds bytes, and they aren't always valid UTF-8: a truncated table can
 cut a name mid-character. Every single-name entry point has a bytes form, so you don't

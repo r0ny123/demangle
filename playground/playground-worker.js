@@ -1,5 +1,5 @@
 /* Python runs in a dedicated module worker; symbols never leave this browser. */
-// Served by this site, not a CDN: docs/hooks.py fetches the runtime when the site is built and
+// Served by this site, not a CDN: docs/build.py fetches the runtime when the site is built and
 // checks every file against a pinned SHA-256, so this page loads nothing from a third party.
 import { loadPyodide } from "./assets/pyodide/pyodide.mjs";
 
