@@ -48,8 +48,8 @@ def bridge():
 
 
 @pytest.fixture
-def hooks():
-    return _load_module("playground_hooks_for_runtime_tests", ROOT / "docs/hooks.py")
+def build():
+    return _load_module("docs_build_for_tests", ROOT / "docs/build.py")
 
 
 @pytest.mark.parametrize(("symbol", "language"), PRESETS or [(None, None)])
@@ -244,9 +244,9 @@ def test_batch_encoded_row_cache_preserves_json_and_exact_output_budget(bridge, 
     ],
     ids=["bytecode", "source"],
 )
-def test_source_archive_is_deterministic_and_importable(tmp_path, hooks, monkeypatch, bytecode):
+def test_source_archive_is_deterministic_and_importable(tmp_path, build, monkeypatch, bytecode):
     runtime_python = sys.version_info[:2] if bytecode else (2, 7)
-    monkeypatch.setattr(hooks, "PYODIDE_PYTHON", runtime_python)
+    monkeypatch.setattr(build, "PYODIDE_PYTHON", runtime_python)
     package = tmp_path / "src" / "demangle"
     package.parent.mkdir()
     shutil.copytree(ROOT / "src" / "demangle", package)
@@ -257,10 +257,10 @@ def test_source_archive_is_deterministic_and_importable(tmp_path, hooks, monkeyp
     cache.mkdir(exist_ok=True)
     (cache / "stale.pyc").write_bytes(b"stale bytecode")
 
-    archive_path = hooks.build_assets(tmp_path)
+    archive_path = build.build_assets(tmp_path)
     first_bytes = archive_path.read_bytes()
     (package / "__init__.py").touch()
-    assert hooks.build_assets(tmp_path).read_bytes() == first_bytes
+    assert build.build_assets(tmp_path).read_bytes() == first_bytes
 
     suffix = ".pyc" if bytecode else ".py"
     with zipfile.ZipFile(archive_path) as archive:
@@ -288,21 +288,21 @@ def test_source_archive_is_deterministic_and_importable(tmp_path, hooks, monkeyp
     assert imported.stdout.strip() == f"{demangle.__version__} foo::bar(int)"
 
 
-def test_the_docs_build_catches_text_a_browser_would_swallow_as_a_tag(hooks):
+def test_the_docs_build_catches_text_a_browser_would_swallow_as_a_tag(build):
     page = "<p>reads an <encoding>, not a <code>&lt;name&gt;</code></p>"
-    assert hooks.stray_tags(page) == ["encoding"]
+    assert build.stray_tags(page) == ["encoding"]
 
 
-def test_the_site_is_built_on_the_runtimes_python_so_it_ships_bytecode(hooks):
+def test_the_site_is_built_on_the_runtimes_python_so_it_ships_bytecode(build):
     workflows = ROOT / ".github" / "workflows"
     if not workflows.is_dir():
         pytest.skip("the workflows are not part of this distribution")
-    version = "{}.{}".format(*hooks.PYODIDE_PYTHON)
+    version = "{}.{}".format(*build.PYODIDE_PYTHON)
     for workflow in ("docs.yml", "ci.yml"):
         text = (workflows / workflow).read_text(encoding="utf-8")
         assert f'python-version: "{version}"' in text, workflow
     lock = ROOT / "playground" / "assets" / "pyodide" / "pyodide-lock.json"
-    if not lock.is_file() or hashlib.sha256(lock.read_bytes()).hexdigest() != hooks.PYODIDE_FILES[lock.name]:
+    if not lock.is_file() or hashlib.sha256(lock.read_bytes()).hexdigest() != build.PYODIDE_FILES[lock.name]:
         pytest.skip("the pinned runtime has not been fetched")
     assert json.loads(lock.read_text())["info"]["python"].startswith(version + ".")
 
@@ -322,41 +322,41 @@ class TestPyodideRuntime:
             links = [a or b for a, b in loaded if not (a or b).startswith("https://github.com/r0ny123/demangle")]
             assert links == [], name
 
-    def test_the_hook_pins_every_file_the_worker_starts_python_with(self, hooks):
-        assert f"https://cdn.jsdelivr.net/pyodide/v{hooks.PYODIDE_VERSION}/full/" == hooks.PYODIDE_SOURCE
-        assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in hooks.PYODIDE_FILES.values())
-        assert {"pyodide.mjs", "pyodide.asm.js", "pyodide.asm.wasm", "python_stdlib.zip"} <= set(hooks.PYODIDE_FILES)
+    def test_the_build_pins_every_file_the_worker_starts_python_with(self, build):
+        assert f"https://cdn.jsdelivr.net/pyodide/v{build.PYODIDE_VERSION}/full/" == build.PYODIDE_SOURCE
+        assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in build.PYODIDE_FILES.values())
+        assert {"pyodide.mjs", "pyodide.asm.js", "pyodide.asm.wasm", "python_stdlib.zip"} <= set(build.PYODIDE_FILES)
 
-    def test_a_file_is_fetched_once_and_kept_while_its_digest_holds(self, tmp_path, hooks, monkeypatch):
+    def test_a_file_is_fetched_once_and_kept_while_its_digest_holds(self, tmp_path, build, monkeypatch):
         files = {"a.js": b"first", "b.wasm": b"second"}
-        monkeypatch.setattr(hooks, "PYODIDE_FILES", {n: hashlib.sha256(c).hexdigest() for n, c in files.items()})
+        monkeypatch.setattr(build, "PYODIDE_FILES", {n: hashlib.sha256(c).hexdigest() for n, c in files.items()})
         asked = []
 
         def download(url):
             asked.append(url)
             return files[url.rsplit("/", 1)[1]]
 
-        runtime = hooks.fetch_pyodide(tmp_path, download)
+        runtime = build.fetch_pyodide(tmp_path, download)
         assert runtime == tmp_path / "playground" / "assets" / "pyodide"
         assert {path.name: path.read_bytes() for path in runtime.iterdir()} == files
-        assert asked == [hooks.PYODIDE_SOURCE + name for name in files]
-        hooks.fetch_pyodide(tmp_path, download)
+        assert asked == [build.PYODIDE_SOURCE + name for name in files]
+        build.fetch_pyodide(tmp_path, download)
         assert len(asked) == 2, "nothing is fetched again"
         (runtime / "a.js").write_bytes(b"changed on disk")
-        hooks.fetch_pyodide(tmp_path, download)
-        assert asked[2:] == [hooks.PYODIDE_SOURCE + "a.js"]
+        build.fetch_pyodide(tmp_path, download)
+        assert asked[2:] == [build.PYODIDE_SOURCE + "a.js"]
         assert (runtime / "a.js").read_bytes() == b"first"
 
-    def test_a_file_the_pin_does_not_name_is_removed(self, tmp_path, hooks, monkeypatch):
-        monkeypatch.setattr(hooks, "PYODIDE_FILES", {"a.js": hashlib.sha256(b"pinned").hexdigest()})
+    def test_a_file_the_pin_does_not_name_is_removed(self, tmp_path, build, monkeypatch):
+        monkeypatch.setattr(build, "PYODIDE_FILES", {"a.js": hashlib.sha256(b"pinned").hexdigest()})
         runtime = tmp_path / "playground" / "assets" / "pyodide"
         runtime.mkdir(parents=True)
         (runtime / "pyodide.js").write_bytes(b"left by an older release")
-        hooks.fetch_pyodide(tmp_path, lambda url: b"pinned")
+        build.fetch_pyodide(tmp_path, lambda url: b"pinned")
         assert [path.name for path in runtime.iterdir()] == ["a.js"]
 
-    def test_a_download_with_another_digest_fails_the_build_and_is_never_written(self, tmp_path, hooks, monkeypatch):
-        monkeypatch.setattr(hooks, "PYODIDE_FILES", {"a.js": hashlib.sha256(b"reviewed").hexdigest()})
+    def test_a_download_with_another_digest_fails_the_build_and_is_never_written(self, tmp_path, build, monkeypatch):
+        monkeypatch.setattr(build, "PYODIDE_FILES", {"a.js": hashlib.sha256(b"reviewed").hexdigest()})
         with pytest.raises(ValueError, match="not the pinned"):
-            hooks.fetch_pyodide(tmp_path, lambda url: b"served instead")
+            build.fetch_pyodide(tmp_path, lambda url: b"served instead")
         assert list((tmp_path / "playground" / "assets" / "pyodide").iterdir()) == []

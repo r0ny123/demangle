@@ -2,7 +2,7 @@
 
 Build the docs first, then run with the repository's optional browser tools:
 
-    mkdocs build --strict
+    python docs/build.py
     DEMANGLE_CHROMIUM_PATH=/usr/bin/chromium \
       .venv/bin/python benchmarks/bench_playground_browser.py
 
@@ -38,7 +38,7 @@ from playwright.sync_api import sync_playwright  # type: ignore[import-not-found
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 PLAYGROUND = "/playground/"
-VERSION = re.findall(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[0]
+VERSION = re.findall(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "build.py").read_text(), re.M)[0]
 
 WORKER_INSTRUMENTATION = """
 (() => {
@@ -365,7 +365,7 @@ def main() -> int:
     if args.runs < 1:
         parser.error("--runs must be at least 1")
     if not (SITE / "playground" / "index.html").is_file():
-        parser.error("built site missing; run `mkdocs build --strict` first")
+        parser.error("built site missing; run `python docs/build.py` first")
 
     local_requests: Counter[str] = Counter()
     local_bytes: Counter[str] = Counter()

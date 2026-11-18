@@ -1,6 +1,6 @@
 """Opt-in browser regressions for the built playground site.
 
-Run `mkdocs build --strict` first, then set DEMANGLE_BROWSER_TESTS=1. The normal suite
+Run `python docs/build.py` first, then set DEMANGLE_BROWSER_TESTS=1. The normal suite
 stays independent of Chromium and the Pyodide runtime; the real-runtime smoke is separately
 opt-in through DEMANGLE_PYODIDE_SMOKE=1.
 """
@@ -22,7 +22,7 @@ if os.environ.get("DEMANGLE_BROWSER_TESTS") != "1":
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / "site"
 PLAYGROUND = "/playground/"
-PYODIDE_VERSION = re.findall(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "hooks.py").read_text(), re.M)[0]
+PYODIDE_VERSION = re.findall(r'^PYODIDE_VERSION = "(.+)"$', (ROOT / "docs" / "build.py").read_text(), re.M)[0]
 pytestmark = pytest.mark.browser
 
 FAKE_WORKER = r"""
@@ -75,7 +75,7 @@ self.onmessage = ({data}) => {
 @pytest.fixture(scope="session")
 def site_server():
     if not (SITE / "playground" / "index.html").is_file():
-        pytest.fail("built site missing; run `mkdocs build --strict` first")
+        pytest.fail("built site missing; run `python docs/build.py` first")
 
     class QuietHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -872,7 +872,7 @@ def test_no_page_of_the_built_site_loads_anything_from_another_host():
         r"""|<link\b(?=[^>]*\brel=["'](?:stylesheet|preconnect|preload|modulepreload|icon)["'])[^>]*?\bhref=["']((?:https?:)?//[^"']+)"""
     )
     pages = sorted(SITE.rglob("*.html"))
-    assert pages, "run `mkdocs build --strict` first"
+    assert pages, "run `python docs/build.py` first"
     found = {
         (page.relative_to(SITE).as_posix(), a or b) for page in pages for a, b in loads.findall(page.read_text("utf-8"))
     }

@@ -102,12 +102,23 @@
   border-radius: 0.4rem;
 }
 
-@media screen and (min-width: 60em) {
-  .md-search__form,
-  .md-search__form:hover {
+/* The stock button is tinted for a coloured header bar, which this header is not. */
+@media screen and (min-width: 45em) {
+  .md-search__button,
+  .md-search__button:is(:focus, :hover) {
+    width: 11.7rem;
     border: var(--site-rule);
     border-radius: 0.4rem;
+    color: var(--md-default-fg-color--light);
     background-color: var(--md-code-bg-color);
+  }
+
+  .md-search__button:is(:focus, :hover) {
+    color: var(--md-default-fg-color);
+  }
+
+  .md-search__button::after {
+    background-color: var(--md-default-fg-color--lightest);
   }
 }
 
