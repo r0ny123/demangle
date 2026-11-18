@@ -47,7 +47,7 @@ smoke test is separately opt-in.
 ```console
 uv pip install -e . --group browser --group docs --group test
 python -m playwright install chromium
-mkdocs build --strict
+python docs/build.py
 DEMANGLE_BROWSER_TESTS=1 python -m pytest -q tests/browser/test_playground_browser.py
 
 # Also start the real Pyodide runtime the build fetched, as the browser CI job does.
@@ -145,7 +145,7 @@ python benchmarks/bench.py --check
 ```
 
 That is what `check` covers. CI also runs the three fuzzers against the built references,
-the cross-version reference check, `mkdocs build --strict`, and a build of the
+the cross-version reference check, the docs build, and a build of the
 distributions with the wheel installed in a clean environment, so a pull request can fail
 there with `check` passing.
 

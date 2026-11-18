@@ -7,15 +7,16 @@ renders the members it asks for.
 
 Links are deliberately *not* checked here. Doing it by hand needs a Markdown parser --
 these pages carry MSVC names with a literal backtick in them, so code spans cannot be
-found by counting delimiters -- and mkdocs already does it properly. `validation:` in
-`mkdocs.yml` promotes an unresolved link, an unlisted page and a bad anchor to a
-warning, which `--strict` fails on.
+found by counting delimiters -- and Zensical already does it properly: a link to a
+missing page or anchor, or a cross-reference to nothing, is a warning, which `--strict`
+fails on. It does not check that every page is in the navigation, so that is checked here.
 """
 
 import doctest
 import importlib
 import io
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -273,3 +274,18 @@ def test_the_citation_names_this_version():
     version = re.search(r'^version:\s*"?([^"\s]+)"?\s*$', citation.read_text(encoding="utf-8"), re.M)
     assert version is not None, "CITATION.cff has no version"
     assert version.group(1) == demangle.__version__
+
+
+def test_every_page_is_in_the_navigation():
+    """A page left out of the navigation is still built, and nobody finds it."""
+    config = ROOT / "zensical.toml"
+    if not config.exists():  # pragma: no cover - only in a wheel-only checkout
+        pytest.skip("zensical.toml is not part of this distribution")
+
+    def listed(entries):
+        for entry in entries:
+            for target in entry.values():
+                yield from listed(target) if isinstance(target, list) else [target]
+
+    nav = tomllib.loads(config.read_text(encoding="utf-8"))["project"]["nav"]
+    assert sorted(listed(nav)) == sorted(page.relative_to(DOCS).as_posix() for page in docs_pages())

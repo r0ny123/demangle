@@ -71,8 +71,7 @@ lint = [
 ]
 docs = [
     { include-group = "format" },
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.5",
+    "zensical>=0.1.2",
     "mkdocstrings-python>=1.10",
 ]
 browser = [
@@ -133,7 +132,7 @@ include = [
     "/SECURITY.md",
     "/LICENSE",
     "/NOTICE",
-    "/mkdocs.yml",
+    "/zensical.toml",
 ]
 
 [tool.hatch.envs.default]
@@ -160,8 +159,8 @@ installer = "uv"
 dependency-groups = ["docs"]
 
 [tool.hatch.envs.docs.scripts]
-build = "mkdocs build --strict {args}"
-serve = "mkdocs serve {args}"
+build = "python docs/build.py"
+serve = "zensical serve {args}"
 
 # The compiled wheels; .github/workflows/wheels.yml exports the two requirements files
 # from uv.lock first, so each environment installs by hash and builds without isolation.
