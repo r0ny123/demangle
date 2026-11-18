@@ -8,6 +8,12 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A short MSVC name can no longer take minutes.** A dynamic initialiser nested in
+  another was read twice at each level, so twenty of them in a 540-character name took ten
+  seconds and every further one doubled it. It now takes milliseconds.
+
 ## [0.9.1] - 2026-11-18
 
 ### Changed
