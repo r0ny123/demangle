@@ -450,6 +450,10 @@ class _Demangler:
         self.last_nested_symbol_template = None
         self.requires_signature = False
         self.nested = False
+        #: What `namesADataSymbol` found, by how much text was left. Shared
+        #: with every cursor this one opens: each scope probes the rest of the name and is
+        #: then read, so without it a name of n nested scopes costs 2**n.
+        self.probed = {}
         #: Productions read so far that an instantiation's replay would not reproduce: an
         #: operator name, which can set `requires_signature` and `conversion_arguments`
         #: and look past what it reads, and a nested symbol, whose own cursor may read
@@ -806,17 +810,25 @@ class _Demangler:
         Only the storage class tells the two apart, and it comes after the whole name, so
         this walks a throwaway cursor to it and reports what it found.
         """
+        # Depth is no part of the key: past the bound a probe raises, and nothing is kept.
+        key = (self.length - self.pos, self.options)
+        found = self.probed.get(key)
+        if found is not None:
+            return found
         probe = _Demangler("?" + self.text[self.pos :], options=self.options)
         probe.max_depth = self.max_depth
         probe.max_render = self.max_render
         probe.depth = self.depth
         probe.nested = True
+        probe.probed = self.probed
         try:
             probe.expect("?")
             probe.qualifiedName()
+            found = not probe.eof() and probe.peek() in _DATA_ACCESS
         except _Bail:
-            return False
-        return not probe.eof() and probe.peek() in _DATA_ACCESS
+            found = False
+        self.probed[key] = found
+        return found
 
     def nestedSymbol(self, leading_question=True, options=None):
         """A complete decorated name written inside another one.
@@ -838,6 +850,7 @@ class _Demangler:
         inner.max_depth = self.max_depth
         inner.max_render = self.max_render
         inner.nested = True
+        inner.probed = self.probed
         inner.name_backrefs = self.name_backrefs
         inner.arg_backrefs = self.arg_backrefs
         inner.at_symbol_name = True
