@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
@@ -31,6 +32,10 @@ jobs:
         run: |
           version=$(PYTHONPATH=src python -c 'import demangle; print(demangle.__version__)')
           test "$GITHUB_REF_NAME" = "v$version"
+      # Anyone who can push can create a tag on any commit and dispatch this workflow, but
+      # only a pull request with passing checks puts a commit on main.
+      - name: Verify the tagged commit is on main
+        run: git merge-base --is-ancestor HEAD origin/main
       # This job decides what is published, so it resolves nothing: uv and the build backend
       # install by hash from uv.lock, and the build runs offline without isolation. ci.yml's
       # `build` job does the same on every commit and runs twine there, keeping it out of here.
