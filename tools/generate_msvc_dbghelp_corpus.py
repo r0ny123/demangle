@@ -190,7 +190,7 @@ def _dll_version(handle):
     from ctypes import wintypes
 
     # Windows-only member; the caller has already loaded dbghelp.dll.
-    windll = ctypes.windll  # ty: ignore[unresolved-attribute]
+    windll = ctypes.windll  # ty: ignore[missing-attribute]
 
     path = ctypes.create_unicode_buffer(1024)
     if not windll.kernel32.GetModuleFileNameW(wintypes.HMODULE(handle), path, 1024):

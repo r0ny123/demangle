@@ -336,7 +336,7 @@ def calls():
         function()
         profiler.disable()
         # `total_calls` is set by the constructor, undeclared in typeshed.
-        counted[name] = (pstats.Stats(profiler).total_calls, count)  # ty: ignore[unresolved-attribute]
+        counted[name] = (pstats.Stats(profiler).total_calls, count)  # ty: ignore[missing-attribute]
     return counted
 
 
