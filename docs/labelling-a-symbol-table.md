@@ -17,7 +17,7 @@ labels = {address: demangle.demangle(name) for address, name in table}
 ```
 
 [`demangle_all()`](usage.md#demangling-a-name) does the same over an iterable, and
-[`demangleb()`](usage.md#bytes) takes the bytes a string table really holds.
+[`demangleb()`](usage.md#reading-bytes) takes the bytes a string table really holds.
 
 ## Say which schemes the table can hold
 

@@ -1,0 +1,49 @@
+name: PyPI watch
+
+# An upload made with a stolen PyPI login or token skips every check in release.yml, so this
+# looks at what PyPI actually serves (tools/check_pypi_releases.py) and opens an issue when a
+# file did not come from the release workflow.
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: files on PyPI came from release.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check PyPI
+        id: check
+        run: |
+          set +e
+          python3 -I tools/check_pypi_releases.py > report.md
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat report.md | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Open the issue
+        if: steps.check.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create pypi-watch --description "A file on PyPI did not come from release.yml" --color B60205 --force
+          if [ -z "$(gh issue list --label pypi-watch --state open --json number --jq '.[0].number')" ]; then
+            gh issue create --title "PyPI has files the release workflow did not upload" --label pypi-watch --body-file report.md
+          fi
+      - name: Fail the run unless PyPI was clean
+        if: steps.check.outputs.status != '0'
+        run: exit 1

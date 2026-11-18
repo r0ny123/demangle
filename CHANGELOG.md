@@ -8,6 +8,19 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A short MSVC name can no longer take minutes.** A dynamic initialiser nested in
+  another was read twice at each level, so twenty of them in a 540-character name took ten
+  seconds and every further one doubled it. It now takes milliseconds.
+- **A short g++ 2.x name can no longer hang `demangle()` or run it out of memory.**
+  `f__FiN99999999_0` repeats an argument a hundred million times and `H999999999_`
+  claims as many template arguments, and both are read by detection without being asked
+  for. A name now gets 16,384 arguments in all, and a template can't claim more arguments
+  than it has characters left.
+
+## [0.9.1] - 2026-11-18
+
 ### Changed
 
 - **A Rust name behind a PE import thunk reads as Rust.** `__imp__ZN...17h<hash>E` was
@@ -4329,7 +4342,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/r0ny123/demangle/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/r0ny123/demangle/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/r0ny123/demangle/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/r0ny123/demangle/compare/v0.7.0...v0.7.1

@@ -87,6 +87,9 @@ HOSTILE_NAMES = [
     ("gnuv2 repeats under every separator", "__cdcln9867" * 80),
     # A template that claims a thousand million arguments, which were allocated up front.
     ("gnuv2 template argument count", "__ls__H999999999_1ZUl_R7ostreamRCt6smanip1ZX01_R7ostream"),
+    # Each dynamic initialiser probes the rest of the name to see whether it names data,
+    # and is then read: unremembered, a hundred of them is 2**100 readings.
+    ("msvc nested dynamic initialisers", "?" + "dtor$0@?0???__Eclog@nowide@" * 100),
     # Itanium substitution reuse, which can double the output every few bytes.
     ("itanium pointers", "_Z1f" + "P" * 40000 + "i"),
     # A pack expansion's pattern is read once per member of the pack, so nested

@@ -1,22 +1,25 @@
-"""MkDocs hooks: zip the pure-Python source for the playground, fetch the Pyodide runtime it
-runs on, copy the playground into the site, and warn about text a browser would read as a tag."""
+"""Build the site: zip the pure-Python source for the playground, fetch the Pyodide runtime it
+runs on, build the pages with Zensical, copy the playground in, and fail on text a browser
+would read as a tag.
+
+Zensical runs no build hooks, so this does what they did. `python docs/build.py` is the whole
+build; `zensical serve` previews the pages without the playground."""
 
 from __future__ import annotations
 
 import hashlib
 import importlib.util
 import io
-import logging
 import marshal
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import urllib.request
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 #: The Python inside the pinned runtime (`info.python` in its `pyodide-lock.json`). A build
@@ -46,7 +49,7 @@ def _download(url: str) -> bytes:
         return response.read()
 
 
-def fetch_pyodide(root_dir: Path | None = None, download: Callable[[str], bytes] = _download) -> Path:
+def fetch_pyodide(root_dir: Path, download: Callable[[str], bytes] = _download) -> Path:
     """Put the pinned Pyodide runtime under ``playground/assets/pyodide``.
 
     A file already there with the right digest is kept, so only the first build needs a
@@ -54,8 +57,6 @@ def fetch_pyodide(root_dir: Path | None = None, download: Callable[[str], bytes]
     site never serves it. A download whose digest is not the pinned one is never written, and fails the
     build: a site without the runtime is better than a site serving one nobody checked.
     """
-    if root_dir is None:
-        root_dir = Path(__file__).resolve().parent.parent
     runtime = root_dir / "playground" / "assets" / "pyodide"
     runtime.mkdir(parents=True, exist_ok=True)
     for path in runtime.iterdir():
@@ -80,14 +81,11 @@ def _bytecode(source: bytes, name: str) -> bytes:
     return importlib.util.MAGIC_NUMBER + flags + importlib.util.source_hash(source) + marshal.dumps(code)
 
 
-def build_assets(root_dir: Path | None = None) -> Path:
+def build_assets(root_dir: Path) -> Path:
     """Build a deterministic zipimportable archive of ``src/demangle``.
 
     Modules go in as bytecode when this Python is the runtime's, and as source otherwise.
     """
-    if root_dir is None:
-        root_dir = Path(__file__).resolve().parent.parent
-
     src = root_dir / "src" / "demangle"
     if not (src / "__init__.py").is_file():
         raise FileNotFoundError(f"demangle source package missing: {src}")
@@ -118,17 +116,11 @@ def build_assets(root_dir: Path | None = None) -> Path:
     return playground_zip
 
 
-def on_pre_build(config: Any) -> None:
-    """Build the archive and fetch the runtime before the site, so the copy below finds them."""
-    build_assets()
-    fetch_pyodide()
-
-
-#: What Markdown and mkdocstrings write into a page; `autoref` is a cross-reference not yet
-#: resolved. Any other tag is prose that put a name between angle brackets outside a code
-#: span, as a grammar's `<encoding>` does, and a browser shows none of it.
+#: What Markdown and mkdocstrings write into a page. Any other tag is prose that put a name
+#: between angle brackets outside a code span, as a grammar's `<encoding>` does, and a
+#: browser shows none of it.
 _ELEMENTS = (
-    "a abbr autoref blockquote br code dd del details div dl dt em h1 h2 h3 h4 h5 h6 hr img kbd li ol"
+    "a abbr blockquote br code dd del details div dl dt em h1 h2 h3 h4 h5 h6 hr img kbd li ol"
     " p pre small span strong sub summary sup table tbody td th thead tr ul"
 )
 
@@ -138,27 +130,31 @@ def stray_tags(html: str) -> list[str]:
     return sorted(set(re.findall(r"<([a-zA-Z][\w-]*)", html)).difference(_ELEMENTS.split()))
 
 
-def on_page_content(html: str, page: Any, config: Any, files: Any) -> None:
-    """Warn about swallowed text, which fails a `--strict` build."""
-    if stray := stray_tags(html):
-        tags = ", ".join(f"<{tag}>" for tag in stray)
-        logging.getLogger("mkdocs.hooks").warning("%s: %s needs backticks", page.file.src_uri, tags)
+def check_pages(site_dir: Path) -> list[str]:
+    """Every page whose text holds a swallowed tag, with the tags."""
+    problems = []
+    for page in sorted(site_dir.rglob("*.html")):
+        content = re.search(r"<article\b[^>]*>(.*?)</article>", page.read_text(encoding="utf-8"), re.S)
+        if content and (stray := stray_tags(content.group(1))):
+            tags = ", ".join(f"<{tag}>" for tag in stray)
+            problems.append(f"{page.relative_to(site_dir).as_posix()}: {tags} needs backticks")
+    return problems
 
 
-def on_post_build(config: Any) -> None:
-    """Copy `playground/` into the built site."""
-    site_dir = Path(config["site_dir"])
-    playground_src = Path(__file__).resolve().parent.parent / "playground"
-    playground_dest = site_dir / "playground"
-    if playground_src.exists():
-        shutil.copytree(
-            playground_src,
-            playground_dest,
-            dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-        )
+def build(root_dir: Path) -> None:
+    build_assets(root_dir)
+    fetch_pyodide(root_dir)
+    subprocess.run([sys.executable, "-m", "zensical", "build", "--strict"], cwd=root_dir, check=True)
+    site_dir = root_dir / "site"
+    if problems := check_pages(site_dir):
+        sys.exit("\n".join(problems))
+    shutil.copytree(
+        root_dir / "playground",
+        site_dir / "playground",
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
 
 
 if __name__ == "__main__":
-    path = build_assets()
-    print(f"Generated archive: {path} ({path.stat().st_size} bytes)")
+    build(Path(__file__).resolve().parent.parent)
