@@ -16,6 +16,10 @@ the reference demanglers, and a **Performance** section.
   seconds, before `max_output` was looked at. The bound now stops the spelling as it is
   written. A name may also copy at most four million characters out of its word table,
   where 40,000 characters used to ask for 400 MB.
+- **An MSVC name's back-references are counted as they are read.** A digit stands for a
+  whole earlier name or parameter, and the scopes and parameters were only measured one
+  at a time, so 60,000 characters of `?f@AAA...@111...@YAXXZ` took three gigabytes to
+  refuse. It now takes a few megabytes.
 
 ## [0.9.3] - 2026-11-19
 
