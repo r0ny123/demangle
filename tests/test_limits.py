@@ -73,6 +73,18 @@ class TestEveryPluginHonoursTheInputBound:
         demangle.demangle_strict(longest, language=plugin, limits=roomy)
 
 
+def _doubled_itanium_types():
+    """Parameters `B<int, int>`, `B<that, that>`, ... up to one of 49K, and its `S<n>_`."""
+    types, last = "1BIiiE", "S0_"
+    for level in range(12):
+        types += f"1BI{last}{last}E"
+        last = f"S{'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'[2 * level + 2]}_"
+    return types, last
+
+
+_DOUBLED, _LAST = _doubled_itanium_types()
+
+
 #: Labelled so the label is the test id: `PYTEST_CURRENT_TEST` carries the id in the
 #: environment, and Windows refuses values past 32,767 characters.
 HOSTILE_NAMES = [
@@ -82,6 +94,9 @@ HOSTILE_NAMES = [
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # `S<n>_` is a type of any size again, and a list is only measured once joined.
+    ("itanium repeated parameter", "_Z1f" + _DOUBLED + _LAST * 4000),
+    ("itanium repeated initialiser", "_Z1g" + _DOUBLED + "DTil" + f"cv{_LAST}_E" * 4000 + "EE"),
     # An MSVC digit is an earlier name or parameter again, whatever its length.
     ("msvc repeated scope", "?f@" + "A" * 30000 + "@" + "1" * 30000 + "@YAXXZ"),
     ("msvc repeated parameter", "?f@@YAXV" + "A" * 30000 + "@@" + "0" * 30000 + "@Z"),
@@ -117,7 +132,14 @@ HOSTILE_NAMES = [
 
 
 #: The ones whose cost was memory, measured as well as timed.
-MEMORY_HUNGRY = {"msvc repeated scope", "msvc repeated parameter", "swift repeated substitutions", "swift word table"}
+MEMORY_HUNGRY = {
+    "itanium repeated parameter",
+    "itanium repeated initialiser",
+    "msvc repeated scope",
+    "msvc repeated parameter",
+    "swift repeated substitutions",
+    "swift word table",
+}
 
 
 @pytest.mark.parametrize(
