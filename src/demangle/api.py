@@ -176,7 +176,6 @@ def _parse_with(plugin, mangled, builder, limits, style):
     toolchain conventions, and means a new scheme inherits the behaviour by setting one
     flag instead of reimplementing it.
     """
-    suspect = has_control_character(mangled)
     options = style.language_options.get(plugin.name)
     whole = mangled
     decoration = ""
@@ -202,11 +201,28 @@ def _parse_with(plugin, mangled, builder, limits, style):
         handle = builder.decorated(handle, decoration)
         if builder.size(handle) > limits.max_output:
             raise LimitExceeded(whole, "output length", limits.max_output)
-    # An identifier or a suffix is spelled as written, and would carry an escape sequence
-    # on into a caller's terminal. A name that only holds one is still read: Objective-C
-    # block descriptors do, and nothing of it is spelled.
-    if suspect and has_control_character(builder.spell(handle)):
-        raise ParseError(whole, None, "a control character would reach the output")
+    return _printable(whole, builder, handle, plugin)
+
+
+def _printable(mangled, builder, handle, plugin):
+    r"""`handle`, refused if its spelling holds a control character.
+
+    An identifier or a suffix is spelled as written and would carry an escape sequence
+    on into a caller's terminal, and so would one that only appears once `%1b`, `_0001b`
+    or punycode has been decoded. Asked of the spelling, not the name: Objective-C block
+    descriptors hold `\x01`, and none of it is spelled.
+    """
+    if isinstance(handle, Node) and plugin.spells_what_it_reads and not has_control_character(mangled):
+        # Spelling a whole tree to look costs `parse()` a quarter of its time.
+        return handle
+    try:
+        spelled = builder.spell(handle)
+    except LimitExceeded:
+        # A tree can be read and still be too deep to spell: `parse()` hands it over for
+        # `walk`, and it has no spelling to check or to print.
+        return handle
+    if has_control_character(spelled):
+        raise ParseError(mangled, None, "a control character would reach the output")
     return handle
 
 
@@ -528,8 +544,10 @@ def _parse_type_handle(mangled, builder, language, style, limits):
     options = style.options_for(plugin.name)
     try:
         if options is None:
-            return plugin.parse_type(mangled, builder, limits)
-        return plugin.parse_type(mangled, builder, limits, options)
+            handle = plugin.parse_type(mangled, builder, limits)
+        else:
+            handle = plugin.parse_type(mangled, builder, limits, options)
+        return _printable(mangled, builder, handle, plugin)
     except RecursionError as exc:
         raise _depth_exceeded(mangled, limits) from exc
     except DemanglingError:

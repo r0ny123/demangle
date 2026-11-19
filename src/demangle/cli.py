@@ -912,12 +912,20 @@ def _chunks(stream, lines):
 _BOUND_FLAGS = {"input length": "--max-input", "output length": "--max-output", "recursion depth": "--max-depth"}
 
 
+#: C0, DEL and C1, what a terminal acts on instead of showing, as escapes.
+_VISIBLE = {code: f"\\x{code:02x}" for code in (*range(0x20), *range(0x7F, 0xA0))}
+
+
 def _complaint(name, exc):
     """The line on standard error for a name this run could not answer.
 
     A bound that was hit says how to move it: the name may be a real one, longer or
     deeper than the defaults allow for input nobody vouched for.
+
+    The name is the input's and the line is for a terminal, so its control characters
+    are written as escapes, as the error after it already writes them.
     """
+    name = name.translate(_VISIBLE)
     if isinstance(exc, LimitExceeded):
         flag = _BOUND_FLAGS.get(exc.limit_name)
         remedy = f"{flag} N or --relaxed" if flag else "--relaxed"

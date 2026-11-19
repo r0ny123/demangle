@@ -37,6 +37,14 @@ the reference demanglers, and a **Performance** section.
   over.** Each segment is copied, and a 218 KB ELF with four thousand program headers
   that each name the whole file took 1.7 GB. Segments that add up to more than twice
   the file are now a `MalformedImage`.
+- **A control character that only appears once a name is decoded no longer reaches the
+  output.** 0.9.3 refused a name that held one and would spell it. Go's `%1b`, JNI's
+  `_0001b` and a Swift punycoded identifier decode to one from clean text, so
+  `go:main.f%1b%5b31mX` still came back with an escape sequence in it. Every spelling is
+  now checked, `demangle_type()`'s and `demangle_symbolic()`'s included.
+- **`demangle --strict` writes a name's control characters as escapes in its
+  complaint.** The error already did; the name in front of it was written raw, so a
+  name could set the terminal's title or clear the screen from standard error.
 
 ## [0.9.3] - 2026-11-19
 

@@ -40,6 +40,7 @@ PLUGIN = LanguagePlugin(
     aliases=("gnu", "gcc", "clang", "cxx", "c++"),
     options_type=ItaniumOptions,
     symbol_table_decorations=True,
+    spells_what_it_reads=True,
     first_characters="_",
     # After Rust: a legacy Rust symbol is also a valid Itanium symbol.
     priority=200,

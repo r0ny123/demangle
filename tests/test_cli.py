@@ -78,6 +78,14 @@ class TestOptions:
         _, out, _ = run(capsys, ["--detect", *strict, "-l", "c++", "_Z1fv"])
         assert out == "itanium\n"
 
+    def test_a_strict_complaint_writes_control_characters_as_escapes(self, capsys):
+        """The name leads the line raw otherwise, and standard error is a terminal."""
+        status, _, err = run(capsys, ["--strict", "_Z1f\x1b]0;title\x07", "_Zx\x9b2J"])
+        assert status == 1
+        assert err.replace("\n", "").isprintable()
+        assert err.startswith("_Z1f\\x1b]0;title\\x07: ")
+        assert "\n_Zx\\x9b2J: " in err
+
     def test_detect_strict_names_the_scheme_that_reads_the_name(self, capsys):
         status, out, err = run(capsys, ["--detect", "--strict", "_Z1fv", "_ZN3Foo"])
         assert (status, out) == (1, "itanium\n")

@@ -17,6 +17,8 @@ import pathlib
 import pytest
 
 from demangle.schemes.swift import demangle_symbolic
+from demangle.schemes.swift._demangler import demangle_type
+from demangle.schemes.swift._printer import print_root
 from demangle.schemes.swift.resolve import (
     ContextResolver,
     Image,
@@ -613,8 +615,13 @@ def test_a_context_descriptor_can_name_utf8_identifiers(module, type_name):
     assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: fragment) == f"{module}.{type_name}"
 
 
-def test_a_unicode_fragment_can_hold_a_control_byte_inside_its_identifier():
-    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: "4demo3é\x01V") == "demo.é\x01"
+def test_a_control_byte_inside_a_unicode_fragments_identifier_is_not_a_reference():
+    """It is part of the identifier, so the fragment reads -- and is then refused, as any
+    spelling with a control character in it is."""
+    fragment = "4demo3é\x01V"
+    root = demangle_type("\x01\x00\x00\x00\x00", lambda ref, at: fragment, byte_mode=True)
+    assert print_root(root) == "demo.é\x01"
+    assert demangle_symbolic(b"\x01\x00\x00\x00\x00", lambda ref, at: fragment) is None
 
 
 def test_binary_resolver_fragments_can_follow_an_ascii_type_prefix():

@@ -171,7 +171,19 @@ def test_a_suffix_counts_towards_the_bounds(mangled, bound):
 
 @pytest.mark.parametrize(
     "mangled",
-    ["_Z1fv@\x1b[31m", "_Z1fv.\x1b[2J", "_ZN3fooE.cold\x7f", "_RNvC1a1b@\x1b[1m", "_Z3f\x1boov", "f__Fi@\n"],
+    [
+        "_Z1fv@\x1b[31m",
+        "_Z1fv.\x1b[2J",
+        "_ZN3fooE.cold\x7f",
+        "_RNvC1a1b@\x1b[1m",
+        "_Z3f\x1boov",
+        "f__Fi@\n",
+        # Written as escapes, and control characters only once decoded.
+        "go:main.f%1b%5b31mX",
+        "Java_a_b_0001b",
+        "Java_a_b_00007",
+        "$s4main004JbJbyyF",
+    ],
 )
 def test_a_control_character_does_not_reach_the_output(mangled):
     """An identifier or a suffix is spelled as written, escape sequence and all."""
@@ -179,6 +191,8 @@ def test_a_control_character_does_not_reach_the_output(mangled):
     for strict in (demangle.demangle_strict, demangle.parse):
         with pytest.raises(demangle.ParseError, match="control character"):
             strict(mangled)
+    with pytest.raises(demangle.ParseError, match="control character"):
+        demangle.demangle_type("004JbJb", language="swift")
     # Read all the same when nothing of the character is spelled.
     assert demangle.demangle("___block_descriptor_32_e5_v8\x01?0l") == "block descriptor"
 

@@ -86,6 +86,14 @@ class LanguagePlugin:
     truncated at the first one.
     """
 
+    spells_what_it_reads: bool = False
+    """Whether a control character can reach a spelling only by being in the name.
+
+    True lets `parse()` skip spelling a tree to look for one when the name holds none.
+    It must stay False for a scheme that decodes anything into text: Go's `%1b`, JNI's
+    `_0001b`, punycode. Itanium string literals are decoded too, but spelled escaped.
+    """
+
     first_characters: str = ""
     """The characters a name of this scheme may begin with, if they are not all of them.
 
