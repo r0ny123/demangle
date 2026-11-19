@@ -100,6 +100,14 @@ name that caused it rather than being killed.
   OK: demangle-0.7.0-py3-none-any.whl
   ```
 
+- Releases after 0.9.4 also carry a GitHub build provenance attestation for every file,
+  which needs nothing from PyPI to check:
+
+  ```console
+  $ gh attestation verify demangle-X.Y.Z-py3-none-any.whl --repo r0ny123/demangle \
+        --signer-workflow r0ny123/demangle/.github/workflows/release.yml
+  ```
+
 - The pure wheel is reproducible: `uv build` at the release tag, with the hatchling that
   `uv.lock` pins, gives the `py3-none-any` file on PyPI byte for byte, so its SHA-256
   can be compared with the one PyPI lists.

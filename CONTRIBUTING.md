@@ -190,7 +190,7 @@ pre-Itanium C++ that no distribution ships.
 Once the Unreleased section has notes worth publishing:
 
 ```console
-python tools/prepare_release.py 0.8.0 --date 2026-12-01
+python tools/prepare_release.py X.Y.Z --date YYYY-MM-DD
 ```
 
 That updates the package and citation versions, moves the notes under a dated changelog
@@ -223,8 +223,9 @@ wheel is pinned by hash. Checkout uses
 `.git/config` is readable by every later step. `tag-release.yml` cuts a release after
 push CI succeeds on `main` for the exact commit, through the API with `contents: write`
 and `actions: write` on that one job; it starts `release.yml`, which publishes through
-PyPI Trusted Publishing, so there is no long-lived API token in repository secrets. The
-`pypi` environment still waits for a maintainer to approve.
+PyPI Trusted Publishing, so there is no long-lived API token in repository secrets. Its
+`attest` job signs GitHub build provenance for every file first, with `id-token: write`
+and `attestations: write`. The `pypi` environment still waits for a maintainer to approve.
 
 The test matrix isn't a cross product. Every supported version runs on Linux, PyPy
 3.11 included. macOS and Windows get one row each, the newest and the oldest Python,
