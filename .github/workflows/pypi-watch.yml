@@ -3,9 +3,14 @@ name: PyPI watch
 # An upload made with a stolen PyPI login or token skips every check in release.yml, so this
 # looks at what PyPI actually serves (tools/check_pypi_releases.py) and opens an issue when a
 # file did not come from the release workflow.
+# GitHub drops scheduled runs when it is busy, and on a quiet repository most of them: the
+# hourly line alone ran once in eleven hours. So it asks four times an hour, off the round
+# minutes everyone else picks, and also runs on every push to main.
 on:
   schedule:
-    - cron: "41 * * * *"
+    - cron: "7,23,41,53 * * * *"
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
