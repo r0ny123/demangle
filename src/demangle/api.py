@@ -421,7 +421,10 @@ def demangle(
         result = builder.spell(handle)
         return result if key is None else _CACHE.put(key, result, epoch)
 
-    return mangled if key is None else _CACHE.put(key, mangled, epoch)
+    if key is None or len(mangled) > limits.max_input:
+        # No scheme reads a name that long, and nothing is saved by keeping it.
+        return mangled
+    return _CACHE.put(key, mangled, epoch)
 
 
 def demangle_strict(
