@@ -20,6 +20,12 @@ the reference demanglers, and a **Performance** section.
   whole earlier name or parameter, and the scopes and parameters were only measured one
   at a time, so 60,000 characters of `?f@AAA...@111...@YAXXZ` took three gigabytes to
   refuse. It now takes a few megabytes.
+- **An Itanium name's back-references are counted in all.** `S_` and `T_` stand for a
+  type of any size, each type was held to `max_output` by itself, and a parameter list
+  or an argument list of them was only measured after it had been joined: 12,000
+  characters took 780 MB to refuse. What a name's back-references stand for is now
+  capped at sixteen times `max_output`, twice over what any of 394,000 real names needs
+  relative to its own output.
 
 ## [0.9.3] - 2026-11-19
 

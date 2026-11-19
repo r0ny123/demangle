@@ -222,6 +222,12 @@ _COMPLEX_WORDS = (
 #: O(N^2). 16x is ~100x the largest real symbol's need.
 _PREFIX_BUDGET = 16
 
+#: Cap on the characters one name's back-references may stand for, as a multiple of
+#: `max_output`. A type is held to `max_output` by itself, but a list of them is not
+#: until it has been joined, and `S_` or `T_` is a type of any size again for two
+#: characters: four thousand of those after a 49K type were 780 MB.
+_BUILT_BUDGET = 16
+
 #: What opens a `<prefix>` component other than an `<unqualified-name>`: substitution,
 #: template parameter, decltype, template args, closure-prefix terminator, requires-clause.
 _PREFIX_MARKERS = frozenset("STDIMQ")
@@ -367,6 +373,7 @@ class ItaniumParser:
         "_bare_angle",
         "_bare_entity_prefix_used",
         "_bare_pack_used",
+        "_built",
         "_closure_level",
         "_closure_prefix_entries",
         "_closure_prefix_seen",
@@ -505,6 +512,7 @@ class ItaniumParser:
         self._max_depth = limits.max_depth
         self._max_output = limits.max_output
         self._prefixes = _PREFIX_BUDGET * limits.max_output
+        self._built = _BUILT_BUDGET * limits.max_output
         self.subs = SubstitutionTable(mangled, limits.max_substitutions)
         self.targs = TemplateArgumentTable()
         # Template-parameter resolutions so far. A production that advanced this depended on
@@ -1052,7 +1060,7 @@ class ItaniumParser:
                 inner = self.unqualified_name()
                 base = self.builder.qualified([self.builder.name("std"), inner])
             else:
-                base = self.substitution()
+                base = self._spend_built(self.substitution())
                 named = self._module_of(base)
                 if named is not None:
                     base = self.unqualified_name(module=named)
@@ -1101,6 +1109,13 @@ class ItaniumParser:
         if self._prefixes < 0:
             raise LimitExceeded(self._mangled, "output length", self._max_output)
         return combined
+
+    def _spend_built(self, handle):
+        """Charge what a back-reference stands for; see `_BUILT_BUDGET`."""
+        self._built -= self._size(handle)
+        if self._built < 0:
+            raise LimitExceeded(self._mangled, "output length", self._max_output)
+        return handle
 
     def _spend_rework(self, characters):
         """Charge a re-reading against the budget, or refuse the name."""
@@ -2392,7 +2407,7 @@ class ItaniumParser:
 
     def template_param(self):
         """A reference to a template parameter, resolved against the scope in force."""
-        return self.template_param_binding()[0]
+        return self._spend_built(self.template_param_binding()[0])
 
     def template_param_binding(self):
         """A `<template-param>`, as both what it resolves to and the reference itself.
@@ -2587,8 +2602,14 @@ class ItaniumParser:
                 result = self._type(char)
             # Checked on every type: `M S_ S_` doubles, so a few hundred bytes can describe
             # gigabytes. `size()` is O(1).
-            if self._size(result) > self._max_output:
+            size = self._size(result)
+            if size > self._max_output:
                 raise LimitExceeded(self._mangled, "output length", self._max_output)
+            if char == "S" or char == "T":
+                # `_spend_built`, inlined.
+                self._built -= size
+                if self._built < 0:
+                    raise LimitExceeded(self._mangled, "output length", self._max_output)
             # A template parameter was resolved here, so this production's entry (the
             # last one) must be re-read under a later back-reference's scope; see
             # `DeferredProduction`. The tests are ordered by how often each is false.
@@ -3905,10 +3926,10 @@ class ItaniumParser:
         if reader.peek() == "T":
             component, reference = self.template_param_binding()
             self.subs.remember(reference if reference is not None else component, "unresolved-type")
-            return builder.spell(component)
+            return builder.spell(self._spend_built(component))
         if reader.peek() == "D":
             return builder.spell(self.subs.remember(self.decltype_(), "unresolved-type"))
-        return builder.spell(self.substitution())
+        return builder.spell(self._spend_built(self.substitution()))
 
     def simple_id(self):
         """```
