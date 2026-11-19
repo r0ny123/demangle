@@ -37,7 +37,7 @@ from .core.errors import (
     recursion_error_lost,
     reraise_if_operational,
 )
-from .core.limits import DEFAULT_LIMITS, Limits
+from .core.limits import DEFAULT_LIMITS, Limits, has_control_character
 from .core.registry import candidates, canonical, get, load_plugins, names
 from .core.style import DEFAULT_STYLE, Style, available_styles, get_style
 
@@ -176,9 +176,14 @@ def _parse_with(plugin, mangled, builder, limits, style):
     toolchain conventions, and means a new scheme inherits the behaviour by setting one
     flag instead of reimplementing it.
     """
+    suspect = has_control_character(mangled)
     options = style.language_options.get(plugin.name)
+    whole = mangled
     decoration = ""
     if plugin.symbol_table_decorations:
+        # The parser only sees what is left of the split, so the suffix is bounded here.
+        if len(mangled) > limits.max_input:
+            raise LimitExceeded(mangled, "input length", limits.max_input)
         mangled, decoration = split_decorations(mangled)
 
     try:
@@ -193,7 +198,16 @@ def _parse_with(plugin, mangled, builder, limits, style):
             raise RecursionError("maximum recursion depth exceeded") from exc
         raise
 
-    return builder.decorated(handle, decoration) if decoration else handle
+    if decoration:
+        handle = builder.decorated(handle, decoration)
+        if builder.size(handle) > limits.max_output:
+            raise LimitExceeded(whole, "output length", limits.max_output)
+    # An identifier or a suffix is spelled as written, and would carry an escape sequence
+    # on into a caller's terminal. A name that only holds one is still read: Objective-C
+    # block descriptors do, and nothing of it is spelled.
+    if suspect and has_control_character(builder.spell(handle)):
+        raise ParseError(whole, None, "a control character would reach the output")
+    return handle
 
 
 def _refuse_limits(limits) -> NoReturn:

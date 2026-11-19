@@ -183,6 +183,7 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
         handle = builder.raw(expanded)
     if decoration:
         handle = builder.decorated(handle, decoration)
+        _check_length(mangled, builder.size(handle), limits)
     return builder.special("import thunk for ", handle) if import_thunk else handle
 
 

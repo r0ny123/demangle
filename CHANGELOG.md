@@ -8,6 +8,17 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An ELF version suffix no longer slips past `max_input` and `max_output`.** The suffix
+  is cut off before the name is parsed and was added back without being counted, so
+  `_Z1fv@` followed by a megabyte of anything came back a megabyte long. The bounds now
+  cover the whole symbol and what is rendered for it.
+- **A control character in a name no longer reaches the output.** An Itanium or Rust
+  name with an escape sequence in a version suffix, a clone suffix or an identifier was
+  spelled with it, where MSVC and Swift names were already refused. `demangle()` now
+  hands such a name back unchanged and `demangle_strict()` raises `ParseError`.
+
 ## [0.9.2] - 2026-11-18
 
 ### Fixed

@@ -1,12 +1,11 @@
 """Demangling for MSVC decorated symbol names."""
 
-import re
 import string
 import sys
 from functools import lru_cache
 
 from ...core.cache import memo
-from ...core.limits import DEFAULT_LIMITS
+from ...core.limits import DEFAULT_LIMITS, has_control_character
 from .nodes import (
     Array,
     Declaration,
@@ -222,24 +221,6 @@ _INSTANTIATIONS = memo()
 _KEY = 32
 _BUDGET = 1 << 23
 _held = 0
-
-
-#: See `has_control_character`.
-_CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
-
-
-def has_control_character(text):
-    """Whether `text` holds a C0 control character or DEL, as no decorated name can.
-
-    Over ASCII text, which nearly every name is, that is exactly what `str.isprintable`
-    refuses, and it answers in a third of the time a regex search takes: 0.87us against
-    2.31us over 366 characters. Anything else goes to the regex, since `isprintable`
-    refuses far more than a control character there. A regex is in turn 7.8x cheaper
-    than a per-character generator.
-    """
-    if text.isascii():
-        return not text.isprintable()
-    return _CONTROL_CHARACTER.search(text) is not None
 
 
 def _escaped_literal_character(value):

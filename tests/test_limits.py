@@ -113,6 +113,34 @@ def test_a_bound_that_is_not_a_count_is_refused(bound):
         Limits(**bound)
 
 
+DECORATED_NAMES = ["_Z1fv@@GLIBCXX_3.4", "_Z1fv.cold", "_RNvC1a1b@@VERS_1.0", "f__Fi@@VERS_1.0"]
+
+
+@pytest.mark.parametrize("mangled", DECORATED_NAMES)
+@pytest.mark.parametrize("bound", ["max_input", "max_output"])
+def test_a_suffix_counts_towards_the_bounds(mangled, bound):
+    """The version suffix is cut off before the parser runs, and was then never counted."""
+    limits = Limits(**{bound: 8})
+    assert demangle.demangle(mangled, limits=limits) == mangled
+    for strict in (demangle.demangle_strict, demangle.parse):
+        with pytest.raises(demangle.LimitExceeded, match=bound[4:]):
+            strict(mangled, limits=limits)
+
+
+@pytest.mark.parametrize(
+    "mangled",
+    ["_Z1fv@\x1b[31m", "_Z1fv.\x1b[2J", "_ZN3fooE.cold\x7f", "_RNvC1a1b@\x1b[1m", "_Z3f\x1boov", "f__Fi@\n"],
+)
+def test_a_control_character_does_not_reach_the_output(mangled):
+    """An identifier or a suffix is spelled as written, escape sequence and all."""
+    assert demangle.demangle(mangled) == mangled
+    for strict in (demangle.demangle_strict, demangle.parse):
+        with pytest.raises(demangle.ParseError, match="control character"):
+            strict(mangled)
+    # Read all the same when nothing of the character is spelled.
+    assert demangle.demangle("___block_descriptor_32_e5_v8\x01?0l") == "block descriptor"
+
+
 class TestBoundsAreEnforcedWhileWorking:
     """A bound stops the work rather than describing it afterwards.
 
