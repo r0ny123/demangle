@@ -206,6 +206,11 @@ ones retry only their failed jobs, and a cancelled one needs a manual restart.
 
 ## How changes get merged
 
+Pull request titles and commit subjects follow
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), such as
+`fix(msvc): count scopes against max_output`, and `commits.yml` checks both. A squash
+merge takes its subject from the title, and a release is `chore(release): X.Y.Z`.
+
 Leave `CHANGELOG.md` alone: the maintainer writes the entry when merging. A first-time
 contributor's CI runs once a maintainer approves it, so the first push can sit for a
 while before any checks appear. The easiest first contribution is a
