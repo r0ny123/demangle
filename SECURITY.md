@@ -108,6 +108,11 @@ name that caused it rather than being killed.
         --signer-workflow r0ny123/demangle/.github/workflows/release.yml
   ```
 
+- Before the approval, `tools/check_artifacts.py` opens the sdist and every wheel and
+  fails the release unless each file in them is a tracked file of the tagged commit with
+  the same bytes, the metadata the build writes, or one of the compiled extensions. A
+  `.pth` file, an extra module or a new dependency stops it there. The run's summary lists
+  what changed since the last release.
 - The pure wheel is reproducible: `uv build` at the release tag, with the hatchling that
   `uv.lock` pins, gives the `py3-none-any` file on PyPI byte for byte, so its SHA-256
   can be compared with the one PyPI lists.

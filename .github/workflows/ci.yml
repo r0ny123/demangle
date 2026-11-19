@@ -278,6 +278,7 @@ jobs:
       # As the release builds: with the hatchling uv.lock pins, and no network to fetch another.
       - run: uv build --offline --no-build-isolation --python "$(command -v python)"
       - run: python -m twine check --strict dist/*
+      - run: python tools/check_artifacts.py dist
       - name: Install the built wheel in a clean environment
         run: |
           python -m venv /tmp/clean
