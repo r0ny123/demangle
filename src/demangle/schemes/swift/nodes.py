@@ -15,6 +15,7 @@ spell the symbol differently from `demangle()`.
 """
 
 from ...core.ast import Node, rendered
+from ...core.limits import DEFAULT_LIMITS
 from ._printer import Printer, _Invalid
 from .options import DEFAULT_OPTIONS
 
@@ -99,13 +100,13 @@ class _TreePrinter(Printer):
     records.
     """
 
-    def __init__(self, options=DEFAULT_OPTIONS):
-        super().__init__(options)
+    def __init__(self, options, max_output):
+        super().__init__(options, max_output)
         self._open = [[]]
-        self.write = self._write
+        self.write = self._record
 
-    def _write(self, text):
-        self.out.append(text)
+    def _record(self, text):
+        self._write(text)
         if text:
             self._open[-1].append(text)
 
@@ -129,13 +130,16 @@ class _TreePrinter(Printer):
         return SwiftName("symbol", "Global", parts)
 
 
-def build(root, options=DEFAULT_OPTIONS):
+def build(root, options=DEFAULT_OPTIONS, max_output=DEFAULT_LIMITS.max_output):
     """Spell `root` while recording its structure, returning the tree.
 
     Returns `None` for a tree the printer refuses, which is the same answer the text path
     gives -- neither invents a partial reading.
+
+    Raises:
+        OutputTooLong: the spelling is longer than `max_output`.
     """
-    printer = _TreePrinter(options)
+    printer = _TreePrinter(options, max_output)
     try:
         printer.print(root, 0)
     except (_Invalid, IndexError, AttributeError, KeyError, RecursionError):

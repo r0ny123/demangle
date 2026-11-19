@@ -21,6 +21,7 @@ constants here rather than a parameter because a demangling that does not match 
 toolchain's is not useful, and every one of them changes the answer.
 """
 
+from ...core.limits import DEFAULT_LIMITS
 from ._demangler import _VALUE_WITNESS_NAMES, STDLIB_NAME, demangle_symbol
 from ._old_demangler import demangle_old_symbol
 from .options import DEFAULT_OPTIONS, SwiftOptions
@@ -145,6 +146,14 @@ _PARAM_ESCAPING_CLOSURE_PROP = 12
 _PARAM_DIFFERENTIABLE_FUNCTION_PROP = 13
 
 
+class OutputTooLong(Exception):
+    """The spelling passed the caller's `max_output`, and the walk stopped there.
+
+    A tree is small where its spelling is not: one node can stand under two thousand
+    parents, and print in full under each.
+    """
+
+
 class _Invalid(Exception):
     """`setInvalid`: the tree is one the printer cannot spell.
 
@@ -184,9 +193,9 @@ def _demangle_either(text):
     return found
 
 
-def _spell_payload(text):
+def _spell_payload(text, max_output):
     """`demangleSymbolAsString(text)`, falling back to the text itself as the reference does."""
-    return print_root(_demangle_either(text), _PAYLOAD_OPTIONS) or text
+    return print_root(_demangle_either(text), _PAYLOAD_OPTIONS, max_output) or text
 
 
 def _quoted(text):
@@ -278,16 +287,23 @@ class Printer:
                 "would shadow; assign self.write in __init__ instead, as nodes._TreePrinter does"
             )
 
-    def __init__(self, options=DEFAULT_OPTIONS):
+    def __init__(self, options=DEFAULT_OPTIONS, max_output=DEFAULT_LIMITS.max_output):
         self.options = options
+        #: Characters still allowed; `_write` stops the walk when they run out.
+        self.left = max_output
         #: Whether `specialized ` has been written; the reference latches it so nested
         #: specialisation layers say it once.
         self._said_specialized = False
         self.out = []
-        #: Append one piece of the spelling. The list's own `append`, not a method around
-        #: it: this is the printer's most frequent call, nearly thirty times a name. A
-        #: subclass that has to see every piece assigns its own, as `nodes` does.
-        self.write = self.out.append
+        #: Append one piece of the spelling. An attribute, not a method, so a subclass
+        #: that has to see every piece assigns its own, as `nodes` does.
+        self.write = self._write
+
+    def _write(self, text):
+        self.left -= len(text)
+        if self.left < 0:
+            raise OutputTooLong
+        self.out.append(text)
 
     def result(self):
         return "".join(self.out)
@@ -806,7 +822,7 @@ class Printer:
                 continue
             if kind in (_PARAM_CONSTANT_PROP_FUNCTION, _PARAM_CONSTANT_PROP_GLOBAL):
                 # A mangled name; the reference demangles it, falling back to the raw text.
-                self.write(_spell_payload(child.text))
+                self.write(_spell_payload(child.text, self.left))
             elif kind == _PARAM_CONSTANT_PROP_STRING and child.text and child.text.startswith("_"):
                 # `_` escapes a string constant that would otherwise start with a digit.
                 self.write(child.text[1:])
@@ -1350,14 +1366,14 @@ for _kind, _lead in _MACRO_EXPANSION_NAMES.items():
         as_prefix_context,
         "none",
         True,
-        _lead + _node_to_string(node.children[2]) + " expansion #",
+        _lead + _node_to_string(node.children[2], self.left) + " expansion #",
         _c_int(_c_int(node.children[3].index) + 1),
     )
 
 
-def _node_to_string(node):
+def _node_to_string(node, max_output):
     """`nodeToString`: spell one node on its own, for embedding in a name."""
-    printer = Printer()
+    printer = Printer(max_output=max_output)
     try:
         printer.print(node, 0)
     except _Invalid:
@@ -1704,7 +1720,7 @@ def _print_param_payload(self, node, depth, as_prefix_context):
     if node.text is None:
         self.write(str(node.index))
         return None
-    self.write(_spell_payload(node.text))
+    self.write(_spell_payload(node.text, self.left))
     return None
 
 
@@ -2731,11 +2747,15 @@ def _print_symbolic_existential(self, node, depth, as_prefix_context):
     return None
 
 
-def print_root(root, options=DEFAULT_OPTIONS):
-    """Spell a whole tree, or return `""` if it is one the printer cannot spell."""
+def print_root(root, options=DEFAULT_OPTIONS, max_output=DEFAULT_LIMITS.max_output):
+    """Spell a whole tree, or return `""` if it is one the printer cannot spell.
+
+    Raises:
+        OutputTooLong: the spelling is longer than `max_output`.
+    """
     if root is None:
         return ""
-    printer = Printer(options)
+    printer = Printer(options, max_output)
     try:
         printer.print(root, 0)
     except (_Invalid, IndexError, AttributeError, KeyError, RecursionError):

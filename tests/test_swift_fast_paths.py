@@ -725,13 +725,14 @@ class TestPrinterWrite:
         mangled = "$s4main1SVyQrSicig5innerQryF"
         assert demangle.parse(mangled, language="swift").spell() == spell(mangled)
 
-    def test_the_output_is_the_lists_own_append(self):
-        printer = printer_module.Printer()
-        assert printer.write == printer.out.append
+    def test_the_output_stops_at_the_bound(self):
+        printer = printer_module.Printer(max_output=2)
         printer.write("a")
         printer.write("")
         printer.write("b")
         assert printer.result() == "ab"
+        with pytest.raises(printer_module.OutputTooLong):
+            printer.write("c")
 
 
 class TestPopIsGivenAKindOrASetOfKinds:
