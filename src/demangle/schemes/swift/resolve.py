@@ -118,6 +118,19 @@ def _field(unpacker, data, at, what):
         raise MalformedImage(f"truncated before {what} at offset {at}") from None
 
 
+def _mapped(blob, total, data):
+    """`total` with `blob` added, refusing segments that hold the file many times over.
+
+    Each segment is a copy, and nothing stops a header naming the whole file in every
+    one: four thousand of those in a 218 KB file were 1.7 GB. Real segments do not
+    overlap, so twice the file is room to spare.
+    """
+    total += len(blob)
+    if total > 2 * len(data):
+        raise MalformedImage("segments cover more than twice the file")
+    return total
+
+
 def elf_image(data):
     """An `Image` over a 64-bit little-endian ELF file's PT_LOAD segments.
 
@@ -133,6 +146,7 @@ def elf_image(data):
         raise MalformedImage(f"ELF program header entry claims {entry_size} bytes; at least 56 required")
     segments = []
     dynamic = None
+    mapped = 0
     for index in range(count):
         at = program_offset + index * entry_size
         # A truncated image (core dump, partial download) is common: answer from what
@@ -147,7 +161,9 @@ def elf_image(data):
         if kind != 1:  # PT_LOAD
             continue
         vaddr = _U64.unpack_from(data, at + 0x10)[0]
-        segments.append((vaddr, bytearray(data[offset : offset + filesz])))
+        blob = bytearray(data[offset : offset + filesz])
+        mapped = _mapped(blob, mapped, data)
+        segments.append((vaddr, blob))
     imports = _apply_dynamic_relocations(data, segments, dynamic) if dynamic else {}
     return Image([(vaddr, bytes(blob)) for vaddr, blob in segments], imports, _defined_descriptors(data))
 
@@ -349,6 +365,7 @@ def macho_image(data):
     command_end = 0x20 + command_bytes
     at = 0x20
     segments = []
+    mapped = 0
     for _ in range(commands):
         if at + _MIN_LOAD_COMMAND > len(data):
             break
@@ -368,7 +385,9 @@ def macho_image(data):
             vmaddr = _U64.unpack_from(data, at + 0x18)[0]
             fileoff = _U64.unpack_from(data, at + 0x28)[0]
             filesize = _U64.unpack_from(data, at + 0x30)[0]
-            segments.append((vmaddr, data[fileoff : fileoff + filesize]))
+            blob = data[fileoff : fileoff + filesize]
+            mapped = _mapped(blob, mapped, data)
+            segments.append((vmaddr, blob))
         at += size
     return Image(segments)
 
