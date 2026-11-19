@@ -21,6 +21,7 @@ class OutputTooLong(Exception):
 
 _U64_MAX = (1 << 64) - 1
 _ZERO_PAD = re.compile(r"0+")
+_HEX_NIBBLES = re.compile(r"([0-9a-f]*)_")
 
 
 class UnableTov0Demangle(Exception):
@@ -534,16 +535,12 @@ class Parser:
         return self.inn[at]
 
     def hex_nibbles(self) -> str:
-        start = self.next_val
-        while True:
-            n = self.next_func()
-            if n in string.digits or (n in "abcdef"):
-                continue
-            elif n == "_":
-                break
-            else:
-                raise UnableTov0Demangle(self.inn)
-        return self.inn[start : self.next_val - 1]
+        # One search, not a step per digit: a back-reference reads the field again.
+        found = _HEX_NIBBLES.match(self.inn, self.next_val, self.end)
+        if found is None:
+            raise UnableTov0Demangle(self.inn)
+        self.next_val = found.end()
+        return found.group(1)
 
     def integer_62(self) -> int:
         """`<base-62-number> ::= {<0-9a-zA-Z>} "_"`, valued one more than its digits spell.
@@ -1696,10 +1693,20 @@ class Printer:
         try:
             parser = self.parser
             if self.eat("B"):
-                printer = self.backref_printer()
+                if not self._plain:
+                    printer = self.backref_printer()
+                    printer.print_const(in_value)
+                    if printer._peak_depth > self._peak_depth:
+                        self._peak_depth = printer._peak_depth
+                    return
+                key, remembered = self.backref_remembered("const", in_value)
+                if remembered is not None:
+                    self.emit(remembered)
+                    return
+                printer = self.backref_printer(key[1])
+                start = len(self.sink._parts)
                 printer.print_const(in_value)
-                if printer._peak_depth > self._peak_depth:
-                    self._peak_depth = printer._peak_depth
+                self.backref_record(key, start, printer)
                 return
 
             opened_brace = False
