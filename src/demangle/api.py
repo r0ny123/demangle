@@ -212,7 +212,13 @@ def _printable(mangled, builder, handle):
     or punycode has been decoded. Asked of the spelling, not the name: Objective-C block
     descriptors hold `\x01`, and none of it is spelled.
     """
-    if has_control_character(builder.spell(handle)):
+    try:
+        spelled = builder.spell(handle)
+    except LimitExceeded:
+        # A tree can be read and still be too deep to spell: `parse()` hands it over for
+        # `walk`, and it has no spelling to check or to print.
+        return handle
+    if has_control_character(spelled):
         raise ParseError(mangled, None, "a control character would reach the output")
     return handle
 
