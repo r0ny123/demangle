@@ -124,6 +124,10 @@ class BoundedCache:
         # `acquire` and `release`: `with` costs twice as much, and this runs on every miss.
         # Weighed before the lock is taken, so as little Python as possible runs under it.
         weight = 0 if self._weigh is None else self._weigh(key, value)
+        if weight > self._budget:
+            # A generation is checked before an entry joins it, so one entry of any size
+            # would be held; it is the caller's to keep.
+            return value
         lock = self._lock
         lock.acquire()
         try:

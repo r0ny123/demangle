@@ -564,6 +564,30 @@ class TestCacheStatistics:
         assert sum(entries) <= 20_000 + 2 * max(entries)
         assert len(cache) < 20
 
+    def test_an_entry_heavier_than_a_generation_is_not_kept(self, monkeypatch):
+        """A generation is weighed before an entry joins it, so one entry could be any
+        size: a refused 30 MB name stayed cached at 240 MB."""
+        from demangle import api
+        from demangle.core.cache import BoundedCache
+
+        cache = BoundedCache(max_size=1000, max_weight=20_000, weigh=api._CACHE._weigh)
+        monkeypatch.setattr(api, "_CACHE", cache)
+        heavy = "_Z" + "é" * 3000
+        assert demangle.demangle(heavy) == heavy
+        assert len(cache) == 0
+        assert demangle.demangle("_Z1fv") == "f()"
+        assert len(cache) == 1
+
+    def test_a_name_longer_than_max_input_is_not_cached(self, monkeypatch):
+        from demangle import api
+        from demangle.core.cache import BoundedCache
+
+        cache = BoundedCache(max_size=1000, max_weight=1 << 30, weigh=api._CACHE._weigh)
+        monkeypatch.setattr(api, "_CACHE", cache)
+        long = "_Z" + "1f" * 40000
+        assert demangle.demangle(long) == long
+        assert len(cache) == 0
+
     def test_an_answer_computed_across_a_clear_is_not_stored(self, monkeypatch):
         """Registering a language or style clears the cache; a call that began parsing
         before that must not store what it read with the plugins from before."""

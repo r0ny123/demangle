@@ -45,6 +45,10 @@ the reference demanglers, and a **Performance** section.
 - **`demangle --strict` writes a name's control characters as escapes in its
   complaint.** The error already did; the name in front of it was written raw, so a
   name could set the terminal's title or clear the screen from standard error.
+- **The cache no longer keeps an entry bigger than it is allowed to be.** A name refused
+  for its length was cached all the same, and one entry could be any size: a 30 MB name
+  stayed held at 240 MB against a budget of 96. A name over `max_input` is not cached,
+  and neither is any entry heavier than half the budget.
 
 ## [0.9.3] - 2026-11-19
 
