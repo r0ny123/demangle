@@ -16,7 +16,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import DemangleFailure, DSymbol, _Exhausted, parse_d_symbol
+from ._parser import DemangleFailure, DSymbol, _Exhausted, _TooDeep, _TooLong, parse_d_symbol
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -70,23 +70,9 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     original, mangled = mangled, _without_the_mach_o_underscore(mangled)
     if not mangled.startswith("_D"):
         raise NotMangledError(original, "not a D mangled name")
-    if mangled == _MAIN:
-        return (
-            builder.raw("D main")
-            if not _wants_structure(builder)
-            else nodes.build(DSymbol(raw=mangled, path="D main", text="D main"))
-        )
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
-
-    try:
-        symbol = parse_d_symbol(mangled, limits.max_substitutions)
-    except _Exhausted as error:
-        raise LimitExceeded(mangled, "substitution", limits.max_substitutions) from error
-    except DemangleFailure as error:
-        raise ParseError(mangled, None, str(error)) from error
-    except RecursionError as error:
-        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
+    symbol = DSymbol(raw=mangled, path="D main", text="D main") if mangled == _MAIN else _read(mangled, limits)
 
     if len(symbol.text) > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)
@@ -94,6 +80,21 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     if _wants_structure(builder):
         return nodes.build(symbol)
     return builder.raw(symbol.text)
+
+
+def _read(mangled, limits):
+    try:
+        return parse_d_symbol(mangled, limits.max_substitutions, limits.max_output, limits.max_depth)
+    except _TooLong as error:
+        raise LimitExceeded(mangled, "output length", limits.max_output) from error
+    except _TooDeep as error:
+        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
+    except _Exhausted as error:
+        raise LimitExceeded(mangled, "substitution", limits.max_substitutions) from error
+    except DemangleFailure as error:
+        raise ParseError(mangled, None, str(error)) from error
+    except RecursionError as error:
+        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
 
 
 PLUGIN = LanguagePlugin(

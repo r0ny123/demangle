@@ -98,6 +98,8 @@ HOSTILE_NAMES = [
     ("rust const back-references", "_RINvC5crate1fKj" + "0" * 30000 + "1_" + "KBc_" * 8000 + "E"),
     # Every `__` may be the signature separator, and detection sees a name of any length.
     ("jni separator candidates", "Java_a_0dc00" + "__I" * 400000),
+    # Each D qualifier wrapped the whole spelling so far in a new string.
+    ("d qualifier run", "_D3foo1x" + "O" * 60000 + "i"),
     # `S<n>_` is a type of any size again, and a list is only measured once joined.
     ("itanium repeated parameter", "_Z1f" + _DOUBLED + _LAST * 4000),
     ("itanium repeated initialiser", "_Z1g" + _DOUBLED + "DTil" + f"cv{_LAST}_E" * 4000 + "EE"),
@@ -195,6 +197,20 @@ def test_a_control_character_does_not_reach_the_output(mangled):
         demangle.demangle_type("004JbJb", language="swift")
     # Read all the same when nothing of the character is spelled.
     assert demangle.demangle("___block_descriptor_32_e5_v8\x01?0l") == "block descriptor"
+
+
+def test_d_keeps_the_callers_bounds():
+    """`_Dmain` returned before either length was looked at, and only the substitution
+    bound was handed to the parser."""
+    for bound in ("max_input", "max_output"):
+        with pytest.raises(demangle.LimitExceeded, match=bound[4:]):
+            demangle.demangle_strict("_Dmain", limits=Limits(**{bound: 2}))
+    deep = "_D3foo1fF" + "P" * 200 + "iZv"
+    assert demangle.demangle_strict(deep).startswith("foo.f(int*")
+    with pytest.raises(demangle.LimitExceeded, match="recursion depth limit of 8"):
+        demangle.demangle_strict(deep, limits=Limits(max_depth=8))
+    with pytest.raises(demangle.LimitExceeded, match="output length limit of 12"):
+        demangle.demangle_strict("_D3foo1fFAAAAiZv", limits=Limits(max_output=12))
 
 
 class TestBoundsAreEnforcedWhileWorking:
