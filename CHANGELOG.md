@@ -8,6 +8,8 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-11-19
+
 ### Fixed
 
 - **A short Swift name can no longer build a hundred megabytes before it is refused.** A
@@ -4404,7 +4406,8 @@ substitution table contents, pinned by name.
   faster by doing less work.
 - API reference published from docstrings at <https://r0ny123.github.io/demangle/>.
 
-[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/r0ny123/demangle/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/r0ny123/demangle/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/r0ny123/demangle/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/r0ny123/demangle/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/r0ny123/demangle/compare/v0.9.0...v0.9.1
