@@ -192,6 +192,14 @@ class _Exhausted(Exception):
     """
 
 
+class _TooLong(_Exhausted):
+    """The spelling passed the caller's `max_output`."""
+
+
+class _TooDeep(_Exhausted):
+    """The nesting passed the caller's `max_depth`."""
+
+
 class DemangleFailure(Exception):
     """The name is not one this parser can read."""
 
@@ -313,8 +321,10 @@ class _Parser:
         text,
         max_substitutions=DEFAULT_LIMITS.max_substitutions,
         max_output=DEFAULT_LIMITS.max_output,
+        max_depth=DEFAULT_LIMITS.max_depth,
     ):
         self.reader = _Reader(text)
+        self._max_depth = max_depth
         # A symbol as a template argument omits its scopes' qualifiers:
         # `FilterResult!(bitsSet(), ...)` where the path reads `initializer() const`.
         self._in_symbol_argument = False
@@ -728,7 +738,7 @@ class _Parser:
         into something larger still.
         """
         if len(text) > self._max_output:
-            raise _Exhausted
+            raise _TooLong
         return text
 
     def _symbol_name_follows(self, at):
@@ -1073,6 +1083,8 @@ class _Parser:
         if work < 0:
             raise _Exhausted
         reader = self.reader
+        if reader.depth > self._max_depth:
+            raise _TooDeep
         if reader.depth > _Reader.MAX_DEPTH:
             raise DemangleFailure("type nesting too deep")
         reader.depth += 1
@@ -1084,9 +1096,10 @@ class _Parser:
     def _type(self):
         modifiers = self.type_modifiers()
         rendered = self._type_body()
-        for modifier in reversed(modifiers):
-            rendered = f"{modifier}({rendered})"
-        return rendered
+        if not modifiers:
+            return rendered
+        # Joined once: wrapping one at a time copies the whole spelling per qualifier.
+        return f"{'('.join(modifiers)}({rendered}{')' * len(modifiers)}"
 
     def _type_body(self):
         reader = self.reader
@@ -1275,9 +1288,10 @@ def parse_d_symbol(
     symbol,
     max_substitutions=DEFAULT_LIMITS.max_substitutions,
     max_output=DEFAULT_LIMITS.max_output,
+    max_depth=DEFAULT_LIMITS.max_depth,
 ):
     """Parse `symbol`, returning a `DSymbol`, or raise `DemangleFailure`."""
-    parser = _Parser(symbol, max_substitutions, max_output)
+    parser = _Parser(symbol, max_substitutions, max_output, max_depth)
     text = parser.parse()
     if parser.reader.pos != parser.reader.end:
         raise DemangleFailure("unconsumed input")

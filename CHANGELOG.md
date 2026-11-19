@@ -49,6 +49,11 @@ the reference demanglers, and a **Performance** section.
   for its length was cached all the same, and one entry could be any size: a 30 MB name
   stayed held at 240 MB against a budget of 96. A name over `max_input` is not cached,
   and neither is any entry heavier than half the budget.
+- **D names keep the caller's limits.** `_Dmain` was answered before `max_input` and
+  `max_output` were looked at, and `max_depth` never reached the parser, so
+  `Limits(max_depth=8)` read a type nested two hundred deep. A run of type qualifiers
+  is also joined once: sixty thousand of them took seconds, each wrapping the whole
+  spelling again.
 
 ## [0.9.3] - 2026-11-19
 
