@@ -14,7 +14,6 @@ later has to keep the promise too rather than quietly not being covered.
 import contextlib
 import sys
 import time
-import tracemalloc
 from dataclasses import replace
 
 import pytest
@@ -175,6 +174,8 @@ class TestBoundsAreEnforcedWhileWorking:
     @pytest.mark.parametrize("name", sorted(MEMORY_HUNGRY))
     def test_a_hostile_name_is_answered_in_little_memory(self, name):
         """Refusing a name after building what it asks for is no bound on memory."""
+        import tracemalloc
+
         mangled = dict(HOSTILE_NAMES)[name]
         demangle.cache_clear()
         tracemalloc.start()
