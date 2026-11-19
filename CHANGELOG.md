@@ -33,6 +33,10 @@ the reference demanglers, and a **Performance** section.
   as the signature separator, decoding the whole name each time, before any length
   limit applied: 1.2 million characters took a minute. The tries are now rationed by
   the name's length.
+- **`elf_image()` and `macho_image()` refuse a file whose segments cover it many times
+  over.** Each segment is copied, and a 218 KB ELF with four thousand program headers
+  that each name the whole file took 1.7 GB. Segments that add up to more than twice
+  the file are now a `MalformedImage`.
 
 ## [0.9.3] - 2026-11-19
 

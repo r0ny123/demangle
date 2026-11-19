@@ -654,3 +654,39 @@ def test_legacy_binary_str_fragments_preserve_prefixes_and_padding(prefix, suffi
 
     assert demangle_symbolic(b"\x01\x00\x00\x00\x00", resolve) == expected
     assert seen == [(0, 1), (-127, len(prefix) + 1)]
+
+
+class TestSegmentsThatCoverTheFileManyTimes:
+    """Each segment is a copy of its bytes, so a header naming the whole file in every
+    one asks for the file squared: 1.7 GB out of 218 KB."""
+
+    def test_an_elf_whose_segments_all_hold_the_whole_file_is_refused(self):
+        import struct
+
+        count = 4000
+        size = 0x40 + count * 0x38
+        data = bytearray(size)
+        data[:6] = b"\x7fELF\x02\x01"
+        struct.pack_into("<Q", data, 0x20, 0x40)
+        struct.pack_into("<HH", data, 0x36, 0x38, count)
+        for index in range(count):
+            at = 0x40 + index * 0x38
+            struct.pack_into("<I", data, at, 1)
+            struct.pack_into("<Q", data, at + 0x20, size)
+        with pytest.raises(MalformedImage, match="twice the file"):
+            elf_image(bytes(data))
+
+    def test_a_macho_whose_segments_all_hold_the_whole_file_is_refused(self):
+        import struct
+
+        count = 3000
+        size = 0x20 + count * 0x48
+        data = bytearray(size)
+        data[:4] = b"\xcf\xfa\xed\xfe"
+        struct.pack_into("<II", data, 0x10, count, count * 0x48)
+        for index in range(count):
+            at = 0x20 + index * 0x48
+            struct.pack_into("<II", data, at, 0x19, 0x48)
+            struct.pack_into("<Q", data, at + 0x30, size)
+        with pytest.raises(MalformedImage, match="twice the file"):
+            macho_image(bytes(data))
