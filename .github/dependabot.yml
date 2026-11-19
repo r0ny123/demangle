@@ -43,3 +43,15 @@ updates:
     ignore:
       # Moved by hand, together with `PIN` in tools/llvm_oracle.py; the file says how.
       - dependency-name: "llvm-demangle-fxti"
+
+  # The rustc-demangle crate the differential job builds with --locked. A bump that changes
+  # how a Rust name reads fails that job, which is the point: the port follows the crate.
+  - package-ecosystem: cargo
+    directory: "/tools/rustc-demangle-reference"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
