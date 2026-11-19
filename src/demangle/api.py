@@ -201,10 +201,10 @@ def _parse_with(plugin, mangled, builder, limits, style):
         handle = builder.decorated(handle, decoration)
         if builder.size(handle) > limits.max_output:
             raise LimitExceeded(whole, "output length", limits.max_output)
-    return _printable(whole, builder, handle)
+    return _printable(whole, builder, handle, plugin)
 
 
-def _printable(mangled, builder, handle):
+def _printable(mangled, builder, handle, plugin):
     r"""`handle`, refused if its spelling holds a control character.
 
     An identifier or a suffix is spelled as written and would carry an escape sequence
@@ -212,6 +212,9 @@ def _printable(mangled, builder, handle):
     or punycode has been decoded. Asked of the spelling, not the name: Objective-C block
     descriptors hold `\x01`, and none of it is spelled.
     """
+    if isinstance(handle, Node) and plugin.spells_what_it_reads and not has_control_character(mangled):
+        # Spelling a whole tree to look costs `parse()` a quarter of its time.
+        return handle
     try:
         spelled = builder.spell(handle)
     except LimitExceeded:
@@ -544,7 +547,7 @@ def _parse_type_handle(mangled, builder, language, style, limits):
             handle = plugin.parse_type(mangled, builder, limits)
         else:
             handle = plugin.parse_type(mangled, builder, limits, options)
-        return _printable(mangled, builder, handle)
+        return _printable(mangled, builder, handle, plugin)
     except RecursionError as exc:
         raise _depth_exceeded(mangled, limits) from exc
     except DemanglingError:
