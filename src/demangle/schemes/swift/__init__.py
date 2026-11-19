@@ -27,7 +27,7 @@ out exactly.
 
 from ...core.ast import Node
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
-from ...core.limits import DEFAULT_LIMITS
+from ...core.limits import DEFAULT_LIMITS, has_control_character
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
@@ -207,6 +207,8 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     try:
         spelled = print_root(root)
     except OutputTooLong:
+        return None
+    if has_control_character(spelled):
         return None
     return spelled or None
 
