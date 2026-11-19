@@ -89,9 +89,9 @@ name that caused it rather than being killed.
   by a short-lived OIDC token that only `release.yml`, running in the `pypi` environment of
   this repository, can obtain, and that environment waits for a maintainer's approval.
 - Every file on PyPI carries an attestation that names this repository and that workflow.
-  `pypi-watch.yml` checks that hourly and opens an issue if PyPI ever serves a file
-  without one, or lists a second owner. PyPI shows the attestation under *Verified details*,
-  and it can be checked from a shell:
+  `pypi-watch.yml` checks that several times an hour and opens an issue if PyPI ever
+  serves a file without one, or lists a second owner. PyPI shows the attestation under
+  *Verified details*, and it can be checked from a shell:
 
   ```console
   $ python -m pip install pypi-attestations
