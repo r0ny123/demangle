@@ -72,10 +72,45 @@ jobs:
     permissions:
       contents: read
 
+  # For whoever approves `publish`, who reads the source and not the archives: the files
+  # hold the tagged commit and nothing else, and the summary says what that commit changes.
+  inspect:
+    name: check the files against the tag
+    needs: [build, wheels]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist/
+          merge-multiple: true
+      - shell: bash # for pipefail, so a finding fails the step through tee
+        run: python3 -I tools/check_artifacts.py dist | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Summarise what changed since the last release
+        run: |
+          previous=$(git describe --tags --abbrev=0 HEAD^)
+          {
+            echo "### Since $previous"
+            echo '```'
+            git log --first-parent --format=%s "$previous..HEAD"
+            echo
+            echo "What decides how a release is built and what it installs:"
+            git diff --stat "$previous" HEAD -- .github pyproject.toml uv.lock tools
+            echo "The package:"
+            git diff --shortstat "$previous" HEAD -- src
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # GitHub's own provenance, beside PyPI's; SECURITY.md shows how to check it.
   attest:
     name: attest build provenance
-    needs: [build, wheels]
+    needs: inspect
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
