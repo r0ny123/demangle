@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -22,10 +23,24 @@ PROJECT = "demangle"
 PUBLISHER = {"kind": "GitHub", "repository": "r0ny123/demangle", "workflow": "release.yml", "environment": "pypi"}
 
 
-def _fetch(url: str) -> Any:
+def _fetch(url: str, attempts: int = 4, pause: float = 5.0) -> Any:
+    """Read one URL as JSON, trying again when the network fails.
+
+    A run makes some fifty requests several times an hour, so one slow handshake would
+    otherwise fail a run every few days, and a watch that cries wolf gets ignored.
+    """
     request = urllib.request.Request(url, headers={"Accept": "application/vnd.pypi.simple.v1+json, application/json"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            if error.code < 500 or attempt == attempts:
+                raise
+        except OSError:
+            if attempt == attempts:
+                raise
+        time.sleep(pause * attempt)
 
 
 def problems(fetch: Callable[[str], Any] = _fetch) -> list[str]:

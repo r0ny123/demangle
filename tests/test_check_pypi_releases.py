@@ -48,3 +48,36 @@ def test_other_publisher_is_flagged():
 )
 def test_extra_or_missing_owner_is_flagged(roles):
     assert len(module.problems(pypi(roles=roles))) == 1
+
+
+def test_a_failed_request_is_tried_again(monkeypatch):
+    calls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, *args):
+            return b'{"ok": true}'
+
+    def urlopen(request, timeout):
+        calls.append(request.full_url)
+        if len(calls) < 3:
+            raise TimeoutError("the handshake operation timed out")
+        return Response()
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", urlopen)
+    assert module._fetch("https://pypi.test/x", pause=0) == {"ok": True}
+    assert len(calls) == 3
+
+
+def test_a_request_that_keeps_failing_gives_up(monkeypatch):
+    def urlopen(request, timeout):
+        raise TimeoutError("the handshake operation timed out")
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", urlopen)
+    with pytest.raises(TimeoutError):
+        module._fetch("https://pypi.test/x", attempts=2, pause=0)
