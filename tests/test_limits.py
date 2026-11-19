@@ -82,6 +82,9 @@ HOSTILE_NAMES = [
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # An MSVC digit is an earlier name or parameter again, whatever its length.
+    ("msvc repeated scope", "?f@" + "A" * 30000 + "@" + "1" * 30000 + "@YAXXZ"),
+    ("msvc repeated parameter", "?f@@YAXV" + "A" * 30000 + "@@" + "0" * 30000 + "@Z"),
     # A Swift substitution repeated two hundred times, eight levels deep: a tree of a
     # few dozen nodes that spells out to 200**8 arrays.
     (
@@ -114,7 +117,7 @@ HOSTILE_NAMES = [
 
 
 #: The ones whose cost was memory, measured as well as timed.
-MEMORY_HUNGRY = {"swift repeated substitutions", "swift word table"}
+MEMORY_HUNGRY = {"msvc repeated scope", "msvc repeated parameter", "swift repeated substitutions", "swift word table"}
 
 
 @pytest.mark.parametrize(

@@ -458,6 +458,9 @@ class _Demangler:
         # Bounded relative to the name too: a two-character back-reference can double the
         # spelling per level. Over 1,025,085 real names the widest is 12x; 32x is clear.
         self.max_render = min(limits.max_output, 32 * len(mangled) + 256)
+        #: What a list of pieces is held to as it is collected: a back-reference repeats
+        #: an earlier piece for one digit, so each can pass `max_render` and the list not.
+        self.max_output = limits.max_output
         #: The longest spelling held against `max_render` since the innermost
         #: instantiation being read began, kept as `peak` is.
         self.widest = 0
@@ -589,6 +592,7 @@ class _Demangler:
             else:
                 base = operator
             args = []
+            left = self.max_output
             options, max_render = self.options, self.max_render
             while True:
                 pos = self.pos
@@ -618,6 +622,9 @@ class _Demangler:
                     if len(spelled) > max_render:
                         raise _LimitHit("output length", max_render)
                     self.widest = len(spelled)
+                left -= len(spelled)
+                if left < 0:
+                    raise _LimitHit("output length", self.max_output)
                 args.append(spelled)
             spelled = f"{base}<{', '.join(args)}>"
         finally:
@@ -1067,6 +1074,9 @@ class _Demangler:
                 # a type descriptor has read the whole name, the type it describes included
                 return first, False, special_form
             scopes = []
+            # Counted as they are read: thirty thousand digits after a name as long are
+            # a gigabyte of scopes.
+            left = self.max_output
             text, length = self.text, self.length
             while True:
                 pos = self.pos
@@ -1077,7 +1087,11 @@ class _Demangler:
                     self.pos = pos + 1
                     break
                 if char == "?" or char in _DIGITS:
-                    scopes.append(self.nameFragment(False)[0])
+                    scope = self.nameFragment(False)[0]
+                    left -= len(scope)
+                    if left < 0:
+                        raise _LimitHit("output length", self.max_output)
+                    scopes.append(scope)
                     continue
                 # A plain identifier, as in `nameFragment`.
                 end = text.find("@", pos)
@@ -1561,6 +1575,7 @@ class _Demangler:
         if self.eat("X"):
             return _VOID_PARAMETERS
         params = []
+        left = self.max_output
         text, length = self.text, self.length
         while True:
             pos = self.pos
@@ -1582,7 +1597,9 @@ class _Demangler:
                     raise _Bail
                 node = self.arg_backrefs[index]
                 # spelled for the bound and then kept whole: see the docstring
-                self.rendered(node)
+                left -= len(self.rendered(node))
+                if left < 0:
+                    raise _LimitHit("output length", self.max_output)
                 params.append(node)
                 continue
             self.simple = True
@@ -1591,11 +1608,15 @@ class _Demangler:
                 self.arg_backrefs.append(node)
             # `rendered`, inlined for a named type, which is already text
             if node.kind != "raw":
-                self.rendered(node)
-            elif len(node.text) > self.widest:
-                if len(node.text) > self.max_render:
-                    raise _LimitHit("output length", self.max_render)
-                self.widest = len(node.text)
+                left -= len(self.rendered(node))
+            else:
+                left -= len(node.text)
+                if len(node.text) > self.widest:
+                    if len(node.text) > self.max_render:
+                        raise _LimitHit("output length", self.max_render)
+                    self.widest = len(node.text)
+            if left < 0:
+                raise _LimitHit("output length", self.max_output)
             params.append(node)
         return tuple(params)
 
