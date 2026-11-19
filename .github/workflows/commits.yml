@@ -1,0 +1,40 @@
+name: Commits
+
+on:
+  pull_request:
+    # `edited` so that fixing the title runs the check again.
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional:
+    name: conventional commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # The title too, because a squash merge takes it as the commit's subject. The spec
+      # says the units are not case sensitive, hence -i. The checkout is GitHub's merge of
+      # the branch into the base, so HEAD^1..HEAD^2 is exactly the branch's own commits.
+      - name: Check the title and every commit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: [^ ]'
+          bad=$( { printf '%s\n' "$TITLE"; git log --no-merges --format=%s HEAD^1..HEAD^2; } | grep -Eiv "$pattern" || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Not Conventional Commits (https://www.conventionalcommits.org/en/v1.0.0/):"
+            printf '%s\n' "$bad" | sed 's/^/- /' # so no subject can start a workflow command
+            exit 1
+          fi

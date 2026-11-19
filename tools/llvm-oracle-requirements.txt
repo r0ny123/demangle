@@ -5,9 +5,9 @@
 # is refused, and nothing is ever built from source on the runner.
 #
 # The package has no place in pyproject.toml: that keeps the library free of runtime
-# dependencies. Dependabot reads only the repository root, so a bump is made by hand: move
-# the version here and `PIN` (and `BUNDLED`, if the releases it holds change) in
-# tools/llvm_oracle.py, and take the hash from
+# dependencies. Dependabot is told to skip it, because a bump also moves `PIN` (and
+# `BUNDLED`, if the releases it holds change) in tools/llvm_oracle.py. So bump by hand:
+# move the version here and in tools/llvm_oracle.py, and take the hash from
 # https://pypi.org/pypi/llvm-demangle-fxti/<version>/json.
 #
 # One hash, for the one wheel the runner takes: `cp36-abi3-manylinux_2_28_x86_64`, for

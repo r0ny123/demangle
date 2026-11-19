@@ -53,7 +53,7 @@ demangle = "demangle.cli:main"
 # metadata.
 [dependency-groups]
 test = [
-    "pytest>=9.1.1",
+    "pytest>=9.2",
     "pytest-cov",
     "hypothesis>=6.168.3",
 ]
@@ -184,11 +184,11 @@ archs = ["AMD64"]
 # Both from the Apple silicon runner, which cross-compiles the x86_64 ones.
 archs = ["arm64", "x86_64"]
 
-[tool.pytest.ini_options]
+[tool.pytest]
 testpaths = ["tests"]
 # The disassembler scripts import their shared core by name, as a host would find it beside them.
 pythonpath = ["integrations"]
-addopts = "-q"
+addopts = ["-q"]
 verbosity_subtests = 0
 markers = [
     "browser: opt-in tests that run the built playground in Chromium",
@@ -198,7 +198,6 @@ markers = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
 src = ["src", "tests", "integrations"]
 
 [tool.ruff.lint]
@@ -219,7 +218,6 @@ convention = "google"
 "src/demangle/schemes/itanium/parser.py" = ["D205", "D415"]
 
 [tool.ty.environment]
-python-version = "3.11"
 # `integrations/` is a folder of scripts that import each other by name.
 extra-paths = ["integrations"]
 
