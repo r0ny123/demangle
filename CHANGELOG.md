@@ -26,6 +26,13 @@ the reference demanglers, and a **Performance** section.
   characters took 780 MB to refuse. What a name's back-references stand for is now
   capped at sixteen times `max_output`, twice over what any of 394,000 real names needs
   relative to its own output.
+- **A Rust v0 name full of back-references to one const is read in linear time.** Each
+  one scanned the const's digits again a character at a time, so 62,000 characters took
+  nine seconds. It now takes a few hundredths.
+- **Detecting a JNI name no longer goes quadratic on a long one.** Every `__` was tried
+  as the signature separator, decoding the whole name each time, before any length
+  limit applied: 1.2 million characters took a minute. The tries are now rationed by
+  the name's length.
 
 ## [0.9.3] - 2026-11-19
 

@@ -94,6 +94,10 @@ HOSTILE_NAMES = [
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # A Rust back-reference to a const reads its digits again each time.
+    ("rust const back-references", "_RINvC5crate1fKj" + "0" * 30000 + "1_" + "KBc_" * 8000 + "E"),
+    # Every `__` may be the signature separator, and detection sees a name of any length.
+    ("jni separator candidates", "Java_a_0dc00" + "__I" * 400000),
     # `S<n>_` is a type of any size again, and a list is only measured once joined.
     ("itanium repeated parameter", "_Z1f" + _DOUBLED + _LAST * 4000),
     ("itanium repeated initialiser", "_Z1g" + _DOUBLED + "DTil" + f"cv{_LAST}_E" * 4000 + "EE"),

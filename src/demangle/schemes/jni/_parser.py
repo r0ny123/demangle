@@ -60,6 +60,9 @@ _ESCAPE = re.compile(r"_(?:([123])|0([0-9a-fA-F]{4}))")
 
 _UNESCAPED = {"1": "_", "2": ";", "3": "["}
 
+#: Characters `parse_jni_symbol` may decode while looking for the signature separator.
+_SEPARATOR_WORK = 1 << 22
+
 
 class DemangleFailure(Exception):
     """The name is not one this parser can read."""
@@ -170,6 +173,9 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
     # followed by a JVM descriptor, so each candidate is tried in turn.
     path = None
     parameters = None
+    # Each candidate decodes the whole name, and `detect` runs this on a name of any
+    # length, so they are rationed by how long the name is. Real names have a handful.
+    candidates = max(16, _SEPARATOR_WORK // len(body)) if body else 0
     at = body.find("__")
     while at >= 0:
         tail_at = at + 2
@@ -185,6 +191,9 @@ def parse_jni_symbol(name, limits=DEFAULT_LIMITS):
             # suffix cannot be a signature; avoid copying/decoding each full tail.
             at = body.find("__", at + 1)
             continue
+        candidates -= 1
+        if candidates < 0:
+            raise DemangleFailure("too many candidate separators")
         head, tail = body[:at], body[tail_at:]
         if head:
             try:
