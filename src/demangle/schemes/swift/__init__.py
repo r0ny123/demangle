@@ -33,7 +33,7 @@ from ...core.registry import register
 from . import nodes
 from ._demangler import MANGLING_PREFIXES, async_main_entry_point_length, demangle_symbol, demangle_type
 from ._old_demangler import demangle_old_symbol
-from ._printer import print_root
+from ._printer import OutputTooLong, print_root
 from .options import DEFAULT_OPTIONS, SIMPLIFIED_OPTIONS, SwiftOptions
 from .resolve import ContextResolver, Image, elf_image, macho_image
 from .symbolic import SymbolicReference, end_of_name, scan
@@ -118,19 +118,17 @@ def _finish(mangled, root, builder, limits, options=DEFAULT_OPTIONS):
         raise ParseError(mangled, None, "not a name this reads")
     options = options or DEFAULT_OPTIONS
 
-    if _wants_structure(builder):
-        tree = nodes.build(root, options)
-        if tree is None:
-            raise ParseError(mangled, None, "not a name this reads")
-        if tree.size > limits.max_output:
-            raise LimitExceeded(mangled, "output length", limits.max_output)
-        return tree
-
-    text = print_root(root, options)
+    try:
+        if _wants_structure(builder):
+            tree = nodes.build(root, options, limits.max_output)
+            if tree is None:
+                raise ParseError(mangled, None, "not a name this reads")
+            return tree
+        text = print_root(root, options, limits.max_output)
+    except OutputTooLong:
+        raise LimitExceeded(mangled, "output length", limits.max_output) from None
     if not text:
         raise ParseError(mangled, None, "not a name this reads")
-    if len(text) > limits.max_output:
-        raise LimitExceeded(mangled, "output length", limits.max_output)
     return builder.raw(text)
 
 
@@ -206,7 +204,10 @@ def demangle_symbolic(name, resolver=None, *, whole_symbol=None):
     if root.kind == "Suffix":
         # A whole-input `Suffix` node is the reference saying it could not read the name.
         return None
-    spelled = print_root(root)
+    try:
+        spelled = print_root(root)
+    except OutputTooLong:
+        return None
     return spelled or None
 
 

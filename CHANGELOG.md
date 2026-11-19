@@ -8,6 +8,15 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A short Swift name can no longer build a hundred megabytes before it is refused.** A
+  substitution can be repeated two thousand times and each level of nesting multiplies
+  that, so a 50-character name spelled out to 100 million characters, and took eight
+  seconds, before `max_output` was looked at. The bound now stops the spelling as it is
+  written. A name may also copy at most four million characters out of its word table,
+  where 40,000 characters used to ask for 400 MB.
+
 ## [0.9.3] - 2026-11-19
 
 ### Fixed

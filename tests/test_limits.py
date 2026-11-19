@@ -11,6 +11,7 @@ The tests here are written per *plugin* rather than per scheme name, so a scheme
 later has to keep the promise too rather than quietly not being covered.
 """
 
+import contextlib
 import sys
 import time
 from dataclasses import replace
@@ -81,6 +82,14 @@ HOSTILE_NAMES = [
     # character multiplies the printer's work sixty-two-fold.
     ("rust bound lifetimes", "_RMC0FGZZZZZZ_Eu"),
     ("msvc long name", "?f@@YAX" + "H" * 60000 + "@Z"),
+    # A Swift substitution repeated two hundred times, eight levels deep: a tree of a
+    # few dozen nodes that spells out to 200**8 arrays.
+    (
+        "swift repeated substitutions",
+        "$s4main1x" + "Say" * 9 + "SiG" + "".join(f"_A199{chr(67 + k)}tG" for k in range(8)) + "vp",
+    ),
+    # A letter copies a word of an earlier identifier, however long the word is.
+    ("swift word table", "$s" + "20000" + "a" * 20000 + "0" + "a" * 19999 + "A1xvp"),
     # g++ 2.x's `N<count>_<index>` repeats an earlier argument: a hundred million times here.
     ("gnuv2 repeated argument", "f__FiN99999999_0"),
     # And `n<count>_` the next one, under every `__` the reader tries as the separator.
@@ -102,6 +111,10 @@ HOSTILE_NAMES = [
     # The same shape wide rather than deep.
     ("itanium wide pack expansion", "_Z1fIJ" + "i" * 2000 + "EEvDp1AIDp1AIT_EE"),
 ]
+
+
+#: The ones whose cost was memory, measured as well as timed.
+MEMORY_HUNGRY = {"swift repeated substitutions", "swift word table"}
 
 
 @pytest.mark.parametrize(
@@ -156,6 +169,24 @@ class TestBoundsAreEnforcedWhileWorking:
         elapsed = time.perf_counter() - started
         assert elapsed < 2.0, f"{name} took {elapsed:.1f}s"
         assert isinstance(result, str)
+
+    @pytest.mark.skipif(sys.implementation.name != "cpython", reason="tracemalloc is CPython's")
+    @pytest.mark.parametrize("name", sorted(MEMORY_HUNGRY))
+    def test_a_hostile_name_is_answered_in_little_memory(self, name):
+        """Refusing a name after building what it asks for is no bound on memory."""
+        import tracemalloc
+
+        mangled = dict(HOSTILE_NAMES)[name]
+        demangle.cache_clear()
+        tracemalloc.start()
+        try:
+            demangle.demangle(mangled)
+            with contextlib.suppress(demangle.DemanglingError):
+                demangle.parse(mangled)
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        assert peak < 64 << 20, f"{name} peaked at {peak >> 20} MB"
 
     def test_a_deeply_nested_msvc_name_reports_the_bound_it_hit(self):
         """It says which bound was hit, not that the name is unreadable."""

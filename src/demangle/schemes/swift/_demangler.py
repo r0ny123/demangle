@@ -49,6 +49,9 @@ BUILTIN_TYPE_NAME_PREFIX = "Builtin."
 
 _MAX_NUM_WORDS = 26
 _MAX_REPEAT_COUNT = 2048
+#: Characters one name may copy out of its word table. A word is as long as the name
+#: allows and a letter copies it, so sixty thousand characters ask for a gigabyte.
+_MAX_WORD_CHARACTERS = 1 << 22
 #: The reference reads numbers into a C `int`.
 _INT_MAX = 2**31 - 1
 #: How deep resolved fragments may nest; a resolver that keeps answering itself would
@@ -269,6 +272,7 @@ class Demangler:
         "substitutions",
         "text",
         "unsplit",
+        "word_budget",
         "words",
     )
 
@@ -291,6 +295,7 @@ class Demangler:
         self.substitutions = []
         #: The word table for identifier substitutions, capped as the reference caps it.
         self.words = []
+        self.word_budget = _MAX_WORD_CHARACTERS
         #: Identifiers read but not yet split into `words`; see `_split_words`.
         self.unsplit = []
         self.is_old_function_type_mangling = False
@@ -729,7 +734,11 @@ class Demangler:
                     has_word_substitutions = False
                 if at >= len(self.words):
                     return None
-                pieces.append(self.words[at])
+                word = self.words[at]
+                self.word_budget -= len(word)
+                if self.word_budget < 0:
+                    return None
+                pieces.append(word)
             if self.next_if("0"):
                 break
             count = self.natural()
