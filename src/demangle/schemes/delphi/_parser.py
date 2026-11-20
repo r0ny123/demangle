@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 import string
 
+from ...core.cache import Handoff
 from ...core.errors import LimitExceeded
 from ...core.limits import DEFAULT_LIMITS
 
@@ -827,6 +828,9 @@ def parse_delphi_symbol(name, limits=DEFAULT_LIMITS):
     return DelphiSymbol(name, text, parser.kind or KIND_DATA)
 
 
+_READING = Handoff()
+
+
 def detect(name):
     """Whether `name` is a Delphi/C++Builder export, not MSVC `@name@N`.
 
@@ -880,7 +884,8 @@ def detect(name):
     if not any(ch.isalpha() for ch in name):
         return False
     try:
-        parse_delphi_symbol(name)
+        symbol = parse_delphi_symbol(name)
     except (DemangleFailure, LimitExceeded):
         return False
+    _READING.keep(name, symbol)
     return True

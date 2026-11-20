@@ -34,6 +34,8 @@ re-mangles to the input.
 
 import re
 
+from ...core.cache import Handoff
+
 __all__ = ["FIRST_CHARACTERS", "DemangleFailure", "NimSymbol", "detect", "mangle", "mangle_module", "parse_nim_symbol"]
 
 #: Characters `mangle` spells as words, from the compiler's own table.
@@ -443,6 +445,9 @@ _FOREIGN_PREFIXES = ("caml",)
 _ROUTINE_TAIL = re.compile(r"_u?[0-9]+\Z")
 
 
+_READING = Handoff()
+
+
 def detect(name):
     """Whether `name` is one this reads.
 
@@ -481,7 +486,8 @@ def detect(name):
     if not name.startswith(_COMPILER_PREFIXES) and not ("__" in name and _ROUTINE_TAIL.search(name)):
         return False
     try:
-        parse_nim_symbol(name)
+        symbol = parse_nim_symbol(name)
     except (DemangleFailure, UnicodeError):
         return False
+    _READING.keep(name, symbol)
     return True

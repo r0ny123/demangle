@@ -11,7 +11,7 @@ accumulate an entry per distinct symbol ever seen, and there is no natural end t
 import threading
 from typing import TypedDict
 
-__all__ = ["MISSING", "BoundedCache", "CacheStats", "clear_memos", "memo"]
+__all__ = ["MISSING", "BoundedCache", "CacheStats", "Handoff", "clear_memos", "memo"]
 
 _MISSING = object()
 
@@ -192,6 +192,30 @@ def memo() -> dict:
     held: dict = {}
     _memos.append(held)
     return held
+
+
+class Handoff:
+    """The reading a scheme's `detect` just made, kept for the `parse` that follows it.
+
+    A scheme with no prefix of its own claims a name by reading all of it, and the
+    registry then asks `parse` for the same reading. Without this every such name is
+    read twice. One entry, taken by the first `parse` that asks for its key, so no
+    reading is handed to two callers; `clear_memos` empties it.
+    """
+
+    __slots__ = ("_held",)
+
+    def __init__(self) -> None:
+        self._held = memo()
+
+    def keep(self, key, reading) -> None:
+        held = self._held
+        held.clear()
+        held[key] = reading
+
+    def take(self, key):
+        """The reading kept for `key`, or None."""
+        return self._held.pop(key, None)
 
 
 def clear_memos() -> None:

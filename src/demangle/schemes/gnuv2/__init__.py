@@ -29,6 +29,7 @@ to be met.
 import re
 
 from ...core.ast import Node
+from ...core.cache import Handoff
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
@@ -72,6 +73,8 @@ _NAMED_SOMETHING = frozenset({"class", "qualified", "template"})
 
 #: What a reading records when its argument list opened with no `F` and nothing before it.
 _UNMARKED_ONLY = frozenset({"unmarked"})
+
+_READING = Handoff()
 
 
 #: What `detect` needs to see, for the registry to screen on without calling it: a `__`,
@@ -243,7 +246,10 @@ def detect(name, style="gnu"):
     if len(name) > _DETECT_MAX or not _screen(name):
         return False
     symbol = _reads(name, style)
-    return symbol is not None and _decoded(name, symbol) and _plausible(symbol)
+    if symbol is None or not (_decoded(name, symbol) and _plausible(symbol)):
+        return False
+    _READING.keep((name, style), symbol)
+    return True
 
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
@@ -267,12 +273,17 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     if options is None:
         options = DEFAULT_OPTIONS
 
-    try:
-        symbol = demangle_gnuv2(mangled, style=options.style, params=options.params, ansi=options.ansi)
-    except DemangleFailure as error:
-        raise ParseError(mangled, None, str(error)) from error
-    except RecursionError as error:
-        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
+    symbol = None
+    if options.params is True and options.ansi is True:
+        # What `detect` read with its own defaults, if this is the name it just claimed.
+        symbol = _READING.take((mangled, options.style))
+    if symbol is None:
+        try:
+            symbol = demangle_gnuv2(mangled, style=options.style, params=options.params, ansi=options.ansi)
+        except DemangleFailure as error:
+            raise ParseError(mangled, None, str(error)) from error
+        except RecursionError as error:
+            raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
 
     if not _decoded(mangled, symbol):
         # The same bar `detect` holds a name to.

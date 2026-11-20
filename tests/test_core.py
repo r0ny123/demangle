@@ -5,6 +5,7 @@ only through whole-name demangling, where a bug would show up as a puzzling spel
 several layers away.
 """
 
+import importlib
 import os
 import pathlib
 import string
@@ -17,7 +18,7 @@ import pytest
 import demangle
 from demangle.core import registry
 from demangle.core.ast import AST_BUILDER as A
-from demangle.core.cache import MISSING, BoundedCache
+from demangle.core.cache import MISSING, BoundedCache, Handoff
 from demangle.core.errors import DemanglingError, ParseError, TruncatedError
 from demangle.core.plugin import LanguagePlugin
 from demangle.core.reader import Reader
@@ -208,6 +209,46 @@ class TestEveryDeclaratorDistributesOverAPack:
         """Both references agree on these."""
         assert demangle.demangle_strict(mangled) == expected
         assert demangle.demangle_strict(mangled, style="gnu") == expected
+
+
+class TestHandoff:
+    @pytest.mark.parametrize(
+        ("name", "reader", "modules"),
+        [
+            ("AtEOF__Q23KIO12TCPSlaveBase", "demangle_gnuv2", ("gnuv2",)),
+            ("__dt__6CActorFv", "demangle_codewarrior", ("codewarrior",)),
+            ("_ada_ada__strings__unbounded__hash", "demangle_ada", ("ada",)),
+            ("@$beql$qrx5_GUIDt1", "parse_delphi_symbol", ("delphi", "delphi._parser")),
+            ("APR_$$_APR_TOLOWER$CHAR$$CHAR", "parse_pascal_symbol", ("pascal", "pascal._parser")),
+            ("DefaultRandSeed__pureZrandom_13", "parse_nim_symbol", ("nim", "nim._parser")),
+            ("._OBJC_CLASS_A_B209", "parse_objc_symbol", ("objc", "objc._parser")),
+        ],
+    )
+    def test_a_name_detect_read_is_not_read_again(self, monkeypatch, name, reader, modules):
+        """These schemes claim a name by reading all of it; `parse` reuses that reading."""
+        calls = []
+        for module_name in modules:
+            module = importlib.import_module(f"demangle.schemes.{module_name}")
+            original = getattr(module, reader)
+            monkeypatch.setattr(module, reader, lambda *a, _read=original, **k: calls.append(a) or _read(*a, **k))
+        demangle.cache_clear()
+        expected = demangle.demangle(name, language=modules[0])
+        calls.clear()
+        assert demangle.demangle(name) == expected != name
+        assert len(calls) == 1
+
+    def test_a_reading_is_handed_over_once(self):
+        handoff = Handoff()
+        handoff.keep("name", "reading")
+        assert handoff.take("other") is None
+        assert handoff.take("name") == "reading"
+        assert handoff.take("name") is None
+
+    def test_cache_clear_drops_a_kept_reading(self):
+        handoff = Handoff()
+        handoff.keep("name", "reading")
+        demangle.cache_clear()
+        assert handoff.take("name") is None
 
 
 class TestBoundedCache:

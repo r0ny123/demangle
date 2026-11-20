@@ -31,6 +31,8 @@ guessed at.
 
 import re
 
+from ...core.cache import Handoff
+
 __all__ = ["FIRST_CHARACTERS", "DemangleFailure", "PascalSymbol", "detect", "parse_pascal_symbol"]
 
 #: Markers in front of a unit name, from `rtti_mangledname`, `tstaticvarsym.mangledname`,
@@ -402,6 +404,9 @@ def parse_pascal_symbol(name):
     return symbol
 
 
+_READING = Handoff()
+
+
 def detect(name):
     """Whether `name` is one this reads.
 
@@ -413,7 +418,8 @@ def detect(name):
     if not name or name[0] not in FIRST_CHARACTERS or "$" not in name:
         return False
     try:
-        parse_pascal_symbol(name)
+        symbol = parse_pascal_symbol(name)
     except DemangleFailure:
         return False
+    _READING.keep(name, symbol)
     return True

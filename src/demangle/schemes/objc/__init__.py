@@ -49,6 +49,7 @@ from ...core.registry import register
 from . import nodes
 from ._parser import (
     _METHOD_PREFIXES,
+    _READING,
     _SCREEN_MARKERS,
     DemangleFailure,
     ObjcSymbol,
@@ -85,10 +86,12 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
-    try:
-        symbol = parse_objc_symbol(mangled)
-    except DemangleFailure as error:
-        raise NotMangledError(mangled, str(error)) from error
+    symbol = _READING.take(mangled)
+    if symbol is None:
+        try:
+            symbol = parse_objc_symbol(mangled)
+        except DemangleFailure as error:
+            raise NotMangledError(mangled, str(error)) from error
 
     if len(symbol.text) > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)
