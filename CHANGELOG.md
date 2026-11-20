@@ -17,6 +17,10 @@ the reference demanglers, and a **Performance** section.
   fewer instructions a name (CodeWarrior 14%) and, cold, g++ 2.x 57 to 38 us a name,
   Delphi 26 to 17, Ada 25 to 16, Objective-C 11 to 8, Nim 12 to 7 and Free Pascal 9 to
   7. Output is unchanged over 1.37 million names.
+- D names read about 16% faster cold (d-real-world.txt: 60 to 50 us a name). An
+  identifier is checked with one regular expression rather than character by character,
+  and a path component that cannot open a function type is turned away before anything
+  is saved to put back. Output is unchanged.
 
 ## [0.9.4] - 2026-11-19
 
