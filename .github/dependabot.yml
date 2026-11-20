@@ -22,6 +22,11 @@ updates:
   # (tools/ci-install.sh), so a bump that left the lockfile behind would fail there.
   - package-ecosystem: uv
     directory: "/"
+    # The uv updater also reads the requirements files under tools/, which the pip entry
+    # below owns. Without this a uv bump arrived twice and the llvm-demangle-fxti ignore
+    # did not apply here.
+    exclude-paths:
+      - "tools/**"
     schedule:
       interval: weekly
     cooldown:
