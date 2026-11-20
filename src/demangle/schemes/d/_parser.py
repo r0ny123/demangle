@@ -37,6 +37,7 @@ of no use to a tool showing symbols beside those of other demanglers.
 
 import re
 import string
+from collections import Counter
 
 from ...core.limits import DEFAULT_LIMITS
 
@@ -44,6 +45,13 @@ __all__ = ["DSymbol", "parse_d_symbol"]
 
 #: A set, not a string: `"" in string.digits` is True, and `peek()` returns "" at the end.
 DIGITS = frozenset(string.digits)
+
+#: An ASCII character no identifier holds: anything but a letter, a digit or `_`. Past
+#: ASCII anything goes, since D identifiers may be Unicode.
+_NOT_IDENTIFIER = re.compile(r"[\x00-\x2f\x3a-\x40\x5b-\x5e\x60\x7b-\x7f]")
+
+#: What opens a template instance name.
+_TEMPLATE_OPENINGS = ("__T", "__U")
 
 #: A compiler-generated anonymous scope, which the reference leaves out of the path.
 _ANONYMOUS = re.compile(r"__S\d+")
@@ -351,7 +359,7 @@ class _Parser:
         self._lname_spans = []
         #: How many spans cover each position strictly inside one, so `_is_inside_lname`
         #: need not scan them. A count because the spans overlap.
-        self._lname_cover = {}
+        self._lname_cover = Counter()
         self._backref_inside_lname = False
         # Whether a whole symbol name starts at a position -- see `_symbol_name_follows`.
         self._starts_symbol = {}
@@ -384,12 +392,14 @@ class _Parser:
         return prefix + ".".join(path) + trailing
 
     def _opens_symbol_name(self):
-        char = self.reader.peek()
+        reader = self.reader
+        pos = reader.pos
+        char = reader.text[pos] if pos < reader.end else ""
         if char in DIGITS or char == "Q":
             return True
         # A template instance follows the name it qualifies directly, with no length
         # prefix of its own: `7utility__T8_ComplexTdZ`.
-        return self.reader.starts_with("__T") or self.reader.starts_with("__U")
+        return reader.text.startswith(_TEMPLATE_OPENINGS, pos)
 
     def qualified_name(self):
         parts = []
@@ -444,12 +454,14 @@ class _Parser:
         if work < 0:
             raise _Exhausted
         reader = self.reader
-        if reader.peek() == "Q":
+        pos = reader.pos
+        char = reader.text[pos] if pos < reader.end else ""
+        if char == "Q":
             return self.identifier_back_reference()
-        if reader.peek() == "0":
+        if char == "0":
             reader.pos += 1
             return ""
-        if reader.starts_with("__T") or reader.starts_with("__U"):
+        if reader.text.startswith(_TEMPLATE_OPENINGS, pos):
             return self.template_instance()
         lname_start = reader.pos
         length = reader.number()
@@ -461,13 +473,13 @@ class _Parser:
         # against all that remains and its length checked afterwards, not bounded first.
         text = reader.text[start : start + length]
         # `dlang_identifier` needs `len >= 5`: `_D4main3__TFZv` is `main.__T()`.
-        if text.startswith(("__T", "__U")) and length >= 5:
+        if text.startswith(_TEMPLATE_OPENINGS) and length >= 5:
             spelled = self.template_instance()
             if reader.pos != start + length:
                 # the reference refuses a malformed template rather than printing it back
                 raise DemangleFailure("malformed template instance")
             return spelled
-        if any(char.isascii() and not (char.isalnum() or char == "_") for char in text):
+        if _NOT_IDENTIFIER.search(text):
             # `_D1aE3foo6En961*` is refused.
             raise DemangleFailure("identifier is not a D name")
         reader.pos = start + length
@@ -788,9 +800,7 @@ class _Parser:
     def _remember_lname(self, start, end):
         """Record an identifier's span, and mark the positions strictly inside it."""
         self._lname_spans.append((start, end))
-        cover = self._lname_cover
-        for position in range(start + 1, end):
-            cover[position] = cover.get(position, 0) + 1
+        self._lname_cover.update(range(start + 1, end))
 
     def _forget_lnames(self, keep):
         """Drop every span recorded after the first `keep`, and unmark what they covered.
@@ -874,9 +884,6 @@ class _Parser:
         return resolved
 
     def scope_type(self):
-        work = self._work = self._work - 1
-        if work < 0:
-            raise _Exhausted
         """Read this component's own function type if it is a scope, and spell it.
 
         Nothing marks a scope, so the only way to tell is to read a function type and see
@@ -886,8 +893,16 @@ class _Parser:
         own member-function type, and eating it leaves nothing for `trailing_type` to
         find.
         """
+        work = self._work = self._work - 1
+        if work < 0:
+            raise _Exhausted
         reader = self.reader
-        saved, saved_depth = reader.pos, reader.depth
+        saved = reader.pos
+        opening = reader.text[saved] if saved < reader.end else ""
+        if opening != "M" and opening not in CALLING_CONVENTIONS:
+            # Most components are not scopes, and this says so before anything is read.
+            return ""
+        saved_depth = reader.depth
         try:
             modifiers = []
             if reader.peek() == "M":
