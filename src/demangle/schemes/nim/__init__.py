@@ -26,7 +26,15 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import _COMPILER_PREFIXES, FIRST_CHARACTERS, DemangleFailure, NimSymbol, detect, parse_nim_symbol
+from ._parser import (
+    _COMPILER_PREFIXES,
+    _READING,
+    FIRST_CHARACTERS,
+    DemangleFailure,
+    NimSymbol,
+    detect,
+    parse_nim_symbol,
+)
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -47,12 +55,14 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
-    try:
-        symbol = parse_nim_symbol(mangled)
-    except DemangleFailure as error:
-        raise NotMangledError(mangled, str(error)) from error
-    except UnicodeError as error:
-        raise NotMangledError(mangled, f"undecodable name: {error}") from error
+    symbol = _READING.take(mangled)
+    if symbol is None:
+        try:
+            symbol = parse_nim_symbol(mangled)
+        except DemangleFailure as error:
+            raise NotMangledError(mangled, str(error)) from error
+        except UnicodeError as error:
+            raise NotMangledError(mangled, f"undecodable name: {error}") from error
 
     if len(symbol.text) > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)

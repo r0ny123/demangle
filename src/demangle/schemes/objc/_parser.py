@@ -26,6 +26,8 @@ impossible to tell apart from it. This reads the leftmost split that re-mangles,
 
 import re
 
+from ...core.cache import Handoff
+
 __all__ = [
     "DemangleFailure",
     "ObjcSymbol",
@@ -740,6 +742,8 @@ def _candidates(name):
 
 _SCREEN_MARKERS = ("objc", "OBJC", "_block_invoke", "block_literal", "block_descriptor")
 
+_READING = Handoff()
+
 
 def detect(name):
     """Whether `name` is one this reads, and distinctive enough to claim unasked.
@@ -772,6 +776,8 @@ def detect(name):
     ):
         return False
     try:
-        return parse_objc_symbol(name) is not None
+        symbol = parse_objc_symbol(name)
     except DemangleFailure:
         return False
+    _READING.keep(name, symbol)
+    return True

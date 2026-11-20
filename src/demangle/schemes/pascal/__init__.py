@@ -30,7 +30,7 @@ from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
 from ...core.registry import register
 from . import nodes
-from ._parser import FIRST_CHARACTERS, DemangleFailure, PascalSymbol, detect, parse_pascal_symbol
+from ._parser import _READING, FIRST_CHARACTERS, DemangleFailure, PascalSymbol, detect, parse_pascal_symbol
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
 _STRUCTURED = {}
@@ -51,10 +51,12 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
-    try:
-        symbol = parse_pascal_symbol(mangled)
-    except DemangleFailure as error:
-        raise NotMangledError(mangled, str(error)) from error
+    symbol = _READING.take(mangled)
+    if symbol is None:
+        try:
+            symbol = parse_pascal_symbol(mangled)
+        except DemangleFailure as error:
+            raise NotMangledError(mangled, str(error)) from error
 
     if len(symbol.text) > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)

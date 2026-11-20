@@ -34,6 +34,7 @@ can drift quietly.
 import re
 
 from ...core.ast import Node
+from ...core.cache import Handoff
 from ...core.errors import LimitExceeded, NotMangledError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
@@ -61,6 +62,8 @@ _TRAILING_OVERLOAD = re.compile(r"__\d+(_\d+)*(X[nb]*)?")
 #: What `detect` needs to see, for the registry to screen on without calling it: a `__`,
 #: or the library-level `_ada_` opening. See `core.registry._screened`.
 DETECT_SCREEN = (("__",), (_LIBRARY_PREFIX,))
+
+_READING = Handoff()
 
 
 def detect(name):
@@ -90,7 +93,10 @@ def detect(name):
         return False
     # `parse` stays faithful to the reference and tolerates trailing text; claiming such
     # a name is decided here.
-    return not symbol.unread or _TRAILING_OVERLOAD.fullmatch(symbol.unread) is not None
+    if symbol.unread and _TRAILING_OVERLOAD.fullmatch(symbol.unread) is None:
+        return False
+    _READING.keep(name, symbol)
+    return True
 
 
 #: `_wants_structure`'s answer per builder class, asked once per class.
@@ -118,10 +124,12 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=None):
     if len(mangled) > limits.max_input:
         raise LimitExceeded(mangled, "input length", limits.max_input)
 
-    try:
-        symbol = demangle_ada(mangled)
-    except DemangleFailure as error:
-        raise NotMangledError(mangled, str(error)) from error
+    symbol = _READING.take(mangled)
+    if symbol is None:
+        try:
+            symbol = demangle_ada(mangled)
+        except DemangleFailure as error:
+            raise NotMangledError(mangled, str(error)) from error
 
     if len(symbol.text) > limits.max_output:
         raise LimitExceeded(mangled, "output length", limits.max_output)

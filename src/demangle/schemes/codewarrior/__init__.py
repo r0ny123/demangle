@@ -26,6 +26,7 @@ libraries: see `tests/test_codewarrior.py`, which pins the count both ways.
 import re
 
 from ...core.ast import Node
+from ...core.cache import Handoff
 from ...core.errors import LimitExceeded, NotMangledError, ParseError
 from ...core.limits import DEFAULT_LIMITS
 from ...core.plugin import LanguagePlugin
@@ -123,6 +124,8 @@ DETECT_SCREEN = (("__",), ())
 
 _OTHER_SCHEME = re.compile(r"__?(?:Z|R[A-Z])")
 
+_READING = Handoff()
+
 
 def detect(name):
     """Whether `name` is a CodeWarrior symbol, decided by reading it.
@@ -148,7 +151,10 @@ def detect(name):
         return False
     except RecursionError:
         return False
-    return symbol.text != name and _plausible(symbol)
+    if symbol.text == name or not _plausible(symbol):
+        return False
+    _READING.keep(name, symbol)
+    return True
 
 
 #: What each builder class answered to `_wants_structure`, asked once per class.
@@ -172,16 +178,21 @@ def parse(mangled, builder, limits=DEFAULT_LIMITS, options=DEFAULT_OPTIONS):
     if options is None:
         options = DEFAULT_OPTIONS
 
-    try:
-        symbol = demangle_codewarrior(
-            mangled,
-            omit_empty_parameters=options.omit_empty_parameters,
-            mw_extensions=options.mw_extensions,
-        )
-    except DemangleFailure as error:
-        raise ParseError(mangled, None, str(error)) from error
-    except RecursionError as error:
-        raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
+    symbol = None
+    if options.omit_empty_parameters is True and options.mw_extensions is False:
+        # What `detect` read with its own defaults, if this is the name it just claimed.
+        symbol = _READING.take(mangled)
+    if symbol is None:
+        try:
+            symbol = demangle_codewarrior(
+                mangled,
+                omit_empty_parameters=options.omit_empty_parameters,
+                mw_extensions=options.mw_extensions,
+            )
+        except DemangleFailure as error:
+            raise ParseError(mangled, None, str(error)) from error
+        except RecursionError as error:
+            raise LimitExceeded(mangled, "recursion depth", limits.max_depth) from error
 
     if symbol.text == mangled:
         raise ParseError(mangled, None, "the name decodes to itself")

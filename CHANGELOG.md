@@ -8,6 +8,16 @@ the reference demanglers, and a **Performance** section.
 
 ## [Unreleased]
 
+### Performance
+
+- **Seven schemes no longer read each name twice.** g++ 2.x, CodeWarrior, Ada, Delphi,
+  Free Pascal, Nim and Objective-C have no prefix to go by, so `detect` claims a name by
+  reading all of it, and `parse` then read it again. The reading `detect` made is now
+  handed to the `parse` that follows it. Over each scheme's corpus that is 37 to 43%
+  fewer instructions a name (CodeWarrior 14%) and, cold, g++ 2.x 57 to 38 us a name,
+  Delphi 26 to 17, Ada 25 to 16, Objective-C 11 to 8, Nim 12 to 7 and Free Pascal 9 to
+  7. Output is unchanged over 1.37 million names.
+
 ## [0.9.4] - 2026-11-19
 
 ### Fixed
