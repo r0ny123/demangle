@@ -67,7 +67,7 @@ lint = [
     { include-group = "format" },
     { include-group = "test" },
     { include-group = "browser" },
-    "ty==0.0.102",
+    "ty==0.0.105",
 ]
 docs = [
     { include-group = "format" },
