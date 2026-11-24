@@ -6,6 +6,7 @@ format is read the way the reference's own test harness reads it.
 """
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -150,6 +151,36 @@ class TestScoring:
         assert result["new_pass"] == 3
         assert result["new_fail"] == [("_Z1hv", "nope", "h()"), ("_Z1kv", "k()", "k")]
 
+    @pytest.mark.parametrize(("newest", "pending", "failed"), [("0.1.28", 1, []), ("0.1.29", 0, ["_Rnew"])])
+    def test_a_spelling_ahead_of_the_release_is_pending_until_one_ships(self, monkeypatch, newest, pending, failed):
+        def read(fetch):
+            return [("_Rnew", "fn(#[rustc_splat] (u8,))"), ("_Rbad", "fn(#[rustc_splat] (u8,))"), ("_Rok", "ok")]
+
+        def spell(mangled, mode):
+            return {"_Rnew": "fn(#[splat] (u8,))", "_Rok": "ok"}.get(mangled, "")
+
+        pages = []
+
+        class Crates:
+            def get(self, url):
+                pages.append(url)
+                return json.dumps({"crate": {"max_stable_version": newest}})
+
+        monkeypatch.setitem(drift.SOURCES, "rustc", (read, "x", spell, drift._exact))
+        monkeypatch.setattr(drift, "recorded", lambda corpus: {})
+        result = drift.score("rustc", Crates())
+        assert pages == [drift.CRATES_API + "rustc-demangle"]
+        assert result["new_pass"] == 1
+        assert result["pending"] == pending
+        assert [row[0] for row in result["new_fail"]] == [*failed, "_Rbad"]
+
+    def test_crates_io_is_not_asked_when_nothing_waits_on_it(self, monkeypatch):
+        monkeypatch.setitem(
+            drift.SOURCES, "rustc", (lambda fetch: [("_Rok", "ok")], "x", lambda m, _: "ok", drift._exact)
+        )
+        monkeypatch.setattr(drift, "recorded", lambda corpus: {})
+        assert drift.score("rustc", FakeFetch({}))["pending"] == 0
+
 
 class TestReport:
     def test_cells_survive_backticks_pipes_and_length(self):
@@ -190,6 +221,12 @@ class TestReport:
         assert "### s: new vectors this library misreads" in text
         assert "| ` n ` | ` e ` | ` g ` |" in text
         assert "### s: recorded with a different expectation" in text
+
+    def test_pending_vectors_are_a_line_under_the_summary(self):
+        result = {"source": "rustc", "fetched": 4, "unchanged": 0, "differently": [], "new_pass": 0, "new_fail": []}
+        assert "wait on" not in drift.report([result], 15)
+        text = drift.report([{**result, "pending": 4}], 15)
+        assert "rustc: 4 new vectors wait on a rustc-demangle release after 0.1.28." in text
 
 
 class TestExitStatus:

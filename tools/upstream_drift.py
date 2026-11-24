@@ -13,7 +13,9 @@ Three outcomes per vector. A name the corpus holds with the same expectation is
 unchanged. One it holds with a different expectation is *recorded differently*: the
 corpus carries documented deviations (tests/test_conformance.py names them), so this
 is reported for a person to read, and not a failure. A name the corpus does not hold
-is *new*, and a new vector this library misreads is what the exit status reports.
+is *new*, and a new vector this library misreads is what the exit status reports,
+unless the reference's newest release still spells it the way this library does
+(`PENDING_RELEASE`): that one is counted as pending until the release ships.
 
 The `llvm-*` sources are the other half: not what the references' tests say but what
 the newest LLVM *does*, over every name the checked-in corpora already hold (see
@@ -70,6 +72,7 @@ LLVM_RAW = "https://raw.githubusercontent.com/llvm/llvm-project/main/"
 LLVM_DEMANGLE_TESTS = "https://api.github.com/repos/llvm/llvm-project/contents/llvm/test/Demangle"
 SWIFT_RAW = "https://raw.githubusercontent.com/swiftlang/swift/main/test/Demangle/Inputs/manglings.txt"
 RUSTC_RAW = "https://raw.githubusercontent.com/rust-lang/rustc-demangle/main/src/"
+CRATES_API = "https://crates.io/api/v1/crates/"
 
 #: The MSVC test files on the day this was written, used when the directory listing
 #: cannot be fetched; a file added upstream is then missed until the listing is back.
@@ -330,6 +333,20 @@ EXPECTED_MISREADS = {
 }
 
 
+#: Spellings on a reference's `main` that its newest release does not print yet, per
+#: source: the crate, that release, and how the release spells the new text. A misread
+#: the old spelling accounts for is pending, not failed, for as long as crates.io's newest
+#: release is still that one, so the vectors come back by themselves once one ships.
+PENDING_RELEASE = {
+    # This library ports what the reference builds, and the release prints `#[splat]`.
+    "rustc": ("rustc-demangle", "0.1.28", lambda text: text.replace("#[rustc_splat]", "#[splat]")),
+}
+
+
+def released(fetch, crate):
+    return json.loads(fetch.get(CRATES_API + crate))["crate"]["max_stable_version"]
+
+
 def recorded(corpus):
     path = CONFORMANCE / corpus
     text = (
@@ -351,7 +368,17 @@ def score(name, fetch):
     against the reference's text."""
     read, corpus, spell, match = SOURCES[name]
     held = recorded(corpus)
-    result = {"source": name, "fetched": 0, "unchanged": 0, "differently": [], "new_pass": 0, "new_fail": []}
+    pending = PENDING_RELEASE.get(name)
+    still_unreleased = None
+    result = {
+        "source": name,
+        "fetched": 0,
+        "unchanged": 0,
+        "differently": [],
+        "new_pass": 0,
+        "new_fail": [],
+        "pending": 0,
+    }
     seen = set()
     for row in read(fetch):
         mangled, expected = row[0], row[1]
@@ -370,8 +397,14 @@ def score(name, fetch):
         got = spell(mangled, mode)
         if mangled in EXPECTED_MISREADS or match(expected, got):
             result["new_pass"] += 1
-        else:
-            result["new_fail"].append((mangled, expected, got))
+            continue
+        if pending and match(pending[2](expected), got):
+            if still_unreleased is None:
+                still_unreleased = released(fetch, pending[0]) == pending[1]
+            if still_unreleased:
+                result["pending"] += 1
+                continue
+        result["new_fail"].append((mangled, expected, got))
     return result
 
 
@@ -444,6 +477,10 @@ def report(results, show, limit=None):
     for r in fetched:
         cells = (r["source"], r["fetched"], r["unchanged"], len(r["differently"]), r["new_pass"], len(r["new_fail"]))
         lines.append("| " + " | ".join(str(cell) for cell in cells) + " |")
+    for r in fetched:
+        if r.get("pending"):
+            crate, version, _ = PENDING_RELEASE[r["source"]]
+            lines += ["", f"{r['source']}: {r['pending']} new vectors wait on a {crate} release after {version}."]
     for r in fetched:
         if r["new_fail"]:
             lines += ["", f"### {r['source']}: new vectors this library misreads", ""]
